@@ -2,9 +2,10 @@ import { env } from "cloudflare:workers";
 
 export const runtime = "edge";
 
-type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number };
+type Card = { id: string; kind: "Strike" | "Dodge" | "Peach"; suit: "♥" | "♦" | "♣" | "♠"; rank: string };
+type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null };
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
-type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; connected_at: number };
+type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; alive: number; connected_at: number };
 
 const HEROES: Hero[] = [
   { id: "cao-cao", name: "Cao Cao", faction: "Wei", hp: 4, ability: "After taking damage, you may gain the card that caused it." },
@@ -52,6 +53,50 @@ function cleanName(value: unknown) { return String(value ?? "").trim().replace(/
 function randomCode() { const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const bytes = crypto.getRandomValues(new Uint8Array(5)); return Array.from(bytes, (byte) => chars[byte % chars.length]).join(""); }
 function newToken() { return Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, "0")).join(""); }
 async function hash(value: string) { const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)); return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join(""); }
+function parse<T>(value: string | null, fallback: T): T { try { return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } }
+function makeDeck() {
+  const kinds: Card["kind"][] = [...Array(30).fill("Strike"), ...Array(20).fill("Dodge"), ...Array(12).fill("Peach")];
+  const suits: Card["suit"][] = ["♥", "♦", "♣", "♠"];
+  const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+  const deck = kinds.map((kind, index) => ({ id: crypto.randomUUID(), kind, suit: suits[index % 4], rank: ranks[index % 13] }));
+  for (let index = deck.length - 1; index > 0; index--) { const swap = Math.floor(Math.random() * (index + 1)); [deck[index], deck[swap]] = [deck[swap], deck[index]]; }
+  return deck;
+}
+function addLog(log: string[], message: string) { return [...log.slice(-11), message]; }
+function nextAlive(players: PlayerRow[], seat: number) { const alive = players.filter((player) => player.alive).sort((a, b) => a.seat - b.seat); return alive.find((player) => player.seat > seat)?.seat ?? alive[0]?.seat ?? seat; }
+
+async function beginMatch(roomId: string, players: PlayerRow[]) {
+  const deck = makeDeck();
+  const updates = players.map((player) => db().prepare("UPDATE players SET hand_json = ?, alive = 1 WHERE id = ?").bind(JSON.stringify(deck.splice(0, 4)), player.id));
+  const lord = players.find((player) => player.role === "Lord") ?? players[0];
+  await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify([`${lord.name} begins the match.`]), roomId)]);
+}
+function db() { return env.DB; }
+
+async function runBots(roomId: string) {
+  for (let guard = 0; guard < 12; guard++) {
+    const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+    const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+    const players = rows.results ?? []; const bot = players.find((player) => player.seat === room?.turn_seat);
+    if (!room || room.status !== "playing" || !bot?.name.startsWith("Test General ")) return;
+    let deck = parse<Card[]>(room.deck_json, []); let discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []); let hand = parse<Card[]>(bot.hand_json, []);
+    if (room.phase === "draw") { hand.push(...deck.splice(0, 2)); log = addLog(log, `${bot.name} draws two cards.`); }
+    const peach = hand.find((card) => card.kind === "Peach");
+    if (peach && (bot.hp ?? 0) < (bot.max_hp ?? 0)) { hand = hand.filter((card) => card.id !== peach.id); discard.push(peach); bot.hp = (bot.hp ?? 0) + 1; log = addLog(log, `${bot.name} plays Peach and recovers 1 HP.`); }
+    const strike = hand.find((card) => card.kind === "Strike"); const targets = players.filter((player) => player.alive && player.id !== bot.id); const target = targets.find((player) => !player.name.startsWith("Test General ")) ?? targets[0];
+    const writes = [];
+    if (strike && target) {
+      hand = hand.filter((card) => card.id !== strike.id); discard.push(strike); let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((card) => card.kind === "Dodge");
+      if (dodge) { targetHand = targetHand.filter((card) => card.id !== dodge.id); discard.push(dodge); log = addLog(log, `${bot.name} strikes ${target.name}; Dodge blocks it.`); }
+      else { target.hp = Math.max(0, (target.hp ?? 1) - 1); target.alive = target.hp > 0 ? 1 : 0; log = addLog(log, `${bot.name} strikes ${target.name} for 1 damage${target.alive ? "." : " and defeats them."}`); }
+      writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ?, alive = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.hp, target.alive, target.id));
+    }
+    const refreshed = players.map((player) => player.id === target?.id ? target : player); const next = nextAlive(refreshed, bot.seat);
+    writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
+    writes.push(db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(addLog(log, `${bot.name} ends their turn.`)), roomId));
+    await db().batch(writes);
+  }
+}
 
 async function roomState(code: string, token?: string) {
   const db = env.DB;
@@ -66,7 +111,8 @@ async function roomState(code: string, token?: string) {
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? me?.role ?? null : null,
     myHeroOptions: room.status === "heroes" && me?.hero_options_json ? JSON.parse(me.hero_options_json) : [],
-    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, isHost: player.id === room.host_player_id, isBot: player.name.startsWith("Test General "), role: room.status === "finished" || player.id === me?.id ? player.role : null })),
+    turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null, log: parse<string[]>(room.log_json, []), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: me?.seat === room.turn_seat,
+    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), handCount: parse<Card[]>(player.hand_json, []).length, isHost: player.id === room.host_player_id, isBot: player.name.startsWith("Test General "), role: player.role === "Lord" || room.status === "finished" || player.id === me?.id ? player.role : null })),
   };
 }
 
@@ -169,7 +215,48 @@ export async function POST(request: Request) {
     const hp = hero.hp + (me.role === "Lord" && (await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ?").bind(room.id).first<{ count: number }>())!.count >= 5 ? 1 : 0);
     await db.prepare("UPDATE players SET hero = ?, hp = ?, max_hp = ? WHERE id = ?").bind(hero.id, hp, hp, me.id).run();
     const remaining = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND hero IS NULL").bind(room.id).first<{ count: number }>();
-    if ((remaining?.count ?? 0) === 0) await db.prepare("UPDATE rooms SET status = 'started' WHERE id = ?").bind(room.id).run();
+    if ((remaining?.count ?? 0) === 0) {
+      const ready = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+      await beginMatch(room.id, ready.results ?? []);
+      await runBots(room.id);
+    }
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (["draw", "play_card", "end_turn"].includes(action)) {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+    if (!liveRoom || liveRoom.status !== "playing") return json({ error: "The match is not currently playing." }, 409);
+    if (liveRoom.turn_seat !== me.seat || !me.alive) return json({ error: "Wait for your turn." }, 409);
+    let deck = parse<Card[]>(liveRoom.deck_json, []); let discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); let hand = parse<Card[]>(me.hand_json, []);
+
+    if (action === "draw") {
+      if (liveRoom.phase !== "draw") return json({ error: "You have already drawn this turn." }, 409);
+      hand.push(...deck.splice(0, 2)); log = addLog(log, `${me.name} draws two cards.`);
+      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'play', deck_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(log), room.id)]);
+    } else if (action === "play_card") {
+      if (liveRoom.phase !== "play") return json({ error: "Draw before playing a card." }, 409);
+      const card = hand.find((item) => item.id === String(body.cardId ?? ""));
+      if (!card) return json({ error: "That card is not in your hand." }, 400);
+      if (card.kind === "Dodge") return json({ error: "Dodge is played automatically when you are struck." }, 400);
+      if (card.kind === "Peach") {
+        if ((me.hp ?? 0) >= (me.max_hp ?? 0)) return json({ error: "You are already at full health." }, 409);
+        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addLog(log, `${me.name} plays Peach and recovers 1 HP.`);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ?, hp = hp + 1 WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]);
+      } else {
+        const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
+        if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent as the target." }, 400);
+        hand = hand.filter((item) => item.id !== card.id); discard.push(card); let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((item) => item.kind === "Dodge");
+        if (dodge) { targetHand = targetHand.filter((item) => item.id !== dodge.id); discard.push(dodge); log = addLog(log, `${me.name} strikes ${target.name}; Dodge blocks it.`); }
+        else { target.hp = Math.max(0, (target.hp ?? 1) - 1); target.alive = target.hp > 0 ? 1 : 0; log = addLog(log, `${me.name} strikes ${target.name} for 1 damage${target.alive ? "." : " and defeats them."}`); }
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ?, hp = ?, alive = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.hp, target.alive, target.id), db.prepare("UPDATE rooms SET discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]);
+      }
+    } else {
+      if (liveRoom.phase !== "play") return json({ error: "Draw before ending your turn." }, 409);
+      const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const next = nextAlive(rows.results ?? [], me.seat);
+      await db.prepare("UPDATE rooms SET turn_seat = ?, phase = 'draw', log_json = ? WHERE id = ?").bind(next, JSON.stringify(addLog(log, `${me.name} ends their turn.`)), room.id).run();
+      await runBots(room.id);
+    }
     return json({ room: await roomState(code, token) });
   }
 

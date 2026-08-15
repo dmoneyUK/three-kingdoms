@@ -3,8 +3,9 @@
 import { FormEvent, useEffect, useState } from "react";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
-type Player = { id: string; name: string; seat: number; hero: string | null; hp: number | null; maxHp: number | null; isHost: boolean; isBot?: boolean; role: string | null };
-type Room = { code: string; status: "lobby" | "heroes" | "started" | "finished"; maxPlayers: number; isHost: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[] };
+type Card = { id: string; kind: "Strike" | "Dodge" | "Peach"; suit: "♥" | "♦" | "♣" | "♠"; rank: string };
+type Player = { id: string; name: string; seat: number; hero: string | null; hp: number | null; maxHp: number | null; alive: boolean; handCount: number; isHost: boolean; isBot?: boolean; role: string | null };
+type Room = { code: string; status: "lobby" | "heroes" | "started" | "playing" | "finished"; maxPlayers: number; isHost: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; isMyTurn: boolean };
 
 export default function Home() {
   const [name, setName] = useState("");
@@ -38,7 +39,7 @@ export default function Home() {
     } catch (cause) { if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room."); }
   }
 
-  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero", extra: Record<string, string> = {}) {
+  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | "draw" | "play_card" | "end_turn", extra: Record<string, string> = {}) {
     setBusy(true); setError("");
     try {
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...extra }) });
@@ -55,7 +56,7 @@ export default function Home() {
     localStorage.removeItem("three-realms-session"); setRoom(null); setToken(""); setCode(""); setError("");
   }
 
-  if (room?.status === "started") return <GameRoom room={room} onLeave={leave} />;
+  if (room?.status === "started" || room?.status === "playing") return <GameRoom room={room} busy={busy} error={error} onAction={send} onLeave={leave} />;
   if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
   if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onLeave={leave} />;
 
@@ -113,8 +114,18 @@ function HeroSelection({ room, busy, error, onChoose, onLeave }: { room: Room; b
 
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
 
-function GameRoom({ room, onLeave }: { room: Room; onLeave: () => void }) {
-  return <main className="game-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b><span>Match started</span></div><button className="text-button" onClick={onLeave}>Exit</button></header>
-    <section className="new-table"><div className="role-reveal"><span>YOUR SECRET ROLE</span><b>{room.myRole}</b><small>{room.myRole === "Lord" ? "Survive and eliminate every Rebel and Renegade." : room.myRole === "Loyalist" ? "Protect the Lord and eliminate every threat." : room.myRole === "Rebel" ? "Overthrow the Lord." : "Be the last player standing."}</small></div><div className="table-center"><span>三</span><small>ALL GENERALS ARE READY</small></div>{room.players.map((player, index) => <div className="started-player" key={player.id} style={{ "--angle": `${(360 / room.players.length) * index}deg` } as React.CSSProperties}><div className="seal">{player.name[0]}</div><b>{player.name}</b><small>{heroName(player.hero)} · {player.role ?? (player.isHost ? "Lord" : "Role hidden")}</small><span>{"♥".repeat(player.hp ?? 4)}</span></div>)}</section>
-    <footer className="phase-footer"><div><span>HEROES READY</span><b>The generals have taken their seats</b></div><p>Each player now has a server-validated hero, health total, faction, and ability. Dealing the first hand is the next milestone.</p></footer></main>;
+function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: boolean; error: string; onAction: (action: "draw" | "play_card" | "end_turn", extra?: Record<string, string>) => void; onLeave: () => void }) {
+  const [selected, setSelected] = useState(""); const [target, setTarget] = useState("");
+  const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const me = room.players.find((player) => player.id === room.meId);
+  const play = () => { if (!card) return; onAction("play_card", { cardId: card.id, ...(card.kind === "Strike" ? { targetId: target } : {}) }); setSelected(""); setTarget(""); };
+  return <main className="game-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b><span>{current?.name ?? "—"}&apos;s turn</span></div><button className="text-button" onClick={onLeave}>Exit</button></header>
+    <section className="play-table"><div className="role-reveal"><span>YOUR SECRET ROLE</span><b>{room.myRole}</b><small>{room.myRole === "Lord" ? "Survive and eliminate every Rebel and Renegade." : room.myRole === "Loyalist" ? "Protect the Lord and eliminate every threat." : room.myRole === "Rebel" ? "Overthrow the Lord." : "Be the last player standing."}</small></div>
+      <div className="play-center"><div className="draw-stack"><b>{room.deckCount}</b><span>DECK</span></div><div className="discard-stack"><b>{room.discardTop?.kind ?? "—"}</b><span>DISCARD</span></div></div>
+      {room.players.map((player, index) => <button disabled={!room.isMyTurn || room.phase !== "play" || !player.alive || player.id === room.meId} onClick={() => card?.kind === "Strike" && setTarget(player.id)} className={`started-player play-seat ${player.seat === room.turnSeat ? "active-turn" : ""} ${target === player.id ? "targeted" : ""} ${!player.alive ? "defeated" : ""}`} key={player.id} style={{ "--angle": `${(360 / room.players.length) * index}deg` } as React.CSSProperties}><div className="seal">{player.name[0]}</div><b>{player.name}</b><small>{heroName(player.hero)} · {player.role ?? "Role hidden"}</small><span>{"♥".repeat(player.hp ?? 0)} · {player.handCount} cards</span></button>)}
+      <aside className="battle-log"><span>ACTIVITY</span>{room.log.slice(-4).reverse().map((entry, index) => <p key={`${entry}-${index}`}>{entry}</p>)}</aside>
+    </section>
+    <footer className="play-command"><div className="turn-controls"><span>{room.isMyTurn ? room.phase === "draw" ? "Your draw phase" : card?.kind === "Strike" && !target ? "Choose an opponent" : "Your play phase" : `Waiting for ${current?.name ?? "another player"}`}</span><div>{room.isMyTurn && room.phase === "draw" && <button className="primary" disabled={busy} onClick={() => onAction("draw")}>Draw 2 cards</button>}{room.isMyTurn && room.phase === "play" && <><button className="primary" disabled={busy || !card || (card.kind === "Strike" && !target) || card.kind === "Dodge"} onClick={play}>Play selected</button><button className="end" disabled={busy} onClick={() => onAction("end_turn")}>End turn</button></>}</div></div>
+      <div className="play-hand">{room.myHand.map((item) => <button key={item.id} onClick={() => { setSelected(item.id); setTarget(""); }} className={`game-card ${item.kind.toLowerCase()} ${selected === item.id ? "selected" : ""}`}><span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-glyph">{item.kind === "Strike" ? "⚔" : item.kind === "Dodge" ? "盾" : "桃"}</span><strong>{item.kind}</strong><small>{item.kind === "Dodge" ? "Resolves automatically" : item.kind === "Peach" ? "Recover 1 HP" : "Deal 1 damage"}</small></button>)}</div>
+      {error && <p className="error play-error" role="alert">{error}</p>}<div className="self-summary">{heroName(me?.hero)} · {me?.hp}/{me?.maxHp} HP · Dodge resolves automatically</div>
+    </footer></main>;
 }
