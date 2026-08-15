@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type Card = { id: string; kind: "Strike" | "Dodge" | "Peach"; suit: "♥" | "♦" | "♣" | "♠"; rank: string };
@@ -14,6 +14,7 @@ export default function Home() {
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const stateEpoch = useRef(0);
 
   useEffect(() => {
     const saved = localStorage.getItem("three-realms-session");
@@ -26,21 +27,22 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!room || !token) return;
+    if (!room || !token || busy) return;
     const timer = setInterval(() => fetchRoom(room.code, token, true), 2500);
     return () => clearInterval(timer);
-  }, [room?.code, token]);
+  }, [room?.code, token, busy]);
 
   async function fetchRoom(roomCode: string, playerToken: string, quiet = false) {
+    const epoch = stateEpoch.current;
     try {
       const response = await fetch(`/api/rooms?code=${roomCode}&token=${playerToken}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Room is no longer available.");
-      setRoom(await response.json());
+      const nextRoom = await response.json(); if (epoch === stateEpoch.current) setRoom(nextRoom);
     } catch (cause) { if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room."); }
   }
 
   async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | "draw" | "play_card" | "end_turn" | "respond_dodge" | "take_damage" | "discard_card", extra: Record<string, string> = {}) {
-    setBusy(true); setError("");
+    stateEpoch.current++; setBusy(true); setError("");
     try {
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...extra }) });
       const data = await response.json() as { error?: string; token?: string; room?: Room };
@@ -116,17 +118,22 @@ function heroName(id?: string | null) { return id ? id.split("-").map((part) => 
 
 function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: boolean; error: string; onAction: (action: "draw" | "play_card" | "end_turn" | "respond_dodge" | "take_damage" | "discard_card", extra?: Record<string, string>) => void; onLeave: () => void }) {
   const [selected, setSelected] = useState(""); const [target, setTarget] = useState("");
+  const [turnNotice, setTurnNotice] = useState(""); const previousTurn = useRef<number | null>(null);
   const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const me = room.players.find((player) => player.id === room.meId);
+  const attacker = room.players.find((player) => player.id === room.pendingAttack?.sourceId); const defender = room.players.find((player) => player.id === room.pendingAttack?.targetId);
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
+  useEffect(() => { if (room.status !== "playing" || room.turnSeat === previousTurn.current) return; previousTurn.current = room.turnSeat; setTurnNotice(`${current?.name ?? "Player"}'s turn`); const timer = setTimeout(() => setTurnNotice(""), 1600); return () => clearTimeout(timer); }, [room.turnSeat, room.status, current?.name]);
   const play = () => { if (!card) return; onAction("play_card", { cardId: card.id, ...(card.kind === "Strike" ? { targetId: target } : {}) }); setSelected(""); setTarget(""); };
   return <main className="game-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b><span>{current?.name ?? "—"}&apos;s turn</span></div><button className="text-button" onClick={onLeave}>Exit</button></header>
     <section className="play-table"><div className="role-reveal"><span>YOUR SECRET ROLE</span><b>{room.myRole}</b><small>{room.myRole === "Lord" ? "Survive and eliminate every Rebel and Renegade." : room.myRole === "Loyalist" ? "Protect the Lord and eliminate every threat." : room.myRole === "Rebel" ? "Overthrow the Lord." : "Be the last player standing."}</small></div>
+      <div className="current-turn-ribbon"><span>CURRENT TURN</span><b>{current ? `${current.seat + 1}. ${current.name}` : "—"}</b><small>{room.phase === "response" ? `${attacker?.name} → ${defender?.name} · waiting for Dodge` : (room.phase ?? "").replace("play-struck", "play · Strike used")}</small></div>
+      {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       <div className="play-center"><div className="draw-stack"><b>{room.deckCount}</b><span>DECK</span></div><div className="discard-stack"><b>{room.discardTop?.kind ?? "—"}</b><span>DISCARD</span></div></div>
       {room.players.map((player, index) => <button disabled={!room.isMyTurn || !canPlay || !player.alive || player.id === room.meId || (player.distance ?? 99) > 1} onClick={() => card?.kind === "Strike" && setTarget(player.id)} className={`started-player play-seat ${player.seat === room.turnSeat && room.status === "playing" ? "active-turn" : ""} ${target === player.id ? "targeted" : ""} ${!player.alive ? "defeated" : ""}`} key={player.id} style={{ "--angle": `${(360 / room.players.length) * index}deg` } as React.CSSProperties}><div className="seal">{player.name[0]}</div><b>{index + 1}. {player.name}</b><small>{heroName(player.hero)} · {player.role ?? "Role hidden"}</small><span>{"♥".repeat(player.hp ?? 0)} · {player.handCount} cards{player.id !== room.meId ? ` · distance ${player.distance}` : ""}</span></button>)}
       <aside className="battle-log"><span>ACTIVITY</span>{room.log.slice(-4).reverse().map((entry, index) => <p key={`${entry}-${index}`}>{entry}</p>)}</aside>
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
     </section>
-    <footer className="play-command"><div className="turn-controls"><span>{room.status === "finished" ? "The match has ended" : room.phase === "response" ? room.pendingAttack?.targetId === room.meId ? "You are under attack — play Dodge or take damage" : "Waiting for the defender to answer Strike" : room.phase === "discard" && room.isMyTurn ? `Discard down to your HP limit (${me?.hp ?? 0})` : room.isMyTurn ? room.phase === "draw" ? "Your draw phase" : card?.kind === "Strike" && !target ? "Choose an adjacent opponent (distance 1)" : room.phase === "play-struck" ? "Strike used — play Peach or end your turn" : "Your play phase" : `Waiting for ${current?.name ?? "another player"}`}</span><div>{room.phase === "response" && room.pendingAttack?.targetId === room.meId && <><button className="primary" disabled={busy || !room.myHand.some((item) => item.kind === "Dodge")} onClick={() => onAction("respond_dodge")}>Play Dodge</button><button className="end" disabled={busy} onClick={() => onAction("take_damage")}>Take damage</button></>}{room.isMyTurn && room.phase === "discard" && <button className="end" disabled={busy || !card} onClick={() => card && onAction("discard_card", { cardId: card.id })}>Discard selected</button>}{room.isMyTurn && room.phase === "draw" && <button className="primary" disabled={busy} onClick={() => onAction("draw")}>Draw 2 cards</button>}{room.isMyTurn && canPlay && <><button className="primary" disabled={busy || !card || (card.kind === "Strike" && (!target || room.phase === "play-struck")) || card.kind === "Dodge"} onClick={play}>Play selected</button><button className="end" disabled={busy} onClick={() => onAction("end_turn")}>End turn</button></>}</div></div>
+    <footer className="play-command"><div className="turn-controls"><span>{room.status === "finished" ? "The match has ended" : room.phase === "response" ? room.pendingAttack?.targetId === room.meId ? `${attacker?.name ?? "An opponent"} attacked you — Dodge prevents all damage` : `${defender?.name ?? "The defender"} is answering ${attacker?.name ?? "the attacker"}'s Strike` : room.phase === "discard" && room.isMyTurn ? `Discard down to your HP limit (${me?.hp ?? 0})` : room.isMyTurn ? room.phase === "draw" ? "Your draw phase" : card?.kind === "Strike" && !target ? "Choose an adjacent opponent (distance 1)" : room.phase === "play-struck" ? "Strike used — play Peach or end your turn" : "Your play phase" : `Waiting for ${current?.name ?? "another player"}`}</span><div>{room.phase === "response" && room.pendingAttack?.targetId === room.meId && <><button className="primary" disabled={busy || !room.myHand.some((item) => item.kind === "Dodge")} onClick={() => onAction("respond_dodge")}>Play Dodge · No damage</button><button className="end" disabled={busy} onClick={() => onAction("take_damage")}>No Dodge · Take damage</button></>}{room.isMyTurn && room.phase === "discard" && <button className="end" disabled={busy || !card} onClick={() => card && onAction("discard_card", { cardId: card.id })}>Discard selected</button>}{room.isMyTurn && room.phase === "draw" && <button className="primary" disabled={busy} onClick={() => onAction("draw")}>Draw 2 cards</button>}{room.isMyTurn && canPlay && <><button className="primary" disabled={busy || !card || (card.kind === "Strike" && (!target || room.phase === "play-struck")) || card.kind === "Dodge"} onClick={play}>Play selected</button><button className="end" disabled={busy} onClick={() => onAction("end_turn")}>End turn</button></>}</div></div>
       <div className="play-hand">{room.myHand.map((item) => <button key={item.id} onClick={() => { setSelected(item.id); setTarget(""); }} className={`game-card ${item.kind.toLowerCase()} ${selected === item.id ? "selected" : ""}`}><span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-glyph">{item.kind === "Strike" ? "⚔" : item.kind === "Dodge" ? "盾" : "桃"}</span><strong>{item.kind}</strong><small>{item.kind === "Dodge" ? "Play when attacked" : item.kind === "Peach" ? "Recover 1 HP" : "Range 1 · deal 1 damage"}</small></button>)}</div>
       {error && <p className="error play-error" role="alert">{error}</p>}<div className="self-summary">{heroName(me?.hero)} · {me?.hp}/{me?.maxHp} HP · Turn order follows numbered seats clockwise</div>
     </footer></main>;
