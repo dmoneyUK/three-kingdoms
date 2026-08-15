@@ -65,6 +65,19 @@ function makeDeck() {
 }
 function addLog(log: string[], message: string) { return [...log.slice(-199), `@event:${JSON.stringify({ id: crypto.randomUUID(), message })}`]; }
 function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "discard" = "play") { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player, target, card, action })}`]; }
+function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) {
+  const drawn: Card[] = [];
+  while (drawn.length < count) {
+    if (!deck.length) {
+      if (!discard.length) break;
+      deck = [...discard]; discard = [];
+      for (let index = deck.length - 1; index > 0; index--) { const swap = Math.floor(Math.random() * (index + 1)); [deck[index], deck[swap]] = [deck[swap], deck[index]]; }
+      log = addLog(log, "The discard pile is shuffled into a new draw deck.");
+    }
+    const card = deck.shift(); if (card) drawn.push(card);
+  }
+  return { deck, discard, drawn, log };
+}
 function messageEvent(entry: string, index: number) {
   if (!entry.startsWith("@event:")) return { type: "message" as const, id: `legacy-${index}-${entry}`, message: entry };
   try { return { type: "message" as const, ...JSON.parse(entry.slice(7)) as { id: string; message: string } }; } catch { return null; }
@@ -114,7 +127,7 @@ async function runBots(roomId: string) {
     const players = rows.results ?? []; const bot = players.find((player) => player.seat === room?.turn_seat);
     if (!room || room.status !== "playing" || room.phase === "response" || !bot?.name.startsWith("Test General ")) return;
     let deck = parse<Card[]>(room.deck_json, []); let discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []); let hand = parse<Card[]>(bot.hand_json, []);
-    if (room.phase === "draw") { hand.push(...deck.splice(0, 2)); log = addLog(log, `${bot.name} draws two cards.`); }
+    if (room.phase === "draw") { const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addLog(draw.log, `${bot.name} draws ${draw.drawn.length === 2 ? "two cards" : `${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`}.`); hand.push(...draw.drawn); }
     while ((bot.hp ?? 0) < (bot.max_hp ?? 0)) {
       const peach = hand.find((card) => card.kind === "Peach"); if (!peach) break;
       hand = hand.filter((card) => card.id !== peach.id); discard.push(peach); bot.hp = (bot.hp ?? 0) + 1; log = addCardEvent(log, bot.name, peach); log = addLog(log, `${bot.name} plays Peach and recovers 1 HP.`);
@@ -307,8 +320,8 @@ export async function POST(request: Request) {
 
     if (action === "draw") {
       if (liveRoom.phase !== "draw") return json({ error: "You have already drawn this turn." }, 409);
-      hand.push(...deck.splice(0, 2)); log = addLog(log, `${me.name} draws two cards.`);
-      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'play', deck_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(log), room.id)]);
+      const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addLog(draw.log, `${me.name} draws ${draw.drawn.length === 2 ? "two cards" : `${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`}.`); hand.push(...draw.drawn);
+      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'play', deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
     } else if (action === "play_card") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before playing a card." }, 409);
       const card = hand.find((item) => item.id === String(body.cardId ?? ""));
