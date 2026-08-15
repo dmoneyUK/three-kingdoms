@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-type Player = { id: string; name: string; seat: number; hero: string | null; hp: number | null; isHost: boolean; role: string | null };
+type Player = { id: string; name: string; seat: number; hero: string | null; hp: number | null; isHost: boolean; isBot?: boolean; role: string | null };
 type Room = { code: string; status: "lobby" | "started" | "finished"; maxPlayers: number; isHost: boolean; meId: string; myRole: string | null; players: Player[] };
 
 const HEROES = ["Cao Cao", "Liu Bei", "Sun Quan", "Zhao Yun", "Guan Yu", "Zhang Fei", "Diao Chan", "Zhou Yu"];
@@ -39,7 +39,7 @@ export default function Home() {
     } catch (cause) { if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room."); }
   }
 
-  async function send(action: "create" | "join" | "start") {
+  async function send(action: "create" | "join" | "start" | "add_test_players") {
     setBusy(true); setError("");
     try {
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token }) });
@@ -57,7 +57,7 @@ export default function Home() {
   }
 
   if (room?.status === "started") return <GameRoom room={room} onLeave={leave} />;
-  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onLeave={leave} />;
+  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onLeave={leave} />;
 
   return (
     <main className="landing-shell">
@@ -91,12 +91,12 @@ export default function Home() {
 function Brand() { return <div className="brand"><span className="brand-mark">三</span><div><strong>Three Kingdoms</strong><small>Classic card game</small></div></div>; }
 function Role({ title, glyph }: { title: string; glyph: string }) { return <div className="mini-role"><b>{glyph}</b><span>{title}</span></div>; }
 
-function WaitingRoom({ room, busy, error, onStart, onLeave }: { room: Room; busy: boolean; error: string; onStart: () => void; onLeave: () => void }) {
+function WaitingRoom({ room, busy, error, onStart, onAddTestPlayers, onLeave }: { room: Room; busy: boolean; error: string; onStart: () => void; onAddTestPlayers: () => void; onLeave: () => void }) {
   const share = async () => { await navigator.clipboard?.writeText(room.code); };
   return <main className="lobby-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><button className="text-button" onClick={onLeave}>Leave room</button></header>
     <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1><p>Share this code with your friends. The match begins when 4–8 players have joined.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
-      <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isHost ? "HOST · LORD" : "ROLE HIDDEN"}</small></> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
-      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players</span>{room.isHost ? <button className="gold-button" disabled={busy || room.players.length < 4} onClick={onStart}>{busy ? "Dealing roles…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start match"}</button> : <p>Waiting for the host to start…</p>}</div>{error && <p className="error" role="alert">{error}</p>}</section></main>;
+      <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""} ${player?.isBot ? "bot-seat" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isHost ? "HOST · LORD" : player.isBot ? "TEST PLAYER · BOT" : "ROLE HIDDEN"}</small></> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
+      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players</span>{room.isHost ? <div className="host-actions">{room.players.length < 4 && <button className="test-button" disabled={busy} onClick={onAddTestPlayers}>+ Add test players</button>}<button className="gold-button" disabled={busy || room.players.length < 4} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start match"}</button></div> : <p>Waiting for the host to start…</p>}</div>{error && <p className="error" role="alert">{error}</p>}</section></main>;
 }
 
 function GameRoom({ room, onLeave }: { room: Room; onLeave: () => void }) {
