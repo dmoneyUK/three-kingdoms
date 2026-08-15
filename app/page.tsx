@@ -83,12 +83,12 @@ export default function Home() {
           <small className="privacy-note">Your secret role and player key stay private on this device.</small>
         </div>
       </section>
-      <footer className="landing-foot"><span>THREE REALMS</span><span>Original English adaptation · Classic social strategy</span></footer>
+      <footer className="landing-foot"><span>THREE KINGDOMS</span><span>Original English adaptation · Classic social strategy</span></footer>
     </main>
   );
 }
 
-function Brand() { return <div className="brand"><span className="brand-mark">三</span><div><strong>Three Realms</strong><small>Classic card game</small></div></div>; }
+function Brand() { return <div className="brand"><span className="brand-mark">三</span><div><strong>Three Kingdoms</strong><small>Classic card game</small></div></div>; }
 function Role({ title, glyph }: { title: string; glyph: string }) { return <div className="mini-role"><b>{glyph}</b><span>{title}</span></div>; }
 
 function WaitingRoom({ room, busy, error, onStart, onLeave }: { room: Room; busy: boolean; error: string; onStart: () => void; onLeave: () => void }) {
