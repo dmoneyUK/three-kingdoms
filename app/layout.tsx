@@ -15,6 +15,18 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Three Realms — Classic Hidden-Role Card Game",
   description: "A private online strategy card game for friends, inspired by the Three Kingdoms era.",
+  metadataBase: new URL("https://three-realms-table.dai-jinge.chatgpt.site"),
+  openGraph: {
+    title: "Three Realms",
+    description: "Gather 4–8 friends for a classic hidden-role strategy game.",
+    images: [{ url: "/og.png", width: 1536, height: 1024, alt: "Three Realms game table" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Three Realms",
+    description: "Gather 4–8 friends for a classic hidden-role strategy game.",
+    images: ["/og.png"],
+  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
