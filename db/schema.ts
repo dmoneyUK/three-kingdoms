@@ -51,3 +51,8 @@ export const gameAudit = sqliteTable("game_audit", {
   index("idx_game_audit_room_id").on(table.roomId, table.id),
   uniqueIndex("game_audit_room_event_unique").on(table.roomId, table.eventKey),
 ]);
+
+export const auditScope = sqliteTable("audit_scope", {
+  id: integer("id").primaryKey(),
+  roomId: text("room_id").notNull(),
+});
