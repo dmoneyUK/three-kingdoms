@@ -63,8 +63,30 @@ function makeDeck() {
   for (let index = deck.length - 1; index > 0; index--) { const swap = Math.floor(Math.random() * (index + 1)); [deck[index], deck[swap]] = [deck[swap], deck[index]]; }
   return deck;
 }
-function addLog(log: string[], message: string) { return [...log.slice(-59), message]; }
-function addCardEvent(log: string[], player: string, card: Card, target = player) { return addLog(log, `@card:${JSON.stringify({ id: crypto.randomUUID(), player, target, card })}`); }
+function addLog(log: string[], message: string) { return [...log.slice(-59), `@event:${JSON.stringify({ id: crypto.randomUUID(), message })}`]; }
+function addCardEvent(log: string[], player: string, card: Card, target = player) { return [...log.slice(-59), `@card:${JSON.stringify({ id: crypto.randomUUID(), player, target, card })}`]; }
+function messageEvent(entry: string, index: number) {
+  if (!entry.startsWith("@event:")) return { type: "message" as const, id: `legacy-${index}-${entry}`, message: entry };
+  try { return { type: "message" as const, ...JSON.parse(entry.slice(7)) as { id: string; message: string } }; } catch { return null; }
+}
+function gameTimeline(entries: string[]) {
+  const events: Array<Record<string, unknown>> = [];
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index];
+    if (!entry.startsWith("@card:")) {
+      const event = messageEvent(entry, index); if (event) events.push(event);
+      continue;
+    }
+    try {
+      const card = JSON.parse(entry.slice(6)) as Record<string, unknown>;
+      const next = entries[index + 1];
+      const detail = next && !next.startsWith("@card:") ? messageEvent(next, index + 1) : null;
+      events.push({ type: "card", ...card, ...(detail ? { message: detail.message } : {}) });
+      if (detail) index++;
+    } catch { /* Ignore malformed historical events. */ }
+  }
+  return events;
+}
 function nextAlive(players: PlayerRow[], seat: number) { const alive = players.filter((player) => player.alive).sort((a, b) => a.seat - b.seat); return alive.find((player) => player.seat > seat)?.seat ?? alive[0]?.seat ?? seat; }
 function attackDistance(players: PlayerRow[], sourceId: string, targetId: string) { const alive = players.filter((player) => player.alive).sort((a, b) => a.seat - b.seat); const from = alive.findIndex((player) => player.id === sourceId); const to = alive.findIndex((player) => player.id === targetId); if (from < 0 || to < 0) return 99; const clockwise = (to - from + alive.length) % alive.length; return Math.min(clockwise, alive.length - clockwise); }
 async function finishIfWon(roomId: string) {
@@ -129,6 +151,7 @@ async function roomState(code: string, token?: string) {
   if (!room) return null;
   const result = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
   const players = result.results ?? [];
+  const rawLog = parse<string[]>(room.log_json, []);
   const tokenHash = token ? await hash(token) : "";
   const me = players.find((player) => player.token_hash === tokenHash);
   return {
@@ -136,7 +159,9 @@ async function roomState(code: string, token?: string) {
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? me?.role ?? null : null,
     myHeroOptions: room.status === "heroes" && me?.hero_options_json ? JSON.parse(me.hero_options_json) : [],
-    turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null, log: parse<string[]>(room.log_json, []).filter((entry) => !entry.startsWith("@card:")), cardEvents: parse<string[]>(room.log_json, []).filter((entry) => entry.startsWith("@card:")).flatMap((entry) => { try { return [JSON.parse(entry.slice(6))]; } catch { return []; } }), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: me?.seat === room.turn_seat,
+    turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
+    log: rawLog.filter((entry) => !entry.startsWith("@card:")).flatMap((entry, index) => { const event = messageEvent(entry, index); return event ? [event.message] : []; }),
+    timeline: gameTimeline(rawLog), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: me?.seat === room.turn_seat,
     pendingAttack: parse<Pending | null>(room.pending_json, null),
     players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), handCount: parse<Card[]>(player.hand_json, []).length, distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: player.name.startsWith("Test General "), role: player.role === "Lord" || room.status === "finished" || player.id === me?.id ? player.role : null })),
   };
