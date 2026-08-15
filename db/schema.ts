@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const rooms = sqliteTable("rooms", {
   id: text("id").primaryKey(),
@@ -30,3 +30,24 @@ export const players = sqliteTable("players", {
   alive: integer("alive", { mode: "boolean" }).notNull().default(true),
   connectedAt: integer("connected_at").notNull(),
 }, (table) => [uniqueIndex("players_room_seat_unique").on(table.roomId, table.seat)]);
+
+export const gameAudit = sqliteTable("game_audit", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  roomId: text("room_id").notNull(),
+  eventKey: text("event_key"),
+  eventType: text("event_type").notNull(),
+  actorId: text("actor_id"),
+  actorName: text("actor_name"),
+  action: text("action"),
+  phaseBefore: text("phase_before"),
+  phaseAfter: text("phase_after"),
+  turnSeatBefore: integer("turn_seat_before"),
+  turnSeatAfter: integer("turn_seat_after"),
+  actingPlayerBefore: text("acting_player_before"),
+  actingPlayerAfter: text("acting_player_after"),
+  detailJson: text("detail_json"),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  index("idx_game_audit_room_id").on(table.roomId, table.id),
+  uniqueIndex("game_audit_room_event_unique").on(table.roomId, table.eventKey),
+]);

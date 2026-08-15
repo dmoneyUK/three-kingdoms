@@ -46,10 +46,25 @@ const json = (data: unknown, status = 200) => Response.json(data, { status, head
 async function setup() {
   const db = env.DB;
   await db.batch([
-    db.prepare("CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, host_player_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'lobby', max_players INTEGER NOT NULL DEFAULT 8, created_at INTEGER NOT NULL)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, room_id TEXT NOT NULL, name TEXT NOT NULL, token_hash TEXT NOT NULL, seat INTEGER NOT NULL, role TEXT, hero TEXT, hp INTEGER, connected_at INTEGER NOT NULL, UNIQUE(room_id, seat))"),
+    db.prepare("CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, host_player_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'lobby', max_players INTEGER NOT NULL DEFAULT 8, created_at INTEGER NOT NULL, turn_seat INTEGER, phase TEXT, deck_json TEXT, discard_json TEXT, log_json TEXT, pending_json TEXT)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, room_id TEXT NOT NULL, name TEXT NOT NULL, token_hash TEXT NOT NULL, seat INTEGER NOT NULL, role TEXT, hero TEXT, hp INTEGER, max_hp INTEGER, hero_options_json TEXT, hand_json TEXT, alive INTEGER NOT NULL DEFAULT 1, connected_at INTEGER NOT NULL, UNIQUE(room_id, seat))"),
     db.prepare("CREATE INDEX IF NOT EXISTS idx_players_room_id ON players(room_id)"),
+    db.prepare("CREATE TABLE IF NOT EXISTS game_audit (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, room_id TEXT NOT NULL, event_key TEXT, event_type TEXT NOT NULL, actor_id TEXT, actor_name TEXT, action TEXT, phase_before TEXT, phase_after TEXT, turn_seat_before INTEGER, turn_seat_after INTEGER, acting_player_before TEXT, acting_player_after TEXT, detail_json TEXT, created_at INTEGER NOT NULL)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_game_audit_room_id ON game_audit(room_id, id)"),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS game_audit_room_event_unique ON game_audit(room_id, event_key)"),
+    db.prepare("CREATE TRIGGER IF NOT EXISTS audit_room_transition AFTER UPDATE OF status, turn_seat, phase, pending_json, log_json ON rooms BEGIN INSERT INTO game_audit (room_id,event_type,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at) VALUES (OLD.id,'state_transition',OLD.phase,NEW.phase,OLD.turn_seat,NEW.turn_seat,CASE WHEN OLD.phase IN ('response','dying') THEN COALESCE(json_extract(OLD.pending_json,'$.actorId'),json_extract(OLD.pending_json,'$.targetId')) ELSE (SELECT id FROM players WHERE room_id=OLD.id AND seat=OLD.turn_seat) END,CASE WHEN NEW.phase IN ('response','dying') THEN COALESCE(json_extract(NEW.pending_json,'$.actorId'),json_extract(NEW.pending_json,'$.targetId')) ELSE (SELECT id FROM players WHERE room_id=NEW.id AND seat=NEW.turn_seat) END,json_object('statusBefore',OLD.status,'statusAfter',NEW.status,'pendingBefore',OLD.pending_json,'pendingAfter',NEW.pending_json),CAST(strftime('%s','now') AS INTEGER)*1000); END"),
+    db.prepare("CREATE TRIGGER IF NOT EXISTS audit_new_game_events AFTER UPDATE OF log_json ON rooms BEGIN INSERT OR IGNORE INTO game_audit (room_id,event_key,event_type,actor_name,phase_after,turn_seat_after,acting_player_after,detail_json,created_at) SELECT NEW.id,CASE WHEN value LIKE '@event:%' THEN json_extract(substr(value,8),'$.id') WHEN value LIKE '@card:%' THEN json_extract(substr(value,7),'$.id') WHEN value LIKE '@history:%' THEN json_extract(substr(value,10),'$.id') ELSE 'legacy-'||hex(value) END,'game_event',CASE WHEN value LIKE '@card:%' THEN json_extract(substr(value,7),'$.player') ELSE NULL END,NEW.phase,NEW.turn_seat,CASE WHEN NEW.phase IN ('response','dying') THEN COALESCE(json_extract(NEW.pending_json,'$.actorId'),json_extract(NEW.pending_json,'$.targetId')) ELSE (SELECT id FROM players WHERE room_id=NEW.id AND seat=NEW.turn_seat) END,value,CAST(strftime('%s','now') AS INTEGER)*1000 FROM json_each(COALESCE(NEW.log_json,'[]')); END"),
   ]);
+  await db.prepare("INSERT OR IGNORE INTO game_audit (room_id,event_key,event_type,actor_name,phase_after,turn_seat_after,acting_player_after,detail_json,created_at) SELECT rooms.id,CASE WHEN value LIKE '@event:%' THEN json_extract(substr(value,8),'$.id') WHEN value LIKE '@card:%' THEN json_extract(substr(value,7),'$.id') WHEN value LIKE '@history:%' THEN json_extract(substr(value,10),'$.id') ELSE 'legacy-'||hex(value) END,'game_event',CASE WHEN value LIKE '@card:%' THEN json_extract(substr(value,7),'$.player') ELSE NULL END,rooms.phase,rooms.turn_seat,CASE WHEN rooms.phase IN ('response','dying') THEN COALESCE(json_extract(rooms.pending_json,'$.actorId'),json_extract(rooms.pending_json,'$.targetId')) ELSE (SELECT id FROM players WHERE room_id=rooms.id AND seat=rooms.turn_seat) END,value,CAST(strftime('%s','now') AS INTEGER)*1000 FROM rooms,json_each(COALESCE(rooms.log_json,'[]'))").run();
+}
+
+async function recordAuditAction(room: RoomRow, actor: PlayerRow | null, actorName: string, action: string) {
+  const pending = parse<Pending | null>(room.pending_json, null);
+  const actingPlayer = room.phase === "response" || room.phase === "dying"
+    ? pending?.actorId ?? pending?.targetId ?? null
+    : (await env.DB.prepare("SELECT id FROM players WHERE room_id = ? AND seat = ?").bind(room.id, room.turn_seat).first<{ id: string }>())?.id ?? null;
+  await env.DB.prepare("INSERT INTO game_audit (room_id,event_type,actor_id,actor_name,action,phase_before,turn_seat_before,acting_player_before,detail_json,created_at) VALUES (?, 'action_submitted', ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(room.id, actor?.id ?? null, (actor?.name ?? actorName) || null, action, room.phase, room.turn_seat, actingPlayer, JSON.stringify({ submitted: true }), Date.now()).run();
 }
 
 function cleanName(value: unknown) { return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 20); }
@@ -218,6 +233,14 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = (url.searchParams.get("code") ?? "").toUpperCase();
   const token = url.searchParams.get("token") ?? "";
+  if (url.searchParams.get("audit") === "1") {
+    const room = await env.DB.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
+    if (!room) return json({ error: "Room not found." }, 404);
+    const member = await env.DB.prepare("SELECT id FROM players WHERE room_id = ? AND token_hash = ?").bind(room.id, await hash(token)).first();
+    if (!member) return json({ error: "A valid room member session is required to read the audit." }, 403);
+    const result = await env.DB.prepare("SELECT id,event_key,event_type,actor_id,actor_name,action,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at FROM game_audit WHERE room_id = ? ORDER BY id").bind(room.id).all();
+    return json({ code, audit: result.results ?? [] });
+  }
   const state = await roomState(code, token);
   return state ? json(state) : json({ error: "Room not found." }, 404);
 }
@@ -237,6 +260,9 @@ export async function POST(request: Request) {
       db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', 8, ?)").bind(roomId, code, playerId, Date.now()),
       db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, name, await hash(token), Date.now()),
     ]);
+    const createdRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+    const createdPlayer = await db.prepare("SELECT * FROM players WHERE id = ?").bind(playerId).first<PlayerRow>();
+    if (createdRoom) await recordAuditAction(createdRoom, createdPlayer ?? null, name, action);
     return json({ token, room: await roomState(code, token) }, 201);
   }
 
@@ -246,6 +272,7 @@ export async function POST(request: Request) {
   if (!room) return json({ error: "Room not found. Check the five-character code." }, 404);
 
   if (action === "join") {
+    await recordAuditAction(room, null, name, action);
     if (name.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
     if (room.status !== "lobby") return json({ error: "This match has already started." }, 409);
     const count = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ?").bind(room.id).first<{ count: number }>();
@@ -259,6 +286,7 @@ export async function POST(request: Request) {
 
   const tokenHash = await hash(token);
   const me = await db.prepare("SELECT * FROM players WHERE room_id = ? AND token_hash = ?").bind(room.id, tokenHash).first<PlayerRow>();
+  await recordAuditAction(room, me ?? null, name, action);
 
   if (action === "add_test_players") {
     if (!me || me.id !== room.host_player_id) return json({ error: "Only the host can add test players." }, 403);
