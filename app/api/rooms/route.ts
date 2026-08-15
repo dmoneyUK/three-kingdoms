@@ -3,7 +3,39 @@ import { env } from "cloudflare:workers";
 export const runtime = "edge";
 
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number };
-type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; connected_at: number };
+type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
+type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; connected_at: number };
+
+const HEROES: Hero[] = [
+  { id: "cao-cao", name: "Cao Cao", faction: "Wei", hp: 4, ability: "After taking damage, you may gain the card that caused it." },
+  { id: "simayi", name: "Sima Yi", faction: "Wei", hp: 3, ability: "After taking damage, you may take one card from the source." },
+  { id: "xiahou-dun", name: "Xiahou Dun", faction: "Wei", hp: 4, ability: "After taking damage, judge: on red, the source discards or loses HP." },
+  { id: "zhang-liao", name: "Zhang Liao", faction: "Wei", hp: 4, ability: "During draw, you may take cards from up to two players instead." },
+  { id: "xu-chu", name: "Xu Chu", faction: "Wei", hp: 4, ability: "Draw one fewer card to make your Strike and Duel damage stronger." },
+  { id: "guo-jia", name: "Guo Jia", faction: "Wei", hp: 3, ability: "After a judgement or damage, turn revealed cards into resources." },
+  { id: "zhen-ji", name: "Zhen Ji", faction: "Wei", hp: 3, ability: "Black cards may be used as Dodge; black judgements can extend your draw." },
+  { id: "liu-bei", name: "Liu Bei", faction: "Shu", hp: 4, ability: "Give cards to allies; after giving enough, recover 1 HP." },
+  { id: "guan-yu", name: "Guan Yu", faction: "Shu", hp: 4, ability: "Any red card may be used as a Strike." },
+  { id: "zhang-fei", name: "Zhang Fei", faction: "Shu", hp: 4, ability: "You may play any number of Strikes during your turn." },
+  { id: "zhao-yun", name: "Zhao Yun", faction: "Shu", hp: 4, ability: "Strike and Dodge may be used interchangeably." },
+  { id: "ma-chao", name: "Ma Chao", faction: "Shu", hp: 4, ability: "Your attack distance improves; judgement may make a Strike unavoidable." },
+  { id: "huang-yueying", name: "Huang Yueying", faction: "Shu", hp: 3, ability: "After using a tactic, draw a card; equipment has no distance limit." },
+  { id: "sun-quan", name: "Sun Quan", faction: "Wu", hp: 4, ability: "Once per turn, exchange any number of cards for new ones." },
+  { id: "gan-ning", name: "Gan Ning", faction: "Wu", hp: 4, ability: "Any black card may be used to dismantle another player's card." },
+  { id: "lü-meng", name: "Lü Meng", faction: "Wu", hp: 4, ability: "If you play no Strike, you may ignore the normal hand limit." },
+  { id: "huang-gai", name: "Huang Gai", faction: "Wu", hp: 4, ability: "Lose 1 HP to draw two cards." },
+  { id: "zhou-yu", name: "Zhou Yu", faction: "Wu", hp: 3, ability: "Draw an extra card; challenge a player to guess a card's suit." },
+  { id: "daqiao", name: "Da Qiao", faction: "Wu", hp: 3, ability: "Diamond cards may delay another player's turn." },
+  { id: "lu-xun", name: "Lu Xun", faction: "Wu", hp: 3, ability: "You resist delayed capture; draw when your hand becomes empty." },
+  { id: "sun-shangxiang", name: "Sun Shangxiang", faction: "Wu", hp: 3, ability: "Draw when losing equipment; discard equipment to heal an injured ally." },
+  { id: "hua-tuo", name: "Hua Tuo", faction: "Neutral", hp: 3, ability: "Red cards may heal others; discard a card to heal yourself once per turn." },
+  { id: "lü-bu", name: "Lü Bu", faction: "Neutral", hp: 4, ability: "A target needs two Dodge cards to stop your Strike." },
+  { id: "diao-chan", name: "Diao Chan", faction: "Neutral", hp: 3, ability: "Force two male heroes to duel; draw at the end of your turn." },
+  { id: "huaxiong", name: "Hua Xiong", faction: "Neutral", hp: 6, ability: "High endurance, but red Strike damage can reward the attacker." },
+  { id: "yuanshao", name: "Yuan Shao", faction: "Neutral", hp: 4, ability: "Two same-suit hand cards may become a volley against everyone." },
+  { id: "yanliang-wenchou", name: "Yan Liang & Wen Chou", faction: "Neutral", hp: 4, ability: "A black card may launch a Duel." },
+  { id: "pangde", name: "Pang De", faction: "Neutral", hp: 4, ability: "Improved attack distance; a dodged Strike can discard a target card." },
+];
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -32,8 +64,9 @@ async function roomState(code: string, token?: string) {
   return {
     code: room.code, status: room.status, maxPlayers: room.max_players,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
-    myRole: room.status === "started" ? me?.role ?? null : null,
-    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: player.hero, hp: player.hp, isHost: player.id === room.host_player_id, isBot: player.name.startsWith("Test General "), role: room.status === "finished" || player.id === me?.id ? player.role : null })),
+    myRole: room.status !== "lobby" ? me?.role ?? null : null,
+    myHeroOptions: room.status === "heroes" && me?.hero_options_json ? JSON.parse(me.hero_options_json) : [],
+    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, isHost: player.id === room.host_player_id, isBot: player.name.startsWith("Test General "), role: room.status === "finished" || player.id === me?.id ? player.role : null })),
   };
 }
 
@@ -108,10 +141,35 @@ export async function POST(request: Request) {
     const roles = [...roleSets[players.length]].sort(() => Math.random() - 0.5);
     const lordIndex = players.findIndex((player) => player.id === room.host_player_id); const lordAt = roles.indexOf("Lord");
     [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
+    const shuffledHeroes = [...HEROES].sort(() => Math.random() - 0.5);
+    let heroCursor = 0;
     await db.batch([
-      ...players.map((player, index) => db.prepare("UPDATE players SET role = ?, hp = ? WHERE id = ?").bind(roles[index], roles[index] === "Lord" && players.length >= 5 ? 5 : 4, player.id)),
-      db.prepare("UPDATE rooms SET status = 'started' WHERE id = ?").bind(room.id),
+      ...players.map((player, index) => {
+        const choiceCount = roles[index] === "Lord" ? 5 : 3;
+        const options = Array.from({ length: choiceCount }, () => shuffledHeroes[heroCursor++ % shuffledHeroes.length]);
+        const botHero = player.name.startsWith("Test General ") ? options[0] : null;
+        const hp = botHero ? botHero.hp + (roles[index] === "Lord" && players.length >= 5 ? 1 : 0) : null;
+        return db.prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(roles[index], botHero?.id ?? null, hp, hp, JSON.stringify(options), player.id);
+      }),
+      db.prepare("UPDATE rooms SET status = 'heroes' WHERE id = ?").bind(room.id),
     ]);
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (action === "choose_hero") {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    if (room.status !== "heroes") return json({ error: "Hero selection is not active." }, 409);
+    if (me.hero) return json({ error: "Your hero is already locked in." }, 409);
+    const heroId = String(body.heroId ?? "");
+    const options = me.hero_options_json ? JSON.parse(me.hero_options_json) as Hero[] : [];
+    const hero = options.find((item) => item.id === heroId);
+    if (!hero) return json({ error: "That hero is not one of your choices." }, 400);
+    const taken = await db.prepare("SELECT 1 FROM players WHERE room_id = ? AND hero = ?").bind(room.id, hero.id).first();
+    if (taken) return json({ error: "That hero was just selected. Choose another." }, 409);
+    const hp = hero.hp + (me.role === "Lord" && (await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ?").bind(room.id).first<{ count: number }>())!.count >= 5 ? 1 : 0);
+    await db.prepare("UPDATE players SET hero = ?, hp = ?, max_hp = ? WHERE id = ?").bind(hero.id, hp, hp, me.id).run();
+    const remaining = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND hero IS NULL").bind(room.id).first<{ count: number }>();
+    if ((remaining?.count ?? 0) === 0) await db.prepare("UPDATE rooms SET status = 'started' WHERE id = ?").bind(room.id).run();
     return json({ room: await roomState(code, token) });
   }
 

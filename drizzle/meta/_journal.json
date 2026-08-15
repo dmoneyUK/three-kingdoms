@@ -8,6 +8,13 @@
       "when": 1786804200000,
       "tag": "0000_three_realms_lobby",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786816200000,
+      "tag": "0001_hero_selection",
+      "breakpoints": true
     }
   ]
 }

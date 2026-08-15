@@ -18,5 +18,7 @@ export const players = sqliteTable("players", {
   role: text("role"),
   hero: text("hero"),
   hp: integer("hp"),
+  maxHp: integer("max_hp"),
+  heroOptionsJson: text("hero_options_json"),
   connectedAt: integer("connected_at").notNull(),
 }, (table) => [uniqueIndex("players_room_seat_unique").on(table.roomId, table.seat)]);
