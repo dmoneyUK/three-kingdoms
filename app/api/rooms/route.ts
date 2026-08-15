@@ -63,7 +63,7 @@ function makeDeck() {
   for (let index = deck.length - 1; index > 0; index--) { const swap = Math.floor(Math.random() * (index + 1)); [deck[index], deck[swap]] = [deck[swap], deck[index]]; }
   return deck;
 }
-function addLog(log: string[], message: string) { return [...log.slice(-11), message]; }
+function addLog(log: string[], message: string) { return [...log.slice(-59), message]; }
 function addCardEvent(log: string[], player: string, card: Card, target = player) { return addLog(log, `@card:${JSON.stringify({ id: crypto.randomUUID(), player, target, card })}`); }
 function nextAlive(players: PlayerRow[], seat: number) { const alive = players.filter((player) => player.alive).sort((a, b) => a.seat - b.seat); return alive.find((player) => player.seat > seat)?.seat ?? alive[0]?.seat ?? seat; }
 function attackDistance(players: PlayerRow[], sourceId: string, targetId: string) { const alive = players.filter((player) => player.alive).sort((a, b) => a.seat - b.seat); const from = alive.findIndex((player) => player.id === sourceId); const to = alive.findIndex((player) => player.id === targetId); if (from < 0 || to < 0) return 99; const clockwise = (to - from + alive.length) % alive.length; return Math.min(clockwise, alive.length - clockwise); }
@@ -220,7 +220,7 @@ export async function POST(request: Request) {
       ...players.map((player, index) => {
         const options = roles[index] === "Lord" ? [...rulers, ...Array.from({ length: 2 }, () => shuffledHeroes[heroCursor++ % shuffledHeroes.length])] : Array.from({ length: 3 }, () => shuffledHeroes[heroCursor++ % shuffledHeroes.length]);
         const botHero = player.name.startsWith("Test General ") ? options[0] : null;
-        const hp = botHero ? botHero.hp + (roles[index] === "Lord" && players.length >= 5 ? 1 : 0) : null;
+        const hp = botHero ? botHero.hp + (roles[index] === "Lord" ? 1 : 0) : null;
         return db.prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(roles[index], botHero?.id ?? null, hp, hp, JSON.stringify(options), player.id);
       }),
       db.prepare("UPDATE rooms SET status = 'heroes' WHERE id = ?").bind(room.id),
@@ -238,7 +238,7 @@ export async function POST(request: Request) {
     if (!hero) return json({ error: "That hero is not one of your choices." }, 400);
     const taken = await db.prepare("SELECT 1 FROM players WHERE room_id = ? AND hero = ?").bind(room.id, hero.id).first();
     if (taken) return json({ error: "That hero was just selected. Choose another." }, 409);
-    const hp = hero.hp + (me.role === "Lord" && (await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ?").bind(room.id).first<{ count: number }>())!.count >= 5 ? 1 : 0);
+    const hp = hero.hp + (me.role === "Lord" ? 1 : 0);
     await db.prepare("UPDATE players SET hero = ?, hp = ?, max_hp = ? WHERE id = ?").bind(hero.id, hp, hp, me.id).run();
     const remaining = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND hero IS NULL").bind(room.id).first<{ count: number }>();
     if ((remaining?.count ?? 0) === 0) {
