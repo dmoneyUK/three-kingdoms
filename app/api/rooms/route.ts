@@ -83,9 +83,13 @@ async function runBots(roomId: string) {
     if (!room || room.status !== "playing" || room.phase === "response" || !bot?.name.startsWith("Test General ")) return;
     let deck = parse<Card[]>(room.deck_json, []); let discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []); let hand = parse<Card[]>(bot.hand_json, []);
     if (room.phase === "draw") { hand.push(...deck.splice(0, 2)); log = addLog(log, `${bot.name} draws two cards.`); }
-    const peach = hand.find((card) => card.kind === "Peach");
-    if (peach && (bot.hp ?? 0) < (bot.max_hp ?? 0)) { hand = hand.filter((card) => card.id !== peach.id); discard.push(peach); bot.hp = (bot.hp ?? 0) + 1; log = addLog(log, `${bot.name} plays Peach and recovers 1 HP.`); }
-    const strike = hand.find((card) => card.kind === "Strike"); const targets = players.filter((player) => player.alive && player.id !== bot.id && attackDistance(players, bot.id, player.id) === 1); const target = targets.find((player) => !player.name.startsWith("Test General ")) ?? targets[0];
+    while ((bot.hp ?? 0) < (bot.max_hp ?? 0)) {
+      const peach = hand.find((card) => card.kind === "Peach"); if (!peach) break;
+      hand = hand.filter((card) => card.id !== peach.id); discard.push(peach); bot.hp = (bot.hp ?? 0) + 1; log = addLog(log, `${bot.name} plays Peach and recovers 1 HP.`);
+    }
+    const strike = hand.find((card) => card.kind === "Strike");
+    const targets = players.filter((player) => player.alive && player.id !== bot.id && attackDistance(players, bot.id, player.id) === 1).sort((a, b) => (a.hp ?? 99) - (b.hp ?? 99));
+    const target = targets[0];
     const writes = [];
     if (strike && target) {
       hand = hand.filter((card) => card.id !== strike.id); discard.push(strike); log = addLog(log, `${bot.name} plays Strike on ${target.name}.`);
