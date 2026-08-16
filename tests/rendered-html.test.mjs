@@ -33,6 +33,7 @@ test("server-renders the Three Kingdoms lobby", async () => {
 test("client keeps the turn, response, presentation, and selection controls", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const cards = await readFile(new URL("../game/cards.ts", import.meta.url), "utf8");
   assert.match(page, /TURN OWNER/);
   assert.match(page, /CURRENT PHASE/);
   assert.match(page, /ACTING NOW/);
@@ -82,5 +83,15 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /knownHandCards/);
   assert.match(page, /setTimeout\(\(\) => setPrivateDrawCards\(\[\]\), 5000\)/);
   assert.match(page, /Event history/);
+  assert.match(page, /card-info-button/);
+  assert.match(page, /aria-label={`Explain \${definition\.name}`}/);
+  assert.match(page, /setInfoCard\(item\)/);
+  assert.match(page, /PRIVATE CARD INFORMATION/);
+  assert.match(page, /Only you can see this explanation/);
+  assert.match(page, /cardDefinition\(infoCard\.kind\)\.rules/);
+  assert.match(styles, /\.card-info-dialog/);
+  assert.doesNotMatch(page, /definition\.glyph/);
+  assert.doesNotMatch(cards, /glyph:/);
+  assert.doesNotMatch(cards, /杀|闪|桃|无中生有|过河拆桥/);
   assert.doesNotMatch(page, /readyTurn/);
 });
