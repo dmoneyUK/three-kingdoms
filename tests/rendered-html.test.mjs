@@ -40,8 +40,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.doesNotMatch(page, /previousTurn/);
   assert.match(page, /Play selected/);
   assert.match(page, /Take 1 damage/);
-  assert.match(page, /Give Peach/);
-  assert.equal((page.match(/Give Peach/g) ?? []).length, 1);
+  assert.match(page, /Give selected Peach/);
+  assert.equal((page.match(/Give selected Peach/g) ?? []).length, 1);
+  assert.match(page, /cardId: card\.id/);
+  assert.match(page, /rescueDecisionReady && item\.kind !== "Peach"/);
   assert.match(page, /PRIVATE RESCUE DECISION/);
   assert.match(page, /rescueDecisionReady/);
   assert.match(page, /role="alertdialog"/);
