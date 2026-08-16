@@ -34,6 +34,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   const cards = await readFile(new URL("../game/cards.ts", import.meta.url), "utf8");
+  const officialReference = await readFile(new URL("../docs/OFFICIAL_CARD_REFERENCE.md", import.meta.url), "utf8");
   assert.match(page, /TURN OWNER/);
   assert.match(page, /CURRENT PHASE/);
   assert.match(page, /ACTING NOW/);
@@ -89,8 +90,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /PRIVATE CARD INFORMATION/);
   assert.match(page, /Only you can see this explanation/);
   assert.match(page, /cardDefinition\(infoCard\.kind\)\.rules/);
-  assert.match(page, /OFFICIAL_WTK_CARD_CATALOGUE/);
-  assert.match(page, /Official WTK card catalogue/);
+  assert.doesNotMatch(page, /OFFICIAL_WTK_CARD_CATALOGUE|Official WTK card catalogue/);
   assert.match(styles, /\.card-info-dialog/);
   assert.match(styles, /\.card-info-button\{[^}]*left:50%/);
   assert.doesNotMatch(page, /definition\.glyph/);
@@ -100,5 +100,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(cards, /Equipment Zone, or Judgement Zone/);
   assert.match(cards, /name: "Something Out of Nothing"/);
   assert.match(cards, /https:\/\/wtkgames\.com\/gameCard\//);
+  assert.match(officialReference, /https:\/\/wtkgames\.com\/gameCard\//);
+  assert.match(officialReference, /Do not copy or ship official card artwork/);
   assert.doesNotMatch(page, /readyTurn/);
 });
