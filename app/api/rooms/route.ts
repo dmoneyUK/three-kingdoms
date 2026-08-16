@@ -371,7 +371,9 @@ export async function POST(request: Request) {
   const token = String(body.token ?? "");
   const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room) return json({ error: "Room not found. Check the five-character code." }, 404);
-  await expireDyingRescue(room.id);
+  // Let the acting client submit its automatic decline at the deadline before
+  // the general expiry check races that same request.
+  if (action !== "skip_rescue") await expireDyingRescue(room.id);
 
   if (action === "join") {
     if (name.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
@@ -492,7 +494,10 @@ export async function POST(request: Request) {
   if (["give_peach", "skip_rescue"].includes(action)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
-    if (!liveRoom || liveRoom.phase !== "dying" || pending?.kind !== "dying" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Peach rescue decision." }, 409);
+    if (!liveRoom || liveRoom.phase !== "dying" || pending?.kind !== "dying" || pending.actorId !== me.id) {
+      if (action === "skip_rescue") return json({ room: await roomState(code, token) });
+      return json({ error: "You are not the acting player for this Peach rescue decision." }, 409);
+    }
     let hand = parse<Card[]>(me.hand_json, []); const target = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.targetId).first<PlayerRow>(); const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
     const peach = action === "give_peach" ? hand.find((card) => card.kind === "Peach") : null;
     if (action === "give_peach" && !peach) return json({ error: "You do not have a Peach to give." }, 409);

@@ -132,8 +132,9 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   setHand(hostPlayer.id, [card("Strike", "timeout-rescue")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [card("Peach", "timed-out")], 4); setHand(carolPlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "strike-timeout-rescue", targetId: alicePlayer.id })).data.room.actionPlayerId, null);
   await request("start_rescue_timer", { code: game.code, token: bob.token }); sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',1) WHERE code=${quote(game.code)}`);
-  const timedOutRescue = await state(game.code, host.token);
-  assert.equal(timedOutRescue.data.phase, "play-struck"); assert.equal(timedOutRescue.data.players.find((player) => player.id === alicePlayer.id).alive, false);
+  const timedOutRescue = await request("skip_rescue", { code: game.code, token: bob.token });
+  assert.equal(timedOutRescue.status, 200); assert.equal(timedOutRescue.data.room.phase, "play-struck"); assert.equal(timedOutRescue.data.room.players.find((player) => player.id === alicePlayer.id).alive, false);
+  const repeatedTimeout = await request("skip_rescue", { code: game.code, token: bob.token }); assert.equal(repeatedTimeout.status, 200); assert.equal(repeatedTimeout.data.room.phase, "play-struck");
 
   const audit = await state(game.code, host.token, true);
   assert.equal(audit.status, 200); assert.ok(audit.data.audit.length > 10); assert.ok(audit.data.audit.some((entry) => entry.action === "draw")); assert.ok(audit.data.audit.some((entry) => entry.phase_after === "response"));
