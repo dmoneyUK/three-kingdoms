@@ -51,7 +51,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /privateDrawCards\.length \|\| hasUnseenPresentations/);
   assert.match(page, /role="alertdialog"/);
   assert.match(page, /Do not give/);
-  assert.match(page, /A Peach rescue check is in progress/);
+  assert.match(page, /no rescue action is required from you/);
   assert.match(page, /skip_rescue/);
   assert.match(page, /start_rescue_timer/);
   assert.match(page, /automaticRescueSkip/);

@@ -121,8 +121,8 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
 
   setHand(hostPlayer.id, [card("Strike", "rescue")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [card("Peach", "rescue-other")], 4); setHand(carolPlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
   const rescuePrompt = await request("play_card", { code: game.code, token: host.token, cardId: "strike-rescue", targetId: alicePlayer.id });
-  assert.equal(rescuePrompt.data.room.phase, "dying"); assert.equal(rescuePrompt.data.room.actionPlayerId, null); assert.equal(rescuePrompt.data.room.isMyAction, false);
-  const bobPrivatePrompt = await state(game.code, bob.token); assert.equal(bobPrivatePrompt.data.actionPlayerId, bobPlayer.id); assert.equal(bobPrivatePrompt.data.isMyAction, true);
+  assert.equal(rescuePrompt.data.room.phase, "dying"); assert.equal(rescuePrompt.data.room.actionPlayerId, null); assert.equal(rescuePrompt.data.room.isMyAction, false); assert.match(rescuePrompt.data.room.actionReason, /no rescue action is required/);
+  const bobPrivatePrompt = await state(game.code, bob.token); assert.equal(bobPrivatePrompt.data.actionPlayerId, bobPlayer.id); assert.equal(bobPrivatePrompt.data.isMyAction, true); assert.match(bobPrivatePrompt.data.actionReason, /Decide whether to give Peach/);
   const alicePrivateView = await state(game.code, alice.token); assert.equal(alicePrivateView.data.actionPlayerId, null); assert.equal(alicePrivateView.data.pendingDying.deadline, 0);
   const rescued = await request("give_peach", { code: game.code, token: bob.token, cardId: "peach-rescue-other" });
   assert.equal(rescued.status, 200); assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1); assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).alive, true);
