@@ -182,7 +182,7 @@ async function runBots(roomId: string) {
     const players = rows.results ?? []; const bot = players.find((player) => player.seat === room?.turn_seat);
     if (!room || room.status !== "playing" || room.phase === "response" || room.phase === "dying" || !isBotPlayer(bot)) return;
     let deck = parse<Card[]>(room.deck_json, []); let discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []); let hand = parse<Card[]>(bot.hand_json, []);
-    if (room.phase === "draw") { const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${bot.name} draws ${draw.drawn.length === 2 ? "two cards" : `${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`}.`); hand.push(...draw.drawn); }
+    if (room.phase === "draw") { const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addLog(draw.log, `${bot.name}'s turn started · drawing ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`); hand.push(...draw.drawn); }
     while ((bot.hp ?? 0) < (bot.max_hp ?? 0)) {
       const peach = hand.find((card) => card.kind === "Peach"); if (!peach) break;
       hand = hand.filter((card) => card.id !== peach.id); discard.push(peach); bot.hp = (bot.hp ?? 0) + 1; log = addCardEvent(log, bot.name, peach); log = addLog(log, `${bot.name} plays Peach and recovers 1 HP.`);

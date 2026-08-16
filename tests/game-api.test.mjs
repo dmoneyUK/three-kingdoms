@@ -127,6 +127,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const botsPlayed = await request("end_turn", { code: botCode, token: botToken });
   assert.equal(botsPlayed.status, 200); assert.equal(botsPlayed.data.room.turnSeat, botHostPlayer.seat); assert.equal(botsPlayed.data.room.phase, "draw");
   assert.ok(botsPlayed.data.room.timeline.some((entry) => /Player [123]/.test(entry.message ?? entry.player ?? "")));
+  assert.ok(botsPlayed.data.room.timeline.some((entry) => /Player 1's turn started · drawing 2 cards/.test(entry.message ?? "")));
   const playerOne = botsPlayed.data.room.players.find((player) => player.name === "Player 1");
   setHand(botHostPlayer.id, [card("Strike", "defeat-bot")], botHostPlayer.hp, botHostPlayer.maxHp); setHand(playerOne.id, [], 1, playerOne.maxHp); setTurn(botCode, botHostPlayer.seat);
   const defeatedBot = await request("play_card", { code: botCode, token: botToken, cardId: "strike-defeat-bot", targetId: playerOne.id });
