@@ -20,6 +20,7 @@ export const CARD_DEFINITIONS: Record<CardKind, CardDefinition> = {
   Peach: { kind: "Peach", name: "Peach", category: "basic", target: "self", description: "Recover 1 HP", rules: "During your Play Phase, use Peach to recover 1 HP when you are wounded. When a character is Dying, Peach may instead rescue that character by restoring 1 HP.", officialCardId: 171 },
   DrawTwo: { kind: "DrawTwo", name: "Something Out of Nothing", category: "stratagem", target: "self", description: "Draw 2 cards", rules: "During your Play Phase, play this card to draw 2 cards.", officialCardId: 184 },
   Dismantle: { kind: "Dismantle", name: "Burning Bridges", category: "stratagem", target: "opponent", description: "Discard 1 of another player's cards", rules: "During your Play Phase, target another character. Discard 1 card from their hand, Equipment Zone, or Judgement Zone.", officialCardId: 174 },
+  Steal: { kind: "Steal", name: "Steal", category: "stratagem", target: "opponent", description: "Range 1 · obtain 1 card", rules: "During your Play Phase, target another character within distance 1. Obtain 1 card from their hand, Equipment Zone, or Judgement Zone.", officialCardId: 189 },
   // Compatibility for games created before the English card name was corrected.
   Strike: { kind: "Strike", name: "Attack", category: "basic", target: "opponent", description: "Range 1 · deal 1 damage", rules: "During your Play Phase, target a character within your attack range. They must play Dodge or take 1 damage. Normally, you may use one Attack per turn.", officialCardId: 173 },
 };
@@ -32,6 +33,7 @@ export const DECK_COUNTS: Partial<Record<CardKind, number>> = {
   Peach: 8,
   DrawTwo: 4,
   Dismantle: 6,
+  Steal: 5,
 };
 
 export function cardDefinition(kind: CardKind) {

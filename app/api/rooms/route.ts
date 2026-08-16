@@ -166,7 +166,7 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
-  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kind: "Dismantle" });
+  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kind: "Steal" });
 }
 function db() { return env.DB; }
 
@@ -283,10 +283,18 @@ async function runBots(roomId: string) {
       hand = hand.filter((card) => card.id !== peach.id); discard.push(peach); bot.hp = (bot.hp ?? 0) + 1; log = addCardEvent(log, bot.name, peach); log = addLog(log, `${bot.name} plays Peach and recovers 1 HP.`);
     }
     const writes = []; const changedHands = new Map<string, Card[]>();
+    const steal = hand.find((card) => card.kind === "Steal");
+    const stealTarget = players.find((player) => player.alive && player.id !== bot.id && distanceBetween(players, bot.id, player.id) === 1 && parse<Card[]>(player.hand_json, []).length > 0);
+    if (steal && stealTarget) {
+      const targetHand = parse<Card[]>(stealTarget.hand_json, []); const stolen = targetHand.shift()!;
+      hand = hand.filter((card) => card.id !== steal.id); hand.push(stolen); discard.push(steal); changedHands.set(stealTarget.id, targetHand);
+      log = addCardEvent(log, bot.name, steal, stealTarget.name); log = addHistory(log, `${bot.name} uses Steal to obtain one hidden card from ${stealTarget.name}.`);
+      writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), stealTarget.id));
+    }
     const dismantle = hand.find((card) => card.kind === "Dismantle");
-    const dismantleTarget = players.find((player) => player.alive && player.id !== bot.id && parse<Card[]>(player.hand_json, []).length > 0);
+    const dismantleTarget = players.find((player) => player.alive && player.id !== bot.id && (changedHands.get(player.id) ?? parse<Card[]>(player.hand_json, [])).length > 0);
     if (dismantle && dismantleTarget) {
-      const targetHand = parse<Card[]>(dismantleTarget.hand_json, []); const dismantled = targetHand.shift()!;
+      const targetHand = changedHands.get(dismantleTarget.id) ?? parse<Card[]>(dismantleTarget.hand_json, []); const dismantled = targetHand.shift()!;
       hand = hand.filter((card) => card.id !== dismantle.id); discard.push(dismantle, dismantled); changedHands.set(dismantleTarget.id, targetHand);
       log = addCardEvent(log, bot.name, dismantle, dismantleTarget.name); log = addCardEvent(log, dismantleTarget.name, dismantled, dismantleTarget.name, "discard"); log = addHistory(log, `${bot.name} dismantles one hidden card from ${dismantleTarget.name}.`);
       writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), dismantleTarget.id));
@@ -584,6 +592,17 @@ export async function POST(request: Request) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         const [dismantled] = targetHand.splice(targetCardIndex, 1); hand = hand.filter((item) => item.id !== card.id); discard.push(card, dismantled);
         log = addCardEvent(log, me.name, card, target.name); log = addCardEvent(log, target.name, dismantled, target.name, "discard"); log = addHistory(log, `${me.name} dismantles one hidden card from ${target.name}.`);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id), db.prepare("UPDATE rooms SET phase = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id)]);
+      } else if (card.kind === "Steal") {
+        const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
+        if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Steal." }, 400);
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+        if (distanceBetween(rows.results ?? [], me.id, target.id) > 1) return json({ error: "Steal can target only a character within distance 1." }, 409);
+        const targetHand = parse<Card[]>(target.hand_json, []); const targetCardIndex = Number(body.targetCardIndex);
+        if (!Number.isInteger(targetCardIndex) || targetCardIndex < 0 || targetCardIndex >= targetHand.length) return json({ error: "Choose one of that player's hidden hand cards." }, 400);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        const [stolen] = targetHand.splice(targetCardIndex, 1); hand = hand.filter((item) => item.id !== card.id); hand.push(stolen); discard.push(card);
+        log = addCardEvent(log, me.name, card, target.name); log = addHistory(log, `${me.name} uses Steal to obtain one hidden card from ${target.name}.`);
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id), db.prepare("UPDATE rooms SET phase = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id)]);
       } else if (isAttackCard(card)) {
         if (liveRoom.phase === "play-struck" && me.hero !== "zhang-fei") return json({ error: "You may play only one Attack per turn." }, 409);

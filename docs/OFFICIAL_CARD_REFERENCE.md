@@ -15,6 +15,7 @@ Current mappings:
 | `Peach` | Peach | 171 |
 | `DrawTwo` | Something Out of Nothing | 184 |
 | `Dismantle` | Burning Bridges | 174 |
+| `Steal` | Steal | 189 |
 
 Development policy:
 
