@@ -107,6 +107,13 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(dying.data.room.timeline.some((entry) => /Alice takes 1 damage and enters Dying/.test(entry.message ?? "")));
   assert.ok(dying.data.room.timeline.some((entry) => /Alice receives no Peach and is defeated/.test(entry.message ?? "")));
 
+  setHand(hostPlayer.id, [card("Strike", "attacker-rescue"), card("Peach", "attacker-rescue")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [], 4); setHand(carolPlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
+  const attackerRescuePrompt = await request("play_card", { code: game.code, token: host.token, cardId: "strike-attacker-rescue", targetId: alicePlayer.id });
+  assert.equal(attackerRescuePrompt.data.room.phase, "dying"); assert.equal(attackerRescuePrompt.data.room.actionPlayerId, hostPlayer.id);
+  const attackerRescue = await request("give_peach", { code: game.code, token: host.token });
+  assert.equal(attackerRescue.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
+  assert.ok(attackerRescue.data.room.timeline.some((entry) => entry.type === "card" && entry.player === "Host" && entry.target === "Alice" && entry.card.kind === "Peach"));
+
   setHand(hostPlayer.id, [card("Strike", "rescue")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [card("Peach", "rescue-other")], 4); setHand(carolPlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
   const rescuePrompt = await request("play_card", { code: game.code, token: host.token, cardId: "strike-rescue", targetId: alicePlayer.id });
   assert.equal(rescuePrompt.data.room.phase, "dying"); assert.equal(rescuePrompt.data.room.actionPlayerId, bobPlayer.id);
