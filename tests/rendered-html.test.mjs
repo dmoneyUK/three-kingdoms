@@ -42,6 +42,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Take 1 damage/);
   assert.match(page, /Give Peach/);
   assert.match(page, /skip_rescue/);
+  assert.match(page, /start_rescue_timer/);
   assert.match(page, /automaticRescueSkip/);
   assert.match(page, /5000/);
   assert.match(page, /Discard \{excessCards\} selected/);
