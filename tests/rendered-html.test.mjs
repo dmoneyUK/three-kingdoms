@@ -40,7 +40,12 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.doesNotMatch(page, /previousTurn/);
   assert.match(page, /Play selected/);
   assert.match(page, /Take 1 damage/);
+  assert.match(page, /Give Peach/);
+  assert.match(page, /skip_rescue/);
+  assert.match(page, /automaticRescueSkip/);
+  assert.match(page, /5000/);
   assert.match(page, /Discard \{excessCards\} selected/);
+  assert.match(page, /discard-card-row/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
   assert.match(page, /setTimeout\(\(\) => setActiveEvent\(null\), 5000\)/);
   assert.match(page, /setTimeout\(\(\) => onDrawNoticeEndRef\.current\(\), 5000\)/);
