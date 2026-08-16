@@ -115,6 +115,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(attackerRescuePrompt.data.room.phase, "dying"); assert.equal(attackerRescuePrompt.data.room.actionPlayerId, hostPlayer.id); assert.equal(attackerRescuePrompt.data.room.pendingDying.deadline, 0);
   const timedAttackerPrompt = await request("start_rescue_timer", { code: game.code, token: host.token }); assert.ok(timedAttackerPrompt.data.room.pendingDying.deadline > Date.now());
   assert.equal((await request("give_peach", { code: game.code, token: host.token })).status, 409);
+  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',1) WHERE code=${quote(game.code)}`);
   const attackerRescue = await request("give_peach", { code: game.code, token: host.token, cardId: "peach-attacker-rescue" });
   assert.equal(attackerRescue.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
   assert.ok(attackerRescue.data.room.timeline.some((entry) => entry.type === "card" && entry.player === "Host" && entry.target === "Alice" && entry.card.kind === "Peach"));

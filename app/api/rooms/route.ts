@@ -385,7 +385,7 @@ export async function POST(request: Request) {
   if (!room) return json({ error: "Room not found. Check the five-character code." }, 404);
   // Let the acting client submit its automatic decline at the deadline before
   // the general expiry check races that same request.
-  if (action !== "skip_rescue") await expireDyingRescue(room.id);
+  if (!["give_peach", "skip_rescue"].includes(action)) await expireDyingRescue(room.id);
 
   if (action === "join") {
     if (name.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
