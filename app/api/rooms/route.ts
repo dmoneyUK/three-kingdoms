@@ -194,6 +194,21 @@ async function continueAfterDying(roomId: string, sourceId: string) {
   await runBots(roomId);
 }
 
+async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: PlayerRow | null, source?: PlayerRow | null) {
+  let deck = parse<Card[]>(room.deck_json, []); let discard = parse<Card[]>(room.discard_json, []); let log = addLog(parse<string[]>(room.log_json, []), `${target?.name ?? "The dying player"} receives no Peach and is defeated.`);
+  if (target?.role) log = addLog(log, `${target.name}'s role is revealed: ${target.role}.`);
+  const writes = [env.DB.prepare("UPDATE players SET hp = 0, alive = 0 WHERE id = ?").bind(pending.targetId)];
+  if (target?.role === "Rebel" && source?.alive) {
+    const reward = drawCards(deck, discard, 3, log); deck = reward.deck; discard = reward.discard; log = reward.log;
+    const sourceHand = [...parse<Card[]>(source.hand_json, []), ...reward.drawn];
+    writes.push(env.DB.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
+    log = addLog(log, `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`);
+  }
+  writes.push(env.DB.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(returnPlayPhase(source), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+  await env.DB.batch(writes);
+  await continueAfterDying(room.id, pending.sourceId);
+}
+
 async function advanceDyingRescue(roomId: string) {
   for (let guard = 0; guard < 12; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
@@ -220,9 +235,7 @@ async function advanceDyingRescue(roomId: string) {
     }
     const claimed = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(roomId, room.pending_json).run();
     if ((claimed.meta.changes ?? 0) <= 0) continue;
-    const log = addLog(parse<string[]>(room.log_json, []), `${target?.name ?? "The dying player"} receives no Peach and is defeated.`);
-    await db().batch([db().prepare("UPDATE players SET hp = 0, alive = 0 WHERE id = ?").bind(pending.targetId), db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(returnPlayPhase(source), JSON.stringify(log), roomId)]);
-    await continueAfterDying(roomId, pending.sourceId); return;
+    await defeatDyingPlayer(room, pending, target, source); return;
   }
 }
 
@@ -235,9 +248,7 @@ async function expireDyingRescue(roomId: string) {
     const nextPending: DyingPending = { ...pending, actorId: pending.remainingIds[0], remainingIds: pending.remainingIds.slice(1), deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
     await db().prepare("UPDATE rooms SET phase = 'dying', pending_json = ? WHERE id = ? AND phase = 'resolving'").bind(JSON.stringify(nextPending), roomId).run(); await advanceDyingRescue(roomId);
   } else {
-    const log = addLog(parse<string[]>(room.log_json, []), `${target?.name ?? "The dying player"} receives no Peach and is defeated.`);
-    await db().batch([db().prepare("UPDATE players SET hp = 0, alive = 0 WHERE id = ?").bind(pending.targetId), db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(returnPlayPhase(source), JSON.stringify(log), roomId)]);
-    await continueAfterDying(roomId, pending.sourceId);
+    await defeatDyingPlayer(room, pending, target, source);
   }
 }
 
@@ -318,7 +329,7 @@ async function roomState(code: string, token?: string) {
     timeline: gameTimeline(rawLog), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: me?.id === actualActionPlayerId,
     pendingAttack: pending && pending.kind !== "dying" ? pending : null,
     pendingDying: pending?.kind === "dying" ? { sourceId: pending.sourceId, targetId: pending.targetId, deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
-    players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), handCount: parse<Card[]>(player.hand_json, []).length, distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || room.status === "finished" || player.id === me?.id ? player.role : null })),
+    players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), handCount: parse<Card[]>(player.hand_json, []).length, distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? player.role : null })),
   };
 }
 
@@ -510,9 +521,7 @@ export async function POST(request: Request) {
       const nextPending: DyingPending = { ...pending, actorId: pending.remainingIds[0], remainingIds: pending.remainingIds.slice(1), deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
       await db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ? WHERE id = ? AND phase = 'resolving'").bind(JSON.stringify(nextPending), room.id).run(); await advanceDyingRescue(room.id);
     } else {
-      const log = addLog(parse<string[]>(liveRoom.log_json, []), `${target?.name ?? "The dying player"} receives no Peach and is defeated.`);
-      await db.batch([db.prepare("UPDATE players SET hp = 0, alive = 0 WHERE id = ?").bind(pending.targetId), db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(returnPlayPhase(source), JSON.stringify(log), room.id)]);
-      await continueAfterDying(room.id, pending.sourceId);
+      await defeatDyingPlayer(liveRoom, pending, target, source);
     }
     return json({ room: await roomState(code, token) });
   }

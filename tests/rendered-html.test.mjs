@@ -52,10 +52,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /discard-card-row/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
   assert.match(page, /setTimeout\(\(\) => setActiveEvent\(null\), 5000\)/);
-  assert.match(page, /setTimeout\(\(\) => onDrawNoticeEndRef\.current\(\), 5000\)/);
-  assert.match(page, /TURN STARTED/);
-  assert.match(page, /is drawing \{drawNotice\} cards/);
-  assert.doesNotMatch(page, /drawReveal\.map/);
+  assert.match(page, /PRIVATE DRAW/);
+  assert.match(page, /Only you can see these cards/);
+  assert.match(page, /knownHandCards/);
+  assert.match(page, /setTimeout\(\(\) => setPrivateDrawCards\(\[\]\), 5000\)/);
   assert.match(page, /Event history/);
   assert.doesNotMatch(page, /readyTurn/);
 });
