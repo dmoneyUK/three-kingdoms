@@ -100,12 +100,17 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(cards, /Equipment Zone, or Judgement Zone/);
   assert.match(cards, /name: "Something Out of Nothing"/);
   assert.match(cards, /name: "Steal"/);
+  assert.match(cards, /name: "Duel"/);
+  assert.match(cards, /alternate playing Attack cards/);
   assert.match(cards, /within distance 1/);
   assert.match(cards, /https:\/\/wtkgames\.com\/gameCard\//);
   assert.match(officialReference, /https:\/\/wtkgames\.com\/gameCard\//);
   assert.match(officialReference, /Do not copy or ship official card artwork/);
   assert.match(officialReference, /`Steal` \| Steal \| 189/);
+  assert.match(officialReference, /`Duel` \| Duel \| 185/);
   assert.match(page, /card\.kind === "Steal"/);
   assert.match(page, /\["Dismantle", "Steal"\]/);
+  assert.match(page, /respond_duel/);
+  assert.match(page, /take_duel_damage/);
   assert.doesNotMatch(page, /readyTurn/);
 });
