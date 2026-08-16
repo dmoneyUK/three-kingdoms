@@ -41,7 +41,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Play selected/);
   assert.match(page, /Take 1 damage/);
   assert.match(page, /Give Peach/);
+  assert.equal((page.match(/Give Peach/g) ?? []).length, 1);
   assert.match(page, /PRIVATE RESCUE DECISION/);
+  assert.match(page, /rescueDecisionReady/);
+  assert.match(page, /role="alertdialog"/);
   assert.match(page, /Do not give/);
   assert.match(page, /A Peach rescue check is in progress/);
   assert.match(page, /skip_rescue/);
@@ -53,6 +56,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
   assert.match(page, /setTimeout\(\(\) => setActiveEvent\(null\), 5000\)/);
   assert.match(page, /PRIVATE DRAW/);
+  assert.match(page, /ROLE REVEALED/);
+  assert.match(page, /roleReveal/);
   assert.match(page, /Only you can see these cards/);
   assert.match(page, /knownHandCards/);
   assert.match(page, /setTimeout\(\(\) => setPrivateDrawCards\(\[\]\), 5000\)/);
