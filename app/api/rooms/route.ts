@@ -167,6 +167,14 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
 }
 function db() { return env.DB; }
 
+async function resetAudit(roomId: string) {
+  await db().batch([
+    db().prepare("DELETE FROM game_audit"),
+    db().prepare("DELETE FROM sqlite_sequence WHERE name = 'game_audit'"),
+    db().prepare("INSERT INTO audit_scope (id, room_id) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET room_id = excluded.room_id").bind(roomId),
+  ]);
+}
+
 async function runBots(roomId: string) {
   for (let guard = 0; guard < 12; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
@@ -193,13 +201,19 @@ async function runBots(roomId: string) {
           writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "attack", sourceId: bot.id, targetId: target.id, actorId: target.id, reason: "Respond to Strike: select Dodge or take 1 damage" }), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
           await db().batch(writes); return;
         }
-        target.hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} has no Dodge and automatically takes 1 damage.${target.hp > 0 ? ` Action returns to ${bot.name}.` : ` Action passes to ${target.name} for Dying rescue.`}`);
-        writes.push(db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(target.hp, target.id));
+        target.hp = Math.max(0, (target.hp ?? 1) - 1);
         if (target.hp === 0) {
-          writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
-          writes.push(db().prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "dying", sourceId: bot.id, targetId: target.id, actorId: target.id, reason: "Dying rescue: use Peach or accept defeat" }), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
-          await db().batch(writes); return;
-        }
+          if (targetHand.some((card) => card.kind === "Peach")) {
+            log = addLog(log, `${target.name} has no Dodge and takes 1 damage. Action passes to ${target.name} for Dying rescue.`);
+            writes.push(db().prepare("UPDATE players SET hp = 0, alive = 1 WHERE id = ?").bind(target.id));
+            writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
+            writes.push(db().prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "dying", sourceId: bot.id, targetId: target.id, actorId: target.id, reason: "Dying rescue: use Peach or accept defeat" }), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+            await db().batch(writes); return;
+          }
+          target.alive = 0;
+          log = addLog(log, `${target.name} has no Dodge or Peach, takes 1 damage, and is defeated.`);
+        } else log = addLog(log, `${target.name} has no Dodge and automatically takes 1 damage. Action returns to ${bot.name}.`);
+        writes.push(db().prepare("UPDATE players SET hp = ?, alive = ? WHERE id = ?").bind(target.hp, target.alive, target.id));
       } else {
         let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((card) => card.kind === "Dodge");
         if (dodge) { targetHand = targetHand.filter((card) => card.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, bot.name); log = addLog(log, `${target.name} plays Dodge and blocks the Strike.`); }
@@ -207,7 +221,7 @@ async function runBots(roomId: string) {
           target.hp = Math.max(0, (target.hp ?? 1) - 1);
           const rescue = target.hp === 0 ? targetHand.find((card) => card.kind === "Peach") : null;
           if (rescue) { targetHand = targetHand.filter((card) => card.id !== rescue.id); discard.push(rescue); target.hp = 1; log = addCardEvent(log, target.name, rescue); log = addLog(log, `${target.name} uses Peach and escapes Dying at 1 HP.`); }
-          target.alive = target.hp > 0 ? 1 : 0; if (!target.alive) log = addLog(log, `${target.name} takes 1 damage and is defeated.`); else if (!rescue) log = addLog(log, `${target.name} takes 1 damage.`);
+          target.alive = target.hp > 0 ? 1 : 0; if (!target.alive) log = addLog(log, `${target.name} has no Dodge or Peach, takes 1 damage, and is defeated.`); else if (!rescue) log = addLog(log, `${target.name} takes 1 damage.`);
         }
         writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ?, alive = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.hp, target.alive, target.id));
       }
@@ -285,7 +299,7 @@ export async function POST(request: Request) {
     if (quickStart) for (let index = 1; index <= 3; index++) inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), roomId, `Player ${index}`, `bot:${crypto.randomUUID()}`, index, Date.now()));
     await db.batch(inserts);
     if (quickStart) {
-      await db.batch([db.prepare("DELETE FROM game_audit"), db.prepare("DELETE FROM sqlite_sequence WHERE name = 'game_audit'"), db.prepare("INSERT INTO audit_scope (id, room_id) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET room_id = excluded.room_id").bind(roomId)]);
+      await resetAudit(roomId);
       const createdRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const host = await db.prepare("SELECT * FROM players WHERE id = ?").bind(playerId).first<PlayerRow>();
       if (createdRoom && host) await recordAuditAction(createdRoom, host, playerName, "quick_start");
       await beginRandomizedMatch(roomId, playerId);
@@ -334,7 +348,7 @@ export async function POST(request: Request) {
     const result = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const players = result.results ?? [];
     if (players.length < 4) return json({ error: "Classic mode needs at least 4 players." }, 409);
-    await db.batch([db.prepare("DELETE FROM game_audit"), db.prepare("DELETE FROM sqlite_sequence WHERE name = 'game_audit'"), db.prepare("INSERT INTO audit_scope (id, room_id) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET room_id = excluded.room_id").bind(room.id)]);
+    await resetAudit(room.id);
     await recordAuditAction(room, me, name, action);
     const roles = [...ROLE_SETS[players.length]].sort(() => Math.random() - 0.5);
     const lordIndex = players.findIndex((player) => player.id === room.host_player_id); const lordAt = roles.indexOf("Lord");
@@ -390,12 +404,18 @@ export async function POST(request: Request) {
     } else {
       const hp = Math.max(0, (me.hp ?? 1) - 1);
       if (hp === 0) {
-        log = addLog(log, `${me.name} takes 1 damage and enters Dying. Action stays with ${me.name} for Dying rescue.`);
-        await db.batch([db.prepare("UPDATE players SET hp = 0, alive = 1 WHERE id = ?").bind(me.id), db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "dying", sourceId: pending.sourceId, targetId: me.id, actorId: me.id, reason: "Dying rescue: use Peach or accept defeat" }), JSON.stringify(log), room.id)]);
-        return json({ room: await roomState(code, token) });
+        if (hand.some((card) => card.kind === "Peach")) {
+          log = addLog(log, `${me.name} takes 1 damage and enters Dying. Action stays with ${me.name} for Dying rescue.`);
+          await db.batch([db.prepare("UPDATE players SET hp = 0, alive = 1 WHERE id = ?").bind(me.id), db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "dying", sourceId: pending.sourceId, targetId: me.id, actorId: me.id, reason: "Dying rescue: use Peach or accept defeat" }), JSON.stringify(log), room.id)]);
+          return json({ room: await roomState(code, token) });
+        }
+        log = addLog(log, `${me.name} has no Peach, takes 1 damage, and is defeated.`);
+        await db.batch([db.prepare("UPDATE players SET hp = 0, alive = 0 WHERE id = ?").bind(me.id), db.prepare("UPDATE rooms SET phase = 'play-struck', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id)]);
+        if (await finishIfWon(room.id)) return json({ room: await roomState(code, token) });
+      } else {
+        log = addLog(log, `${me.name} takes 1 damage. Action returns to ${source?.name ?? "the turn owner"}.`);
+        await db.batch([db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, me.id), db.prepare("UPDATE rooms SET phase = 'play-struck', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id)]);
       }
-      log = addLog(log, `${me.name} takes 1 damage. Action returns to ${source?.name ?? "the turn owner"}.`);
-      await db.batch([db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, me.id), db.prepare("UPDATE rooms SET phase = 'play-struck', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id)]);
     }
     if (isBotPlayer(source)) {
       const sourceHand = parse<Card[]>(source.hand_json, []); const sourceLimit = Math.max(0, source.hp ?? 0); let sourceDiscarded = 0;
@@ -466,7 +486,7 @@ export async function POST(request: Request) {
           else {
             target.hp = Math.max(0, (target.hp ?? 1) - 1); const rescue = target.hp === 0 ? targetHand.find((item) => item.kind === "Peach") : null;
             if (rescue) { targetHand = targetHand.filter((item) => item.id !== rescue.id); discard.push(rescue); target.hp = 1; log = addCardEvent(log, target.name, rescue); log = addLog(log, `${target.name} uses Peach and escapes Dying at 1 HP.`); }
-            target.alive = target.hp > 0 ? 1 : 0; if (!target.alive) log = addLog(log, `${target.name} takes 1 damage and is defeated.`); else if (!rescue) log = addLog(log, `${target.name} takes 1 damage.`);
+            target.alive = target.hp > 0 ? 1 : 0; if (!target.alive) log = addLog(log, `${target.name} has no Dodge or Peach, takes 1 damage, and is defeated.`); else if (!rescue) log = addLog(log, `${target.name} takes 1 damage.`);
           }
           await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ?, hp = ?, alive = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.hp, target.alive, target.id), db.prepare("UPDATE rooms SET phase = 'play-struck', discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]);
           if (!target.alive && await finishIfWon(room.id)) return json({ room: await roomState(code, token) });
@@ -476,9 +496,18 @@ export async function POST(request: Request) {
             log = addLog(log, `${me.name} plays Strike on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
             await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "attack", sourceId: me.id, targetId: target.id, actorId: target.id, reason: "Respond to Strike: select Dodge or take 1 damage" }), JSON.stringify(discard), JSON.stringify(log), room.id)]);
           } else {
-            const hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} has no Dodge and automatically takes 1 damage.${hp > 0 ? ` Action returns to ${me.name}.` : ` Action passes to ${target.name} for Dying rescue.`}`);
-            if (hp === 0) await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = 0, alive = 1 WHERE id = ?").bind(target.id), db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "dying", sourceId: me.id, targetId: target.id, actorId: target.id, reason: "Dying rescue: use Peach or accept defeat" }), JSON.stringify(discard), JSON.stringify(log), room.id)]);
-            else await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id), db.prepare("UPDATE rooms SET phase = 'play-struck', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]);
+            const hp = Math.max(0, (target.hp ?? 1) - 1);
+            if (hp === 0 && targetHand.some((item) => item.kind === "Peach")) {
+              log = addLog(log, `${target.name} has no Dodge and takes 1 damage. Action passes to ${target.name} for Dying rescue.`);
+              await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = 0, alive = 1 WHERE id = ?").bind(target.id), db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "dying", sourceId: me.id, targetId: target.id, actorId: target.id, reason: "Dying rescue: use Peach or accept defeat" }), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+            } else if (hp === 0) {
+              log = addLog(log, `${target.name} has no Dodge or Peach, takes 1 damage, and is defeated.`);
+              await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = 0, alive = 0 WHERE id = ?").bind(target.id), db.prepare("UPDATE rooms SET phase = 'play-struck', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]);
+              if (await finishIfWon(room.id)) return json({ room: await roomState(code, token) });
+            } else {
+              log = addLog(log, `${target.name} has no Dodge and automatically takes 1 damage. Action returns to ${me.name}.`);
+              await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id), db.prepare("UPDATE rooms SET phase = 'play-struck', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]);
+            }
           }
         }
       }

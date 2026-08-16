@@ -43,7 +43,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Discard \{excessCards\} selected/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
   assert.match(page, /setTimeout\(\(\) => setActiveEvent\(null\), 5000\)/);
-  assert.match(page, /setTimeout\(\(\) => onDrawRevealEndRef\.current\(\), 5000\)/);
+  assert.match(page, /setTimeout\(\(\) => onDrawNoticeEndRef\.current\(\), 5000\)/);
+  assert.match(page, /TURN STARTED/);
+  assert.match(page, /is drawing \{drawNotice\} cards/);
+  assert.doesNotMatch(page, /drawReveal\.map/);
   assert.match(page, /Event history/);
   assert.doesNotMatch(page, /readyTurn/);
 });

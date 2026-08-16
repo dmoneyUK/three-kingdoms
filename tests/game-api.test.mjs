@@ -100,10 +100,9 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
 
   setHand(hostPlayer.id, [card("Strike", "dying")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setTurn(game.code, hostPlayer.seat);
   const dying = await request("play_card", { code: game.code, token: host.token, cardId: "strike-dying", targetId: alicePlayer.id });
-  assert.equal(dying.data.room.phase, "dying"); assert.equal(dying.data.room.actionPlayerId, alicePlayer.id);
-  assert.equal((await request("accept_defeat", { code: game.code, token: bob.token })).status, 409);
-  const defeated = await request("accept_defeat", { code: game.code, token: alice.token });
-  assert.equal(defeated.status, 200); assert.equal(defeated.data.room.players.find((player) => player.id === alicePlayer.id).alive, false);
+  assert.equal(dying.data.room.phase, "play-struck"); assert.equal(dying.data.room.players.find((player) => player.id === alicePlayer.id).hp, 0);
+  assert.equal(dying.data.room.players.find((player) => player.id === alicePlayer.id).alive, false);
+  assert.ok(dying.data.room.timeline.some((entry) => /no Dodge or Peach.*defeated/.test(entry.message ?? "")));
 
   setHand(hostPlayer.id, [card("Strike", "rescue")], 4, 5); setHand(alicePlayer.id, [card("Peach", "rescue")], 1, 4); setTurn(game.code, hostPlayer.seat);
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "strike-rescue", targetId: alicePlayer.id })).data.room.phase, "dying");
@@ -128,6 +127,11 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const botsPlayed = await request("end_turn", { code: botCode, token: botToken });
   assert.equal(botsPlayed.status, 200); assert.equal(botsPlayed.data.room.turnSeat, botHostPlayer.seat); assert.equal(botsPlayed.data.room.phase, "draw");
   assert.ok(botsPlayed.data.room.timeline.some((entry) => /Player [123]/.test(entry.message ?? entry.player ?? "")));
+  const playerOne = botsPlayed.data.room.players.find((player) => player.name === "Player 1");
+  setHand(botHostPlayer.id, [card("Strike", "defeat-bot")], botHostPlayer.hp, botHostPlayer.maxHp); setHand(playerOne.id, [], 1, playerOne.maxHp); setTurn(botCode, botHostPlayer.seat);
+  const defeatedBot = await request("play_card", { code: botCode, token: botToken, cardId: "strike-defeat-bot", targetId: playerOne.id });
+  assert.equal(defeatedBot.data.room.players.find((player) => player.id === playerOne.id).alive, false);
+  assert.ok(defeatedBot.data.room.timeline.some((entry) => /Player 1.*no Dodge or Peach.*defeated/.test(entry.message ?? "")));
   assert.equal((await state(game.code, host.token, true)).data.audit.length, 0);
   assert.ok((await state(botCode, botToken, true)).data.audit.length > 0);
 
@@ -137,6 +141,8 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.deepEqual(quick.data.room.players.map((player) => player.isBot), [false, true, true, true]);
   assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
   assert.equal(quick.data.room.myHand.length, 4);
+  assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
+  assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);
   const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
   assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 6);
 });
