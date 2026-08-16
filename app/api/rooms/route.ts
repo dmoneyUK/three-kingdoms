@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getRequestExecutionContext } from "vinext/shims/request-context";
-import { isAttackCard, makeDeck } from "../../../game/cards";
+import { DECK_CARD_KINDS, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind } from "../../../game/model";
 import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 
@@ -138,15 +138,19 @@ async function finishIfWon(roomId: string) {
   await db().prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), roomId).run(); return true;
 }
 
-async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpeningCard?: { playerId: string; kind: CardKind }) {
+async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpeningCards?: { playerId: string; kinds: CardKind[] }) {
   const deck = makeDeck();
   const openingHands = players.map((player) => ({ player, cards: deck.splice(0, 4) }));
-  if (guaranteedOpeningCard) {
-    const opening = openingHands.find(({ player }) => player.id === guaranteedOpeningCard.playerId);
-    const deckIndex = deck.findIndex((card) => card.kind === guaranteedOpeningCard.kind);
-    if (opening && deckIndex >= 0 && !opening.cards.some((card) => card.kind === guaranteedOpeningCard.kind)) {
-      [opening.cards[0], deck[deckIndex]] = [deck[deckIndex], opening.cards[0]];
+  if (guaranteedOpeningCards) {
+    const opening = openingHands.find(({ player }) => player.id === guaranteedOpeningCards.playerId);
+    deck.push(...openingHands.flatMap(({ cards }) => cards));
+    openingHands.forEach((entry) => { entry.cards = []; });
+    for (const kind of guaranteedOpeningCards.kinds) {
+      if (!opening) continue;
+      const deckIndex = deck.findIndex((card) => card.kind === kind);
+      if (deckIndex >= 0) opening.cards.push(...deck.splice(deckIndex, 1));
     }
+    for (const entry of openingHands) if (entry !== opening) entry.cards.push(...deck.splice(0, 4));
   }
   const updates = openingHands.map(({ player, cards }) => db().prepare("UPDATE players SET hand_json = ?, alive = 1 WHERE id = ?").bind(JSON.stringify(cards), player.id));
   const lord = players.find((player) => player.role === "Lord") ?? players[0];
@@ -167,7 +171,7 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
-  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kind: "Duel" });
+  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: DECK_CARD_KINDS });
 }
 function db() { return env.DB; }
 
@@ -326,6 +330,13 @@ async function runBots(roomId: string) {
       hand = hand.filter((card) => card.id !== peach.id); discard.push(peach); bot.hp = (bot.hp ?? 0) + 1; log = addCardEvent(log, bot.name, peach); log = addLog(log, `${bot.name} plays Peach and recovers 1 HP.`);
     }
     const writes = []; const changedHands = new Map<string, Card[]>();
+    const oath = hand.find((card) => card.kind === "Oath");
+    const wounded = players.filter((player) => player.alive && (player.hp ?? 0) < (player.max_hp ?? 0));
+    if (oath && wounded.length) {
+      hand = hand.filter((card) => card.id !== oath.id); discard.push(oath);
+      for (const player of wounded) { player.hp = Math.min(player.max_hp ?? 0, (player.hp ?? 0) + 1); writes.push(db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(player.hp, player.id)); }
+      log = addCardEvent(log, bot.name, oath, "All wounded players"); log = addLog(log, `${bot.name} plays Oath of the Peach Garden. ${wounded.map((player) => player.name).join(", ")} recover 1 HP.`);
+    }
     const steal = hand.find((card) => card.kind === "Steal");
     const stealTarget = players.find((player) => player.alive && player.id !== bot.id && distanceBetween(players, bot.id, player.id) === 1 && parse<Card[]>(player.hand_json, []).length > 0);
     if (steal && stealTarget) {
@@ -664,6 +675,18 @@ export async function POST(request: Request) {
         discard.push(card);
         log = addCardEvent(draw.log, me.name, card); log = addHistory(log, `${me.name} plays Something Out of Nothing and draws ${draw.drawn.length} cards.`);
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+      } else if (card.kind === "Oath") {
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+        const wounded = (rows.results ?? []).filter((player) => player.alive && (player.hp ?? 0) < (player.max_hp ?? 0));
+        if (!wounded.length) return json({ error: "Oath of the Peach Garden requires at least one wounded character." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        hand = hand.filter((item) => item.id !== card.id); discard.push(card);
+        log = addCardEvent(log, me.name, card, "All wounded players"); log = addLog(log, `${me.name} plays Oath of the Peach Garden. ${wounded.map((player) => player.name).join(", ")} recover 1 HP.`);
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+          ...wounded.map((player) => db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(Math.min(player.max_hp ?? 0, (player.hp ?? 0) + 1), player.id)),
+          db.prepare("UPDATE rooms SET phase = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id),
+        ]);
       } else if (card.kind === "Dismantle") {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Burning Bridges." }, 400);

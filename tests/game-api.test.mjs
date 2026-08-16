@@ -71,7 +71,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(hostPlayer && alicePlayer && bobPlayer && carolPlayer);
   assert.equal(game.room.status, "playing"); assert.equal(game.room.phase, "draw"); assert.equal(game.room.isMyTurn, true); assert.equal(game.room.myHand.length, 4); assert.equal(game.room.myRole, "Lord");
   const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
-  assert.deepEqual(deckComposition, ["Attack:30", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "Peach:8", "Steal:5"]);
+  assert.deepEqual(deckComposition, ["Attack:30", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "Oath:1", "Peach:8", "Steal:5"]);
   assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
   const aliceView = await state(game.code, alice.token);
   assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
@@ -128,6 +128,12 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(losesDuel.status, 200); assert.equal(losesDuel.data.room.phase, "play"); assert.equal(losesDuel.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3);
   assert.ok(losesDuel.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "Duel" && event.target === "Alice"));
   assert.ok(losesDuel.data.room.timeline.some((event) => /fails to play Attack and takes 1 Duel damage/.test(event.message ?? "")));
+
+  setHand(hostPlayer.id, [card("Oath", "heal-all")], 3, 5); setHand(alicePlayer.id, [], 3, 4); setHand(bobPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const oath = await request("play_card", { code: game.code, token: host.token, cardId: "oath-heal-all" });
+  assert.equal(oath.status, 200); assert.equal(oath.data.room.phase, "play"); assert.equal(oath.data.room.players.find((player) => player.id === hostPlayer.id).hp, 4); assert.equal(oath.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4); assert.equal(oath.data.room.players.find((player) => player.id === bobPlayer.id).hp, 4);
+  assert.ok(oath.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "Oath"));
+  assert.ok(oath.data.room.timeline.some((event) => /Oath of the Peach Garden/.test(event.message ?? "")));
 
   const discardHand = Array.from({ length: 6 }, (_, index) => card("Dodge", `discard-${index}`));
   setHand(hostPlayer.id, discardHand, 4, 5); setTurn(game.code, hostPlayer.seat);
@@ -215,12 +221,12 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
   assert.equal(quick.data.room.players.find((player) => player.name === "ME").hero, "zhang-fei");
   assert.ok(quick.data.room.players.filter((player) => player.isBot).every((player) => player.hp === 1 && player.maxHp === 1));
-  assert.equal(quick.data.room.myHand.length, 4);
-  assert.ok(quick.data.room.myHand.some((openingCard) => openingCard.kind === "Duel"), "ME starts every test game with the newest card");
+  assert.equal(quick.data.room.myHand.length, 8);
+  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath"]), "ME starts every test game with one of each implemented card");
   assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
   assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);
   const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
-  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 6);
+  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 10);
   const quickMe = quickDraw.data.room.players.find((player) => player.name === "ME"); const quickPlayerOne = quickDraw.data.room.players.find((player) => player.name === "Player 1");
   setHand(quickMe.id, [card("Strike", "zhang-fei-1"), card("Strike", "zhang-fei-2")], quickMe.hp, quickMe.maxHp); setHand(quickPlayerOne.id, [card("Dodge", "zhang-fei-1"), card("Dodge", "zhang-fei-2")], 1, 1); setTurn(quick.data.room.code, quickMe.seat);
   assert.equal((await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "strike-zhang-fei-1", targetId: quickPlayerOne.id })).data.room.phase, "play");

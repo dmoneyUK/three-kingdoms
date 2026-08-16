@@ -17,6 +17,7 @@ Current mappings:
 | `Dismantle` | Burning Bridges | 174 |
 | `Steal` | Steal | 189 |
 | `Duel` | Duel | 185 |
+| `Oath` | Oath of the Peach Garden | 81 |
 
 Development policy:
 

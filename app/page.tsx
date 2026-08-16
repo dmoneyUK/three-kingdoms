@@ -211,6 +211,7 @@ function cardEventVerb(event: CardEvent, peachRescue: boolean) {
   if (event.card.kind === "Dismantle") return "burns a bridge against";
   if (event.card.kind === "Steal") return "steals from";
   if (event.card.kind === "Duel") return "challenges";
+  if (event.card.kind === "Oath") return "heals all wounded players";
   return "attacks";
 }
 
