@@ -76,7 +76,7 @@ function newToken() { return Array.from(crypto.getRandomValues(new Uint8Array(24
 async function hash(value: string) { const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)); return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join(""); }
 function parse<T>(value: string | null, fallback: T): T { try { return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } }
 function makeDeck() {
-  const kinds: Card["kind"][] = [...Array(30).fill("Strike"), ...Array(20).fill("Dodge"), ...Array(12).fill("Peach")];
+  const kinds: Card["kind"][] = [...Array(54).fill("Strike"), ...Array(8).fill("Peach")];
   const suits: Card["suit"][] = ["♥", "♦", "♣", "♠"];
   const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
   const deck = kinds.map((kind, index) => ({ id: crypto.randomUUID(), kind, suit: suits[index % 4], rank: ranks[index % 13] }));

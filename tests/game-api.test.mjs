@@ -8,10 +8,14 @@ const baseUrl = process.env.GAME_TEST_URL ?? "http://localhost:3137";
 const d1Directory = new URL("../.wrangler/state/v3/d1/miniflare-D1DatabaseObject/", import.meta.url);
 
 async function request(action, values = {}) {
-  const response = await fetch(`${baseUrl}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...values }) });
-  const text = await response.text();
-  assert.ok(text, `${action} returned an empty ${response.status} response`);
-  return { status: response.status, data: JSON.parse(text) };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(`${baseUrl}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...values }) });
+    const text = await response.text();
+    if (text) return { status: response.status, data: JSON.parse(text) };
+    if (response.status !== 500 || attempt === 2) assert.fail(`${action} returned an empty ${response.status} response`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`${action} did not return a response`);
 }
 
 async function state(code, token, audit = false) {
@@ -27,6 +31,7 @@ function databasePath() {
   return join(d1Directory.pathname, file);
 }
 function sql(statement) { const result = spawnSync("sqlite3", [databasePath(), statement], { encoding: "utf8" }); assert.equal(result.status, 0, result.stderr); }
+function query(statement) { const result = spawnSync("sqlite3", [databasePath(), statement], { encoding: "utf8" }); assert.equal(result.status, 0, result.stderr); return result.stdout.trim(); }
 function quote(value) { return `'${String(value).replaceAll("'", "''")}'`; }
 function card(kind, suffix) { return { id: `${kind.toLowerCase()}-${suffix}`, kind, suit: "♠", rank: "A" }; }
 function setHand(playerId, cards, hp, maxHp = hp) { sql(`UPDATE players SET hand_json=${quote(JSON.stringify(cards))}, hp=${hp}, max_hp=${maxHp}, alive=1 WHERE id=${quote(playerId)}`); }
@@ -51,6 +56,8 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const bobPlayer = game.room.players.find((player) => player.name === "Bob");
   assert.ok(hostPlayer && alicePlayer && bobPlayer);
   assert.equal(game.room.status, "playing"); assert.equal(game.room.phase, "draw"); assert.equal(game.room.isMyTurn, true); assert.equal(game.room.myHand.length, 4); assert.equal(game.room.myRole, "Lord");
+  const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
+  assert.deepEqual(deckComposition, ["Peach:8", "Strike:54"]);
   assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
   const aliceView = await state(game.code, alice.token);
   assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
