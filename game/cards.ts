@@ -4,7 +4,7 @@ export type CardDefinition = {
   kind: CardKind;
   name: string;
   category: "basic" | "stratagem";
-  target: "self" | "opponent" | "response";
+  target: "self" | "opponent" | "all-opponents" | "response";
   description: string;
   rules: string;
   officialCardId: number;
@@ -23,6 +23,8 @@ export const CARD_DEFINITIONS: Record<CardKind, CardDefinition> = {
   Steal: { kind: "Steal", name: "Steal", category: "stratagem", target: "opponent", description: "Range 1 · obtain 1 card", rules: "During your Play Phase, target another character within distance 1. Obtain 1 card from their hand, Equipment Zone, or Judgement Zone.", officialCardId: 189 },
   Duel: { kind: "Duel", name: "Duel", category: "stratagem", target: "opponent", description: "Alternate playing Attack", rules: "During your Play Phase, target another character. Starting with the target, you alternate playing Attack cards. The first player who does not play Attack takes 1 damage from the other duelist.", officialCardId: 185 },
   Oath: { kind: "Oath", name: "Oath of the Peach Garden", category: "stratagem", target: "self", description: "All wounded players recover 1 HP", rules: "During your Play Phase, use this card on all wounded living characters, including yourself. Each affected character recovers 1 HP.", officialCardId: 81 },
+  BarbarianInvasion: { kind: "BarbarianInvasion", name: "Barbarian Invasion", category: "stratagem", target: "all-opponents", description: "Each opponent must play Attack", rules: "During your Play Phase, use this card on all other living characters. In turn order, each target must play an Attack or take 1 damage.", officialCardId: 178 },
+  RainingArrows: { kind: "RainingArrows", name: "Raining Arrows", category: "stratagem", target: "all-opponents", description: "Each opponent must play Dodge", rules: "During your Play Phase, use this card on all other living characters. In turn order, each target must play a Dodge or take 1 damage.", officialCardId: 183 },
   // Compatibility for games created before the English card name was corrected.
   Strike: { kind: "Strike", name: "Attack", category: "basic", target: "opponent", description: "Range 1 · deal 1 damage", rules: "During your Play Phase, target a character within your attack range. They must play Dodge or take 1 damage. Normally, you may use one Attack per turn.", officialCardId: 173 },
 };
@@ -38,6 +40,8 @@ export const DECK_COUNTS: Partial<Record<CardKind, number>> = {
   Steal: 5,
   Duel: 3,
   Oath: 1,
+  BarbarianInvasion: 3,
+  RainingArrows: 1,
 };
 
 export const DECK_CARD_KINDS = Object.keys(DECK_COUNTS) as CardKind[];

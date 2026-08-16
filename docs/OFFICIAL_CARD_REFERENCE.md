@@ -18,6 +18,8 @@ Current mappings:
 | `Steal` | Steal | 189 |
 | `Duel` | Duel | 185 |
 | `Oath` | Oath of the Peach Garden | 81 |
+| `BarbarianInvasion` | Barbarian Invasion | 178 |
+| `RainingArrows` | Raining Arrows | 183 |
 
 Development policy:
 

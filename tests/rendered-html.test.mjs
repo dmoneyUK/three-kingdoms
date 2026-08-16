@@ -102,6 +102,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(cards, /name: "Steal"/);
   assert.match(cards, /name: "Duel"/);
   assert.match(cards, /name: "Oath of the Peach Garden"/);
+  assert.match(cards, /name: "Barbarian Invasion"/);
+  assert.match(cards, /name: "Raining Arrows"/);
   assert.match(cards, /All wounded players recover 1 HP/);
   assert.match(cards, /alternate playing Attack cards/);
   assert.match(cards, /within distance 1/);
@@ -111,9 +113,13 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`Steal` \| Steal \| 189/);
   assert.match(officialReference, /`Duel` \| Duel \| 185/);
   assert.match(officialReference, /`Oath` \| Oath of the Peach Garden \| 81/);
+  assert.match(officialReference, /`BarbarianInvasion` \| Barbarian Invasion \| 178/);
+  assert.match(officialReference, /`RainingArrows` \| Raining Arrows \| 183/);
   assert.match(page, /card\.kind === "Steal"/);
   assert.match(page, /\["Dismantle", "Steal"\]/);
   assert.match(page, /respond_duel/);
   assert.match(page, /take_duel_damage/);
+  assert.match(page, /respond_group/);
+  assert.match(page, /take_group_damage/);
   assert.doesNotMatch(page, /readyTurn/);
 });

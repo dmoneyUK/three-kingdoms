@@ -42,3 +42,4 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .card-info-button{left:8px;top:auto;bottom:8px;translate:0 0}.card-slot:has(.game-card.selected) .card-info-button{translate:0 -17px}.game-card.steal .card-name-mark,.played-card.steal .card-name-mark{color:#2f596f}
 .game-card.duel .card-name-mark,.played-card.duel .card-name-mark{color:#7b3d2a}
 .game-card.oath .card-name-mark{font-size:14px;color:#9a3f50}.played-card.oath .card-name-mark{font-size:27px;color:#9a3f50}
+.game-card.barbarianinvasion .card-name-mark,.game-card.rainingarrows .card-name-mark{font-size:14px}.game-card.barbarianinvasion .card-name-mark,.played-card.barbarianinvasion .card-name-mark{color:#8c3d2e}.game-card.rainingarrows .card-name-mark,.played-card.rainingarrows .card-name-mark{color:#3f5f79}.played-card.barbarianinvasion .card-name-mark,.played-card.rainingarrows .card-name-mark{font-size:28px}
