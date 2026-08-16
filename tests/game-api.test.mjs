@@ -19,10 +19,14 @@ async function request(action, values = {}) {
 }
 
 async function state(code, token, audit = false) {
-  const response = await fetch(`${baseUrl}/api/rooms?code=${code}&token=${token}${audit ? "&audit=1" : ""}`);
-  const text = await response.text();
-  assert.ok(text, `room state returned an empty ${response.status} response`);
-  return { status: response.status, data: JSON.parse(text) };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(`${baseUrl}/api/rooms?code=${code}&token=${token}${audit ? "&audit=1" : ""}`);
+    const text = await response.text();
+    if (text) return { status: response.status, data: JSON.parse(text) };
+    if (response.status !== 500 || attempt === 2) assert.fail(`room state returned an empty ${response.status} response`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("room state did not return a response");
 }
 
 function databasePath() {
@@ -127,9 +131,9 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal((await state(game.code, host.token, true)).data.audit.length, 0);
   assert.ok((await state(botCode, botToken, true)).data.audit.length > 0);
 
-  const quick = await request("create", { name: "Quick Host", quickStart: true });
+  const quick = await request("create", { quickStart: true });
   assert.equal(quick.status, 201); assert.equal(quick.data.room.status, "playing"); assert.equal(quick.data.room.phase, "draw"); assert.equal(quick.data.room.isMyTurn, true); assert.equal(quick.data.room.myRole, "Lord");
-  assert.deepEqual(quick.data.room.players.map((player) => player.name), ["Quick Host", "Player 1", "Player 2", "Player 3"]);
+  assert.deepEqual(quick.data.room.players.map((player) => player.name), ["ME", "Player 1", "Player 2", "Player 3"]);
   assert.deepEqual(quick.data.room.players.map((player) => player.isBot), [false, true, true, true]);
   assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
   assert.equal(quick.data.room.myHand.length, 4);

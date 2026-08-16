@@ -10,7 +10,7 @@ type Player = { id: string; name: string; seat: number; hero: string | null; hp:
 type Room = { code: string; status: "lobby" | "heroes" | "started" | "playing" | "finished"; maxPlayers: number; isHost: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; pendingAttack: { sourceId: string; targetId: string } | null; pendingDying: { sourceId: string; targetId: string } | null };
 
 export default function Home() {
-  const [name, setName] = useState("");
+  const name = "ME";
   const [code, setCode] = useState("");
   const [room, setRoom] = useState<Room | null>(null);
   const [token, setToken] = useState("");
@@ -32,8 +32,8 @@ export default function Home() {
     const saved = localStorage.getItem("three-realms-session");
     if (!saved) return;
     try {
-      const session = JSON.parse(saved) as { code: string; token: string; name: string };
-      const timer = setTimeout(() => { setName(session.name); setToken(session.token); setCode(session.code); fetchRoom(session.code, session.token); }, 0);
+      const session = JSON.parse(saved) as { code: string; token: string };
+      const timer = setTimeout(() => { setToken(session.token); setCode(session.code); fetchRoom(session.code, session.token); }, 0);
       return () => clearTimeout(timer);
     } catch { localStorage.removeItem("three-realms-session"); }
   }, [fetchRoom]);
@@ -80,12 +80,12 @@ export default function Home() {
         </div>
         <div className="entry-card">
           <div className="entry-title"><span>ENTER THE REALM</span><small>4–8 players · One device each</small></div>
-          <label>Your display name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={20} placeholder="e.g. Jing" autoComplete="nickname" /></label>
-          <button className="gold-button" disabled={busy || name.trim().length < 2} onClick={() => send("create", { quickStart: true })}>{busy ? "Preparing…" : "Start test game"}</button>
+          <div className="test-player-name"><span>YOU ARE PLAYING AS</span><b>ME</b></div>
+          <button className="gold-button" disabled={busy} onClick={() => send("create", { quickStart: true })}>{busy ? "Preparing…" : "Start test game"}</button>
           <div className="divider"><span>OR JOIN A FRIEND</span></div>
           <form onSubmit={(event: FormEvent) => { event.preventDefault(); send("join"); }}>
             <label>Five-character room code<input className="code-input" value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="ABCDE" autoCapitalize="characters" /></label>
-            <button className="outline-button" disabled={busy || name.trim().length < 2 || code.length !== 5}>Join room</button>
+            <button className="outline-button" disabled={busy || code.length !== 5}>Join room</button>
           </form>
           {error && <p className="error" role="alert">{error}</p>}
           <small className="privacy-note">Your secret role and player key stay private on this device.</small>
@@ -127,7 +127,7 @@ function GameRoom({ room, busy, error, drawReveal, onDrawRevealEnd, onAction, on
   const [discardSelected, setDiscardSelected] = useState<string[]>([]); const automaticDraw = useRef("");
   const automaticDamage = useRef("");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [turnNotice, setTurnNotice] = useState(""); const previousTurn = useRef(""); const onActionRef = useRef(onAction); const onDrawRevealEndRef = useRef(onDrawRevealEnd);
+  const [turnNotice, setTurnNotice] = useState(""); const onActionRef = useRef(onAction); const onDrawRevealEndRef = useRef(onDrawRevealEnd);
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
   const activeCard = activeEvent?.type === "card" ? activeEvent : null;
   const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const actor = room.players.find((player) => player.id === room.actionPlayerId); const me = room.players.find((player) => player.id === room.meId);
@@ -145,7 +145,7 @@ function GameRoom({ room, busy, error, drawReveal, onDrawRevealEnd, onAction, on
   useEffect(() => { onActionRef.current = onAction; }, [onAction]);
   useEffect(() => { onDrawRevealEndRef.current = onDrawRevealEnd; }, [onDrawRevealEnd]);
   useEffect(() => { const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id)); fresh.forEach((event) => seenEvents.current.add(event.id)); const visible = fresh.filter((event) => event.type !== "message" || event.presentation !== false); if (visible.length) setEventQueue((queue) => [...queue, ...visible]); }, [room.timeline]);
-  useEffect(() => { const unseenEvents = timelineKey.split("|").filter(Boolean).some((id) => !seenEvents.current.has(id)); const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || room.phase !== "draw" || activeEvent || eventQueue.length || unseenEvents || turnKey === previousTurn.current) return; previousTurn.current = turnKey; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, 1600); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, current?.name, lastTimelineId, timelineKey, activeEvent, eventQueue.length]);
+  useEffect(() => { const unseenEvents = timelineKey.split("|").filter(Boolean).some((id) => !seenEvents.current.has(id)); const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || room.phase !== "draw" || activeEvent || eventQueue.length || unseenEvents || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, 1600); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, current?.name, lastTimelineId, timelineKey, activeEvent, eventQueue.length]);
   useEffect(() => { if (drawReveal.length || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { setActiveEvent(eventQueue[0]); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [drawReveal.length, activeEvent, eventQueue]);
   useEffect(() => { if (!activeEvent) return; const timer = setTimeout(() => setActiveEvent(null), 5000); return () => clearTimeout(timer); }, [activeEvent]);
   useEffect(() => { if (!drawReveal.length) return; const timer = setTimeout(() => onDrawRevealEndRef.current(), 5000); return () => clearTimeout(timer); }, [drawReveal]);

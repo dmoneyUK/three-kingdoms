@@ -274,20 +274,20 @@ export async function POST(request: Request) {
   const db = env.DB;
 
   if (action === "create") {
-    if (name.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
+    const quickStart = body.quickStart === true; const playerName = quickStart ? "ME" : name;
+    if (playerName.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
     const roomId = crypto.randomUUID(); const playerId = crypto.randomUUID(); const token = newToken(); let code = randomCode();
-    const quickStart = body.quickStart === true;
     for (let attempt = 0; attempt < 4; attempt++) { const exists = await db.prepare("SELECT 1 FROM rooms WHERE code = ?").bind(code).first(); if (!exists) break; code = randomCode(); }
     const inserts = [
       db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', 8, ?)").bind(roomId, code, playerId, Date.now()),
-      db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, name, await hash(token), Date.now()),
+      db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, playerName, await hash(token), Date.now()),
     ];
     if (quickStart) for (let index = 1; index <= 3; index++) inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), roomId, `Player ${index}`, `bot:${crypto.randomUUID()}`, index, Date.now()));
     await db.batch(inserts);
     if (quickStart) {
       await db.batch([db.prepare("DELETE FROM game_audit"), db.prepare("DELETE FROM sqlite_sequence WHERE name = 'game_audit'"), db.prepare("INSERT INTO audit_scope (id, room_id) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET room_id = excluded.room_id").bind(roomId)]);
       const createdRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const host = await db.prepare("SELECT * FROM players WHERE id = ?").bind(playerId).first<PlayerRow>();
-      if (createdRoom && host) await recordAuditAction(createdRoom, host, name, "quick_start");
+      if (createdRoom && host) await recordAuditAction(createdRoom, host, playerName, "quick_start");
       await beginRandomizedMatch(roomId, playerId);
     }
     return json({ token, room: await roomState(code, token) }, 201);
