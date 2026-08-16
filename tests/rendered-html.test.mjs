@@ -46,6 +46,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /rescueDecisionReady && item\.kind !== "Peach"/);
   assert.match(page, /PRIVATE RESCUE DECISION/);
   assert.match(page, /rescueDecisionReady/);
+  assert.match(page, /hasUnseenPresentations/);
+  assert.match(page, /privateDrawCards\.length \|\| hasUnseenPresentations/);
   assert.match(page, /role="alertdialog"/);
   assert.match(page, /Do not give/);
   assert.match(page, /A Peach rescue check is in progress/);

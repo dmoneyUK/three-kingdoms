@@ -130,6 +130,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const [turnNotice, setTurnNotice] = useState(""); const onActionRef = useRef(onAction);
   const [privateDrawCards, setPrivateDrawCards] = useState<Card[]>([]); const knownHandCards = useRef(new Set(room.myHand.map((item) => item.id)));
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
+  const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));
   const activeCard = activeEvent?.type === "card" ? activeEvent : null;
   const activeCards = activeEvent?.type === "cards" ? activeEvent : null;
   const roleReveal = activeEvent?.type === "message" ? activeEvent.message.match(/^(.+)'s role is revealed: ([^.]+)\.$/) : null;
@@ -143,14 +144,15 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
   const canRespond = room.phase === "response" && room.isMyAction;
   const canRescue = room.phase === "dying" && room.isMyAction;
-  const presentationBusy = Boolean(activeEvent || eventQueue.length || turnNotice || privateDrawCards.length);
+  const timelineKey = room.timeline.map((event) => event.id).join("|");
+  const hasUnseenPresentations = processedTimelineKey !== timelineKey;
+  const presentationBusy = Boolean(activeEvent || eventQueue.length || turnNotice || privateDrawCards.length || hasUnseenPresentations);
   const rescueDecisionReady = canRescue && !presentationBusy;
   const drawWaitingForPresentation = room.isMyTurn && room.phase === "draw" && presentationBusy;
   const lastTimelineId = room.timeline.at(-1)?.id ?? "start";
-  const timelineKey = room.timeline.map((event) => event.id).join("|");
   useEffect(() => { onActionRef.current = onAction; }, [onAction]);
   useEffect(() => { const fresh = room.myHand.filter((item) => !knownHandCards.current.has(item.id)); room.myHand.forEach((item) => knownHandCards.current.add(item.id)); if (fresh.length) setPrivateDrawCards(fresh); }, [room.myHand]);
-  useEffect(() => { const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id)); fresh.forEach((event) => seenEvents.current.add(event.id)); const visible = fresh.filter((event) => event.type !== "message" || event.presentation !== false); if (visible.length) setEventQueue((queue) => [...queue, ...visible]); }, [room.timeline]);
+  useEffect(() => { const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id)); fresh.forEach((event) => seenEvents.current.add(event.id)); const visible = fresh.filter((event) => event.type !== "message" || event.presentation !== false); if (visible.length) setEventQueue((queue) => [...queue, ...visible]); setProcessedTimelineKey(timelineKey); }, [room.timeline, timelineKey]);
   useEffect(() => { const unseenEvents = timelineKey.split("|").filter(Boolean).some((id) => !seenEvents.current.has(id)); const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || room.phase !== "draw" || activeEvent || eventQueue.length || unseenEvents || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, 1600); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, current?.name, lastTimelineId, timelineKey, activeEvent, eventQueue.length]);
   useEffect(() => { if (privateDrawCards.length || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { setActiveEvent(eventQueue[0]); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [privateDrawCards.length, activeEvent, eventQueue]);
   useEffect(() => { if (!activeEvent) return; const timer = setTimeout(() => setActiveEvent(null), 5000); return () => clearTimeout(timer); }, [activeEvent]);
