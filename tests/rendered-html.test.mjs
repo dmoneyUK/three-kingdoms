@@ -89,9 +89,16 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /PRIVATE CARD INFORMATION/);
   assert.match(page, /Only you can see this explanation/);
   assert.match(page, /cardDefinition\(infoCard\.kind\)\.rules/);
+  assert.match(page, /OFFICIAL_WTK_CARD_CATALOGUE/);
+  assert.match(page, /Official WTK card catalogue/);
   assert.match(styles, /\.card-info-dialog/);
+  assert.match(styles, /\.card-info-button\{[^}]*left:50%/);
   assert.doesNotMatch(page, /definition\.glyph/);
   assert.doesNotMatch(cards, /glyph:/);
   assert.doesNotMatch(cards, /杀|闪|桃|无中生有|过河拆桥/);
+  assert.match(cards, /name: "Burning Bridges"/);
+  assert.match(cards, /Equipment Zone, or Judgement Zone/);
+  assert.match(cards, /name: "Something Out of Nothing"/);
+  assert.match(cards, /https:\/\/wtkgames\.com\/gameCard\//);
   assert.doesNotMatch(page, /readyTurn/);
 });

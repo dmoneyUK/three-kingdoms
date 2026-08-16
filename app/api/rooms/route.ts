@@ -276,7 +276,7 @@ async function runBots(roomId: string) {
       hand = hand.filter((card) => card.id !== drawTwo!.id);
       const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; hand.push(...draw.drawn);
       discard.push(drawTwo);
-      log = addCardEvent(draw.log, bot.name, drawTwo); log = addHistory(log, `${bot.name} plays Draw2 and draws ${draw.drawn.length} cards.`);
+      log = addCardEvent(draw.log, bot.name, drawTwo); log = addHistory(log, `${bot.name} plays Something Out of Nothing and draws ${draw.drawn.length} cards.`);
     }
     while ((bot.hp ?? 0) < (bot.max_hp ?? 0)) {
       const peach = hand.find((card) => card.kind === "Peach"); if (!peach) break;
@@ -574,11 +574,11 @@ export async function POST(request: Request) {
         hand = hand.filter((item) => item.id !== card.id);
         const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; hand.push(...draw.drawn); drawnCards = draw.drawn;
         discard.push(card);
-        log = addCardEvent(draw.log, me.name, card); log = addHistory(log, `${me.name} plays Draw2 and draws ${draw.drawn.length} cards.`);
+        log = addCardEvent(draw.log, me.name, card); log = addHistory(log, `${me.name} plays Something Out of Nothing and draws ${draw.drawn.length} cards.`);
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
       } else if (card.kind === "Dismantle") {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
-        if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent to Dismantle." }, 400);
+        if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Burning Bridges." }, 400);
         const targetHand = parse<Card[]>(target.hand_json, []); const targetCardIndex = Number(body.targetCardIndex);
         if (!Number.isInteger(targetCardIndex) || targetCardIndex < 0 || targetCardIndex >= targetHand.length) return json({ error: "Choose one of that player's hidden hand cards." }, 400);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);

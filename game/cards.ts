@@ -3,20 +3,25 @@ import type { Card, CardKind, CardSuit } from "./model";
 export type CardDefinition = {
   kind: CardKind;
   name: string;
-  category: "basic" | "tactic";
+  category: "basic" | "stratagem";
   target: "self" | "opponent" | "response";
   description: string;
   rules: string;
+  officialCardId: number;
 };
 
+// YOKA Games' official English WTK card catalogue is the source of truth for
+// player-facing card names, categories, and effect summaries.
+export const OFFICIAL_WTK_CARD_CATALOGUE = "https://wtkgames.com/gameCard/";
+
 export const CARD_DEFINITIONS: Record<CardKind, CardDefinition> = {
-  Attack: { kind: "Attack", name: "Attack", category: "basic", target: "opponent", description: "Range 1 · deal 1 damage", rules: "During your Play Phase, choose one living player within attack range. They must play Dodge or take 1 damage. Normally, you may play one Attack per turn." },
-  Dodge: { kind: "Dodge", name: "Dodge", category: "basic", target: "response", description: "Play only when targeted", rules: "Play Dodge only when you are the current target of an Attack. It prevents that Attack from dealing damage." },
-  Peach: { kind: "Peach", name: "Peach", category: "basic", target: "self", description: "Recover 1 HP", rules: "During your Play Phase, recover 1 HP if you are injured. During a Dying rescue, play Peach on the dying player to restore them to 1 HP." },
-  DrawTwo: { kind: "DrawTwo", name: "Draw2", category: "tactic", target: "self", description: "Draw 2 cards", rules: "During your Play Phase, draw 2 cards. The cards drawn are visible only to you." },
-  Dismantle: { kind: "Dismantle", name: "Dismantle", category: "tactic", target: "opponent", description: "Discard 1 card from another player", rules: "During your Play Phase, choose any other player who has hand cards, then choose one hidden card position. That card is revealed and discarded." },
+  Attack: { kind: "Attack", name: "Attack", category: "basic", target: "opponent", description: "Range 1 · deal 1 damage", rules: "During your Play Phase, target a character within your attack range. They must play Dodge or take 1 damage. Normally, you may use one Attack per turn.", officialCardId: 173 },
+  Dodge: { kind: "Dodge", name: "Dodge", category: "basic", target: "response", description: "Avoid an Attack", rules: "Play Dodge when you are targeted by an Attack. That Attack deals no damage to you.", officialCardId: 56 },
+  Peach: { kind: "Peach", name: "Peach", category: "basic", target: "self", description: "Recover 1 HP", rules: "During your Play Phase, use Peach to recover 1 HP when you are wounded. When a character is Dying, Peach may instead rescue that character by restoring 1 HP.", officialCardId: 171 },
+  DrawTwo: { kind: "DrawTwo", name: "Something Out of Nothing", category: "stratagem", target: "self", description: "Draw 2 cards", rules: "During your Play Phase, play this card to draw 2 cards.", officialCardId: 184 },
+  Dismantle: { kind: "Dismantle", name: "Burning Bridges", category: "stratagem", target: "opponent", description: "Discard 1 of another player's cards", rules: "During your Play Phase, target another character. Discard 1 card from their hand, Equipment Zone, or Judgement Zone.", officialCardId: 174 },
   // Compatibility for games created before the English card name was corrected.
-  Strike: { kind: "Strike", name: "Attack", category: "basic", target: "opponent", description: "Range 1 · deal 1 damage", rules: "During your Play Phase, choose one living player within attack range. They must play Dodge or take 1 damage. Normally, you may play one Attack per turn." },
+  Strike: { kind: "Strike", name: "Attack", category: "basic", target: "opponent", description: "Range 1 · deal 1 damage", rules: "During your Play Phase, target a character within your attack range. They must play Dodge or take 1 damage. Normally, you may use one Attack per turn.", officialCardId: 173 },
 };
 
 // Standard-card core plus the first tactic card. Counts are explicit so the

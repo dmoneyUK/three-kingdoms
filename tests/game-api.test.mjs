@@ -206,7 +206,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal((await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "strike-zhang-fei-2", targetId: quickPlayerOne.id })).data.room.phase, "play");
 });
 
-test("Draw2 preserves Play Phase and reveals the tactic without exposing drawn cards", { timeout: 30_000 }, async () => {
+test("Something Out of Nothing preserves Play Phase and reveals the stratagem without exposing drawn cards", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const host = game.members[0];
   const hostPlayer = game.room.players.find((player) => player.name === "Host");
@@ -227,7 +227,7 @@ test("Draw2 preserves Play Phase and reveals the tactic without exposing drawn c
   const publicPlay = result.data.room.timeline.find((event) => event.type === "card" && event.card.kind === "DrawTwo");
   assert.equal(publicPlay.player, "Host");
   assert.equal(publicPlay.target, "Host");
-  const drawHistory = result.data.room.timeline.find((event) => /plays Draw2 and draws 2 cards/.test(event.message ?? ""));
+  const drawHistory = result.data.room.timeline.find((event) => /plays Something Out of Nothing and draws 2 cards/.test(event.message ?? ""));
   assert.equal(drawHistory.presentation, false);
   const opponentView = await state(game.code, game.members[1].token);
   assert.equal(opponentView.data.players.find((player) => player.id === hostPlayer.id).handCount, 2);

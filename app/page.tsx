@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { cardDefinition, isAttackCard } from "../game/cards";
+import { cardDefinition, isAttackCard, OFFICIAL_WTK_CARD_CATALOGUE } from "../game/cards";
 import type { Card } from "../game/model";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
@@ -187,7 +187,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
       {error && <p className="error play-error" role="alert">{error}</p>}<div className="self-summary"><strong>{room.myRole}</strong> · {heroName(me?.hero)} · {me?.hp}/{me?.maxHp} HP · Your position is always at the bottom</div>
     </footer>
     {historyOpen && <div className="history-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && setHistoryOpen(false)}><section className="history-window" role="dialog" aria-modal="true" aria-labelledby="history-title"><header><div><span>DEBUG TOOL</span><h2 id="history-title">Event history</h2></div><button type="button" onClick={() => setHistoryOpen(false)} aria-label="Close event history">×</button></header><p className="history-warning">For testing and rule verification. Newest events appear first.</p><div className="history-scroll">{room.timeline.length ? room.timeline.slice().reverse().map((event, index) => <div className="history-entry" key={event.id}><b>{room.timeline.length - index}</b><span>{describeEvent(event)}</span></div>) : <p>No events recorded yet.</p>}</div></section></div>}
-    {infoCard && <div className="card-info-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && setInfoCard(null)}><section className="card-info-dialog" role="dialog" aria-modal="true" aria-labelledby="card-info-title"><button type="button" className="card-info-close" onClick={() => setInfoCard(null)} aria-label="Close card explanation">×</button><span>PRIVATE CARD INFORMATION</span><small>{infoCard.rank}{infoCard.suit} · {cardDefinition(infoCard.kind).category} card</small><h2 id="card-info-title">{cardDefinition(infoCard.kind).name}</h2><p>{cardDefinition(infoCard.kind).rules}</p><em>Only you can see this explanation.</em></section></div>}
+    {infoCard && <div className="card-info-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && setInfoCard(null)}><section className="card-info-dialog" role="dialog" aria-modal="true" aria-labelledby="card-info-title"><button type="button" className="card-info-close" onClick={() => setInfoCard(null)} aria-label="Close card explanation">×</button><span>PRIVATE CARD INFORMATION</span><small>{infoCard.rank}{infoCard.suit} · {cardDefinition(infoCard.kind).category} card</small><h2 id="card-info-title">{cardDefinition(infoCard.kind).name}</h2><p>{cardDefinition(infoCard.kind).rules}</p><a href={OFFICIAL_WTK_CARD_CATALOGUE} target="_blank" rel="noreferrer">Official WTK card catalogue ↗</a><em>Only you can see this explanation.</em></section></div>}
   </main>;
 }
 
@@ -206,7 +206,7 @@ function cardEventVerb(event: CardEvent, peachRescue: boolean) {
   if (peachRescue) return "rescues";
   if (event.card.kind === "Peach") return "heals self";
   if (event.card.kind === "DrawTwo") return "draws 2 cards";
-  if (event.card.kind === "Dismantle") return "dismantles";
+  if (event.card.kind === "Dismantle") return "burns a bridge against";
   return "attacks";
 }
 
@@ -219,7 +219,7 @@ function cardEventDirection(event: CardEvent, peachRescue: boolean) {
   if (peachRescue) return "GIVES →";
   if (event.card.kind === "Dodge") return "← BLOCKS";
   if (isAttackCard(event.card)) return "ATTACKS →";
-  if (event.card.kind === "Dismantle") return "DISMANTLES →";
+  if (event.card.kind === "Dismantle") return "BURNING BRIDGES →";
   return "SELF";
 }
 
