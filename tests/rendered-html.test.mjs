@@ -19,7 +19,7 @@ test("server-renders the Three Kingdoms lobby", async () => {
   const html = await response.text();
   assert.match(html, /<title>Three Kingdoms/);
   assert.match(html, /Classic hidden-role mode/i);
-  assert.match(html, /Create a room/);
+  assert.match(html, /Start test game/);
   assert.match(html, /Join room/);
   assert.match(html, /Lord/);
   assert.match(html, /Loyalist/);
@@ -34,6 +34,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /CURRENT PHASE/);
   assert.match(page, /ACTING NOW/);
   assert.match(page, /onActionRef\.current\("draw"\)/);
+  assert.match(page, /send\("create", \{ quickStart: true \}\)/);
   assert.match(page, /Play selected/);
   assert.match(page, /Take 1 damage/);
   assert.match(page, /Discard \{excessCards\} selected/);

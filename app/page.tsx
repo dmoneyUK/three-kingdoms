@@ -81,7 +81,7 @@ export default function Home() {
         <div className="entry-card">
           <div className="entry-title"><span>ENTER THE REALM</span><small>4–8 players · One device each</small></div>
           <label>Your display name<input value={name} onChange={(event) => setName(event.target.value)} maxLength={20} placeholder="e.g. Jing" autoComplete="nickname" /></label>
-          <button className="gold-button" disabled={busy || name.trim().length < 2} onClick={() => send("create")}>{busy ? "Preparing…" : "Create a room"}</button>
+          <button className="gold-button" disabled={busy || name.trim().length < 2} onClick={() => send("create", { quickStart: true })}>{busy ? "Preparing…" : "Start test game"}</button>
           <div className="divider"><span>OR JOIN A FRIEND</span></div>
           <form onSubmit={(event: FormEvent) => { event.preventDefault(); send("join"); }}>
             <label>Five-character room code<input className="code-input" value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="ABCDE" autoCapitalize="characters" /></label>

@@ -126,4 +126,13 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(botsPlayed.data.room.timeline.some((entry) => /Player [123]/.test(entry.message ?? entry.player ?? "")));
   assert.equal((await state(game.code, host.token, true)).data.audit.length, 0);
   assert.ok((await state(botCode, botToken, true)).data.audit.length > 0);
+
+  const quick = await request("create", { name: "Quick Host", quickStart: true });
+  assert.equal(quick.status, 201); assert.equal(quick.data.room.status, "playing"); assert.equal(quick.data.room.phase, "draw"); assert.equal(quick.data.room.isMyTurn, true); assert.equal(quick.data.room.myRole, "Lord");
+  assert.deepEqual(quick.data.room.players.map((player) => player.name), ["Quick Host", "Player 1", "Player 2", "Player 3"]);
+  assert.deepEqual(quick.data.room.players.map((player) => player.isBot), [false, true, true, true]);
+  assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
+  assert.equal(quick.data.room.myHand.length, 4);
+  const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
+  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 6);
 });

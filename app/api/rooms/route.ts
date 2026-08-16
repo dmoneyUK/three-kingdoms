@@ -40,6 +40,7 @@ const HEROES: Hero[] = [
   { id: "yanliang-wenchou", name: "Yan Liang & Wen Chou", faction: "Neutral", hp: 4, ability: "A black card may launch a Duel." },
   { id: "pangde", name: "Pang De", faction: "Neutral", hp: 4, ability: "Improved attack distance; a dodged Strike can discard a target card." },
 ];
+const ROLE_SETS: Record<number, string[]> = { 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 
@@ -146,6 +147,23 @@ async function beginMatch(roomId: string, players: PlayerRow[]) {
   const updates = players.map((player) => db().prepare("UPDATE players SET hand_json = ?, alive = 1 WHERE id = ?").bind(JSON.stringify(deck.splice(0, 4)), player.id));
   const lord = players.find((player) => player.role === "Lord") ?? players[0];
   await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify([`${lord.name} begins the match.`]), roomId)]);
+}
+async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
+  const result = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+  const players = result.results ?? [];
+  const roles = [...ROLE_SETS[players.length]].sort(() => Math.random() - 0.5);
+  const lordIndex = players.findIndex((player) => player.id === hostPlayerId); const lordAt = roles.indexOf("Lord");
+  [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
+  const rulers = HEROES.filter((hero) => ["cao-cao", "liu-bei", "sun-quan"].includes(hero.id)).sort(() => Math.random() - 0.5);
+  const otherHeroes = HEROES.filter((hero) => !["cao-cao", "liu-bei", "sun-quan"].includes(hero.id)).sort(() => Math.random() - 0.5);
+  let otherHeroIndex = 0;
+  const assigned = players.map((player, index) => {
+    const hero = roles[index] === "Lord" ? rulers[0] : otherHeroes[otherHeroIndex++];
+    const hp = hero.hp + (roles[index] === "Lord" ? 1 : 0);
+    return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
+  });
+  await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
+  await beginMatch(roomId, assigned);
 }
 function db() { return env.DB; }
 
@@ -258,11 +276,20 @@ export async function POST(request: Request) {
   if (action === "create") {
     if (name.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
     const roomId = crypto.randomUUID(); const playerId = crypto.randomUUID(); const token = newToken(); let code = randomCode();
+    const quickStart = body.quickStart === true;
     for (let attempt = 0; attempt < 4; attempt++) { const exists = await db.prepare("SELECT 1 FROM rooms WHERE code = ?").bind(code).first(); if (!exists) break; code = randomCode(); }
-    await db.batch([
+    const inserts = [
       db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', 8, ?)").bind(roomId, code, playerId, Date.now()),
       db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, name, await hash(token), Date.now()),
-    ]);
+    ];
+    if (quickStart) for (let index = 1; index <= 3; index++) inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), roomId, `Player ${index}`, `bot:${crypto.randomUUID()}`, index, Date.now()));
+    await db.batch(inserts);
+    if (quickStart) {
+      await db.batch([db.prepare("DELETE FROM game_audit"), db.prepare("DELETE FROM sqlite_sequence WHERE name = 'game_audit'"), db.prepare("INSERT INTO audit_scope (id, room_id) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET room_id = excluded.room_id").bind(roomId)]);
+      const createdRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const host = await db.prepare("SELECT * FROM players WHERE id = ?").bind(playerId).first<PlayerRow>();
+      if (createdRoom && host) await recordAuditAction(createdRoom, host, name, "quick_start");
+      await beginRandomizedMatch(roomId, playerId);
+    }
     return json({ token, room: await roomState(code, token) }, 201);
   }
 
@@ -309,8 +336,7 @@ export async function POST(request: Request) {
     if (players.length < 4) return json({ error: "Classic mode needs at least 4 players." }, 409);
     await db.batch([db.prepare("DELETE FROM game_audit"), db.prepare("DELETE FROM sqlite_sequence WHERE name = 'game_audit'"), db.prepare("INSERT INTO audit_scope (id, room_id) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET room_id = excluded.room_id").bind(room.id)]);
     await recordAuditAction(room, me, name, action);
-    const roleSets: Record<number, string[]> = { 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
-    const roles = [...roleSets[players.length]].sort(() => Math.random() - 0.5);
+    const roles = [...ROLE_SETS[players.length]].sort(() => Math.random() - 0.5);
     const lordIndex = players.findIndex((player) => player.id === room.host_player_id); const lordAt = roles.indexOf("Lord");
     [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
     const rulers = HEROES.filter((hero) => ["cao-cao", "liu-bei", "sun-quan"].includes(hero.id));
