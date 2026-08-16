@@ -32,6 +32,7 @@ test("server-renders the Three Kingdoms lobby", async () => {
 
 test("client keeps the turn, response, presentation, and selection controls", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(page, /TURN OWNER/);
   assert.match(page, /CURRENT PHASE/);
   assert.match(page, /ACTING NOW/);
@@ -45,6 +46,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /there is no need to wait for the timer/);
   assert.match(page, /rescuePeaches\.map/);
   assert.match(page, /rescue-peach-choice/);
+  assert.match(styles, /\.rescue-decision-stage \.primary\{display:inline-block\}/);
   assert.match(page, /cardId: card\.id/);
   assert.match(page, /rescueDecisionReady && item\.kind !== "Peach"/);
   assert.match(page, /PRIVATE RESCUE DECISION/);
