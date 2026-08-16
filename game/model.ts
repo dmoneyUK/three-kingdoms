@@ -1,4 +1,4 @@
-export const CARD_KINDS = ["Attack", "Dodge", "Peach", "DrawTwo", "Strike"] as const;
+export const CARD_KINDS = ["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Strike"] as const;
 export type CardKind = (typeof CARD_KINDS)[number];
 export type CardSuit = "♥" | "♦" | "♣" | "♠";
 

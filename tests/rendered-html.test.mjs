@@ -60,7 +60,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /start_rescue_timer/);
   assert.match(page, /automaticRescueSkip/);
   assert.match(page, /5000/);
-  assert.match(page, /Discard \{excessCards\} selected/);
+  assert.match(page, /Discard \$\{excessCards\} selected/);
   assert.match(page, /discard-card-row/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
   assert.match(page, /setTimeout\(\(\) => setActiveEvent\(null\), 5000\)/);
@@ -74,6 +74,11 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(styles, /\.game-card\.attack/);
   assert.match(page, /Tap to answer Attack/);
   assert.doesNotMatch(page, />盾</);
+  assert.match(page, /hidden-card-picker/);
+  assert.match(page, /targetCardIndex/);
+  assert.match(page, /Finishing…/);
+  assert.match(page, /Passing…/);
+  assert.match(styles, /\.game-card\.dismantle/);
   assert.match(page, /knownHandCards/);
   assert.match(page, /setTimeout\(\(\) => setPrivateDrawCards\(\[\]\), 5000\)/);
   assert.match(page, /Event history/);
