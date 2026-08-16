@@ -71,6 +71,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /cardDefinition/);
   assert.match(page, /DrawTwo/);
   assert.match(styles, /\.game-card\.drawtwo/);
+  assert.match(styles, /\.game-card\.attack/);
+  assert.match(page, /Tap to answer Attack/);
+  assert.doesNotMatch(page, />盾</);
   assert.match(page, /knownHandCards/);
   assert.match(page, /setTimeout\(\(\) => setPrivateDrawCards\(\[\]\), 5000\)/);
   assert.match(page, /Event history/);

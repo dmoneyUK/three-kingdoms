@@ -1,4 +1,4 @@
-export const CARD_KINDS = ["Strike", "Dodge", "Peach", "DrawTwo"] as const;
+export const CARD_KINDS = ["Attack", "Dodge", "Peach", "DrawTwo", "Strike"] as const;
 export type CardKind = (typeof CARD_KINDS)[number];
 export type CardSuit = "♥" | "♦" | "♣" | "♠";
 
@@ -17,4 +17,3 @@ export type GamePlayer = {
 };
 
 export type GamePhase = "draw" | "play" | "play-struck" | "response" | "dying" | "resolving" | "discard" | "finished";
-

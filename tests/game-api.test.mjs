@@ -62,7 +62,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(hostPlayer && alicePlayer && bobPlayer && carolPlayer);
   assert.equal(game.room.status, "playing"); assert.equal(game.room.phase, "draw"); assert.equal(game.room.isMyTurn, true); assert.equal(game.room.myHand.length, 4); assert.equal(game.room.myRole, "Lord");
   const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
-  assert.deepEqual(deckComposition, ["Dodge:15", "DrawTwo:4", "Peach:8", "Strike:30"]);
+  assert.deepEqual(deckComposition, ["Attack:30", "Dodge:15", "DrawTwo:4", "Peach:8"]);
   assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
   const aliceView = await state(game.code, alice.token);
   assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
@@ -74,18 +74,18 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(draw.status, 200); assert.equal(draw.data.drawnCards.length, 2); assert.equal(draw.data.room.myHand.length, 6); assert.equal(draw.data.room.phase, "play");
   assert.equal((await request("draw", { code: game.code, token: host.token })).status, 409);
 
-  setHand(hostPlayer.id, [card("Strike", "range")], 4, 5); setTurn(game.code, hostPlayer.seat);
-  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "strike-range", targetId: bobPlayer.id })).status, 409);
+  setHand(hostPlayer.id, [card("Attack", "range")], 4, 5); setTurn(game.code, hostPlayer.seat);
+  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-range", targetId: bobPlayer.id })).status, 409);
 
-  setHand(hostPlayer.id, [card("Strike", "dodge")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "answer")], 4); setTurn(game.code, hostPlayer.seat);
-  const attacked = await request("play_card", { code: game.code, token: host.token, cardId: "strike-dodge", targetId: alicePlayer.id });
+  setHand(hostPlayer.id, [card("Attack", "dodge")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "answer")], 4); setTurn(game.code, hostPlayer.seat);
+  const attacked = await request("play_card", { code: game.code, token: host.token, cardId: "attack-dodge", targetId: alicePlayer.id });
   assert.equal(attacked.status, 200); assert.equal(attacked.data.room.phase, "response"); assert.equal(attacked.data.room.actionPlayerId, alicePlayer.id);
   assert.equal((await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-answer" })).status, 409);
   const dodged = await request("respond_dodge", { code: game.code, token: alice.token, cardId: "dodge-answer" });
   assert.equal(dodged.status, 200); assert.equal(dodged.data.room.phase, "play-struck"); assert.equal(dodged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
-  setHand(hostPlayer.id, [card("Strike", "damage")], 4, 5); setHand(alicePlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
-  const damaged = await request("play_card", { code: game.code, token: host.token, cardId: "strike-damage", targetId: alicePlayer.id });
+  setHand(hostPlayer.id, [card("Attack", "damage")], 4, 5); setHand(alicePlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
+  const damaged = await request("play_card", { code: game.code, token: host.token, cardId: "attack-damage", targetId: alicePlayer.id });
   assert.equal(damaged.status, 200); assert.equal(damaged.data.room.phase, "play-struck"); assert.equal(damaged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3);
 
   setHand(hostPlayer.id, [card("Peach", "heal")], 3, 5); setTurn(game.code, hostPlayer.seat);
@@ -176,6 +176,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(quick.data.room.players.find((player) => player.name === "ME").hero, "zhang-fei");
   assert.ok(quick.data.room.players.filter((player) => player.isBot).every((player) => player.hp === 1 && player.maxHp === 1));
   assert.equal(quick.data.room.myHand.length, 4);
+  assert.ok(quick.data.room.myHand.some((openingCard) => openingCard.kind === "DrawTwo"), "ME starts every test game with the newest card");
   assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
   assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);
   const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
@@ -186,7 +187,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal((await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "strike-zhang-fei-2", targetId: quickPlayerOne.id })).data.room.phase, "play");
 });
 
-test("Draw Two preserves Play Phase and reveals the tactic without exposing drawn cards", { timeout: 30_000 }, async () => {
+test("Draw2 preserves Play Phase and reveals the tactic without exposing drawn cards", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const host = game.members[0];
   const hostPlayer = game.room.players.find((player) => player.name === "Host");
@@ -207,7 +208,7 @@ test("Draw Two preserves Play Phase and reveals the tactic without exposing draw
   const publicPlay = result.data.room.timeline.find((event) => event.type === "card" && event.card.kind === "DrawTwo");
   assert.equal(publicPlay.player, "Host");
   assert.equal(publicPlay.target, "Host");
-  const drawHistory = result.data.room.timeline.find((event) => /plays Draw Two and draws 2 cards/.test(event.message ?? ""));
+  const drawHistory = result.data.room.timeline.find((event) => /plays Draw2 and draws 2 cards/.test(event.message ?? ""));
   assert.equal(drawHistory.presentation, false);
   const opponentView = await state(game.code, game.members[1].token);
   assert.equal(opponentView.data.players.find((player) => player.id === hostPlayer.id).handCount, 2);
