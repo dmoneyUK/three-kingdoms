@@ -1,100 +1,116 @@
-# vinext-starter
+# Three Kingdoms
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+An English online implementation of the classic Three Kingdoms card game, built for small private groups of friends.
 
-## Prerequisites
+- Play: https://three-realms-table.dai-jinge.chatgpt.site
+- Source: https://github.com/dmoneyUK/three-kingdoms
+- Current stage: **playable rules prototype and card expansion**
 
-- Node.js `>=22.13.0`
+The hosted game is public and does not require a GitHub or ChatGPT account. Players join a room using a room code and keep their session on their device.
 
-## Quick Start
+## Current Stage
+
+The complete four-player test loop is playable with one human player and three bots. The project currently includes:
+
+- automatic roles and hero assignment;
+- Lord bonus HP and the Zhang Fei test hero;
+- Draw, Play, Discard and Ending phases;
+- turn ownership, seat order, distance and attack range;
+- ordered Attack, Dodge, Duel and global-card responses;
+- Peach healing and turn-ordered Dying rescue;
+- death, role reveal and Rebel defeat rewards;
+- automatic bot drawing, card play, responses, rescue and discard;
+- private card draws and private rescue decisions;
+- five-second card, damage, discard and role presentations;
+- event history plus a detailed rule-audit trail; and
+- a quick-test opening hand containing one of every implemented card.
+
+### Implemented cards
+
+- Attack
+- Dodge
+- Peach
+- Something Out of Nothing
+- Burning Bridges
+- Steal
+- Duel
+- Oath of the Peach Garden
+- Barbarian Invasion
+- Raining Arrows
+
+### Known issues being investigated
+
+- Oath of the Peach Garden should be playable even when nobody needs healing.
+- A reported Player 3 → ME transition may have skipped ME's next turn.
+
+## Roadmap
+
+### 1. Stabilise the turn loop — current priority
+
+- Fix Oath of the Peach Garden at full health.
+- Inspect the latest audit sequence for the reported skipped turn.
+- Enforce Player 3 → ME and dead-player skipping rules.
+- Add multi-round regression tests for human and bot turns.
+
+### 2. Strengthen the general rules engine
+
+- Centralise turn ownership, phases and pending responses.
+- Add state invariants that reject duplicated or skipped actions.
+- Expand deterministic tests for damage, rescue, death and victory transitions.
+
+### 3. Complete the general card set
+
+- Add remaining immediate stratagem cards one at a time.
+- Add response-chain cards.
+- Add delayed stratagems and the Judgement Zone.
+
+### 4. Add equipment and distance modifiers
+
+- Weapons and attack range.
+- Armour effects.
+- Offensive and defensive horses.
+
+### 5. Complete match rules
+
+- Thoroughly test Lord, Loyalist, Rebel and Renegade victory conditions.
+- Complete rewards and penalties for every defeat combination.
+- Improve reconnect, disconnect and room-cleanup behaviour.
+
+### 6. Add hero-specific abilities
+
+Hero details are intentionally deferred until the shared rules and cards are stable. Abilities will then be added and tested hero by hero.
+
+### 7. Product polish
+
+- Improve mobile clarity, animations and accessibility.
+- Add optional sound controls.
+- Improve game setup and friend invitations.
+- Add optional saved match history and player statistics.
+
+## Optional ChatGPT Identity
+
+ChatGPT Sites can optionally provide signed-in visitor identity or require Sign in with ChatGPT. Three Kingdoms does **not** currently use these features; anonymous friends can play from the public game link. They may become useful later for saved profiles, statistics or persistent match history.
+
+## Development
+
+Prerequisite: Node.js `>=22.13.0`.
 
 ```bash
 npm install
 npm run dev
-npm run build
+npm test
+npm run lint
 ```
 
-This starter does not use `wrangler.jsonc`.
+The application uses React, TypeScript, vinext, Cloudflare Workers and D1. ChatGPT Sites hosts the live game and provides its database. Pushing code to GitHub does not by itself publish a new live version.
 
-## Included Shape
+## Contributing
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+The repository is currently private. To contribute:
 
-## Workspace Auth Headers
+1. Ask the repository owner to add your GitHub account as a collaborator.
+2. Create a feature or bug-fix branch.
+3. Run the tests and lint checks.
+4. Open a pull request into `main`.
 
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+Please keep card names and rules aligned with the official English reference recorded in `docs/OFFICIAL_CARD_REFERENCE.md`. Do not add official card artwork without confirming usage rights.
