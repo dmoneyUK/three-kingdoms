@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getRequestExecutionContext } from "vinext/shims/request-context";
-import { DECK_CARD_KINDS, isAttackCard, makeDeck } from "../../../game/cards";
+import { cardDefinition, DECK_CARD_KINDS, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind } from "../../../game/model";
 import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 
@@ -9,8 +9,9 @@ export const runtime = "edge";
 type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actorId: string; reason: string };
 type DuelPending = { kind: "duel"; sourceId: string; targetId: string; actorId: string; opponentId: string; resumePhase: string; reason: string };
 type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows"; sourceId: string; actorId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; reason: string };
+type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; resumePhase: string; reason: string };
 type DyingPending = { kind: "dying"; sourceId: string; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId?: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
-type Pending = AttackPending | DuelPending | GroupPending | DyingPending;
+type Pending = AttackPending | DuelPending | GroupPending | HarvestPending | DyingPending;
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null };
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; alive: number; connected_at: number };
@@ -48,7 +49,7 @@ const HEROES: Hero[] = [
 const ROLE_SETS: Record<number, string[]> = { 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
-const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "start_rescue_timer", "give_peach", "skip_rescue"]);
+const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "choose_harvest", "start_rescue_timer", "give_peach", "skip_rescue"]);
 
 async function setup() {
   const db = env.DB;
@@ -84,8 +85,9 @@ async function hash(value: string) { const bytes = await crypto.subtle.digest("S
 function parse<T>(value: string | null, fallback: T): T { try { return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } }
 function addLog(log: string[], message: string) { return [...log.slice(-199), `@event:${JSON.stringify({ id: crypto.randomUUID(), message })}`]; }
 function addHistory(log: string[], message: string) { return [...log.slice(-199), `@history:${JSON.stringify({ id: crypto.randomUUID(), message })}`]; }
-function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "discard" = "play") { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player, target, card, action })}`]; }
-function addDiscardEvent(log: string[], player: string, cards: Card[]) { return cards.length ? [...log.slice(-199), `@cards:${JSON.stringify({ id: crypto.randomUUID(), player, target: player, cards, action: "discard" })}`] : log; }
+function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "discard" | "gain" = "play") { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player, target, card, action })}`]; }
+function addCardGroupEvent(log: string[], player: string, cards: Card[], action: "discard" | "reveal") { return cards.length ? [...log.slice(-199), `@cards:${JSON.stringify({ id: crypto.randomUUID(), player, target: player, cards, action })}`] : log; }
+function addDiscardEvent(log: string[], player: string, cards: Card[]) { return addCardGroupEvent(log, player, cards, "discard"); }
 function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) {
   const drawn: Card[] = [];
   while (drawn.length < count) {
@@ -407,6 +409,68 @@ async function advanceGroup(roomId: string) {
   }
 }
 
+function nextHarvestPending(pending: HarvestPending, players: PlayerRow[]) {
+  const nextIds = pending.remainingIds.filter((id) => players.some((player) => player.id === id && player.alive));
+  if (!nextIds.length || !pending.revealed.length) return null;
+  const actorId = nextIds[0];
+  return { ...pending, actorId, remainingIds: nextIds.slice(1), reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
+}
+
+async function resolveHarvestChoice(room: RoomRow, pending: HarvestPending, actor: PlayerRow, players: PlayerRow[], chosen: Card) {
+  const hand = [...parse<Card[]>(actor.hand_json, []), chosen];
+  let log = parse<string[]>(room.log_json, []);
+  log = addCardEvent(log, actor.name, chosen, actor.name, "gain");
+  log = addLog(log, `${actor.name} chooses ${chosen.rank}${chosen.suit} ${cardDefinition(chosen.kind).name} from Bumper Harvest.`);
+  const remainingPending = { ...pending, revealed: pending.revealed.filter((card) => card.id !== chosen.id) };
+  const next = nextHarvestPending(remainingPending, players);
+  if (next) {
+    await db().batch([
+      db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id),
+      db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(next), JSON.stringify(log), room.id),
+    ]);
+    await advanceHarvest(room.id);
+    return;
+  }
+  await db().batch([
+    db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id),
+    db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(addLog(log, "Bumper Harvest finishes resolving.")), room.id),
+  ]);
+  await continueAfterDying(room.id, pending.sourceId);
+}
+
+async function advanceHarvest(roomId: string) {
+  for (let guard = 0; guard < 12; guard++) {
+    const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+    const pending = parse<Pending | null>(room?.pending_json ?? null, null);
+    if (!room || room.phase !== "response" || pending?.kind !== "harvest") return;
+    const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+    const players = rows.results ?? []; const actor = players.find((player) => player.id === pending.actorId && player.alive);
+    if (!actor) {
+      const next = nextHarvestPending(pending, players);
+      if (!next) {
+        const log = addLog(parse<string[]>(room.log_json, []), "Bumper Harvest finishes resolving.");
+        await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(log), roomId, room.pending_json).run();
+        await continueAfterDying(roomId, pending.sourceId);
+        return;
+      }
+      await db().prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(JSON.stringify(next), roomId, room.pending_json).run();
+      continue;
+    }
+    if (!isBotPlayer(actor)) return;
+    const chosen = pending.revealed[0];
+    if (!chosen) {
+      const log = addLog(parse<string[]>(room.log_json, []), "Bumper Harvest finishes resolving.");
+      await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(log), roomId, room.pending_json).run();
+      await continueAfterDying(roomId, pending.sourceId);
+      return;
+    }
+    const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
+    if ((claim.meta.changes ?? 0) <= 0) continue;
+    await resolveHarvestChoice(room, pending, actor, players, chosen);
+    return;
+  }
+}
+
 async function runBots(roomId: string) {
   for (let guard = 0; guard < 12; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
@@ -448,6 +512,23 @@ async function runBots(roomId: string) {
       hand = hand.filter((card) => card.id !== dismantle.id); discard.push(dismantle, dismantled); changedHands.set(dismantleTarget.id, targetHand);
       log = addCardEvent(log, bot.name, dismantle, dismantleTarget.name); log = addCardEvent(log, dismantleTarget.name, dismantled, dismantleTarget.name, "discard"); log = addHistory(log, `${bot.name} dismantles one hidden card from ${dismantleTarget.name}.`);
       writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), dismantleTarget.id));
+    }
+    const harvest = hand.find((card) => card.kind === "BumperHarvest");
+    const harvestTargets = playersInTurnOrder(players, bot.seat);
+    if (harvest && harvestTargets.length) {
+      hand = hand.filter((card) => card.id !== harvest.id);
+      const draw = drawCards(deck, discard, harvestTargets.length, log); deck = draw.deck; discard = draw.discard; log = draw.log; discard.push(harvest);
+      const choosers = harvestTargets.slice(0, draw.drawn.length);
+      log = addCardEvent(log, bot.name, harvest, "All living players"); log = addCardGroupEvent(log, bot.name, draw.drawn, "reveal");
+      log = addLog(log, `${bot.name} plays Bumper Harvest and reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}. ${choosers[0]?.name ?? "No player"} chooses first.`);
+      writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
+      if (!choosers.length) {
+        writes.push(db().prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+        await db().batch(writes); continue;
+      }
+      const pending: HarvestPending = { kind: "harvest", sourceId: bot.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, resumePhase: "play", reason: "Choose 1 revealed card from Bumper Harvest" };
+      writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+      await db().batch(writes); await advanceHarvest(roomId); return;
     }
     const groupCard = hand.find((card) => card.kind === "BarbarianInvasion" || card.kind === "RainingArrows");
     const groupTargets = playersInTurnOrder(players, bot.seat).filter((player) => player.alive && player.id !== bot.id);
@@ -529,6 +610,7 @@ async function roomState(code: string, token?: string) {
     pendingAttack: pending?.kind === "attack" ? pending : null,
     pendingDuel: pending?.kind === "duel" ? pending : null,
     pendingGroup: pending?.kind === "group" ? pending : null,
+    pendingHarvest: pending?.kind === "harvest" ? { sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed } : null,
     pendingDying: pending?.kind === "dying" ? { sourceId: pending.sourceId, targetId: pending.targetId, deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
     players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), handCount: parse<Card[]>(player.hand_json, []).length, distance: me ? distanceBetween(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? player.role : null })),
   };
@@ -667,6 +749,20 @@ export async function POST(request: Request) {
       await beginMatch(room.id, ready.results ?? []);
       await runBots(room.id);
     }
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (action === "choose_harvest") {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+    const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
+    if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "harvest" || pending.actorId !== me.id) return json({ error: "Wait for your turn to choose from Bumper Harvest." }, 409);
+    const chosen = pending.revealed.find((card) => card.id === String(body.cardId ?? ""));
+    if (!chosen) return json({ error: "Choose one of the revealed Bumper Harvest cards." }, 400);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Bumper Harvest choice has already been resolved." }, 409);
+    const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+    await resolveHarvestChoice(liveRoom, pending, me, rows.results ?? [], chosen);
     return json({ room: await roomState(code, token) });
   }
 
@@ -826,6 +922,29 @@ export async function POST(request: Request) {
           ...wounded.map((player) => db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(Math.min(player.max_hp ?? 0, (player.hp ?? 0) + 1), player.id)),
           db.prepare("UPDATE rooms SET phase = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id),
         ]);
+      } else if (card.kind === "BumperHarvest") {
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+        const players = rows.results ?? []; const choosersInOrder = playersInTurnOrder(players, me.seat);
+        if (!choosersInOrder.length) return json({ error: "There are no living characters to take part in Bumper Harvest." }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        hand = hand.filter((item) => item.id !== card.id);
+        const draw = drawCards(deck, discard, choosersInOrder.length, log); deck = draw.deck; discard = draw.discard; log = draw.log; discard.push(card);
+        const choosers = choosersInOrder.slice(0, draw.drawn.length);
+        log = addCardEvent(log, me.name, card, "All living players"); log = addCardGroupEvent(log, me.name, draw.drawn, "reveal");
+        log = addLog(log, `${me.name} plays Bumper Harvest and reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}. ${choosers[0]?.name ?? "No player"} chooses first.`);
+        if (!choosers.length) {
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+            db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id),
+          ]);
+        } else {
+          const pending: HarvestPending = { kind: "harvest", sourceId: me.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, resumePhase: liveRoom.phase, reason: "Choose 1 revealed card from Bumper Harvest" };
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+            db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id),
+          ]);
+          await advanceHarvest(room.id);
+        }
       } else if (card.kind === "BarbarianInvasion" || card.kind === "RainingArrows") {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const targets = playersInTurnOrder(players, me.seat).filter((player) => player.id !== me.id);

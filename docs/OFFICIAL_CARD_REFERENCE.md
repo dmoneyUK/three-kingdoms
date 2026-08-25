@@ -20,6 +20,7 @@ Current mappings:
 | `Oath` | Oath of the Peach Garden | 81 |
 | `BarbarianInvasion` | Barbarian Invasion | 178 |
 | `RainingArrows` | Raining Arrows | 183 |
+| `BumperHarvest` | Bumper Harvest | 57 |
 
 Development policy:
 

@@ -37,9 +37,11 @@ The complete four-player test loop is playable with one human player and three b
 - Oath of the Peach Garden
 - Barbarian Invasion
 - Raining Arrows
+- Bumper Harvest
 
 ### Recently stabilised
 
+- Bumper Harvest now reveals one card per living player and pauses for ordered, public choices by humans and bots.
 - Oath of the Peach Garden remains playable when nobody needs healing; it resolves without changing HP.
 - Player 3 → ME is covered by a response-and-round-transition regression test.
 - Consecutive bot rounds with Barbarian Invasion and Raining Arrows return control to ME correctly.
