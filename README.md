@@ -47,13 +47,13 @@ The complete four-player test loop is playable with one human player and three b
 
 ### 1. Stabilise the turn loop — current priority
 
-- Expand multi-round regression tests for human and bot turns.
-- Enforce state invariants for Player 3 → ME and dead-player skipping rules.
+- Expand multi-round bot tests around global cards, Dying and victory transitions.
+- Continue strengthening state invariants around response chains.
 
 ### 2. Strengthen the general rules engine
 
 - Centralise turn ownership, phases and pending responses.
-- Add state invariants that reject duplicated or skipped actions.
+- Extend the state checks that reject invalid ownership and pending-action combinations.
 - Expand deterministic tests for damage, rescue, death and victory transitions.
 
 ### 3. Complete the general card set

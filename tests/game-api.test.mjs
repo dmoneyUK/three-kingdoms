@@ -304,3 +304,38 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
   assert.equal(opponentView.data.players.find((player) => player.id === hostPlayer.id).handCount, 2);
   assert.equal(opponentView.data.myHand.some((held) => result.data.drawnCards.some((drawn) => drawn.id === held.id)), false);
 });
+
+test("turn engine completes repeated rounds, rejects duplicate actions, and skips defeated players", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const membersBySeat = game.room.players.map((player) => ({ player, member: game.members.find((member) => member.name === player.name) })).sort((a, b) => a.player.seat - b.player.seat);
+  assert.ok(membersBySeat.every(({ member }) => member));
+  for (const { player } of membersBySeat) setHand(player.id, [], 10, 10);
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 40 }, (_, index) => card("Dodge", `round-${index}`))))}, discard_json='[]' WHERE code=${quote(game.code)}`);
+  setTurn(game.code, membersBySeat[0].player.seat, "draw");
+
+  for (let round = 0; round < 3; round++) {
+    for (let index = 0; index < membersBySeat.length; index++) {
+      const current = membersBySeat[index]; const next = membersBySeat[(index + 1) % membersBySeat.length];
+      const before = await state(game.code, current.member.token);
+      assert.equal(before.data.turnSeat, current.player.seat, `round ${round + 1} starts ${current.player.name}'s turn`); assert.equal(before.data.phase, "draw");
+      const drawn = await request("draw", { code: game.code, token: current.member.token });
+      assert.equal(drawn.status, 200); assert.equal(drawn.data.room.phase, "play"); assert.equal(drawn.data.drawnCards.length, 2);
+      assert.equal((await request("draw", { code: game.code, token: current.member.token })).status, 409, "a player cannot draw twice");
+      assert.equal((await request("end_turn", { code: game.code, token: next.member.token })).status, 409, "the next player cannot act early");
+      const ended = await request("end_turn", { code: game.code, token: current.member.token });
+      assert.equal(ended.status, 200); assert.equal(ended.data.room.turnSeat, next.player.seat); assert.equal(ended.data.room.phase, "draw");
+    }
+  }
+
+  const [, playerOne, defeated, playerThree] = membersBySeat;
+  sql(`UPDATE players SET alive=0, hp=0 WHERE id=${quote(defeated.player.id)}`);
+  for (const { player } of membersBySeat) if (player.id !== defeated.player.id) setHand(player.id, [], 10, 10);
+  setTurn(game.code, playerOne.player.seat, "play");
+  const skipped = await request("end_turn", { code: game.code, token: playerOne.member.token });
+  assert.equal(skipped.status, 200); assert.equal(skipped.data.room.turnSeat, playerThree.player.seat); assert.equal(skipped.data.room.phase, "draw");
+  assert.equal((await request("draw", { code: game.code, token: defeated.member.token })).status, 409, "a defeated player cannot act");
+
+  setTurn(game.code, defeated.player.seat, "draw");
+  const invalidState = await request("draw", { code: game.code, token: defeated.member.token });
+  assert.equal(invalidState.status, 409); assert.match(invalidState.data.error, /Game state check failed: The active turn does not belong to a living player/);
+});

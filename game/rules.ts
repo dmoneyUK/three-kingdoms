@@ -6,12 +6,17 @@ function livingPlayers<T extends GamePlayer>(players: T[]) {
 
 export function nextAliveSeat<T extends GamePlayer>(players: T[], seat: number) {
   const alive = livingPlayers(players);
-  return alive.find((player) => player.seat > seat)?.seat ?? alive[0]?.seat ?? seat;
+  if (!alive.length) throw new Error("A playing match must have at least one living player.");
+  const next = alive.find((player) => player.seat > seat) ?? alive[0];
+  if (!next.alive) throw new Error("The next turn must belong to a living player.");
+  return next.seat;
 }
 
 export function playersInTurnOrder<T extends GamePlayer>(players: T[], turnSeat: number) {
   const alive = livingPlayers(players);
-  const start = Math.max(0, alive.findIndex((player) => player.seat === turnSeat));
+  const exact = alive.findIndex((player) => player.seat === turnSeat);
+  const following = alive.findIndex((player) => player.seat > turnSeat);
+  const start = exact >= 0 ? exact : following >= 0 ? following : 0;
   return [...alive.slice(start), ...alive.slice(0, start)];
 }
 

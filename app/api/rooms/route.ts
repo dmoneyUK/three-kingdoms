@@ -48,6 +48,7 @@ const HEROES: Hero[] = [
 const ROLE_SETS: Record<number, string[]> = { 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "start_rescue_timer", "give_peach", "skip_rescue"]);
 
 async function setup() {
   const db = env.DB;
@@ -175,6 +176,25 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: DECK_CARD_KINDS });
 }
 function db() { return env.DB; }
+
+function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
+  if (room.status !== "playing") return null;
+  const owner = players.find((player) => player.seat === room.turn_seat && player.alive);
+  if (!owner) return "The active turn does not belong to a living player.";
+  const pending = parse<Pending | null>(room.pending_json, null);
+  if (room.phase === "response" || room.phase === "dying") {
+    if (!pending) return `The ${room.phase} phase is missing its pending action.`;
+    if (room.phase === "dying" && pending.kind !== "dying") return "The Dying phase contains the wrong pending action.";
+    if (room.phase === "response" && pending.kind === "dying") return "The Response phase contains a Dying action.";
+    const actor = players.find((player) => player.id === pending.actorId && player.alive);
+    if (!actor) return "The pending action does not belong to a living player.";
+    const expectedOwnerId = pending.kind === "dying" ? pending.resumePlayerId ?? pending.sourceId : pending.sourceId;
+    if (owner.id !== expectedOwnerId) return "The pending action does not belong to the current turn owner.";
+  } else if (room.phase !== "resolving" && pending) {
+    return `The ${room.phase ?? "unknown"} phase contains an unexpected pending action.`;
+  }
+  return null;
+}
 
 async function continueInBackground(work: () => Promise<void>) {
   const context = getRequestExecutionContext();
@@ -582,6 +602,12 @@ export async function POST(request: Request) {
   const tokenHash = await hash(token);
   const me = await db.prepare("SELECT * FROM players WHERE room_id = ? AND token_hash = ?").bind(room.id, tokenHash).first<PlayerRow>();
   if (action !== "start") await recordAuditAction(room, me ?? null, name, action);
+  if (GAMEPLAY_ACTIONS.has(action)) {
+    const currentRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+    const currentPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+    const issue = currentRoom ? playingStateIssue(currentRoom, currentPlayers.results ?? []) : "The game room is unavailable.";
+    if (issue) return json({ error: `Game state check failed: ${issue}` }, 409);
+  }
 
   if (action === "add_test_players") {
     if (!me || me.id !== room.host_player_id) return json({ error: "Only the host can add test players." }, 403);
