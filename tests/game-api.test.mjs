@@ -339,3 +339,57 @@ test("turn engine completes repeated rounds, rejects duplicate actions, and skip
   const invalidState = await request("draw", { code: game.code, token: defeated.member.token });
   assert.equal(invalidState.status, 409); assert.match(invalidState.data.error, /Game state check failed: The active turn does not belong to a living player/);
 });
+
+test("bot global cards resolve across consecutive rounds and return the turn to ME", { timeout: 30_000 }, async () => {
+  const quick = await request("create", { quickStart: true });
+  const token = quick.data.token; const code = quick.data.room.code;
+  const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
+  const defensiveDeck = (prefix) => Array.from({ length: 20 }, (_, index) => card("Dodge", `${prefix}-${index}`));
+
+  setHand(me.id, [card("Attack", "invasion-response")], me.hp, me.maxHp); setHand(playerOne.id, [card("BarbarianInvasion", "bot-round")], 1, 1); setHand(playerTwo.id, [card("Attack", "invasion-response")], 1, 1); setHand(playerThree.id, [card("Attack", "invasion-response")], 1, 1); setTurn(code, me.seat);
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(defensiveDeck("invasion-draw")))}, discard_json='[]' WHERE code=${quote(code)}`);
+  assert.equal((await request("end_turn", { code, token })).status, 200);
+  const invasionForMe = await waitForState(code, token, (room) => room.phase === "response" && room.pendingGroup?.cardKind === "BarbarianInvasion" && room.isMyAction);
+  assert.equal(invasionForMe.turnSeat, playerOne.seat); assert.equal(invasionForMe.pendingGroup.sourceId, playerOne.id);
+  assert.equal((await request("respond_group", { code, token, cardId: "attack-invasion-response" })).status, 200);
+  const afterInvasion = await waitForState(code, token, (room) => room.turnSeat === me.seat && room.phase === "draw");
+  assert.equal(afterInvasion.isMyTurn, true); assert.ok(afterInvasion.timeline.some((event) => event.type === "card" && event.player === "Player 1" && event.card.kind === "BarbarianInvasion"));
+
+  setHand(me.id, [card("Dodge", "arrows-response")], me.hp, me.maxHp); setHand(playerOne.id, [card("Dodge", "arrows-response-1")], 1, 1); setHand(playerTwo.id, [card("Dodge", "arrows-response-2")], 1, 1); setHand(playerThree.id, [card("RainingArrows", "bot-round")], 1, 1); setTurn(code, me.seat);
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(defensiveDeck("arrows-draw")))}, discard_json='[]' WHERE code=${quote(code)}`);
+  assert.equal((await request("end_turn", { code, token })).status, 200);
+  const arrowsForMe = await waitForState(code, token, (room) => room.phase === "response" && room.pendingGroup?.cardKind === "RainingArrows" && room.isMyAction);
+  assert.equal(arrowsForMe.turnSeat, playerThree.seat); assert.equal(arrowsForMe.pendingGroup.sourceId, playerThree.id);
+  assert.equal((await request("respond_group", { code, token, cardId: "dodge-arrows-response" })).status, 200);
+  const afterArrows = await waitForState(code, token, (room) => room.turnSeat === me.seat && room.phase === "draw");
+  assert.equal(afterArrows.isMyTurn, true); assert.ok(afterArrows.timeline.some((event) => event.type === "card" && event.player === "Player 3" && event.card.kind === "RainingArrows"));
+});
+
+test("Dying rescue resumes a global response chain and victory stops it immediately", { timeout: 30_000 }, async () => {
+  const rescuedGame = await createHumanGame();
+  const [host, alice, bob, carol] = rescuedGame.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = rescuedGame.room.players;
+  setHand(hostPlayer.id, [card("BarbarianInvasion", "rescue-chain")], 5, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [card("Peach", "rescue-chain")], 4, 4); setHand(carolPlayer.id, [card("Attack", "rescue-chain")], 4, 4); setTurn(rescuedGame.code, hostPlayer.seat);
+  const started = await request("play_card", { code: rescuedGame.code, token: host.token, cardId: "barbarianinvasion-rescue-chain" });
+  assert.equal(started.data.room.actionPlayerId, alicePlayer.id);
+  const dying = await request("take_group_damage", { code: rescuedGame.code, token: alice.token });
+  assert.equal(dying.data.room.phase, "dying");
+  const bobPrompt = await state(rescuedGame.code, bob.token); assert.equal(bobPrompt.data.isMyAction, true); assert.equal(bobPrompt.data.pendingDying.targetId, alicePlayer.id);
+  const rescued = await request("give_peach", { code: rescuedGame.code, token: bob.token, cardId: "peach-rescue-chain" });
+  assert.equal(rescued.data.room.phase, "response"); assert.equal(rescued.data.room.actionPlayerId, bobPlayer.id); assert.equal(rescued.data.room.turnSeat, hostPlayer.seat);
+  const bobResponded = await request("take_group_damage", { code: rescuedGame.code, token: bob.token });
+  assert.equal(bobResponded.data.room.actionPlayerId, carolPlayer.id);
+  const chainFinished = await request("respond_group", { code: rescuedGame.code, token: carol.token, cardId: "attack-rescue-chain" });
+  assert.equal(chainFinished.data.room.phase, "play"); assert.equal(chainFinished.data.room.turnSeat, hostPlayer.seat); assert.equal(chainFinished.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
+
+  const victoryGame = await createHumanGame();
+  const [winner, rebel] = victoryGame.members; const [lord, lastRebel, loyalistOne, loyalistTwo] = victoryGame.room.players;
+  sql(`UPDATE players SET role='Lord' WHERE id=${quote(lord.id)}; UPDATE players SET role='Rebel' WHERE id=${quote(lastRebel.id)}; UPDATE players SET role='Loyalist' WHERE id IN (${quote(loyalistOne.id)},${quote(loyalistTwo.id)})`);
+  setHand(lord.id, [card("BarbarianInvasion", "winning-chain")], 5, 5); setHand(lastRebel.id, [], 1, 4); setHand(loyalistOne.id, [], 4, 4); setHand(loyalistTwo.id, [], 4, 4); setTurn(victoryGame.code, lord.seat);
+  const winningCard = await request("play_card", { code: victoryGame.code, token: winner.token, cardId: "barbarianinvasion-winning-chain" });
+  assert.equal(winningCard.data.room.actionPlayerId, lastRebel.id);
+  const victory = await request("take_group_damage", { code: victoryGame.code, token: rebel.token });
+  assert.equal(victory.status, 200); assert.equal(victory.data.room.status, "finished"); assert.equal(victory.data.room.phase, "finished"); assert.equal(victory.data.room.pendingGroup, null);
+  assert.equal(victory.data.room.players.find((player) => player.id === loyalistOne.id).hp, 4); assert.equal(victory.data.room.players.find((player) => player.id === loyalistTwo.id).hp, 4);
+  assert.ok(victory.data.room.timeline.some((event) => /Lord and Loyalist victory/.test(event.message ?? "")));
+  assert.equal((await request("draw", { code: victoryGame.code, token: winner.token })).status, 409, "no action is accepted after victory");
+});

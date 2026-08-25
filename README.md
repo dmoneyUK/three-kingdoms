@@ -42,13 +42,16 @@ The complete four-player test loop is playable with one human player and three b
 
 - Oath of the Peach Garden remains playable when nobody needs healing; it resolves without changing HP.
 - Player 3 → ME is covered by a response-and-round-transition regression test.
+- Consecutive bot rounds with Barbarian Invasion and Raining Arrows return control to ME correctly.
+- Dying rescue resumes the interrupted global-card response at the correct player.
+- A role victory ends an unfinished global response chain immediately.
 
 ## Roadmap
 
 ### 1. Stabilise the turn loop — current priority
 
-- Expand multi-round bot tests around global cards, Dying and victory transitions.
-- Continue strengthening state invariants around response chains.
+- Add targeted regressions whenever manual testing finds a new turn or response defect.
+- Continue strengthening state invariants as new response-chain cards are introduced.
 
 ### 2. Strengthen the general rules engine
 
