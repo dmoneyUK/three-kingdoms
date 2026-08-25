@@ -789,10 +789,12 @@ export async function POST(request: Request) {
       } else if (card.kind === "Oath") {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
         const wounded = (rows.results ?? []).filter((player) => player.alive && (player.hp ?? 0) < (player.max_hp ?? 0));
-        if (!wounded.length) return json({ error: "Oath of the Peach Garden requires at least one wounded character." }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
-        log = addCardEvent(log, me.name, card, "All wounded players"); log = addLog(log, `${me.name} plays Oath of the Peach Garden. ${wounded.map((player) => player.name).join(", ")} recover 1 HP.`);
+        const result = wounded.length
+          ? `${wounded.map((player) => player.name).join(", ")} recover 1 HP.`
+          : "No character is wounded, so nobody recovers HP.";
+        log = addCardEvent(log, me.name, card, "All living players"); log = addLog(log, `${me.name} plays Oath of the Peach Garden. ${result}`);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
           ...wounded.map((player) => db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(Math.min(player.max_hp ?? 0, (player.hp ?? 0) + 1), player.id)),

@@ -38,19 +38,17 @@ The complete four-player test loop is playable with one human player and three b
 - Barbarian Invasion
 - Raining Arrows
 
-### Known issues being investigated
+### Recently stabilised
 
-- Oath of the Peach Garden should be playable even when nobody needs healing.
-- A reported Player 3 → ME transition may have skipped ME's next turn.
+- Oath of the Peach Garden remains playable when nobody needs healing; it resolves without changing HP.
+- Player 3 → ME is covered by a response-and-round-transition regression test.
 
 ## Roadmap
 
 ### 1. Stabilise the turn loop — current priority
 
-- Fix Oath of the Peach Garden at full health.
-- Inspect the latest audit sequence for the reported skipped turn.
-- Enforce Player 3 → ME and dead-player skipping rules.
-- Add multi-round regression tests for human and bot turns.
+- Expand multi-round regression tests for human and bot turns.
+- Enforce state invariants for Player 3 → ME and dead-player skipping rules.
 
 ### 2. Strengthen the general rules engine
 

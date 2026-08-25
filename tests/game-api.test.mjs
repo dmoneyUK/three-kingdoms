@@ -135,6 +135,12 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(oath.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "Oath"));
   assert.ok(oath.data.room.timeline.some((event) => /Oath of the Peach Garden/.test(event.message ?? "")));
 
+  setHand(hostPlayer.id, [card("Oath", "full-health")], 5, 5); setHand(alicePlayer.id, [], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const harmlessOath = await request("play_card", { code: game.code, token: host.token, cardId: "oath-full-health" });
+  assert.equal(harmlessOath.status, 200); assert.equal(harmlessOath.data.room.phase, "play"); assert.equal(harmlessOath.data.room.myHand.length, 0);
+  assert.ok(harmlessOath.data.room.timeline.some((event) => event.type === "card" && event.card.id === "oath-full-health"));
+  assert.ok(harmlessOath.data.room.timeline.some((event) => /nobody recovers HP/.test(event.message ?? "")));
+
   setHand(hostPlayer.id, [card("BarbarianInvasion", "global")], 4, 5); setHand(alicePlayer.id, [card("Attack", "barbarian-answer")], 4); setHand(bobPlayer.id, [], 1, 4); setHand(carolPlayer.id, [card("Attack", "barbarian-answer")], 4); setTurn(game.code, hostPlayer.seat);
   const invasion = await request("play_card", { code: game.code, token: host.token, cardId: "barbarianinvasion-global" });
   assert.equal(invasion.status, 200); assert.equal(invasion.data.room.phase, "response"); assert.equal(invasion.data.room.actionPlayerId, alicePlayer.id); assert.equal(invasion.data.room.pendingGroup.requiredKind, "Attack");
@@ -230,6 +236,16 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(botsSettled.timeline.some((entry) => /Player [123]/.test(entry.message ?? entry.player ?? "")));
   assert.ok(botsSettled.timeline.some((entry) => /Player 1's turn started · drawing 2 cards/.test(entry.message ?? "")));
   const playerOne = botsSettled.players.find((player) => player.name === "Player 1"); const playerTwo = botsSettled.players.find((player) => player.name === "Player 2"); const playerThree = botsSettled.players.find((player) => player.name === "Player 3");
+
+  setHand(botHostPlayer.id, [card("Dodge", "round-return")], 1, botHostPlayer.maxHp); setHand(playerOne.id, [], 4, 4); setHand(playerTwo.id, [], 4, 4); setHand(playerThree.id, [card("Attack", "round-return")], 4, 4); setTurn(botCode, botHostPlayer.seat);
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 12 }, (_, index) => card("Dodge", `round-return-draw-${index}`))))}, discard_json='[]' WHERE code=${quote(botCode)}`);
+  const playerThreeAttack = await request("end_turn", { code: botCode, token: botToken });
+  assert.equal(playerThreeAttack.status, 200);
+  const waitingForMe = await waitForState(botCode, botToken, (room) => room.phase === "response" && room.actionPlayerId === botHostPlayer.id);
+  assert.equal(waitingForMe.turnSeat, playerThree.seat); assert.equal(waitingForMe.pendingAttack.sourceId, playerThree.id);
+  const returnedToMe = await request("respond_dodge", { code: botCode, token: botToken, cardId: "dodge-round-return" });
+  assert.equal(returnedToMe.status, 200); assert.equal(returnedToMe.data.room.turnSeat, botHostPlayer.seat); assert.equal(returnedToMe.data.room.phase, "draw"); assert.equal(returnedToMe.data.room.isMyTurn, true);
+
   setHand(botHostPlayer.id, [card("Strike", "rescue-bot")], botHostPlayer.hp, botHostPlayer.maxHp); setHand(playerOne.id, [], 1, playerOne.maxHp); setHand(playerTwo.id, [card("Peach", "bot-saviour")], playerTwo.hp, playerTwo.maxHp); setHand(playerThree.id, [], playerThree.hp, playerThree.maxHp); setTurn(botCode, botHostPlayer.seat);
   const rescuedBot = await request("play_card", { code: botCode, token: botToken, cardId: "strike-rescue-bot", targetId: playerOne.id });
   assert.equal(rescuedBot.data.room.players.find((player) => player.id === playerOne.id).alive, true); assert.equal(rescuedBot.data.room.players.find((player) => player.id === playerOne.id).hp, 1);
