@@ -4,6 +4,7 @@ An English online implementation of the classic Three Kingdoms card game, built 
 
 - Play: https://three-realms-table.dai-jinge.chatgpt.site
 - Source: https://github.com/dmoneyUK/three-kingdoms
+- Development handover: [HANDOVER.md](HANDOVER.md)
 - Current stage: **playable four-player alpha — general rules stabilisation and card expansion**
 
 The hosted game is public and does not require a GitHub or ChatGPT account. Players join a room using a room code and keep their session on their device.
