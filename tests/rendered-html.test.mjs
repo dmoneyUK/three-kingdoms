@@ -26,7 +26,7 @@ test("server-renders the Three Kingdoms lobby", async () => {
   assert.match(html, /Lord/);
   assert.match(html, /Loyalist/);
   assert.match(html, /Rebel/);
-  assert.match(html, /Renegade/);
+  assert.match(html, /Traitor/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
 });
 
@@ -66,7 +66,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Discard \$\{excessCards\} selected/);
   assert.match(page, /discard-card-row/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
-  assert.match(page, /setTimeout\(\(\) => setActiveEvent\(null\), 5000\)/);
+  assert.match(page, /activeEvent\.type === "card" \|\| activeEvent\.type === "cards" \? 3000 : 5000/);
   assert.match(page, /PRIVATE DRAW/);
   assert.match(page, /ROLE REVEALED/);
   assert.match(page, /roleReveal/);
@@ -83,7 +83,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Passing…/);
   assert.match(styles, /\.game-card\.dismantle/);
   assert.match(page, /knownHandCards/);
-  assert.match(page, /setTimeout\(\(\) => setPrivateDrawCards\(\[\]\), 5000\)/);
+  assert.match(page, /setTimeout\(\(\) => setPrivateDrawCards\(\[\]\), 3000\)/);
   assert.match(page, /Event history/);
   assert.match(page, /card-info-button/);
   assert.match(page, /aria-label={`Explain \${definition\.name}`}/);
@@ -127,6 +127,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /choose_harvest/);
   assert.match(page, /preview_harvest/);
   assert.match(page, /backgroundPreview = action === "preview_harvest"/);
+  assert.match(page, /action === "choose_harvest"/);
   assert.match(page, /publishHarvestPreview/);
   assert.match(page, /queuedHarvestPreview/);
   assert.match(page, /previewCardId/);
@@ -136,6 +137,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /availableIds\.includes\(choice\.id\)/);
   assert.match(page, /Confirm choice/);
   assert.match(page, /setHarvestSelected/);
+  assert.match(page, /setHarvestSubmitting/);
+  assert.match(page, /Your choice is submitted/);
+  assert.doesNotMatch(page, /Confirming…/);
   assert.match(page, /setOptimisticPlay/);
   assert.match(page, /const shownCard = optimisticPlay \?\? activeCard/);
   assert.match(page, /Selected by \{actor\?\.name/);

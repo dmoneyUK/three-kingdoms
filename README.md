@@ -76,7 +76,7 @@ The complete four-player test loop is playable with one human player and three b
 
 ### 5. Complete match rules
 
-- Thoroughly test Lord, Loyalist, Rebel and Renegade victory conditions.
+- Thoroughly test Lord, Loyalist, Rebel and Traitor victory conditions.
 - Complete rewards and penalties for every defeat combination.
 - Improve reconnect, disconnect and room-cleanup behaviour.
 
