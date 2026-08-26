@@ -4,13 +4,15 @@ An English online implementation of the classic Three Kingdoms card game, built 
 
 - Play: https://three-realms-table.dai-jinge.chatgpt.site
 - Source: https://github.com/dmoneyUK/three-kingdoms
-- Current stage: **playable rules prototype and card expansion**
+- Current stage: **playable four-player alpha — general rules stabilisation and card expansion**
 
 The hosted game is public and does not require a GitHub or ChatGPT account. Players join a room using a room code and keep their session on their device.
 
 ## Current Stage
 
-The complete four-player test loop is playable with one human player and three bots. The project currently includes:
+The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots, and the current work sits between **Roadmap Stage 2 (strengthening the general rules engine)** and **Stage 3 (completing the general card set)**. Hero-specific abilities remain intentionally deferred.
+
+The playable alpha currently includes:
 
 - automatic roles and hero assignment;
 - Lord bonus HP and the Zhang Fei test hero;
@@ -21,7 +23,7 @@ The complete four-player test loop is playable with one human player and three b
 - death, role reveal and Rebel defeat rewards;
 - automatic bot drawing, card play, responses, rescue and discard;
 - private card draws and private rescue decisions;
-- five-second card, damage, discard and role presentations;
+- three-second card and private-draw presentations, with longer important game messages;
 - event history plus a detailed rule-audit trail; and
 - a quick-test opening hand containing one of every implemented card.
 
@@ -51,18 +53,34 @@ The complete four-player test loop is playable with one human player and three b
 
 ## Roadmap
 
-### 1. Stabilise the turn loop — current priority
+### Progress summary
+
+| Stage | Status | Position |
+| --- | --- | --- |
+| 1. Stabilise the turn loop | Mostly complete; ongoing regression work | Core ownership, phase order, repeated rounds and response chains are playable and tested. |
+| 2. Strengthen the general rules engine | In progress | State invariants and ordered pending actions are implemented; resolver reuse and broader transition tests remain. |
+| 3. Complete the general card set | In progress — current feature focus | 11 cards are playable; remaining stratagems will continue to be added incrementally. |
+| 4. Equipment and distance modifiers | Planned | No weapons, armour or horses yet. |
+| 5. Complete match rules | Partly implemented | Main death, reveal, reward and victory paths work; full role-outcome coverage remains. |
+| 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
+| 7. Product polish | Ongoing alongside rules work | Mobile feedback, timing and visibility are improving; sound, invitations and saved history remain planned. |
+
+### Next milestone
+
+Add the next general stratagem cards one at a time while extracting more shared response-resolution logic and adding a regression test for every new transition.
+
+### 1. Stabilise the turn loop — mostly complete, ongoing
 
 - Add targeted regressions whenever manual testing finds a new turn or response defect.
 - Continue strengthening state invariants as new response-chain cards are introduced.
 
-### 2. Strengthen the general rules engine
+### 2. Strengthen the general rules engine — in progress
 
 - Centralise turn ownership, phases and pending responses.
 - Extend the state checks that reject invalid ownership and pending-action combinations.
 - Expand deterministic tests for damage, rescue, death and victory transitions.
 
-### 3. Complete the general card set
+### 3. Complete the general card set — current feature focus
 
 - Add remaining immediate stratagem cards one at a time.
 - Add response-chain cards.
