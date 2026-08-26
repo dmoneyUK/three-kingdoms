@@ -89,6 +89,7 @@ The most recent changes concentrated on latency and Bumper Harvest:
 - Confirming a Bumper Harvest card shades it immediately as `Chosen by ME`; the authoritative server choice then advances in the background.
 - Bot Bumper Harvest choices are deliberately paced: selection rises, confirmation shades and names the chooser, then the next player begins.
 - The final set of Bumper Harvest choices remains visible briefly before the panel closes.
+- Bumper Harvest gains are excluded from the private-draw presentation, keeping the shared choice panel continuously visible as later players act.
 
 Manual mobile testing should continue to watch for stale selection previews, repeated action presentations or any response that leaves the room in `resolving` state.
 
@@ -216,10 +217,10 @@ The project is currently between:
 
 Recommended next sequence:
 
-1. Manually verify the latest Bumper Harvest confirmation behaviour on mobile.
-2. Extract another shared ordered-response/resolution helper from `app/api/rooms/route.ts`.
-3. Add the next immediate stratagem card using the checklist above.
-4. Add deterministic tests for the new card and any resolver refactor.
+1. Extract another shared ordered-response/resolution helper from `app/api/rooms/route.ts`.
+2. Add Negation (official card 108) as the next response-chain card using the checklist above.
+3. Add deterministic tests for Negation and the resolver refactor.
+4. Defer Borrowed Sword until equipment zones exist.
 5. Continue through response-chain cards, then delayed stratagems and the Judgement Zone.
 6. Add equipment and distance modifiers.
 7. Complete role-outcome and defeat reward/penalty coverage.

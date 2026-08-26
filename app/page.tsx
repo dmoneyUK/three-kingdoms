@@ -172,7 +172,14 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const harvestSelectedCard = room.pendingHarvest?.revealed.find((choice) => choice.id === activeHarvestSelection);
   const lastTimelineId = room.timeline.at(-1)?.id ?? "start";
   useEffect(() => { onActionRef.current = onAction; }, [onAction]);
-  useEffect(() => { const publicGains = new Set(room.timeline.filter((event) => event.type === "card" && event.action === "gain" && event.player === me?.name).map((event) => event.card.id)); const fresh = room.myHand.filter((item) => !knownHandCards.current.has(item.id) && !publicGains.has(item.id)); room.myHand.forEach((item) => knownHandCards.current.add(item.id)); if (fresh.length) setPrivateDrawCards(fresh); }, [room.myHand, room.timeline, me?.name]);
+  useEffect(() => {
+    const publicGains = new Set(room.timeline.filter((event) => event.type === "card" && event.action === "gain" && event.player === me?.name).map((event) => event.card.id));
+    const harvestGains = new Set([...(room.pendingHarvest?.choices.map((choice) => choice.cardId) ?? []), harvestSubmitting?.cardId].filter((id): id is string => Boolean(id)));
+    const fresh = room.myHand.filter((item) => !knownHandCards.current.has(item.id) && !publicGains.has(item.id) && !harvestGains.has(item.id));
+    room.myHand.forEach((item) => knownHandCards.current.add(item.id));
+    if (room.pendingHarvest) return;
+    if (fresh.length) setPrivateDrawCards(fresh);
+  }, [room.myHand, room.timeline, room.pendingHarvest, me?.name, harvestSubmitting?.cardId]);
   useEffect(() => { const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id)); fresh.forEach((event) => seenEvents.current.add(event.id)); const visible = fresh.filter((event) => event.presentation !== false); if (visible.length) { if (!activeEvent && eventQueue.length === 0) { setActiveEvent(visible[0]); setEventQueue(visible.slice(1)); } else setEventQueue((queue) => [...queue, ...visible]); } setProcessedTimelineKey(timelineKey); }, [room.timeline, timelineKey, activeEvent, eventQueue.length]);
   useEffect(() => { if (!optimisticPlay || !room.timeline.some((event) => event.type === "card" && event.player === optimisticPlay.player && event.card.id === optimisticPlay.card.id)) return; const timer = setTimeout(() => setOptimisticPlay(null), 0); return () => clearTimeout(timer); }, [optimisticPlay, room.timeline]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);

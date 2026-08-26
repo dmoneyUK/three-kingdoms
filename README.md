@@ -45,6 +45,7 @@ The playable alpha currently includes:
 ### Recently stabilised
 
 - Bumper Harvest keeps every revealed card on one shared choice panel, requires confirmation, names the current chooser, and visibly paces every raised selection and shaded confirmation before advancing to the next player.
+- Bumper Harvest gains no longer trigger the normal private-draw overlay, so the shared panel remains visible while every later player selects and confirms.
 - Opening draws begin immediately, card plays appear on the table optimistically, and Bumper Harvest selection changes never lock the controls while their shared preview synchronises.
 - Oath of the Peach Garden remains playable when nobody needs healing; it resolves without changing HP.
 - Player 3 → ME is covered by a response-and-round-transition regression test.
@@ -68,7 +69,7 @@ The playable alpha currently includes:
 
 ### Next milestone
 
-Add the next general stratagem cards one at a time while extracting more shared response-resolution logic and adding a regression test for every new transition.
+Add **Negation** as the next response-chain card while extracting shared ordered-response logic and adding a regression test for every new transition. Borrowed Sword remains deferred until equipment zones exist.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 

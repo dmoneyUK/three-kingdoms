@@ -83,6 +83,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Passing…/);
   assert.match(styles, /\.game-card\.dismantle/);
   assert.match(page, /knownHandCards/);
+  assert.match(page, /const harvestGains = new Set/);
+  assert.match(page, /if \(room\.pendingHarvest\) return/);
   assert.match(page, /setTimeout\(\(\) => setPrivateDrawCards\(\[\]\), 3000\)/);
   assert.match(page, /Event history/);
   assert.match(page, /card-info-button/);
