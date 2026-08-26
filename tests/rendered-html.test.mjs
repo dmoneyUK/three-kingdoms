@@ -128,6 +128,11 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(styles, /\.harvest-choice-stage/);
   assert.match(page, /Taken by \{takenBy\.playerName\}/);
   assert.match(page, /availableIds\.includes\(choice\.id\)/);
+  assert.match(page, /Confirm choice/);
+  assert.match(page, /setHarvestSelected/);
+  assert.match(page, /awaiting confirmation/);
   assert.match(styles, /\.harvest-card-choice\.taken/);
+  assert.match(styles, /\.harvest-card-choice\.pending-choice/);
+  assert.match(styles, /brightness\(\.2\)/);
   assert.doesNotMatch(page, /readyTurn/);
 });
