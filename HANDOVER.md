@@ -85,6 +85,7 @@ The most recent changes concentrated on latency and Bumper Harvest:
 
 - Opening automatic draw begins after approximately 0.1 seconds instead of waiting behind the turn banner.
 - A card played during Play Phase is presented optimistically while the server validates it.
+- Optimistic played cards expire locally after 1 second instead of waiting for the server response; the later authoritative copy is recorded but not presented twice.
 - Bumper Harvest selection previews are non-blocking and queued, so a player can change their selected card without waiting for network round trips.
 - Confirming a Bumper Harvest card shades it immediately as `Chosen by ME`; the authoritative server choice then advances in the background.
 - Bot Bumper Harvest choices are deliberately paced: selection rises, confirmation shades and names the chooser, then the next player begins.
@@ -109,6 +110,25 @@ Manual mobile testing should continue to watch for stale selection previews, rep
 `app/globals.css` contains the complete visual system and responsive layout.
 
 The client is not authoritative. It may provide optimistic feedback, but all rule transitions must be validated by the server.
+
+### Production timing audit
+
+All intentional production waits are now centralised or recorded here:
+
+| Behaviour | Duration | Purpose |
+| --- | ---: | --- |
+| Normal room polling | 2500 ms | Refresh other-player and bot activity. |
+| Bumper Harvest polling | 300 ms | Keep shared previews and choices responsive. |
+| Automatic draw start | 100 ms | Let the turn-owner banner render, then claim Draw Phase. |
+| Played/revealed card | 1000 ms | Show the public card, source and target. This no longer waits for the action response. |
+| Event or role-reveal message | 3000 ms | Show important public state changes. |
+| Private draw | 3000 ms | Let only the drawing player inspect new cards. |
+| Peach rescue decision | 5000 ms | Give each eligible player a private chance to select Peach or pass. |
+| Bumper Harvest bot think | 450 ms | Show which bot is about to choose. |
+| Bumper Harvest raised/confirmed choice | 1400 ms | Make each bot selection visible before advancing. |
+| Final Bumper Harvest choices | 1400 ms | Leave the completed shaded choices visible briefly. |
+
+Zero-millisecond timers only defer React state updates to the next task; they are not user-visible pauses. CSS presentation durations are aligned with the React timers. Test polling delays exist only under `tests/` and do not affect production.
 
 ### Server and game engine
 
