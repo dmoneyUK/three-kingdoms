@@ -24,7 +24,7 @@ The playable alpha currently includes:
 - death, role reveal and Rebel defeat rewards;
 - automatic bot drawing, card play, responses, rescue and discard;
 - private card draws and private rescue decisions;
-- three-second card and private-draw presentations, with longer important game messages;
+- one-second played/revealed-card presentations, three-second event messages and three-second private draws;
 - event history plus a detailed rule-audit trail; and
 - a quick-test opening hand containing one of every implemented card.
 

@@ -62,11 +62,11 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /skip_rescue/);
   assert.match(page, /start_rescue_timer/);
   assert.match(page, /automaticRescueSkip/);
-  assert.match(page, /5000/);
+  assert.match(page, /3000/);
   assert.match(page, /Discard \$\{excessCards\} selected/);
   assert.match(page, /discard-card-row/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
-  assert.match(page, /activeEvent\.type === "card" \|\| activeEvent\.type === "cards" \? 3000 : 5000/);
+  assert.match(page, /activeEvent\.type === "card" \|\| activeEvent\.type === "cards" \? 1000 : 3000/);
   assert.match(page, /PRIVATE DRAW/);
   assert.match(page, /ROLE REVEALED/);
   assert.match(page, /roleReveal/);

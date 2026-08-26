@@ -16,7 +16,7 @@ Product decisions already made:
 - The player-facing name for the internal `Renegade` role is **Traitor**.
 - The public game must remain playable without GitHub or ChatGPT sign-in.
 - Mobile clarity and visible action order are important: always show the turn owner, phase, acting player, card, source and target.
-- Public card and private-draw presentations currently last 3 seconds. Important messages may remain longer.
+- Public played/revealed cards currently remain for 1 second; event messages and private draws remain for 3 seconds. Dying rescue decisions retain their separate 5-second action window.
 
 ## Repositories and live service
 
