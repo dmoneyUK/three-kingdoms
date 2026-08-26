@@ -124,7 +124,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /respond_group/);
   assert.match(page, /take_group_damage/);
   assert.match(page, /choose_harvest/);
-  assert.match(page, /Choose one revealed card/);
+  assert.match(page, /Your turn — choose one card/);
   assert.match(styles, /\.harvest-choice-stage/);
+  assert.match(page, /Taken by \{takenBy\.playerName\}/);
+  assert.match(page, /availableIds\.includes\(choice\.id\)/);
+  assert.match(styles, /\.harvest-card-choice\.taken/);
   assert.doesNotMatch(page, /readyTurn/);
 });
