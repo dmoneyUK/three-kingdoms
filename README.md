@@ -42,6 +42,7 @@ The complete four-player test loop is playable with one human player and three b
 ### Recently stabilised
 
 - Bumper Harvest keeps every revealed card on one shared choice panel, requires confirmation, names the current chooser, and visibly paces every raised selection and shaded confirmation before advancing to the next player.
+- Opening draws begin immediately, card plays appear on the table optimistically, and Bumper Harvest selection changes never lock the controls while their shared preview synchronises.
 - Oath of the Peach Garden remains playable when nobody needs healing; it resolves without changing HP.
 - Player 3 → ME is covered by a response-and-round-transition regression test.
 - Consecutive bot rounds with Barbarian Invasion and Raining Arrows return control to ME correctly.

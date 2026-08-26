@@ -39,6 +39,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /CURRENT PHASE/);
   assert.match(page, /ACTING NOW/);
   assert.match(page, /onActionRef\.current\("draw"\)/);
+  assert.match(page, /}, 100\)/);
   assert.match(page, /send\("create", \{ quickStart: true \}\)/);
   assert.doesNotMatch(page, /previousTurn/);
   assert.match(page, /Play selected/);
@@ -125,6 +126,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /take_group_damage/);
   assert.match(page, /choose_harvest/);
   assert.match(page, /preview_harvest/);
+  assert.match(page, /backgroundPreview = action === "preview_harvest"/);
+  assert.match(page, /publishHarvestPreview/);
+  assert.match(page, /queuedHarvestPreview/);
   assert.match(page, /previewCardId/);
   assert.match(page, /Your turn — choose one card/);
   assert.match(styles, /\.harvest-choice-stage/);
@@ -132,6 +136,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /availableIds\.includes\(choice\.id\)/);
   assert.match(page, /Confirm choice/);
   assert.match(page, /setHarvestSelected/);
+  assert.match(page, /setOptimisticPlay/);
+  assert.match(page, /const shownCard = optimisticPlay \?\? activeCard/);
   assert.match(page, /Selected by \{actor\?\.name/);
   assert.match(page, /All choices complete/);
   assert.match(page, /room\?\.pendingHarvest \? 300 : 2500/);
