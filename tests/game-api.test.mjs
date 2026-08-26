@@ -147,9 +147,18 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const harvest = await request("play_card", { code: game.code, token: host.token, cardId: "bumperharvest-global-choice" });
   assert.equal(harvest.status, 200); assert.equal(harvest.data.room.phase, "response"); assert.equal(harvest.data.room.actionPlayerId, hostPlayer.id); assert.equal(harvest.data.room.pendingHarvest.revealed.length, 4);
   assert.ok(harvest.data.room.timeline.some((event) => event.type === "cards" && event.action === "reveal" && event.cards.length === 4));
+  assert.equal((await request("preview_harvest", { code: game.code, token: alice.token, cardId: "dodge-harvest-alice" })).status, 409, "players cannot preview out of order");
+  const hostPreview = await request("preview_harvest", { code: game.code, token: host.token, cardId: "attack-harvest-host" });
+  assert.equal(hostPreview.status, 200); assert.equal(hostPreview.data.room.phase, "response"); assert.equal(hostPreview.data.room.actionPlayerId, hostPlayer.id); assert.equal(hostPreview.data.room.pendingHarvest.previewCardId, "attack-harvest-host");
+  assert.ok(!hostPreview.data.room.myHand.some((held) => held.id === "attack-harvest-host"), "previewing does not take the card");
+  assert.equal((await state(game.code, alice.token)).data.pendingHarvest.previewCardId, "attack-harvest-host", "other players see the current preview");
+  const clearedPreview = await request("preview_harvest", { code: game.code, token: host.token, cardId: null });
+  assert.equal(clearedPreview.status, 200); assert.equal(clearedPreview.data.room.pendingHarvest.previewCardId, null); assert.equal(clearedPreview.data.room.actionPlayerId, hostPlayer.id);
+  assert.equal((await request("preview_harvest", { code: game.code, token: host.token, cardId: "attack-harvest-host" })).status, 200);
   assert.equal((await request("choose_harvest", { code: game.code, token: alice.token, cardId: "dodge-harvest-alice" })).status, 409, "players cannot choose out of order");
   const hostHarvest = await request("choose_harvest", { code: game.code, token: host.token, cardId: "attack-harvest-host" });
   assert.equal(hostHarvest.status, 200); assert.equal(hostHarvest.data.room.actionPlayerId, alicePlayer.id); assert.ok(hostHarvest.data.room.myHand.some((held) => held.id === "attack-harvest-host"));
+  assert.equal(hostHarvest.data.room.pendingHarvest.previewCardId, null, "the preview clears for the next chooser");
   assert.equal(hostHarvest.data.room.pendingHarvest.revealed.length, 4, "all cards remain visible while choices continue"); assert.equal(hostHarvest.data.room.pendingHarvest.availableIds.length, 3); assert.equal(hostHarvest.data.room.pendingHarvest.choices[0].playerName, "Host");
   assert.equal(hostHarvest.data.room.timeline.find((event) => event.type === "cards" && event.action === "reveal").presentation, false, "the persistent choice panel replaces a separate reveal presentation");
   const aliceHarvest = await request("choose_harvest", { code: game.code, token: alice.token, cardId: "dodge-harvest-alice" });

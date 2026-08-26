@@ -124,12 +124,15 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /respond_group/);
   assert.match(page, /take_group_damage/);
   assert.match(page, /choose_harvest/);
+  assert.match(page, /preview_harvest/);
+  assert.match(page, /previewCardId/);
   assert.match(page, /Your turn — choose one card/);
   assert.match(styles, /\.harvest-choice-stage/);
   assert.match(page, /Taken by \{takenBy\.playerName\}/);
   assert.match(page, /availableIds\.includes\(choice\.id\)/);
   assert.match(page, /Confirm choice/);
   assert.match(page, /setHarvestSelected/);
+  assert.match(page, /Selected by \{actor\?\.name/);
   assert.match(page, /awaiting confirmation/);
   assert.match(styles, /\.harvest-card-choice\.taken/);
   assert.match(styles, /\.harvest-card-choice\.pending-choice/);
