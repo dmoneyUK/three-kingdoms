@@ -30,7 +30,7 @@ async function state(code, token, audit = false) {
 }
 
 async function waitForState(code, token, predicate) {
-  for (let attempt = 0; attempt < 30; attempt++) {
+  for (let attempt = 0; attempt < 500; attempt++) {
     const result = await state(code, token);
     if (predicate(result.data)) return result.data;
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -166,9 +166,12 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const bobHarvest = await request("choose_harvest", { code: game.code, token: bob.token, cardId: "peach-harvest-bob" });
   assert.equal(bobHarvest.data.room.actionPlayerId, carolPlayer.id);
   const carolHarvest = await request("choose_harvest", { code: game.code, token: carol.token, cardId: "steal-harvest-carol" });
-  assert.equal(carolHarvest.status, 200); assert.equal(carolHarvest.data.room.phase, "play"); assert.equal(carolHarvest.data.room.pendingHarvest, null);
+  assert.equal(carolHarvest.status, 200); assert.equal(carolHarvest.data.room.phase, "response"); assert.equal(carolHarvest.data.room.pendingHarvest.complete, true);
+  assert.equal(carolHarvest.data.room.pendingHarvest.choices.length, 4, "the final shaded choice remains visible before the panel closes");
   assert.ok(carolHarvest.data.room.myHand.some((held) => held.id === "steal-harvest-carol"));
   assert.equal(carolHarvest.data.room.timeline.filter((event) => event.type === "card" && event.action === "gain").length, 4);
+  const completedHarvest = await waitForState(game.code, host.token, (room) => room.phase === "play" && room.pendingHarvest === null);
+  assert.equal(completedHarvest.pendingHarvest, null);
 
   setHand(hostPlayer.id, [card("BarbarianInvasion", "global")], 4, 5); setHand(alicePlayer.id, [card("Attack", "barbarian-answer")], 4); setHand(bobPlayer.id, [], 1, 4); setHand(carolPlayer.id, [card("Attack", "barbarian-answer")], 4); setTurn(game.code, hostPlayer.seat);
   const invasion = await request("play_card", { code: game.code, token: host.token, cardId: "barbarianinvasion-global" });
@@ -376,12 +379,16 @@ test("bot Bumper Harvest resolves in seat order and pauses only for ME", { timeo
   setHand(me.id, [], 10, 10); setHand(playerOne.id, [card("BumperHarvest", "bot")], 10, 10); setHand(playerTwo.id, [], 10, 10); setHand(playerThree.id, [], 10, 10); setTurn(code, me.seat);
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 20 }, (_, index) => card("Dodge", `bot-harvest-${index}`))))}, discard_json='[]' WHERE code=${quote(code)}`);
   assert.equal((await request("end_turn", { code, token })).status, 200);
+  const firstBotPreview = await waitForState(code, token, (room) => room.pendingHarvest?.previewCardId && room.pendingHarvest.choices.length === 0);
+  assert.equal(firstBotPreview.pendingHarvest.actorId, playerOne.id); assert.equal(firstBotPreview.pendingHarvest.availableIds.length, 4);
+  const firstBotConfirmed = await waitForState(code, token, (room) => room.pendingHarvest?.choices.length === 1);
+  assert.equal(firstBotConfirmed.pendingHarvest.choices[0].playerName, "Player 1"); assert.equal(firstBotConfirmed.pendingHarvest.previewCardId, null);
   const prompt = await waitForState(code, token, (room) => room.phase === "response" && room.pendingHarvest && room.isMyAction);
   assert.equal(prompt.turnSeat, playerOne.seat); assert.equal(prompt.pendingHarvest.actorId, me.id); assert.equal(prompt.pendingHarvest.revealed.length, 4); assert.equal(prompt.pendingHarvest.availableIds.length, 1); assert.equal(prompt.pendingHarvest.choices.length, 3);
   assert.equal(prompt.timeline.filter((event) => event.type === "card" && event.action === "gain").length, 3);
   const chosenId = prompt.pendingHarvest.availableIds[0];
   const chosen = await request("choose_harvest", { code, token, cardId: chosenId });
-  assert.equal(chosen.status, 200); assert.equal(chosen.data.room.pendingHarvest, null);
+  assert.equal(chosen.status, 200); assert.equal(chosen.data.room.pendingHarvest.complete, true); assert.equal(chosen.data.room.pendingHarvest.choices.length, 4);
   const returned = await waitForState(code, token, (room) => room.turnSeat === me.seat && room.phase === "draw");
   assert.ok(returned.myHand.some((held) => held.id === chosenId));
   assert.ok(returned.timeline.some((event) => event.type === "card" && event.player === "Player 1" && event.card.kind === "BumperHarvest"));

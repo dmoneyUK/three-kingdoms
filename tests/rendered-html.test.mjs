@@ -133,6 +133,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Confirm choice/);
   assert.match(page, /setHarvestSelected/);
   assert.match(page, /Selected by \{actor\?\.name/);
+  assert.match(page, /All choices complete/);
+  assert.match(page, /room\?\.pendingHarvest \? 300 : 2500/);
   assert.match(page, /awaiting confirmation/);
   assert.match(styles, /\.harvest-card-choice\.taken/);
   assert.match(styles, /\.harvest-card-choice\.pending-choice/);

@@ -10,7 +10,7 @@ type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actor
 type DuelPending = { kind: "duel"; sourceId: string; targetId: string; actorId: string; opponentId: string; resumePhase: string; reason: string };
 type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows"; sourceId: string; actorId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; reason: string };
 type HarvestChoice = { cardId: string; playerId: string; playerName: string };
-type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; resumePhase: string; reason: string };
+type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; botAdvanceAt?: number; completeAt?: number; resumePhase: string; reason: string };
 type DyingPending = { kind: "dying"; sourceId: string; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId?: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
 type Pending = AttackPending | DuelPending | GroupPending | HarvestPending | DyingPending;
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null };
@@ -50,6 +50,8 @@ const HEROES: Hero[] = [
 const ROLE_SETS: Record<number, string[]> = { 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+const HARVEST_BOT_THINK_MS = 450;
+const HARVEST_CHOICE_HOLD_MS = 1400;
 const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "preview_harvest", "choose_harvest", "start_rescue_timer", "give_peach", "skip_rescue"]);
 
 async function setup() {
@@ -414,7 +416,8 @@ function nextHarvestPending(pending: HarvestPending, players: PlayerRow[]) {
   const nextIds = pending.remainingIds.filter((id) => players.some((player) => player.id === id && player.alive));
   if (!nextIds.length || !harvestAvailableIds(pending).length) return null;
   const actorId = nextIds[0];
-  return { ...pending, actorId, remainingIds: nextIds.slice(1), previewCardId: undefined, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
+  const actor = players.find((player) => player.id === actorId);
+  return { ...pending, actorId, remainingIds: nextIds.slice(1), previewCardId: undefined, botAdvanceAt: isBotPlayer(actor) ? Date.now() + HARVEST_BOT_THINK_MS : undefined, completeAt: undefined, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
 }
 
 function harvestChoices(pending: HarvestPending) { return pending.choices ?? []; }
@@ -433,6 +436,7 @@ async function resolveHarvestChoice(room: RoomRow, pending: HarvestPending, acto
     availableIds: harvestAvailableIds(pending).filter((id) => id !== chosen.id),
     choices: [...harvestChoices(pending), { cardId: chosen.id, playerId: actor.id, playerName: actor.name }],
     previewCardId: undefined,
+    botAdvanceAt: undefined,
   };
   const next = nextHarvestPending(remainingPending, players);
   if (next) {
@@ -440,14 +444,12 @@ async function resolveHarvestChoice(room: RoomRow, pending: HarvestPending, acto
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id),
       db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(next), JSON.stringify(log), room.id),
     ]);
-    await advanceHarvest(room.id);
     return;
   }
   await db().batch([
     db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id),
-    db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(addHistory(log, "Bumper Harvest finishes resolving.")), room.id),
+    db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ ...remainingPending, completeAt: Date.now() + HARVEST_CHOICE_HOLD_MS, reason: "Showing the final Bumper Harvest choice" } satisfies HarvestPending), JSON.stringify(log), room.id),
   ]);
-  await continueAfterDying(room.id, pending.sourceId);
 }
 
 async function advanceHarvest(roomId: string) {
@@ -455,6 +457,13 @@ async function advanceHarvest(roomId: string) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const pending = parse<Pending | null>(room?.pending_json ?? null, null);
     if (!room || room.phase !== "response" || pending?.kind !== "harvest") return;
+    if (pending.completeAt) {
+      if (Date.now() < pending.completeAt) return;
+      const log = addHistory(parse<string[]>(room.log_json, []), "Bumper Harvest finishes resolving.");
+      const claim = await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(log), roomId, room.pending_json).run();
+      if ((claim.meta.changes ?? 0) > 0) await continueAfterDying(roomId, pending.sourceId);
+      return;
+    }
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
     const players = rows.results ?? []; const actor = players.find((player) => player.id === pending.actorId && player.alive);
     if (!actor) {
@@ -476,9 +485,18 @@ async function advanceHarvest(roomId: string) {
       await continueAfterDying(roomId, pending.sourceId);
       return;
     }
+    if (!pending.previewCardId) {
+      if ((pending.botAdvanceAt ?? 0) > Date.now()) return;
+      const preview: HarvestPending = { ...pending, previewCardId: chosen.id, botAdvanceAt: Date.now() + HARVEST_CHOICE_HOLD_MS, reason: `${actor.name} is choosing ${cardDefinition(chosen.kind).name}` };
+      await db().prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(JSON.stringify(preview), roomId, room.pending_json).run();
+      return;
+    }
+    if ((pending.botAdvanceAt ?? 0) > Date.now()) return;
+    const previewed = pending.revealed.find((card) => card.id === pending.previewCardId && availableIds.includes(card.id));
+    if (!previewed) return;
     const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) continue;
-    await resolveHarvestChoice(room, pending, actor, players, chosen);
+    await resolveHarvestChoice(room, pending, actor, players, previewed);
     return;
   }
 }
@@ -538,9 +556,9 @@ async function runBots(roomId: string) {
         writes.push(db().prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
         await db().batch(writes); continue;
       }
-      const pending: HarvestPending = { kind: "harvest", sourceId: bot.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, availableIds: draw.drawn.map((card) => card.id), choices: [], resumePhase: "play", reason: "Choose 1 revealed card from Bumper Harvest" };
+      const pending: HarvestPending = { kind: "harvest", sourceId: bot.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, availableIds: draw.drawn.map((card) => card.id), choices: [], botAdvanceAt: isBotPlayer(choosers[0]) ? Date.now() + HARVEST_BOT_THINK_MS : undefined, resumePhase: "play", reason: "Choose 1 revealed card from Bumper Harvest" };
       writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
-      await db().batch(writes); await advanceHarvest(roomId); return;
+      await db().batch(writes); return;
     }
     const groupCard = hand.find((card) => card.kind === "BarbarianInvasion" || card.kind === "RainingArrows");
     const groupTargets = playersInTurnOrder(players, bot.seat).filter((player) => player.alive && player.id !== bot.id);
@@ -622,7 +640,7 @@ async function roomState(code: string, token?: string) {
     pendingAttack: pending?.kind === "attack" ? pending : null,
     pendingDuel: pending?.kind === "duel" ? pending : null,
     pendingGroup: pending?.kind === "group" ? pending : null,
-    pendingHarvest: pending?.kind === "harvest" ? { sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), previewCardId: pending.previewCardId ?? null } : null,
+    pendingHarvest: pending?.kind === "harvest" ? { sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), previewCardId: pending.previewCardId ?? null, complete: Boolean(pending.completeAt) } : null,
     pendingDying: pending?.kind === "dying" ? { sourceId: pending.sourceId, targetId: pending.targetId, deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
     players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), handCount: parse<Card[]>(player.hand_json, []).length, distance: me ? distanceBetween(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? player.role : null })),
   };
@@ -641,7 +659,8 @@ export async function GET(request: Request) {
     const result = await env.DB.prepare("SELECT id,event_key,event_type,actor_id,actor_name,action,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at FROM game_audit WHERE room_id = ? ORDER BY id").bind(room.id).all();
     return json({ code, audit: result.results ?? [] });
   }
-  const liveRoom = await env.DB.prepare("SELECT id FROM rooms WHERE code = ?").bind(code).first<{ id: string }>(); if (liveRoom) await expireDyingRescue(liveRoom.id);
+  const liveRoom = await env.DB.prepare("SELECT id FROM rooms WHERE code = ?").bind(code).first<{ id: string }>();
+  if (liveRoom) { await expireDyingRescue(liveRoom.id); await advanceHarvest(liveRoom.id); }
   const state = await roomState(code, token);
   return state ? json(state) : json({ error: "Room not found." }, 404);
 }
@@ -768,7 +787,7 @@ export async function POST(request: Request) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
-    if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "harvest" || pending.actorId !== me.id) return json({ error: "Wait for your turn to choose from Bumper Harvest." }, 409);
+    if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "harvest" || pending.completeAt || pending.actorId !== me.id) return json({ error: "Wait for your turn to choose from Bumper Harvest." }, 409);
     const cardId = typeof body.cardId === "string" ? body.cardId : "";
     if (cardId && !harvestAvailableIds(pending).includes(cardId)) return json({ error: "Choose one of the available Bumper Harvest cards." }, 400);
     const nextPending: HarvestPending = { ...pending, previewCardId: cardId || undefined };
@@ -781,7 +800,7 @@ export async function POST(request: Request) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
-    if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "harvest" || pending.actorId !== me.id) return json({ error: "Wait for your turn to choose from Bumper Harvest." }, 409);
+    if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "harvest" || pending.completeAt || pending.actorId !== me.id) return json({ error: "Wait for your turn to choose from Bumper Harvest." }, 409);
     const availableIds = harvestAvailableIds(pending); const chosen = pending.revealed.find((card) => card.id === String(body.cardId ?? "") && availableIds.includes(card.id));
     if (!chosen) return json({ error: "Choose one of the revealed Bumper Harvest cards." }, 400);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
@@ -963,12 +982,11 @@ export async function POST(request: Request) {
             db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id),
           ]);
         } else {
-          const pending: HarvestPending = { kind: "harvest", sourceId: me.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, availableIds: draw.drawn.map((revealedCard) => revealedCard.id), choices: [], resumePhase: liveRoom.phase, reason: "Choose 1 revealed card from Bumper Harvest" };
+          const pending: HarvestPending = { kind: "harvest", sourceId: me.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, availableIds: draw.drawn.map((revealedCard) => revealedCard.id), choices: [], botAdvanceAt: isBotPlayer(choosers[0]) ? Date.now() + HARVEST_BOT_THINK_MS : undefined, resumePhase: liveRoom.phase, reason: "Choose 1 revealed card from Bumper Harvest" };
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
             db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id),
           ]);
-          await advanceHarvest(room.id);
         }
       } else if (card.kind === "BarbarianInvasion" || card.kind === "RainingArrows") {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
