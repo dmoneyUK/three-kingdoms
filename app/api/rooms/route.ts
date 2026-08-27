@@ -247,12 +247,26 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
   let deck = parse<Card[]>(room.deck_json, []); let discard = parse<Card[]>(room.discard_json, []); let log = addLog(parse<string[]>(room.log_json, []), `${target?.name ?? "The dying player"} receives no Peach and is defeated.`);
   const resume = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.resumePlayerId ?? pending.sourceId).first<PlayerRow>();
   if (target?.role) log = addLog(log, `${target.name}'s role is revealed: ${publicRoleName(target.role)}.`);
-  const writes = [env.DB.prepare("UPDATE players SET hp = 0, alive = 0 WHERE id = ?").bind(pending.targetId)];
+  const defeatedHand = parse<Card[]>(target?.hand_json ?? null, []);
+  if (defeatedHand.length) {
+    discard.push(...defeatedHand);
+    log = addDiscardEvent(log, target?.name ?? "The defeated player", defeatedHand);
+    log = addLog(log, `${target?.name ?? "The defeated player"} discards all remaining cards after being defeated.`);
+  }
+  const writes = [env.DB.prepare("UPDATE players SET hp = 0, alive = 0, hand_json = '[]' WHERE id = ?").bind(pending.targetId)];
   if (target?.role === "Rebel" && source?.alive) {
     const reward = drawCards(deck, discard, 3, log); deck = reward.deck; discard = reward.discard; log = reward.log;
     const sourceHand = [...parse<Card[]>(source.hand_json, []), ...reward.drawn];
     writes.push(env.DB.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
     log = addLog(log, `${source.name} defeated Rebel ${target.name} and draws ${reward.drawn.length} reward card${reward.drawn.length === 1 ? "" : "s"}.`);
+  } else if (target?.role === "Loyalist" && source?.role === "Lord") {
+    const lordHand = parse<Card[]>(source.hand_json, []);
+    if (lordHand.length) {
+      discard.push(...lordHand);
+      log = addDiscardEvent(log, source.name, lordHand);
+    }
+    writes.push(env.DB.prepare("UPDATE players SET hand_json = '[]' WHERE id = ?").bind(source.id));
+    log = addLog(log, `${source.name} defeated Loyalist ${target.name} and discards all cards as the Lord's penalty.`);
   }
   const next = dyingResumeState(pending, resume);
   writes.push(env.DB.prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));

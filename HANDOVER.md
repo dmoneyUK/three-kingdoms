@@ -57,7 +57,7 @@ Implemented shared rules include:
 - seat order, living-player distance and range-1 Attack;
 - Attack/Dodge, Duel and ordered global-card response chains;
 - Peach healing and turn-ordered Dying rescue;
-- death, public role reveal, Rebel defeat reward and match victory checks;
+- death, defeated-hand cleanup, public role reveal, Rebel defeat reward, the Lord's Loyalist-kill penalty and match victory checks;
 - bot draw, play, response, rescue, discard and repeated-round operation;
 - private draws, private rescue prompts and public action presentations;
 - one-room audit storage, cleared when a new game starts; and
@@ -243,7 +243,7 @@ Recommended next sequence:
 4. Defer Borrowed Sword until equipment zones exist.
 5. Continue through response-chain cards, then delayed stratagems and the Judgement Zone.
 6. Add equipment and distance modifiers.
-7. Complete role-outcome and defeat reward/penalty coverage.
+7. Extend role-outcome and defeat cleanup to future equipment and judgement zones.
 8. Add hero abilities only after shared rules and cards are stable.
 
 ## Known boundaries

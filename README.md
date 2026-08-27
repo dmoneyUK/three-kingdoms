@@ -21,7 +21,7 @@ The playable alpha currently includes:
 - turn ownership, seat order, distance and attack range;
 - ordered Attack, Dodge, Duel and global-card responses;
 - Peach healing and turn-ordered Dying rescue;
-- death, role reveal and Rebel defeat rewards;
+- death, role reveal, defeated-hand cleanup, Rebel defeat rewards and the Lord's Loyalist-kill penalty;
 - automatic bot drawing, card play, responses, rescue and discard;
 - private card draws and private rescue decisions;
 - one-second played/revealed-card presentations, three-second event messages and three-second private draws;
@@ -64,7 +64,7 @@ The playable alpha currently includes:
 | 2. Strengthen the general rules engine | In progress | State invariants and ordered pending actions are implemented; resolver reuse and broader transition tests remain. |
 | 3. Complete the general card set | In progress — current feature focus | 11 cards are playable; remaining stratagems will continue to be added incrementally. |
 | 4. Equipment and distance modifiers | Planned | No weapons, armour or horses yet. |
-| 5. Complete match rules | Partly implemented | Main death, reveal, reward and victory paths work; full role-outcome coverage remains. |
+| 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
 | 7. Product polish | Ongoing alongside rules work | Mobile feedback, timing and visibility are improving; sound, invitations and saved history remain planned. |
 
@@ -98,7 +98,7 @@ Add **Negation** as the next response-chain card while extracting shared ordered
 ### 5. Complete match rules
 
 - Thoroughly test Lord, Loyalist, Rebel and Traitor victory conditions.
-- Complete rewards and penalties for every defeat combination.
+- Extend the completed standard death rewards and penalties when equipment and judgement zones are introduced.
 - Improve reconnect, disconnect and room-cleanup behaviour.
 
 ### 6. Add hero-specific abilities
