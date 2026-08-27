@@ -65,6 +65,12 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /playedCard: 1000/);
   assert.match(page, /eventMessage: 3000/);
   assert.match(page, /privateDraw: 3000/);
+  assert.match(page, /function Countdown/);
+  assert.match(page, /visible-countdown/);
+  assert.match(page, /Decision closes in/);
+  assert.match(page, /Cards close in/);
+  assert.match(page, /countdownUntil/);
+  assert.match(styles, /\.play-table>\.visible-countdown\{z-index:20\}/);
   assert.match(page, /Discard \$\{excessCards\} selected/);
   assert.match(page, /discard-card-row/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
