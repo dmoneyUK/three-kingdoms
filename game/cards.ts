@@ -26,6 +26,7 @@ export const CARD_DEFINITIONS: Record<CardKind, CardDefinition> = {
   BarbarianInvasion: { kind: "BarbarianInvasion", name: "Barbarian Invasion", category: "stratagem", target: "all-opponents", description: "Each opponent must play Attack", rules: "During your Play Phase, use this card on all other living characters. In turn order, each target must play an Attack or take 1 damage.", officialCardId: 178 },
   RainingArrows: { kind: "RainingArrows", name: "Raining Arrows", category: "stratagem", target: "all-opponents", description: "Each opponent must play Dodge", rules: "During your Play Phase, use this card on all other living characters. In turn order, each target must play a Dodge or take 1 damage.", officialCardId: 183 },
   BumperHarvest: { kind: "BumperHarvest", name: "Bumper Harvest", category: "stratagem", target: "self", description: "Reveal 1 card per player · choose in turn", rules: "During your Play Phase, use this card on all living characters, including yourself. Reveal cards from the top of the deck equal to the number of living players. Starting with you and continuing in turn order, each player chooses 1 revealed card to obtain.", officialCardId: 57 },
+  Negation: { kind: "Negation", name: "Negation", category: "stratagem", target: "response", description: "Cancel a stratagem effect", rules: "Before a stratagem takes effect on one target, play Negation to cancel that effect. Another Negation may be played to cancel the previous Negation.", officialCardId: 108 },
   // Compatibility for games created before the English card name was corrected.
   Strike: { kind: "Strike", name: "Attack", category: "basic", target: "opponent", description: "Range 1 · deal 1 damage", rules: "During your Play Phase, target a character within your attack range. They must play Dodge or take 1 damage. Normally, you may use one Attack per turn.", officialCardId: 173 },
 };
@@ -44,6 +45,7 @@ export const DECK_COUNTS: Partial<Record<CardKind, number>> = {
   BarbarianInvasion: 3,
   RainingArrows: 1,
   BumperHarvest: 2,
+  Negation: 3,
 };
 
 export const DECK_CARD_KINDS = Object.keys(DECK_COUNTS) as CardKind[];

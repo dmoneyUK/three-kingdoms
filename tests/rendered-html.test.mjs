@@ -122,6 +122,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`BarbarianInvasion` \| Barbarian Invasion \| 178/);
   assert.match(officialReference, /`RainingArrows` \| Raining Arrows \| 183/);
   assert.match(officialReference, /`BumperHarvest` \| Bumper Harvest \| 57/);
+  assert.match(officialReference, /`Negation` \| Negation \| 108/);
   assert.match(page, /card\.kind === "Steal"/);
   assert.match(page, /\["Dismantle", "Steal"\]/);
   assert.match(page, /respond_duel/);
@@ -153,7 +154,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /const shownCard = optimisticPlay \?\? activeCard/);
   assert.match(page, /Selected by \{actor\?\.name/);
   assert.match(page, /All choices complete/);
-  assert.match(page, /room\?\.pendingHarvest \? UI_TIMING\.harvestPoll : UI_TIMING\.roomPoll/);
+  assert.match(page, /room\?\.pendingHarvest \|\| room\?\.pendingNegation \? UI_TIMING\.harvestPoll : UI_TIMING\.roomPoll/);
+  assert.match(page, /respond_negation/);
+  assert.match(page, /pass_negation/);
+  assert.match(page, /play Negation/i);
   assert.match(page, /awaiting confirmation/);
   assert.match(styles, /\.harvest-card-choice\.taken/);
   assert.match(styles, /\.harvest-card-choice\.pending-choice/);

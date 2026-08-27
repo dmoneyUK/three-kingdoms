@@ -21,6 +21,7 @@ Current mappings:
 | `BarbarianInvasion` | Barbarian Invasion | 178 |
 | `RainingArrows` | Raining Arrows | 183 |
 | `BumperHarvest` | Bumper Harvest | 57 |
+| `Negation` | Negation | 108 |
 
 Development policy:
 

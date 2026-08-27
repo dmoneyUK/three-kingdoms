@@ -26,7 +26,7 @@ The playable alpha currently includes:
 - private card draws and private rescue decisions;
 - one-second played/revealed-card presentations, three-second event messages and three-second private draws;
 - event history plus a detailed rule-audit trail; and
-- a quick-test opening hand containing one of every implemented card.
+- a quick-test opening hand containing one of every implemented card, with Negation also seeded into bot hands.
 
 ### Implemented cards
 
@@ -41,9 +41,11 @@ The playable alpha currently includes:
 - Barbarian Invasion
 - Raining Arrows
 - Bumper Harvest
+- Negation
 
 ### Recently stabilised
 
+- Negation can interrupt a stratagem in seat order, supports an explicit Pass action, and can itself be cancelled by a counter-Negation before the original effect resumes.
 - Bumper Harvest keeps every revealed card on one shared choice panel, requires confirmation, names the current chooser, and visibly paces every raised selection and shaded confirmation before advancing to the next player.
 - Bumper Harvest gains no longer trigger the normal private-draw overlay, so the shared panel remains visible while every later player selects and confirms.
 - Opening draws begin immediately, card plays appear on the table optimistically, and Bumper Harvest selection changes never lock the controls while their shared preview synchronises.
@@ -62,7 +64,7 @@ The playable alpha currently includes:
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; ongoing regression work | Core ownership, phase order, repeated rounds and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress | State invariants and ordered pending actions are implemented; resolver reuse and broader transition tests remain. |
-| 3. Complete the general card set | In progress — current feature focus | 11 cards are playable; remaining stratagems will continue to be added incrementally. |
+| 3. Complete the general card set | In progress — current feature focus | 12 cards are playable; Negation now has an ordered counter-response chain. |
 | 4. Equipment and distance modifiers | Planned | No weapons, armour or horses yet. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
@@ -70,7 +72,7 @@ The playable alpha currently includes:
 
 ### Next milestone
 
-Add **Negation** as the next response-chain card while extracting shared ordered-response logic and adding a regression test for every new transition. Borrowed Sword remains deferred until equipment zones exist.
+Extend **Negation** from the completed ordered single-target/whole-card response chain to per-target windows for multi-target stratagems and stratagems initiated by bots. Borrowed Sword remains deferred until equipment zones exist.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 

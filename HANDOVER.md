@@ -178,6 +178,7 @@ Internal identifiers may differ from player-facing names for compatibility:
 - `DrawTwo` → Something Out of Nothing
 - `Dismantle` → Burning Bridges
 - `BumperHarvest` → Bumper Harvest
+- `Negation` → Negation
 - internal `Renegade` → player-facing Traitor
 - legacy `Strike` → Attack
 
@@ -209,7 +210,7 @@ npm run lint
 npm test
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 8 passing test flows.
+`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 10 passing test flows.
 
 Key test files:
 
@@ -238,9 +239,9 @@ The project is currently between:
 
 Recommended next sequence:
 
-1. Extract another shared ordered-response/resolution helper from `app/api/rooms/route.ts`.
-2. Add Negation (official card 108) as the next response-chain card using the checklist above.
-3. Add deterministic tests for Negation and the resolver refactor.
+1. Continue extracting shared ordered-response/resolution helpers from `app/api/rooms/route.ts`.
+2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards and deterministic single-target coverage.
+3. Extend Negation timing to each target of multi-target stratagems and to stratagems initiated during bot turns.
 4. Defer Borrowed Sword until equipment zones exist.
 5. Continue through response-chain cards, then delayed stratagems and the Judgement Zone.
 6. Add equipment and distance modifiers.
