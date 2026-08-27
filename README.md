@@ -24,7 +24,7 @@ The playable alpha currently includes:
 - death, role reveal, defeated-hand cleanup, Rebel defeat rewards and the Lord's Loyalist-kill penalty;
 - automatic bot drawing, card play, responses, rescue and discard;
 - private card draws and private rescue decisions;
-- one-second played/revealed-card presentations, three-second event messages and three-second private draws, all with visible countdowns;
+- cumulative card-resolution presentations that retain the played card, official effect explanation, responses and results step by step until resolution concludes, with visible countdowns;
 - event history plus a detailed rule-audit trail; and
 - a quick-test opening hand containing one of every implemented card, with Negation also seeded into bot hands.
 

@@ -127,6 +127,8 @@ All intentional production waits are now centralised or recorded here:
 | Peach rescue decision | 5000 ms | Give each eligible player a private chance to select Peach or pass. |
 
 Every blocking presentation and decision overlay shows a live countdown. Bumper Harvest also exposes its bot preview and final-choice deadlines to all viewers; continuous room polling remains intentionally invisible because it is a repeating refresh rather than a blocking wait.
+
+Card presentations now use one cumulative resolution panel. Earlier steps remain visible while later card responses and effect messages are added, and response-based sequences stay open until the server leaves Response, Dying or Resolving. Each card step includes the development-source rules explanation from `game/cards.ts`.
 | Bumper Harvest bot think | 450 ms | Show which bot is about to choose. |
 | Bumper Harvest raised/confirmed choice | 1400 ms | Make each bot selection visible before advancing. |
 | Final Bumper Harvest choices | 1400 ms | Leave the completed shaded choices visible briefly. |
