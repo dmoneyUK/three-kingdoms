@@ -169,6 +169,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /optimisticallyPresentedCards\.current\.add\(playedCard\.id\)/);
   assert.match(page, /optimisticallyPresentedCards\.current\.delete\(event\.card\.id\)/);
   assert.match(page, /setTimeout\(\(\) => setOptimisticPlay\(null\), UI_TIMING\.playedCard\)/);
+  assert.match(page, /setResolutionClosing\(false\); setResolutionEvents\(\[optimisticEvent\]\)/);
   assert.match(page, /setResolutionEvents/);
   assert.match(page, /Selected by \{actor\?\.name/);
   assert.match(page, /All choices complete/);
@@ -183,7 +184,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(styles, /\.harvest-card-choice\.taken/);
   assert.match(styles, /\.harvest-card-choice\.pending-choice/);
   assert.match(styles, /brightness\(\.2\)/);
-  assert.match(styles, /--played-card-display:1s/);
+  assert.match(styles, /--played-card-display:4s/);
   assert.match(styles, /--event-display:3s/);
   assert.match(styles, /animation:playedCardFlight var\(--played-card-display\)/);
   assert.match(styles, /animation:eventHold var\(--event-display\)/);
