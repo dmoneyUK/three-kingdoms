@@ -62,7 +62,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /skip_rescue/);
   assert.match(page, /start_rescue_timer/);
   assert.match(page, /automaticRescueSkip/);
-  assert.match(page, /playedCard: 1000/);
+  assert.match(page, /playedCard: 4000/);
   assert.match(page, /eventMessage: 3000/);
   assert.match(page, /privateDraw: 3000/);
   assert.match(page, /function Countdown/);

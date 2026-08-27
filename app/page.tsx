@@ -15,7 +15,7 @@ const UI_TIMING = {
   roomPoll: 2500,
   harvestPoll: 300,
   turnDrawStart: 100,
-  playedCard: 1000,
+  playedCard: 4000,
   eventMessage: 3000,
   privateDraw: 3000,
   sequenceDiscard: 700,
