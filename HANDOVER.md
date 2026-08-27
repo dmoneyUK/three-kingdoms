@@ -240,8 +240,8 @@ The project is currently between:
 Recommended next sequence:
 
 1. Continue extracting shared ordered-response/resolution helpers from `app/api/rooms/route.ts`.
-2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards and deterministic single-target coverage.
-3. Extend Negation timing to each target of multi-target stratagems and to stratagems initiated during bot turns.
+2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
+3. Add the next immediate strategy card and continue extracting shared strategy-resolution helpers.
 4. Defer Borrowed Sword until equipment zones exist.
 5. Continue through response-chain cards, then delayed stratagems and the Judgement Zone.
 6. Add equipment and distance modifiers.

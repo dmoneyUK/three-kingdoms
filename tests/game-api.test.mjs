@@ -398,6 +398,32 @@ test("only the affected bot negates a targeted stratagem; later bots do not coun
   assert.equal(result.data.room.timeline.filter((event) => event.type === "card" && event.card.kind === "Negation").length, 1);
 });
 
+test("Negation cancels an AOE for one target and the card continues in seat order", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, alice, bob, carol] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice"); const bobPlayer = game.room.players.find((player) => player.name === "Bob"); const carolPlayer = game.room.players.find((player) => player.name === "Carol");
+  assert.ok(hostPlayer && alicePlayer && bobPlayer && carolPlayer);
+
+  for (const { kind, requiredKind } of [{ kind: "BarbarianInvasion", requiredKind: "Attack" }, { kind: "RainingArrows", requiredKind: "Dodge" }]) {
+    setHand(hostPlayer.id, [card(kind, "per-target")], 5, 5);
+    setHand(alicePlayer.id, [card("Negation", `${kind}-alice`)], 4, 4);
+    setHand(bobPlayer.id, [card(requiredKind, `${kind}-bob`)], 4, 4);
+    setHand(carolPlayer.id, [card(requiredKind, `${kind}-carol`)], 4, 4);
+    setTurn(game.code, hostPlayer.seat);
+
+    const opened = await request("play_card", { code: game.code, token: host.token, cardId: `${kind.toLowerCase()}-per-target` });
+    assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.effectTargetId, alicePlayer.id); assert.equal(opened.data.room.actionPlayerId, alicePlayer.id);
+    const protectedAlice = await request("respond_negation", { code: game.code, token: alice.token, cardId: `negation-${kind}-alice` });
+    assert.equal(protectedAlice.status, 200); assert.equal(protectedAlice.data.room.pendingNegation, null); assert.equal(protectedAlice.data.room.pendingGroup.actorId, bobPlayer.id, `${kind} continues to Bob after Alice is protected`);
+    assert.equal(protectedAlice.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
+
+    const bobResponse = await request("respond_group", { code: game.code, token: bob.token, cardId: `${requiredKind.toLowerCase()}-${kind}-bob` });
+    assert.equal(bobResponse.status, 200); assert.equal(bobResponse.data.room.pendingGroup.actorId, carolPlayer.id, `${kind} continues to Carol after Bob responds`);
+    const finished = await request("respond_group", { code: game.code, token: carol.token, cardId: `${requiredKind.toLowerCase()}-${kind}-carol` });
+    assert.equal(finished.status, 200); assert.equal(finished.data.room.phase, "play"); assert.equal(finished.data.room.pendingGroup, null);
+    assert.ok(finished.data.room.log.some((entry) => new RegExp(`${kind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}'s effect on Alice is cancelled`).test(entry)));
+  }
+});
+
 test("turn engine completes repeated rounds, rejects duplicate actions, and skips defeated players", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const membersBySeat = game.room.players.map((player) => ({ player, member: game.members.find((member) => member.name === player.name) })).sort((a, b) => a.player.seat - b.player.seat);
@@ -461,7 +487,7 @@ test("bot global cards resolve across consecutive rounds and return the turn to 
   const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
   const defensiveDeck = (prefix) => Array.from({ length: 20 }, (_, index) => card("Dodge", `${prefix}-${index}`));
 
-  setHand(me.id, [card("Attack", "invasion-response")], me.hp, me.maxHp); setHand(playerOne.id, [card("BarbarianInvasion", "bot-round")], 1, 1); setHand(playerTwo.id, [card("Attack", "invasion-response")], 1, 1); setHand(playerThree.id, [card("Attack", "invasion-response")], 1, 1); setTurn(code, me.seat);
+  setHand(me.id, [card("Attack", "invasion-response")], me.hp, me.maxHp); setHand(playerOne.id, [card("BarbarianInvasion", "bot-round")], 1, 1); setHand(playerTwo.id, [card("Negation", "invasion-protection")], 1, 1); setHand(playerThree.id, [card("Attack", "invasion-response")], 1, 1); setTurn(code, me.seat);
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(defensiveDeck("invasion-draw")))}, discard_json='[]' WHERE code=${quote(code)}`);
   assert.equal((await request("end_turn", { code, token })).status, 200);
   const invasionForMe = await waitForState(code, token, (room) => room.phase === "response" && room.pendingGroup?.cardKind === "BarbarianInvasion" && room.isMyAction);
@@ -470,7 +496,9 @@ test("bot global cards resolve across consecutive rounds and return the turn to 
   const afterInvasion = await waitForState(code, token, (room) => room.turnSeat === me.seat && room.phase === "draw");
   assert.equal(afterInvasion.isMyTurn, true); assert.ok(afterInvasion.timeline.some((event) => event.type === "card" && event.player === "Player 1" && event.card.kind === "BarbarianInvasion"));
   const invasionResponses = afterInvasion.timeline.filter((event) => event.type === "card" && event.card.id === "attack-invasion-response");
-  assert.equal(invasionResponses.length, 3); assert.ok(invasionResponses.every((event) => event.target === event.player), "human and bot Attack responses to Barbarian Invasion are directionless");
+  assert.equal(invasionResponses.length, 2); assert.ok(invasionResponses.every((event) => event.target === event.player), "human and bot Attack responses to Barbarian Invasion are directionless");
+  assert.ok(afterInvasion.timeline.some((event) => event.type === "card" && event.player === "Player 2" && event.card.id === "negation-invasion-protection"), "a bot can Negate a bot-played AOE for itself");
+  assert.ok(afterInvasion.timeline.some((event) => /Barbarian Invasion's effect on Player 2 is cancelled/.test(event.message ?? "")));
 
   setHand(me.id, [card("Dodge", "arrows-response")], me.hp, me.maxHp); setHand(playerOne.id, [card("Dodge", "arrows-response-1")], 1, 1); setHand(playerTwo.id, [card("Dodge", "arrows-response-2")], 1, 1); setHand(playerThree.id, [card("RainingArrows", "bot-round")], 1, 1); setTurn(code, me.seat);
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(defensiveDeck("arrows-draw")))}, discard_json='[]' WHERE code=${quote(code)}`);
