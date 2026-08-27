@@ -239,6 +239,7 @@ function CardFace({ card }: { card: Card }) {
 }
 
 function cardEventVerb(event: CardEvent, peachRescue: boolean) {
+  if (event.target === event.player && (isAttackCard(event.card) || event.card.kind === "Dodge")) return "responds with";
   if (event.action === "discard") return "discards";
   if (event.action === "gain") return "chooses from Bumper Harvest";
   if (event.card.kind === "Dodge") return "blocks";
@@ -256,12 +257,13 @@ function cardEventVerb(event: CardEvent, peachRescue: boolean) {
 }
 
 function cardEventHasTarget(event: CardEvent, peachRescue: boolean) {
-  return event.action !== "discard" && (isAttackCard(event.card) || event.card.kind === "Dodge" || event.card.kind === "Dismantle" || event.card.kind === "Steal" || event.card.kind === "Duel" || peachRescue);
+  return event.action !== "discard" && event.target !== event.player && (isAttackCard(event.card) || event.card.kind === "Dodge" || event.card.kind === "Dismantle" || event.card.kind === "Steal" || event.card.kind === "Duel" || peachRescue);
 }
 
 function cardEventDirection(event: CardEvent, peachRescue: boolean) {
   if (event.action === "discard") return "DISCARD ↓";
   if (event.action === "gain") return "TAKES";
+  if (event.target === event.player && (isAttackCard(event.card) || event.card.kind === "Dodge")) return "";
   if (peachRescue) return "GIVES →";
   if (event.card.kind === "Dodge") return "← BLOCKS";
   if (isAttackCard(event.card)) return "ATTACKS →";

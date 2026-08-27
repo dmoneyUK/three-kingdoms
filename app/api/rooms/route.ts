@@ -421,7 +421,7 @@ async function advanceGroup(roomId: string) {
     if ((claim.meta.changes ?? 0) <= 0) continue;
     if (!response) { await resolveGroupDamage(room, pending, actor, source, players, discard, log); return; }
     hand = hand.filter((card) => card.id !== response.id); discard.push(response);
-    log = addCardEvent(log, actor.name, response, source.name); log = addLog(log, `${actor.name} plays ${pending.requiredKind} against ${pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}.`);
+    log = addCardEvent(log, actor.name, response); log = addLog(log, `${actor.name} plays ${pending.requiredKind} against ${pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}.`);
     await finishGroupStep(room, pending, players, discard, log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
     return;
   }
@@ -867,7 +867,7 @@ export async function POST(request: Request) {
       await resolveGroupDamage(liveRoom, pending, me, source, players, discard, log);
     } else {
       hand = hand.filter((card) => card.id !== selectedResponse.id); discard.push(selectedResponse);
-      log = addCardEvent(log, me.name, selectedResponse, source.name); log = addLog(log, `${me.name} plays ${pending.requiredKind} against ${pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}.`);
+      log = addCardEvent(log, me.name, selectedResponse); log = addLog(log, `${me.name} plays ${pending.requiredKind} against ${pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}.`);
       await finishGroupStep(liveRoom, pending, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
     }
     return json({ room: await roomState(code, token) });

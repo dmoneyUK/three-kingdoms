@@ -181,6 +181,8 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal((await request("respond_group", { code: game.code, token: bob.token, cardId: "attack-barbarian-answer" })).status, 409);
   const invasionAlice = await request("respond_group", { code: game.code, token: alice.token, cardId: "attack-barbarian-answer" });
   assert.equal(invasionAlice.status, 200); assert.equal(invasionAlice.data.room.actionPlayerId, bobPlayer.id);
+  const aliceInvasionResponse = invasionAlice.data.room.timeline.find((event) => event.type === "card" && event.card.id === "attack-barbarian-answer" && event.player === "Alice");
+  assert.equal(aliceInvasionResponse.target, "Alice", "an AOE response has no directional player target");
   const invasionBob = await request("take_group_damage", { code: game.code, token: bob.token });
   assert.equal(invasionBob.status, 200); assert.equal(invasionBob.data.room.players.find((player) => player.id === bobPlayer.id).alive, false); assert.equal(invasionBob.data.room.actionPlayerId, carolPlayer.id);
   const invasionCarol = await request("respond_group", { code: game.code, token: carol.token, cardId: "attack-barbarian-answer" });
@@ -195,6 +197,8 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const arrowsFinished = await request("respond_group", { code: game.code, token: carol.token, cardId: "dodge-arrows-answer" });
   assert.equal(arrowsFinished.status, 200); assert.equal(arrowsFinished.data.room.phase, "play"); assert.equal(arrowsFinished.data.room.pendingGroup, null);
   assert.ok(arrowsFinished.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "RainingArrows"));
+  const arrowResponses = arrowsFinished.data.room.timeline.filter((event) => event.type === "card" && event.card.id === "dodge-arrows-answer");
+  assert.equal(arrowResponses.length, 3); assert.ok(arrowResponses.every((event) => event.target === event.player), "every Dodge response to Raining Arrows is directionless");
 
   const discardHand = Array.from({ length: 6 }, (_, index) => card("Dodge", `discard-${index}`));
   setHand(hostPlayer.id, discardHand, 4, 5); setTurn(game.code, hostPlayer.seat);
@@ -410,6 +414,8 @@ test("bot global cards resolve across consecutive rounds and return the turn to 
   assert.equal((await request("respond_group", { code, token, cardId: "attack-invasion-response" })).status, 200);
   const afterInvasion = await waitForState(code, token, (room) => room.turnSeat === me.seat && room.phase === "draw");
   assert.equal(afterInvasion.isMyTurn, true); assert.ok(afterInvasion.timeline.some((event) => event.type === "card" && event.player === "Player 1" && event.card.kind === "BarbarianInvasion"));
+  const invasionResponses = afterInvasion.timeline.filter((event) => event.type === "card" && event.card.id === "attack-invasion-response");
+  assert.equal(invasionResponses.length, 3); assert.ok(invasionResponses.every((event) => event.target === event.player), "human and bot Attack responses to Barbarian Invasion are directionless");
 
   setHand(me.id, [card("Dodge", "arrows-response")], me.hp, me.maxHp); setHand(playerOne.id, [card("Dodge", "arrows-response-1")], 1, 1); setHand(playerTwo.id, [card("Dodge", "arrows-response-2")], 1, 1); setHand(playerThree.id, [card("RainingArrows", "bot-round")], 1, 1); setTurn(code, me.seat);
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(defensiveDeck("arrows-draw")))}, discard_json='[]' WHERE code=${quote(code)}`);
@@ -419,6 +425,8 @@ test("bot global cards resolve across consecutive rounds and return the turn to 
   assert.equal((await request("respond_group", { code, token, cardId: "dodge-arrows-response" })).status, 200);
   const afterArrows = await waitForState(code, token, (room) => room.turnSeat === me.seat && room.phase === "draw");
   assert.equal(afterArrows.isMyTurn, true); assert.ok(afterArrows.timeline.some((event) => event.type === "card" && event.player === "Player 3" && event.card.kind === "RainingArrows"));
+  const botArrowResponses = afterArrows.timeline.filter((event) => event.type === "card" && event.card.id.startsWith("dodge-arrows-response"));
+  assert.ok(botArrowResponses.length >= 1); assert.ok(botArrowResponses.every((event) => event.target === event.player));
 });
 
 test("Dying rescue resumes a global response chain and victory stops it immediately", { timeout: 30_000 }, async () => {

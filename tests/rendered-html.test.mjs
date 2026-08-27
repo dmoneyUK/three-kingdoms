@@ -127,6 +127,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /respond_duel/);
   assert.match(page, /take_duel_damage/);
   assert.match(page, /respond_group/);
+  assert.match(page, /event\.target === event\.player && \(isAttackCard\(event\.card\) \|\| event\.card\.kind === "Dodge"\)/);
+  assert.match(page, /return "responds with"/);
   assert.match(page, /take_group_damage/);
   assert.match(page, /choose_harvest/);
   assert.match(page, /preview_harvest/);

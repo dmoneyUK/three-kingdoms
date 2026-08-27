@@ -56,6 +56,7 @@ Implemented shared rules include:
 - authoritative turn owner, acting player and ordered response state;
 - seat order, living-player distance and range-1 Attack;
 - Attack/Dodge, Duel and ordered global-card response chains;
+- Attack and Dodge responses to global AOE cards are presented without a player-to-player direction;
 - Peach healing and turn-ordered Dying rescue;
 - death, defeated-hand cleanup, public role reveal, Rebel defeat reward, the Lord's Loyalist-kill penalty and match victory checks;
 - bot draw, play, response, rescue, discard and repeated-round operation;
