@@ -179,6 +179,7 @@ Internal identifiers may differ from player-facing names for compatibility:
 - `Dismantle` → Burning Bridges
 - `BumperHarvest` → Bumper Harvest
 - `Negation` → Negation
+- `Overindulgence` → Overindulgence
 - internal `Renegade` → player-facing Traitor
 - legacy `Strike` → Attack
 
@@ -210,7 +211,7 @@ npm run lint
 npm test
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 11 passing test flows.
+`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 13 passing test flows.
 
 Key test files:
 
@@ -241,18 +242,19 @@ Recommended next sequence:
 
 1. Continue extracting shared ordered-response/resolution helpers from `app/api/rooms/route.ts`.
 2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
-3. Add the next immediate strategy card and continue extracting shared strategy-resolution helpers.
-4. Defer Borrowed Sword until equipment zones exist.
-5. Continue through response-chain cards, then delayed stratagems and the Judgement Zone.
-6. Add equipment and distance modifiers.
-7. Extend role-outcome and defeat cleanup to future equipment and judgement zones.
-8. Add hero abilities only after shared rules and cards are stable.
+3. Overindulgence (official card 177) now adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
+4. Add Lightning as the next classic delayed stratagem and continue extracting shared judgement/strategy-resolution helpers.
+5. Defer Borrowed Sword until equipment zones exist.
+6. Continue through remaining response-chain cards and Judgement Zone edge cases.
+7. Add equipment and distance modifiers.
+8. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
+9. Add hero abilities only after shared rules and cards are stable.
 
 ## Known boundaries
 
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
-- Equipment and Judgement Zones do not exist yet, so Burning Bridges and Steal currently operate on hand cards only.
+- The Judgement Zone now supports Overindulgence. Equipment Zones do not exist yet, so Burning Bridges and Steal currently operate on hand cards only.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device.
 - Saved match history, player profiles, statistics, sound and richer invitations are not implemented.

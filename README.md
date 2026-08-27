@@ -42,10 +42,12 @@ The playable alpha currently includes:
 - Raining Arrows
 - Bumper Harvest
 - Negation
+- Overindulgence
 
 ### Recently stabilised
 
 - Negation can interrupt a stratagem in seat order, supports an explicit Pass action, and can itself be cancelled by a deliberate human counter-Negation. Barbarian Invasion and Raining Arrows now open a fresh Negation window for each target, then continue to later players after one target is protected. Bots defend their own affected character but do not blindly counter another bot's Negation.
+- Overindulgence introduces the public Judgement Zone. It can be Negated before placement, cannot be duplicated on one character, reveals a judgement card at the target's next turn, and skips only the Play Phase when the result is not a Heart.
 - Bumper Harvest keeps every revealed card on one shared choice panel, requires confirmation, names the current chooser, and visibly paces every raised selection and shaded confirmation before advancing to the next player.
 - Bumper Harvest gains no longer trigger the normal private-draw overlay, so the shared panel remains visible while every later player selects and confirms.
 - Opening draws begin immediately, card plays appear on the table optimistically, and Bumper Harvest selection changes never lock the controls while their shared preview synchronises.
@@ -64,7 +66,7 @@ The playable alpha currently includes:
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; ongoing regression work | Core ownership, phase order, repeated rounds and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress | State invariants and ordered pending actions are implemented; resolver reuse and broader transition tests remain. |
-| 3. Complete the general card set | In progress — current feature focus | 12 cards are playable; Negation has ordered counter-responses and per-target AOE windows. |
+| 3. Complete the general card set | In progress — current feature focus | 13 cards are playable; Negation has ordered counter-responses, and Overindulgence introduces delayed stratagems and judgement. |
 | 4. Equipment and distance modifiers | Planned | No weapons, armour or horses yet. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
@@ -72,7 +74,7 @@ The playable alpha currently includes:
 
 ### Next milestone
 
-Continue centralising the shared strategy-card resolver, then add the next immediate strategy card. Negation now supports single-target cards, per-target AOE windows and AOE cards initiated by either humans or bots. Borrowed Sword remains deferred until equipment zones exist.
+Strengthen the new Judgement Zone and add the next classic delayed stratagem, **Lightning**. Negation now supports single-target cards, per-target AOE windows and cards initiated by either humans or bots. Borrowed Sword remains deferred until equipment zones exist.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 

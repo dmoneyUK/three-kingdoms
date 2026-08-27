@@ -22,6 +22,7 @@ Current mappings:
 | `RainingArrows` | Raining Arrows | 183 |
 | `BumperHarvest` | Bumper Harvest | 57 |
 | `Negation` | Negation | 108 |
+| `Overindulgence` | Overindulgence | 177 |
 
 Development policy:
 

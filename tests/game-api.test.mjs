@@ -48,6 +48,7 @@ function query(statement) { const result = spawnSync("sqlite3", [databasePath(),
 function quote(value) { return `'${String(value).replaceAll("'", "''")}'`; }
 function card(kind, suffix) { return { id: `${kind.toLowerCase()}-${suffix}`, kind, suit: "♠", rank: "A" }; }
 function setHand(playerId, cards, hp, maxHp = hp) { sql(`UPDATE players SET hand_json=${quote(JSON.stringify(cards))}, hp=${hp}, max_hp=${maxHp}, alive=1 WHERE id=${quote(playerId)}`); }
+function setJudgement(playerId, cards) { sql(`UPDATE players SET judgement_json=${quote(JSON.stringify(cards))} WHERE id=${quote(playerId)}`); }
 function setTurn(roomCode, seat, phase = "play") { sql(`UPDATE rooms SET turn_seat=${seat}, phase=${quote(phase)}, pending_json=NULL, status='playing' WHERE code=${quote(roomCode)}`); }
 
 async function createHumanGame() {
@@ -80,7 +81,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const displayedRoles = await Promise.all(game.members.map(async (member) => (await state(game.code, member.token)).data.myRole));
   assert.ok(displayedRoles.includes("Traitor")); assert.ok(!displayedRoles.includes("Renegade"), "the Renegade role is presented as Traitor");
   const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
-  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BumperHarvest:2", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "Negation:3", "Oath:1", "Peach:8", "RainingArrows:1", "Steal:5"]);
+  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BumperHarvest:2", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "Negation:3", "Oath:1", "Overindulgence:2", "Peach:8", "RainingArrows:1", "Steal:5"]);
   assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
   const aliceView = await state(game.code, alice.token);
   assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
@@ -310,13 +311,13 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
   assert.equal(quick.data.room.players.find((player) => player.name === "ME").hero, "zhang-fei");
   assert.ok(quick.data.room.players.filter((player) => player.isBot).every((player) => player.hp === 1 && player.maxHp === 1));
-  assert.equal(quick.data.room.myHand.length, 12);
-  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation"]), "ME starts every test game with one of each implemented card");
+  assert.equal(quick.data.room.myHand.length, 13);
+  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence"]), "ME starts every test game with one of each implemented card");
   assert.ok(quick.data.room.players.filter((player) => player.isBot).every((player) => player.handCount === 4), "defensive quick-test cards replace rather than enlarge bot hands");
   assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
   assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);
   const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
-  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 14);
+  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 15);
   const quickMe = quickDraw.data.room.players.find((player) => player.name === "ME"); const quickPlayerOne = quickDraw.data.room.players.find((player) => player.name === "Player 1");
   setHand(quickMe.id, [card("Strike", "zhang-fei-1"), card("Strike", "zhang-fei-2")], quickMe.hp, quickMe.maxHp); setHand(quickPlayerOne.id, [card("Dodge", "zhang-fei-1"), card("Dodge", "zhang-fei-2")], 1, 1); setTurn(quick.data.room.code, quickMe.seat);
   assert.equal((await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "strike-zhang-fei-1", targetId: quickPlayerOne.id })).data.room.phase, "play");
@@ -422,6 +423,59 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
     assert.equal(finished.status, 200); assert.equal(finished.data.room.phase, "play"); assert.equal(finished.data.room.pendingGroup, null);
     assert.ok(finished.data.room.log.some((entry) => new RegExp(`${kind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}'s effect on Alice is cancelled`).test(entry)));
   }
+});
+
+test("Overindulgence uses the Judgement Zone and skips only a failed target's Play Phase", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice"); const bobPlayer = game.room.players.find((player) => player.name === "Bob");
+  assert.ok(hostPlayer && alicePlayer && bobPlayer);
+
+  setHand(hostPlayer.id, [card("Overindulgence", "cancelled")], 5, 5); setHand(alicePlayer.id, [card("Negation", "overindulgence")], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: "overindulgence-cancelled", targetId: alicePlayer.id });
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.effectTargetId, alicePlayer.id);
+  const cancelled = await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-overindulgence" });
+  assert.equal(cancelled.status, 200); assert.deepEqual(cancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, [], "Negation prevents placement in the Judgement Zone");
+
+  setHand(hostPlayer.id, [card("Overindulgence", "placed")], 5, 5); setHand(alicePlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const placed = await request("play_card", { code: game.code, token: host.token, cardId: "overindulgence-placed", targetId: alicePlayer.id });
+  assert.equal(placed.status, 200); assert.equal(placed.data.room.phase, "play"); assert.equal(placed.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards[0].id, "overindulgence-placed");
+  setHand(hostPlayer.id, [card("Overindulgence", "duplicate")], 5, 5); setTurn(game.code, hostPlayer.seat);
+  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "overindulgence-duplicate", targetId: alicePlayer.id })).status, 409, "a Judgement Zone cannot contain duplicate Overindulgence cards");
+
+  setHand(alicePlayer.id, [], 4, 4); setTurn(game.code, alicePlayer.seat, "draw");
+  const failedJudge = { ...card("Dodge", "failed-judge"), suit: "♠", rank: "7" }; const failedDraws = [card("Attack", "failed-draw-1"), card("Peach", "failed-draw-2")];
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([failedJudge, ...failedDraws]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
+  const skipped = await request("draw", { code: game.code, token: alice.token });
+  assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "discard"); assert.equal(skipped.data.drawnCards.length, 2); assert.deepEqual(skipped.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
+  assert.ok(skipped.data.room.timeline.some((event) => event.type === "card" && event.action === "reveal" && event.card.id === "dodge-failed-judge"));
+  assert.ok(skipped.data.room.log.some((entry) => /not a Heart, so the Play Phase is skipped/.test(entry)));
+  const ended = await request("discard_cards", { code: game.code, token: alice.token, cardIds: [] });
+  assert.equal(ended.status, 200); assert.equal(ended.data.room.turnSeat, bobPlayer.seat);
+
+  const heartDelayed = { ...card("Overindulgence", "heart"), suit: "♣", rank: "6" }; const heartJudge = { ...card("Dodge", "heart-judge"), suit: "♥", rank: "9" };
+  setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, [heartDelayed]); setTurn(game.code, alicePlayer.seat, "draw");
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([heartJudge, card("Attack", "heart-draw-1"), card("Attack", "heart-draw-2")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
+  const passed = await request("draw", { code: game.code, token: alice.token });
+  assert.equal(passed.status, 200); assert.equal(passed.data.room.phase, "play"); assert.ok(passed.data.room.log.some((entry) => /Heart result allows the Play Phase/.test(entry)));
+
+  const negatedAtJudgement = { ...card("Overindulgence", "judgement-negated"), suit: "♥", rank: "6" };
+  setHand(alicePlayer.id, [card("Negation", "judgement-window")], 4, 4); setJudgement(alicePlayer.id, [negatedAtJudgement]); setTurn(game.code, alicePlayer.seat, "draw");
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([card("Dodge", "unused-judgement"), card("Attack", "post-negation-draw-1"), card("Attack", "post-negation-draw-2")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
+  const judgementWindow = await request("draw", { code: game.code, token: alice.token });
+  assert.equal(judgementWindow.status, 200); assert.equal(judgementWindow.data.room.phase, "response"); assert.equal(judgementWindow.data.room.pendingNegation.cardName, "Overindulgence"); assert.equal(judgementWindow.data.room.actionPlayerId, alicePlayer.id);
+  const judgementCancelled = await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-judgement-window" });
+  assert.equal(judgementCancelled.status, 200); assert.equal(judgementCancelled.data.room.phase, "draw"); assert.deepEqual(judgementCancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
+  const afterJudgementNegation = await request("draw", { code: game.code, token: alice.token });
+  assert.equal(afterJudgementNegation.status, 200); assert.equal(afterJudgementNegation.data.room.phase, "play"); assert.equal(afterJudgementNegation.data.room.timeline.some((event) => event.card?.id === "dodge-unused-judgement"), false, "Negation cancels the delayed effect before a judgement card is drawn");
+
+  const quick = await request("create", { quickStart: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
+  for (const player of [me, playerOne, playerTwo, playerThree]) setHand(player.id, [], player.hp, player.maxHp);
+  setJudgement(playerOne.id, [{ ...card("Overindulgence", "bot-judge"), suit: "♣", rank: "6" }]); setTurn(quick.data.room.code, me.seat, "play");
+  const botJudge = { ...card("Dodge", "bot-judgement-result"), suit: "♣", rank: "8" }; const botDeck = [botJudge, ...Array.from({ length: 20 }, (_, index) => card("Dodge", `bot-overindulgence-draw-${index}`))];
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(botDeck))}, discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
+  assert.equal((await request("end_turn", { code: quick.data.room.code, token: quick.data.token })).status, 200);
+  const botRoundFinished = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
+  assert.deepEqual(botRoundFinished.players.find((player) => player.id === playerOne.id).judgementCards, []); assert.ok(botRoundFinished.log.some((entry) => /Player 1 skips the Play Phase because of Overindulgence/.test(entry)));
 });
 
 test("turn engine completes repeated rounds, rejects duplicate actions, and skips defeated players", { timeout: 30_000 }, async () => {

@@ -110,6 +110,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(cards, /name: "Barbarian Invasion"/);
   assert.match(cards, /name: "Raining Arrows"/);
   assert.match(cards, /name: "Bumper Harvest"/);
+  assert.match(cards, /name: "Overindulgence"/);
+  assert.match(cards, /If it is not a Heart/);
   assert.match(cards, /All wounded players recover 1 HP/);
   assert.match(cards, /alternate playing Attack cards/);
   assert.match(cards, /within distance 1/);
@@ -123,6 +125,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`RainingArrows` \| Raining Arrows \| 183/);
   assert.match(officialReference, /`BumperHarvest` \| Bumper Harvest \| 57/);
   assert.match(officialReference, /`Negation` \| Negation \| 108/);
+  assert.match(officialReference, /`Overindulgence` \| Overindulgence \| 177/);
   assert.match(page, /card\.kind === "Steal"/);
   assert.match(page, /\["Dismantle", "Steal"\]/);
   assert.match(page, /respond_duel/);
@@ -158,6 +161,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /respond_negation/);
   assert.match(page, /pass_negation/);
   assert.match(page, /play Negation/i);
+  assert.match(page, /judgementCards/);
+  assert.match(page, /reveals for judgement/);
+  assert.match(styles, /\.judgement-zone/);
   assert.match(page, /awaiting confirmation/);
   assert.match(styles, /\.harvest-card-choice\.taken/);
   assert.match(styles, /\.harvest-card-choice\.pending-choice/);
