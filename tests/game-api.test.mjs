@@ -377,6 +377,27 @@ test("Negation cancels a stratagem and a counter-Negation restores it in ordered
   assert.ok(restored.data.room.log.some((entry) => /plays Negation to restore Burning Bridges/.test(entry)));
 });
 
+test("only the affected bot negates a targeted stratagem; later bots do not counter it", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const host = game.members[0];
+  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const playerOne = game.room.players.find((player) => player.name === "Alice"); const playerTwo = game.room.players.find((player) => player.name === "Bob"); const playerThree = game.room.players.find((player) => player.name === "Carol");
+  assert.ok(hostPlayer && playerOne && playerTwo && playerThree);
+  for (const player of [playerOne, playerTwo, playerThree]) sql(`UPDATE players SET token_hash=${quote(`bot:${player.id}`)} WHERE id=${quote(player.id)}`);
+  setHand(hostPlayer.id, [card("Steal", "bot-negation")], 5, 5);
+  setHand(playerOne.id, [card("Negation", "player-1"), card("Attack", "protected")], 4, 4);
+  setHand(playerTwo.id, [card("Negation", "player-2")], 4, 4);
+  setHand(playerThree.id, [card("Negation", "player-3")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  const result = await request("play_card", { code: game.code, token: host.token, cardId: "steal-bot-negation", targetId: playerOne.id, targetCardIndex: 1 });
+  assert.equal(result.status, 200); assert.equal(result.data.room.phase, "play"); assert.equal(result.data.room.pendingNegation, null);
+  const oneHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(playerOne.id)}`)); const twoHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(playerTwo.id)}`)); const threeHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(playerThree.id)}`));
+  assert.equal(oneHand.some((held) => held.kind === "Negation"), false, "Player 1 spends one Negation to stop Steal");
+  assert.equal(oneHand.some((held) => held.id === "attack-protected"), true, "Steal is cancelled");
+  assert.equal(twoHand.some((held) => held.kind === "Negation"), true, "Player 2 does not counter Player 1");
+  assert.equal(threeHand.some((held) => held.kind === "Negation"), true, "Player 3 does not counter Player 1");
+  assert.equal(result.data.room.timeline.filter((event) => event.type === "card" && event.card.kind === "Negation").length, 1);
+});
+
 test("turn engine completes repeated rounds, rejects duplicate actions, and skips defeated players", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const membersBySeat = game.room.players.map((player) => ({ player, member: game.members.find((member) => member.name === player.name) })).sort((a, b) => a.player.seat - b.player.seat);

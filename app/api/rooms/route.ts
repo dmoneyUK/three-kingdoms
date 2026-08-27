@@ -425,12 +425,17 @@ async function advanceNegation(roomId: string) {
     if (!actor) { await resolveDeferredStratagem(roomId, pending); return; }
     const hand = parse<Card[]>(actor.hand_json, []); const negation = hand.find((card) => card.kind === "Negation");
     if (negation && !isBotPlayer(actor)) return;
+    // Bots use Negation defensively for their own affected character. They do
+    // not blindly counter an existing Negation or spend one on another
+    // character's decision; human players may still choose either action.
+    const botWillNegate = Boolean(negation && !pending.negated && actor.id === pending.effectTargetId);
     const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) continue;
-    if (!negation) {
+    if (!botWillNegate) {
       const nextId = pending.remainingIds[0];
       if (nextId) { const next: NegationPending = { ...pending, actorId: nextId, remainingIds: pending.remainingIds.slice(1) }; await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ? WHERE id = ?").bind(JSON.stringify(next), roomId).run(); continue; }
       await resolveDeferredStratagem(roomId, pending); return;
     }
+    if (!negation) return;
     const discard = [...parse<Card[]>(room.discard_json, []), negation]; let log = parse<string[]>(room.log_json, []); const nextHand = hand.filter((card) => card.id !== negation.id);
     log = addCardEvent(log, actor.name, negation, actor.name); log = addLog(log, `${actor.name} plays Negation ${pending.negated ? "to restore" : "to cancel"} ${pending.cardName}'s effect.`);
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const updatedPlayers = (rows.results ?? []).map((player) => player.id === actor.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player); const holders = playersHoldingNegation(updatedPlayers, nextAliveSeat(updatedPlayers, actor.seat));

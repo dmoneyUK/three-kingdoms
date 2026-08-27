@@ -210,7 +210,7 @@ npm run lint
 npm test
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 10 passing test flows.
+`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 11 passing test flows.
 
 Key test files:
 
