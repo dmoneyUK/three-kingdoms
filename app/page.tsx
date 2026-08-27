@@ -140,10 +140,11 @@ function Countdown({ durationMs, deadline = 0, label = "Continuing in" }: { dura
     const endAt = deadline > 0 ? deadline : Date.now() + durationMs;
     const update = () => setRemainingMs(Math.max(0, endAt - Date.now()));
     update();
-    const timer = window.setInterval(update, 100);
+    const timer = window.setInterval(update, 250);
     return () => window.clearInterval(timer);
   }, [deadline, durationMs]);
-  return <div className="visible-countdown" aria-label={`${label} ${Math.ceil(remainingMs / 1000)} seconds`}><span>{label}</span><b>{(remainingMs / 1000).toFixed(1)}s</b></div>;
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  return <div className="visible-countdown" aria-label={`${label} ${remainingSeconds} seconds`}><span>{label}</span><b>{remainingSeconds}s</b></div>;
 }
 
 function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: boolean; error: string; onAction: (action: "draw" | "play_card" | "end_turn" | "respond_dodge" | "take_damage" | "respond_duel" | "take_duel_damage" | "respond_group" | "take_group_damage" | "respond_negation" | "pass_negation" | "preview_harvest" | "choose_harvest" | "discard_cards" | "start_rescue_timer" | "give_peach" | "skip_rescue", extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void }) {
