@@ -128,7 +128,9 @@ All intentional production waits are now centralised or recorded here:
 
 Every blocking presentation and decision overlay shows a live countdown. Bumper Harvest also exposes its bot preview and final-choice deadlines to all viewers; continuous room polling remains intentionally invisible because it is a repeating refresh rather than a blocking wait.
 
-Card presentations now use one cumulative resolution panel. Earlier steps remain visible while later card responses and effect messages are added, and response-based sequences stay open until the server leaves Response, Dying or Resolving. Each card step includes the development-source rules explanation from `game/cards.ts`.
+Card presentations now use one cumulative table-resolution layer. Earlier steps remain visible while later card responses and effect messages are added, and response-based sequences stay open until the server leaves Response, Dying or Resolving. The centre caption includes the development-source rules explanation from `game/cards.ts`.
+
+The resolution is spatially anchored to the table: each active card travels from its player’s seat to a large centre reveal, then settles in a numbered face-up row in front of that player. Multiple cards remain ordered per player. Once no response or resolving phase remains, every player row animates into the central discard pile together over 700 ms.
 | Bumper Harvest bot think | 450 ms | Show which bot is about to choose. |
 | Bumper Harvest raised/confirmed choice | 1400 ms | Make each bot selection visible before advancing. |
 | Final Bumper Harvest choices | 1400 ms | Leave the completed shaded choices visible briefly. |

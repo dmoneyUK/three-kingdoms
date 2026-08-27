@@ -18,6 +18,7 @@ const UI_TIMING = {
   playedCard: 1000,
   eventMessage: 3000,
   privateDraw: 3000,
+  sequenceDiscard: 700,
 } as const;
 
 export default function Home() {
@@ -162,6 +163,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const [privateDrawCards, setPrivateDrawCards] = useState<Card[]>([]); const knownHandCards = useRef(new Set(room.myHand.map((item) => item.id)));
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
   const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>([]);
+  const [resolutionClosing, setResolutionClosing] = useState(false);
   const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));
   const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const actor = room.players.find((player) => player.id === room.actionPlayerId); const me = room.players.find((player) => player.id === room.meId); const targetPlayer = room.players.find((player) => player.id === target);
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
@@ -182,7 +184,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const rescuePeaches = canRescue ? room.myHand.filter((item) => item.kind === "Peach") : [];
   const timelineKey = room.timeline.map((event) => event.id).join("|");
   const hasUnseenPresentations = processedTimelineKey !== timelineKey;
-  const presentationBusy = Boolean(optimisticPlay || activeEvent || eventQueue.length || turnNotice || privateDrawCards.length || hasUnseenPresentations);
+  const presentationBusy = Boolean(optimisticPlay || activeEvent || eventQueue.length || resolutionClosing || turnNotice || privateDrawCards.length || hasUnseenPresentations);
   const rescueDecisionReady = canRescue && !presentationBusy;
   const drawWaitingForPresentation = room.isMyTurn && Boolean(room.phase?.startsWith("draw")) && presentationBusy;
   const sharedHarvestSelection = room.pendingHarvest?.previewCardId && room.pendingHarvest.availableIds.includes(room.pendingHarvest.previewCardId) ? room.pendingHarvest.previewCardId : "";
@@ -204,7 +206,8 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   useEffect(() => { const unseenEvents = timelineKey.split("|").filter(Boolean).some((id) => !seenEvents.current.has(id)); const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || activeEvent || eventQueue.length || unseenEvents || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, current?.name, lastTimelineId, timelineKey, activeEvent, eventQueue.length]);
   useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); setResolutionEvents((events) => events.some((event) => event.id === next.id) ? events : [...events, next]); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
   useEffect(() => { if (!activeEvent) return; const displayTime = activeEvent.type === "card" || activeEvent.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage; const timer = setTimeout(() => setActiveEvent(null), displayTime); return () => clearTimeout(timer); }, [activeEvent]);
-  useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || resolutionPending || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionEvents([]), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, room.phase, resolutionEvents.length]);
+  useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, room.phase, resolutionClosing, resolutionEvents.length]);
+  useEffect(() => { if (!resolutionClosing) return; const timer = setTimeout(() => { setResolutionEvents([]); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawCards([]), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, activeEvent, eventQueue.length]);
   useEffect(() => { if (!historyOpen) return; const close = (event: KeyboardEvent) => event.key === "Escape" && setHistoryOpen(false); window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [historyOpen]);
   useEffect(() => { if (!infoCard) return; const close = (event: KeyboardEvent) => event.key === "Escape" && setInfoCard(null); window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard]);
@@ -218,7 +221,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
     <section className="play-table">
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {privateDrawCards.length > 0 && !activeEvent && eventQueue.length === 0 && <div className="played-card-stage private-draw-stage" role="status"><Countdown key={privateDrawCards.map((drawn) => drawn.id).join("-")} durationMs={UI_TIMING.privateDraw} label="Cards close in" /><div className="card-action-title"><b>PRIVATE DRAW</b><span>Only you can see these cards</span></div><div className="private-draw-row">{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div>}
-      {resolutionEvents.length > 0 && <ResolutionSequence events={resolutionEvents} activeEvent={activeEvent ?? optimisticPlay} waitingReason={!activeEvent && !optimisticPlay && !eventQueue.length && (room.phase === "response" || room.phase === "dying" || room.phase === "resolving") ? room.actionReason : ""} />}
+      {resolutionEvents.length > 0 && <TableResolutionSequence events={resolutionEvents} activeEvent={activeEvent ?? optimisticPlay} waitingReason={!activeEvent && !optimisticPlay && !eventQueue.length && (room.phase === "response" || room.phase === "dying" || room.phase === "resolving") ? room.actionReason : ""} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
       {rescueDecisionReady && <div className="game-event-stage rescue-decision-stage" role="alertdialog" aria-modal="true" aria-label="Private Peach rescue decision"><div><Countdown durationMs={5000} deadline={room.pendingDying?.deadline} label="Decision closes in" /><span>PRIVATE RESCUE DECISION</span><b>{dyingPlayer?.name ?? "A player"} is dying</b><small>{card?.kind === "Peach" ? `${card.rank}${card.suit} Peach selected. Play it now—there is no need to wait for the timer.` : "Tap the Peach you want to use. You have 5 seconds; this choice is visible only to you until the card is played."}</small><div className="rescue-peach-list">{rescuePeaches.map((peach) => <button type="button" className={`rescue-peach-choice ${selected === peach.id ? "selected" : ""}`} aria-pressed={selected === peach.id} key={peach.id} onClick={() => setSelected((id) => id === peach.id ? "" : peach.id)}><strong>{peach.rank}{peach.suit}</strong><i>Peach</i><b>Rescue card</b></button>)}</div><section>{card?.kind === "Peach" && <button className="primary" disabled={busy} onClick={() => { onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Play selected Peach now"}</button>}<button className="end" disabled={busy} onClick={() => { onAction("skip_rescue"); setSelected(""); }}>{busy ? "Passing…" : "Do not give"}</button></section></div></div>}
       {room.pendingHarvest && !presentationBusy && <div className="game-event-stage harvest-choice-stage" role="dialog" aria-label="Bumper Harvest card choice"><div><span>BUMPER HARVEST</span><b>{room.pendingHarvest.complete ? "All choices complete" : harvestSubmitting ? "Your choice is submitted" : canChooseHarvest ? "Your turn — choose one card" : `${actor?.name ?? "The next player"} is choosing`}</b><small>{room.pendingHarvest.complete ? "The final shaded card remains visible before Bumper Harvest closes." : harvestSubmitting ? "Your card is shaded immediately while the next choice is prepared." : canChooseHarvest ? "Tap any available card to change your selection, then confirm. Selection changes are instant." : "Watch the current player's card rise, then become shaded when confirmed."}</small><div className="harvest-card-row">{room.pendingHarvest.revealed.map((choice) => { const takenBy = room.pendingHarvest?.choices.find((entry) => entry.cardId === choice.id); const submittedByMe = harvestSubmitting?.cardId === choice.id; const available = room.pendingHarvest?.availableIds.includes(choice.id); const awaitingConfirmation = !submittedByMe && activeHarvestSelection === choice.id; return <button type="button" className={`harvest-card-choice ${takenBy || submittedByMe ? "taken" : ""} ${awaitingConfirmation ? "pending-choice" : ""}`} disabled={!canChooseHarvest || Boolean(harvestSubmitting) || busy || !available} aria-pressed={awaitingConfirmation} aria-label={takenBy ? `${cardDefinition(choice.kind).name}, taken by ${takenBy.playerName}` : submittedByMe ? `${cardDefinition(choice.kind).name}, choice submitted by ${harvestSubmitting?.playerName ?? "ME"}` : `${cardDefinition(choice.kind).name}, ${awaitingConfirmation ? `selected by ${actor?.name ?? "current player"}, awaiting confirmation` : "available"}`} key={choice.id} onClick={() => { const nextCardId = activeHarvestSelection === choice.id ? "" : choice.id; setHarvestSelected(nextCardId); void publishHarvestPreview(nextCardId); }}><CardFace card={choice} />{takenBy && <strong className="harvest-taken-label">Taken by {takenBy.playerName}</strong>}{submittedByMe && !takenBy && <strong className="harvest-taken-label">Chosen by {harvestSubmitting?.playerName ?? "ME"}</strong>}{awaitingConfirmation && <strong className="harvest-pending-label">Selected by {actor?.name ?? "player"}</strong>}</button>; })}</div>{canChooseHarvest && (harvestSubmitting ? <div className="harvest-confirm-row"><small>Choice submitted · moving to the next player</small></div> : <div className="harvest-confirm-row"><small>{harvestSelectedCard ? `${cardDefinition(harvestSelectedCard.kind).name} selected` : "Select a card before confirming"}</small><button type="button" className="primary" disabled={busy || !harvestSelectedCard} onClick={async () => { if (!harvestSelectedCard || !me) return; const submission = { cardId: harvestSelectedCard.id, playerId: me.id, playerName: me.name }; queuedHarvestPreview.current = null; setHarvestSubmitting(submission); setHarvestSelected(""); const accepted = await onAction("choose_harvest", { cardId: submission.cardId }); if (!accepted) setHarvestSubmitting(null); }}>Confirm choice</button></div>)}</div></div>}
       {room.pendingHarvest && !presentationBusy && room.pendingHarvest.countdownUntil > 0 && <Countdown deadline={room.pendingHarvest.countdownUntil} durationMs={0} label={room.pendingHarvest.complete ? "Closing in" : room.pendingHarvest.previewCardId ? "Confirming in" : "Choosing in"} />}
@@ -236,25 +239,31 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   </main>;
 }
 
-function ResolutionSequence({ events, activeEvent, waitingReason }: { events: GameEvent[]; activeEvent: GameEvent | null; waitingReason: string }) {
+function TableResolutionSequence({ events, activeEvent, waitingReason, players, myTableIndex, concluding }: { events: GameEvent[]; activeEvent: GameEvent | null; waitingReason: string; players: Player[]; myTableIndex: number; concluding: boolean }) {
+  const cards = events.flatMap((event) => event.type === "card" ? [{ event, card: event.card, key: event.id }] : event.type === "cards" ? event.cards.map((card) => ({ event, card, key: `${event.id}-${card.id}` })) : []);
+  const cardPlayers = players.filter((player) => cards.some(({ event }) => event.player === player.name));
+  const activeCards = activeEvent?.type === "card" ? [activeEvent.card] : activeEvent?.type === "cards" ? activeEvent.cards : [];
+  const activePlayer = activeEvent?.type === "card" || activeEvent?.type === "cards" ? players.find((player) => player.name === activeEvent.player) : undefined;
+  const activePlayerIndex = activePlayer ? players.findIndex((player) => player.id === activePlayer.id) : myTableIndex;
+  const activeRelativeIndex = (activePlayerIndex - myTableIndex + players.length) % players.length;
+  const activeAngle = 180 + (360 / players.length) * activeRelativeIndex;
+  const activeRadians = activeAngle * Math.PI / 180;
+  const activeStyle = { "--origin-x": `${50 + Math.sin(activeRadians) * 38}%`, "--origin-y": `${50 - Math.cos(activeRadians) * 34}%`, "--settle-x": `${50 + Math.sin(activeRadians) * 22}%`, "--settle-y": `${50 - Math.cos(activeRadians) * 21}%` } as React.CSSProperties;
+  const latestCard = [...events].reverse().find((event): event is CardEvent & { type: "card" } => event.type === "card");
+  const explanationCard = activeEvent?.type === "card" ? activeEvent.card : latestCard?.card;
   const displayTime = activeEvent?.type === "card" || activeEvent?.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage;
-  return <div className="game-event-stage resolution-sequence-stage" role="status"><section className="resolution-sequence-panel">
-    {activeEvent && <Countdown key={activeEvent.id} durationMs={displayTime} label="Next step in" />}
-    <header><span>CARD RESOLUTION</span><b>{waitingReason ? "Waiting for a response" : "Resolving step by step"}</b>{waitingReason && <small>{waitingReason}</small>}</header>
-    <div className="resolution-steps">{events.map((event, index) => {
-      const active = event.id === activeEvent?.id;
-      if (event.type === "message") {
-        const role = event.message.match(/^(.+)'s role is revealed: ([^.]+)\.$/);
-        return <article className={`resolution-step effect-step ${active ? "active" : "complete"}`} key={event.id}><em>STEP {index + 1}</em><div><strong>{role ? "ROLE REVEALED" : "EFFECT"}</strong><p>{event.message}</p></div></article>;
-      }
-      if (event.type === "cards") {
-        return <article className={`resolution-step cards-step ${active ? "active" : "complete"}`} key={event.id}><em>STEP {index + 1}</em><div className="sequence-mini-cards">{event.cards.map((shown) => <CardFace card={shown} key={shown.id} />)}</div><div><strong>{event.action === "reveal" ? "CARDS REVEALED" : "CARDS DISCARDED"}</strong><p>{describeEvent(event)}</p></div></article>;
-      }
-      const peachRescue = event.card.kind === "Peach" && event.target !== event.player;
-      const definition = cardDefinition(event.card.kind);
-      return <article className={`resolution-step card-step ${active ? "active" : "complete"}`} key={event.id}><em>STEP {index + 1}</em><div className="sequence-card"><CardFace card={event.card} /></div><div><strong>{event.player} {cardEventVerb(event, peachRescue)}{cardEventHasTarget(event, peachRescue) ? ` ${event.target}` : ""}</strong><span className="sequence-direction">{cardEventDirection(event, peachRescue)}</span><p><b>Card effect</b>{definition.rules}</p></div></article>;
-    })}</div>
-  </section></div>;
+  return <div className={`table-resolution-layer ${concluding ? "concluding" : ""}`} role="status">
+    {activeEvent && !concluding && <Countdown key={activeEvent.id} durationMs={displayTime} label="Next step in" />}
+    {activeCards.length > 0 && !concluding && <div className="active-table-reveal" key={activeEvent?.id} style={activeStyle}><span>{activeEvent ? describeEvent(activeEvent) : "Card revealed"}</span><div>{activeCards.map((shown) => <CardFace card={shown} key={shown.id} />)}</div></div>}
+    {cardPlayers.map((player) => {
+      const playerIndex = players.findIndex((candidate) => candidate.id === player.id);
+      const relativeIndex = (playerIndex - myTableIndex + players.length) % players.length;
+      const angle = 180 + (360 / players.length) * relativeIndex;
+      const playerCards = cards.filter(({ event }) => event.player === player.name);
+      return <div className="player-played-cards" key={player.id} style={{ "--angle": `${angle}deg` } as React.CSSProperties}><span>{player.name}</span><div>{playerCards.map(({ event, card, key }, index) => <div className={`table-played-card ${event.id === activeEvent?.id ? "active" : "settled"}`} key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
+    })}
+    <section className="resolution-table-caption"><header><span>RESOLUTION</span><b>{concluding ? "Moving all played cards to discard" : waitingReason ? "Waiting for the next response" : activeEvent ? describeEvent(activeEvent) : "Sequence in progress"}</b></header>{explanationCard && <p><strong>{cardDefinition(explanationCard.kind).name} · card effect</strong>{cardDefinition(explanationCard.kind).rules}</p>}<ol>{events.map((event, index) => { const roleReveal = event.type === "message" && /^(.+)'s role is revealed: ([^.]+)\.$/.test(event.message); return <li className={event.id === activeEvent?.id ? "active" : ""} key={event.id}><em>{index + 1}</em><span>{roleReveal && <strong>ROLE REVEALED · </strong>}{describeEvent(event)}</span></li>; })}</ol></section>
+  </div>;
 }
 
 function CardFace({ card }: { card: Card }) {
@@ -262,55 +271,12 @@ function CardFace({ card }: { card: Card }) {
   return <div className={`played-card ${card.kind.toLowerCase()}`}><i>{card.rank}<small>{card.suit}</small></i><b className="card-name-mark">{definition.name}</b><strong>{definition.category} card</strong></div>;
 }
 
-function cardEventVerb(event: CardEvent, peachRescue: boolean) {
-  if (event.action === "reveal") return "reveals for judgement";
-  if (event.target === event.player && (isAttackCard(event.card) || event.card.kind === "Dodge")) return "responds with";
-  if (event.action === "discard") return "discards";
-  if (event.action === "gain") return "chooses from Bumper Harvest";
-  if (event.card.kind === "Dodge") return "blocks";
-  if (peachRescue) return "rescues";
-  if (event.card.kind === "Peach") return "heals self";
-  if (event.card.kind === "DrawTwo") return "draws 2 cards";
-  if (event.card.kind === "Dismantle") return "burns a bridge against";
-  if (event.card.kind === "Steal") return "steals from";
-  if (event.card.kind === "Duel") return "challenges";
-  if (event.card.kind === "Oath") return "heals all wounded players";
-  if (event.card.kind === "BarbarianInvasion") return "invades all opponents";
-  if (event.card.kind === "RainingArrows") return "rains arrows on all opponents";
-  if (event.card.kind === "BumperHarvest") return "reveals a harvest for all players";
-  if (event.card.kind === "Negation") return "cancels a stratagem effect";
-  if (event.card.kind === "Overindulgence") return "places Overindulgence on";
-  return "attacks";
-}
-
-function cardEventHasTarget(event: CardEvent, peachRescue: boolean) {
-  return event.action !== "discard" && event.target !== event.player && (isAttackCard(event.card) || event.card.kind === "Dodge" || event.card.kind === "Dismantle" || event.card.kind === "Steal" || event.card.kind === "Duel" || event.card.kind === "Overindulgence" || peachRescue);
-}
-
-function cardEventDirection(event: CardEvent, peachRescue: boolean) {
-  if (event.action === "reveal") return "JUDGEMENT";
-  if (event.action === "discard") return "DISCARD ↓";
-  if (event.action === "gain") return "TAKES";
-  if (event.target === event.player && (isAttackCard(event.card) || event.card.kind === "Dodge")) return "";
-  if (peachRescue) return "GIVES →";
-  if (event.card.kind === "Dodge") return "← BLOCKS";
-  if (isAttackCard(event.card)) return "ATTACKS →";
-  if (event.card.kind === "Dismantle") return "BURNING BRIDGES →";
-  if (event.card.kind === "Steal") return "STEALS ←";
-  if (event.card.kind === "Duel") return "DUELS ↔";
-  if (event.card.kind === "BarbarianInvasion") return "ALL OPPONENTS";
-  if (event.card.kind === "RainingArrows") return "ALL OPPONENTS";
-  if (event.card.kind === "BumperHarvest") return "ALL PLAYERS";
-  if (event.card.kind === "Negation") return "NEGATES ✕";
-  if (event.card.kind === "Overindulgence") return "DELAYS →";
-  return "SELF";
-}
-
 function describeEvent(event: GameEvent) {
   if (event.type === "message") return event.message;
   if (event.type === "cards") return event.action === "reveal" ? `${event.player} reveals ${event.cards.map((card) => `${card.rank}${card.suit} ${cardDefinition(card.kind).name}`).join(", ")} for Bumper Harvest.` : `${event.player} reveals and discards ${event.cards.map((card) => `${card.rank}${card.suit} ${cardDefinition(card.kind).name}`).join(", ")}.`;
   if (event.action === "discard") return `${event.player} reveals and discards ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name}.`;
   if (event.action === "gain") return `${event.player} chooses ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name} from Bumper Harvest.`;
-  if (event.action === "reveal") return `${event.player} reveals ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name} for judgement.`;
+  if (event.action === "reveal") return `${event.player} reveals for judgement: ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name}.`;
+  if (event.target === event.player && (isAttackCard(event.card) || event.card.kind === "Dodge")) return `${event.player} responds with ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name}.`;
   return event.message ?? `${event.player} plays ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name}${event.target !== event.player ? ` on ${event.target}` : ""}.`;
 }
