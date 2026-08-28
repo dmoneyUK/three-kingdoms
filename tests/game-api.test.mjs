@@ -99,6 +99,11 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   setHand(hostPlayer.id, [card("Attack", "dodge")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "answer")], 4); setTurn(game.code, hostPlayer.seat);
   const attacked = await request("play_card", { code: game.code, token: host.token, cardId: "attack-dodge", targetId: alicePlayer.id });
   assert.equal(attacked.status, 200); assert.equal(attacked.data.room.phase, "response"); assert.equal(attacked.data.room.actionPlayerId, alicePlayer.id);
+  assert.equal((await request("start_response_timer", { code: game.code, token: bob.token })).status, 409, "only the acting player can start their response timer");
+  const timedAttack = await request("start_response_timer", { code: game.code, token: alice.token });
+  assert.ok(timedAttack.data.room.pendingAttack.deadline > Date.now(), "the acting player receives a visible response deadline");
+  const publicAttackTimer = await state(game.code, host.token);
+  assert.equal(publicAttackTimer.data.pendingAttack.deadline, timedAttack.data.room.pendingAttack.deadline, "the table can show the same countdown beside the acting player");
   assert.equal((await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-answer" })).status, 409);
   const dodged = await request("respond_dodge", { code: game.code, token: alice.token, cardId: "dodge-answer" });
   assert.equal(dodged.status, 200); assert.equal(dodged.data.room.phase, "play-struck"); assert.equal(dodged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
@@ -133,7 +138,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(challenged.status, 200); assert.equal(challenged.data.room.phase, "response"); assert.equal(challenged.data.room.actionPlayerId, alicePlayer.id); assert.equal(challenged.data.room.pendingDuel.opponentId, hostPlayer.id);
   assert.equal((await request("respond_duel", { code: game.code, token: bob.token, cardId: "attack-alice-answer" })).status, 409);
   const aliceAnswers = await request("respond_duel", { code: game.code, token: alice.token, cardId: "attack-alice-answer" });
-  assert.equal(aliceAnswers.status, 200); assert.equal(aliceAnswers.data.room.actionPlayerId, hostPlayer.id);
+  assert.equal(aliceAnswers.status, 200); assert.equal(aliceAnswers.data.room.actionPlayerId, hostPlayer.id); assert.equal(aliceAnswers.data.room.pendingDuel.deadline ?? 0, 0, "a new actor receives a fresh timer");
   const hostAnswers = await request("respond_duel", { code: game.code, token: host.token, cardId: "attack-host-answer" });
   assert.equal(hostAnswers.status, 200); assert.equal(hostAnswers.data.room.actionPlayerId, alicePlayer.id);
   const losesDuel = await request("take_duel_damage", { code: game.code, token: alice.token });

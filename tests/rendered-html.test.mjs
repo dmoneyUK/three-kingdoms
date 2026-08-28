@@ -62,6 +62,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /skip_rescue/);
   assert.match(page, /start_rescue_timer/);
   assert.match(page, /automaticRescueSkip/);
+  assert.match(page, /start_response_timer/);
+  assert.match(page, /automaticResponseTimeout/);
   assert.match(page, /playedCard: 4000/);
   assert.match(page, /eventMessage: 3000/);
   assert.match(page, /privateDraw: 3000/);
@@ -70,6 +72,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /const remainingSeconds = Math\.ceil\(remainingMs \/ 1000\)/);
   assert.doesNotMatch(page, /toFixed\(1\)/);
   assert.match(page, /label: "Rescue"/);
+  assert.match(page, /label: "Respond"/);
+  assert.match(page, /responseDeadline/);
   assert.match(page, /Cards close in/);
   assert.match(page, /countdownUntil/);
   assert.match(styles, /\.play-table>\.visible-countdown\{z-index:20\}/);
