@@ -1,0 +1,30 @@
+/* Loaded after globals.css: sequence cards travel between explicit table positions. */
+.active-table-reveal {
+  --settle-scale: .4;
+}
+
+@keyframes activeCardJourney {
+  0% { left: var(--origin-x); top: var(--origin-y); opacity: .15; transform: scale(.25); }
+  12% { left: 50%; top: 47%; opacity: 1; transform: scale(1); }
+  88% { left: 50%; top: 47%; opacity: 1; transform: scale(1); }
+  100% { left: var(--settle-x); top: var(--settle-y); opacity: 1; transform: scale(var(--settle-scale)); }
+}
+
+.player-played-cards {
+  left: var(--seat-x);
+  top: var(--seat-y);
+  transform: none;
+}
+
+@keyframes sequenceCardsToDiscard {
+  0% { left: var(--seat-x); top: var(--seat-y); opacity: 1; transform: scale(1); }
+  100% { left: calc(50% + 42px); top: 50%; opacity: 0; transform: scale(.12) rotate(3deg); }
+}
+
+@media (max-width: 700px) {
+  .active-table-reveal { --settle-scale: .463; }
+}
+
+@media (max-width: 480px) {
+  .active-table-reveal { --settle-scale: .426; }
+}

@@ -32,7 +32,7 @@ test("server-renders the Three Kingdoms lobby", async () => {
 
 test("client keeps the turn, response, presentation, and selection controls", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const styles = `${await readFile(new URL("../app/globals.css", import.meta.url), "utf8")}\n${await readFile(new URL("../app/sequence-overrides.css", import.meta.url), "utf8")}`;
   const cards = await readFile(new URL("../game/cards.ts", import.meta.url), "utf8");
   const officialReference = await readFile(new URL("../docs/OFFICIAL_CARD_REFERENCE.md", import.meta.url), "utf8");
   assert.match(page, /TURN OWNER/);
@@ -82,15 +82,17 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /ROLE REVEALED/);
   assert.match(page, /TableResolutionSequence/);
   assert.match(page, /resolutionEvents/);
-  assert.match(page, /const pendingSequenceCard/);
-  assert.match(page, /const sequenceEvents = pendingSequenceCard/);
+  assert.match(page, /function pendingTimelineSequence/);
+  assert.match(page, /const pendingSequenceEvents = pendingTimelineSequence\(room\)/);
+  assert.match(page, /const sequenceEvents = \[\.\.\.pendingSequenceEvents, \.\.\.resolutionEvents\]/);
+  assert.match(page, /initialHeldCardIds\.has\(room\.discardTop\.id\) \? null : room\.discardTop/);
   assert.match(page, /player-played-cards/);
   assert.match(page, /active-table-reveal/);
   assert.match(page, /Moving all played cards to discard/);
   assert.match(page, /sequenceDiscard: 700/);
   assert.match(styles, /@keyframes activeCardJourney/);
-  assert.match(page, /"--settle-angle": `\$\{activeAngle\}deg`/);
-  assert.match(styles, /100%\{left:50%;top:50%;opacity:1;transform:rotate\(var\(--settle-angle\)\)/);
+  assert.match(page, /"--settle-x": `\$\{50 \+ Math\.sin\(activeRadians\) \* 24\}%`/);
+  assert.match(styles, /100%\s*\{\s*left:\s*var\(--settle-x\);\s*top:\s*var\(--settle-y\);\s*opacity:\s*1;\s*transform:\s*scale\(var\(--settle-scale\)\);?\s*\}/);
   assert.doesNotMatch(styles, /100%\{left:var\(--settle-x\);top:var\(--settle-y\);opacity:0/);
   assert.match(styles, /@keyframes sequenceCardsToDiscard/);
   assert.match(styles, /\.table-played-card\.active/);

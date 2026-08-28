@@ -11,6 +11,21 @@ type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEve
 type Player = { id: string; name: string; seat: number; hero: string | null; hp: number | null; maxHp: number | null; alive: boolean; handCount: number; judgementCards: Card[]; distance: number | null; isHost: boolean; isBot?: boolean; role: string | null };
 type Room = { code: string; status: "lobby" | "heroes" | "started" | "playing" | "finished"; maxPlayers: number; isHost: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; pendingAttack: { sourceId: string; targetId: string } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows"; sourceId: string; actorId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string; effectTargetId: string; cardName: string; negated: boolean } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; previewCardId: string | null; complete: boolean; countdownUntil: number } | null; pendingDying: { sourceId: string; targetId: string; deadline: number } | null };
 
+function publicPlayerName(name: string) { return name.replace(/^Test General (\d+)$/, "Player $1"); }
+
+function pendingTimelineSequence(room: Room) {
+  const sourceId = room.pendingNegation?.sourceId ?? room.pendingDuel?.sourceId ?? room.pendingAttack?.sourceId ?? room.pendingGroup?.sourceId;
+  const source = room.players.find((player) => player.id === sourceId);
+  if (!source) return [];
+  const expectedName = room.pendingNegation?.cardName ?? (room.pendingDuel ? "Duel" : room.pendingGroup ? cardDefinition(room.pendingGroup.cardKind).name : room.pendingAttack ? "Attack" : null);
+  const sourceName = publicPlayerName(source.name);
+  const initiatingIndex = [...room.timeline].map((event, index) => ({ event, index })).reverse().find(({ event }) => event.type === "card" && event.action !== "gain" && event.action !== "reveal" && publicPlayerName(event.player) === sourceName && (!expectedName || cardDefinition(event.card.kind).name === expectedName))?.index ?? -1;
+  if (initiatingIndex < 0) return [];
+  return room.timeline.slice(initiatingIndex).filter((event) => event.presentation !== false);
+}
+
+function eventCards(event: GameEvent) { return event.type === "card" ? [event.card] : event.type === "cards" ? event.cards : []; }
+
 const UI_TIMING = {
   roomPoll: 2500,
   harvestPoll: 300,
@@ -148,6 +163,8 @@ function Countdown({ durationMs, deadline = 0, label = "Continuing in" }: { dura
 }
 
 function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: boolean; error: string; onAction: (action: "draw" | "play_card" | "end_turn" | "respond_dodge" | "take_damage" | "respond_duel" | "take_duel_damage" | "respond_group" | "take_group_damage" | "respond_negation" | "pass_negation" | "preview_harvest" | "choose_harvest" | "discard_cards" | "start_rescue_timer" | "give_peach" | "skip_rescue", extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void }) {
+  const initialPendingSequence = pendingTimelineSequence(room);
+  const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
   const [selected, setSelected] = useState(""); const [target, setTarget] = useState("");
   const [harvestSelected, setHarvestSelected] = useState("");
   const queuedHarvestPreview = useRef<string | null>(null); const harvestPreviewInFlight = useRef(false);
@@ -165,7 +182,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
   const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>([]);
   const [resolutionClosing, setResolutionClosing] = useState(false);
-  const [visibleDiscardTop, setVisibleDiscardTop] = useState<Card | null>(room.discardTop);
+  const [visibleDiscardTop, setVisibleDiscardTop] = useState<Card | null>(() => room.discardTop && initialHeldCardIds.has(room.discardTop.id) ? null : room.discardTop);
   const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));
   const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const actor = room.players.find((player) => player.id === room.actionPlayerId); const me = room.players.find((player) => player.id === room.meId); const targetPlayer = room.players.find((player) => player.id === target);
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
@@ -193,14 +210,8 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const activeHarvestSelection = canChooseHarvest && room.pendingHarvest?.availableIds.includes(harvestSelected) ? harvestSelected : sharedHarvestSelection;
   const harvestSelectedCard = room.pendingHarvest?.revealed.find((choice) => choice.id === activeHarvestSelection);
   const lastTimelineId = room.timeline.at(-1)?.id ?? "start";
-  const pendingSequenceCard = (() => {
-    const sourceId = room.pendingNegation?.sourceId ?? room.pendingDuel?.sourceId ?? room.pendingAttack?.sourceId ?? room.pendingGroup?.sourceId;
-    const expectedName = room.pendingNegation?.cardName ?? (room.pendingDuel ? "Duel" : room.pendingGroup ? cardDefinition(room.pendingGroup.cardKind).name : null);
-    const sourceName = room.players.find((player) => player.id === sourceId)?.name;
-    if (!sourceName) return null;
-    return [...room.timeline].reverse().find((event): event is CardEvent & { type: "card" } => event.type === "card" && event.player === sourceName && event.action !== "gain" && event.action !== "reveal" && (!expectedName || cardDefinition(event.card.kind).name === expectedName)) ?? null;
-  })();
-  const sequenceEvents = pendingSequenceCard && !resolutionEvents.some((event) => event.type === "card" && event.card.id === pendingSequenceCard.card.id) ? [pendingSequenceCard, ...resolutionEvents] : resolutionEvents;
+  const pendingSequenceEvents = pendingTimelineSequence(room);
+  const sequenceEvents = [...pendingSequenceEvents, ...resolutionEvents].filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
   useEffect(() => { onActionRef.current = onAction; }, [onAction]);
   useEffect(() => {
     const publicGains = new Set(room.timeline.filter((event) => event.type === "card" && event.action === "gain" && event.player === me?.name).map((event) => event.card.id));
@@ -253,14 +264,14 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
 
 function TableResolutionSequence({ events, activeEvent, waitingReason, players, myTableIndex, concluding }: { events: GameEvent[]; activeEvent: GameEvent | null; waitingReason: string; players: Player[]; myTableIndex: number; concluding: boolean }) {
   const cards = events.flatMap((event) => event.type === "card" ? [{ event, card: event.card, key: event.id }] : event.type === "cards" ? event.cards.map((card) => ({ event, card, key: `${event.id}-${card.id}` })) : []);
-  const cardPlayers = players.filter((player) => cards.some(({ event }) => event.player === player.name));
+  const cardPlayers = players.filter((player) => cards.some(({ event }) => publicPlayerName(event.player) === publicPlayerName(player.name)));
   const activeCards = activeEvent?.type === "card" ? [activeEvent.card] : activeEvent?.type === "cards" ? activeEvent.cards : [];
-  const activePlayer = activeEvent?.type === "card" || activeEvent?.type === "cards" ? players.find((player) => player.name === activeEvent.player) : undefined;
+  const activePlayer = activeEvent?.type === "card" || activeEvent?.type === "cards" ? players.find((player) => publicPlayerName(player.name) === publicPlayerName(activeEvent.player)) : undefined;
   const activePlayerIndex = activePlayer ? players.findIndex((player) => player.id === activePlayer.id) : myTableIndex;
   const activeRelativeIndex = (activePlayerIndex - myTableIndex + players.length) % players.length;
   const activeAngle = 180 + (360 / players.length) * activeRelativeIndex;
   const activeRadians = activeAngle * Math.PI / 180;
-  const activeStyle = { "--origin-x": `${50 + Math.sin(activeRadians) * 38}%`, "--origin-y": `${50 - Math.cos(activeRadians) * 34}%`, "--settle-angle": `${activeAngle}deg` } as React.CSSProperties;
+  const activeStyle = { "--origin-x": `${50 + Math.sin(activeRadians) * 38}%`, "--origin-y": `${50 - Math.cos(activeRadians) * 34}%`, "--settle-x": `${50 + Math.sin(activeRadians) * 24}%`, "--settle-y": `${50 - Math.cos(activeRadians) * 31}%` } as React.CSSProperties;
   const latestCard = [...events].reverse().find((event): event is CardEvent & { type: "card" } => event.type === "card");
   const explanationCard = activeEvent?.type === "card" ? activeEvent.card : latestCard?.card;
   const displayTime = activeEvent?.type === "card" || activeEvent?.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage;
@@ -271,8 +282,10 @@ function TableResolutionSequence({ events, activeEvent, waitingReason, players, 
       const playerIndex = players.findIndex((candidate) => candidate.id === player.id);
       const relativeIndex = (playerIndex - myTableIndex + players.length) % players.length;
       const angle = 180 + (360 / players.length) * relativeIndex;
-      const playerCards = cards.filter(({ event }) => event.player === player.name);
-      return <div className="player-played-cards" key={player.id} style={{ "--angle": `${angle}deg` } as React.CSSProperties}><span>{player.name}</span><div>{playerCards.map(({ event, card, key }, index) => <div className={`table-played-card ${event.id === activeEvent?.id ? "active" : "settled"}`} key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
+      const radians = angle * Math.PI / 180;
+      const playerCards = cards.filter(({ event }) => publicPlayerName(event.player) === publicPlayerName(player.name));
+      const playerStyle = { "--seat-x": `${50 + Math.sin(radians) * 24}%`, "--seat-y": `${50 - Math.cos(radians) * 31}%` } as React.CSSProperties;
+      return <div className="player-played-cards" key={player.id} style={playerStyle}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ event, card, key }, index) => <div className={`table-played-card ${event.id === activeEvent?.id ? "active" : "settled"}`} key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
     })}
     <section className="resolution-table-caption"><header><span>RESOLUTION</span><b>{concluding ? "Moving all played cards to discard" : waitingReason ? "Waiting for the next response" : activeEvent ? describeEvent(activeEvent) : "Sequence in progress"}</b></header>{explanationCard && <p><strong>{cardDefinition(explanationCard.kind).name} · card effect</strong>{cardDefinition(explanationCard.kind).rules}</p>}<ol>{events.map((event, index) => { const roleReveal = event.type === "message" && /^(.+)'s role is revealed: ([^.]+)\.$/.test(event.message); return <li className={event.id === activeEvent?.id ? "active" : ""} key={event.id}><em>{index + 1}</em><span>{roleReveal && <strong>ROLE REVEALED · </strong>}{describeEvent(event)}</span></li>; })}</ol></section>
   </div>;
