@@ -43,7 +43,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /send\("create", \{ quickStart: true \}\)/);
   assert.doesNotMatch(page, /previousTurn/);
   assert.match(page, /Play selected/);
-  assert.match(page, /Take 1 damage/);
+  assert.match(page, /Skip · take 1 damage/);
   assert.match(page, /Play selected Peach now/);
   assert.equal((page.match(/Play selected Peach now/g) ?? []).length, 1);
   assert.match(page, /there is no need to wait for the timer/);
@@ -69,15 +69,16 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /visible-countdown/);
   assert.match(page, /const remainingSeconds = Math\.ceil\(remainingMs \/ 1000\)/);
   assert.doesNotMatch(page, /toFixed\(1\)/);
-  assert.match(page, /Decision closes in/);
+  assert.match(page, /label: "Rescue"/);
   assert.match(page, /Cards close in/);
   assert.match(page, /countdownUntil/);
   assert.match(styles, /\.play-table>\.visible-countdown\{z-index:20\}/);
-  assert.match(styles, /\.table-resolution-layer>\.visible-countdown\{left:50%;right:auto/);
+  assert.match(styles, /\.play-seat > \.visible-countdown/);
+  assert.match(page, /seatCountdown\?\.playerId === player\.id/);
   assert.match(page, /Discard \$\{excessCards\} selected/);
   assert.match(page, /player-played-cards/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
-  assert.match(page, /activeEvent\.type === "card" \|\| activeEvent\.type === "cards" \? UI_TIMING\.playedCard : UI_TIMING\.eventMessage/);
+  assert.match(page, /displayedEvent\.type === "card" \|\| displayedEvent\.type === "cards" \? UI_TIMING\.playedCard : UI_TIMING\.eventMessage/);
   assert.match(page, /PRIVATE DRAW/);
   assert.match(page, /ROLE REVEALED/);
   assert.match(page, /TableResolutionSequence/);
@@ -200,6 +201,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /room\?\.pendingHarvest \|\| room\?\.pendingNegation \? UI_TIMING\.harvestPoll : UI_TIMING\.roomPoll/);
   assert.match(page, /respond_negation/);
   assert.match(page, /pass_negation/);
+  assert.match(page, /Skip response/);
+  assert.match(page, /Skip · take 1 damage/);
+  assert.doesNotMatch(page, /automaticDamage/);
   assert.match(page, /play Negation/i);
   assert.match(page, /judgementCards/);
   assert.match(page, /reveals for judgement/);
