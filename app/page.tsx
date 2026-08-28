@@ -272,8 +272,6 @@ function TableResolutionSequence({ events, activeEvent, waitingReason, players, 
   const activeAngle = 180 + (360 / players.length) * activeRelativeIndex;
   const activeRadians = activeAngle * Math.PI / 180;
   const activeStyle = { "--origin-x": `${50 + Math.sin(activeRadians) * 38}%`, "--origin-y": `${50 - Math.cos(activeRadians) * 34}%`, "--settle-x": `${50 + Math.sin(activeRadians) * 24}%`, "--settle-y": `${50 - Math.cos(activeRadians) * 26}%` } as React.CSSProperties;
-  const latestCard = [...events].reverse().find((event): event is CardEvent & { type: "card" } => event.type === "card");
-  const explanationCard = activeEvent?.type === "card" ? activeEvent.card : latestCard?.card;
   const displayTime = activeEvent?.type === "card" || activeEvent?.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage;
   return <div className={`table-resolution-layer ${concluding ? "concluding" : ""}`} role="status">
     {activeEvent && !concluding && <Countdown key={activeEvent.id} durationMs={displayTime} label="Next step in" />}
@@ -288,7 +286,7 @@ function TableResolutionSequence({ events, activeEvent, waitingReason, players, 
       const playerStyle = { "--seat-x": `${50 + Math.sin(radians) * 24}%`, "--seat-y": `${50 - Math.cos(radians) * 26}%` } as React.CSSProperties;
       return <div className="player-played-cards" key={player.id} style={playerStyle}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ event, card, key }, index) => event.id === activeEvent?.id ? null : <div className="table-played-card settled" key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
     })}
-    <section className="resolution-table-caption"><header><span>RESOLUTION</span><b>{concluding ? "Moving all played cards to discard" : waitingReason ? "Waiting for the next response" : activeEvent ? describeEvent(activeEvent) : "Sequence in progress"}</b></header>{explanationCard && <p><strong>{cardDefinition(explanationCard.kind).name} · card effect</strong>{cardDefinition(explanationCard.kind).rules}</p>}<ol>{events.map((event, index) => { const roleReveal = event.type === "message" && /^(.+)'s role is revealed: ([^.]+)\.$/.test(event.message); return <li className={event.id === activeEvent?.id ? "active" : ""} key={event.id}><em>{index + 1}</em><span>{roleReveal && <strong>ROLE REVEALED · </strong>}{describeEvent(event)}</span></li>; })}</ol></section>
+    <section className="resolution-table-caption"><header><span>RESOLUTION</span><b>{concluding ? "Moving all played cards to discard" : waitingReason ? "Waiting for the next response" : activeEvent ? describeEvent(activeEvent) : "Sequence in progress"}</b></header><ol>{events.map((event, index) => { const roleReveal = event.type === "message" && /^(.+)'s role is revealed: ([^.]+)\.$/.test(event.message); return <li className={event.id === activeEvent?.id ? "active" : ""} key={event.id}><em>{index + 1}</em><span>{roleReveal && <strong>ROLE REVEALED · </strong>}{describeEvent(event)}</span></li>; })}</ol></section>
   </div>;
 }
 

@@ -90,6 +90,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /player-played-cards/);
   assert.match(page, /active-table-reveal/);
   assert.match(page, /Moving all played cards to discard/);
+  assert.doesNotMatch(page, /· card effect/);
   assert.match(page, /sequenceDiscard: 700/);
   assert.match(styles, /@keyframes sequenceCardJourney/);
   assert.match(styles, /animation-name:\s*sequenceCardJourney !important/);
