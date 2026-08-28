@@ -82,6 +82,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /ROLE REVEALED/);
   assert.match(page, /TableResolutionSequence/);
   assert.match(page, /resolutionEvents/);
+  assert.match(page, /const pendingSequenceCard/);
+  assert.match(page, /const sequenceEvents = pendingSequenceCard/);
   assert.match(page, /player-played-cards/);
   assert.match(page, /active-table-reveal/);
   assert.match(page, /Moving all played cards to discard/);
@@ -89,6 +91,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(styles, /@keyframes activeCardJourney/);
   assert.match(styles, /@keyframes sequenceCardsToDiscard/);
   assert.match(styles, /\.table-played-card\.active/);
+  assert.match(styles, /player-played-cards\{--card-radius:[^}]+z-index:21/);
+  assert.match(styles, /table-played-card\{width:60px/);
   assert.match(styles, /\.resolution-table-caption/);
   assert.match(page, /Only you can see these cards/);
   assert.match(page, /cardDefinition/);
