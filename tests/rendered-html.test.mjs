@@ -177,6 +177,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /optimisticallyPresentedCards\.current\.delete\(event\.card\.id\)/);
   assert.match(page, /setTimeout\(\(\) => setOptimisticPlay\(null\), UI_TIMING\.playedCard\)/);
   assert.match(page, /setResolutionClosing\(false\); setResolutionEvents\(\[optimisticEvent\]\)/);
+  assert.match(page, /const playResponseCard = async/);
+  assert.match(page, /optimistic-response-/);
+  assert.match(page, /hasUnseenPresentations \|\| resolutionPending/);
+  assert.match(page, /visibleDiscardTop/);
   assert.match(page, /setResolutionEvents/);
   assert.match(page, /Selected by \{actor\?\.name/);
   assert.match(page, /All choices complete/);
