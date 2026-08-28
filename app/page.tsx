@@ -180,7 +180,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const [turnNotice, setTurnNotice] = useState(""); const onActionRef = useRef(onAction);
   const [privateDrawCards, setPrivateDrawCards] = useState<Card[]>([]); const knownHandCards = useRef(new Set(room.myHand.map((item) => item.id)));
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
-  const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>([]);
+  const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>(initialPendingSequence);
   const [resolutionClosing, setResolutionClosing] = useState(false);
   const [visibleDiscardTop, setVisibleDiscardTop] = useState<Card | null>(() => room.discardTop && initialHeldCardIds.has(room.discardTop.id) ? null : room.discardTop);
   const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));

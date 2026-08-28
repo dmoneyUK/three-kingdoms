@@ -362,6 +362,7 @@ test("Negation cancels a stratagem and a counter-Negation restores it in ordered
   setTurn(game.code, hostPlayer.seat);
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-cancelled", targetId: alicePlayer.id, targetCardIndex: 0 });
   assert.equal(opened.status, 200); assert.equal(opened.data.room.phase, "response"); assert.equal(opened.data.room.pendingNegation.cardName, "Burning Bridges"); assert.equal(opened.data.room.actionPlayerId, alicePlayer.id);
+  assert.equal(opened.data.room.discardTop, null, "Burning Bridges stays outside discard while its Negation decision is open");
   const cancelled = await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-cancel" });
   assert.equal(cancelled.status, 200); assert.equal(cancelled.data.room.phase, "play"); assert.equal(cancelled.data.room.pendingNegation, null);
   assert.equal((await state(game.code, alice.token)).data.myHand.some((held) => held.id === "attack-protected"), true, "the cancelled stratagem does not discard its target card");
@@ -371,11 +372,17 @@ test("Negation cancels a stratagem and a counter-Negation restores it in ordered
   setTurn(game.code, hostPlayer.seat);
   const reopened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-restored", targetId: alicePlayer.id, targetCardIndex: 0 });
   assert.equal(reopened.data.room.actionPlayerId, alicePlayer.id, "the initial response starts after the source and continues in seat order");
-  assert.equal((await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-first" })).data.room.actionPlayerId, hostPlayer.id);
+  assert.equal(reopened.data.room.discardTop.id, "negation-cancel", "the previous completed discard remains visible while the new sequence is pending");
+  const firstNegation = await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-first" });
+  assert.equal(firstNegation.data.room.actionPlayerId, hostPlayer.id);
+  assert.equal(firstNegation.data.room.discardTop.id, "negation-cancel", "neither Burning Bridges nor the first Negation enters discard before the counter decision");
   const restored = await request("respond_negation", { code: game.code, token: host.token, cardId: "negation-counter" });
   assert.equal(restored.status, 200); assert.equal(restored.data.room.phase, "play");
+  assert.equal(restored.data.room.discardTop.id, "attack-removed", "the revealed target card enters discard only when the complete sequence finishes");
   assert.equal((await state(game.code, alice.token)).data.myHand.some((held) => held.id === "attack-removed"), false, "counter-Negation restores the original stratagem effect");
   assert.ok(restored.data.room.log.some((entry) => /plays Negation to restore Burning Bridges/.test(entry)));
+  const finalDiscard = JSON.parse(query(`SELECT discard_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(finalDiscard.slice(-4).map((held) => held.id), ["dismantle-restored", "negation-first", "negation-counter", "attack-removed"], "the entire Burning Bridges sequence commits to discard together in play order");
 });
 
 test("only the affected bot negates a targeted stratagem; later bots do not counter it", { timeout: 30_000 }, async () => {

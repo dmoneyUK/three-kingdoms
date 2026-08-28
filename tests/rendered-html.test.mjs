@@ -83,6 +83,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /TableResolutionSequence/);
   assert.match(page, /resolutionEvents/);
   assert.match(page, /function pendingTimelineSequence/);
+  assert.match(page, /useState<GameEvent\[]>\(initialPendingSequence\)/);
   assert.match(page, /const pendingSequenceEvents = pendingTimelineSequence\(room\)/);
   assert.match(page, /const sequenceEvents = \[\.\.\.pendingSequenceEvents, \.\.\.resolutionEvents\]/);
   assert.match(page, /initialHeldCardIds\.has\(room\.discardTop\.id\) \? null : room\.discardTop/);
