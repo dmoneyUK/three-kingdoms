@@ -1,19 +1,62 @@
-/* Loaded after globals.css: sequence cards travel between explicit table positions. */
-.active-table-reveal {
-  --settle-scale: .4;
+/* Loaded after globals.css: one active card travels through the whole reveal. */
+.play-center {
+  transition: opacity .15s ease;
 }
 
-@keyframes activeCardJourney {
+.play-table.sequence-active:not(.sequence-concluding) .play-center {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.table-resolution-layer > .visible-countdown {
+  top: 18%;
+}
+
+.active-step-label {
+  position: absolute;
+  left: 50%;
+  top: 29%;
+  z-index: 27;
+  width: min(72%, 440px);
+  padding: 7px 12px;
+  translate: -50% -50%;
+  text-align: center;
+  background: #10130ef2;
+  border: 1px solid #b99754;
+  color: #f0d698;
+  font: 10px/1.35 Arial;
+}
+
+.active-table-reveal {
+  --settle-scale: .4;
+  animation-name: sequenceCardJourney !important;
+}
+
+@keyframes sequenceCardJourney {
   0% { left: var(--origin-x); top: var(--origin-y); opacity: .15; transform: scale(.25); }
-  12% { left: 50%; top: 47%; opacity: 1; transform: scale(1); }
-  88% { left: 50%; top: 47%; opacity: 1; transform: scale(1); }
+  12% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  84% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   100% { left: var(--settle-x); top: var(--settle-y); opacity: 1; transform: scale(var(--settle-scale)); }
 }
 
-.player-played-cards {
+.table-resolution-layer .player-played-cards {
   left: var(--seat-x);
   top: var(--seat-y);
   transform: none;
+}
+
+.player-played-cards > span {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  margin: 0;
+  white-space: nowrap;
+}
+
+.resolution-table-caption {
+  left: 18px;
+  top: 18px;
+  width: min(30vw, 360px);
+  translate: 0 0;
 }
 
 @keyframes sequenceCardsToDiscard {
@@ -23,8 +66,12 @@
 
 @media (max-width: 700px) {
   .active-table-reveal { --settle-scale: .463; }
+  .resolution-table-caption { display: none; }
+  .active-step-label { top: 30%; width: min(68%, 320px); font-size: 8px; }
 }
 
 @media (max-width: 480px) {
   .active-table-reveal { --settle-scale: .426; }
+  .table-resolution-layer > .visible-countdown { top: 17%; }
+  .active-step-label { top: 29%; width: 66%; padding: 5px 8px; }
 }
