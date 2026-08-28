@@ -28,7 +28,7 @@ async function waitForServer() {
 
 try {
   await waitForServer();
-  const tests = spawn(process.execPath, ["--test", "tests/rendered-html.test.mjs", "tests/game-api.test.mjs"], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_URL: url }, stdio: "inherit" });
+  const tests = spawn(process.execPath, ["--test", "--test-concurrency=1", "tests/rendered-html.test.mjs", "tests/game-api.test.mjs"], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_URL: url }, stdio: "inherit" });
   process.exitCode = await new Promise((resolve) => tests.on("exit", resolve)) ?? 1;
   if (process.exitCode !== 0) process.stderr.write(`\nTest server output:\n${output}\n`);
 } finally { server?.kill("SIGTERM"); }
