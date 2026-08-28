@@ -260,7 +260,7 @@ function TableResolutionSequence({ events, activeEvent, waitingReason, players, 
   const activeRelativeIndex = (activePlayerIndex - myTableIndex + players.length) % players.length;
   const activeAngle = 180 + (360 / players.length) * activeRelativeIndex;
   const activeRadians = activeAngle * Math.PI / 180;
-  const activeStyle = { "--origin-x": `${50 + Math.sin(activeRadians) * 38}%`, "--origin-y": `${50 - Math.cos(activeRadians) * 34}%`, "--settle-x": `${50 + Math.sin(activeRadians) * 22}%`, "--settle-y": `${50 - Math.cos(activeRadians) * 21}%` } as React.CSSProperties;
+  const activeStyle = { "--origin-x": `${50 + Math.sin(activeRadians) * 38}%`, "--origin-y": `${50 - Math.cos(activeRadians) * 34}%`, "--settle-angle": `${activeAngle}deg` } as React.CSSProperties;
   const latestCard = [...events].reverse().find((event): event is CardEvent & { type: "card" } => event.type === "card");
   const explanationCard = activeEvent?.type === "card" ? activeEvent.card : latestCard?.card;
   const displayTime = activeEvent?.type === "card" || activeEvent?.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage;

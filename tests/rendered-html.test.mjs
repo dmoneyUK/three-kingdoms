@@ -89,6 +89,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Moving all played cards to discard/);
   assert.match(page, /sequenceDiscard: 700/);
   assert.match(styles, /@keyframes activeCardJourney/);
+  assert.match(page, /"--settle-angle": `\$\{activeAngle\}deg`/);
+  assert.match(styles, /100%\{left:50%;top:50%;opacity:1;transform:rotate\(var\(--settle-angle\)\)/);
+  assert.doesNotMatch(styles, /100%\{left:var\(--settle-x\);top:var\(--settle-y\);opacity:0/);
   assert.match(styles, /@keyframes sequenceCardsToDiscard/);
   assert.match(styles, /\.table-played-card\.active/);
   assert.match(styles, /player-played-cards\{--card-radius:[^}]+z-index:21/);
