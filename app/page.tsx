@@ -266,6 +266,7 @@ function TableResolutionSequence({ events, activeEvent, waitingReason, players, 
   const cards = events.flatMap((event) => event.type === "card" ? [{ event, card: event.card, key: event.id }] : event.type === "cards" ? event.cards.map((card) => ({ event, card, key: `${event.id}-${card.id}` })) : []);
   const cardPlayers = players.filter((player) => cards.some(({ event }) => publicPlayerName(event.player) === publicPlayerName(player.name)));
   const activeCards = activeEvent?.type === "card" ? [activeEvent.card] : activeEvent?.type === "cards" ? activeEvent.cards : [];
+  const activeCardIds = new Set(activeCards.map((card) => card.id));
   const activePlayer = activeEvent?.type === "card" || activeEvent?.type === "cards" ? players.find((player) => publicPlayerName(player.name) === publicPlayerName(activeEvent.player)) : undefined;
   const activePlayerIndex = activePlayer ? players.findIndex((player) => player.id === activePlayer.id) : myTableIndex;
   const activeRelativeIndex = (activePlayerIndex - myTableIndex + players.length) % players.length;
@@ -284,7 +285,7 @@ function TableResolutionSequence({ events, activeEvent, waitingReason, players, 
       const radians = angle * Math.PI / 180;
       const playerCards = cards.filter(({ event }) => publicPlayerName(event.player) === publicPlayerName(player.name));
       const playerStyle = { "--seat-x": `${50 + Math.sin(radians) * 24}%`, "--seat-y": `${50 - Math.cos(radians) * 26}%` } as React.CSSProperties;
-      return <div className="player-played-cards" key={player.id} style={playerStyle}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ event, card, key }, index) => event.id === activeEvent?.id ? null : <div className="table-played-card settled" key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
+      return <div className="player-played-cards" key={player.id} style={playerStyle}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ card, key }, index) => activeCardIds.has(card.id) ? null : <div className="table-played-card settled" key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
     })}
     <section className="resolution-table-caption"><header><span>RESOLUTION</span><b>{concluding ? "Moving all played cards to discard" : waitingReason ? "Waiting for the next response" : activeEvent ? describeEvent(activeEvent) : "Sequence in progress"}</b></header><ol>{events.map((event, index) => { const roleReveal = event.type === "message" && /^(.+)'s role is revealed: ([^.]+)\.$/.test(event.message); return <li className={event.id === activeEvent?.id ? "active" : ""} key={event.id}><em>{index + 1}</em><span>{roleReveal && <strong>ROLE REVEALED · </strong>}{describeEvent(event)}</span></li>; })}</ol></section>
   </div>;

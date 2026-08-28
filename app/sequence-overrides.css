@@ -29,14 +29,20 @@
 
 .active-table-reveal {
   --settle-scale: .4;
-  animation-name: sequenceCardJourney !important;
+  animation: sequenceCardToOwner var(--played-card-display) ease-in-out both !important;
 }
 
-@keyframes sequenceCardJourney {
+/* Reach the owner early enough to remain visibly settled before React swaps in
+   the small persistent copy. No frame in this animation targets the discard. */
+@keyframes sequenceCardToOwner {
   0% { left: var(--origin-x); top: var(--origin-y); opacity: .15; transform: scale(.25); }
-  12% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
-  84% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
-  100% { left: var(--settle-x); top: var(--settle-y); opacity: 1; transform: scale(var(--settle-scale)); }
+  10% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  65% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  78%, 100% { left: var(--settle-x); top: var(--settle-y); opacity: 1; transform: scale(var(--settle-scale)); }
+}
+
+.active-table-reveal .played-card {
+  animation: none !important;
 }
 
 .table-resolution-layer .player-played-cards {
