@@ -97,7 +97,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /directDiscard \? "direct-discard" : ""/);
   assert.match(styles, /@keyframes revealedCardsToDiscard/);
   assert.match(styles, /active-table-reveal\.direct-discard/);
-  assert.match(page, /activeEvent\.type === "cards" && activeEvent\.action === "discard"\) setVisibleDiscardTop\(room\.discardTop\)/);
+  assert.match(page, /const latestDiscardTop = useRef\(room\.discardTop\)/);
+  assert.match(page, /useEffect\(\(\) => \{ latestDiscardTop\.current = room\.discardTop; \}, \[room\.discardTop\]\)/);
+  assert.match(page, /setVisibleDiscardTop\(latestDiscardTop\.current\)/);
+  assert.doesNotMatch(page, /\}, \[activeEvent, room\.discardTop\]\)/);
   assert.match(page, /useState<GameEvent\[]>\(initialPendingSequence\)/);
   assert.match(page, /const pendingSequenceEvents = pendingTimelineSequence\(room\)/);
   assert.match(page, /const sequenceEvents = \[\.\.\.pendingSequenceEvents, \.\.\.resolutionEvents\]/);
