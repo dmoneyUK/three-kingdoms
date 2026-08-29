@@ -88,7 +88,12 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /TableResolutionSequence/);
   assert.match(page, /resolutionEvents/);
   assert.match(page, /function pendingTimelineSequence/);
-  assert.match(page, /function retainsAtPlayer\(event: GameEvent\) \{ return !\(event\.type === "cards" && event\.action === "discard"\); \}/);
+  assert.match(page, /function movesDirectlyToDiscard\(event: GameEvent\)/);
+  assert.match(page, /event\.action === "discard" \|\| event\.action === "reveal"/);
+  assert.match(page, /function retainsAtPlayer\(event: GameEvent\)/);
+  assert.match(page, /const resolutionRevision = useRef\(0\)/);
+  assert.match(page, /const closingRevision = resolutionRevision\.current/);
+  assert.match(page, /resolutionRevision\.current !== closingRevision/);
   assert.match(page, /const instantPresentationEvents = useRef\(new Set<string>\(\)\)/);
   assert.match(page, /const cardsArrived = visible\.some\(\(event\) => eventCards\(event\)\.length > 0\)/);
   assert.match(page, /instantPresentationEvents\.current\.add\(event\.id\)/);
