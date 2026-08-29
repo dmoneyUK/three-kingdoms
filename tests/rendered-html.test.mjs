@@ -206,6 +206,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /respond_negation/);
   assert.match(page, /pass_negation/);
   assert.match(page, /Skip response/);
+  assert.match(page, /presentationBusy && !canRespond/);
+  assert.match(page, /className="end" disabled=\{busy\} onClick=\{\(\) => onAction\(responseDamageAction\)\}/);
+  assert.match(page, /const presentImmediately = !optimisticPlay && !activeEvent && eventQueue\.length === 0/);
+  assert.doesNotMatch(page, /if \(busy \|\| presentationBusy\) return; const key = `\$\{room\.actionPlayerId\}/);
   assert.match(page, /Skip · take 1 damage/);
   assert.doesNotMatch(page, /automaticDamage/);
   assert.match(page, /play Negation/i);

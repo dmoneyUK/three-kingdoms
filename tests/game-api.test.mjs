@@ -432,23 +432,31 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
   assert.ok(hostPlayer && alicePlayer && bobPlayer && carolPlayer);
 
   for (const { kind, requiredKind } of [{ kind: "BarbarianInvasion", requiredKind: "Attack" }, { kind: "RainingArrows", requiredKind: "Dodge" }]) {
-    setHand(hostPlayer.id, [card(kind, "per-target")], 5, 5);
+    setHand(hostPlayer.id, [card(kind, "per-target"), card("Negation", `${kind}-counter-option`)], 5, 5);
     setHand(alicePlayer.id, [card("Negation", `${kind}-alice`)], 4, 4);
     setHand(bobPlayer.id, [card(requiredKind, `${kind}-bob`)], 4, 4);
     setHand(carolPlayer.id, [card(requiredKind, `${kind}-carol`)], 4, 4);
     setTurn(game.code, hostPlayer.seat);
+    sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
 
     const opened = await request("play_card", { code: game.code, token: host.token, cardId: `${kind.toLowerCase()}-per-target` });
     assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.effectTargetId, alicePlayer.id); assert.equal(opened.data.room.actionPlayerId, alicePlayer.id);
-    const protectedAlice = await request("respond_negation", { code: game.code, token: alice.token, cardId: `negation-${kind}-alice` });
-    assert.equal(protectedAlice.status, 200); assert.equal(protectedAlice.data.room.pendingNegation, null); assert.equal(protectedAlice.data.room.pendingGroup.actorId, bobPlayer.id, `${kind} continues to Bob after Alice is protected`);
+    assert.deepEqual(discardIds(game.code), [], `${kind} stays staged while Alice decides whether to Negate`);
+    const aliceNegates = await request("respond_negation", { code: game.code, token: alice.token, cardId: `negation-${kind}-alice` });
+    assert.equal(aliceNegates.status, 200); assert.equal(aliceNegates.data.room.actionPlayerId, hostPlayer.id, "the source may immediately counter or skip after a target Negates");
+    assert.deepEqual(discardIds(game.code), [], `the ${kind} and first Negation both remain staged`);
+    const counterTimer = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(counterTimer.data.room.pendingNegation.deadline > Date.now());
+    const protectedAlice = await request("pass_negation", { code: game.code, token: host.token });
+    assert.equal(protectedAlice.status, 200); assert.equal(protectedAlice.data.room.pendingNegation, null); assert.equal(protectedAlice.data.room.pendingGroup.actorId, bobPlayer.id, `${kind} continues to Bob immediately when the source skips its counter-Negation`);
     assert.equal(protectedAlice.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
     const bobResponse = await request("respond_group", { code: game.code, token: bob.token, cardId: `${requiredKind.toLowerCase()}-${kind}-bob` });
     assert.equal(bobResponse.status, 200); assert.equal(bobResponse.data.room.pendingGroup.actorId, carolPlayer.id, `${kind} continues to Carol after Bob responds`);
+    assert.deepEqual(discardIds(game.code), [], `${kind}, Negation, and Bob's response remain staged`);
     const finished = await request("respond_group", { code: game.code, token: carol.token, cardId: `${requiredKind.toLowerCase()}-${kind}-carol` });
     assert.equal(finished.status, 200); assert.equal(finished.data.room.phase, "play"); assert.equal(finished.data.room.pendingGroup, null);
     assert.ok(finished.data.room.log.some((entry) => new RegExp(`${kind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}'s effect on Alice is cancelled`).test(entry)));
+    assert.deepEqual(discardIds(game.code), [`${kind.toLowerCase()}-per-target`, `negation-${kind}-alice`, `${requiredKind.toLowerCase()}-${kind}-bob`, `${requiredKind.toLowerCase()}-${kind}-carol`], "the complete AOE sequence enters discard once, in play order");
   }
 });
 
@@ -597,17 +605,20 @@ test("Dying rescue resumes a global response chain and victory stops it immediat
   const rescuedGame = await createHumanGame();
   const [host, alice, bob, carol] = rescuedGame.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = rescuedGame.room.players;
   setHand(hostPlayer.id, [card("BarbarianInvasion", "rescue-chain")], 5, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [card("Peach", "rescue-chain")], 4, 4); setHand(carolPlayer.id, [card("Attack", "rescue-chain")], 4, 4); setTurn(rescuedGame.code, hostPlayer.seat);
+  sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(rescuedGame.code)}`);
   const started = await request("play_card", { code: rescuedGame.code, token: host.token, cardId: "barbarianinvasion-rescue-chain" });
   assert.equal(started.data.room.actionPlayerId, alicePlayer.id);
   const dying = await request("take_group_damage", { code: rescuedGame.code, token: alice.token });
-  assert.equal(dying.data.room.phase, "dying");
+  assert.equal(dying.data.room.phase, "dying"); assert.equal(dying.data.room.pendingGroup.cardKind, "BarbarianInvasion", "the AOE sequence remains visible through Dying rescue"); assert.deepEqual(discardIds(rescuedGame.code), []);
   const bobPrompt = await state(rescuedGame.code, bob.token); assert.equal(bobPrompt.data.isMyAction, true); assert.equal(bobPrompt.data.pendingDying.targetId, alicePlayer.id);
   const rescued = await request("give_peach", { code: rescuedGame.code, token: bob.token, cardId: "peach-rescue-chain" });
   assert.equal(rescued.data.room.phase, "response"); assert.equal(rescued.data.room.actionPlayerId, bobPlayer.id); assert.equal(rescued.data.room.turnSeat, hostPlayer.seat);
+  assert.deepEqual(discardIds(rescuedGame.code), [], "the rescue Peach remains part of the active AOE sequence");
   const bobResponded = await request("take_group_damage", { code: rescuedGame.code, token: bob.token });
   assert.equal(bobResponded.data.room.actionPlayerId, carolPlayer.id);
   const chainFinished = await request("respond_group", { code: rescuedGame.code, token: carol.token, cardId: "attack-rescue-chain" });
   assert.equal(chainFinished.data.room.phase, "play"); assert.equal(chainFinished.data.room.turnSeat, hostPlayer.seat); assert.equal(chainFinished.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
+  assert.deepEqual(discardIds(rescuedGame.code), ["barbarianinvasion-rescue-chain", "peach-rescue-chain", "attack-rescue-chain"], "AOE, rescue, and response cards enter discard together after the chain finishes");
 
   const victoryGame = await createHumanGame();
   const [winner, rebel] = victoryGame.members; const [lord, lastRebel, loyalistOne, loyalistTwo] = victoryGame.room.players;
