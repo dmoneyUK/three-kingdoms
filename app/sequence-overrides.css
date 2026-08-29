@@ -48,6 +48,10 @@
   animation: sequenceCardToOwner var(--played-card-display) ease-in-out both !important;
 }
 
+.active-table-reveal.direct-discard {
+  animation: revealedCardsToDiscard var(--played-card-display) ease-in-out both !important;
+}
+
 /* Reach the owner early enough to remain visibly settled before React swaps in
    the small persistent copy. No frame in this animation targets the discard. */
 @keyframes sequenceCardToOwner {
@@ -55,6 +59,13 @@
   10% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   65% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   78%, 100% { left: var(--settle-x); top: var(--settle-y); opacity: 1; transform: scale(var(--settle-scale)); }
+}
+
+@keyframes revealedCardsToDiscard {
+  0% { left: var(--origin-x); top: var(--origin-y); opacity: .15; transform: scale(.25); }
+  10% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  72% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  100% { left: calc(50% + 42px); top: 50%; opacity: 0; transform: scale(.12) rotate(3deg); }
 }
 
 .active-table-reveal .played-card {

@@ -88,6 +88,12 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /TableResolutionSequence/);
   assert.match(page, /resolutionEvents/);
   assert.match(page, /function pendingTimelineSequence/);
+  assert.match(page, /function retainsAtPlayer\(event: GameEvent\) \{ return !\(event\.type === "cards" && event\.action === "discard"\); \}/);
+  assert.match(page, /const tablePresentationVisible = sequenceEvents\.length > 0 \|\| Boolean\(displayedEvent && eventCards\(displayedEvent\)\.length\)/);
+  assert.match(page, /directDiscard \? "direct-discard" : ""/);
+  assert.match(styles, /@keyframes revealedCardsToDiscard/);
+  assert.match(styles, /active-table-reveal\.direct-discard/);
+  assert.match(page, /activeEvent\.type === "cards" && activeEvent\.action === "discard"\) setVisibleDiscardTop\(room\.discardTop\)/);
   assert.match(page, /useState<GameEvent\[]>\(initialPendingSequence\)/);
   assert.match(page, /const pendingSequenceEvents = pendingTimelineSequence\(room\)/);
   assert.match(page, /const sequenceEvents = \[\.\.\.pendingSequenceEvents, \.\.\.resolutionEvents\]/);
