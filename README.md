@@ -5,13 +5,13 @@ An English online implementation of the classic Three Kingdoms card game, built 
 - Play: https://three-realms-table.dai-jinge.chatgpt.site
 - Source: https://github.com/dmoneyUK/three-kingdoms
 - Development handover: [HANDOVER.md](HANDOVER.md)
-- Current stage: **playable four-player alpha — general rules stabilisation and card expansion**
+- Current stage: **playable four-player alpha — general card expansion with rules-engine and sequence-presentation stabilisation**
 
 The hosted game is public and does not require a GitHub or ChatGPT account. Players join a room using a room code and keep their session on their device.
 
 ## Current Stage
 
-The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots, and the current work sits between **Roadmap Stage 2 (strengthening the general rules engine)** and **Stage 3 (completing the general card set)**. Hero-specific abilities remain intentionally deferred.
+The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards, victory checks and the first delayed stratagem are working; the current feature focus is **Roadmap Stage 3 (completing the general card set)** while Stage 2 rules-engine extraction and regression work continues. Hero-specific abilities remain intentionally deferred.
 
 The playable alpha currently includes:
 
@@ -24,7 +24,7 @@ The playable alpha currently includes:
 - death, role reveal, defeated-hand cleanup, Rebel defeat rewards and the Lord's Loyalist-kill penalty;
 - automatic bot drawing, card play, responses, rescue and discard;
 - private card draws and private rescue decisions;
-- table-based card-resolution presentations: each played or revealed card zooms into view, settles face-up in play order before its player, retains its effect explanation and results, then joins the sequence-wide discard animation when resolution concludes;
+- table-based card-resolution presentations: each played card zooms into view, settles face-up in play order before its player, remains through the complete response/effect sequence, then joins the sequence-wide discard animation when resolution concludes;
 - event history plus a detailed rule-audit trail; and
 - a quick-test opening hand containing one of every implemented card, with Negation also seeded into bot hands.
 
@@ -51,7 +51,11 @@ The playable alpha currently includes:
 - Bumper Harvest keeps every revealed card on one shared choice panel, requires confirmation, names the current chooser, and visibly paces every raised selection and shaded confirmation before advancing to the next player.
 - Bumper Harvest gains no longer trigger the normal private-draw overlay, so the shared panel remains visible while every later player selects and confirms.
 - Opening draws begin immediately, card plays appear on the table optimistically, and Bumper Harvest selection changes never lock the controls while their shared preview synchronises.
-- Optimistic card presentations now end after exactly one second even when the server response is slower, and the matching authoritative event is de-duplicated instead of replaying the same card.
+- Played cards remain visible for four seconds without waiting for a slower server response, and the matching authoritative event is de-duplicated instead of replaying the same card.
+- Attack, Duel, Burning Bridges, Steal, Barbarian Invasion and Raining Arrows now retain every played response card in front of its owner until the complete sequence—including its final card movement or effect—has concluded.
+- Judgement reveals, individual discards and grouped end-of-turn discards animate to the discard pile without leaving stale cards in front of a player.
+- Response countdowns now sit beside the acting player without covering their played-card row. Burning Bridges and Steal show their face-down choices near the targeted player rather than above ME's hand.
+- Hand cards now show only rank, suit, official English name and category; full private rules remain available through each card's information button.
 - Oath of the Peach Garden remains playable when nobody needs healing; it resolves without changing HP.
 - Player 3 → ME is covered by a response-and-round-transition regression test.
 - Consecutive bot rounds with Barbarian Invasion and Raining Arrows return control to ME correctly.
@@ -64,17 +68,17 @@ The playable alpha currently includes:
 
 | Stage | Status | Position |
 | --- | --- | --- |
-| 1. Stabilise the turn loop | Mostly complete; ongoing regression work | Core ownership, phase order, repeated rounds and response chains are playable and tested. |
-| 2. Strengthen the general rules engine | In progress | State invariants and ordered pending actions are implemented; resolver reuse and broader transition tests remain. |
-| 3. Complete the general card set | In progress — current feature focus | 13 cards are playable; Negation has ordered counter-responses, and Overindulgence introduces delayed stratagems and judgement. |
+| 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
+| 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; shared stratagem, judgement and sequence resolvers still need extraction. |
+| 3. Complete the general card set | In progress — current feature focus | 13 cards are playable. Negation, per-target AOE resolution and Overindulgence judgement are stable enough to add Lightning next. |
 | 4. Equipment and distance modifiers | Planned | No weapons, armour or horses yet. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
-| 7. Product polish | Ongoing alongside rules work | Mobile feedback, timing and visibility are improving; sound, invitations and saved history remain planned. |
+| 7. Product polish | Ongoing alongside rules work | Mobile sequence layout, countdown placement, target-card selection and card information are improved; sound, invitations and saved history remain planned. |
 
 ### Next milestone
 
-Strengthen the new Judgement Zone and add the next classic delayed stratagem, **Lightning**. Negation now supports single-target cards, per-target AOE windows and cards initiated by either humans or bots. Borrowed Sword remains deferred until equipment zones exist.
+Add the next classic delayed stratagem, **Lightning**, by reusing and strengthening the Judgement Zone introduced by Overindulgence. The milestone includes placement-time Negation, public judgement reveal, damage, transfer to the next eligible player after a miss, bot handling, quick-test coverage and deterministic transition tests. Borrowed Sword remains deferred until equipment zones exist.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 
@@ -86,12 +90,14 @@ Strengthen the new Judgement Zone and add the next classic delayed stratagem, **
 - Centralise turn ownership, phases and pending responses.
 - Extend the state checks that reject invalid ownership and pending-action combinations.
 - Expand deterministic tests for damage, rescue, death and victory transitions.
+- Extract reusable stratagem, Negation and judgement helpers as Lightning is implemented.
 
 ### 3. Complete the general card set — current feature focus
 
-- Add remaining immediate stratagem cards one at a time.
-- Add response-chain cards.
-- Add delayed stratagems and the Judgement Zone.
+- Add Lightning as the next delayed stratagem.
+- Continue adding remaining immediate and response-chain stratagems one at a time.
+- Keep one copy of every implemented card in ME's quick-test opening hand and seed required defence cards into bot hands.
+- Defer equipment-dependent cards until equipment zones and range modifiers exist.
 
 ### 4. Add equipment and distance modifiers
 
@@ -111,7 +117,7 @@ Hero details are intentionally deferred until the shared rules and cards are sta
 
 ### 7. Product polish
 
-- Improve mobile clarity, animations and accessibility.
+- Continue refining mobile spacing, animations and accessibility after each new response type.
 - Add optional sound controls.
 - Improve game setup and friend invitations.
 - Add optional saved match history and player statistics.
