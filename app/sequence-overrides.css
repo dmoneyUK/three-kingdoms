@@ -9,13 +9,15 @@
 }
 
 .play-seat > .visible-countdown {
-  right: -12px;
-  top: -14px;
+  left: 50%;
+  right: auto;
+  top: 50%;
   z-index: 32;
   min-width: 58px;
   padding: 5px 7px;
   border-radius: 999px;
   pointer-events: none;
+  translate: calc(-50% + var(--countdown-x, 0px)) calc(-50% + var(--countdown-y, 0px));
 }
 
 .play-seat > .visible-countdown span {
@@ -105,6 +107,6 @@
 
 @media (max-width: 480px) {
   .active-table-reveal { --settle-scale: .426; }
-  .play-seat > .visible-countdown { right: -8px; top: -12px; min-width: 50px; }
+  .play-seat > .visible-countdown { min-width: 50px; }
   .active-step-label { top: 29%; width: 66%; padding: 5px 8px; }
 }

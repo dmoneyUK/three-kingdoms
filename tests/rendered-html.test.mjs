@@ -135,9 +135,12 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(cards, /DrawTwo/);
   assert.match(styles, /\.game-card\.drawtwo/);
   assert.match(styles, /\.game-card\.attack/);
-  assert.match(page, /Tap to answer Attack/);
+  assert.doesNotMatch(page, /Tap to answer Attack/);
   assert.doesNotMatch(page, />盾</);
   assert.match(page, /hidden-card-picker/);
+  assert.match(page, /table-hidden-card-picker/);
+  assert.match(page, /"--countdown-x"/);
+  assert.match(page, /"--countdown-y"/);
   assert.match(page, /targetCardIndex/);
   assert.match(page, /Finishing…/);
   assert.match(page, /Passing…/);
@@ -153,6 +156,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /PRIVATE CARD INFORMATION/);
   assert.match(page, /Only you can see this explanation/);
   assert.match(page, /cardDefinition\(infoCard\.kind\)\.rules/);
+  assert.doesNotMatch(page, /: definition\.description/);
+  assert.match(styles, /translate: calc\(-50% \+ var\(--countdown-x/);
+  assert.match(styles, /\.table-hidden-card-picker\{/);
   assert.doesNotMatch(page, /OFFICIAL_WTK_CARD_CATALOGUE|Official WTK card catalogue/);
   assert.match(styles, /\.card-info-dialog/);
   assert.match(styles, /\.card-info-button\{left:8px;top:auto;bottom:8px/);
