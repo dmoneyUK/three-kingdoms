@@ -21,6 +21,7 @@ type DeferredStratagem =
   | { kind: "group"; pending: GroupPending }
   | { kind: "overindulgence"; targetId: string; cardId: string }
   | { kind: "lightning"; targetId: string; cardId: string }
+  | { kind: "rations_depleted"; targetId: string; cardId: string }
   | { kind: "judgement"; targetId: string; cardId: string };
 type NegationPending = { kind: "negation"; sourceId: string; actorId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; reason: string; heldCards?: Card[]; deadline?: number };
 type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
@@ -120,11 +121,18 @@ function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) 
   }
   return { deck, discard, drawn, log };
 }
+function drawPhaseFlags(phase?: string | null) {
+  return { skipPlay: Boolean(phase?.includes("skip-play")), skipDraw: Boolean(phase?.includes("skip-draw")) };
+}
+function drawPhaseFor(skipPlay: boolean, skipDraw: boolean) {
+  return skipPlay && skipDraw ? "draw-skip-play-skip-draw" : skipPlay ? "draw-skip-play" : skipDraw ? "draw-skip-draw" : "draw";
+}
 function resolveTurnJudgement(player: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[]) {
   const delayedCards = parse<Card[]>(player.judgement_json, []);
   const delayed = delayedCards[0];
   const remaining = delayedCards.slice(1);
   let skipPlay = false;
+  let skipDraw = false;
   let damage = 0;
   let transferTarget: PlayerRow | null = null;
   if (delayed) {
@@ -135,6 +143,10 @@ function resolveTurnJudgement(player: PlayerRow, players: PlayerRow[], deck: Car
       if (delayed.kind === "Overindulgence") {
         skipPlay = judged.suit !== "♥";
         log = addLog(log, `${player.name} judges ${judged.rank}${judged.suit} for Overindulgence. ${judged.suit === "♥" ? "The Heart result allows the Play Phase." : "The result is not a Heart, so the Play Phase is skipped."}`);
+        discard.push(delayed);
+      } else if (delayed.kind === "RationsDepleted") {
+        skipDraw = judged.suit !== "♣";
+        log = addLog(log, `${player.name} judges ${judged.rank}${judged.suit} for Rations Depleted. ${judged.suit === "♣" ? "The Club result allows the Draw Phase." : "The result is not a Club, so the Draw Phase is skipped."}`);
         discard.push(delayed);
       } else if (delayed.kind === "Lightning") {
         const numericRank = Number(judged.rank);
@@ -153,7 +165,7 @@ function resolveTurnJudgement(player: PlayerRow, players: PlayerRow[], deck: Car
       discard.push(judged);
     } else log = addLog(log, `${player.name} has no card available for judgement.`);
   }
-  return { deck, discard, log, skipPlay, damage, transferTarget, transferredCard: transferTarget ? delayed : null, remaining, resolved: Boolean(delayed) };
+  return { deck, discard, log, skipPlay, skipDraw, damage, transferTarget, transferredCard: transferTarget ? delayed : null, remaining, resolved: Boolean(delayed) };
 }
 function messageEvent(entry: string, index: number) {
   if (!entry.startsWith("@event:")) return { type: "message" as const, id: `legacy-${index}-${entry}`, message: entry };
@@ -498,7 +510,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationPending
       else { sourceHand.push(targetCard); log = addHistory(log, `${source.name} uses Steal to obtain one hidden card from ${target.name}.`); }
       await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextTargetHand), target.id), db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id), db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), roomId)]);
     }
-  } else if (pending.effect.kind === "overindulgence" || pending.effect.kind === "lightning") {
+  } else if (pending.effect.kind === "overindulgence" || pending.effect.kind === "lightning" || pending.effect.kind === "rations_depleted") {
     const target = players.find((player) => player.id === pending.effect.targetId && player.alive);
     const playedIndex = discard.findIndex((card) => card.id === pending.effect.cardId); const played = playedIndex >= 0 ? discard.splice(playedIndex, 1)[0] : null;
     if (!target || !played) {
@@ -519,7 +531,8 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationPending
       const transferred = [...parse<Card[]>(judgement.transferTarget.judgement_json, []), judgement.transferredCard];
       writes.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(transferred), judgement.transferTarget.id));
     }
-    const nextPhase = judgement.skipPlay || pending.resumePhase === "draw-skip-play" ? "draw-skip-play" : "draw";
+    const priorFlags = drawPhaseFlags(pending.resumePhase);
+    const nextPhase = drawPhaseFor(judgement.skipPlay || priorFlags.skipPlay, judgement.skipDraw || priorFlags.skipDraw);
     if (judgement.damage > 0) {
       const hp = Math.max(0, (target.hp ?? 1) - judgement.damage);
       if (hp === 0) {
@@ -815,7 +828,7 @@ async function runBots(roomId: string) {
     if (room.phase?.startsWith("draw")) {
       const delayed = parse<Card[]>(bot.judgement_json, [])[0] ?? null;
       if (delayed && await startJudgementNegation(room, bot, players, delayed, deck, discard, log)) return;
-      const judgement = resolveTurnJudgement(bot, players, deck, discard, log); deck = judgement.deck; discard = judgement.discard; log = judgement.log; judgement.skipPlay ||= room.phase === "draw-skip-play"; judgementResolved = judgement.resolved; judgementRemaining = judgement.remaining;
+      const judgement = resolveTurnJudgement(bot, players, deck, discard, log); const priorFlags = drawPhaseFlags(room.phase); deck = judgement.deck; discard = judgement.discard; log = judgement.log; judgement.skipPlay ||= priorFlags.skipPlay; judgement.skipDraw ||= priorFlags.skipDraw; judgementResolved = judgement.resolved; judgementRemaining = judgement.remaining;
       if (judgement.transferTarget && judgement.transferredCard) {
         const transferred = [...parse<Card[]>(judgement.transferTarget.judgement_json, []), judgement.transferredCard];
         judgementWrites.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(transferred), judgement.transferTarget.id));
@@ -825,16 +838,17 @@ async function runBots(roomId: string) {
         if (hp === 0) {
           log = addLog(log, `${bot.name} enters Dying from Lightning. Peach rescue begins in turn order.`);
           judgementWrites.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(judgementRemaining), bot.id));
-          await startDyingRescue(room, null, bot, players, deck, discard, log, judgementWrites, bot, judgement.skipPlay ? "draw-skip-play" : "draw"); return;
+          await startDyingRescue(room, null, bot, players, deck, discard, log, judgementWrites, bot, drawPhaseFor(judgement.skipPlay, judgement.skipDraw)); return;
         }
         judgementWrites.push(db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, bot.id));
       }
       if (judgementRemaining.length) {
         judgementWrites.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(judgementRemaining), bot.id));
-        judgementWrites.push(db().prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(judgement.skipPlay ? "draw-skip-play" : "draw", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+        judgementWrites.push(db().prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(drawPhaseFor(judgement.skipPlay, judgement.skipDraw), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
         await db().batch(judgementWrites); continue;
       }
-      const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addLog(draw.log, `${bot.name}'s turn started · drawing ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`); hand.push(...draw.drawn);
+      if (judgement.skipDraw) log = addLog(log, `${bot.name} skips the Draw Phase because of Rations Depleted.`);
+      else { const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addLog(draw.log, `${bot.name}'s turn started · drawing ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`); hand.push(...draw.drawn); }
       if (judgement.skipPlay) {
         const skippedDiscards: Card[] = []; const handLimit = Math.max(0, bot.hp ?? 0);
         while (hand.length > handLimit) { const skipped = hand.shift(); if (skipped) { discard.push(skipped); skippedDiscards.push(skipped); } }
@@ -924,6 +938,15 @@ async function runBots(roomId: string) {
       if (writes.length) await db().batch(writes);
       const playersForNegation = players.map((player) => player.id === bot.id ? { ...player, hand_json: JSON.stringify(hand) } : changedHands.has(player.id) ? { ...player, hand_json: JSON.stringify(changedHands.get(player.id)) } : player);
       await startNegation(room, { ...bot, hand_json: JSON.stringify(hand) }, playersForNegation, overindulgence, overindulgenceTarget.name, overindulgenceTarget.id, { kind: "overindulgence", targetId: overindulgenceTarget.id, cardId: overindulgence.id }, hand, deck, discard, log); return;
+    }
+    const rationsDepleted = hand.find((card) => card.kind === "RationsDepleted");
+    const rationsTarget = playersInTurnOrder(players, bot.seat).find((player) => player.id !== bot.id && distanceBetween(players, bot.id, player.id) <= 1 && !parse<Card[]>(player.judgement_json, []).some((delayed) => delayed.kind === "RationsDepleted"));
+    if (rationsDepleted && rationsTarget) {
+      hand = hand.filter((card) => card.id !== rationsDepleted.id); discard.push(rationsDepleted);
+      log = addCardEvent(log, bot.name, rationsDepleted, rationsTarget.name); log = addLog(log, `${bot.name} plays Rations Depleted on ${rationsTarget.name}.`);
+      if (writes.length) await db().batch(writes);
+      const playersForNegation = players.map((player) => player.id === bot.id ? { ...player, hand_json: JSON.stringify(hand) } : changedHands.has(player.id) ? { ...player, hand_json: JSON.stringify(changedHands.get(player.id)) } : player);
+      await startNegation(room, { ...bot, hand_json: JSON.stringify(hand) }, playersForNegation, rationsDepleted, rationsTarget.name, rationsTarget.id, { kind: "rations_depleted", targetId: rationsTarget.id, cardId: rationsDepleted.id }, hand, deck, discard, log); return;
     }
     const duel = hand.find((card) => card.kind === "Duel");
     const duelTarget = players.filter((player) => player.alive && player.id !== bot.id).sort((a, b) => (a.hp ?? 99) - (b.hp ?? 99))[0];
@@ -1328,7 +1351,7 @@ export async function POST(request: Request) {
         if (await startJudgementNegation(liveRoom, me, rows.results ?? [], delayed, deck, discard, log)) return json({ room: await roomState(code, token) });
       }
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
-      const judgement = resolveTurnJudgement(me, players, deck, discard, log); deck = judgement.deck; discard = judgement.discard; log = judgement.log; judgement.skipPlay ||= liveRoom.phase === "draw-skip-play";
+      const judgement = resolveTurnJudgement(me, players, deck, discard, log); const priorFlags = drawPhaseFlags(liveRoom.phase); deck = judgement.deck; discard = judgement.discard; log = judgement.log; judgement.skipPlay ||= priorFlags.skipPlay; judgement.skipDraw ||= priorFlags.skipDraw;
       const judgementWrites: D1PreparedStatement[] = [db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(judgement.remaining), me.id)];
       if (judgement.transferTarget && judgement.transferredCard) {
         const transferred = [...parse<Card[]>(judgement.transferTarget.judgement_json, []), judgement.transferredCard];
@@ -1338,18 +1361,18 @@ export async function POST(request: Request) {
         const hp = Math.max(0, (me.hp ?? 1) - judgement.damage);
         if (hp === 0) {
           log = addLog(log, `${me.name} enters Dying from Lightning. Peach rescue begins in turn order.`);
-          await startDyingRescue(liveRoom, null, me, players, deck, discard, log, judgementWrites, me, judgement.skipPlay ? "draw-skip-play" : "draw");
+          await startDyingRescue(liveRoom, null, me, players, deck, discard, log, judgementWrites, me, drawPhaseFor(judgement.skipPlay, judgement.skipDraw));
           return json({ room: await roomState(code, token) });
         }
         judgementWrites.push(db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, me.id));
       }
       if (judgement.remaining.length) {
-        judgementWrites.push(db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(judgement.skipPlay ? "draw-skip-play" : "draw", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+        judgementWrites.push(db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(drawPhaseFor(judgement.skipPlay, judgement.skipDraw), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
         await db.batch(judgementWrites);
         return json({ room: await roomState(code, token) });
       }
-      const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${me.name} draws ${draw.drawn.length === 2 ? "two cards" : `${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`}.`); hand.push(...draw.drawn);
-      drawnCards = draw.drawn;
+      if (judgement.skipDraw) log = addLog(log, `${me.name} skips the Draw Phase because of Rations Depleted.`);
+      else { const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${me.name} draws ${draw.drawn.length === 2 ? "two cards" : `${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`}.`); hand.push(...draw.drawn); drawnCards = draw.drawn; }
       await db.batch([...judgementWrites, db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(judgement.skipPlay ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
     } else if (action === "play_card") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before playing a card." }, 409);
@@ -1404,6 +1427,15 @@ export async function POST(request: Request) {
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
         await startNegation(liveRoom, me, rows.results ?? [], card, target.name, target.id, { kind: "overindulgence", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
+      } else if (card.kind === "RationsDepleted") {
+        const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
+        if (!target || !target.alive || target.id === me.id) return json({ error: "Choose another living character for Rations Depleted." }, 400);
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+        if (distanceBetween(rows.results ?? [], me.id, target.id) > 1) return json({ error: "Rations Depleted can target only a character within distance 1." }, 409);
+        if (parse<Card[]>(target.judgement_json, []).some((delayed) => delayed.kind === "RationsDepleted")) return json({ error: `${target.name} already has Rations Depleted in their Judgement Zone.` }, 409);
+        if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
+        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
+        await startNegation(liveRoom, me, rows.results ?? [], card, target.name, target.id, { kind: "rations_depleted", targetId: target.id, cardId: card.id }, hand, deck, discard, log);
       } else if (card.kind === "Dismantle") {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Burning Bridges." }, 400);

@@ -5,6 +5,7 @@ source of truth for card names, categories, and rule meaning:
 
 - Catalogue: https://wtkgames.com/gameCard/
 - Official catalogue API: https://api.wtkgames.com/api/card
+- YOKA delayed-stratagem rules reference: https://kf1.yokagames.com/front/index/content-detail?id=230
 
 Current mappings:
 
@@ -24,6 +25,7 @@ Current mappings:
 | `Negation` | Negation | 108 |
 | `Overindulgence` | Overindulgence | 177 |
 | `Lightning` | Lightning | 107 |
+| `RationsDepleted` | Rations Depleted | 199 |
 
 Development policy:
 

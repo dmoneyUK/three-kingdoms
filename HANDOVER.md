@@ -16,7 +16,7 @@ Product decisions already made:
 - The player-facing name for the internal `Renegade` role is **Traitor**.
 - The public game must remain playable without GitHub or ChatGPT sign-in.
 - Mobile clarity and visible action order are important: always show the turn owner, phase, acting player, card, source and target.
-- Public played/revealed cards currently remain for 1 second; event messages and private draws remain for 3 seconds. Dying rescue decisions retain their separate 5-second action window.
+- Public played/revealed cards currently remain for 4 seconds; event messages and private draws remain for 3 seconds. Dying rescue decisions retain their separate 5-second action window.
 
 ## Repositories and live service
 
@@ -80,12 +80,22 @@ Implemented cards:
 12. Negation
 13. Overindulgence
 14. Lightning
+15. Rations Depleted
 
 `Strike` remains only as a saved-game compatibility alias for Attack.
 
 ## Recent interaction work
 
-The most recent rules change added Lightning and made delayed-card resolution reusable:
+The most recent rules change added Rations Depleted on top of the reusable delayed-card transition:
+
+- Rations Depleted targets another living character within distance 1 and cannot be duplicated in that character's Judgement Zone.
+- It supports Negation before placement and immediately before judgement.
+- A Club judgement permits the normal Draw Phase; every other suit skips only Draw and still permits Play.
+- Draw- and Play-phase skip flags survive consecutive Rations Depleted and Overindulgence judgements without drawing cards or losing the later restriction.
+- Bots play the card on adjacent targets and continue their turns correctly after a skipped draw.
+- Quick-test mode gives `ME` one copy, and deterministic API coverage protects range, placement, both Negation windows, judgement results, combined delayed effects and bot progression.
+
+The preceding rules change added Lightning and made delayed-card resolution reusable:
 
 - Lightning is placed in its owner's Judgement Zone and can be Negated before placement.
 - Each delayed card now resolves individually, preserving later cards and their own Negation windows.
@@ -99,7 +109,7 @@ Earlier interaction work concentrated on latency and Bumper Harvest:
 
 - Opening automatic draw begins after approximately 0.1 seconds instead of waiting behind the turn banner.
 - A card played during Play Phase is presented optimistically while the server validates it.
-- Optimistic played cards expire locally after 1 second instead of waiting for the server response; the later authoritative copy is recorded but not presented twice.
+- Optimistic played cards expire locally after 4 seconds instead of waiting for the server response; the later authoritative copy is recorded but not presented twice.
 - Bumper Harvest selection previews are non-blocking and queued, so a player can change their selected card without waiting for network round trips.
 - Confirming a Bumper Harvest card shades it immediately as `Chosen by ME`; the authoritative server choice then advances in the background.
 - Bot Bumper Harvest choices are deliberately paced: selection rises, confirmation shades and names the chooser, then the next player begins.
@@ -134,7 +144,7 @@ All intentional production waits are now centralised or recorded here:
 | Normal room polling | 2500 ms | Refresh other-player and bot activity. |
 | Bumper Harvest polling | 300 ms | Keep shared previews and choices responsive. |
 | Automatic draw start | 100 ms | Let the turn-owner banner render, then claim Draw Phase. |
-| Played/revealed card | 1000 ms | Show the public card, source and target. This no longer waits for the action response. |
+| Played/revealed card | 4000 ms | Show the public card, source and target. This no longer waits for the action response. |
 | Event or role-reveal message | 3000 ms | Show important public state changes. |
 | Private draw | 3000 ms | Let only the drawing player inspect new cards. |
 | Peach rescue decision | 5000 ms | Give each eligible player a private chance to select Peach or pass. |
@@ -200,6 +210,7 @@ Internal identifiers may differ from player-facing names for compatibility:
 - `Negation` → Negation
 - `Overindulgence` → Overindulgence
 - `Lightning` → Lightning
+- `RationsDepleted` → Rations Depleted
 - internal `Renegade` → player-facing Traitor
 - legacy `Strike` → Attack
 
@@ -231,7 +242,7 @@ npm run lint
 npm test
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 14 passing test flows.
+`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 15 passing test flows.
 
 Key test files:
 
@@ -256,7 +267,7 @@ The audit is intentionally scoped to one room and reset when a new game starts. 
 The project is currently between:
 
 - Stage 2: strengthen and centralise the general rules engine; and
-- Stage 3: complete the general card set.
+- Stage 4: add Equipment Zones and distance modifiers.
 
 Recommended next sequence:
 
@@ -264,10 +275,10 @@ Recommended next sequence:
 2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
 3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
 4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
-5. Add Rations Depleted (official card 199) next and continue extracting shared judgement/strategy-resolution helpers.
-6. Defer Borrowed Sword until equipment zones exist.
-7. Continue through remaining response-chain cards and Judgement Zone edge cases.
-8. Add equipment and distance modifiers.
+5. Rations Depleted (official card 199) is complete: distance-1 placement, duplicate prevention, placement/judgement Negation, Club success, Draw Phase skipping, combined delayed flags, bot play and deterministic tests.
+6. Add the Equipment Zone foundation and Zhuge Crossbow as the first weapon.
+7. Add Borrowed Sword after weapon placement, replacement and transfer are authoritative.
+8. Continue through equipment, distance modifiers and remaining response-chain edge cases.
 9. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
 10. Add hero abilities only after shared rules and cards are stable.
 
@@ -275,7 +286,7 @@ Recommended next sequence:
 
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
-- The Judgement Zone supports Overindulgence and Lightning. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards. Equipment Zones do not exist yet, so Burning Bridges and Steal currently operate on hand cards only.
+- The Judgement Zone supports Overindulgence, Lightning and Rations Depleted. Delayed cards resolve one at a time so Negation, transfer, combined phase skips and Dying interruptions do not consume later judgement cards. Equipment Zones do not exist yet, so Burning Bridges and Steal currently operate on hand cards only.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device.
 - Saved match history, player profiles, statistics, sound and richer invitations are not implemented.
