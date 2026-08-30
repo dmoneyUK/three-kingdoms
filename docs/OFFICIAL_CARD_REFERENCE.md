@@ -30,6 +30,7 @@ Current mappings:
 | `Negation` | Negation | 108 | Standard |
 | `Overindulgence` | Overindulgence | 177 | Standard |
 | `Lightning` | Lightning | 107 | Standard |
+| `ZhugeCrossbow` | Zhuge Crossbow | 175 | Standard |
 | `RationsDepleted` | Rations Depleted | 199 | Endless Legends - preserved for compatibility, excluded from new games |
 
 Development policy:

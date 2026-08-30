@@ -11,7 +11,7 @@ The hosted game is public and does not require a GitHub or ChatGPT account. Play
 
 ## Current Stage
 
-The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards, victory checks and the equipment-independent WTK Standard card set are working; the current feature focus is **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
+The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards and victory checks are working, and the first authoritative Equipment Zone and weapon are now playable. The current feature focus remains **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
 
 The playable alpha currently includes:
 
@@ -19,6 +19,7 @@ The playable alpha currently includes:
 - Lord bonus HP and the Zhang Fei test hero;
 - Draw, Play, Discard and Ending phases;
 - turn ownership, seat order, distance and attack range;
+- a public weapon slot with authoritative equip, replacement and defeat cleanup;
 - ordered Attack, Dodge, Duel and global-card responses;
 - Peach healing and turn-ordered Dying rescue;
 - death, role reveal, defeated-hand cleanup, Rebel defeat rewards and the Lord's Loyalist-kill penalty;
@@ -44,9 +45,11 @@ The playable alpha currently includes:
 - Negation
 - Overindulgence
 - Lightning
+- Zhuge Crossbow
 
 ### Recently stabilised
 
+- Zhuge Crossbow is the first playable equipment card. It enters the owner's public Weapon slot, replaces and discards an existing weapon, remains visible after its play presentation, and removes the normal one-Attack-per-turn limit while equipped. Bots can equip and use it, and defeated equipment plus the Lord's Loyalist-kill penalty now clean up weapon cards.
 - Negation can interrupt a stratagem in seat order, supports an explicit Pass action, and can itself be cancelled by a deliberate human counter-Negation. Barbarian Invasion and Raining Arrows now open a fresh Negation window for each target, then continue to later players after one target is protected. Bots defend their own affected character but do not blindly counter another bot's Negation.
 - Overindulgence introduces the public Judgement Zone. It can be Negated before placement, cannot be duplicated on one character, reveals a judgement card at the target's next turn, and skips only the Play Phase when the result is not a Heart.
 - Lightning can be Negated before placement or judgement, cannot be duplicated on one character, deals 3 source-free thunder damage on a Spade 2–9 judgement, and otherwise transfers to the next eligible living character's Judgement Zone.
@@ -74,15 +77,15 @@ The playable alpha currently includes:
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the general card set | Equipment-independent Standard core complete | 14 Standard cards are playable. Overindulgence and Lightning are the two Standard conditional stratagems; Borrowed Sword waits for Equipment Zones. |
-| 4. Equipment and distance modifiers | In progress — current feature focus | Equipment Zones are the next foundation; no weapons, armour or horses are playable yet. |
+| 3. Complete the general card set | Standard core expanding with equipment | 15 Standard cards are playable, including the first weapon. Borrowed Sword follows once weapon targeting and transfer are implemented. |
+| 4. Equipment and distance modifiers | In progress — first foundation complete | The public Weapon slot and Zhuge Crossbow are playable; more weapons, armour and horses remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
 | 7. Product polish | Ongoing alongside rules work | Mobile sequence layout, countdown placement, target-card selection and card information are improved; sound, invitations and saved history remain planned. |
 
 ### Next milestone
 
-Add the **Equipment Zone foundation** and **Zhuge Crossbow** as the first weapon. The milestone includes public equipment display, equip/replace/discard transitions, bot handling, removing the normal one-Attack-per-turn limit for its owner, quick-test coverage and deterministic tests. Borrowed Sword follows once weapons can be targeted and transferred.
+Add **Borrowed Sword** on top of the new Weapon slot. The milestone will add legal weapon targeting and transfer, its ordered Attack-or-transfer response, bot handling, public sequence presentation, quick-test coverage and deterministic tests.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 
@@ -96,16 +99,17 @@ Add the **Equipment Zone foundation** and **Zhuge Crossbow** as the first weapon
 - Expand deterministic tests for damage, rescue, death and victory transitions.
 - Continue extracting reusable stratagem, Negation and judgement helpers from the single-card delayed transition introduced for Lightning.
 
-### 3. Complete the general card set — equipment-independent Standard core complete
+### 3. Complete the general card set — Standard core expanding with equipment
 
 - Keep the playable deck filtered to WTK Standard; expansion cards remain deferred.
 - Continue adding remaining Standard cards one at a time as their equipment dependencies become available.
 - Keep one copy of every implemented card in ME's quick-test opening hand and seed required defence cards into bot hands.
-- Defer equipment-dependent cards until equipment zones and range modifiers exist.
+- Add equipment-dependent Standard cards only after their required slots and modifiers are authoritative.
 
 ### 4. Add equipment and distance modifiers — current feature focus
 
-- Add Equipment Zones and Zhuge Crossbow as the first weapon.
+- Weapon slot foundation and Zhuge Crossbow — complete.
+- Add Borrowed Sword with weapon targeting and transfer.
 - Continue weapons and attack range.
 - Armour effects.
 - Offensive and defensive horses.

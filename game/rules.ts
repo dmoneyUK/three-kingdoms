@@ -29,6 +29,6 @@ export function distanceBetween<T extends GamePlayer>(players: T[], sourceId: st
   return Math.min(clockwise, alive.length - clockwise);
 }
 
-export function playPhaseAfterAttack(source?: GamePlayer | null) {
-  return source?.hero === "zhang-fei" ? "play" : "play-struck";
+export function playPhaseAfterAttack(source?: GamePlayer | null, hasUnlimitedAttackEquipment = false) {
+  return source?.hero === "zhang-fei" || hasUnlimitedAttackEquipment ? "play" : "play-struck";
 }

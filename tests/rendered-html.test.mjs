@@ -34,6 +34,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const styles = `${await readFile(new URL("../app/globals.css", import.meta.url), "utf8")}\n${await readFile(new URL("../app/sequence-overrides.css", import.meta.url), "utf8")}`;
   const cards = await readFile(new URL("../game/cards.ts", import.meta.url), "utf8");
+  const roomApi = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
+  const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
   const officialReference = await readFile(new URL("../docs/OFFICIAL_CARD_REFERENCE.md", import.meta.url), "utf8");
   assert.match(page, /TURN OWNER/);
   assert.match(page, /CURRENT PHASE/);
@@ -177,6 +179,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(cards, /name: "Bumper Harvest"/);
   assert.match(cards, /name: "Overindulgence"/);
   assert.match(cards, /name: "Lightning"/);
+  assert.match(cards, /name: "Zhuge Crossbow"/);
+  assert.match(cards, /unlimited number of Attack cards/);
   assert.match(cards, /name: "Rations Depleted"/);
   assert.match(cards, /If it is not a Heart/);
   assert.match(cards, /All wounded players recover 1 HP/);
@@ -194,7 +198,11 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`Negation` \| Negation \| 108 \| Standard/);
   assert.match(officialReference, /`Overindulgence` \| Overindulgence \| 177 \| Standard/);
   assert.match(officialReference, /`Lightning` \| Lightning \| 107 \| Standard/);
+  assert.match(officialReference, /`ZhugeCrossbow` \| Zhuge Crossbow \| 175 \| Standard/);
   assert.match(officialReference, /`RationsDepleted` \| Rations Depleted \| 199 \| Endless Legends/);
+  assert.match(schema, /equipmentJson: text\("equipment_json"\)/);
+  assert.match(roomApi, /hasZhugeCrossbow/);
+  assert.match(roomApi, /"equip"/);
   assert.match(page, /card\.kind === "Steal"/);
   assert.match(page, /\["Dismantle", "Steal"\]/);
   assert.match(page, /respond_duel/);
@@ -247,10 +255,13 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.doesNotMatch(page, /automaticDamage/);
   assert.match(page, /play Negation/i);
   assert.match(page, /judgementCards/);
+  assert.match(page, /equipmentCards/);
+  assert.match(page, /Weapon ·/);
   assert.match(page, /reveals for judgement/);
   assert.match(page, /card\.kind === "RationsDepleted"/);
   assert.match(page, /\["Duel", "Overindulgence", "RationsDepleted"\]\.includes\(card\.kind\)/);
   assert.match(styles, /\.judgement-zone/);
+  assert.match(styles, /\.equipment-zone/);
   assert.match(page, /awaiting confirmation/);
   assert.match(styles, /\.harvest-card-choice\.taken/);
   assert.match(styles, /\.harvest-card-choice\.pending-choice/);

@@ -28,6 +28,7 @@ export const players = sqliteTable("players", {
   heroOptionsJson: text("hero_options_json"),
   handJson: text("hand_json"),
   judgementJson: text("judgement_json"),
+  equipmentJson: text("equipment_json"),
   alive: integer("alive", { mode: "boolean" }).notNull().default(true),
   connectedAt: integer("connected_at").notNull(),
 }, (table) => [uniqueIndex("players_room_seat_unique").on(table.roomId, table.seat)]);
