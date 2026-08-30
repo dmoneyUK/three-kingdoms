@@ -1,6 +1,6 @@
 # Three Kingdoms
 
-An English online implementation of the classic Three Kingdoms card game, built for small private groups of friends.
+An English online implementation of WTK Standard, the classic hidden-role Three Kingdoms card game, built for small private groups of friends.
 
 - Play: https://three-realms-table.dai-jinge.chatgpt.site
 - Source: https://github.com/dmoneyUK/three-kingdoms
@@ -11,7 +11,7 @@ The hosted game is public and does not require a GitHub or ChatGPT account. Play
 
 ## Current Stage
 
-The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards, victory checks and the equipment-independent classic card set are working; the current feature focus is **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Hero-specific abilities remain intentionally deferred.
+The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards, victory checks and the equipment-independent WTK Standard card set are working; the current feature focus is **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
 
 The playable alpha currently includes:
 
@@ -26,7 +26,7 @@ The playable alpha currently includes:
 - private card draws and private rescue decisions;
 - table-based card-resolution presentations: each played card zooms into view, settles face-up in play order before its player, remains through the complete response/effect sequence, then joins the sequence-wide discard animation when resolution concludes;
 - event history plus a detailed rule-audit trail; and
-- a quick-test opening hand containing one of every implemented card, with Negation also seeded into bot hands.
+- a quick-test opening hand containing one of every implemented WTK Standard card, with Negation also seeded into bot hands.
 
 ### Implemented cards
 
@@ -44,14 +44,13 @@ The playable alpha currently includes:
 - Negation
 - Overindulgence
 - Lightning
-- Rations Depleted
 
 ### Recently stabilised
 
 - Negation can interrupt a stratagem in seat order, supports an explicit Pass action, and can itself be cancelled by a deliberate human counter-Negation. Barbarian Invasion and Raining Arrows now open a fresh Negation window for each target, then continue to later players after one target is protected. Bots defend their own affected character but do not blindly counter another bot's Negation.
 - Overindulgence introduces the public Judgement Zone. It can be Negated before placement, cannot be duplicated on one character, reveals a judgement card at the target's next turn, and skips only the Play Phase when the result is not a Heart.
 - Lightning can be Negated before placement or judgement, cannot be duplicated on one character, deals 3 source-free thunder damage on a Spade 2–9 judgement, and otherwise transfers to the next eligible living character's Judgement Zone.
-- Rations Depleted targets another character within distance 1, supports placement-time and judgement-time Negation, cannot be duplicated, and skips only the target's Draw Phase when its judgement is not a Club. Consecutive delayed cards preserve combined Draw- and Play-phase skips.
+- New games, the shuffled deck and the quick-test hand are now locked to the official WTK Standard product list. Rations Depleted is identified as Endless Legends and is excluded; its compatibility code remains dormant so earlier development states are not corrupted.
 - Bumper Harvest keeps every revealed card on one shared choice panel, requires confirmation, names the current chooser, and visibly paces every raised selection and shaded confirmation before advancing to the next player.
 - Bumper Harvest gains no longer trigger the normal private-draw overlay, so the shared panel remains visible while every later player selects and confirms.
 - Opening draws begin immediately, card plays appear on the table optimistically, and Bumper Harvest selection changes never lock the controls while their shared preview synchronises.
@@ -75,7 +74,7 @@ The playable alpha currently includes:
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the general card set | Equipment-independent core complete | 15 cards are playable. Rations Depleted completes the classic delayed-stratagem trio; Borrowed Sword waits for Equipment Zones. |
+| 3. Complete the general card set | Equipment-independent Standard core complete | 14 Standard cards are playable. Overindulgence and Lightning are the two Standard conditional stratagems; Borrowed Sword waits for Equipment Zones. |
 | 4. Equipment and distance modifiers | In progress — current feature focus | Equipment Zones are the next foundation; no weapons, armour or horses are playable yet. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
@@ -97,10 +96,10 @@ Add the **Equipment Zone foundation** and **Zhuge Crossbow** as the first weapon
 - Expand deterministic tests for damage, rescue, death and victory transitions.
 - Continue extracting reusable stratagem, Negation and judgement helpers from the single-card delayed transition introduced for Lightning.
 
-### 3. Complete the general card set — equipment-independent core complete
+### 3. Complete the general card set — equipment-independent Standard core complete
 
-- Rations Depleted completes the current delayed-stratagem set.
-- Continue adding remaining immediate and response-chain stratagems one at a time.
+- Keep the playable deck filtered to WTK Standard; expansion cards remain deferred.
+- Continue adding remaining Standard cards one at a time as their equipment dependencies become available.
 - Keep one copy of every implemented card in ME's quick-test opening hand and seed required defence cards into bot hands.
 - Defer equipment-dependent cards until equipment zones and range modifiers exist.
 

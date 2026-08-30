@@ -8,7 +8,7 @@ Build an English, browser-based version of the classic *War of the Three Kingdom
 
 Product decisions already made:
 
-- Focus on the classic hidden-role rules.
+- Focus exclusively on WTK Standard, the classic hidden-role product. Endless Legends and Kingdom Wars are deferred.
 - Prioritise general turn, card, death and victory rules before hero-specific abilities.
 - Add cards incrementally, normally one card at a time, with tests for each new transition.
 - Use official English card names and rule meaning, but original visual design.
@@ -48,7 +48,7 @@ This is a playable four-player alpha. The quick-test game starts immediately wit
 - random roles and heroes, except `ME` uses Zhang Fei for testing;
 - Lord bonus HP;
 - bots at 1 HP in quick-test mode; and
-- one of every implemented card in `ME`'s opening hand.
+- one of every implemented WTK Standard card in `ME`'s opening hand.
 
 Implemented shared rules include:
 
@@ -80,20 +80,22 @@ Implemented cards:
 12. Negation
 13. Overindulgence
 14. Lightning
-15. Rations Depleted
+
+Rations Depleted was previously implemented during development, but the official
+catalogue classifies it as Endless Legends. Its compatibility code and tests are
+preserved, while it is excluded from every new Standard deck and quick-test hand.
 
 `Strike` remains only as a saved-game compatibility alias for Attack.
 
 ## Recent interaction work
 
-The most recent rules change added Rations Depleted on top of the reusable delayed-card transition:
+The most recent scope change locked every new game to WTK Standard:
 
-- Rations Depleted targets another living character within distance 1 and cannot be duplicated in that character's Judgement Zone.
-- It supports Negation before placement and immediately before judgement.
-- A Club judgement permits the normal Draw Phase; every other suit skips only Draw and still permits Play.
-- Draw- and Play-phase skip flags survive consecutive Rations Depleted and Overindulgence judgements without drawing cards or losing the later restriction.
-- Bots play the card on adjacent targets and continue their turns correctly after a skipped draw.
-- Quick-test mode gives `ME` one copy, and deterministic API coverage protects range, placement, both Negation windows, judgement results, combined delayed effects and bot progression.
+- The official catalogue product filter is recorded for every mapped card.
+- `game/cards.ts` marks cards as Standard or Endless Legends.
+- Only Standard cards in `DECK_COUNTS` enter shuffled decks and quick-test hands.
+- Rations Depleted remains readable in older state and retains deterministic compatibility coverage, but bots and players cannot receive it in a newly created game.
+- The next active milestone remains Equipment Zones and Zhuge Crossbow, both from WTK Standard.
 
 The preceding rules change added Lightning and made delayed-card resolution reusable:
 
@@ -195,8 +197,9 @@ Schema definitions are in `db/schema.ts`; migrations are in `drizzle/`.
 
 ## Rule and naming source
 
-Read `docs/OFFICIAL_CARD_REFERENCE.md` before adding or renaming a card. The development source of truth is YOKA Games' official English catalogue:
+Read `docs/OFFICIAL_CARD_REFERENCE.md` before adding or renaming a card. The active ruleset is WTK Standard, using its official product page and rulebook together with YOKA Games' English catalogue filtered to Standard:
 
+- <https://www.wtkgames.com/product/Standard/>
 - <https://wtkgames.com/gameCard/>
 - <https://api.wtkgames.com/api/card>
 
@@ -210,7 +213,7 @@ Internal identifiers may differ from player-facing names for compatibility:
 - `Negation` → Negation
 - `Overindulgence` → Overindulgence
 - `Lightning` → Lightning
-- `RationsDepleted` → Rations Depleted
+- `RationsDepleted` → Rations Depleted (dormant Endless Legends compatibility only)
 - internal `Renegade` → player-facing Traitor
 - legacy `Strike` → Attack
 
@@ -219,7 +222,7 @@ Internal identifiers may differ from player-facing names for compatibility:
 Follow this checklist:
 
 1. Verify the official English name, category, card ID and rule meaning.
-2. Add a stable `CardKind` in `game/model.ts`.
+2. Confirm the card belongs to the official Standard product filter, then add a stable `CardKind` in `game/model.ts`.
 3. Add its definition and explicit deck count in `game/cards.ts`.
 4. Ensure quick-test mode gives `ME` one copy in the opening hand. This happens automatically for kinds in `DECK_CARD_KINDS`.
 5. If it is a defence/response card, ensure bots can receive and legally play it in tests.
@@ -275,18 +278,17 @@ Recommended next sequence:
 2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
 3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
 4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
-5. Rations Depleted (official card 199) is complete: distance-1 placement, duplicate prevention, placement/judgement Negation, Club success, Draw Phase skipping, combined delayed flags, bot play and deterministic tests.
-6. Add the Equipment Zone foundation and Zhuge Crossbow as the first weapon.
-7. Add Borrowed Sword after weapon placement, replacement and transfer are authoritative.
-8. Continue through equipment, distance modifiers and remaining response-chain edge cases.
-9. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
-10. Add hero abilities only after shared rules and cards are stable.
+5. Add the Equipment Zone foundation and Zhuge Crossbow as the first weapon.
+6. Add Borrowed Sword after weapon placement, replacement and transfer are authoritative.
+7. Continue through Standard equipment, distance modifiers and remaining response-chain edge cases.
+8. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
+9. Add hero abilities only after shared Standard rules and cards are stable.
 
 ## Known boundaries
 
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
-- The Judgement Zone supports Overindulgence, Lightning and Rations Depleted. Delayed cards resolve one at a time so Negation, transfer, combined phase skips and Dying interruptions do not consume later judgement cards. Equipment Zones do not exist yet, so Burning Bridges and Steal currently operate on hand cards only.
+- The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards. Equipment Zones do not exist yet, so Burning Bridges and Steal currently operate on hand cards only.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device.
 - Saved match history, player profiles, statistics, sound and richer invitations are not implemented.
@@ -296,4 +298,4 @@ Recommended next sequence:
 
 In the next chat, say:
 
-> Continue the Three Kingdoms project from the latest `main`. Read `HANDOVER.md`, `README.md` and `docs/OFFICIAL_CARD_REFERENCE.md` first. Preserve the general-rules-before-heroes priority, run all tests, then push the exact commit to both GitHub and the ChatGPT Sites repository and deploy it to the existing public Site.
+> Continue the Three Kingdoms project from the latest `main`. Read `HANDOVER.md`, `README.md` and `docs/OFFICIAL_CARD_REFERENCE.md` first. Keep the active ruleset strictly WTK Standard, preserve the general-rules-before-heroes priority, run all tests, then push the exact commit to both GitHub and the ChatGPT Sites repository and deploy it to the existing public Site.
