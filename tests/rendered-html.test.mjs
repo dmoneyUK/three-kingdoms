@@ -107,8 +107,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /setVisibleDiscardTop\(latestDiscardTop\.current\)/);
   assert.doesNotMatch(page, /\}, \[activeEvent, room\.discardTop\]\)/);
   assert.match(page, /useState<GameEvent\[]>\(initialPendingSequence\)/);
-  assert.match(page, /const pendingSequenceEvents = pendingTimelineSequence\(room\)/);
-  assert.match(page, /const sequenceEvents = \[\.\.\.pendingSequenceEvents, \.\.\.resolutionEvents\]/);
+  assert.match(page, /const livePendingSequence = pendingTimelineSequence\(room\)/);
+  assert.match(page, /const effectiveSequenceStartId = livePendingStartId \|\| sequenceScopeStartId/);
+  assert.match(page, /const sequenceEvents = \[\.\.\.scopedTimelineEvents, \.\.\.scopedLocalEvents\]/);
   assert.match(page, /initialHeldCardIds\.has\(room\.discardTop\.id\) \? null : room\.discardTop/);
   assert.match(page, /player-played-cards/);
   assert.match(page, /active-table-reveal/);
@@ -226,6 +227,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /hasUnseenPresentations \|\| resolutionPending/);
   assert.match(page, /visibleDiscardTop/);
   assert.match(page, /setResolutionEvents/);
+  assert.match(page, /sequenceScopeStartId/);
+  assert.match(page, /timelineSequenceFrom\(room, effectiveSequenceStartId\)/);
+  assert.match(page, /scopedLocalEvents = effectiveSequenceStartId \? resolutionEvents\.filter/);
+  assert.match(page, /setSequenceScopeStartId\(""\)/);
   assert.match(page, /Selected by \{actor\?\.name/);
   assert.match(page, /All choices complete/);
   assert.match(page, /room\?\.pendingHarvest \|\| room\?\.pendingNegation \? UI_TIMING\.harvestPoll : UI_TIMING\.roomPoll/);

@@ -56,6 +56,7 @@ The playable alpha currently includes:
 - Played cards remain visible for four seconds without waiting for a slower server response, and the matching authoritative event is de-duplicated instead of replaying the same card.
 - Attack, Duel, Burning Bridges, Steal, Barbarian Invasion and Raining Arrows now retain every played response card in front of its owner until the complete sequence—including its final card movement or effect—has concluded.
 - Judgement reveals, individual discards and grouped end-of-turn discards animate to the discard pile without leaving stale cards in front of a player.
+- The table presentation cache is scoped to the latest authoritative response sequence, so cards from completed turns cannot reappear beside players when a later response begins.
 - Response countdowns now sit beside the acting player without covering their played-card row. Burning Bridges and Steal show their face-down choices near the targeted player rather than above ME's hand.
 - Hand cards now show only rank, suit, official English name and category; full private rules remain available through each card's information button.
 - Oath of the Peach Garden remains playable when nobody needs healing; it resolves without changing HP.

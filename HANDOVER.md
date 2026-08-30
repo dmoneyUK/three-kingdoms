@@ -93,6 +93,7 @@ The most recent rules change added Lightning and made delayed-card resolution re
 - Every other judgement transfers Lightning to the next eligible living character without creating a duplicate Lightning in one Judgement Zone.
 - Bots place and resolve Lightning, and quick-test mode gives `ME` a Lightning card.
 - Deterministic API coverage protects placement, duplicate prevention, transfer and damage.
+- The frontend now scopes retained table cards to the latest authoritative pending sequence. This prevents cards from completed turns being merged into a later Lightning, Negation or other response window; the backend already commits completed ordinary plays to discard and clears their pending state.
 
 Earlier interaction work concentrated on latency and Bumper Harvest:
 

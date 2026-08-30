@@ -24,6 +24,11 @@ function pendingTimelineSequence(room: Room) {
   return room.timeline.slice(initiatingIndex).filter((event) => event.presentation !== false);
 }
 
+function timelineSequenceFrom(room: Room, startId: string) {
+  const startIndex = room.timeline.findIndex((event) => event.id === startId);
+  return startIndex < 0 ? [] : room.timeline.slice(startIndex).filter((event) => event.presentation !== false);
+}
+
 function eventCards(event: GameEvent) { return event.type === "card" ? [event.card] : event.type === "cards" ? event.cards : []; }
 function movesDirectlyToDiscard(event: GameEvent) {
   return event.type === "cards" ? event.action === "discard" : event.type === "card" ? event.action === "discard" || event.action === "reveal" : false;
@@ -192,6 +197,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const instantPresentationEvents = useRef(new Set<string>());
   const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>(initialPendingSequence);
   const [resolutionClosing, setResolutionClosing] = useState(false);
+  const [sequenceScopeStartId, setSequenceScopeStartId] = useState(initialPendingSequence[0]?.id ?? "");
   const resolutionRevision = useRef(0);
   const [visibleDiscardTop, setVisibleDiscardTop] = useState<Card | null>(() => room.discardTop && initialHeldCardIds.has(room.discardTop.id) ? null : room.discardTop);
   const latestDiscardTop = useRef(room.discardTop);
@@ -226,8 +232,14 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const activeHarvestSelection = canChooseHarvest && room.pendingHarvest?.availableIds.includes(harvestSelected) ? harvestSelected : sharedHarvestSelection;
   const harvestSelectedCard = room.pendingHarvest?.revealed.find((choice) => choice.id === activeHarvestSelection);
   const lastTimelineId = room.timeline.at(-1)?.id ?? "start";
-  const pendingSequenceEvents = pendingTimelineSequence(room).filter(retainsAtPlayer);
-  const sequenceEvents = [...pendingSequenceEvents, ...resolutionEvents].filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
+  const livePendingSequence = pendingTimelineSequence(room);
+  const livePendingStartId = livePendingSequence[0]?.id ?? "";
+  const effectiveSequenceStartId = livePendingStartId || sequenceScopeStartId;
+  const scopedTimelineEvents = (effectiveSequenceStartId ? timelineSequenceFrom(room, effectiveSequenceStartId) : livePendingSequence).filter(retainsAtPlayer);
+  const scopedEventIds = new Set(scopedTimelineEvents.map((event) => event.id));
+  const scopedCardIds = new Set(scopedTimelineEvents.flatMap(eventCards).map((item) => item.id));
+  const scopedLocalEvents = effectiveSequenceStartId ? resolutionEvents.filter((event) => scopedEventIds.has(event.id) || eventCards(event).some((item) => scopedCardIds.has(item.id)) || event.id === optimisticPlay?.id) : resolutionEvents;
+  const sequenceEvents = [...scopedTimelineEvents, ...scopedLocalEvents].filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
   const displayedEvent = activeEvent ?? optimisticPlay;
   const tablePresentationVisible = sequenceEvents.length > 0 || Boolean(displayedEvent && eventCards(displayedEvent).length);
   const displayedEventPlayer = displayedEvent?.type === "card" || displayedEvent?.type === "cards" ? room.players.find((player) => publicPlayerName(player.name) === publicPlayerName(displayedEvent.player)) : actor ?? current;
@@ -271,12 +283,13 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
     setProcessedTimelineKey(timelineKey);
   }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length]);
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
+  useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
   useEffect(() => { const unseenEvents = timelineKey.split("|").filter(Boolean).some((id) => !seenEvents.current.has(id)); const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || activeEvent || eventQueue.length || unseenEvents || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, current?.name, lastTimelineId, timelineKey, activeEvent, eventQueue.length]);
   useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setResolutionEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
   useEffect(() => { if (!activeEvent) return; const instant = instantPresentationEvents.current.delete(activeEvent.id); const displayTime = instant ? 0 : activeEvent.type === "card" || activeEvent.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage; const timer = setTimeout(() => { if (movesDirectlyToDiscard(activeEvent)) setVisibleDiscardTop(latestDiscardTop.current); setActiveEvent(null); }, displayTime); return () => clearTimeout(timer); }, [activeEvent]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
-  useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
+  useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (sequenceEvents.length || optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing) return; const timer = setTimeout(() => setVisibleDiscardTop(room.discardTop), 0); return () => clearTimeout(timer); }, [room.discardTop, room.phase, sequenceEvents.length, optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawCards([]), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, activeEvent, eventQueue.length]);
   useEffect(() => { if (!historyOpen) return; const close = (event: KeyboardEvent) => event.key === "Escape" && setHistoryOpen(false); window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [historyOpen]);
