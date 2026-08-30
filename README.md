@@ -43,11 +43,13 @@ The playable alpha currently includes:
 - Bumper Harvest
 - Negation
 - Overindulgence
+- Lightning
 
 ### Recently stabilised
 
 - Negation can interrupt a stratagem in seat order, supports an explicit Pass action, and can itself be cancelled by a deliberate human counter-Negation. Barbarian Invasion and Raining Arrows now open a fresh Negation window for each target, then continue to later players after one target is protected. Bots defend their own affected character but do not blindly counter another bot's Negation.
 - Overindulgence introduces the public Judgement Zone. It can be Negated before placement, cannot be duplicated on one character, reveals a judgement card at the target's next turn, and skips only the Play Phase when the result is not a Heart.
+- Lightning can be Negated before placement or judgement, cannot be duplicated on one character, deals 3 source-free thunder damage on a Spade 2–9 judgement, and otherwise transfers to the next eligible living character's Judgement Zone.
 - Bumper Harvest keeps every revealed card on one shared choice panel, requires confirmation, names the current chooser, and visibly paces every raised selection and shaded confirmation before advancing to the next player.
 - Bumper Harvest gains no longer trigger the normal private-draw overlay, so the shared panel remains visible while every later player selects and confirms.
 - Opening draws begin immediately, card plays appear on the table optimistically, and Bumper Harvest selection changes never lock the controls while their shared preview synchronises.
@@ -70,7 +72,7 @@ The playable alpha currently includes:
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the general card set | In progress — current feature focus | 13 cards are playable. Negation, per-target AOE resolution and Overindulgence judgement are stable enough to add Lightning next. |
+| 3. Complete the general card set | In progress — current feature focus | 14 cards are playable. Lightning now extends the Judgement Zone with damage, transfer, Negation and bot handling. |
 | 4. Equipment and distance modifiers | Planned | No weapons, armour or horses yet. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
@@ -78,7 +80,7 @@ The playable alpha currently includes:
 
 ### Next milestone
 
-Add the next classic delayed stratagem, **Lightning**, by reusing and strengthening the Judgement Zone introduced by Overindulgence. The milestone includes placement-time Negation, public judgement reveal, damage, transfer to the next eligible player after a miss, bot handling, quick-test coverage and deterministic transition tests. Borrowed Sword remains deferred until equipment zones exist.
+Add **Rations Depleted** as the next delayed stratagem, reusing the single-card judgement transition now shared by Overindulgence and Lightning. The milestone includes distance validation, placement-time and judgement-time Negation, the Club success condition, Draw Phase skipping, bot handling and deterministic tests. Borrowed Sword remains deferred until equipment zones exist.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 
@@ -90,11 +92,11 @@ Add the next classic delayed stratagem, **Lightning**, by reusing and strengthen
 - Centralise turn ownership, phases and pending responses.
 - Extend the state checks that reject invalid ownership and pending-action combinations.
 - Expand deterministic tests for damage, rescue, death and victory transitions.
-- Extract reusable stratagem, Negation and judgement helpers as Lightning is implemented.
+- Continue extracting reusable stratagem, Negation and judgement helpers from the single-card delayed transition introduced for Lightning.
 
 ### 3. Complete the general card set — current feature focus
 
-- Add Lightning as the next delayed stratagem.
+- Add Rations Depleted as the next delayed stratagem.
 - Continue adding remaining immediate and response-chain stratagems one at a time.
 - Keep one copy of every implemented card in ME's quick-test opening hand and seed required defence cards into bot hands.
 - Defer equipment-dependent cards until equipment zones and range modifiers exist.

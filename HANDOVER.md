@@ -77,12 +77,24 @@ Implemented cards:
 9. Barbarian Invasion
 10. Raining Arrows
 11. Bumper Harvest
+12. Negation
+13. Overindulgence
+14. Lightning
 
 `Strike` remains only as a saved-game compatibility alias for Attack.
 
 ## Recent interaction work
 
-The most recent changes concentrated on latency and Bumper Harvest:
+The most recent rules change added Lightning and made delayed-card resolution reusable:
+
+- Lightning is placed in its owner's Judgement Zone and can be Negated before placement.
+- Each delayed card now resolves individually, preserving later cards and their own Negation windows.
+- A Spade 2–9 judgement deals 3 source-free thunder damage and enters the normal Peach rescue flow when lethal.
+- Every other judgement transfers Lightning to the next eligible living character without creating a duplicate Lightning in one Judgement Zone.
+- Bots place and resolve Lightning, and quick-test mode gives `ME` a Lightning card.
+- Deterministic API coverage protects placement, duplicate prevention, transfer and damage.
+
+Earlier interaction work concentrated on latency and Bumper Harvest:
 
 - Opening automatic draw begins after approximately 0.1 seconds instead of waiting behind the turn banner.
 - A card played during Play Phase is presented optimistically while the server validates it.
@@ -186,6 +198,7 @@ Internal identifiers may differ from player-facing names for compatibility:
 - `BumperHarvest` → Bumper Harvest
 - `Negation` → Negation
 - `Overindulgence` → Overindulgence
+- `Lightning` → Lightning
 - internal `Renegade` → player-facing Traitor
 - legacy `Strike` → Attack
 
@@ -217,7 +230,7 @@ npm run lint
 npm test
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 13 passing test flows.
+`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 14 passing test flows.
 
 Key test files:
 
@@ -248,19 +261,20 @@ Recommended next sequence:
 
 1. Continue extracting shared ordered-response/resolution helpers from `app/api/rooms/route.ts`.
 2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
-3. Overindulgence (official card 177) now adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
-4. Add Lightning as the next classic delayed stratagem and continue extracting shared judgement/strategy-resolution helpers.
-5. Defer Borrowed Sword until equipment zones exist.
-6. Continue through remaining response-chain cards and Judgement Zone edge cases.
-7. Add equipment and distance modifiers.
-8. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
-9. Add hero abilities only after shared rules and cards are stable.
+3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
+4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
+5. Add Rations Depleted (official card 199) next and continue extracting shared judgement/strategy-resolution helpers.
+6. Defer Borrowed Sword until equipment zones exist.
+7. Continue through remaining response-chain cards and Judgement Zone edge cases.
+8. Add equipment and distance modifiers.
+9. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
+10. Add hero abilities only after shared rules and cards are stable.
 
 ## Known boundaries
 
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
-- The Judgement Zone now supports Overindulgence. Equipment Zones do not exist yet, so Burning Bridges and Steal currently operate on hand cards only.
+- The Judgement Zone supports Overindulgence and Lightning. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards. Equipment Zones do not exist yet, so Burning Bridges and Steal currently operate on hand cards only.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device.
 - Saved match history, player profiles, statistics, sound and richer invitations are not implemented.

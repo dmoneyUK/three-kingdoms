@@ -23,6 +23,7 @@ Current mappings:
 | `BumperHarvest` | Bumper Harvest | 57 |
 | `Negation` | Negation | 108 |
 | `Overindulgence` | Overindulgence | 177 |
+| `Lightning` | Lightning | 107 |
 
 Development policy:
 

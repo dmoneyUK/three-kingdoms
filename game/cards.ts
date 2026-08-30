@@ -28,6 +28,7 @@ export const CARD_DEFINITIONS: Record<CardKind, CardDefinition> = {
   BumperHarvest: { kind: "BumperHarvest", name: "Bumper Harvest", category: "stratagem", target: "self", description: "Reveal 1 card per player · choose in turn", rules: "During your Play Phase, use this card on all living characters, including yourself. Reveal cards from the top of the deck equal to the number of living players. Starting with you and continuing in turn order, each player chooses 1 revealed card to obtain.", officialCardId: 57 },
   Negation: { kind: "Negation", name: "Negation", category: "stratagem", target: "response", description: "Cancel a stratagem effect", rules: "Before a stratagem takes effect on one target, play Negation to cancel that effect. Another Negation may be played to cancel the previous Negation.", officialCardId: 108 },
   Overindulgence: { kind: "Overindulgence", name: "Overindulgence", category: "stratagem", target: "opponent", description: "Delayed · may skip Play Phase", rules: "During your Play Phase, place this card in another character's Judgement Zone. At the start of that character's turn, reveal a judgement card. If it is not a Heart, that character skips their Play Phase. Discard Overindulgence after it resolves.", officialCardId: 177 },
+  Lightning: { kind: "Lightning", name: "Lightning", category: "stratagem", target: "self", description: "Delayed · 3 thunder damage or transfer", rules: "During your Play Phase, place Lightning in your Judgement Zone. During your next Judgement Phase, reveal a judgement card. If it is a Spade from 2 through 9, take 3 thunder damage and discard Lightning. Otherwise, pass Lightning to the next living character's Judgement Zone.", officialCardId: 107 },
   // Compatibility for games created before the English card name was corrected.
   Strike: { kind: "Strike", name: "Attack", category: "basic", target: "opponent", description: "Range 1 · deal 1 damage", rules: "During your Play Phase, target a character within your attack range. They must play Dodge or take 1 damage. Normally, you may use one Attack per turn.", officialCardId: 173 },
 };
@@ -48,6 +49,7 @@ export const DECK_COUNTS: Partial<Record<CardKind, number>> = {
   BumperHarvest: 2,
   Negation: 3,
   Overindulgence: 2,
+  Lightning: 2,
 };
 
 export const DECK_CARD_KINDS = Object.keys(DECK_COUNTS) as CardKind[];

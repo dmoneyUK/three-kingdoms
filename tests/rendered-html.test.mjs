@@ -175,6 +175,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(cards, /name: "Raining Arrows"/);
   assert.match(cards, /name: "Bumper Harvest"/);
   assert.match(cards, /name: "Overindulgence"/);
+  assert.match(cards, /name: "Lightning"/);
   assert.match(cards, /If it is not a Heart/);
   assert.match(cards, /All wounded players recover 1 HP/);
   assert.match(cards, /alternate playing Attack cards/);
@@ -190,6 +191,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`BumperHarvest` \| Bumper Harvest \| 57/);
   assert.match(officialReference, /`Negation` \| Negation \| 108/);
   assert.match(officialReference, /`Overindulgence` \| Overindulgence \| 177/);
+  assert.match(officialReference, /`Lightning` \| Lightning \| 107/);
   assert.match(page, /card\.kind === "Steal"/);
   assert.match(page, /\["Dismantle", "Steal"\]/);
   assert.match(page, /respond_duel/);
