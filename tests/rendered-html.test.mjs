@@ -90,6 +90,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /TableResolutionSequence/);
   assert.match(page, /resolutionEvents/);
   assert.match(page, /function pendingTimelineSequence/);
+  assert.match(page, /pendingGreenDragon/);
+  assert.match(page, /sequenceStartCardId/);
   assert.match(page, /function movesDirectlyToDiscard\(event: GameEvent\)/);
   assert.match(page, /event\.action === "discard" \|\| event\.action === "reveal"/);
   assert.match(page, /event\.action === "activate"/);
@@ -182,6 +184,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(cards, /name: "Overindulgence"/);
   assert.match(cards, /name: "Lightning"/);
   assert.match(cards, /name: "Zhuge Crossbow"/);
+  assert.match(cards, /name: "Green Dragon Blade"/);
   assert.match(cards, /unlimited number of Attack cards/);
   assert.match(cards, /name: "Rations Depleted"/);
   assert.match(cards, /If it is not a Heart/);
@@ -201,9 +204,12 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`Overindulgence` \| Overindulgence \| 177 \| Standard/);
   assert.match(officialReference, /`Lightning` \| Lightning \| 107 \| Standard/);
   assert.match(officialReference, /`ZhugeCrossbow` \| Zhuge Crossbow \| 175 \| Standard/);
+  assert.match(officialReference, /`GreenDragonBlade` \| Green Dragon Blade \| 180 \| Standard/);
   assert.match(officialReference, /`RationsDepleted` \| Rations Depleted \| 199 \| Endless Legends/);
   assert.match(schema, /equipmentJson: text\("equipment_json"\)/);
   assert.match(roomApi, /hasZhugeCrossbow/);
+  assert.match(roomApi, /hasGreenDragonBlade/);
+  assert.match(roomApi, /attackRangeFor/);
   assert.match(roomApi, /"equip"/);
   assert.match(page, /card\.kind === "Steal"/);
   assert.match(page, /\["Dismantle", "Steal"\]/);

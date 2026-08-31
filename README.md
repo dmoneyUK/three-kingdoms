@@ -5,13 +5,13 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Play: https://three-realms-table.dai-jinge.chatgpt.site
 - Source: https://github.com/dmoneyUK/three-kingdoms
 - Development handover: [HANDOVER.md](HANDOVER.md)
-- Current stage: **playable four-player alpha — equipment foundation with ongoing rules-engine stabilisation**
+- Current stage: **playable four-player alpha — Standard weapon expansion with ongoing rules-engine stabilisation**
 
 The hosted game is public and does not require a GitHub or ChatGPT account. Players join a room using a room code and keep their session on their device.
 
 ## Current Stage
 
-The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards and victory checks are working, and the first authoritative Equipment Zone and weapon are now playable. The current feature focus remains **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
+The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards and victory checks are working, and the authoritative Weapon slot now supports two Standard weapons plus weapon-based Attack Range. The current feature focus remains **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
 
 The playable alpha currently includes:
 
@@ -46,9 +46,11 @@ The playable alpha currently includes:
 - Overindulgence
 - Lightning
 - Zhuge Crossbow
+- Green Dragon Blade
 
 ### Recently stabilised
 
+- Green Dragon Blade is playable with Attack Range 3. When its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered five-second decision to play another Attack against the same target or skip. The entire repeated Attack/Dodge chain stays in one table sequence, and bots can equip and use the follow-up.
 - Delayed-card Negation now creates a fresh Judgement activation event. A Lightning, Overindulgence or compatibility judgement no longer reopens the original play event and pulls every intervening turn-end discard onto the table.
 - Bumper Harvest now follows the multi-target Negation rule: each affected player receives a separate Negation window, one successful Negation skips only that player's choice, later players continue normally, and any unchosen revealed card enters discard only when the complete Harvest sequence finishes.
 - Zhuge Crossbow is the first playable equipment card. It enters the owner's public Weapon slot, replaces and discards an existing weapon, remains visible after its play presentation, and removes the normal one-Attack-per-turn limit while equipped. Bots can equip and use it, and defeated equipment plus the Lord's Loyalist-kill penalty now clean up weapon cards.
@@ -79,15 +81,15 @@ The playable alpha currently includes:
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; target-scoped Negation now covers global cards and Bumper Harvest, while shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the general card set | Standard core expanding with equipment | 15 Standard cards are playable, including the first weapon. Borrowed Sword follows once weapon targeting and transfer are implemented. |
-| 4. Equipment and distance modifiers | In progress — first foundation complete | The public Weapon slot and Zhuge Crossbow are playable; more weapons, armour and horses remain. |
+| 3. Complete the general card set | Standard core expanding with equipment | 16 Standard cards are playable, including two weapons. Remaining Standard weapons now precede Borrowed Sword. |
+| 4. Equipment and distance modifiers | In progress — weapon expansion | The public Weapon slot, authoritative Attack Range, Zhuge Crossbow and Green Dragon Blade are playable; more weapons, armour and horses remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
 | 7. Product polish | Ongoing alongside rules work | Mobile sequence layout, countdown placement, target-card selection and card information are improved; sound, invitations and saved history remain planned. |
 
 ### Next milestone
 
-Add **Borrowed Sword** on top of the new Weapon slot. The milestone will add legal weapon targeting and transfer, its ordered Attack-or-transfer response, bot handling, public sequence presentation, quick-test coverage and deterministic tests.
+Add **Serpent Spear** as the next Standard weapon. The milestone will add Attack Range 3 and an ordered way to use two hand cards as an Attack, including legal card selection, bot use, table presentation, quick-test coverage and deterministic tests. Borrowed Sword remains deferred until the classic weapons are established.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 
@@ -111,8 +113,9 @@ Add **Borrowed Sword** on top of the new Weapon slot. The milestone will add leg
 ### 4. Add equipment and distance modifiers — current feature focus
 
 - Weapon slot foundation and Zhuge Crossbow — complete.
-- Add Borrowed Sword with weapon targeting and transfer.
-- Continue weapons and attack range.
+- Authoritative Attack Range and Green Dragon Blade — complete.
+- Add Serpent Spear, then continue through the remaining Standard weapons.
+- Add Borrowed Sword after the weapon set and weapon interactions are mature.
 - Armour effects.
 - Offensive and defensive horses.
 

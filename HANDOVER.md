@@ -81,6 +81,7 @@ Implemented cards:
 13. Overindulgence
 14. Lightning
 15. Zhuge Crossbow
+16. Green Dragon Blade
 
 Rations Depleted was previously implemented during development, but the official
 catalogue classifies it as Endless Legends. Its compatibility code and tests are
@@ -90,7 +91,15 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 
 ## Recent interaction work
 
-The latest rule and presentation fixes corrected delayed-card and Bumper Harvest Negation:
+The latest weapon milestone added authoritative Attack Range and Green Dragon Blade:
+
+- Green Dragon Blade (official card 180) equips in the shared Weapon slot and gives its owner Attack Range 3.
+- When an Attack is blocked by Dodge, a living owner who still has an Attack receives an ordered response to continue against the same target or skip; the normal response countdown and action ownership checks apply.
+- Repeated Green Dragon Blade Attacks retain the first Attack's sequence identifier so every Attack and Dodge remains together until the full chain concludes.
+- Bots equip Green Dragon Blade, select targets using their equipped Attack Range and automatically use legal follow-up Attacks.
+- Quick-test mode gives `ME` one Green Dragon Blade, and deterministic coverage protects opposite-seat range, human follow-up, fixed-target enforcement, bot follow-up and sequence retention.
+
+The preceding rule and presentation fixes corrected delayed-card and Bumper Harvest Negation:
 
 - A delayed card now emits a fresh `activate` card event when its Judgement Negation window opens. The client anchors the visible response sequence to this current event instead of the card's original Play Phase event, preventing intervening discards from reappearing around every player.
 - Bumper Harvest reveals its shared pool once, then opens a separate Negation window for each affected player in turn order.
@@ -113,7 +122,7 @@ The preceding scope change locked every new game to WTK Standard:
 - `game/cards.ts` marks cards as Standard or Endless Legends.
 - Only Standard cards in `DECK_COUNTS` enter shuffled decks and quick-test hands.
 - Rations Depleted remains readable in older state and retains deterministic compatibility coverage, but bots and players cannot receive it in a newly created game.
-- The next active milestone is Borrowed Sword on top of the new authoritative Weapon slot.
+- The next active milestone is Serpent Spear. Borrowed Sword now follows the remaining Standard weapons.
 
 The preceding rules change added Lightning and made delayed-card resolution reusable:
 
@@ -296,18 +305,19 @@ Recommended next sequence:
 2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
 3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
 4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
-5. Equipment Zone foundation and Zhuge Crossbow are complete.
-6. Add Borrowed Sword with weapon targeting, ordered Attack-or-transfer handling and bot coverage.
-7. Continue through Standard weapons, armour, horses, distance modifiers and remaining response-chain edge cases.
-8. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
-9. Add hero abilities only after shared Standard rules and cards are stable.
+5. Equipment Zone foundation, authoritative Attack Range, Zhuge Crossbow and Green Dragon Blade are complete.
+6. Add Serpent Spear with its two-card-as-Attack selection and bot coverage.
+7. Continue through the remaining Standard weapons, then add Borrowed Sword after weapon interactions are mature.
+8. Continue through armour, horses, distance modifiers and remaining response-chain edge cases.
+9. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
+10. Add hero abilities only after shared Standard rules and cards are stable.
 
 ## Known boundaries
 
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
 - The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards.
-- The Equipment Zone currently exposes only the Weapon slot, and Zhuge Crossbow is the only playable equipment card. Burning Bridges and Steal still select hand cards only; equipment targeting and transfer arrive with the next equipment milestone.
+- The Equipment Zone currently exposes only the Weapon slot. Zhuge Crossbow and Green Dragon Blade are playable, and equipped weapon range is authoritative for Attack targeting. Burning Bridges and Steal still select hand cards only; equipment targeting and transfer remain deferred until the weapon set is mature.
 - Bumper Harvest Negation is target-specific: a cancelled player does not choose, later players continue, and any leftover revealed card is discarded with the held Harvest/Negation sequence at completion.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device.
