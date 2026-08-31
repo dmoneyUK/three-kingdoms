@@ -90,7 +90,15 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 
 ## Recent interaction work
 
-The latest milestone introduced the Equipment Zone foundation and Zhuge Crossbow:
+The latest rule and presentation fixes corrected delayed-card and Bumper Harvest Negation:
+
+- A delayed card now emits a fresh `activate` card event when its Judgement Negation window opens. The client anchors the visible response sequence to this current event instead of the card's original Play Phase event, preventing intervening discards from reappearing around every player.
+- Bumper Harvest reveals its shared pool once, then opens a separate Negation window for each affected player in turn order.
+- A successful Negation cancels only that player's chance to choose. The same revealed pool continues to later players, and the skipped player's leftover card is discarded when the full Harvest sequence concludes.
+- Bumper Harvest, its Negation responses and any leftover revealed cards stay out of the logical discard pile until the complete sequence finishes.
+- Deterministic coverage reproduces the delayed-Lightning presentation anchor and a first-player Bumper Harvest Negation followed by the remaining three choices.
+
+The preceding milestone introduced the Equipment Zone foundation and Zhuge Crossbow:
 
 - Every player now has a persisted, publicly projected Weapon slot.
 - Equipping Zhuge Crossbow removes it from hand, replaces and discards the previous weapon, and presents it as equipment rather than as an ordinary discard.
@@ -105,7 +113,7 @@ The preceding scope change locked every new game to WTK Standard:
 - `game/cards.ts` marks cards as Standard or Endless Legends.
 - Only Standard cards in `DECK_COUNTS` enter shuffled decks and quick-test hands.
 - Rations Depleted remains readable in older state and retains deterministic compatibility coverage, but bots and players cannot receive it in a newly created game.
-- The next active milestone remains Equipment Zones and Zhuge Crossbow, both from WTK Standard.
+- The next active milestone is Borrowed Sword on top of the new authoritative Weapon slot.
 
 The preceding rules change added Lightning and made delayed-card resolution reusable:
 
@@ -300,6 +308,7 @@ Recommended next sequence:
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
 - The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards.
 - The Equipment Zone currently exposes only the Weapon slot, and Zhuge Crossbow is the only playable equipment card. Burning Bridges and Steal still select hand cards only; equipment targeting and transfer arrive with the next equipment milestone.
+- Bumper Harvest Negation is target-specific: a cancelled player does not choose, later players continue, and any leftover revealed card is discarded with the held Harvest/Negation sequence at completion.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device.
 - Saved match history, player profiles, statistics, sound and richer invitations are not implemented.

@@ -5,7 +5,7 @@ import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card } from "../game/model";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
-type CardEvent = { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "discard" | "gain" | "reveal"; presentation?: boolean };
+type CardEvent = { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal"; presentation?: boolean };
 type CardGroupEvent = { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal"; presentation?: boolean };
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | { type: "message"; id: string; message: string; presentation?: boolean };
 type Player = { id: string; name: string; seat: number; hero: string | null; hp: number | null; maxHp: number | null; alive: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; distance: number | null; isHost: boolean; isBot?: boolean; role: string | null };
@@ -362,6 +362,7 @@ function describeEvent(event: GameEvent) {
   if (event.type === "cards") return event.action === "reveal" ? `${event.player} reveals ${event.cards.map((card) => `${card.rank}${card.suit} ${cardDefinition(card.kind).name}`).join(", ")} for Bumper Harvest.` : `${event.player} reveals and discards ${event.cards.map((card) => `${card.rank}${card.suit} ${cardDefinition(card.kind).name}`).join(", ")}.`;
   if (event.action === "discard") return `${event.player} reveals and discards ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name}.`;
   if (event.action === "equip") return `${event.player} equips ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name}.`;
+  if (event.action === "activate") return `${event.player} resolves ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name} from their Judgement Zone.`;
   if (event.action === "gain") return `${event.player} chooses ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name} from Bumper Harvest.`;
   if (event.action === "reveal") return `${event.player} reveals for judgement: ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name}.`;
   if (event.target === event.player && (isAttackCard(event.card) || event.card.kind === "Dodge")) return `${event.player} responds with ${event.card.rank}${event.card.suit} ${cardDefinition(event.card.kind).name}.`;

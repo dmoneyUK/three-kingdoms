@@ -191,6 +191,27 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(carolHarvest.data.room.timeline.filter((event) => event.type === "card" && event.action === "gain").length, 4);
   const completedHarvest = await waitForState(game.code, host.token, (room) => room.phase === "play" && room.pendingHarvest === null);
   assert.equal(completedHarvest.pendingHarvest, null);
+  assert.ok(discardIds(game.code).includes("bumperharvest-global-choice"), "Bumper Harvest enters discard only after every choice finishes");
+
+  setHand(hostPlayer.id, [card("BumperHarvest", "single-target-negation")], 5, 5); setHand(alicePlayer.id, [card("Negation", "harvest-host")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const negatedHarvestCards = [card("Attack", "harvest-negated-host"), card("Dodge", "harvest-negated-alice"), card("Peach", "harvest-negated-bob"), card("Steal", "harvest-negated-carol")];
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(negatedHarvestCards))}, discard_json='[]' WHERE code=${quote(game.code)}`);
+  const harvestNegationWindow = await request("play_card", { code: game.code, token: host.token, cardId: "bumperharvest-single-target-negation" });
+  assert.equal(harvestNegationWindow.status, 200); assert.equal(harvestNegationWindow.data.room.pendingNegation.effectTargetId, hostPlayer.id, "Bumper Harvest opens Negation for its first affected player");
+  assert.ok(!discardIds(game.code).includes("bumperharvest-single-target-negation"), "the active Bumper Harvest card stays out of discard");
+  const hostEffectCancelled = await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-harvest-host" });
+  assert.equal(hostEffectCancelled.status, 200); assert.equal(hostEffectCancelled.data.room.pendingHarvest.actorId, alicePlayer.id, "Negation skips only Host and Bumper Harvest continues with Alice");
+  assert.equal(hostEffectCancelled.data.room.pendingHarvest.availableIds.length, 4, "the cancelled player's unchosen card remains available");
+  assert.ok(!hostEffectCancelled.data.room.myHand.some((held) => held.id === "attack-harvest-negated-host"));
+  const aliceAfterNegation = await request("choose_harvest", { code: game.code, token: alice.token, cardId: "dodge-harvest-negated-alice" });
+  assert.equal(aliceAfterNegation.data.room.pendingHarvest.actorId, bobPlayer.id);
+  const bobAfterNegation = await request("choose_harvest", { code: game.code, token: bob.token, cardId: "peach-harvest-negated-bob" });
+  assert.equal(bobAfterNegation.data.room.pendingHarvest.actorId, carolPlayer.id);
+  const carolAfterNegation = await request("choose_harvest", { code: game.code, token: carol.token, cardId: "steal-harvest-negated-carol" });
+  assert.equal(carolAfterNegation.data.room.pendingHarvest.complete, true); assert.equal(carolAfterNegation.data.room.pendingHarvest.choices.length, 3);
+  await waitForState(game.code, host.token, (room) => room.phase === "play" && room.pendingHarvest === null);
+  const harvestNegationDiscard = discardIds(game.code);
+  assert.ok(harvestNegationDiscard.includes("bumperharvest-single-target-negation")); assert.ok(harvestNegationDiscard.includes("negation-harvest-host")); assert.ok(harvestNegationDiscard.includes("attack-harvest-negated-host"), "the card left by the cancelled target is discarded when Bumper Harvest concludes");
 
   setHand(hostPlayer.id, [card("BarbarianInvasion", "global")], 4, 5); setHand(alicePlayer.id, [card("Attack", "barbarian-answer")], 4); setHand(bobPlayer.id, [], 1, 4); setHand(carolPlayer.id, [card("Attack", "barbarian-answer")], 4); setTurn(game.code, hostPlayer.seat);
   const invasion = await request("play_card", { code: game.code, token: host.token, cardId: "barbarianinvasion-global" });
@@ -563,6 +584,15 @@ test("Lightning is placed on self, transfers after a miss, and deals 3 thunder d
   assert.equal(placed.data.room.players.find((player) => player.id === hostPlayer.id).judgementCards[0].id, "lightning-placed");
   setHand(hostPlayer.id, [card("Lightning", "duplicate")], 5, 5); setTurn(game.code, hostPlayer.seat, "play");
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "lightning-duplicate" })).status, 409);
+
+  const negatedJudgementLightning = { ...card("Lightning", "judgement-window"), suit: "♦", rank: "Q" };
+  setHand(alicePlayer.id, [card("Negation", "lightning-judgement-window")], 4, 4); setJudgement(alicePlayer.id, [negatedJudgementLightning]); setTurn(game.code, alicePlayer.seat, "draw");
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([card("Dodge", "unused-lightning-judge")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
+  const judgementNegationWindow = await request("draw", { code: game.code, token: alice.token });
+  assert.equal(judgementNegationWindow.status, 200); assert.equal(judgementNegationWindow.data.room.pendingNegation.cardName, "Lightning");
+  const latestLightningEvent = judgementNegationWindow.data.room.timeline.filter((event) => event.type === "card" && event.card.id === "lightning-judgement-window").at(-1);
+  assert.equal(latestLightningEvent.action, "activate", "a fresh judgement activation anchors the current Negation presentation instead of the original turn's discards");
+  assert.equal((await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-lightning-judgement-window" })).data.room.phase, "draw");
 
   const missedLightning = { ...card("Lightning", "miss"), suit: "♠", rank: "K" }; const missJudge = { ...card("Dodge", "miss-judge"), suit: "♥", rank: "7" };
   setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, [missedLightning]); setTurn(game.code, alicePlayer.seat, "draw");

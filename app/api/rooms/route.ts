@@ -10,11 +10,12 @@ type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actor
 type DuelPending = { kind: "duel"; sourceId: string; targetId: string; actorId: string; opponentId: string; resumePhase: string; reason: string; deadline?: number };
 type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows"; sourceId: string; actorId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; reason: string; deadline?: number; heldCards?: Card[] };
 type HarvestChoice = { cardId: string; playerId: string; playerName: string };
-type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; botAdvanceAt?: number; completeAt?: number; resumePhase: string; reason: string };
+type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; botAdvanceAt?: number; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 type DeferredStratagem =
   | { kind: "draw_two"; cardId: string }
   | { kind: "oath" }
   | { kind: "harvest"; chooserIds: string[] }
+  | { kind: "harvest_target"; pending: HarvestPending }
   | { kind: "dismantle"; targetId: string; targetCardId: string }
   | { kind: "steal"; targetId: string; targetCardId: string }
   | { kind: "duel"; pending: DuelPending }
@@ -110,7 +111,7 @@ function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(play
 function phaseAfterAttack(player?: PlayerRow | null) { return playPhaseAfterAttack(player, hasZhugeCrossbow(player)); }
 function addLog(log: string[], message: string) { return [...log.slice(-199), `@event:${JSON.stringify({ id: crypto.randomUUID(), message })}`]; }
 function addHistory(log: string[], message: string) { return [...log.slice(-199), `@history:${JSON.stringify({ id: crypto.randomUUID(), message })}`]; }
-function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "discard" | "gain" | "reveal" = "play", presentation = true) { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player, target, card, action, presentation })}`]; }
+function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true) { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player, target, card, action, presentation })}`]; }
 function addCardGroupEvent(log: string[], player: string, cards: Card[], action: "discard" | "reveal", presentation = true) { return cards.length ? [...log.slice(-199), `@cards:${JSON.stringify({ id: crypto.randomUUID(), player, target: player, cards, action, presentation })}`] : log; }
 function addDiscardEvent(log: string[], player: string, cards: Card[]) { return addCardGroupEvent(log, player, cards, "discard"); }
 function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) {
@@ -470,6 +471,7 @@ function playersHoldingNegation(players: PlayerRow[], startSeat: number) {
 async function startJudgementNegation(room: RoomRow, target: PlayerRow, players: PlayerRow[], delayed: Card, deck: Card[], discard: Card[], log: string[]) {
   const holders = playersHoldingNegation(players, target.seat);
   if (!holders.length) return false;
+  log = addCardEvent(log, target.name, delayed, target.name, "activate");
   const pending: NegationPending = { kind: "negation", sourceId: target.id, actorId: holders[0].id, remainingIds: holders.slice(1).map((player) => player.id), negated: false, cardName: cardDefinition(delayed.kind).name, effectTargetId: target.id, resumePhase: room.phase?.startsWith("draw") ? room.phase : "draw", effect: { kind: "judgement", targetId: target.id, cardId: delayed.id }, reason: `Play Negation to cancel ${cardDefinition(delayed.kind).name}'s effect on ${target.name}, or pass` };
   await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id).run();
   await advanceNegation(room.id);
@@ -486,6 +488,13 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationPending
   if (pending.negated) {
     const target = players.find((player) => player.id === pending.effectTargetId);
     log = addLog(log, `${pending.cardName}'s effect on ${target?.name ?? "its target"} is cancelled by Negation.`);
+    if (pending.effect.kind === "harvest_target") {
+      const harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies HarvestPending;
+      const next = nextHarvestPending(harvest, players);
+      if (next) await beginHarvestTarget(room, next, players, deck, discard, log);
+      else await queueHarvestCompletion(room, harvest, deck, discard, log);
+      return [];
+    }
     if (pending.effect.kind === "judgement") {
       const judgement = parse<Card[]>(target?.judgement_json ?? null, []); const delayed = judgement.find((card) => card.id === pending.effect.cardId);
       if (delayed) discard.push(delayed);
@@ -502,6 +511,12 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationPending
     discard.push(...heldCards);
     await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), roomId).run();
     if (source) await continueAfterDying(roomId, source.id);
+    return [];
+  }
+  if (pending.effect.kind === "harvest_target") {
+    const harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards, botAdvanceAt: isBotPlayer(players.find((player) => player.id === pending.effect.pending.actorId)) ? Date.now() + HARVEST_BOT_THINK_MS : undefined } satisfies HarvestPending;
+    await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(harvest), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
+    await advanceHarvest(roomId);
     return [];
   }
   if (!source) return [];
@@ -761,6 +776,58 @@ function harvestAvailableIds(pending: HarvestPending) {
   return pending.availableIds ?? pending.revealed.map((card) => card.id).filter((id) => !chosenIds.has(id));
 }
 
+function commitHeldHarvestCards(discard: Card[], pending: HarvestPending) {
+  const available = new Set(harvestAvailableIds(pending));
+  const finishing = [...(pending.heldCards ?? []), ...pending.revealed.filter((card) => available.has(card.id))];
+  const existing = new Set(discard.map((card) => card.id));
+  return [...discard, ...finishing.filter((card) => !existing.has(card.id))];
+}
+
+async function queueHarvestCompletion(room: RoomRow, pending: HarvestPending, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
+  const complete = { ...pending, previewCardId: undefined, botAdvanceAt: undefined, completeAt: Date.now() + HARVEST_CHOICE_HOLD_MS, reason: "Showing the final Bumper Harvest result" } satisfies HarvestPending;
+  writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(complete), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+  await db().batch(writes);
+}
+
+async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
+  if (!harvestAvailableIds(pending).length) {
+    await queueHarvestCompletion(room, pending, deck, discard, log, writes);
+    return;
+  }
+  const actor = players.find((player) => player.id === pending.actorId && player.alive);
+  const source = players.find((player) => player.id === pending.sourceId);
+  if (!actor || !source) {
+    const next = nextHarvestPending(pending, players);
+    if (next) return beginHarvestTarget(room, next, players, deck, discard, log, writes);
+    await queueHarvestCompletion(room, pending, deck, discard, log, writes);
+    return;
+  }
+  const holders = playersHoldingNegation(players, actor.seat);
+  if (!holders.length) {
+    const ready = { ...pending, botAdvanceAt: isBotPlayer(actor) ? Date.now() + HARVEST_BOT_THINK_MS : undefined, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
+    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(ready), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+    await db().batch(writes);
+    await advanceHarvest(room.id);
+    return;
+  }
+  const negation: NegationPending = {
+    kind: "negation",
+    sourceId: pending.sourceId,
+    actorId: holders[0].id,
+    remainingIds: holders.slice(1).map((player) => player.id),
+    negated: false,
+    cardName: "Bumper Harvest",
+    effectTargetId: actor.id,
+    resumePhase: pending.resumePhase,
+    effect: { kind: "harvest_target", pending },
+    heldCards: pending.heldCards,
+    reason: `Play Negation to cancel Bumper Harvest's effect on ${actor.name}, or pass`,
+  };
+  writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(negation), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+  await db().batch(writes);
+  await advanceNegation(room.id);
+}
+
 async function resolveHarvestChoice(room: RoomRow, pending: HarvestPending, actor: PlayerRow, players: PlayerRow[], chosen: Card) {
   const hand = [...parse<Card[]>(actor.hand_json, []), chosen];
   let log = parse<string[]>(room.log_json, []);
@@ -775,16 +842,10 @@ async function resolveHarvestChoice(room: RoomRow, pending: HarvestPending, acto
   };
   const next = nextHarvestPending(remainingPending, players);
   if (next) {
-    await db().batch([
-      db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id),
-      db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(next), JSON.stringify(log), room.id),
-    ]);
+    await beginHarvestTarget(room, next, players.map((player) => player.id === actor.id ? { ...player, hand_json: JSON.stringify(hand) } : player), parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
     return;
   }
-  await db().batch([
-    db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id),
-    db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ ...remainingPending, completeAt: Date.now() + HARVEST_CHOICE_HOLD_MS, reason: "Showing the final Bumper Harvest choice" } satisfies HarvestPending), JSON.stringify(log), room.id),
-  ]);
+  await queueHarvestCompletion(room, remainingPending, parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
 }
 
 async function advanceHarvest(roomId: string) {
@@ -795,7 +856,8 @@ async function advanceHarvest(roomId: string) {
     if (pending.completeAt) {
       if (Date.now() < pending.completeAt) return;
       const log = addHistory(parse<string[]>(room.log_json, []), "Bumper Harvest finishes resolving.");
-      const claim = await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(log), roomId, room.pending_json).run();
+      const discard = commitHeldHarvestCards(parse<Card[]>(room.discard_json, []), pending);
+      const claim = await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), roomId, room.pending_json).run();
       if ((claim.meta.changes ?? 0) > 0) await continueAfterDying(roomId, pending.sourceId);
       return;
     }
@@ -804,20 +866,16 @@ async function advanceHarvest(roomId: string) {
     if (!actor) {
       const next = nextHarvestPending(pending, players);
       if (!next) {
-        const log = addHistory(parse<string[]>(room.log_json, []), "Bumper Harvest finishes resolving.");
-        await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(log), roomId, room.pending_json).run();
-        await continueAfterDying(roomId, pending.sourceId);
+        await queueHarvestCompletion(room, pending, parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
         return;
       }
-      await db().prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(JSON.stringify(next), roomId, room.pending_json).run();
-      continue;
+      await beginHarvestTarget(room, next, players, parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
+      return;
     }
     if (!isBotPlayer(actor)) return;
     const availableIds = harvestAvailableIds(pending); const chosen = pending.revealed.find((card) => availableIds.includes(card.id));
     if (!chosen) {
-      const log = addHistory(parse<string[]>(room.log_json, []), "Bumper Harvest finishes resolving.");
-      await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(log), roomId, room.pending_json).run();
-      await continueAfterDying(roomId, pending.sourceId);
+      await queueHarvestCompletion(room, pending, parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
       return;
     }
     if (!pending.previewCardId) {
@@ -925,18 +983,18 @@ async function runBots(roomId: string) {
     const harvestTargets = playersInTurnOrder(players, bot.seat);
     if (harvest && harvestTargets.length) {
       hand = hand.filter((card) => card.id !== harvest.id);
-      const draw = drawCards(deck, discard, harvestTargets.length, log); deck = draw.deck; discard = draw.discard; log = draw.log; discard.push(harvest);
+      const draw = drawCards(deck, discard, harvestTargets.length, log); deck = draw.deck; discard = draw.discard; log = draw.log;
       const choosers = harvestTargets.slice(0, draw.drawn.length);
       log = addCardEvent(log, bot.name, harvest, "All living players"); log = addCardGroupEvent(log, bot.name, draw.drawn, "reveal", false);
-      log = addHistory(log, `${bot.name} plays Bumper Harvest and reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}. ${choosers[0]?.name ?? "No player"} chooses first.`);
+      log = addHistory(log, `${bot.name} plays Bumper Harvest and reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}. ${choosers[0]?.name ?? "No player"} resolves first.`);
       writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
       if (!choosers.length) {
+        discard.push(harvest);
         writes.push(db().prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
         await db().batch(writes); continue;
       }
-      const pending: HarvestPending = { kind: "harvest", sourceId: bot.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, availableIds: draw.drawn.map((card) => card.id), choices: [], botAdvanceAt: isBotPlayer(choosers[0]) ? Date.now() + HARVEST_BOT_THINK_MS : undefined, resumePhase: "play", reason: "Choose 1 revealed card from Bumper Harvest" };
-      writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
-      await db().batch(writes); return;
+      const pending: HarvestPending = { kind: "harvest", sourceId: bot.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, availableIds: draw.drawn.map((card) => card.id), choices: [], resumePhase: "play", reason: "Choose 1 revealed card from Bumper Harvest", heldCards: [harvest] };
+      await beginHarvestTarget(room, pending, players.map((player) => player.id === bot.id ? { ...player, hand_json: JSON.stringify(hand) } : changedHands.has(player.id) ? { ...player, hand_json: JSON.stringify(changedHands.get(player.id)) } : player), deck, discard, log, writes); return;
     }
     const groupCard = hand.find((card) => card.kind === "BarbarianInvasion" || card.kind === "RainingArrows");
     const groupTargets = playersInTurnOrder(players, bot.seat).filter((player) => player.alive && player.id !== bot.id);
@@ -1445,8 +1503,12 @@ export async function POST(request: Request) {
         const players = rows.results ?? []; const choosersInOrder = playersInTurnOrder(players, me.seat);
         if (!choosersInOrder.length) return json({ error: "There are no living characters to take part in Bumper Harvest." }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, "All living players");
-        await startNegation(liveRoom, me, players, card, "all living players", me.id, { kind: "harvest", chooserIds: choosersInOrder.map((player) => player.id) }, hand, deck, discard, log);
+        hand = hand.filter((item) => item.id !== card.id); log = addCardEvent(log, me.name, card, "All living players");
+        const draw = drawCards(deck, discard, choosersInOrder.length, log); deck = draw.deck; discard = draw.discard; log = addCardGroupEvent(draw.log, me.name, draw.drawn, "reveal", false);
+        const choosers = choosersInOrder.slice(0, draw.drawn.length);
+        log = addHistory(log, `${me.name} reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"} for Bumper Harvest. ${choosers[0]?.name ?? "No player"} resolves first.`);
+        const harvest: HarvestPending = { kind: "harvest", sourceId: me.id, actorId: choosers[0]?.id ?? me.id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, availableIds: draw.drawn.map((revealed) => revealed.id), choices: [], resumePhase: liveRoom.phase ?? "play", reason: "Choose 1 revealed card from Bumper Harvest", heldCards: [card] };
+        await beginHarvestTarget(liveRoom, harvest, players.map((player) => player.id === me.id ? { ...player, hand_json: JSON.stringify(hand) } : player), deck, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
       } else if (card.kind === "BarbarianInvasion" || card.kind === "RainingArrows") {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const targets = playersInTurnOrder(players, me.seat).filter((player) => player.id !== me.id);

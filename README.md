@@ -49,6 +49,8 @@ The playable alpha currently includes:
 
 ### Recently stabilised
 
+- Delayed-card Negation now creates a fresh Judgement activation event. A Lightning, Overindulgence or compatibility judgement no longer reopens the original play event and pulls every intervening turn-end discard onto the table.
+- Bumper Harvest now follows the multi-target Negation rule: each affected player receives a separate Negation window, one successful Negation skips only that player's choice, later players continue normally, and any unchosen revealed card enters discard only when the complete Harvest sequence finishes.
 - Zhuge Crossbow is the first playable equipment card. It enters the owner's public Weapon slot, replaces and discards an existing weapon, remains visible after its play presentation, and removes the normal one-Attack-per-turn limit while equipped. Bots can equip and use it, and defeated equipment plus the Lord's Loyalist-kill penalty now clean up weapon cards.
 - Negation can interrupt a stratagem in seat order, supports an explicit Pass action, and can itself be cancelled by a deliberate human counter-Negation. Barbarian Invasion and Raining Arrows now open a fresh Negation window for each target, then continue to later players after one target is protected. Bots defend their own affected character but do not blindly counter another bot's Negation.
 - Overindulgence introduces the public Judgement Zone. It can be Negated before placement, cannot be duplicated on one character, reveals a judgement card at the target's next turn, and skips only the Play Phase when the result is not a Heart.
@@ -76,7 +78,7 @@ The playable alpha currently includes:
 | Stage | Status | Position |
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
-| 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; shared stratagem, judgement and sequence resolvers still need extraction. |
+| 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; target-scoped Negation now covers global cards and Bumper Harvest, while shared stratagem, judgement and sequence resolvers still need extraction. |
 | 3. Complete the general card set | Standard core expanding with equipment | 15 Standard cards are playable, including the first weapon. Borrowed Sword follows once weapon targeting and transfer are implemented. |
 | 4. Equipment and distance modifiers | In progress — first foundation complete | The public Weapon slot and Zhuge Crossbow are playable; more weapons, armour and horses remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |

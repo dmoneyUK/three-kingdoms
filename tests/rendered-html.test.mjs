@@ -92,6 +92,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /function pendingTimelineSequence/);
   assert.match(page, /function movesDirectlyToDiscard\(event: GameEvent\)/);
   assert.match(page, /event\.action === "discard" \|\| event\.action === "reveal"/);
+  assert.match(page, /event\.action === "activate"/);
   assert.match(page, /function retainsAtPlayer\(event: GameEvent\)/);
   assert.match(page, /const resolutionRevision = useRef\(0\)/);
   assert.match(page, /const closingRevision = resolutionRevision\.current/);
@@ -177,6 +178,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(cards, /name: "Barbarian Invasion"/);
   assert.match(cards, /name: "Raining Arrows"/);
   assert.match(cards, /name: "Bumper Harvest"/);
+  assert.match(cards, /Negation cancels Bumper Harvest only for the affected player/);
   assert.match(cards, /name: "Overindulgence"/);
   assert.match(cards, /name: "Lightning"/);
   assert.match(cards, /name: "Zhuge Crossbow"/);
