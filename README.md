@@ -51,6 +51,7 @@ The playable alpha currently includes:
 ### Recently stabilised
 
 - Green Dragon Blade is playable with Attack Range 3. When its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered five-second decision to play another Attack against the same target or skip. The entire repeated Attack/Dodge chain stays in one table sequence, and bots can equip and use the follow-up.
+- Equipped weapons are now rendered as face-up cards in a separate equipment rack beside each player seat instead of as text inside the player panel. The rack is ready to grow into armour and horse slots without crowding the player's identity, HP or hand count.
 - Delayed-card Negation now creates a fresh Judgement activation event. A Lightning, Overindulgence or compatibility judgement no longer reopens the original play event and pulls every intervening turn-end discard onto the table.
 - Bumper Harvest now follows the multi-target Negation rule: each affected player receives a separate Negation window, one successful Negation skips only that player's choice, later players continue normally, and any unchosen revealed card enters discard only when the complete Harvest sequence finishes.
 - Zhuge Crossbow is the first playable equipment card. It enters the owner's public Weapon slot, replaces and discards an existing weapon, remains visible after its play presentation, and removes the normal one-Attack-per-turn limit while equipped. Bots can equip and use it, and defeated equipment plus the Lord's Loyalist-kill penalty now clean up weapon cards.
@@ -82,7 +83,7 @@ The playable alpha currently includes:
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; target-scoped Negation now covers global cards and Bumper Harvest, while shared stratagem, judgement and sequence resolvers still need extraction. |
 | 3. Complete the general card set | Standard core expanding with equipment | 16 Standard cards are playable, including two weapons. Remaining Standard weapons now precede Borrowed Sword. |
-| 4. Equipment and distance modifiers | In progress — weapon expansion | The public Weapon slot, authoritative Attack Range, Zhuge Crossbow and Green Dragon Blade are playable; more weapons, armour and horses remain. |
+| 4. Equipment and distance modifiers | In progress — weapon expansion | The public face-up Equipment rack, authoritative Weapon slot and Attack Range, Zhuge Crossbow and Green Dragon Blade are playable; more weapons, armour and horses remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
 | 7. Product polish | Ongoing alongside rules work | Mobile sequence layout, countdown placement, target-card selection and card information are improved; sound, invitations and saved history remain planned. |
@@ -114,6 +115,7 @@ Add **Serpent Spear** as the next Standard weapon. The milestone will add Attack
 
 - Weapon slot foundation and Zhuge Crossbow — complete.
 - Authoritative Attack Range and Green Dragon Blade — complete.
+- Separate face-up equipment rack beside every player seat — complete and ready for additional equipment slots.
 - Add Serpent Spear, then continue through the remaining Standard weapons.
 - Add Borrowed Sword after the weapon set and weapon interactions are mature.
 - Armour effects.

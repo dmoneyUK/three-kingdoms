@@ -264,12 +264,14 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /play Negation/i);
   assert.match(page, /judgementCards/);
   assert.match(page, /equipmentCards/);
-  assert.match(page, /Weapon ·/);
+  assert.match(page, /player-equipment-zone/);
+  assert.match(page, /player-equipment-card/);
   assert.match(page, /reveals for judgement/);
   assert.match(page, /card\.kind === "RationsDepleted"/);
   assert.match(page, /\["Duel", "Overindulgence", "RationsDepleted"\]\.includes\(card\.kind\)/);
   assert.match(styles, /\.judgement-zone/);
-  assert.match(styles, /\.equipment-zone/);
+  assert.match(styles, /\.player-equipment-zone/);
+  assert.match(styles, /\.player-equipment-card/);
   assert.match(page, /awaiting confirmation/);
   assert.match(styles, /\.harvest-card-choice\.taken/);
   assert.match(styles, /\.harvest-card-choice\.pending-choice/);

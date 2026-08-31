@@ -91,6 +91,12 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 
 ## Recent interaction work
 
+The latest table-layout refinement separates equipment from player identity:
+
+- Equipped weapons appear as compact, face-up cards in a dedicated rack beside their owner's seat.
+- Player targeting, turn highlighting and response countdowns remain attached to the fixed player panel rather than moving with the rack.
+- The rack is a reusable public Equipment Zone container, ready for later armour and offensive/defensive horse slots.
+
 The latest weapon milestone added authoritative Attack Range and Green Dragon Blade:
 
 - Green Dragon Blade (official card 180) equips in the shared Weapon slot and gives its owner Attack Range 3.
@@ -305,7 +311,7 @@ Recommended next sequence:
 2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
 3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
 4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
-5. Equipment Zone foundation, authoritative Attack Range, Zhuge Crossbow and Green Dragon Blade are complete.
+5. Equipment Zone foundation, a separate face-up rack beside each seat, authoritative Attack Range, Zhuge Crossbow and Green Dragon Blade are complete.
 6. Add Serpent Spear with its two-card-as-Attack selection and bot coverage.
 7. Continue through the remaining Standard weapons, then add Borrowed Sword after weapon interactions are mature.
 8. Continue through armour, horses, distance modifiers and remaining response-chain edge cases.
@@ -317,7 +323,7 @@ Recommended next sequence:
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
 - The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards.
-- The Equipment Zone currently exposes only the Weapon slot. Zhuge Crossbow and Green Dragon Blade are playable, and equipped weapon range is authoritative for Attack targeting. Burning Bridges and Steal still select hand cards only; equipment targeting and transfer remain deferred until the weapon set is mature.
+- The Equipment Zone currently exposes only the Weapon slot, rendered as a face-up card in the separate rack beside its owner. Zhuge Crossbow and Green Dragon Blade are playable, and equipped weapon range is authoritative for Attack targeting. Armour and horse slots can extend the same rack; Burning Bridges and Steal still select hand cards only, while equipment targeting and transfer remain deferred until the weapon set is mature.
 - Bumper Harvest Negation is target-specific: a cancelled player does not choose, later players continue, and any leftover revealed card is discarded with the held Harvest/Negation sequence at completion.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device.
