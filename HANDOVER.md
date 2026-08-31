@@ -82,6 +82,7 @@ Implemented cards:
 14. Lightning
 15. Zhuge Crossbow
 16. Green Dragon Blade
+17. Serpent Spear
 
 Rations Depleted was previously implemented during development, but the official
 catalogue classifies it as Endless Legends. Its compatibility code and tests are
@@ -90,6 +91,14 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 `Strike` remains only as a saved-game compatibility alias for Attack.
 
 ## Recent interaction work
+
+The latest weapon milestone added Serpent Spear:
+
+- Serpent Spear (official card 181) equips in the shared Weapon slot and gives its owner Attack Range 3.
+- During the Play Phase, its owner can explicitly enter Serpent Spear mode, select exactly two different hand cards and choose a legal target to form an Attack.
+- The same two-card formation is legal whenever that owner must play Attack in Duel or against Barbarian Invasion; it is not offered for Dodge, Negation or Green Dragon Blade follow-ups.
+- Normal Attack limits, distance, Dodge, damage and ordered response ownership remain authoritative. Both payment cards appear as one grouped play event and remain in the complete table sequence until it concludes.
+- Bots equip Serpent Spear and form an Attack when they have no ordinary Attack. Quick-test mode gives `ME` one copy, and deterministic coverage protects range, duplicate-cost rejection, Dodge, Duel, Barbarian Invasion, sequence anchoring and bot use.
 
 The latest table-layout refinement separates equipment from player identity:
 
@@ -128,7 +137,7 @@ The preceding scope change locked every new game to WTK Standard:
 - `game/cards.ts` marks cards as Standard or Endless Legends.
 - Only Standard cards in `DECK_COUNTS` enter shuffled decks and quick-test hands.
 - Rations Depleted remains readable in older state and retains deterministic compatibility coverage, but bots and players cannot receive it in a newly created game.
-- The next active milestone is Serpent Spear. Borrowed Sword now follows the remaining Standard weapons.
+- Serpent Spear is complete. The next active milestone is Rock Cleaving Axe; Borrowed Sword follows the remaining Standard weapons.
 
 The preceding rules change added Lightning and made delayed-card resolution reusable:
 
@@ -311,8 +320,8 @@ Recommended next sequence:
 2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
 3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
 4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
-5. Equipment Zone foundation, a separate face-up rack beside each seat, authoritative Attack Range, Zhuge Crossbow and Green Dragon Blade are complete.
-6. Add Serpent Spear with its two-card-as-Attack selection and bot coverage.
+5. Equipment Zone foundation, a separate face-up rack beside each seat, authoritative Attack Range, Zhuge Crossbow, Green Dragon Blade and Serpent Spear are complete.
+6. Add Rock Cleaving Axe with its ordered post-Dodge two-card discard decision and bot coverage.
 7. Continue through the remaining Standard weapons, then add Borrowed Sword after weapon interactions are mature.
 8. Continue through armour, horses, distance modifiers and remaining response-chain edge cases.
 9. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
@@ -323,7 +332,7 @@ Recommended next sequence:
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
 - The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards.
-- The Equipment Zone currently exposes only the Weapon slot, rendered as a face-up card in the separate rack beside its owner. Zhuge Crossbow and Green Dragon Blade are playable, and equipped weapon range is authoritative for Attack targeting. Armour and horse slots can extend the same rack; Burning Bridges and Steal still select hand cards only, while equipment targeting and transfer remain deferred until the weapon set is mature.
+- The Equipment Zone currently exposes only the Weapon slot, rendered as a face-up card in the separate rack beside its owner. Zhuge Crossbow, Green Dragon Blade and Serpent Spear are playable, and equipped weapon range is authoritative for Attack targeting. Armour and horse slots can extend the same rack; Burning Bridges and Steal still select hand cards only, while equipment targeting and transfer remain deferred until the weapon set is mature.
 - Bumper Harvest Negation is target-specific: a cancelled player does not choose, later players continue, and any leftover revealed card is discarded with the held Harvest/Negation sequence at completion.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device.

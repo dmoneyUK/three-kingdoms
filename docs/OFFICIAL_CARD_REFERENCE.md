@@ -32,6 +32,7 @@ Current mappings:
 | `Lightning` | Lightning | 107 | Standard |
 | `ZhugeCrossbow` | Zhuge Crossbow | 175 | Standard |
 | `GreenDragonBlade` | Green Dragon Blade | 180 | Standard |
+| `SerpentSpear` | Serpent Spear | 181 | Standard |
 | `RationsDepleted` | Rations Depleted | 199 | Endless Legends - preserved for compatibility, excluded from new games |
 
 Development policy:

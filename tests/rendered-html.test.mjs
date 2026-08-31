@@ -205,10 +205,13 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`Lightning` \| Lightning \| 107 \| Standard/);
   assert.match(officialReference, /`ZhugeCrossbow` \| Zhuge Crossbow \| 175 \| Standard/);
   assert.match(officialReference, /`GreenDragonBlade` \| Green Dragon Blade \| 180 \| Standard/);
+  assert.match(officialReference, /`SerpentSpear` \| Serpent Spear \| 181 \| Standard/);
   assert.match(officialReference, /`RationsDepleted` \| Rations Depleted \| 199 \| Endless Legends/);
   assert.match(schema, /equipmentJson: text\("equipment_json"\)/);
   assert.match(roomApi, /hasZhugeCrossbow/);
   assert.match(roomApi, /hasGreenDragonBlade/);
+  assert.match(roomApi, /hasSerpentSpear/);
+  assert.match(roomApi, /serpent_spear_attack/);
   assert.match(roomApi, /attackRangeFor/);
   assert.match(roomApi, /"equip"/);
   assert.match(page, /card\.kind === "Steal"/);
@@ -216,6 +219,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /respond_duel/);
   assert.match(page, /take_duel_damage/);
   assert.match(page, /respond_group/);
+  assert.match(page, /Use Serpent Spear/);
+  assert.match(page, /Form Attack/);
+  assert.match(page, /serpentSelected/);
   assert.match(page, /event\.target === event\.player && \(isAttackCard\(event\.card\) \|\| event\.card\.kind === "Dodge"\)/);
   assert.match(page, /responds with/);
   assert.match(page, /take_group_damage/);
