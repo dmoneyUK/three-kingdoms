@@ -23,11 +23,14 @@ Product decisions already made:
 - Workspace: `/Users/jingedai/Documents/ChatGPT/WTK`
 - GitHub: <https://github.com/dmoneyUK/three-kingdoms>
 - GitHub branch: `main`
+- Standalone migration branch: `cloudflare-standalone-deploy`
 - Live Site: <https://three-realms-table.dai-jinge.chatgpt.site/>
 - ChatGPT Sites project ID: `appgprj_6a80663f4c6c81919b11bc000dc47e71`
 - Sites source repository: `https://git.chatgpt-team.site/71b0ed06-7e27-42fc-9829-ad3fa809fc68/appgprj_6a80663f4c6c81919b11bc000dc47e71.git`
 - Sites source branch: `main`
 - Hosting metadata: `.openai/hosting.json`
+- Standalone Worker configuration: `wrangler.cloudflare.jsonc`
+- Standalone D1 database: `three-kingdoms-db` (`3151997a-f69e-4a45-ab51-9e4fd062aeb3`), exposed to the application as `DB`
 
 Never store a Sites write token in a remote URL, file or persistent Git configuration. Obtain a short-lived source-repository credential through the Sites tools and use it only as a per-command HTTP authorization header.
 
@@ -38,6 +41,8 @@ The standing release workflow requested by the owner is:
 3. Push that same commit to the ChatGPT Sites source repository `main`.
 4. Package the successful build, save a Site version using the exact commit SHA, and deploy it to the existing public Site.
 5. Confirm the production deployment succeeds and return the live URL and GitHub commit.
+
+The standalone Cloudflare migration is deliberately isolated on `cloudflare-standalone-deploy`. While it is being validated, do not replace or alter the existing ChatGPT Site. The migration branch contains a separate build mode and GitHub Actions workflow. Its pushes validate and deploy when both Cloudflare repository secrets are available; deployment is safely skipped when they are absent. After the owner accepts the Cloudflare deployment and merges it, successful pushes to `main` will validate, migrate D1 and deploy the Worker automatically. Operational setup and rollback are documented in `docs/CLOUDFLARE_DEPLOYMENT.md`.
 
 ## Current product state
 
@@ -244,6 +249,8 @@ Important pending-state kinds are Attack, Duel, group response, Bumper Harvest a
 
 The Site uses Cloudflare D1 through the logical `DB` binding in `.openai/hosting.json`.
 
+The standalone deployment also exposes its D1 database as `DB`, so the server code is shared unchanged. `wrangler.cloudflare.jsonc` points that binding at `three-kingdoms-db` (`3151997a-f69e-4a45-ab51-9e4fd062aeb3`) and uses the existing migrations in `drizzle/`. The separate filename prevents local ChatGPT Sites development from auto-loading the standalone bindings. The new database begins empty and must receive all migrations before the first Worker deployment; the deployment workflow performs that step.
+
 Main tables:
 
 - `rooms`: status, turn, phase, deck, discard, event log and pending action;
@@ -301,9 +308,10 @@ npm install
 npm run dev
 npm run lint
 npm test
+npm run build:cloudflare
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 19 passing test flows.
+`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 20 passing test flows.
 
 Key test files:
 
@@ -332,20 +340,21 @@ The project is currently between:
 
 Recommended next sequence:
 
-1. Continue extracting shared ordered-response/resolution helpers from `app/api/rooms/route.ts`.
-2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
-3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
-4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
-5. Equipment Zone foundation, a separate face-up rack beside each seat, authoritative Attack Range, Zhuge Crossbow, Green Dragon Blade, Serpent Spear and Rock Cleaving Axe are complete. Burning Bridges and Steal now target current hand, equipment or judgement cards only after Negation finishes.
-6. Add Sky Piercing Halberd with its final-hand-card multi-target Attack rule and bot coverage.
-7. Continue through the remaining Standard weapons, then add Borrowed Sword after weapon interactions are mature.
-8. Continue through armour, horses, distance modifiers and remaining response-chain edge cases.
-9. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
-10. Add hero abilities only after shared Standard rules and cards are stable.
+1. Add GitHub repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, then run or re-run **Deploy Cloudflare** for `cloudflare-standalone-deploy`.
+2. Verify room creation, another-device joining, refresh/rejoin and one complete match on the new public Worker URL before merging the migration branch.
+3. Continue extracting shared ordered-response/resolution helpers from `app/api/rooms/route.ts`.
+4. Add Sky Piercing Halberd with its final-hand-card multi-target Attack rule and bot coverage.
+5. Continue through the remaining Standard weapons, then add Borrowed Sword after weapon interactions are mature.
+6. Continue through armour, horses, distance modifiers and remaining response-chain edge cases.
+7. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
+8. Add hero abilities only after shared Standard rules and cards are stable.
 
 ## Known boundaries
 
 - The game uses HTTP polling, not WebSockets.
+- The standalone Cloudflare deployment has not yet been cut over. Its new D1 database starts with no rooms or match history, and the existing ChatGPT Site remains the live rollback path.
+- GitHub Actions needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets before it can migrate or deploy. Never commit either credential.
+- The intended small-group deployment starts on Cloudflare's free Workers and D1 allowances. HTTP polling means usage grows with the number of open browser tabs; monitor Cloudflare usage and errors after launch.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
 - The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards.
 - The Equipment Zone currently exposes only the Weapon slot, rendered as a face-up card in the separate rack beside its owner. Zhuge Crossbow, Green Dragon Blade, Serpent Spear and Rock Cleaving Axe are playable, and equipped weapon range is authoritative for Attack targeting. Rock Cleaving Axe may discard cards from hand and/or the Equipment Zone, including itself, after Dodge. Armour and horse slots can extend the same rack. Burning Bridges and Steal can already select the current Weapon or a delayed card after their Negation chain.
@@ -360,3 +369,7 @@ Recommended next sequence:
 In the next chat, say:
 
 > Continue the Three Kingdoms project from the latest `main`. Read `HANDOVER.md`, `README.md` and `docs/OFFICIAL_CARD_REFERENCE.md` first. Keep the active ruleset strictly WTK Standard, preserve the general-rules-before-heroes priority, run all tests, then push the exact commit to both GitHub and the ChatGPT Sites repository and deploy it to the existing public Site.
+
+To continue the hosting migration instead, say:
+
+> Continue the standalone Cloudflare migration from `cloudflare-standalone-deploy`. Read `docs/CLOUDFLARE_DEPLOYMENT.md`, `HANDOVER.md` and `README.md` first. Preserve the existing ChatGPT Site as the rollback service, validate the standalone build and D1 migrations, and do not merge or cut over until the Cloudflare multiplayer smoke test passes.

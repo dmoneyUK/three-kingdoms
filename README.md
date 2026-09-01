@@ -5,6 +5,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Play: https://three-realms-table.dai-jinge.chatgpt.site
 - Source: https://github.com/dmoneyUK/three-kingdoms
 - Development handover: [HANDOVER.md](HANDOVER.md)
+- Standalone hosting guide: [docs/CLOUDFLARE_DEPLOYMENT.md](docs/CLOUDFLARE_DEPLOYMENT.md)
 - Current stage: **playable four-player alpha — Standard weapon expansion with ongoing rules-engine stabilisation**
 
 The hosted game is public and does not require a GitHub or ChatGPT account. Players join a room using a room code and keep their session on their device. Refreshing the page restores the active table, and Exit now preserves a one-tap rejoin option for that saved game.
@@ -12,6 +13,8 @@ The hosted game is public and does not require a GitHub or ChatGPT account. Play
 ## Current Stage
 
 The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards and victory checks are working, and the authoritative Weapon slot now supports four Standard weapons plus weapon-based Attack Range, formed-Attack costs and post-Dodge weapon decisions. The current feature focus remains **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
+
+A standalone Cloudflare Workers and D1 deployment path is prepared on the `cloudflare-standalone-deploy` branch. It keeps the existing ChatGPT Site unchanged while the new deployment is validated, and adds GitHub Actions for pull-request validation and an eventual automatic production deployment from `main`.
 
 The playable alpha currently includes:
 
@@ -99,6 +102,8 @@ The playable alpha currently includes:
 
 Add **Sky Piercing Halberd** as the next Standard weapon. The milestone will add Attack Range 4 and its final-hand-card multi-target Attack rule, with legal target selection, ordered Dodge responses, bot use, sequence retention and deterministic tests. Borrowed Sword remains deferred until the classic weapons are established.
 
+The separate infrastructure milestone is to configure the two GitHub Actions secrets, run or re-run the Cloudflare branch workflow, and verify a complete multiplayer game against the new D1 database before merging the branch. Until that cutover is accepted, the existing ChatGPT Site remains the public service.
+
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 
 - Add targeted regressions whenever manual testing finds a new turn or response defect.
@@ -160,9 +165,12 @@ npm install
 npm run dev
 npm test
 npm run lint
+npm run build:cloudflare
 ```
 
-The application uses React, TypeScript, vinext, Cloudflare Workers and D1. ChatGPT Sites hosts the live game and provides its database. Pushing code to GitHub does not by itself publish a new live version.
+The application uses React, TypeScript, vinext, Cloudflare Workers and D1. ChatGPT Sites still hosts the current live game and provides its existing database. The standalone configuration in `wrangler.cloudflare.jsonc` maps the production D1 database `three-kingdoms-db` to the app's existing `DB` binding without changing application code.
+
+GitHub Actions validates pull requests and the migration branch. Pushes to the migration branch can deploy for pre-cutover testing when the Cloudflare secrets are configured; without them, validation succeeds and deployment is skipped. After the migration is merged, a successful push to `main` will apply pending D1 migrations and deploy the same validated commit to Cloudflare. See [docs/CLOUDFLARE_DEPLOYMENT.md](docs/CLOUDFLARE_DEPLOYMENT.md) for the one-time GitHub secret setup, first deployment and rollback procedure.
 
 ## Contributing
 
