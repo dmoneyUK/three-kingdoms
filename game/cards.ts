@@ -35,6 +35,7 @@ export const CARD_DEFINITIONS: Record<CardKind, CardDefinition> = {
   ZhugeCrossbow: { kind: "ZhugeCrossbow", name: "Zhuge Crossbow", product: "standard", category: "equipment", target: "self", equipmentSlot: "weapon", attackRange: 1, description: "Weapon · range 1", rules: "Equip this weapon during your Play Phase. While it remains in your Equipment Zone, you may use an unlimited number of Attack cards during each of your turns. Zhuge Crossbow has an Attack Range of 1.", officialCardId: 175 },
   GreenDragonBlade: { kind: "GreenDragonBlade", name: "Green Dragon Blade", product: "standard", category: "equipment", target: "self", equipmentSlot: "weapon", attackRange: 3, description: "Weapon · range 3", rules: "Equip this weapon during your Play Phase. When your Attack is blocked by Dodge, you may immediately play another Attack against the same target. Green Dragon Blade has an Attack Range of 3.", officialCardId: 180 },
   SerpentSpear: { kind: "SerpentSpear", name: "Serpent Spear", product: "standard", category: "equipment", target: "self", equipmentSlot: "weapon", attackRange: 3, description: "Weapon · range 3", rules: "Equip this weapon during your Play Phase. While it remains in your Equipment Zone, you may discard 2 cards from your hand to form an Attack. Serpent Spear has an Attack Range of 3.", officialCardId: 181 },
+  RockCleavingAxe: { kind: "RockCleavingAxe", name: "Rock Cleaving Axe", product: "standard", category: "equipment", target: "self", equipmentSlot: "weapon", attackRange: 3, description: "Weapon · range 3", rules: "Equip this weapon during your Play Phase. When your Attack is blocked by Dodge, you may discard 2 cards to force the target to take the Attack's damage. Rock Cleaving Axe has an Attack Range of 3.", officialCardId: 186 },
   RationsDepleted: { kind: "RationsDepleted", name: "Rations Depleted", product: "endless-legends", category: "stratagem", target: "opponent", description: "Range 1 · may skip Draw Phase", rules: "During your Play Phase, place this card in the Judgement Zone of another character within distance 1. At the start of that character's turn, reveal a judgement card. If it is not a Club, that character skips their Draw Phase. Discard Rations Depleted after it resolves.", officialCardId: 199 },
   // Compatibility for games created before the English card name was corrected.
   Strike: { kind: "Strike", name: "Attack", product: "standard", category: "basic", target: "opponent", description: "Range 1 · deal 1 damage", rules: "During your Play Phase, target a character within your attack range. They must play Dodge or take 1 damage. Normally, you may use one Attack per turn.", officialCardId: 173 },
@@ -60,6 +61,7 @@ export const DECK_COUNTS: Partial<Record<CardKind, number>> = {
   ZhugeCrossbow: 2,
   GreenDragonBlade: 1,
   SerpentSpear: 1,
+  RockCleavingAxe: 1,
 };
 
 export const DECK_CARD_KINDS = Object.keys(DECK_COUNTS) as CardKind[];
