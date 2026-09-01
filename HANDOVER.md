@@ -60,7 +60,7 @@ Implemented shared rules include:
 - Peach healing and turn-ordered Dying rescue;
 - death, defeated-hand cleanup, public role reveal, Rebel defeat reward, the Lord's Loyalist-kill penalty and match victory checks;
 - bot draw, play, response, rescue, discard and repeated-round operation;
-- private draws, private rescue prompts and public action presentations;
+- private draws, inline ordered Peach rescue controls and public action presentations;
 - one-room audit storage, cleared when a new game starts; and
 - a scrollable Event History debug window.
 
@@ -91,6 +91,13 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 `Strike` remains only as a saved-game compatibility alias for Attack.
 
 ## Recent interaction work
+
+The latest rules and session stabilisation completed three related fixes:
+
+- The browser session survives refresh and intentional Exit. Refresh restores the table automatically; Exit returns to the landing screen without deleting the device token and exposes a one-tap **Rejoin game** action.
+- Dying rescue uses the same hand-and-command interaction pattern as Negation. Only the authoritative acting rescuer may select and play Peach or press **Skip rescue**; the old private modal was removed while the existing ordered five-second deadline remains.
+- Burning Bridges and Steal no longer preselect a hand-card ID before Negation. A dedicated `target_card` pending state opens only after the entire Negation/counter-Negation chain resolves, then lets the source choose from the target's current hand, Weapon slot or Judgement Zone. All sequence cards stay held until that final choice commits them together.
+- Deterministic coverage reproduces the reported stale-card case: a target spends its only hand card as Negation, the source counter-Negates, and Steal can then obtain the target's equipped Serpent Spear instead of incorrectly reporting that no card remains.
 
 The latest weapon milestone added Serpent Spear:
 
@@ -287,7 +294,7 @@ npm run lint
 npm test
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 16 passing test flows.
+`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 19 passing test flows.
 
 Key test files:
 
@@ -320,7 +327,7 @@ Recommended next sequence:
 2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
 3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
 4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
-5. Equipment Zone foundation, a separate face-up rack beside each seat, authoritative Attack Range, Zhuge Crossbow, Green Dragon Blade and Serpent Spear are complete.
+5. Equipment Zone foundation, a separate face-up rack beside each seat, authoritative Attack Range, Zhuge Crossbow, Green Dragon Blade and Serpent Spear are complete. Burning Bridges and Steal now target current hand, equipment or judgement cards only after Negation finishes.
 6. Add Rock Cleaving Axe with its ordered post-Dodge two-card discard decision and bot coverage.
 7. Continue through the remaining Standard weapons, then add Borrowed Sword after weapon interactions are mature.
 8. Continue through armour, horses, distance modifiers and remaining response-chain edge cases.
@@ -332,10 +339,10 @@ Recommended next sequence:
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
 - The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards.
-- The Equipment Zone currently exposes only the Weapon slot, rendered as a face-up card in the separate rack beside its owner. Zhuge Crossbow, Green Dragon Blade and Serpent Spear are playable, and equipped weapon range is authoritative for Attack targeting. Armour and horse slots can extend the same rack; Burning Bridges and Steal still select hand cards only, while equipment targeting and transfer remain deferred until the weapon set is mature.
+- The Equipment Zone currently exposes only the Weapon slot, rendered as a face-up card in the separate rack beside its owner. Zhuge Crossbow, Green Dragon Blade and Serpent Spear are playable, and equipped weapon range is authoritative for Attack targeting. Armour and horse slots can extend the same rack. Burning Bridges and Steal can already select the current Weapon or a delayed card after their Negation chain.
 - Bumper Harvest Negation is target-specific: a cancelled player does not choose, later players continue, and any leftover revealed card is discarded with the held Harvest/Negation sequence at completion.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
-- Reconnect uses the private room session stored on the device.
+- Reconnect uses the private room session stored on the device. Refresh restores automatically and Exit offers a one-tap same-device rejoin; cross-device account recovery is not implemented.
 - Saved match history, player profiles, statistics, sound and richer invitations are not implemented.
 - The Site is public, but the GitHub repository may remain private and requires collaborator access for contributors.
 

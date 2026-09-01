@@ -7,7 +7,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Current stage: **playable four-player alpha — Standard weapon expansion with ongoing rules-engine stabilisation**
 
-The hosted game is public and does not require a GitHub or ChatGPT account. Players join a room using a room code and keep their session on their device.
+The hosted game is public and does not require a GitHub or ChatGPT account. Players join a room using a room code and keep their session on their device. Refreshing the page restores the active table, and Exit now preserves a one-tap rejoin option for that saved game.
 
 ## Current Stage
 
@@ -24,7 +24,7 @@ The playable alpha currently includes:
 - Peach healing and turn-ordered Dying rescue;
 - death, role reveal, defeated-hand cleanup, Rebel defeat rewards and the Lord's Loyalist-kill penalty;
 - automatic bot drawing, card play, responses, rescue and discard;
-- private card draws and private rescue decisions;
+- private card draws and inline, turn-ordered Peach rescue controls;
 - table-based card-resolution presentations: each played card zooms into view, settles face-up in play order before its player, remains through the complete response/effect sequence, then joins the sequence-wide discard animation when resolution concludes;
 - event history plus a detailed rule-audit trail; and
 - a quick-test opening hand containing one of every implemented WTK Standard card, with Negation also seeded into bot hands.
@@ -51,6 +51,9 @@ The playable alpha currently includes:
 
 ### Recently stabilised
 
+- Refresh and accidental Exit no longer abandon a live player session. The saved device token restores the table automatically after refresh, while Exit returns to the landing screen with a **Rejoin game** button.
+- Peach rescue no longer covers the table with a private modal. The acting rescuer selects a Peach from their normal hand and uses **Play Peach**, or advances immediately with **Skip rescue**, while the existing five-second ordered rescue window remains authoritative.
+- Burning Bridges and Steal now finish their complete Negation/counter-Negation chain before the source chooses a target card. The post-Negation choice uses the target's current hand, Equipment Zone or Judgement Zone; the initiating stratagem and every Negation remain outside discard until the final choice resolves.
 - Serpent Spear is playable with Attack Range 3. Its owner can select exactly two different hand cards to form an Attack during the Play Phase, Duel or Barbarian Invasion response; normal targeting, one-Attack-per-turn, Dodge and ordered-response rules still apply. The two payment cards remain together in the visible resolution sequence, bots can equip and use the weapon, and quick-test mode includes it.
 - Green Dragon Blade is playable with Attack Range 3. When its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered five-second decision to play another Attack against the same target or skip. The entire repeated Attack/Dodge chain stays in one table sequence, and bots can equip and use the follow-up.
 - Equipped weapons are now rendered as face-up cards in a separate equipment rack beside each player seat instead of as text inside the player panel. The rack is ready to grow into armour and horse slots without crowding the player's identity, HP or hand count.
@@ -83,7 +86,7 @@ The playable alpha currently includes:
 | Stage | Status | Position |
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
-| 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; target-scoped Negation now covers global cards and Bumper Harvest, while shared stratagem, judgement and sequence resolvers still need extraction. |
+| 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; target-scoped Negation covers global cards and Bumper Harvest, and targeted stratagems now use a post-Negation current-card choice state. Shared stratagem, judgement and sequence resolvers still need extraction. |
 | 3. Complete the general card set | Standard core expanding with equipment | 17 Standard cards are playable, including three weapons. Remaining Standard weapons now precede Borrowed Sword. |
 | 4. Equipment and distance modifiers | In progress — weapon expansion | The public face-up Equipment rack, authoritative Weapon slot and Attack Range, Zhuge Crossbow, Green Dragon Blade and Serpent Spear are playable; more weapons, armour and horses remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
@@ -128,7 +131,7 @@ Add **Rock Cleaving Axe** as the next Standard weapon. The milestone will add At
 
 - Thoroughly test Lord, Loyalist, Rebel and Traitor victory conditions.
 - Extend the completed standard death rewards and penalties when equipment and judgement zones are introduced.
-- Improve reconnect, disconnect and room-cleanup behaviour.
+- Extend the new same-device rejoin path into explicit disconnect indicators and room-cleanup behaviour.
 
 ### 6. Add hero-specific abilities
 
