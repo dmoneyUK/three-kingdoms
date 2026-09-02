@@ -94,7 +94,7 @@ The production migration is now complete in the project configuration:
 
 - GitHub `main` is the sole authoritative source and `.github/workflows/deploy.yml` is the sole production release path.
 - Successful pushes validate the project, apply Cloudflare D1 migrations and deploy `three-kingdoms` to the public Worker URL.
-- The obsolete ChatGPT Sites hosting file and build dependency were removed, and the migrated test runner no longer forces a successful exit after a failed test.
+- The obsolete ChatGPT Sites hosting file and build dependency were removed. The migrated test runner still exits explicitly to close Cloudflare worker handles in CI, but now preserves the real test result instead of forcing success after a failure.
 
 The latest timing change expands the shared response window:
 

@@ -32,3 +32,7 @@ try {
   process.exitCode = await new Promise((resolve) => tests.on("exit", resolve)) ?? 1;
   if (process.exitCode !== 0) process.stderr.write(`\nTest server output:\n${output}\n`);
 } finally { server?.kill("SIGTERM"); }
+
+// Cloudflare's development server can leave worker handles alive in CI. Exit
+// explicitly, but preserve the test result instead of masking failures.
+process.exit(process.exitCode ?? 0);
