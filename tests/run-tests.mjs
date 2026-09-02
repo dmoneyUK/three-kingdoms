@@ -33,4 +33,5 @@ try {
   if (process.exitCode !== 0) process.stderr.write(`\nTest server output:\n${output}\n`);
 } finally { server?.kill("SIGTERM"); }
 
+
  process.exit(0);
