@@ -2,12 +2,12 @@
 
 An English online implementation of WTK Standard, the classic hidden-role Three Kingdoms card game, built for small private groups of friends.
 
-- Play: https://three-realms-table.dai-jinge.chatgpt.site
+- Play: https://three-kingdoms.dai-jinge.workers.dev
 - Source: https://github.com/dmoneyUK/three-kingdoms
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Current stage: **playable four-player alpha — Standard weapon expansion with ongoing rules-engine stabilisation**
 
-The hosted game is public and does not require a GitHub or ChatGPT account. Players join a room using a room code and keep their session on their device. Refreshing the page restores the active table, and Exit now preserves a one-tap rejoin option for that saved game.
+The Cloudflare-hosted game is public and does not require an account. Players join a room using a room code and keep their session on their device. Refreshing the page restores the active table, and Exit now preserves a one-tap rejoin option for that saved game.
 
 ## Current Stage
 
@@ -52,6 +52,7 @@ The playable alpha currently includes:
 
 ### Recently stabilised
 
+- Production now uses GitHub and Cloudflare only. GitHub `main` is authoritative, its Actions workflow validates every release and deploys the Worker with its D1 database, and the retired ChatGPT Sites configuration has been removed.
 - Normal card-response decisions now allow 10 seconds instead of 5. The shared authoritative window covers Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows, Green Dragon Blade and Rock Cleaving Axe; every one still supports an immediate player Skip action. Peach rescue remains a separate 5-second decision.
 - Rock Cleaving Axe is playable with Attack Range 3. After its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered 10-second choice to select exactly two cards from hand and/or the public Equipment Zone, or skip immediately. Paying the cost forces the blocked Attack's damage, may discard the Axe itself, retains the complete Attack/Dodge/Axe sequence on the table, and supports automatic bot use.
 - Refresh and accidental Exit no longer abandon a live player session. The saved device token restores the table automatically after refresh, while Exit returns to the landing screen with a **Rejoin game** button.
@@ -148,10 +149,6 @@ Hero details are intentionally deferred until the shared rules and cards are sta
 - Improve game setup and friend invitations.
 - Add optional saved match history and player statistics.
 
-## Optional ChatGPT Identity
-
-ChatGPT Sites can optionally provide signed-in visitor identity or require Sign in with ChatGPT. Three Kingdoms does **not** currently use these features; anonymous friends can play from the public game link. They may become useful later for saved profiles, statistics or persistent match history.
-
 ## Development
 
 Prerequisite: Node.js `>=22.13.0`.
@@ -163,7 +160,7 @@ npm test
 npm run lint
 ```
 
-The application uses React, TypeScript, vinext, Cloudflare Workers and D1. ChatGPT Sites hosts the live game and provides its database. Pushing code to GitHub does not by itself publish a new live version.
+The application uses React, TypeScript, vinext, Cloudflare Workers and D1. GitHub `main` is the authoritative source. A push to `main` runs lint and the full test suite in GitHub Actions, applies remote D1 migrations, builds the Worker and deploys it to Cloudflare. The workflow requires the repository's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
 
 ## Contributing
 

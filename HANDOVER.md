@@ -23,21 +23,18 @@ Product decisions already made:
 - Workspace: `/Users/jingedai/Documents/ChatGPT/WTK`
 - GitHub: <https://github.com/dmoneyUK/three-kingdoms>
 - GitHub branch: `main`
-- Live Site: <https://three-realms-table.dai-jinge.chatgpt.site/>
-- ChatGPT Sites project ID: `appgprj_6a80663f4c6c81919b11bc000dc47e71`
-- Sites source repository: `https://git.chatgpt-team.site/71b0ed06-7e27-42fc-9829-ad3fa809fc68/appgprj_6a80663f4c6c81919b11bc000dc47e71.git`
-- Sites source branch: `main`
-- Hosting metadata: `.openai/hosting.json`
+- Live Cloudflare Worker: <https://three-kingdoms.dai-jinge.workers.dev/>
+- Cloudflare configuration: `wrangler.jsonc`
+- Production workflow: `.github/workflows/deploy.yml`
 
-Never store a Sites write token in a remote URL, file or persistent Git configuration. Obtain a short-lived source-repository credential through the Sites tools and use it only as a per-command HTTP authorization header.
+GitHub and Cloudflare are the only source and deployment services for this project. Do not update or deploy the retired ChatGPT Sites copy. Keep Cloudflare credentials only in GitHub Actions secrets; never store them in source files, remote URLs or persistent Git configuration.
 
 The standing release workflow requested by the owner is:
 
 1. Implement and validate the change.
 2. Commit and push the exact commit to GitHub `main`.
-3. Push that same commit to the ChatGPT Sites source repository `main`.
-4. Package the successful build, save a Site version using the exact commit SHA, and deploy it to the existing public Site.
-5. Confirm the production deployment succeeds and return the live URL and GitHub commit.
+3. Let `.github/workflows/deploy.yml` run lint, tests, the D1 migrations, build and Cloudflare Worker deployment.
+4. Confirm the GitHub Actions run and production Worker succeed, then return the live URL and GitHub commit.
 
 ## Current product state
 
@@ -92,6 +89,12 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 `Strike` remains only as a saved-game compatibility alias for Attack.
 
 ## Recent interaction work
+
+The production migration is now complete in the project configuration:
+
+- GitHub `main` is the sole authoritative source and `.github/workflows/deploy.yml` is the sole production release path.
+- Successful pushes validate the project, apply Cloudflare D1 migrations and deploy `three-kingdoms` to the public Worker URL.
+- The obsolete ChatGPT Sites hosting file and build dependency were removed, and the migrated test runner no longer forces a successful exit after a failed test.
 
 The latest timing change expands the shared response window:
 
@@ -250,7 +253,7 @@ Important pending-state kinds are Attack, Duel, group response, Bumper Harvest a
 
 ### Persistence
 
-The Site uses Cloudflare D1 through the logical `DB` binding in `.openai/hosting.json`.
+The Cloudflare Worker uses D1 through the logical `DB` binding in `wrangler.jsonc`.
 
 Main tables:
 
@@ -361,10 +364,10 @@ Recommended next sequence:
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device. Refresh restores automatically and Exit offers a one-tap same-device rejoin; cross-device account recovery is not implemented.
 - Saved match history, player profiles, statistics, sound and richer invitations are not implemented.
-- The Site is public, but the GitHub repository may remain private and requires collaborator access for contributors.
+- The Cloudflare Worker is public, but the GitHub repository may remain private and requires collaborator access for contributors.
 
 ## Safe continuation prompt
 
 In the next chat, say:
 
-> Continue the Three Kingdoms project from the latest `main`. Read `HANDOVER.md`, `README.md` and `docs/OFFICIAL_CARD_REFERENCE.md` first. Keep the active ruleset strictly WTK Standard, preserve the general-rules-before-heroes priority, run all tests, then push the exact commit to both GitHub and the ChatGPT Sites repository and deploy it to the existing public Site.
+> Continue the Three Kingdoms project from the latest `main`. Read `HANDOVER.md`, `README.md` and `docs/OFFICIAL_CARD_REFERENCE.md` first. Keep the active ruleset strictly WTK Standard, preserve the general-rules-before-heroes priority, run all tests, then push the validated commit to GitHub `main` and confirm its GitHub Actions deployment to the existing Cloudflare Worker. Do not use ChatGPT Sites.
