@@ -71,7 +71,7 @@ const json = (data: unknown, status = 200) => Response.json(data, { status, head
 const publicRoleName = (role: string | null | undefined) => role === "Renegade" ? "Traitor" : role ?? null;
 const HARVEST_BOT_THINK_MS = 450;
 const HARVEST_CHOICE_HOLD_MS = 1400;
-const RESPONSE_TIMEOUT_MS = 5000;
+const RESPONSE_TIMEOUT_MS = 10_000;
 const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_green_dragon", "pass_green_dragon", "respond_rock_cleaving", "pass_rock_cleaving", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "respond_negation", "pass_negation", "preview_harvest", "choose_harvest", "choose_target_card", "start_response_timer", "start_rescue_timer", "give_peach", "skip_rescue"]);
 
 async function setup() {

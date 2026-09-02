@@ -16,7 +16,7 @@ Product decisions already made:
 - The player-facing name for the internal `Renegade` role is **Traitor**.
 - The public game must remain playable without GitHub or ChatGPT sign-in.
 - Mobile clarity and visible action order are important: always show the turn owner, phase, acting player, card, source and target.
-- Public played/revealed cards currently remain for 4 seconds; event messages and private draws remain for 3 seconds. Dying rescue decisions retain their separate 5-second action window.
+- Public played/revealed cards currently remain for 4 seconds; event messages and private draws remain for 3 seconds. Normal card and weapon-effect responses allow 10 seconds, while Dying rescue decisions retain their separate 5-second action window.
 
 ## Repositories and live service
 
@@ -93,10 +93,17 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 
 ## Recent interaction work
 
+The latest timing change expands the shared response window:
+
+- `RESPONSE_TIMEOUT_MS` is 10 seconds for Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows, Green Dragon Blade and Rock Cleaving Axe decisions.
+- Every response still exposes its immediate Play or Skip action, and its visible countdown remains attached to the acting player.
+- Peach rescue intentionally keeps its independent 5-second deadline.
+- Deterministic coverage checks both an ordinary Dodge window and a Rock Cleaving Axe weapon-effect window.
+
 The latest weapon milestone added Rock Cleaving Axe:
 
 - Rock Cleaving Axe (official card 186) equips in the shared Weapon slot and gives its owner Attack Range 3.
-- When its owner's Attack is blocked by Dodge, the attacker receives an ordered five-second decision to select exactly two different cards or skip immediately.
+- When its owner's Attack is blocked by Dodge, the attacker receives an ordered 10-second decision to select exactly two different cards or skip immediately.
 - The cost accepts any combination of hand and equipped cards, including the Rock Cleaving Axe itself. A valid payment forces the blocked Attack's 1 damage and continues into normal Dying rescue when lethal.
 - Attack, Dodge and both revealed payment cards retain the original Attack sequence identifier and stay together on the table until the decision and damage finish.
 - Bots automatically use a legal two-card payment. Quick-test mode gives `ME` one copy, and deterministic coverage protects range, response ownership, timer, duplicate rejection, skip, self-discard, forced damage, presentation and bot use.
@@ -207,6 +214,7 @@ All intentional production waits are now centralised or recorded here:
 | Played/revealed card | 4000 ms | Show the public card, source and target. This no longer waits for the action response. |
 | Event or role-reveal message | 3000 ms | Show important public state changes. |
 | Private draw | 3000 ms | Let only the drawing player inspect new cards. |
+| Normal card and weapon response | 10000 ms | Give the acting player time to select a legal response or skip, including weapon-effect decisions. |
 | Peach rescue decision | 5000 ms | Give each eligible player a private chance to select Peach or pass. |
 
 Every blocking presentation and decision overlay shows a live countdown. Bumper Harvest also exposes its bot preview and final-choice deadlines to all viewers; continuous room polling remains intentionally invisible because it is a repeating refresh rather than a blocking wait.

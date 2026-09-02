@@ -11,7 +11,7 @@ The hosted game is public and does not require a GitHub or ChatGPT account. Play
 
 ## Current Stage
 
-The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards and victory checks are working, and the authoritative Weapon slot now supports four Standard weapons plus weapon-based Attack Range, formed-Attack costs and post-Dodge weapon decisions. The current feature focus remains **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
+The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards and victory checks are working, normal card and weapon responses now share a 10-second action window, and the authoritative Weapon slot supports four Standard weapons plus weapon-based Attack Range, formed-Attack costs and post-Dodge weapon decisions. The current feature focus remains **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
 
 The playable alpha currently includes:
 
@@ -52,12 +52,13 @@ The playable alpha currently includes:
 
 ### Recently stabilised
 
-- Rock Cleaving Axe is playable with Attack Range 3. After its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered five-second choice to select exactly two cards from hand and/or the public Equipment Zone, or skip immediately. Paying the cost forces the blocked Attack's damage, may discard the Axe itself, retains the complete Attack/Dodge/Axe sequence on the table, and supports automatic bot use.
+- Normal card-response decisions now allow 10 seconds instead of 5. The shared authoritative window covers Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows, Green Dragon Blade and Rock Cleaving Axe; every one still supports an immediate player Skip action. Peach rescue remains a separate 5-second decision.
+- Rock Cleaving Axe is playable with Attack Range 3. After its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered 10-second choice to select exactly two cards from hand and/or the public Equipment Zone, or skip immediately. Paying the cost forces the blocked Attack's damage, may discard the Axe itself, retains the complete Attack/Dodge/Axe sequence on the table, and supports automatic bot use.
 - Refresh and accidental Exit no longer abandon a live player session. The saved device token restores the table automatically after refresh, while Exit returns to the landing screen with a **Rejoin game** button.
 - Peach rescue no longer covers the table with a private modal. The acting rescuer selects a Peach from their normal hand and uses **Play Peach**, or advances immediately with **Skip rescue**, while the existing five-second ordered rescue window remains authoritative.
 - Burning Bridges and Steal now finish their complete Negation/counter-Negation chain before the source chooses a target card. The post-Negation choice uses the target's current hand, Equipment Zone or Judgement Zone; the initiating stratagem and every Negation remain outside discard until the final choice resolves.
 - Serpent Spear is playable with Attack Range 3. Its owner can select exactly two different hand cards to form an Attack during the Play Phase, Duel or Barbarian Invasion response; normal targeting, one-Attack-per-turn, Dodge and ordered-response rules still apply. The two payment cards remain together in the visible resolution sequence, bots can equip and use the weapon, and quick-test mode includes it.
-- Green Dragon Blade is playable with Attack Range 3. When its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered five-second decision to play another Attack against the same target or skip. The entire repeated Attack/Dodge chain stays in one table sequence, and bots can equip and use the follow-up.
+- Green Dragon Blade is playable with Attack Range 3. When its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered 10-second decision to play another Attack against the same target or skip. The entire repeated Attack/Dodge chain stays in one table sequence, and bots can equip and use the follow-up.
 - Equipped weapons are now rendered as face-up cards in a separate equipment rack beside each player seat instead of as text inside the player panel. The rack is ready to grow into armour and horse slots without crowding the player's identity, HP or hand count.
 - Delayed-card Negation now creates a fresh Judgement activation event. A Lightning, Overindulgence or compatibility judgement no longer reopens the original play event and pulls every intervening turn-end discard onto the table.
 - Bumper Harvest now follows the multi-target Negation rule: each affected player receives a separate Negation window, one successful Negation skips only that player's choice, later players continue normally, and any unchosen revealed card enters discard only when the complete Harvest sequence finishes.
@@ -88,7 +89,7 @@ The playable alpha currently includes:
 | Stage | Status | Position |
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
-| 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; target-scoped Negation covers global cards and Bumper Harvest, and targeted stratagems now use a post-Negation current-card choice state. Shared stratagem, judgement and sequence resolvers still need extraction. |
+| 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; normal card and weapon responses share a tested 10-second window, target-scoped Negation covers global cards and Bumper Harvest, and targeted stratagems use a post-Negation current-card choice state. Shared stratagem, judgement and sequence resolvers still need extraction. |
 | 3. Complete the general card set | Standard core expanding with equipment | 18 Standard cards are playable, including four weapons. Remaining Standard weapons now precede Borrowed Sword. |
 | 4. Equipment and distance modifiers | In progress — weapon expansion | The public face-up Equipment rack, authoritative Weapon slot and Attack Range, Zhuge Crossbow, Green Dragon Blade, Serpent Spear and Rock Cleaving Axe are playable; more weapons, armour and horses remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
@@ -97,7 +98,7 @@ The playable alpha currently includes:
 
 ### Next milestone
 
-Add **Sky Piercing Halberd** as the next Standard weapon. The milestone will add Attack Range 4 and its final-hand-card multi-target Attack rule, with legal target selection, ordered Dodge responses, bot use, sequence retention and deterministic tests. Borrowed Sword remains deferred until the classic weapons are established.
+Add **Sky Piercing Halberd** as the next Standard weapon. The milestone will add Attack Range 4 and its final-hand-card multi-target Attack rule, with legal target selection, ordered 10-second Dodge responses, bot use, sequence retention and deterministic tests. Borrowed Sword remains deferred until the classic weapons are established.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 

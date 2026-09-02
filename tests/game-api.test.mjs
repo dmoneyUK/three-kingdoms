@@ -103,7 +103,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(attacked.status, 200); assert.equal(attacked.data.room.phase, "response"); assert.equal(attacked.data.room.actionPlayerId, alicePlayer.id);
   assert.equal((await request("start_response_timer", { code: game.code, token: bob.token })).status, 409, "only the acting player can start their response timer");
   const timedAttack = await request("start_response_timer", { code: game.code, token: alice.token });
-  assert.ok(timedAttack.data.room.pendingAttack.deadline > Date.now(), "the acting player receives a visible response deadline");
+  assert.ok(timedAttack.data.room.pendingAttack.deadline - Date.now() > 9_000, "the acting player receives a 10-second visible response deadline");
   const publicAttackTimer = await state(game.code, host.token);
   assert.equal(publicAttackTimer.data.pendingAttack.deadline, timedAttack.data.room.pendingAttack.deadline, "the table can show the same countdown beside the acting player");
   assert.equal((await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-answer" })).status, 409);
@@ -507,7 +507,7 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   assert.equal(skippedPrompt.data.room.pendingRockCleaving.actorId, hostPlayer.id); assert.equal(skippedPrompt.data.room.actionPlayerId, hostPlayer.id);
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: bob.token, cardIds: ["peach-axe-skip-one", "rockcleavingaxe-equip"] })).status, 409, "only the attacker owns the Axe decision");
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: host.token, cardIds: ["peach-axe-skip-one", "peach-axe-skip-one"] })).status, 409, "the same card cannot pay both costs");
-  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(timed.data.room.pendingRockCleaving.deadline > Date.now());
+  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(timed.data.room.pendingRockCleaving.deadline - Date.now() > 9_000, "weapon-effect decisions use the same 10-second response window");
   const skipped = await request("pass_rock_cleaving", { code: game.code, token: host.token });
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "play-struck"); assert.equal(skipped.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
