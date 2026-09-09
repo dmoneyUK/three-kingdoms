@@ -144,7 +144,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(challenged.status, 200); assert.equal(challenged.data.room.phase, "response"); assert.equal(challenged.data.room.actionPlayerId, alicePlayer.id); assert.equal(challenged.data.room.pendingDuel.opponentId, hostPlayer.id);
   assert.equal((await request("respond_duel", { code: game.code, token: bob.token, cardId: "attack-alice-answer" })).status, 409);
   const aliceAnswers = await request("respond_duel", { code: game.code, token: alice.token, cardId: "attack-alice-answer" });
-  assert.equal(aliceAnswers.status, 200); assert.equal(aliceAnswers.data.room.actionPlayerId, hostPlayer.id); assert.equal(aliceAnswers.data.room.pendingDuel.deadline ?? 0, 0, "a new actor receives a fresh timer");
+  assert.equal(aliceAnswers.status, 200); assert.equal(aliceAnswers.data.room.actionPlayerId, hostPlayer.id); assert.ok((aliceAnswers.data.room.pendingDuel.deadline ?? 0) - Date.now() > 9_000, "a new Duel responder receives a fresh 10-second timer");
   const hostAnswers = await request("respond_duel", { code: game.code, token: host.token, cardId: "attack-host-answer" });
   assert.equal(hostAnswers.status, 200); assert.equal(hostAnswers.data.room.actionPlayerId, alicePlayer.id);
   const losesDuel = await request("take_duel_damage", { code: game.code, token: alice.token });
@@ -502,12 +502,15 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   assert.equal(equipped.data.room.players.find((player) => player.id === bobPlayer.id).distance, 2);
 
   setHand(hostPlayer.id, [card("Attack", "axe-skip"), card("Peach", "axe-skip-one")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "axe-skip")], 4); setTurn(game.code, hostPlayer.seat);
-  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-axe-skip", targetId: alicePlayer.id })).status, 200);
+  const dodgePrompt = await request("play_card", { code: game.code, token: host.token, cardId: "attack-axe-skip", targetId: alicePlayer.id });
+  assert.equal(dodgePrompt.status, 200); assert.ok(dodgePrompt.data.room.pendingAttack.deadline - Date.now() > 9_000, "Dodge receives its own fresh 10-second window");
+  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',${Date.now() + 500}) WHERE code=${quote(game.code)}`);
   const skippedPrompt = await request("respond_dodge", { code: game.code, token: alice.token, cardId: "dodge-axe-skip" });
   assert.equal(skippedPrompt.data.room.pendingRockCleaving.actorId, hostPlayer.id); assert.equal(skippedPrompt.data.room.actionPlayerId, hostPlayer.id);
+  assert.ok(skippedPrompt.data.room.pendingRockCleaving.deadline - Date.now() > 9_000, "Rock Cleaving Axe receives a new 10-second window after Dodge");
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: bob.token, cardIds: ["peach-axe-skip-one", "rockcleavingaxe-equip"] })).status, 409, "only the attacker owns the Axe decision");
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: host.token, cardIds: ["peach-axe-skip-one", "peach-axe-skip-one"] })).status, 409, "the same card cannot pay both costs");
-  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(timed.data.room.pendingRockCleaving.deadline - Date.now() > 9_000, "weapon-effect decisions use the same 10-second response window");
+  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.equal(timed.data.room.pendingRockCleaving.deadline, skippedPrompt.data.room.pendingRockCleaving.deadline, "the client timer request preserves the server-created Axe deadline");
   const skipped = await request("pass_rock_cleaving", { code: game.code, token: host.token });
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "play-struck"); assert.equal(skipped.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 

@@ -99,6 +99,7 @@ The production migration is now complete in the project configuration:
 The latest timing change expands the shared response window:
 
 - `RESPONSE_TIMEOUT_MS` is 10 seconds for Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows, Green Dragon Blade and Rock Cleaving Axe decisions.
+- Each new normal-response pending state receives a fresh server-created deadline. A waiting source player has no countdown; after a defender plays Dodge, the source receives a new 10-second Green Dragon Blade or Rock Cleaving Axe decision with an immediate Skip control.
 - Every response still exposes its immediate Play or Skip action, and its visible countdown remains attached to the acting player.
 - Peach rescue intentionally keeps its independent 5-second deadline.
 - Deterministic coverage checks both an ordinary Dodge window and a Rock Cleaving Axe weapon-effect window.
