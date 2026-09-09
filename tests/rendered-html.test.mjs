@@ -292,6 +292,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /equipmentCards/);
   assert.match(page, /player-equipment-zone/);
   assert.match(page, /player-equipment-card/);
+  assert.match(page, /presence-dot/);
+  assert.match(roomApi, /connected_at/);
   assert.match(page, /reveals for judgement/);
   assert.match(page, /card\.kind === "RationsDepleted"/);
   assert.match(page, /\["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted"\]\.includes\(card\.kind\)/);
