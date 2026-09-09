@@ -9,6 +9,7 @@ export const runtime = "edge";
 type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actorId: string; resumePhase?: string; sequenceStartCardId?: string; reason: string; deadline?: number };
 type GreenDragonPending = { kind: "green_dragon"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number };
 type RockCleavingPending = { kind: "rock_cleaving"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number };
+type FrostSwordPending = { kind: "frost_sword"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number };
 type DuelPending = { kind: "duel"; sourceId: string; targetId: string; actorId: string; opponentId: string; resumePhase: string; reason: string; deadline?: number };
 type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; actorId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; reason: string; deadline?: number; heldCards?: Card[] };
 type HarvestChoice = { cardId: string; playerId: string; playerName: string };
@@ -30,7 +31,7 @@ type DeferredStratagem =
   | { kind: "judgement"; targetId: string; cardId: string };
 type NegationPending = { kind: "negation"; sourceId: string; actorId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; reason: string; heldCards?: Card[]; deadline?: number };
 type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
-type Pending = AttackPending | GreenDragonPending | RockCleavingPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | NegationPending | DyingPending;
+type Pending = AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | NegationPending | DyingPending;
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null };
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -73,7 +74,7 @@ const HARVEST_BOT_THINK_MS = 450;
 const HARVEST_CHOICE_HOLD_MS = 1400;
 const RESPONSE_TIMEOUT_MS = 10_000;
 const nextResponseDeadline = () => Date.now() + RESPONSE_TIMEOUT_MS;
-const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_green_dragon", "pass_green_dragon", "respond_rock_cleaving", "pass_rock_cleaving", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "respond_negation", "pass_negation", "preview_harvest", "choose_harvest", "choose_target_card", "start_response_timer", "start_rescue_timer", "give_peach", "skip_rescue"]);
+const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_green_dragon", "pass_green_dragon", "respond_rock_cleaving", "pass_rock_cleaving", "use_frost_sword", "pass_frost_sword", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "respond_negation", "pass_negation", "preview_harvest", "choose_harvest", "choose_target_card", "start_response_timer", "start_rescue_timer", "give_peach", "skip_rescue"]);
 
 async function setup() {
   const db = env.DB;
@@ -120,6 +121,7 @@ function hasGreenDragonBlade(player?: PlayerRow | null) { return equipmentZone(p
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasRockCleavingAxe(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "RockCleavingAxe"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
+function hasFrostSword(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "FrostSword"; }
 function groupCardName(kind: GroupPending["cardKind"]) { return kind === "BarbarianInvasion" ? "Barbarian Invasion" : kind === "RainingArrows" ? "Raining Arrows" : "Sky Piercing Halberd Attack"; }
 function selectedSerpentSpearCards(player: PlayerRow | null | undefined, hand: Card[], value: unknown) {
   if (!hasSerpentSpear(player) || !Array.isArray(value)) return [];
@@ -721,6 +723,40 @@ async function resolveRockCleaving(room: RoomRow, pending: RockCleavingPending, 
   await continueAfterDying(room.id, source.id);
 }
 
+async function resolveFrostSword(room: RoomRow, pending: FrostSwordPending, source: PlayerRow, target: PlayerRow, discard: Card[], log: string[]) {
+  const hand = parse<Card[]>(target.hand_json, []); const equipment = equipmentZone(target); const judgement = parse<Card[]>(target.judgement_json, []);
+  const discarded = [...hand, ...equipmentCards(target), ...judgement].slice(0, 2);
+  const ids = new Set(discarded.map((card) => card.id));
+  const nextHand = hand.filter((card) => !ids.has(card.id)); const nextJudgement = judgement.filter((card) => !ids.has(card.id));
+  const nextEquipment = Object.fromEntries(Object.entries(equipment).filter(([, card]) => !card || !ids.has(card.id))) as EquipmentZone;
+  discard.push(...discarded);
+  log = addDiscardEvent(log, target.name, discarded);
+  log = addLog(log, `${source.name} prevents the Attack damage with Frost Sword and discards ${discarded.length} card${discarded.length === 1 ? "" : "s"} from ${target.name}. Action returns to ${source.name}.`);
+  await db().batch([
+    db().prepare("UPDATE players SET hand_json = ?, judgement_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextJudgement), JSON.stringify(nextEquipment), target.id),
+    db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
+  ]);
+  await continueAfterDying(room.id, source.id);
+}
+
+async function advanceFrostSword(roomId: string) {
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const pending = parse<Pending | null>(room?.pending_json ?? null, null);
+  if (!room || room.phase !== "response" || pending?.kind !== "frost_sword") return;
+  const source = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>(); const target = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.targetId).first<PlayerRow>();
+  if (!source || !target || !isBotPlayer(source)) return;
+  const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
+  if ((claim.meta.changes ?? 0) <= 0) return;
+  const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
+  if (source.alive && target.alive && hasFrostSword(source) && targetableCardCount(target) > 0) return resolveFrostSword(room, pending, source, target, discard, log);
+  const hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${source.name} does not use Frost Sword. ${target.name} takes 1 damage.`);
+  if (hp === 0) {
+    const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+    return startDyingRescue(room, source, target, rows.results ?? [], parse<Card[]>(room.deck_json, []), discard, log, [], source, pending.resumePhase);
+  }
+  await db().batch([db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id), db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id)]);
+  await continueAfterDying(room.id, source.id);
+}
+
 async function advanceRockCleaving(roomId: string) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const pending = parse<Pending | null>(room?.pending_json ?? null, null);
@@ -1233,6 +1269,13 @@ async function runBots(roomId: string) {
         await finishDodgedAttack(room, { ...bot, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, phaseAfterAttack(bot), sequenceStartCardId, [...writes, db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id), db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
         return;
       } else {
+        if (attack && hasFrostSword(bot) && targetableCardCount(target) > 0) {
+          log = addLog(log, `${bot.name}'s Attack would damage ${target.name}. Frost Sword may prevent that damage and discard up to 2 of ${target.name}'s cards.`);
+          const pending: FrostSwordPending = { kind: "frost_sword", sourceId: bot.id, targetId: target.id, actorId: bot.id, resumePhase: phaseAfterAttack(bot), sequenceStartCardId, reason: `Frost Sword: prevent damage and discard up to 2 cards from ${target.name}, or deal 1 damage`, deadline: nextResponseDeadline() };
+          writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
+          writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+          await db().batch(writes); await advanceFrostSword(roomId); return;
+        }
         target.hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} takes 1 damage${target.hp === 0 ? " and enters Dying. Peach rescue begins in turn order." : `. Action returns to ${bot.name}.`}`);
         if (target.hp === 0) {
           await startDyingRescue(room, bot, target, players, deck, discard, log, [...writes, db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id)]); return;
@@ -1280,6 +1323,7 @@ async function roomState(code: string, token?: string) {
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
     timeline: gameTimeline(rawLog), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: me?.id === actualActionPlayerId,
     pendingAttack: pending?.kind === "attack" ? pending : null,
+    pendingFrostSword: pending?.kind === "frost_sword" ? pending : null,
     pendingGreenDragon: pending?.kind === "green_dragon" ? pending : null,
     pendingRockCleaving: pending?.kind === "rock_cleaving" ? pending : null,
     pendingDuel: pending?.kind === "duel" ? pending : null,
@@ -1623,6 +1667,30 @@ export async function POST(request: Request) {
     return json({ room: await roomState(code, token) });
   }
 
+  if (["use_frost_sword", "pass_frost_sword"].includes(action)) {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
+    if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "frost_sword" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Frost Sword decision." }, 409);
+    const target = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.targetId).first<PlayerRow>();
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Frost Sword decision has already moved on." }, 409);
+    let log = parse<string[]>(liveRoom.log_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []);
+    if (action === "use_frost_sword" && target?.alive && hasFrostSword(me) && targetableCardCount(target) > 0) {
+      await resolveFrostSword(liveRoom, pending, me, target, discard, log);
+    } else {
+      log = addLog(log, `${me.name} does not use Frost Sword. ${target?.name ?? "The target"} takes 1 damage.`);
+      const hp = Math.max(0, (target?.hp ?? 1) - 1);
+      if (target && hp === 0) {
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+        await startDyingRescue(liveRoom, me, target, rows.results ?? [], parse<Card[]>(liveRoom.deck_json, []), discard, log, [], me, pending.resumePhase);
+      } else if (target) {
+        await db.batch([db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id), db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id)]);
+        await continueAfterDying(room.id, me.id);
+      }
+    }
+    return json({ room: await roomState(code, token) });
+  }
+
   if (["respond_dodge", "take_damage"].includes(action)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
@@ -1635,6 +1703,11 @@ export async function POST(request: Request) {
       const dodge = selectedDodge as Card;
       hand = hand.filter((card) => card.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, me.name, dodge, source?.name ?? "Attack"); log = addLog(log, `${me.name} plays Dodge and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
       await finishDodgedAttack(liveRoom, source, { ...me, hand_json: JSON.stringify(hand) }, discard, log, pending.resumePhase ?? phaseAfterAttack(source), pending.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
+    } else if (source?.alive && hasFrostSword(source) && targetableCardCount(me) > 0) {
+      const frost: FrostSwordPending = { kind: "frost_sword", sourceId: source.id, targetId: me.id, actorId: source.id, resumePhase: pending.resumePhase ?? phaseAfterAttack(source), sequenceStartCardId: pending.sequenceStartCardId ?? "", reason: `Frost Sword: prevent damage and discard up to 2 cards from ${me.name}, or deal 1 damage`, deadline: nextResponseDeadline() };
+      log = addLog(log, `${source.name}'s Attack would damage ${me.name}. Frost Sword may prevent that damage and discard up to 2 of ${me.name}'s cards.`);
+      await db.batch([db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(frost), JSON.stringify(log), room.id)]);
+      return json({ room: await roomState(code, token) });
     } else {
       const hp = Math.max(0, (me.hp ?? 1) - 1);
       if (hp === 0) {

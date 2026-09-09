@@ -220,6 +220,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`SerpentSpear` \| Serpent Spear \| 181 \| Standard/);
   assert.match(officialReference, /`RockCleavingAxe` \| Rock Cleaving Axe \| 186 \| Standard/);
   assert.match(officialReference, /`SkyPiercingHalberd` \| Sky Piercing Halberd \| 188 \| Standard/);
+  assert.match(officialReference, /`FrostSword` \| Frost Sword \| 40 \| Standard/);
   assert.match(officialReference, /`RationsDepleted` \| Rations Depleted \| 199 \| Endless Legends/);
   assert.match(schema, /equipmentJson: text\("equipment_json"\)/);
   assert.match(roomApi, /hasZhugeCrossbow/);
@@ -227,6 +228,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(roomApi, /hasSerpentSpear/);
   assert.match(roomApi, /hasRockCleavingAxe/);
   assert.match(roomApi, /hasSkyPiercingHalberd/);
+  assert.match(roomApi, /hasFrostSword/);
   assert.match(roomApi, /respond_rock_cleaving/);
   assert.match(roomApi, /serpent_spear_attack/);
   assert.match(roomApi, /attackRangeFor/);
