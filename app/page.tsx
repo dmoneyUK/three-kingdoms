@@ -250,9 +250,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const sequenceEvents = [...scopedTimelineEvents, ...scopedLocalEvents].filter((event, index, all) => all.findIndex((candidate) => candidate.id === event.id || event.type === "card" && candidate.type === "card" && candidate.card.id === event.card.id) === index);
   const displayedEvent = activeEvent ?? optimisticPlay;
   const tablePresentationVisible = sequenceEvents.length > 0 || Boolean(displayedEvent && eventCards(displayedEvent).length);
-  const displayedEventPlayer = displayedEvent?.type === "card" || displayedEvent?.type === "cards" ? room.players.find((player) => publicPlayerName(player.name) === publicPlayerName(displayedEvent.player)) : actor ?? current;
   const seatCountdown = room.phase === "response" && room.actionPlayerId && responseDeadline > 0 ? { playerId: room.actionPlayerId, key: `response-${room.actionPlayerId}-${responseDeadline}`, durationMs: 0, deadline: responseDeadline, label: "Respond" }
-    : displayedEvent ? { playerId: displayedEventPlayer?.id ?? room.meId, key: displayedEvent.id, durationMs: displayedEvent.type === "card" || displayedEvent.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage, deadline: 0, label: "Next step" }
     : room.pendingHarvest?.countdownUntil ? { playerId: room.pendingHarvest.actorId, key: `harvest-${room.pendingHarvest.actorId}-${room.pendingHarvest.countdownUntil}`, durationMs: 0, deadline: room.pendingHarvest.countdownUntil, label: room.pendingHarvest.complete ? "Closing" : "Choosing" }
     : rescueDecisionReady && room.pendingDying?.deadline ? { playerId: room.actionPlayerId ?? room.meId, key: `rescue-${room.pendingDying.deadline}`, durationMs: 0, deadline: room.pendingDying.deadline, label: "Rescue" }
     : null;

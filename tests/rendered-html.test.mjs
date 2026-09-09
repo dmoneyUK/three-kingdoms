@@ -82,7 +82,6 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Discard \$\{excessCards\} selected/);
   assert.match(page, /player-played-cards/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
-  assert.match(page, /displayedEvent\.type === "card" \|\| displayedEvent\.type === "cards" \? UI_TIMING\.playedCard : UI_TIMING\.eventMessage/);
   assert.match(page, /PRIVATE DRAW/);
   assert.match(page, /ROLE REVEALED/);
   assert.match(page, /TableResolutionSequence/);
@@ -90,6 +89,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /function pendingTimelineSequence/);
   assert.match(page, /pendingGreenDragon/);
   assert.match(page, /pendingRockCleaving/);
+  assert.match(page, /room\.phase === "response" && room\.actionPlayerId && responseDeadline > 0/);
+  assert.doesNotMatch(page, /label: "Next step"/);
   assert.match(page, /Use Rock Cleaving Axe/);
   assert.match(page, /Your Attack was blocked by Dodge/);
   assert.match(page, /weapon-response-backdrop/);

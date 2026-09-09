@@ -101,6 +101,7 @@ The latest timing change expands the shared response window:
 - `RESPONSE_TIMEOUT_MS` is 10 seconds for Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows, Green Dragon Blade and Rock Cleaving Axe decisions.
 - Each new normal-response pending state receives a fresh server-created deadline. A waiting source player has no countdown; after a defender plays Dodge, the source receives a new 10-second Green Dragon Blade or Rock Cleaving Axe decision with an immediate Skip control.
 - A Rock Cleaving Axe decision has a dimmed, centre-table pop-up in addition to the footer controls, so it cannot be lost among card presentation events. It states the two-card cost and exposes both Use and Skip actions while leaving the hand and Equipment Zone selectable as payment.
+- Seat countdowns are deliberately limited to real pending decisions (response, Bumper Harvest choice, and Peach rescue). The old card-presentation `Next step` countdown was removed: it incorrectly looked like an action timer after equipment and other completed plays.
 - Every response still exposes its immediate Play or Skip action, and its visible countdown remains attached to the acting player.
 - Peach rescue intentionally keeps its independent 5-second deadline.
 - Deterministic coverage checks both an ordinary Dodge window and a Rock Cleaving Axe weapon-effect window.
