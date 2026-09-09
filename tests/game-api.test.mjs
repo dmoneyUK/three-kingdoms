@@ -578,6 +578,11 @@ test("Frost Sword offers its owner the choice to prevent Attack damage and disca
   assert.equal(damage.status, 200); assert.equal(damage.data.room.pendingFrostSword.actorId, hostPlayer.id);
   const frost = await request("use_frost_sword", { code: game.code, token: host.token });
   assert.equal(frost.status, 200); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Frost Sword prevents the Attack damage"); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 1, "Frost Sword discards two target cards");
+
+  const quick = await request("create", { quickStart: true }); const [me, bot] = quick.data.room.players;
+  setEquipment(me.id, { weapon: card("FrostSword", "quick") }); setHand(me.id, [card("Attack", "quick")], me.hp, me.maxHp); setHand(bot.id, [card("Peach", "one"), card("Peach", "two")], 1, 1); setTurn(quick.data.room.code, me.seat);
+  const botTarget = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "attack-quick", targetId: bot.id });
+  assert.equal(botTarget.status, 200); assert.equal(botTarget.data.room.pendingFrostSword.actorId, me.id, "an undefended bot target also opens the Frost Sword owner prompt");
 });
 
 test("Something Out of Nothing preserves Play Phase and reveals the stratagem without exposing drawn cards", { timeout: 30_000 }, async () => {

@@ -110,6 +110,7 @@ The latest weapon milestone added Frost Sword:
 
 - Frost Sword (official card 40) equips in the shared Weapon slot and gives its owner Attack Range 2.
 - When its Attack would deal damage, the owner receives a fresh 10-second choice: prevent that damage and discard up to two of the target's current cards, or let the one damage resolve normally.
+- Both human and bot targets now enter this authoritative Frost Sword pending state. In particular, an undefended bot target no longer takes immediate damage before the owner can see the centred prompt.
 - The current implementation deterministically takes the first available target cards across hand, equipment and Judgement Zone. A later UI milestone may let the owner select the exact cards.
 
 The preceding weapon milestone added Sky Piercing Halberd:

@@ -1954,6 +1954,10 @@ export async function POST(request: Request) {
         } else if (dodge) {
             targetHand = targetHand.filter((item) => item.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, me.name); log = addLog(log, `${target.name} plays Dodge and blocks the Attack.`);
             await finishDodgedAttack(liveRoom, { ...me, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, phaseAfterAttack(me), card.id, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
+        } else if (hasFrostSword(me) && targetableCardCount(target) > 0) {
+          const frost: FrostSwordPending = { kind: "frost_sword", sourceId: me.id, targetId: target.id, actorId: me.id, resumePhase: phaseAfterAttack(me), sequenceStartCardId: card.id, reason: `Frost Sword: prevent damage and discard up to 2 cards from ${target.name}, or deal 1 damage`, deadline: nextResponseDeadline() };
+          log = addLog(log, `${me.name}'s Attack would damage ${target.name}. Frost Sword may prevent that damage and discard up to 2 of ${target.name}'s cards.`);
+          await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(frost), JSON.stringify(discard), JSON.stringify(log), room.id)]);
         } else {
           const hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} takes 1 damage${hp === 0 ? " and enters Dying. Peach rescue begins in turn order." : `. Action returns to ${me.name}.`}`);
           if (hp === 0) {
