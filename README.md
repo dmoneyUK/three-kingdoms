@@ -5,31 +5,40 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Play: https://three-kingdoms.dai-jinge.workers.dev
 - Source: https://github.com/dmoneyUK/three-kingdoms
 - Development handover: [HANDOVER.md](HANDOVER.md)
-- Current stage: **playable four-player alpha — Standard weapon expansion with ongoing rules-engine stabilisation**
+- Roadmap: [ROADMAP.md](ROADMAP.md)
+- Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
+- Current stage: **playable four-player alpha — Standard equipment expansion with ongoing rules-engine stabilisation**
 
-The Cloudflare-hosted game is public and does not require an account. Players join a room using a room code and keep their session on their device. Refreshing the page restores the active table, and Exit now preserves a one-tap rejoin option for that saved game.
+## Source of knowledge
+
+The official **War of the Three Kingdoms (WTK) Game Card catalogue** is the primary source of truth for card names, product membership, categories and card rule meaning:
+
+- **WTK Game Card catalogue:** https://wtkgames.com/gameCard/
+
+For this project, always filter the catalogue to **Standard**. Endless Legends and Kingdom Wars cards are out of scope unless expansion development is explicitly enabled. When implementation behaviour, older project documentation, community translations or remembered rules conflict with the official WTK Standard catalogue, verify against the official catalogue and treat it as authoritative. The project's captured Standard reference is maintained in [`docs/OFFICIAL_CARD_REFERENCE.md`](docs/OFFICIAL_CARD_REFERENCE.md).
 
 ## Current Stage
 
-The project has moved beyond the initial table prototype. A complete four-player match loop now runs with one human and three bots. Turn ownership, ordered responses, death rewards and victory checks are working, human card and weapon responses use a 30-second action window while bot decisions retain a 10-second window, and the authoritative Weapon slot supports six Standard weapons plus weapon-based Attack Range, formed-Attack costs, post-Dodge and pre-damage weapon decisions. The current feature focus remains **Roadmap Stage 4 (equipment and distance modifiers)** while Stage 2 rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
+The project has moved beyond the initial table prototype. A complete four-player match loop runs with one human and three bots. Turn ownership, ordered responses, death rewards and victory checks are working. Human card and weapon responses use a 30-second action window while bot decisions retain a 10-second window.
 
-The playable alpha currently includes:
+The current feature focus is **equipment and distance modifiers** while rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
+
+The playable alpha includes:
 
 - automatic roles and hero assignment;
 - Lord bonus HP and the Zhang Fei test hero;
 - Draw, Play, Discard and Ending phases;
 - turn ownership, seat order, distance and attack range;
-- a public weapon slot with authoritative equip, replacement and defeat cleanup;
+- public equipment with authoritative equip, replacement and defeat cleanup;
 - ordered Attack, Dodge, Duel and global-card responses;
 - Peach healing and turn-ordered Dying rescue;
-- death, role reveal, defeated-hand cleanup, Rebel defeat rewards and the Lord's Loyalist-kill penalty;
+- death, role reveal, Rebel defeat rewards and the Lord's Loyalist-kill penalty;
 - automatic bot drawing, card play, responses, rescue and discard;
-- private card draws and inline, turn-ordered Peach rescue controls;
-- table-based card-resolution presentations: each played card zooms into view, settles face-up in play order before its player, remains through the complete response/effect sequence, then joins the sequence-wide discard animation when resolution concludes;
-- event history plus a detailed rule-audit trail; and
-- a focused quick-test opening hand containing every non-weapon Standard card plus Frost Sword and three Attacks for ME; other weapons remain in the deck, while every player starts equipped with one Offensive Horse (+1) and one Defensive Horse (-1), and Player 3 also retains three seeded Attacks for bot-response testing.
+- table-based card-resolution presentation;
+- event history and detailed rule-audit trail; and
+- deterministic quick-test setups for card and response-chain development.
 
-### Implemented cards
+### Implemented Standard cards
 
 - Attack
 - Dodge
@@ -51,122 +60,35 @@ The playable alpha currently includes:
 - Rock Cleaving Axe
 - Sky Piercing Halberd
 - Frost Sword
-- Fergana Steed (+1 offensive horse)
-- Shadowrunner (-1 defensive horse)
+- Fergana Steed
+- Shadowrunner
 
-### Recently stabilised
+### Remaining verified Standard cards
 
-- Production now uses GitHub and Cloudflare only. GitHub `main` is authoritative, its Actions workflow validates every release and deploys the Worker with its D1 database, and the retired ChatGPT Sites configuration has been removed.
-- Normal human card-response decisions now allow 30 seconds. Bots retain a 10-second response window and normally advance immediately. The server starts a fresh, actor-specific window every time a response card creates the next decision: for example, Dodge gets 30 seconds after Attack, then Rock Cleaving Axe gets a new 30 seconds after Dodge. Only the active responder sees the countdown; every one still supports an immediate Skip action. Peach rescue remains a separate 5-second decision.
-- On narrow portrait screens, both Frost Sword result buttons remain visible in the modal; the responsive footer-only button hiding rule no longer hides the discard choice. Frost Sword now requires its owner to choose one or two target cards before confirming the discard branch.
-- Frost Sword card selection is now shown in a bright inline panel attached to the target prompt, rather than behind the dimmed table overlay. The selected target slots remain visible until the attacker confirms the discard.
-- Steal and Burning Bridges target-card selection now use the same centered, bright prompt treatment, keeping hidden hand slots and public target zones readable while the initiating player confirms the choice.
-- Player seats now show a small online/offline presence indicator based on recent room heartbeats, making reconnect status visible during a live match.
-- Offensive Horse and Defensive Horse are now separate equipment slots. Offensive Horse increases the owner's Attack Range by 1; Defensive Horse increases incoming attack distance by 1. Quick-test matches equip both horses for every player.
-- Rock Cleaving Axe decisions now open a dimmed, centre-table pop-up when an Attack is Dodged, explaining the two-card cost and offering **Use Rock Cleaving Axe** or **Skip Axe** throughout the fresh response window. The cards behind it remain selectable as the payment.
-- Seat countdowns now represent only an actual pending player decision. Card-display timing is no longer shown as a player timeout: equipping a weapon has no countdown, an Attack moves the timer to its target for Dodge, and a Dodge moves it back to the attacker only if a weapon follow-up is available.
-- Rock Cleaving Axe is playable with Attack Range 3. After its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered 30-second human choice (10 seconds for a bot) to select exactly two cards from hand and/or the public Equipment Zone, or skip immediately. Paying the cost forces the blocked Attack's damage, may discard the Axe itself, retains the complete Attack/Dodge/Axe sequence on the table, and supports automatic bot use.
-- Sky Piercing Halberd is playable with Attack Range 4. When its owner uses their last hand card as an Attack, they may select up to three targets in range. The targets resolve the one Attack individually in table order, each receiving a fresh 30-second human Dodge-or-damage decision (10 seconds for a bot); bots use the multi-target attack when legal.
-- Frost Sword is playable with Attack Range 2. When its Attack would deal damage — including against an undefended bot — its owner gets the same centred, fresh 30-second human choice pattern as Rock Cleaving Axe (10 seconds for a bot): **Discard up to 2 cards** from the target's Hand, Equipment Zone or Judgement Zone, or **Deal 1 damage**. The attacker chooses the target cards (hidden hand slots can be selected blindly); the discard branch prevents damage, remains legal with only one eligible card, and cannot be used when the target has none.
-- Refresh and accidental Exit no longer abandon a live player session. The saved device token restores the table automatically after refresh, while Exit returns to the landing screen with a **Rejoin game** button.
-- Peach rescue no longer covers the table with a private modal. The acting rescuer selects a Peach from their normal hand and uses **Play Peach**, or advances immediately with **Skip rescue**, while the existing five-second ordered rescue window remains authoritative.
-- Burning Bridges and Steal now finish their complete Negation/counter-Negation chain before the source chooses a target card. The post-Negation choice uses the target's current hand, Equipment Zone or Judgement Zone; the initiating stratagem and every Negation remain outside discard until the final choice resolves.
-- Serpent Spear is playable with Attack Range 3. Its owner can select exactly two different hand cards to form an Attack during the Play Phase, Duel or Barbarian Invasion response; normal targeting, one-Attack-per-turn, Dodge and ordered-response rules still apply. The two payment cards remain together in the visible resolution sequence, bots can equip and use the weapon, and quick-test mode includes it.
-- Green Dragon Blade is playable with Attack Range 3. When its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered 30-second human decision (10 seconds for a bot) to play another Attack against the same target or skip. The entire repeated Attack/Dodge chain stays in one table sequence, and bots can equip and use the follow-up.
-- Equipped weapons are now rendered as face-up cards in a separate equipment rack beside each player seat instead of as text inside the player panel. The rack is ready to grow into armour and horse slots without crowding the player's identity, HP or hand count.
-- Delayed-card Negation now creates a fresh Judgement activation event. A Lightning, Overindulgence or compatibility judgement no longer reopens the original play event and pulls every intervening turn-end discard onto the table.
-- Bumper Harvest now follows the multi-target Negation rule: each affected player receives a separate Negation window, one successful Negation skips only that player's choice, later players continue normally, and any unchosen revealed card enters discard only when the complete Harvest sequence finishes.
-- Zhuge Crossbow is the first playable equipment card. It enters the owner's public Weapon slot, replaces and discards an existing weapon, remains visible after its play presentation, and removes the normal one-Attack-per-turn limit while equipped. Bots can equip and use it, and defeated equipment plus the Lord's Loyalist-kill penalty now clean up weapon cards.
-- Negation can interrupt a stratagem in seat order, supports an explicit Pass action, and can itself be cancelled by a deliberate human counter-Negation. Barbarian Invasion and Raining Arrows now open a fresh Negation window for each target, then continue to later players after one target is protected. Bots defend their own affected character but do not blindly counter another bot's Negation.
-- Overindulgence introduces the public Judgement Zone. It can be Negated before placement, cannot be duplicated on one character, reveals a judgement card at the target's next turn, and skips only the Play Phase when the result is not a Heart.
-- Lightning can be Negated before placement or judgement, cannot be duplicated on one character, deals 3 source-free thunder damage on a Spade 2–9 judgement, and otherwise transfers to the next eligible living character's Judgement Zone.
-- New games, the shuffled deck and the quick-test hand are now locked to the official WTK Standard product list. Rations Depleted is identified as Endless Legends and is excluded; its compatibility code remains dormant so earlier development states are not corrupted.
-- Bumper Harvest keeps every revealed card on one shared choice panel, requires confirmation, names the current chooser, and visibly paces every raised selection and shaded confirmation before advancing to the next player.
-- Bumper Harvest gains no longer trigger the normal private-draw overlay, so the shared panel remains visible while every later player selects and confirms.
-- Opening draws begin immediately, card plays appear on the table optimistically, and Bumper Harvest selection changes never lock the controls while their shared preview synchronises.
-- Played cards remain visible for four seconds without waiting for a slower server response, and the matching authoritative event is de-duplicated instead of replaying the same card.
-- Attack, Duel, Burning Bridges, Steal, Barbarian Invasion and Raining Arrows now retain every played response card in front of its owner until the complete sequence—including its final card movement or effect—has concluded.
-- Judgement reveals, individual discards and grouped end-of-turn discards animate to the discard pile without leaving stale cards in front of a player.
-- The table presentation cache is scoped to the latest authoritative response sequence, so cards from completed turns cannot reappear beside players when a later response begins.
-- Response countdowns now sit beside the acting player without covering their played-card row. Burning Bridges and Steal show their face-down choices near the targeted player rather than above ME's hand.
-- Hand cards now show only rank, suit, official English name and category; full private rules remain available through each card's information button.
-- Oath of the Peach Garden remains playable when nobody needs healing; it resolves without changing HP.
-- Player 3 → ME is covered by a response-and-round-transition regression test.
-- Consecutive bot rounds with Barbarian Invasion and Raining Arrows return control to ME correctly.
-- Dying rescue resumes the interrupted global-card response at the correct player.
-- A role victory ends an unfinished global response chain immediately.
+The verified remaining cards and implementation order are maintained in [ROADMAP.md](ROADMAP.md). The current verified remainder is:
+
+1. Nio Shield
+2. Eight Trigrams Formation
+3. Blue Steel Sword
+4. Yin-Yang Swords
+5. Kirin Bow
+6. Borrowed Sword
+
+The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence over older roadmap/card lists.
 
 ## Roadmap
 
-### Progress summary
+See [ROADMAP.md](ROADMAP.md) for the active implementation roadmap, known rule discrepancies and per-card implementation requirements.
 
-| Stage | Status | Position |
-| --- | --- | --- |
-| 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
-| 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; every normal response transition resets a tested server-owned 30-second human or 10-second bot timer for the next actor, target-scoped Negation covers global cards and Bumper Harvest, and targeted stratagems use a post-Negation current-card choice state. Shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the general card set | Standard core expanding with equipment | 22 Standard cards are playable, including six weapons and both horses. Remaining Standard cards are listed below. |
-| 4. Equipment and distance modifiers | In progress — equipment expansion | The public face-up Equipment rack, authoritative Weapon slot, both horse modifiers and six implemented weapons are playable; armour, remaining weapons and treasure remain. |
-| 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
-| 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
-| 7. Product polish | Ongoing alongside rules work | Mobile sequence layout, countdown placement, target-card selection and card information are improved; sound, invitations and saved history remain planned. |
+The broad stages are:
 
-### Next milestone
-
-Complete the remaining WTK Standard catalogue cards, beginning with armour and
-the remaining weapons, while keeping each new card covered by deterministic
-quick-test setup and response-chain tests.
-
-Add the remaining Standard equipment in catalogue order: armour, weapons, and treasure. The completed horse milestone added Fergana Steed (+1 offensive distance) and Shadowrunner (-1 defensive distance) to every quick-test player.
-
-### 1. Stabilise the turn loop — mostly complete, ongoing
-
-- Add targeted regressions whenever manual testing finds a new turn or response defect.
-- Continue strengthening state invariants as new response-chain cards are introduced.
-
-### 2. Strengthen the general rules engine — in progress
-
-- Centralise turn ownership, phases and pending responses.
-- Extend the state checks that reject invalid ownership and pending-action combinations.
-- Expand deterministic tests for damage, rescue, death and victory transitions.
-- Continue extracting reusable stratagem, Negation and judgement helpers from the single-card delayed transition introduced for Lightning.
-
-### 3. Complete the general card set — Standard core expanding with equipment
-
-- Keep the playable deck filtered to WTK Standard; expansion cards remain deferred.
-- Continue adding remaining Standard cards one at a time as their equipment dependencies become available.
-- Keep every non-weapon card plus the current tested weapon in ME's focused quick-test opening hand, return other weapons to the deck, and seed required bot cards, including Player 3's three Attacks.
-- Add equipment-dependent Standard cards only after their required slots and modifiers are authoritative.
-- Classic WTK Standard cards still awaiting implementation: Nio Shield, Eight Trigrams Formation, Borrowed Sword, Kirin Bow, Six Swords of Wu, Two-bladed Trident, Yin-Yang Swords, Alliance, Rest and Reorganization, and Know your Enemy. Cards from Endless Legends or Kingdom Wars are out of scope.
-
-### 4. Add equipment and distance modifiers — current feature focus
-
-- Weapon slot foundation and Zhuge Crossbow — complete.
-- Authoritative Attack Range and Green Dragon Blade — complete.
-- Serpent Spear two-card formed Attack across Play Phase, Duel and Barbarian Invasion — complete.
-- Rock Cleaving Axe post-Dodge two-card decision and forced Attack damage — complete.
-- Separate face-up equipment rack beside every player seat — complete and ready for additional equipment slots.
-- Sky Piercing Halberd final-hand multi-target Attack — complete; continue through the remaining Standard weapons.
-- Frost Sword damage-replacement decision — complete; continue through the remaining Standard weapons.
-- Add Borrowed Sword after the weapon set and weapon interactions are mature.
-- Armour effects.
-- Offensive and defensive horses.
-
-### 5. Complete match rules
-
-- Thoroughly test Lord, Loyalist, Rebel and Traitor victory conditions.
-- Extend the completed standard death rewards and penalties when equipment and judgement zones are introduced.
-- Extend the new same-device rejoin path into explicit disconnect indicators and room-cleanup behaviour.
-
-### 6. Add hero-specific abilities
-
-Hero details are intentionally deferred until the shared rules and cards are stable. Abilities will then be added and tested hero by hero.
-
-### 7. Product polish
-
-- Continue refining mobile spacing, animations and accessibility after each new response type.
-- Add optional sound controls.
-- Improve game setup and friend invitations.
-- Add optional saved match history and player statistics.
+1. Stabilise the turn loop.
+2. Strengthen the general rules engine.
+3. Complete the verified WTK Standard card set.
+4. Complete equipment and distance modifiers.
+5. Complete match rules and edge cases.
+6. Add hero-specific abilities.
+7. Continue product polish.
 
 ## Development
 
@@ -179,15 +101,13 @@ npm test
 npm run lint
 ```
 
-The application uses React, TypeScript, vinext, Cloudflare Workers and D1. GitHub `main` is the authoritative source. A push to `main` runs lint and the full test suite in GitHub Actions, applies remote D1 migrations, builds the Worker and deploys it to Cloudflare. The workflow requires the repository's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
+The application uses React, TypeScript, vinext, Cloudflare Workers and D1. GitHub `main` is the authoritative source. A push to `main` runs lint and the full test suite in GitHub Actions, applies remote D1 migrations, builds the Worker and deploys it to Cloudflare.
 
 ## Contributing
 
-The repository is currently private. To contribute:
-
-1. Ask the repository owner to add your GitHub account as a collaborator.
-2. Create a feature or bug-fix branch.
+1. Create a feature or bug-fix branch.
+2. Keep card names and rules aligned with the official WTK Standard catalogue and `docs/OFFICIAL_CARD_REFERENCE.md`.
 3. Run the tests and lint checks.
 4. Open a pull request into `main`.
 
-Please keep card names and rules aligned with the official English reference recorded in `docs/OFFICIAL_CARD_REFERENCE.md`. Do not add official card artwork without confirming usage rights.
+Do not add official card artwork, card scans, logos, frames or other YOKA visual assets without confirming usage rights. Create original visual assets for the playable site.
