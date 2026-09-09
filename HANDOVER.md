@@ -45,7 +45,7 @@ This is a playable four-player alpha. The quick-test game starts immediately wit
 - random roles and heroes, except `ME` uses Zhang Fei for testing;
 - Lord bonus HP;
 - bots at 1 HP in quick-test mode; and
-- every non-weapon Standard card plus Frost Sword and three Attacks in `ME`'s opening hand; other weapons remain in the deck, every player starts with Offensive Horse (+1) and Defensive Horse (-1) equipped, and Player 3 also begins with three Attacks plus a Negation for bot-response testing.
+- every non-weapon Standard card plus Frost Sword and three Attacks in `ME`'s opening hand; other weapons remain in the deck, every player starts with Fergana Steed (+1) and Shadowrunner (-1) equipped, and Player 3 also begins with three Attacks plus a Negation for bot-response testing.
 
 Implemented shared rules include:
 
@@ -99,6 +99,8 @@ Steal and Burning Bridges now present their post-Negation target-card picker as 
 Player presence is now surfaced per seat. Authenticated room polling refreshes `connected_at`; bots are always online, and human seats are marked offline after 15 seconds without a heartbeat. This is informational only and does not remove a player or alter turn ownership.
 
 Horse equipment is now authoritative in the two dedicated equipment slots. `attackRangeFor` includes the owner's Offensive Horse bonus, while `attackDistance` applies a target's Defensive Horse penalty to Attack range checks. Quick-test setup removes horse cards from the draw/hand pools and equips both horses for every player.
+
+The official catalogue audit confirms two Standard horses (Fergana Steed and Shadowrunner). Remaining Standard work is armour (Nio Shield, Eight Trigrams Formation, Silver Lion Helmet, Rattan Armor), weapons (Kirin Bow, Six Swords of Wu, Two-bladed Trident, Yin-Yang Swords, Blue Steel Sword, Feathered Fan), treasure (Wooden Cart), and general cards (Alliance, Rest and Reorganization, Know your Enemy, Borrowed Sword, Flame Tactic and Fire Attack).
 
 The production migration is now complete in the project configuration:
 

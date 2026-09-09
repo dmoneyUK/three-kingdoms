@@ -51,6 +51,8 @@ The playable alpha currently includes:
 - Rock Cleaving Axe
 - Sky Piercing Halberd
 - Frost Sword
+- Fergana Steed (+1 offensive horse)
+- Shadowrunner (-1 defensive horse)
 
 ### Recently stabilised
 
@@ -102,15 +104,19 @@ The playable alpha currently includes:
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; every normal response transition resets a tested server-owned 30-second human or 10-second bot timer for the next actor, target-scoped Negation covers global cards and Bumper Harvest, and targeted stratagems use a post-Negation current-card choice state. Shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the general card set | Standard core expanding with equipment | 20 Standard cards are playable, including six weapons. Remaining Standard weapons now precede Borrowed Sword. |
-| 4. Equipment and distance modifiers | In progress — weapon expansion | The public face-up Equipment rack, authoritative Weapon slot and Attack Range, Zhuge Crossbow, Green Dragon Blade, Serpent Spear, Rock Cleaving Axe, Sky Piercing Halberd and Frost Sword are playable; more weapons, armour and horses remain. |
+| 3. Complete the general card set | Standard core expanding with equipment | 22 Standard cards are playable, including six weapons and both horses. Remaining Standard cards are listed below. |
+| 4. Equipment and distance modifiers | In progress — equipment expansion | The public face-up Equipment rack, authoritative Weapon slot, both horse modifiers and six implemented weapons are playable; armour, remaining weapons and treasure remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
 | 7. Product polish | Ongoing alongside rules work | Mobile sequence layout, countdown placement, target-card selection and card information are improved; sound, invitations and saved history remain planned. |
 
 ### Next milestone
 
-Add the next remaining Standard weapon, then continue through the weapon set before **Borrowed Sword**. The completed Frost Sword milestone added Attack Range 2 and a timed owner choice to prevent Attack damage in return for discarding up to two target cards.
+Complete the remaining WTK Standard catalogue cards, beginning with armour and
+the remaining weapons, while keeping each new card covered by deterministic
+quick-test setup and response-chain tests.
+
+Add the remaining Standard equipment in catalogue order: armour, weapons, and treasure. The completed horse milestone added Fergana Steed (+1 offensive distance) and Shadowrunner (-1 defensive distance) to every quick-test player.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 
@@ -130,6 +136,7 @@ Add the next remaining Standard weapon, then continue through the weapon set bef
 - Continue adding remaining Standard cards one at a time as their equipment dependencies become available.
 - Keep every non-weapon card plus the current tested weapon in ME's focused quick-test opening hand, return other weapons to the deck, and seed required bot cards, including Player 3's three Attacks.
 - Add equipment-dependent Standard cards only after their required slots and modifiers are authoritative.
+- Remaining Standard cards from the official catalogue: Nio Shield, Eight Trigrams Formation, Borrowed Sword, Kirin Bow, Six Swords of Wu, Two-bladed Trident, Yin-Yang Swords, Blue Steel Sword, Wooden Cart, Flame Tactic, Fire Attack, Feathered Fan, Silver Lion Helmet and Rattan Armor. Alliance, Rest and Reorganization and Know your Enemy are also catalogued Standard cards awaiting implementation.
 
 ### 4. Add equipment and distance modifiers — current feature focus
 

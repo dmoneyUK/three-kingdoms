@@ -410,7 +410,7 @@ test("Zhuge Crossbow equips, replaces, enables repeated Attacks, and is used by 
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 12 }, (_, index) => card("Dodge", `crossbow-bot-draw-${index}`))))}, discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
   await request("end_turn", { code: quick.data.room.code, token: quick.data.token });
   const botRound = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.equal(botRound.players.find((player) => player.id === playerOne.id).equipmentCards[0].kind, "ZhugeCrossbow");
+  assert.ok(botRound.players.find((player) => player.id === playerOne.id).equipmentCards.some((equipment) => equipment.kind === "ZhugeCrossbow"));
   assert.ok(botRound.log.some((entry) => /Player 1 equips Zhuge Crossbow/.test(entry)));
 });
 
