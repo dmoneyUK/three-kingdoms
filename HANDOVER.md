@@ -90,7 +90,7 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 
 ## Recent interaction work
 
-The latest Frost Sword correction keeps the portrait modal's two result choices visible and makes the discard branch attacker-controlled. Selecting **Choose cards to discard** exposes the target's hidden hand slots and public equipment cards; the attacker confirms one or two distinct cards via `cardKeys`. The API validates those selections before preventing damage and discarding them. The target does not choose, and no selection is accepted when the target has no eligible hand/equipment cards. The quick-test ME hand now explicitly includes three Attacks.
+The latest Frost Sword correction keeps the portrait modal's two result choices visible and makes the discard branch attacker-controlled. Selecting **Choose cards to discard** exposes the target's hidden hand slots and public equipment cards; the attacker confirms one or two distinct cards via `cardKeys`. The API validates those selections before preventing damage and discarding them. Judgement Zone cards are never eligible. The target does not choose, and no selection is accepted when the target has no eligible hand/equipment cards. The quick-test ME hand now explicitly includes three Attacks.
 
 The Frost Sword selector is rendered inside the bright response prompt and names the attacked player, so portrait users no longer have to interact with a shadowed picker behind the modal. The selection remains staged until the attacker presses the discard confirmation.
 
@@ -100,7 +100,7 @@ Player presence is now surfaced per seat. Authenticated room polling refreshes `
 
 Horse equipment is now authoritative in the two dedicated equipment slots. `attackRangeFor` includes the owner's Offensive Horse bonus, while `attackDistance` applies a target's Defensive Horse penalty to Attack range checks. Quick-test setup removes horse cards from the draw/hand pools and equips both horses for every player.
 
-The official catalogue audit confirms two classic Standard horses (Fergana Steed and Shadowrunner). Remaining classic Standard work is armour (Nio Shield, Eight Trigrams Formation), weapons (Kirin Bow, Six Swords of Wu, Two-bladed Trident, Yin-Yang Swords), and general cards (Alliance, Rest and Reorganization, Know your Enemy and Borrowed Sword). Kingdom Wars and Endless Legends cards remain out of scope.
+The verified WTK Standard catalogue contains 28 active cards. Twenty-two are complete; remaining work is armour (Nio Shield, Eight Trigrams Formation), weapons (Blue Steel Sword, Yin-Yang Swords, Kirin Bow), and Borrowed Sword. The active, dependency-ordered list is maintained in `ROADMAP.md`; do not reintroduce older unverified cards such as Six Swords of Wu, Two-bladed Trident, Alliance, Rest and Reorganization, or Know your Enemy. Kingdom Wars and Endless Legends cards remain out of scope.
 
 The production migration is now complete in the project configuration:
 
@@ -111,7 +111,7 @@ The production migration is now complete in the project configuration:
 The latest timing change expands the shared response window:
 
 - Human response decisions are 30 seconds for Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows and weapon effects. Bots retain a 10-second window and normally advance immediately.
-- The Frost Sword response modal keeps both result buttons visible on narrow portrait screens. Its discard branch is currently resolved deterministically by the server using the first up-to-two eligible target cards; it does not yet ask the target player to choose.
+- The Frost Sword response modal keeps both result buttons visible on narrow portrait screens. Its attacker-controlled discard branch shows the target's eligible hidden Hand slots and public Equipment cards, then requires the attacker to confirm one or two selections. Judgement cards are deliberately absent.
 - Each new normal-response pending state receives a fresh server-created deadline. A waiting source player has no countdown; after a defender plays Dodge, the source receives a new 30-second Green Dragon Blade or Rock Cleaving Axe decision with an immediate Skip control.
 - A Rock Cleaving Axe decision has a dimmed, centre-table pop-up in addition to the footer controls, so it cannot be lost among card presentation events. It states the two-card cost and exposes both Use and Skip actions while leaving the hand and Equipment Zone selectable as payment.
 - Seat countdowns are deliberately limited to real pending decisions (response, Bumper Harvest choice, and Peach rescue). The old card-presentation `Next step` countdown was removed: it incorrectly looked like an action timer after equipment and other completed plays.
@@ -124,8 +124,8 @@ The latest weapon milestone added Frost Sword:
 - Frost Sword (official card 40) equips in the shared Weapon slot and gives its owner Attack Range 2.
 - When its Attack would deal damage, the owner receives a fresh 30-second human choice (10 seconds for a bot): prevent that damage and discard up to two of the target's current cards, or let the one damage resolve normally.
 - Both human and bot targets now enter this authoritative Frost Sword pending state. In particular, an undefended bot target no longer takes immediate damage before the owner can see the centred prompt.
-- The centered panel always states both choices: **Discard up to 2 cards** or **Deal 1 damage**. One available card is enough for the discard branch, and Frost Sword's automatic deadline now passes to normal damage rather than leaving a human owner in a stale response state. Its discard resolver includes hand, Equipment Zone and Judgement Zone cards.
-- The current implementation deterministically takes the first available target cards across hand, equipment and Judgement Zone. A later UI milestone may let the owner select the exact cards.
+- The centered panel always states both choices: **Discard up to 2 cards** or **Deal 1 damage**. One available card is enough for the discard branch, and Frost Sword's automatic deadline now passes to normal damage rather than leaving a human owner in a stale response state. Its discard resolver includes only Hand and Equipment Zone cards; a Judgement Zone card cannot be selected.
+- The owner selects the exact one or two cards from the target's Hand or Equipment Zone. Judgement Zone cards are never eligible, matching the verified Standard wording.
 
 The preceding weapon milestone added Sky Piercing Halberd:
 
@@ -389,7 +389,7 @@ Recommended next sequence:
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
 - The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards.
-- The Equipment Zone currently exposes only the Weapon slot, rendered as a face-up card in the separate rack beside its owner. Zhuge Crossbow, Green Dragon Blade, Serpent Spear, Rock Cleaving Axe, Sky Piercing Halberd and Frost Sword are playable, and equipped weapon range is authoritative for Attack targeting. Frost Sword currently discards the first up-to-two current target cards automatically after its owner chooses the effect; exact card selection is a future polish task. Sky Piercing Halberd resolves its final-hand multi-target Attack as a held sequence; its specialised response path does not yet combine with other post-Dodge weapon effects. Rock Cleaving Axe may discard cards from hand and/or the Equipment Zone, including itself, after Dodge. Armour and horse slots can extend the same rack. Burning Bridges and Steal can already select the current Weapon or a delayed card after their Negation chain.
+- The Equipment Zone has Weapon, Offensive Mount and Defensive Mount slots, rendered as face-up cards in the rack beside each owner. Zhuge Crossbow, Green Dragon Blade, Serpent Spear, Rock Cleaving Axe, Sky Piercing Halberd and Frost Sword are playable, and equipped weapon range is authoritative for Attack targeting. Frost Sword lets its owner choose one or two current target Hand or Equipment cards after choosing the damage-replacement branch; Judgement Zone cards are never eligible. Sky Piercing Halberd resolves its final-hand multi-target Attack as a held sequence; its specialised response path does not yet combine with other post-Dodge weapon effects. Rock Cleaving Axe may discard cards from hand and/or the Equipment Zone, including itself, after Dodge. Armour slots are the next equipment foundation. Burning Bridges and Steal can already select the current Weapon or a delayed card after their Negation chain.
 - Bumper Harvest Negation is target-specific: a cancelled player does not choose, later players continue, and any leftover revealed card is discarded with the held Harvest/Negation sequence at completion.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device. Refresh restores automatically and Exit offers a one-tap same-device rejoin; cross-device account recovery is not implemented.

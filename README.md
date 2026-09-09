@@ -76,9 +76,13 @@ The verified remaining cards and implementation order are maintained in [ROADMAP
 
 The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence over older roadmap/card lists.
 
+### Current stage and next milestone
+
+The shared turn and response engine is stable enough to continue the verified Standard card set. Frost Sword now correctly replaces damage by selecting only the target's Hand or Equipment cards; their Judgement Zone is protected. The next milestone is the shared Armor slot, beginning with Nio Shield, then Eight Trigrams Formation and the armour-bypassing Blue Steel Sword.
+
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for the active implementation roadmap, known rule discrepancies and per-card implementation requirements.
+See [ROADMAP.md](ROADMAP.md) for the active implementation roadmap and per-card implementation requirements.
 
 The broad stages are:
 

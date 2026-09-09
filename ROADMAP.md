@@ -16,16 +16,9 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 
 ## Immediate rules correction
 
-### Frost Sword
+### Frost Sword correction — complete
 
-The verified Standard wording allows Frost Sword to discard cards only from the target's **hand or Equipment zone**. The current implementation also allows the **Judgement Zone**, which is too permissive.
-
-Before treating Frost Sword as fully complete:
-
-- remove Judgement Zone cards from eligible Frost Sword selections;
-- keep the existing damage-negation choice and attacker-selected hand/equipment cards;
-- retain the current behaviour that the discard branch is unavailable when the target has no eligible cards;
-- add a regression test proving a Judgement card cannot be selected by Frost Sword.
+Frost Sword now follows the verified Standard wording: its damage-replacement branch can select only cards in the target's **Hand or Equipment Zone**, never their **Judgement Zone**. The attacker still chooses one or two eligible cards, and the branch is unavailable when the target has no eligible cards. A regression test covers a target whose only card is in their Judgement Zone.
 
 ## Remaining verified WTK Standard cards
 
@@ -132,7 +125,7 @@ The following 22 cards are currently treated as implemented:
 - Serpent Spear
 - Rock Cleaving Axe
 - Sky Piercing Halberd
-- Frost Sword (subject to the Judgement-zone correction above)
+- Frost Sword
 - Fergana Steed
 - Shadowrunner
 
