@@ -78,6 +78,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /countdownUntil/);
   assert.match(styles, /\.play-table>\.visible-countdown\{z-index:20\}/);
   assert.match(styles, /\.play-seat > \.visible-countdown/);
+  assert.match(styles, /\.weapon-response-prompt \.primary\{display:inline-block\}/);
   assert.match(page, /seatCountdown\?\.playerId === player\.id/);
   assert.match(page, /Discard \$\{excessCards\} selected/);
   assert.match(page, /player-played-cards/);

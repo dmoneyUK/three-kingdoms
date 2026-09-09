@@ -99,6 +99,7 @@ The production migration is now complete in the project configuration:
 The latest timing change expands the shared response window:
 
 - Human response decisions are 30 seconds for Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows and weapon effects. Bots retain a 10-second window and normally advance immediately.
+- The Frost Sword response modal keeps both result buttons visible on narrow portrait screens. Its discard branch is currently resolved deterministically by the server using the first up-to-two eligible target cards; it does not yet ask the target player to choose.
 - Each new normal-response pending state receives a fresh server-created deadline. A waiting source player has no countdown; after a defender plays Dodge, the source receives a new 30-second Green Dragon Blade or Rock Cleaving Axe decision with an immediate Skip control.
 - A Rock Cleaving Axe decision has a dimmed, centre-table pop-up in addition to the footer controls, so it cannot be lost among card presentation events. It states the two-card cost and exposes both Use and Skip actions while leaving the hand and Equipment Zone selectable as payment.
 - Seat countdowns are deliberately limited to real pending decisions (response, Bumper Harvest choice, and Peach rescue). The old card-presentation `Next step` countdown was removed: it incorrectly looked like an action timer after equipment and other completed plays.
