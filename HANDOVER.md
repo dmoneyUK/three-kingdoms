@@ -16,7 +16,7 @@ Product decisions already made:
 - The player-facing name for the internal `Renegade` role is **Traitor**.
 - The public game must remain playable without GitHub or ChatGPT sign-in.
 - Mobile clarity and visible action order are important: always show the turn owner, phase, acting player, card, source and target.
-- Public played/revealed cards currently remain for 4 seconds; event messages and private draws remain for 3 seconds. Normal card and weapon-effect responses allow 10 seconds, while Dying rescue decisions retain their separate 5-second action window.
+- Public played/revealed cards currently remain for 4 seconds; event messages and private draws remain for 3 seconds. Human card and weapon-effect responses allow 30 seconds, bot responses allow 10 seconds, and Dying rescue decisions retain their separate 5-second action window.
 
 ## Repositories and live service
 
@@ -45,7 +45,7 @@ This is a playable four-player alpha. The quick-test game starts immediately wit
 - random roles and heroes, except `ME` uses Zhang Fei for testing;
 - Lord bonus HP;
 - bots at 1 HP in quick-test mode; and
-- one of every implemented WTK Standard card in `ME`'s opening hand.
+- every non-weapon Standard card plus Frost Sword in `ME`'s opening hand; other weapons remain in the deck and Player 3 begins with three Attacks plus a Negation.
 
 Implemented shared rules include:
 
@@ -98,8 +98,8 @@ The production migration is now complete in the project configuration:
 
 The latest timing change expands the shared response window:
 
-- `RESPONSE_TIMEOUT_MS` is 10 seconds for Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows, Green Dragon Blade and Rock Cleaving Axe decisions.
-- Each new normal-response pending state receives a fresh server-created deadline. A waiting source player has no countdown; after a defender plays Dodge, the source receives a new 10-second Green Dragon Blade or Rock Cleaving Axe decision with an immediate Skip control.
+- Human response decisions are 30 seconds for Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows and weapon effects. Bots retain a 10-second window and normally advance immediately.
+- Each new normal-response pending state receives a fresh server-created deadline. A waiting source player has no countdown; after a defender plays Dodge, the source receives a new 30-second Green Dragon Blade or Rock Cleaving Axe decision with an immediate Skip control.
 - A Rock Cleaving Axe decision has a dimmed, centre-table pop-up in addition to the footer controls, so it cannot be lost among card presentation events. It states the two-card cost and exposes both Use and Skip actions while leaving the hand and Equipment Zone selectable as payment.
 - Seat countdowns are deliberately limited to real pending decisions (response, Bumper Harvest choice, and Peach rescue). The old card-presentation `Next step` countdown was removed: it incorrectly looked like an action timer after equipment and other completed plays.
 - Every response still exposes its immediate Play or Skip action, and its visible countdown remains attached to the acting player.
@@ -109,7 +109,7 @@ The latest timing change expands the shared response window:
 The latest weapon milestone added Frost Sword:
 
 - Frost Sword (official card 40) equips in the shared Weapon slot and gives its owner Attack Range 2.
-- When its Attack would deal damage, the owner receives a fresh 10-second choice: prevent that damage and discard up to two of the target's current cards, or let the one damage resolve normally.
+- When its Attack would deal damage, the owner receives a fresh 30-second human choice (10 seconds for a bot): prevent that damage and discard up to two of the target's current cards, or let the one damage resolve normally.
 - Both human and bot targets now enter this authoritative Frost Sword pending state. In particular, an undefended bot target no longer takes immediate damage before the owner can see the centred prompt.
 - The centered panel always states both choices: **Discard up to 2 cards** or **Deal 1 damage**. One available card is enough for the discard branch, and Frost Sword's automatic deadline now passes to normal damage rather than leaving a human owner in a stale response state. Its discard resolver includes hand, Equipment Zone and Judgement Zone cards.
 - The current implementation deterministically takes the first available target cards across hand, equipment and Judgement Zone. A later UI milestone may let the owner select the exact cards.
@@ -117,14 +117,14 @@ The latest weapon milestone added Frost Sword:
 The preceding weapon milestone added Sky Piercing Halberd:
 
 - Sky Piercing Halberd (official card 188) equips in the shared Weapon slot and gives its owner Attack Range 4.
-- When the owner uses their final hand card as an Attack, they may select one to three living opponents within range. Multiple selected targets resolve in table order, one at a time, with a fresh 10-second Dodge-or-damage decision for each acting target.
+- When the owner uses their final hand card as an Attack, they may select one to three living opponents within range. Multiple selected targets resolve in table order, one at a time, with a fresh 30-second human Dodge-or-damage decision (10 seconds for a bot) for each acting target.
 - The multi-target Attack is not a stratagem: it does not open a Negation window. It retains the one Attack card as a single visible sequence until every chosen target has resolved.
 - Bots select two legal targets when their last hand card is Attack, and deterministic coverage verifies range, final-hand restriction, ordered ownership, Dodge, damage, completion and bot use.
 
 The preceding weapon milestone added Rock Cleaving Axe:
 
 - Rock Cleaving Axe (official card 186) equips in the shared Weapon slot and gives its owner Attack Range 3.
-- When its owner's Attack is blocked by Dodge, the attacker receives an ordered 10-second decision to select exactly two different cards or skip immediately.
+- When its owner's Attack is blocked by Dodge, the attacker receives an ordered 30-second human decision (10 seconds for a bot) to select exactly two different cards or skip immediately.
 - The cost accepts any combination of hand and equipped cards, including the Rock Cleaving Axe itself. A valid payment forces the blocked Attack's 1 damage and continues into normal Dying rescue when lethal.
 - Attack, Dodge and both revealed payment cards retain the original Attack sequence identifier and stay together on the table until the decision and damage finish.
 - Bots automatically use a legal two-card payment. Quick-test mode gives `ME` one copy, and deterministic coverage protects range, response ownership, timer, duplicate rejection, skip, self-discard, forced damage, presentation and bot use.
@@ -311,7 +311,7 @@ Follow this checklist:
 1. Verify the official English name, category, card ID and rule meaning.
 2. Confirm the card belongs to the official Standard product filter, then add a stable `CardKind` in `game/model.ts`.
 3. Add its definition and explicit deck count in `game/cards.ts`.
-4. Ensure quick-test mode gives `ME` one copy in the opening hand. This happens automatically for kinds in `DECK_CARD_KINDS`.
+4. Ensure focused quick-test mode gives `ME` every non-weapon card plus only the current tested weapon; other weapons stay in the deck. Seed Player 3 with three Attacks and keep required bot response cards.
 5. If it is a defence/response card, ensure bots can receive and legally play it in tests.
 6. Add authoritative validation and resolution to the server.
 7. Reuse or extract ordered pending-response logic rather than allowing simultaneous responders.
