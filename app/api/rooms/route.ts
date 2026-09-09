@@ -76,7 +76,7 @@ const HUMAN_RESPONSE_TIMEOUT_MS = 30_000;
 const BOT_RESPONSE_TIMEOUT_MS = 10_000;
 const nextResponseDeadline = (actor?: PlayerRow | null) => Date.now() + (isBotPlayer(actor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS);
 const QUICK_TEST_WEAPON: CardKind = "FrostSword";
-const QUICK_TEST_OPENING_KINDS = DECK_CARD_KINDS.filter((kind) => cardDefinition(kind).equipmentSlot !== "weapon" || kind === QUICK_TEST_WEAPON);
+const QUICK_TEST_OPENING_KINDS = DECK_CARD_KINDS.filter((kind) => !cardDefinition(kind).equipmentSlot || kind === QUICK_TEST_WEAPON);
 const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_green_dragon", "pass_green_dragon", "respond_rock_cleaving", "pass_rock_cleaving", "use_frost_sword", "pass_frost_sword", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "respond_negation", "pass_negation", "preview_harvest", "choose_harvest", "choose_target_card", "start_response_timer", "start_rescue_timer", "give_peach", "skip_rescue"]);
 
 async function setup() {
@@ -118,7 +118,10 @@ function equipmentZone(player?: PlayerRow | null) { return parse<EquipmentZone>(
 function equipmentCards(player?: PlayerRow | null) { return Object.values(equipmentZone(player)).filter((card): card is Card => Boolean(card)); }
 function targetableCardCount(player?: PlayerRow | null) { return parse<Card[]>(player?.hand_json ?? null, []).length + equipmentCards(player).length + parse<Card[]>(player?.judgement_json ?? null, []).length; }
 function weaponCard(player?: PlayerRow | null) { return equipmentZone(player).weapon; }
-function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1; }
+function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return (weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1) + (hasOffensiveHorse(player) ? 1 : 0); }
+function hasOffensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).offensiveHorse); }
+function hasDefensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).defensiveHorse); }
+function attackDistance(players: PlayerRow[], sourceId: string, targetId: string) { const target = players.find((player) => player.id === targetId); return distanceBetween(players, sourceId, targetId) + (hasDefensiveHorse(target) ? 1 : 0); }
 function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "ZhugeCrossbow"; }
 function hasGreenDragonBlade(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "GreenDragonBlade"; }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
@@ -306,7 +309,8 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   const quickPlayers = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const quickRoom = await db().prepare("SELECT deck_json FROM rooms WHERE id = ?").bind(roomId).first<Pick<RoomRow, "deck_json">>();
   const bots = (quickPlayers.results ?? []).filter((player) => player.id !== hostPlayerId);
-  const quickDeck = [...parse<Card[]>(quickRoom?.deck_json ?? null, []), ...bots.flatMap((player) => parse<Card[]>(player.hand_json, []))];
+  const quickDeck = [...parse<Card[]>(quickRoom?.deck_json ?? null, []), ...bots.flatMap((player) => parse<Card[]>(player.hand_json, []))].filter((card) => card.kind !== "OffensiveHorse" && card.kind !== "DefensiveHorse");
+  const starterEquipment = (playerId: string) => JSON.stringify({ offensiveHorse: { id: `quick-offensive-${playerId}`, kind: "OffensiveHorse", suit: "♣", rank: "5" }, defensiveHorse: { id: `quick-defensive-${playerId}`, kind: "DefensiveHorse", suit: "♠", rank: "5" } } satisfies EquipmentZone);
   const playerThreeAttacks: Card[] = [];
   while (playerThreeAttacks.length < 3) { const index = quickDeck.findIndex((card) => isAttackCard(card)); if (index < 0) break; playerThreeAttacks.push(...quickDeck.splice(index, 1)); }
   const takeFocusedBotCard = () => {
@@ -315,6 +319,7 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     return quickDeck.splice(index, 1)[0];
   };
   await db().batch([
+    ...(quickPlayers.results ?? []).map((player) => db().prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(starterEquipment(player.id), player.id)),
     ...bots.map((player, index) => {
     const testNegation: Card = { id: `quick-negation-${crypto.randomUUID()}`, kind: "Negation", suit: (["♣", "♠", "♦"] as const)[index % 3], rank: ["Q", "K", "J"][index % 3] };
     const nextHand = player.seat === 3 ? [testNegation, ...playerThreeAttacks] : [testNegation, takeFocusedBotCard(), takeFocusedBotCard(), takeFocusedBotCard()];
@@ -1260,10 +1265,10 @@ async function runBots(roomId: string) {
     const attack = hand.find(isAttackCard);
     const serpentCards = attack ? [] : botSerpentSpearCards(bot, hand);
     const attackCards = attack ? [attack] : serpentCards;
-    const targets = players.filter((player) => player.alive && player.id !== bot.id && distanceBetween(players, bot.id, player.id) <= attackRangeFor(bot)).sort((a, b) => (a.hp ?? 99) - (b.hp ?? 99));
+    const targets = players.filter((player) => player.alive && player.id !== bot.id && attackDistance(players, bot.id, player.id) <= attackRangeFor(bot)).sort((a, b) => (a.hp ?? 99) - (b.hp ?? 99));
     const target = targets[0];
     if (attackCards.length && target) {
-      const halberdTargets = attack && hasSkyPiercingHalberd(bot) && hand.length === 1 ? playersInTurnOrder(players, bot.seat).filter((player) => player.alive && player.id !== bot.id && distanceBetween(players, bot.id, player.id) <= attackRangeFor(bot)).slice(0, 2) : [];
+      const halberdTargets = attack && hasSkyPiercingHalberd(bot) && hand.length === 1 ? playersInTurnOrder(players, bot.seat).filter((player) => player.alive && player.id !== bot.id && attackDistance(players, bot.id, player.id) <= attackRangeFor(bot)).slice(0, 2) : [];
       const attackIds = new Set(attackCards.map((card) => card.id));
       const sequenceStartCardId = attackCards[0].id;
       hand = hand.filter((card) => !attackIds.has(card.id));
@@ -1835,7 +1840,7 @@ export async function POST(request: Request) {
       const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
       if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent as the target." }, 400);
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
-      if (distanceBetween(players, me.id, target.id) > attackRangeFor(me)) return json({ error: `That opponent is out of range. Your current Attack Range is ${attackRangeFor(me)}.` }, 409);
+      if (attackDistance(players, me.id, target.id) > attackRangeFor(me)) return json({ error: `That opponent is out of range. Your current Attack Range is ${attackRangeFor(me)}.` }, 409);
       if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
       const materialIds = new Set(materials.map((item) => item.id)); hand = hand.filter((item) => !materialIds.has(item.id)); discard.push(...materials);
       log = addCardGroupEvent(log, me.name, materials, "play", true, target.name); log = addLog(log, `${me.name} discards 2 cards with Serpent Spear to form an Attack on ${target.name}.`);
@@ -1963,7 +1968,7 @@ export async function POST(request: Request) {
         if (!halberdAttack && targetIds.length !== 1) return json({ error: "Choose one living opponent as the target." }, 400);
         const targets = playersInTurnOrder(players, me.seat).filter((player) => targetIds.includes(player.id));
         if (targets.length !== targetIds.length || targets.some((target) => !target.alive || target.id === me.id)) return json({ error: "Choose living opponents as Attack targets." }, 400);
-        if (targets.some((target) => distanceBetween(players, me.id, target.id) > attackRangeFor(me))) return json({ error: `Every target must be within your current Attack Range of ${attackRangeFor(me)}.` }, 409);
+        if (targets.some((target) => attackDistance(players, me.id, target.id) > attackRangeFor(me))) return json({ error: `Every target must be within your current Attack Range of ${attackRangeFor(me)}.` }, 409);
         const target = targets[0];
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id);

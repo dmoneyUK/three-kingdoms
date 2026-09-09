@@ -27,7 +27,7 @@ The playable alpha currently includes:
 - private card draws and inline, turn-ordered Peach rescue controls;
 - table-based card-resolution presentations: each played card zooms into view, settles face-up in play order before its player, remains through the complete response/effect sequence, then joins the sequence-wide discard animation when resolution concludes;
 - event history plus a detailed rule-audit trail; and
-- a focused quick-test opening hand containing every non-weapon Standard card plus Frost Sword and three Attacks for ME; other weapons remain in the deck, while Player 3 also retains three seeded Attacks for bot-response testing.
+- a focused quick-test opening hand containing every non-weapon Standard card plus Frost Sword and three Attacks for ME; other weapons remain in the deck, while every player starts equipped with one Offensive Horse (+1) and one Defensive Horse (-1), and Player 3 also retains three seeded Attacks for bot-response testing.
 
 ### Implemented cards
 
@@ -60,6 +60,7 @@ The playable alpha currently includes:
 - Frost Sword card selection is now shown in a bright inline panel attached to the target prompt, rather than behind the dimmed table overlay. The selected target slots remain visible until the attacker confirms the discard.
 - Steal and Burning Bridges target-card selection now use the same centered, bright prompt treatment, keeping hidden hand slots and public target zones readable while the initiating player confirms the choice.
 - Player seats now show a small online/offline presence indicator based on recent room heartbeats, making reconnect status visible during a live match.
+- Offensive Horse and Defensive Horse are now separate equipment slots. Offensive Horse increases the owner's Attack Range by 1; Defensive Horse increases incoming attack distance by 1. Quick-test matches equip both horses for every player.
 - Rock Cleaving Axe decisions now open a dimmed, centre-table pop-up when an Attack is Dodged, explaining the two-card cost and offering **Use Rock Cleaving Axe** or **Skip Axe** throughout the fresh response window. The cards behind it remain selectable as the payment.
 - Seat countdowns now represent only an actual pending player decision. Card-display timing is no longer shown as a player timeout: equipping a weapon has no countdown, an Attack moves the timer to its target for Dodge, and a Dodge moves it back to the attacker only if a weapon follow-up is available.
 - Rock Cleaving Axe is playable with Attack Range 3. After its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered 30-second human choice (10 seconds for a bot) to select exactly two cards from hand and/or the public Equipment Zone, or skip immediately. Paying the cost forces the blocked Attack's damage, may discard the Axe itself, retains the complete Attack/Dodge/Axe sequence on the table, and supports automatic bot use.

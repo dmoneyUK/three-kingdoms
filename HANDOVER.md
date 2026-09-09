@@ -45,7 +45,7 @@ This is a playable four-player alpha. The quick-test game starts immediately wit
 - random roles and heroes, except `ME` uses Zhang Fei for testing;
 - Lord bonus HP;
 - bots at 1 HP in quick-test mode; and
-- every non-weapon Standard card plus Frost Sword and three Attacks in `ME`'s opening hand; other weapons remain in the deck and Player 3 also begins with three Attacks plus a Negation for bot-response testing.
+- every non-weapon Standard card plus Frost Sword and three Attacks in `ME`'s opening hand; other weapons remain in the deck, every player starts with Offensive Horse (+1) and Defensive Horse (-1) equipped, and Player 3 also begins with three Attacks plus a Negation for bot-response testing.
 
 Implemented shared rules include:
 
@@ -97,6 +97,8 @@ The Frost Sword selector is rendered inside the bright response prompt and names
 Steal and Burning Bridges now present their post-Negation target-card picker as a centered, bright response panel instead of a rotated, dim table overlay. Their existing target-card validation and explicit confirmation flow are unchanged.
 
 Player presence is now surfaced per seat. Authenticated room polling refreshes `connected_at`; bots are always online, and human seats are marked offline after 15 seconds without a heartbeat. This is informational only and does not remove a player or alter turn ownership.
+
+Horse equipment is now authoritative in the two dedicated equipment slots. `attackRangeFor` includes the owner's Offensive Horse bonus, while `attackDistance` applies a target's Defensive Horse penalty to Attack range checks. Quick-test setup removes horse cards from the draw/hand pools and equips both horses for every player.
 
 The production migration is now complete in the project configuration:
 

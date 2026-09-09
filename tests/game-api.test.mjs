@@ -83,7 +83,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const displayedRoles = await Promise.all(game.members.map(async (member) => (await state(game.code, member.token)).data.myRole));
   assert.ok(displayedRoles.includes("Traitor")); assert.ok(!displayedRoles.includes("Renegade"), "the Renegade role is presented as Traitor");
   const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
-  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BumperHarvest:2", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "FrostSword:1", "GreenDragonBlade:1", "Lightning:2", "Negation:3", "Oath:1", "Overindulgence:2", "Peach:8", "RainingArrows:1", "RockCleavingAxe:1", "SerpentSpear:1", "SkyPiercingHalberd:1", "Steal:5", "ZhugeCrossbow:2"]);
+  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BumperHarvest:2", "DefensiveHorse:4", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "FrostSword:1", "GreenDragonBlade:1", "Lightning:2", "Negation:3", "Oath:1", "OffensiveHorse:4", "Overindulgence:2", "Peach:8", "RainingArrows:1", "RockCleavingAxe:1", "SerpentSpear:1", "SkyPiercingHalberd:1", "Steal:5", "ZhugeCrossbow:2"]);
   assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
   const aliceView = await state(game.code, alice.token);
   assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
@@ -366,6 +366,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(quick.data.room.players.find((player) => player.name === "Player 3").handCount, 4);
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(quick.data.room.code)}) AND seat=3`)).map((openingCard) => openingCard.kind), ["Negation", "Attack", "Attack", "Attack"], "Player 3 retains three seeded Attack cards");
   assert.ok(quick.data.room.players.filter((player) => player.isBot).every((player) => player.handCount === 4), "defensive quick-test cards replace rather than enlarge bot hands");
+  assert.ok(quick.data.room.players.every((player) => player.equipmentCards.some((item) => item.kind === "OffensiveHorse") && player.equipmentCards.some((item) => item.kind === "DefensiveHorse")), "every quick-test player starts equipped with both horses");
   assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
   assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);
   const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
