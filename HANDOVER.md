@@ -96,6 +96,8 @@ The Frost Sword selector is rendered inside the bright response prompt and names
 
 Steal and Burning Bridges now present their post-Negation target-card picker as a centered, bright response panel instead of a rotated, dim table overlay. Their existing target-card validation and explicit confirmation flow are unchanged.
 
+Player presence is now surfaced per seat. Authenticated room polling refreshes `connected_at`; bots are always online, and human seats are marked offline after 15 seconds without a heartbeat. This is informational only and does not remove a player or alter turn ownership.
+
 The production migration is now complete in the project configuration:
 
 - GitHub `main` is the sole authoritative source and `.github/workflows/deploy.yml` is the sole production release path.
