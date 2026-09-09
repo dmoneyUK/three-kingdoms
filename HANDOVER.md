@@ -94,6 +94,8 @@ The latest Frost Sword correction keeps the portrait modal's two result choices 
 
 The Frost Sword selector is rendered inside the bright response prompt and names the attacked player, so portrait users no longer have to interact with a shadowed picker behind the modal. The selection remains staged until the attacker presses the discard confirmation.
 
+Steal and Burning Bridges now present their post-Negation target-card picker as a centered, bright response panel instead of a rotated, dim table overlay. Their existing target-card validation and explicit confirmation flow are unchanged.
+
 The production migration is now complete in the project configuration:
 
 - GitHub `main` is the sole authoritative source and `.github/workflows/deploy.yml` is the sole production release path.
