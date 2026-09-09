@@ -92,6 +92,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /pendingRockCleaving/);
   assert.match(page, /Use Rock Cleaving Axe/);
   assert.match(page, /Your Attack was blocked by Dodge/);
+  assert.match(page, /weapon-response-backdrop/);
+  assert.match(page, /Rock Cleaving Axe decision/);
   assert.match(page, /weapon-response-prompt/);
   assert.match(page, /selected-cost/);
   assert.match(page, /sequenceStartCardId/);
