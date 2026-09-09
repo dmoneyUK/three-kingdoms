@@ -219,12 +219,14 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`GreenDragonBlade` \| Green Dragon Blade \| 180 \| Standard/);
   assert.match(officialReference, /`SerpentSpear` \| Serpent Spear \| 181 \| Standard/);
   assert.match(officialReference, /`RockCleavingAxe` \| Rock Cleaving Axe \| 186 \| Standard/);
+  assert.match(officialReference, /`SkyPiercingHalberd` \| Sky Piercing Halberd \| 188 \| Standard/);
   assert.match(officialReference, /`RationsDepleted` \| Rations Depleted \| 199 \| Endless Legends/);
   assert.match(schema, /equipmentJson: text\("equipment_json"\)/);
   assert.match(roomApi, /hasZhugeCrossbow/);
   assert.match(roomApi, /hasGreenDragonBlade/);
   assert.match(roomApi, /hasSerpentSpear/);
   assert.match(roomApi, /hasRockCleavingAxe/);
+  assert.match(roomApi, /hasSkyPiercingHalberd/);
   assert.match(roomApi, /respond_rock_cleaving/);
   assert.match(roomApi, /serpent_spear_attack/);
   assert.match(roomApi, /attackRangeFor/);

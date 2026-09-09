@@ -106,7 +106,14 @@ The latest timing change expands the shared response window:
 - Peach rescue intentionally keeps its independent 5-second deadline.
 - Deterministic coverage checks both an ordinary Dodge window and a Rock Cleaving Axe weapon-effect window.
 
-The latest weapon milestone added Rock Cleaving Axe:
+The latest weapon milestone added Sky Piercing Halberd:
+
+- Sky Piercing Halberd (official card 188) equips in the shared Weapon slot and gives its owner Attack Range 4.
+- When the owner uses their final hand card as an Attack, they may select one to three living opponents within range. Multiple selected targets resolve in table order, one at a time, with a fresh 10-second Dodge-or-damage decision for each acting target.
+- The multi-target Attack is not a stratagem: it does not open a Negation window. It retains the one Attack card as a single visible sequence until every chosen target has resolved.
+- Bots select two legal targets when their last hand card is Attack, and deterministic coverage verifies range, final-hand restriction, ordered ownership, Dodge, damage, completion and bot use.
+
+The preceding weapon milestone added Rock Cleaving Axe:
 
 - Rock Cleaving Axe (official card 186) equips in the shared Weapon slot and gives its owner Attack Range 3.
 - When its owner's Attack is blocked by Dodge, the attacker receives an ordered 10-second decision to select exactly two different cards or skip immediately.
@@ -166,7 +173,7 @@ The preceding scope change locked every new game to WTK Standard:
 - `game/cards.ts` marks cards as Standard or Endless Legends.
 - Only Standard cards in `DECK_COUNTS` enter shuffled decks and quick-test hands.
 - Rations Depleted remains readable in older state and retains deterministic compatibility coverage, but bots and players cannot receive it in a newly created game.
-- Rock Cleaving Axe is complete. The next active milestone is Sky Piercing Halberd; Borrowed Sword follows the remaining Standard weapons.
+- Sky Piercing Halberd is complete. Continue through the remaining Standard weapons; Borrowed Sword follows once their shared interactions are mature.
 
 The preceding rules change added Lightning and made delayed-card resolution reusable:
 
@@ -350,19 +357,18 @@ Recommended next sequence:
 2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
 3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
 4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
-5. Equipment Zone foundation, a separate face-up rack beside each seat, authoritative Attack Range, Zhuge Crossbow, Green Dragon Blade, Serpent Spear and Rock Cleaving Axe are complete. Burning Bridges and Steal now target current hand, equipment or judgement cards only after Negation finishes.
-6. Add Sky Piercing Halberd with its final-hand-card multi-target Attack rule and bot coverage.
-7. Continue through the remaining Standard weapons, then add Borrowed Sword after weapon interactions are mature.
-8. Continue through armour, horses, distance modifiers and remaining response-chain edge cases.
-9. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
-10. Add hero abilities only after shared Standard rules and cards are stable.
+5. Equipment Zone foundation, a separate face-up rack beside each seat, authoritative Attack Range, Zhuge Crossbow, Green Dragon Blade, Serpent Spear, Rock Cleaving Axe and Sky Piercing Halberd are complete. Burning Bridges and Steal now target current hand, equipment or judgement cards only after Negation finishes.
+6. Continue through the remaining Standard weapons, then add Borrowed Sword after weapon interactions are mature.
+7. Continue through armour, horses, distance modifiers and remaining response-chain edge cases.
+8. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
+9. Add hero abilities only after shared Standard rules and cards are stable.
 
 ## Known boundaries
 
 - The game uses HTTP polling, not WebSockets.
 - Only the current action owner can submit a legal action; there is no simultaneous response system.
 - The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards.
-- The Equipment Zone currently exposes only the Weapon slot, rendered as a face-up card in the separate rack beside its owner. Zhuge Crossbow, Green Dragon Blade, Serpent Spear and Rock Cleaving Axe are playable, and equipped weapon range is authoritative for Attack targeting. Rock Cleaving Axe may discard cards from hand and/or the Equipment Zone, including itself, after Dodge. Armour and horse slots can extend the same rack. Burning Bridges and Steal can already select the current Weapon or a delayed card after their Negation chain.
+- The Equipment Zone currently exposes only the Weapon slot, rendered as a face-up card in the separate rack beside its owner. Zhuge Crossbow, Green Dragon Blade, Serpent Spear, Rock Cleaving Axe and Sky Piercing Halberd are playable, and equipped weapon range is authoritative for Attack targeting. Sky Piercing Halberd resolves its final-hand multi-target Attack as a held sequence; its specialised response path does not yet combine with other post-Dodge weapon effects. Rock Cleaving Axe may discard cards from hand and/or the Equipment Zone, including itself, after Dodge. Armour and horse slots can extend the same rack. Burning Bridges and Steal can already select the current Weapon or a delayed card after their Negation chain.
 - Bumper Harvest Negation is target-specific: a cancelled player does not choose, later players continue, and any leftover revealed card is discarded with the held Harvest/Negation sequence at completion.
 - Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
 - Reconnect uses the private room session stored on the device. Refresh restores automatically and Exit offers a one-tap same-device rejoin; cross-device account recovery is not implemented.

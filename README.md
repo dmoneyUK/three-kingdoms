@@ -49,6 +49,7 @@ The playable alpha currently includes:
 - Green Dragon Blade
 - Serpent Spear
 - Rock Cleaving Axe
+- Sky Piercing Halberd
 
 ### Recently stabilised
 
@@ -57,6 +58,7 @@ The playable alpha currently includes:
 - Rock Cleaving Axe decisions now open a dimmed, centre-table pop-up when an Attack is Dodged, explaining the two-card cost and offering **Use Rock Cleaving Axe** or **Skip Axe** throughout the fresh response window. The cards behind it remain selectable as the payment.
 - Seat countdowns now represent only an actual pending player decision. Card-display timing is no longer shown as a player timeout: equipping a weapon has no countdown, an Attack moves the timer to its target for Dodge, and a Dodge moves it back to the attacker only if a weapon follow-up is available.
 - Rock Cleaving Axe is playable with Attack Range 3. After its owner's Attack is blocked by Dodge, action returns to the attacker for an ordered 10-second choice to select exactly two cards from hand and/or the public Equipment Zone, or skip immediately. Paying the cost forces the blocked Attack's damage, may discard the Axe itself, retains the complete Attack/Dodge/Axe sequence on the table, and supports automatic bot use.
+- Sky Piercing Halberd is playable with Attack Range 4. When its owner uses their last hand card as an Attack, they may select up to three targets in range. The targets resolve the one Attack individually in table order, each receiving a fresh 10-second Dodge-or-damage decision; bots use the multi-target attack when legal.
 - Refresh and accidental Exit no longer abandon a live player session. The saved device token restores the table automatically after refresh, while Exit returns to the landing screen with a **Rejoin game** button.
 - Peach rescue no longer covers the table with a private modal. The acting rescuer selects a Peach from their normal hand and uses **Play Peach**, or advances immediately with **Skip rescue**, while the existing five-second ordered rescue window remains authoritative.
 - Burning Bridges and Steal now finish their complete Negation/counter-Negation chain before the source chooses a target card. The post-Negation choice uses the target's current hand, Equipment Zone or Judgement Zone; the initiating stratagem and every Negation remain outside discard until the final choice resolves.
@@ -93,15 +95,15 @@ The playable alpha currently includes:
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable; every normal response transition resets a tested server-owned 10-second timer for the next actor, target-scoped Negation covers global cards and Bumper Harvest, and targeted stratagems use a post-Negation current-card choice state. Shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the general card set | Standard core expanding with equipment | 18 Standard cards are playable, including four weapons. Remaining Standard weapons now precede Borrowed Sword. |
-| 4. Equipment and distance modifiers | In progress — weapon expansion | The public face-up Equipment rack, authoritative Weapon slot and Attack Range, Zhuge Crossbow, Green Dragon Blade, Serpent Spear and Rock Cleaving Axe are playable; more weapons, armour and horses remain. |
+| 3. Complete the general card set | Standard core expanding with equipment | 19 Standard cards are playable, including five weapons. Remaining Standard weapons now precede Borrowed Sword. |
+| 4. Equipment and distance modifiers | In progress — weapon expansion | The public face-up Equipment rack, authoritative Weapon slot and Attack Range, Zhuge Crossbow, Green Dragon Blade, Serpent Spear, Rock Cleaving Axe and Sky Piercing Halberd are playable; more weapons, armour and horses remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, reveal, Rebel rewards, the Lord's Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begins after shared cards and rules are stable. |
 | 7. Product polish | Ongoing alongside rules work | Mobile sequence layout, countdown placement, target-card selection and card information are improved; sound, invitations and saved history remain planned. |
 
 ### Next milestone
 
-Add **Sky Piercing Halberd** as the next Standard weapon. The milestone will add Attack Range 4 and its final-hand-card multi-target Attack rule, with legal target selection, ordered 10-second Dodge responses, bot use, sequence retention and deterministic tests. Borrowed Sword remains deferred until the classic weapons are established.
+Add the next remaining Standard weapon, then continue through the weapon set before **Borrowed Sword**. The completed Sky Piercing Halberd milestone added Attack Range 4, final-hand-card multi-target Attack selection, ordered Dodge responses, bot use and deterministic tests.
 
 ### 1. Stabilise the turn loop — mostly complete, ongoing
 
@@ -129,7 +131,7 @@ Add **Sky Piercing Halberd** as the next Standard weapon. The milestone will add
 - Serpent Spear two-card formed Attack across Play Phase, Duel and Barbarian Invasion — complete.
 - Rock Cleaving Axe post-Dodge two-card decision and forced Attack damage — complete.
 - Separate face-up equipment rack beside every player seat — complete and ready for additional equipment slots.
-- Add Sky Piercing Halberd, then continue through the remaining Standard weapons.
+- Sky Piercing Halberd final-hand multi-target Attack — complete; continue through the remaining Standard weapons.
 - Add Borrowed Sword after the weapon set and weapon interactions are mature.
 - Armour effects.
 - Offensive and defensive horses.

@@ -10,7 +10,7 @@ type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actor
 type GreenDragonPending = { kind: "green_dragon"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number };
 type RockCleavingPending = { kind: "rock_cleaving"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number };
 type DuelPending = { kind: "duel"; sourceId: string; targetId: string; actorId: string; opponentId: string; resumePhase: string; reason: string; deadline?: number };
-type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows"; sourceId: string; actorId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; reason: string; deadline?: number; heldCards?: Card[] };
+type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; actorId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; reason: string; deadline?: number; heldCards?: Card[] };
 type HarvestChoice = { cardId: string; playerId: string; playerName: string };
 type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; botAdvanceAt?: number; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 type TargetCardZone = "hand" | "equipment" | "judgement";
@@ -119,6 +119,8 @@ function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(play
 function hasGreenDragonBlade(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "GreenDragonBlade"; }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasRockCleavingAxe(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "RockCleavingAxe"; }
+function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
+function groupCardName(kind: GroupPending["cardKind"]) { return kind === "BarbarianInvasion" ? "Barbarian Invasion" : kind === "RainingArrows" ? "Raining Arrows" : "Sky Piercing Halberd Attack"; }
 function selectedSerpentSpearCards(player: PlayerRow | null | undefined, hand: Card[], value: unknown) {
   if (!hasSerpentSpear(player) || !Array.isArray(value)) return [];
   const ids = value.map(String); if (ids.length !== 2 || new Set(ids).size !== 2) return [];
@@ -819,7 +821,7 @@ function nextGroupPending(pending: GroupPending, players: PlayerRow[]) {
   const nextIds = pending.remainingIds.filter((id) => players.some((player) => player.id === id && player.alive));
   if (!nextIds.length) return null;
   const actorId = nextIds[0];
-  return { ...pending, actorId, remainingIds: nextIds.slice(1), reason: `Respond to ${pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}: select ${pending.requiredKind} or take 1 damage`, deadline: nextResponseDeadline() } satisfies GroupPending;
+  return { ...pending, actorId, remainingIds: nextIds.slice(1), reason: `Respond to ${groupCardName(pending.cardKind)}: select ${pending.requiredKind} or take 1 damage`, deadline: nextResponseDeadline() } satisfies GroupPending;
 }
 
 async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: PlayerRow[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
@@ -829,6 +831,12 @@ async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: P
     await finishGroupStep(room, pending, players, discard, log, writes);
     return;
   }
+  if (pending.cardKind === "SkyPiercingHalberdAttack") {
+    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
+    await db().batch(writes);
+    await advanceGroup(room.id);
+    return;
+  }
   const holders = playersHoldingNegation(players, actor.seat).filter((player) => player.id !== source.id);
   if (!holders.length) {
     writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
@@ -836,7 +844,7 @@ async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: P
     await advanceGroup(room.id);
     return;
   }
-  const cardName = pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
+  const cardName = groupCardName(pending.cardKind);
   const negation: NegationPending = {
     kind: "negation",
     sourceId: pending.sourceId,
@@ -862,14 +870,14 @@ async function finishGroupStep(room: RoomRow, pending: GroupPending, players: Pl
     await beginGroupTarget(room, next, players, discard, log, writes);
     return;
   }
-  writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(commitHeldGroupCards(discard, pending)), JSON.stringify(addLog(log, `${pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"} finishes resolving.`)), room.id));
+  writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(commitHeldGroupCards(discard, pending)), JSON.stringify(addLog(log, `${groupCardName(pending.cardKind)} finishes resolving.`)), room.id));
   await db().batch(writes);
   await continueAfterDying(room.id, pending.sourceId);
 }
 
 async function resolveGroupDamage(room: RoomRow, pending: GroupPending, actor: PlayerRow, source: PlayerRow, players: PlayerRow[], discard: Card[], log: string[]) {
   const hp = Math.max(0, (actor.hp ?? 1) - 1);
-  const cardName = pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
+  const cardName = groupCardName(pending.cardKind);
   const next = nextGroupPending(pending, players.map((player) => player.id === actor.id ? { ...player, hp } : player));
   if (hp === 0) {
     log = addLog(log, `${actor.name} does not play ${pending.requiredKind}, takes 1 damage from ${cardName}, and enters Dying. Peach rescue begins in turn order.`);
@@ -903,7 +911,7 @@ async function advanceGroup(roomId: string) {
     if ((claim.meta.changes ?? 0) <= 0) continue;
     if (!responseCards.length) { await resolveGroupDamage(room, pending, actor, source, players, discard, log); return; }
     const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextPending = appendHeldGroupCards(pending, responseCards);
-    log = response ? addCardEvent(log, actor.name, response) : addCardGroupEvent(log, actor.name, responseCards, "play"); log = addLog(log, response ? `${actor.name} plays ${pending.requiredKind} against ${pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}.` : `${actor.name} discards 2 cards with Serpent Spear to form an Attack against Barbarian Invasion.`);
+    log = response ? addCardEvent(log, actor.name, response) : addCardGroupEvent(log, actor.name, responseCards, "play"); log = addLog(log, response ? `${actor.name} plays ${pending.requiredKind} against ${groupCardName(pending.cardKind)}.` : `${actor.name} discards 2 cards with Serpent Spear to form an Attack against ${groupCardName(pending.cardKind)}.`);
     await finishGroupStep(room, nextPending, players, discard, log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
     return;
   }
@@ -1198,9 +1206,19 @@ async function runBots(roomId: string) {
     const targets = players.filter((player) => player.alive && player.id !== bot.id && distanceBetween(players, bot.id, player.id) <= attackRangeFor(bot)).sort((a, b) => (a.hp ?? 99) - (b.hp ?? 99));
     const target = targets[0];
     if (attackCards.length && target) {
+      const halberdTargets = attack && hasSkyPiercingHalberd(bot) && hand.length === 1 ? playersInTurnOrder(players, bot.seat).filter((player) => player.alive && player.id !== bot.id && distanceBetween(players, bot.id, player.id) <= attackRangeFor(bot)).slice(0, 2) : [];
       const attackIds = new Set(attackCards.map((card) => card.id));
       const sequenceStartCardId = attackCards[0].id;
-      hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
+      hand = hand.filter((card) => !attackIds.has(card.id));
+      if (!(halberdTargets.length > 1 && attack)) discard.push(...attackCards);
+      if (halberdTargets.length > 1 && attack) {
+        log = addCardEvent(log, bot.name, attack, halberdTargets.map((player) => player.name).join(", "));
+        log = addLog(log, `${bot.name} uses their last hand card as Attack with Sky Piercing Halberd, targeting ${halberdTargets.map((player) => player.name).join(", ")}. ${halberdTargets[0].name} resolves first.`);
+        const pending: GroupPending = { kind: "group", cardKind: "SkyPiercingHalberdAttack", sourceId: bot.id, actorId: halberdTargets[0].id, remainingIds: halberdTargets.slice(1).map((player) => player.id), requiredKind: "Dodge", resumePhase: phaseAfterAttack(bot), reason: "Respond to Sky Piercing Halberd Attack: select Dodge or take 1 damage", deadline: nextResponseDeadline(), heldCards: [attack] };
+        writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
+        await beginGroupTarget(room, pending, players.map((player) => player.id === bot.id ? { ...bot, hand_json: JSON.stringify(hand) } : player), discard, log, writes);
+        return;
+      }
       log = attack ? addCardEvent(log, bot.name, attack, target.name) : addCardGroupEvent(log, bot.name, attackCards, "play", true, target.name);
       if (!attack) log = addLog(log, `${bot.name} discards 2 cards with Serpent Spear to form an Attack on ${target.name}.`);
       let targetHand = changedHands.get(target.id) ?? parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((card) => card.kind === "Dodge");
@@ -1553,7 +1571,7 @@ export async function POST(request: Request) {
       await resolveGroupDamage(liveRoom, pending, me, source, players, discard, log);
     } else {
       const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextPending = appendHeldGroupCards(pending, responseCards);
-      log = selectedResponse ? addCardEvent(log, me.name, selectedResponse) : addCardGroupEvent(log, me.name, responseCards, "play"); log = addLog(log, selectedResponse ? `${me.name} plays ${pending.requiredKind} against ${pending.cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}.` : `${me.name} discards 2 cards with Serpent Spear to form an Attack against Barbarian Invasion.`);
+      log = selectedResponse ? addCardEvent(log, me.name, selectedResponse) : addCardGroupEvent(log, me.name, responseCards, "play"); log = addLog(log, selectedResponse ? `${me.name} plays ${pending.requiredKind} against ${groupCardName(pending.cardKind)}.` : `${me.name} discards 2 cards with Serpent Spear to form an Attack against ${groupCardName(pending.cardKind)}.`);
       await finishGroupStep(liveRoom, nextPending, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
     }
     return json({ room: await roomState(code, token) });
@@ -1836,11 +1854,26 @@ export async function POST(request: Request) {
         await startNegation(liveRoom, me, rows.results ?? [], card, target.name, target.id, { kind: "duel", pending }, hand, deck, discard, log);
       } else if (isAttackCard(card)) {
         if (liveRoom.phase === "play-struck" && me.hero !== "zhang-fei" && !hasZhugeCrossbow(me)) return json({ error: "You may play only one Attack per turn." }, 409);
-        const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
-        if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent as the target." }, 400);
-        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); if (distanceBetween(rows.results ?? [], me.id, target.id) > attackRangeFor(me)) return json({ error: `That opponent is out of range. Your current Attack Range is ${attackRangeFor(me)}.` }, 409);
+        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
+        const requestedTargetIds = Array.isArray(body.targetIds) ? body.targetIds.map(String) : [String(body.targetId ?? "")];
+        const halberdAttack = hasSkyPiercingHalberd(me) && hand.length === 1;
+        const targetIds = [...new Set(requestedTargetIds.filter(Boolean))];
+        if (!targetIds.length || targetIds.length > (halberdAttack ? 3 : 1)) return json({ error: halberdAttack ? "Sky Piercing Halberd can target from one to three opponents." : "Choose one living opponent as the target." }, 400);
+        if (!halberdAttack && targetIds.length !== 1) return json({ error: "Choose one living opponent as the target." }, 400);
+        const targets = playersInTurnOrder(players, me.seat).filter((player) => targetIds.includes(player.id));
+        if (targets.length !== targetIds.length || targets.some((target) => !target.alive || target.id === me.id)) return json({ error: "Choose living opponents as Attack targets." }, 400);
+        if (targets.some((target) => distanceBetween(players, me.id, target.id) > attackRangeFor(me))) return json({ error: `Every target must be within your current Attack Range of ${attackRangeFor(me)}.` }, 409);
+        const target = targets[0];
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-        hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
+        hand = hand.filter((item) => item.id !== card.id);
+        if (!(halberdAttack && targets.length > 1)) discard.push(card);
+        log = addCardEvent(log, me.name, card, targets.map((entry) => entry.name).join(", "));
+        if (halberdAttack && targets.length > 1) {
+          const pending: GroupPending = { kind: "group", cardKind: "SkyPiercingHalberdAttack", sourceId: me.id, actorId: target.id, remainingIds: targets.slice(1).map((entry) => entry.id), requiredKind: "Dodge", resumePhase: phaseAfterAttack(me), reason: `Respond to Sky Piercing Halberd Attack: select Dodge or take 1 damage`, deadline: nextResponseDeadline(), heldCards: [card] };
+          log = addLog(log, `${me.name} uses their last hand card as Attack with Sky Piercing Halberd, targeting ${targets.map((entry) => entry.name).join(", ")}. ${target.name} resolves first.`);
+          await beginGroupTarget(liveRoom, pending, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
+          return json({ room: await roomState(code, token) });
+        }
         let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((item) => item.kind === "Dodge");
         if (!isBotPlayer(target)) {
           log = addLog(log, `${me.name} plays Attack on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
