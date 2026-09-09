@@ -92,6 +92,8 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 
 The latest Frost Sword correction keeps the portrait modal's two result choices visible and makes the discard branch attacker-controlled. Selecting **Choose cards to discard** exposes the target's hidden hand slots and public equipment cards; the attacker confirms one or two distinct cards via `cardKeys`. The API validates those selections before preventing damage and discarding them. The target does not choose, and no selection is accepted when the target has no eligible hand/equipment cards. The quick-test ME hand now explicitly includes three Attacks.
 
+The Frost Sword selector is rendered inside the bright response prompt and names the attacked player, so portrait users no longer have to interact with a shadowed picker behind the modal. The selection remains staged until the attacker presses the discard confirmation.
+
 The production migration is now complete in the project configuration:
 
 - GitHub `main` is the sole authoritative source and `.github/workflows/deploy.yml` is the sole production release path.
