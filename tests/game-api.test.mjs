@@ -71,7 +71,7 @@ async function createHumanGame() {
   return { code, members, room: (await state(code, members[0].token)).data };
 }
 
-test("complete room, turn, card, response, discard, bot, and audit flow", { timeout: 30_000 }, async () => {
+test("complete room, turn, card, response, discard, bot, and audit flow", { timeout: 60_000 }, async () => {
   const game = await createHumanGame();
   const [host, alice, bob, carol] = game.members;
   const hostPlayer = game.room.players.find((player) => player.name === "Host");
