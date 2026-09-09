@@ -136,7 +136,7 @@ Add the remaining Standard equipment in catalogue order: armour, weapons, and tr
 - Continue adding remaining Standard cards one at a time as their equipment dependencies become available.
 - Keep every non-weapon card plus the current tested weapon in ME's focused quick-test opening hand, return other weapons to the deck, and seed required bot cards, including Player 3's three Attacks.
 - Add equipment-dependent Standard cards only after their required slots and modifiers are authoritative.
-- Remaining Standard cards from the official catalogue: Nio Shield, Eight Trigrams Formation, Borrowed Sword, Kirin Bow, Six Swords of Wu, Two-bladed Trident, Yin-Yang Swords, Blue Steel Sword, Wooden Cart, Flame Tactic, Fire Attack, Feathered Fan, Silver Lion Helmet and Rattan Armor. Alliance, Rest and Reorganization and Know your Enemy are also catalogued Standard cards awaiting implementation.
+- Classic WTK Standard cards still awaiting implementation: Nio Shield, Eight Trigrams Formation, Borrowed Sword, Kirin Bow, Six Swords of Wu, Two-bladed Trident, Yin-Yang Swords, Alliance, Rest and Reorganization, and Know your Enemy. Cards from Endless Legends or Kingdom Wars are out of scope.
 
 ### 4. Add equipment and distance modifiers — current feature focus
 

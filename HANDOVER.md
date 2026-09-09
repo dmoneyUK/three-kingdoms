@@ -100,7 +100,7 @@ Player presence is now surfaced per seat. Authenticated room polling refreshes `
 
 Horse equipment is now authoritative in the two dedicated equipment slots. `attackRangeFor` includes the owner's Offensive Horse bonus, while `attackDistance` applies a target's Defensive Horse penalty to Attack range checks. Quick-test setup removes horse cards from the draw/hand pools and equips both horses for every player.
 
-The official catalogue audit confirms two Standard horses (Fergana Steed and Shadowrunner). Remaining Standard work is armour (Nio Shield, Eight Trigrams Formation, Silver Lion Helmet, Rattan Armor), weapons (Kirin Bow, Six Swords of Wu, Two-bladed Trident, Yin-Yang Swords, Blue Steel Sword, Feathered Fan), treasure (Wooden Cart), and general cards (Alliance, Rest and Reorganization, Know your Enemy, Borrowed Sword, Flame Tactic and Fire Attack).
+The official catalogue audit confirms two classic Standard horses (Fergana Steed and Shadowrunner). Remaining classic Standard work is armour (Nio Shield, Eight Trigrams Formation), weapons (Kirin Bow, Six Swords of Wu, Two-bladed Trident, Yin-Yang Swords), and general cards (Alliance, Rest and Reorganization, Know your Enemy and Borrowed Sword). Kingdom Wars and Endless Legends cards remain out of scope.
 
 The production migration is now complete in the project configuration:
 
