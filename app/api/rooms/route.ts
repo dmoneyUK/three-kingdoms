@@ -302,7 +302,7 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
-  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: QUICK_TEST_OPENING_KINDS });
+  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: [...QUICK_TEST_OPENING_KINDS, "Attack", "Attack"] });
   const quickPlayers = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const quickRoom = await db().prepare("SELECT deck_json FROM rooms WHERE id = ?").bind(roomId).first<Pick<RoomRow, "deck_json">>();
   const bots = (quickPlayers.results ?? []).filter((player) => player.id !== hostPlayerId);
@@ -740,9 +740,12 @@ async function resolveRockCleaving(room: RoomRow, pending: RockCleavingPending, 
   await continueAfterDying(room.id, source.id);
 }
 
-async function resolveFrostSword(room: RoomRow, pending: FrostSwordPending, source: PlayerRow, target: PlayerRow, discard: Card[], log: string[]) {
+async function resolveFrostSword(room: RoomRow, pending: FrostSwordPending, source: PlayerRow, target: PlayerRow, discard: Card[], log: string[], selection?: unknown[]) {
   const hand = parse<Card[]>(target.hand_json, []); const equipment = equipmentZone(target); const judgement = parse<Card[]>(target.judgement_json, []);
-  const discarded = [...hand, ...equipmentCards(target), ...judgement].slice(0, 2);
+  const all = [...hand, ...equipmentCards(target), ...judgement];
+  const requested = Array.isArray(selection) ? selection.map(String).slice(0, 2) : [];
+  const discarded = requested.length ? requested.map((key) => key.startsWith("hand:") ? hand[Number(key.slice(5))] : all.find((card) => card.id === key)).filter((card, index, cards): card is Card => Boolean(card) && cards.findIndex((item) => item?.id === card.id) === index) : [];
+  if (!discarded.length) return;
   const ids = new Set(discarded.map((card) => card.id));
   const nextHand = hand.filter((card) => !ids.has(card.id)); const nextJudgement = judgement.filter((card) => !ids.has(card.id));
   const nextEquipment = Object.fromEntries(Object.entries(equipment).filter(([, card]) => !card || !ids.has(card.id))) as EquipmentZone;
@@ -1690,11 +1693,17 @@ export async function POST(request: Request) {
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "frost_sword" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Frost Sword decision." }, 409);
     const target = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.targetId).first<PlayerRow>();
+    const selection = Array.isArray(body.cardKeys) ? body.cardKeys.map(String).slice(0, 2) : [];
+    if (action === "use_frost_sword") {
+      const targetHand = parse<Card[]>(target?.hand_json ?? null, []); const targetCards = [...targetHand, ...equipmentCards(target), ...parse<Card[]>(target?.judgement_json ?? null, [])];
+      const valid = selection.length > 0 && selection.every((key) => key.startsWith("hand:") ? Number.isInteger(Number(key.slice(5))) && Number(key.slice(5)) >= 0 && Number(key.slice(5)) < targetHand.length : targetCards.some((card) => card.id === key));
+      if (!valid || new Set(selection).size !== selection.length) return json({ error: "Choose one or two different cards from the target before confirming Frost Sword." }, 409);
+    }
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Frost Sword decision has already moved on." }, 409);
     let log = parse<string[]>(liveRoom.log_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []);
     if (action === "use_frost_sword" && target?.alive && hasFrostSword(me) && targetableCardCount(target) > 0) {
-      await resolveFrostSword(liveRoom, pending, me, target, discard, log);
+      await resolveFrostSword(liveRoom, pending, me, target, discard, log, selection);
     } else {
       log = addLog(log, `${me.name} does not use Frost Sword. ${target?.name ?? "The target"} takes 1 damage.`);
       const hp = Math.max(0, (target?.hp ?? 1) - 1);

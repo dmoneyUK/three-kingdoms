@@ -45,7 +45,7 @@ This is a playable four-player alpha. The quick-test game starts immediately wit
 - random roles and heroes, except `ME` uses Zhang Fei for testing;
 - Lord bonus HP;
 - bots at 1 HP in quick-test mode; and
-- every non-weapon Standard card plus Frost Sword in `ME`'s opening hand; other weapons remain in the deck and Player 3 begins with three Attacks plus a Negation.
+- every non-weapon Standard card plus Frost Sword and three Attacks in `ME`'s opening hand; other weapons remain in the deck and Player 3 also begins with three Attacks plus a Negation for bot-response testing.
 
 Implemented shared rules include:
 
@@ -89,6 +89,8 @@ preserved, while it is excluded from every new Standard deck and quick-test hand
 `Strike` remains only as a saved-game compatibility alias for Attack.
 
 ## Recent interaction work
+
+The latest Frost Sword correction keeps the portrait modal's two result choices visible and makes the discard branch attacker-controlled. Selecting **Choose cards to discard** exposes the target's hidden hand slots and public equipment cards; the attacker confirms one or two distinct cards via `cardKeys`. The API validates those selections before preventing damage and discarding them. The target does not choose, and no selection is accepted when the target has no eligible hand/equipment cards. The quick-test ME hand now explicitly includes three Attacks.
 
 The production migration is now complete in the project configuration:
 
