@@ -1,4 +1,4 @@
-export const CARD_KINDS = ["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "ZhugeCrossbow", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd", "FrostSword", "OffensiveHorse", "DefensiveHorse", "RationsDepleted", "Strike"] as const;
+export const CARD_KINDS = ["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "ZhugeCrossbow", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd", "FrostSword", "NioShield", "OffensiveHorse", "DefensiveHorse", "RationsDepleted", "Strike"] as const;
 export type CardKind = (typeof CARD_KINDS)[number];
 export type CardSuit = "♥" | "♦" | "♣" | "♠";
 
@@ -11,6 +11,7 @@ export type Card = {
 
 export type EquipmentZone = {
   weapon?: Card;
+  armor?: Card;
   offensiveHorse?: Card;
   defensiveHorse?: Card;
 };

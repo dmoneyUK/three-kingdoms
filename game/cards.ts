@@ -6,11 +6,11 @@ export type CardDefinition = {
   product: "standard" | "endless-legends";
   category: "basic" | "stratagem" | "equipment";
   target: "self" | "opponent" | "all-opponents" | "response";
-  equipmentSlot?: "weapon" | "offensiveHorse" | "defensiveHorse";
+  equipmentSlot?: "weapon" | "armor" | "offensiveHorse" | "defensiveHorse";
   attackRange?: number;
   description: string;
   rules: string;
-  officialCardId: number;
+  officialCardId?: number;
 };
 
 // YOKA Games' official English WTK card catalogue is the source of truth for
@@ -38,6 +38,7 @@ export const CARD_DEFINITIONS: Record<CardKind, CardDefinition> = {
   RockCleavingAxe: { kind: "RockCleavingAxe", name: "Rock Cleaving Axe", product: "standard", category: "equipment", target: "self", equipmentSlot: "weapon", attackRange: 3, description: "Weapon · range 3", rules: "Equip this weapon during your Play Phase. When your Attack is blocked by Dodge, you may discard 2 cards to force the target to take the Attack's damage. Rock Cleaving Axe has an Attack Range of 3.", officialCardId: 186 },
   SkyPiercingHalberd: { kind: "SkyPiercingHalberd", name: "Sky Piercing Halberd", product: "standard", category: "equipment", target: "self", equipmentSlot: "weapon", attackRange: 4, description: "Weapon · range 4", rules: "Equip this weapon during your Play Phase. When you use your last hand card as an Attack, you may target up to two additional characters within your Attack Range. Each target resolves that Attack in turn order. Sky Piercing Halberd has an Attack Range of 4.", officialCardId: 188 },
   FrostSword: { kind: "FrostSword", name: "Frost Sword", product: "standard", category: "equipment", target: "self", equipmentSlot: "weapon", attackRange: 2, description: "Weapon · range 2", rules: "Equip this weapon during your Play Phase. When your Attack would deal damage to another character, you may prevent that damage and discard up to 2 cards from their Hand or Equipment Zone. Frost Sword has an Attack Range of 2.", officialCardId: 40 },
+  NioShield: { kind: "NioShield", name: "Nio Shield", product: "standard", category: "equipment", target: "self", equipmentSlot: "armor", description: "Armor · immune to black Attack", rules: "Equip this Armor during your Play Phase. While it remains in your Equipment Zone, you are immune to the effects of black Attack cards." },
   OffensiveHorse: { kind: "OffensiveHorse", name: "Fergana Steed", product: "standard", category: "equipment", target: "self", equipmentSlot: "offensiveHorse", description: "Attack distance +1", rules: "Equip this horse during your Play Phase. Your distance to other characters is treated as 1 less for attacks.", officialCardId: 182 },
   DefensiveHorse: { kind: "DefensiveHorse", name: "Shadowrunner", product: "standard", category: "equipment", target: "self", equipmentSlot: "defensiveHorse", description: "Incoming distance +1", rules: "Equip this horse during your Play Phase. Other characters treat their distance to you as 1 greater.", officialCardId: 190 },
   RationsDepleted: { kind: "RationsDepleted", name: "Rations Depleted", product: "endless-legends", category: "stratagem", target: "opponent", description: "Range 1 · may skip Draw Phase", rules: "During your Play Phase, place this card in the Judgement Zone of another character within distance 1. At the start of that character's turn, reveal a judgement card. If it is not a Club, that character skips their Draw Phase. Discard Rations Depleted after it resolves.", officialCardId: 199 },
@@ -68,6 +69,7 @@ export const DECK_COUNTS: Partial<Record<CardKind, number>> = {
   RockCleavingAxe: 1,
   SkyPiercingHalberd: 1,
   FrostSword: 1,
+  NioShield: 1,
   OffensiveHorse: 4,
   DefensiveHorse: 4,
 };

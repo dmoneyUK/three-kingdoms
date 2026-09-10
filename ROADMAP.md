@@ -8,8 +8,8 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable. Shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the verified Standard card set | 22 / 28 verified cards playable | Six verified Standard cards remain: Nio Shield, Eight Trigrams Formation, Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. |
-| 4. Equipment and distance modifiers | In progress — current feature focus | Weapon slot, six weapons and both mounts are playable. Armour and four verified remaining weapons/interactions remain. |
+| 3. Complete the verified Standard card set | 23 / 28 verified cards playable | Five verified Standard cards remain: Eight Trigrams Formation, Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. |
+| 4. Equipment and distance modifiers | In progress — current feature focus | Weapon, Armor and Mount slots are playable. One armor and four verified weapons/interactions remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, role reveal, Rebel rewards, Lord/Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begin after shared cards and rules are stable. |
 | 7. Product polish | Ongoing alongside rules work | Continue mobile/UI work; sound, invitations and saved history remain planned. |
@@ -24,20 +24,15 @@ Frost Sword now follows the verified Standard wording: its damage-replacement br
 
 Implementation order is dependency-driven rather than catalogue order.
 
-### 1. Nio Shield
+### Nio Shield — complete
 
 **2 ♣ — Armor**
 
-Passive immunity to black `[Attack]` cards.
+Passive immunity to black `[Attack]` cards is implemented. Nio Shield occupies the authoritative Armor slot, replaces only an existing Armor, is visible beside its owner, and cancels a black Attack before any Dodge or damage response for both human and bot players. Red Attacks still follow the ordinary response flow.
 
-Work:
-- add an authoritative Armor equipment slot and replacement/cleanup behaviour;
-- identify black Attack from suit before Dodge/damage resolution;
-- prevent the black Attack's effect when Nio Shield applies;
-- cover interaction with Blue Steel Sword once that weapon is added;
-- add human/bot and defeat-cleanup tests.
+Regression coverage verifies human and bot targets. Blue Steel Sword must later suppress this effect for its own Attack without removing the Armor.
 
-### 2. Eight Trigrams Formation
+### 1. Eight Trigrams Formation
 
 **2 ♠ — Armor**
 
@@ -50,7 +45,7 @@ Work:
 - support Attack and Raining Arrows response contexts;
 - add red-success, black-failure, Skip and bot tests.
 
-### 3. Blue Steel Sword
+### 2. Blue Steel Sword
 
 **6 ♠ — Weapon — Attack Range 2**
 
@@ -62,7 +57,7 @@ Work:
 - keep armour equipped and visible; only suppress its effect for the relevant Attack;
 - add regression tests against both armour cards.
 
-### 4. Yin-Yang Swords
+### 3. Yin-Yang Swords
 
 **2 ♠ — Weapon — Attack Range 2**
 
@@ -75,7 +70,7 @@ Work:
 - define behaviour when the target has no hand card (only the draw branch remains);
 - add human/bot, same-gender and opposite-gender tests.
 
-### 5. Kirin Bow
+### 4. Kirin Bow
 
 **5 ♦ — Weapon — Attack Range 5**
 
@@ -88,7 +83,7 @@ Work:
 - do nothing when no Mount is equipped;
 - test interaction with Frost Sword's damage replacement (no damage means no Kirin Bow trigger).
 
-### 6. Borrowed Sword
+### 5. Borrowed Sword
 
 **Q ♣ — Regular (Stratagem)**
 
@@ -104,7 +99,7 @@ Work:
 
 ## Verified implemented Standard cards
 
-The following 22 cards are currently treated as implemented:
+The following 23 cards are currently treated as implemented:
 
 - Attack
 - Dodge
@@ -126,6 +121,7 @@ The following 22 cards are currently treated as implemented:
 - Rock Cleaving Axe
 - Sky Piercing Halberd
 - Frost Sword
+- Nio Shield
 - Fergana Steed
 - Shadowrunner
 

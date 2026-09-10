@@ -60,6 +60,7 @@ The playable alpha includes:
 - Rock Cleaving Axe
 - Sky Piercing Halberd
 - Frost Sword
+- Nio Shield
 - Fergana Steed
 - Shadowrunner
 
@@ -67,18 +68,17 @@ The playable alpha includes:
 
 The verified remaining cards and implementation order are maintained in [ROADMAP.md](ROADMAP.md). The current verified remainder is:
 
-1. Nio Shield
-2. Eight Trigrams Formation
-3. Blue Steel Sword
-4. Yin-Yang Swords
-5. Kirin Bow
-6. Borrowed Sword
+1. Eight Trigrams Formation
+2. Blue Steel Sword
+3. Yin-Yang Swords
+4. Kirin Bow
+5. Borrowed Sword
 
 The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence over older roadmap/card lists.
 
 ### Current stage and next milestone
 
-The shared turn and response engine is stable enough to continue the verified Standard card set. Frost Sword now correctly replaces damage by selecting only the target's Hand or Equipment cards; their Judgement Zone is protected. The next milestone is the shared Armor slot, beginning with Nio Shield, then Eight Trigrams Formation and the armour-bypassing Blue Steel Sword.
+The shared turn and response engine is stable enough to continue the verified Standard card set. The Equipment Zone now has Armor support: Nio Shield cancels black Attack cards before Dodge or damage. The next milestone is Eight Trigrams Formation, followed by the armour-bypassing Blue Steel Sword.
 
 ## Roadmap
 

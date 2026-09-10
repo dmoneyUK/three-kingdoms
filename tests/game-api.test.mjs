@@ -83,7 +83,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const displayedRoles = await Promise.all(game.members.map(async (member) => (await state(game.code, member.token)).data.myRole));
   assert.ok(displayedRoles.includes("Traitor")); assert.ok(!displayedRoles.includes("Renegade"), "the Renegade role is presented as Traitor");
   const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
-  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BumperHarvest:2", "DefensiveHorse:4", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "FrostSword:1", "GreenDragonBlade:1", "Lightning:2", "Negation:3", "Oath:1", "OffensiveHorse:4", "Overindulgence:2", "Peach:8", "RainingArrows:1", "RockCleavingAxe:1", "SerpentSpear:1", "SkyPiercingHalberd:1", "Steal:5", "ZhugeCrossbow:2"]);
+  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BumperHarvest:2", "DefensiveHorse:4", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "FrostSword:1", "GreenDragonBlade:1", "Lightning:2", "Negation:3", "NioShield:1", "Oath:1", "OffensiveHorse:4", "Overindulgence:2", "Peach:8", "RainingArrows:1", "RockCleavingAxe:1", "SerpentSpear:1", "SkyPiercingHalberd:1", "Steal:5", "ZhugeCrossbow:2"]);
   assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
   const aliceView = await state(game.code, alice.token);
   assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
@@ -357,8 +357,8 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
   assert.equal(quick.data.room.players.find((player) => player.name === "ME").hero, "zhang-fei");
   assert.ok(quick.data.room.players.filter((player) => player.isBot).every((player) => player.hp === 1 && player.maxHp === 1));
-  assert.equal(quick.data.room.myHand.length, 17);
-  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "FrostSword"]), "ME starts every non-weapon card and the current test weapon");
+  assert.equal(quick.data.room.myHand.length, 18);
+  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "FrostSword", "NioShield"]), "ME starts every non-equipment card and each focused-test equipment card");
   assert.equal(quick.data.room.myHand.filter((openingCard) => openingCard.kind === "Attack").length, 3, "ME starts with three Attack cards");
   assert.deepEqual(quick.data.room.myHand.filter((openingCard) => ["ZhugeCrossbow", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd"].includes(openingCard.kind)), [], "other weapons remain in the draw deck for this focused test game");
   const quickDeck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(quick.data.room.code)}`));
@@ -370,7 +370,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
   assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);
   const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
-  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 19);
+  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 20);
   const quickMe = quickDraw.data.room.players.find((player) => player.name === "ME"); const quickPlayerOne = quickDraw.data.room.players.find((player) => player.name === "Player 1");
   setHand(quickMe.id, [card("Strike", "zhang-fei-1"), card("Strike", "zhang-fei-2")], quickMe.hp, quickMe.maxHp); setHand(quickPlayerOne.id, [card("Dodge", "zhang-fei-1"), card("Dodge", "zhang-fei-2")], 1, 1); setTurn(quick.data.room.code, quickMe.seat);
   assert.equal((await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "strike-zhang-fei-1", targetId: quickPlayerOne.id })).data.room.phase, "play");
@@ -598,6 +598,38 @@ test("Frost Sword offers its owner the choice to prevent Attack damage and disca
   setEquipment(me.id, { weapon: card("FrostSword", "quick") }); setHand(me.id, [card("Attack", "quick")], me.hp, me.maxHp); setHand(bot.id, [card("Peach", "one"), card("Peach", "two")], 1, 1); setTurn(quick.data.room.code, me.seat);
   const botTarget = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "attack-quick", targetId: bot.id });
   assert.equal(botTarget.status, 200); assert.equal(botTarget.data.room.pendingFrostSword.actorId, me.id, "an undefended bot target also opens the Frost Sword owner prompt");
+});
+
+test("Nio Shield occupies the Armor slot and prevents black Attack before Dodge or damage", async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members; const [hostPlayer, alicePlayer, bobPlayer] = game.room.players;
+  setHand(alicePlayer.id, [card("NioShield", "equip")], 4, 4); setTurn(game.code, alicePlayer.seat);
+  const equipped = await request("play_card", { code: game.code, token: alice.token, cardId: "nioshield-equip" });
+  assert.equal(equipped.status, 200);
+  assert.ok(equipped.data.room.players.find((player) => player.id === alicePlayer.id).equipmentCards.some((item) => item.kind === "NioShield"), "Nio Shield is visible in the target's Armor slot");
+
+  setHand(hostPlayer.id, [card("Attack", "black")], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const blackAttack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-black", targetId: alicePlayer.id });
+  assert.equal(blackAttack.status, 200);
+  assert.equal(blackAttack.data.room.phase, "play-struck", "the black Attack finishes without opening a Dodge response");
+  assert.equal(blackAttack.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Nio Shield prevents the black Attack's damage");
+  assert.ok(blackAttack.data.room.log.some((entry) => /Nio Shield makes them immune/.test(entry)));
+
+  const redAttack = { ...card("Attack", "red"), suit: "♥" };
+  setHand(hostPlayer.id, [redAttack], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const redPrompt = await request("play_card", { code: game.code, token: host.token, cardId: redAttack.id, targetId: alicePlayer.id });
+  assert.equal(redPrompt.status, 200); assert.equal(redPrompt.data.room.pendingAttack.actorId, alicePlayer.id, "a red Attack still opens the normal Dodge response");
+  const redDamage = await request("take_damage", { code: game.code, token: alice.token });
+  assert.equal(redDamage.status, 200); assert.equal(redDamage.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3, "Nio Shield does not prevent red Attack damage");
+
+  setEquipment(hostPlayer.id, { weapon: card("SkyPiercingHalberd", "nio") }); setHand(hostPlayer.id, [card("Attack", "halberd-black")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const halberdAttack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-halberd-black", targetIds: [alicePlayer.id, bobPlayer.id] });
+  assert.equal(halberdAttack.status, 200); assert.equal(halberdAttack.data.room.pendingGroup.actorId, bobPlayer.id, "Nio Shield skips the shielded target in a black Halberd Attack sequence");
+  assert.ok(halberdAttack.data.room.log.some((entry) => /Nio Shield makes them immune/.test(entry)));
+
+  const quick = await request("create", { quickStart: true }); const [me, bot] = quick.data.room.players;
+  setEquipment(bot.id, { armor: card("NioShield", "bot") }); setHand(me.id, [card("Attack", "bot-black")], me.hp, me.maxHp); setTurn(quick.data.room.code, me.seat);
+  const botShield = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "attack-bot-black", targetId: bot.id });
+  assert.equal(botShield.status, 200); assert.equal(botShield.data.room.players.find((player) => player.id === bot.id).hp, bot.hp, "a shielded bot also ignores a black Attack without consuming Dodge");
 });
 
 test("Something Out of Nothing preserves Play Phase and reveals the stratagem without exposing drawn cards", { timeout: 30_000 }, async () => {

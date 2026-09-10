@@ -75,8 +75,8 @@ const HARVEST_CHOICE_HOLD_MS = 1400;
 const HUMAN_RESPONSE_TIMEOUT_MS = 30_000;
 const BOT_RESPONSE_TIMEOUT_MS = 10_000;
 const nextResponseDeadline = (actor?: PlayerRow | null) => Date.now() + (isBotPlayer(actor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS);
-const QUICK_TEST_WEAPON: CardKind = "FrostSword";
-const QUICK_TEST_OPENING_KINDS = DECK_CARD_KINDS.filter((kind) => !cardDefinition(kind).equipmentSlot || kind === QUICK_TEST_WEAPON);
+const QUICK_TEST_EQUIPMENT_KINDS: CardKind[] = ["FrostSword", "NioShield"];
+const QUICK_TEST_OPENING_KINDS = DECK_CARD_KINDS.filter((kind) => !cardDefinition(kind).equipmentSlot || QUICK_TEST_EQUIPMENT_KINDS.includes(kind));
 const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_green_dragon", "pass_green_dragon", "respond_rock_cleaving", "pass_rock_cleaving", "use_frost_sword", "pass_frost_sword", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "respond_negation", "pass_negation", "preview_harvest", "choose_harvest", "choose_target_card", "start_response_timer", "start_rescue_timer", "give_peach", "skip_rescue"]);
 
 async function setup() {
@@ -119,6 +119,7 @@ function equipmentCards(player?: PlayerRow | null) { return Object.values(equipm
 function targetableCardCount(player?: PlayerRow | null) { return parse<Card[]>(player?.hand_json ?? null, []).length + equipmentCards(player).length + parse<Card[]>(player?.judgement_json ?? null, []).length; }
 function frostSwordTargetableCardCount(player?: PlayerRow | null) { return parse<Card[]>(player?.hand_json ?? null, []).length + equipmentCards(player).length; }
 function weaponCard(player?: PlayerRow | null) { return equipmentZone(player).weapon; }
+function armorCard(player?: PlayerRow | null) { return equipmentZone(player).armor; }
 function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return (weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1) + (hasOffensiveHorse(player) ? 1 : 0); }
 function hasOffensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).offensiveHorse); }
 function hasDefensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).defensiveHorse); }
@@ -129,6 +130,9 @@ function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(playe
 function hasRockCleavingAxe(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "RockCleavingAxe"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
 function hasFrostSword(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "FrostSword"; }
+function hasNioShield(player?: PlayerRow | null) { return armorCard(player)?.kind === "NioShield"; }
+function isBlackAttack(card?: Card | null) { return Boolean(card && isAttackCard(card) && (card.suit === "♣" || card.suit === "♠")); }
+function isNioShieldImmune(target?: PlayerRow | null, attack?: Card | null) { return hasNioShield(target) && isBlackAttack(attack); }
 function groupCardName(kind: GroupPending["cardKind"]) { return kind === "BarbarianInvasion" ? "Barbarian Invasion" : kind === "RainingArrows" ? "Raining Arrows" : "Sky Piercing Halberd Attack"; }
 function selectedSerpentSpearCards(player: PlayerRow | null | undefined, hand: Card[], value: unknown) {
   if (!hasSerpentSpear(player) || !Array.isArray(value)) return [];
@@ -315,8 +319,8 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   const playerThreeAttacks: Card[] = [];
   while (playerThreeAttacks.length < 3) { const index = quickDeck.findIndex((card) => isAttackCard(card)); if (index < 0) break; playerThreeAttacks.push(...quickDeck.splice(index, 1)); }
   const takeFocusedBotCard = () => {
-    const index = quickDeck.findIndex((card) => cardDefinition(card.kind).equipmentSlot !== "weapon" || card.kind === QUICK_TEST_WEAPON);
-    if (index < 0) throw new Error("Quick-test deck did not contain enough non-weapon cards for bot hands.");
+    const index = quickDeck.findIndex((card) => { const slot = cardDefinition(card.kind).equipmentSlot; return !slot || QUICK_TEST_EQUIPMENT_KINDS.includes(card.kind); });
+    if (index < 0) throw new Error("Quick-test deck did not contain enough focused-test cards for bot hands.");
     return quickDeck.splice(index, 1)[0];
   };
   await db().batch([
@@ -806,6 +810,15 @@ async function resolveGreenDragonAttack(room: RoomRow, pending: GreenDragonPendi
   const nextSourceHand = sourceHand.filter((card) => card.id !== attack.id);
   const updatedSource = { ...source, hand_json: JSON.stringify(nextSourceHand) } satisfies PlayerRow;
   discard.push(attack); log = addCardEvent(log, source.name, attack, target.name); log = addLog(log, `${source.name} uses Green Dragon Blade to play another Attack on ${target.name}.`);
+  if (isNioShieldImmune(target, attack)) {
+    log = addLog(log, `${target.name}'s Nio Shield makes them immune to the black Attack. Action returns to ${source.name}.`);
+    await db().batch([
+      db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
+      db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
+    ]);
+    await continueAfterDying(room.id, source.id);
+    return;
+  }
   let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((card) => card.kind === "Dodge");
   if (!isBotPlayer(target)) {
     const attackPending: AttackPending = { kind: "attack", sourceId: source.id, targetId: target.id, actorId: target.id, resumePhase: pending.resumePhase, sequenceStartCardId: pending.sequenceStartCardId, reason: "Respond to Attack: play Dodge or skip and take 1 damage", deadline: nextResponseDeadline(target) };
@@ -895,6 +908,12 @@ async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: P
     return;
   }
   if (pending.cardKind === "SkyPiercingHalberdAttack") {
+    const attack = pending.heldCards?.find(isAttackCard);
+    if (isNioShieldImmune(actor, attack)) {
+      log = addLog(log, `${actor.name}'s Nio Shield makes them immune to ${source.name}'s black Attack.`);
+      await finishGroupStep(room, pending, players, discard, log, writes);
+      return;
+    }
     writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
     await db().batch(writes);
     await advanceGroup(room.id);
@@ -1166,13 +1185,13 @@ async function runBots(roomId: string) {
       hand = hand.filter((card) => card.id !== peach.id); discard.push(peach); bot.hp = (bot.hp ?? 0) + 1; log = addCardEvent(log, bot.name, peach); log = addLog(log, `${bot.name} plays Peach and recovers 1 HP.`);
     }
     const writes = [...judgementWrites]; if (judgementResolved) writes.push(db().prepare("UPDATE players SET judgement_json = '[]' WHERE id = ?").bind(bot.id)); const changedHands = new Map<string, Card[]>();
-    const weapon = hand.find((card) => cardDefinition(card.kind).equipmentSlot === "weapon");
-    if (weapon && weaponCard(bot)?.kind !== weapon.kind) {
-      const equipment = equipmentZone(bot); const replacedWeapon = equipment.weapon;
-      hand = hand.filter((card) => card.id !== weapon.id);
-      if (replacedWeapon) { discard.push(replacedWeapon); log = addCardEvent(log, bot.name, replacedWeapon, bot.name, "discard", false); }
-      equipment.weapon = weapon; bot.equipment_json = JSON.stringify(equipment);
-      log = addCardEvent(log, bot.name, weapon, bot.name, "equip"); log = addLog(log, `${bot.name} equips ${cardDefinition(weapon.kind).name}${replacedWeapon ? ` and discards ${cardDefinition(replacedWeapon.kind).name}` : ""}.`);
+    const equipmentCard = hand.find((card) => { const slot = cardDefinition(card.kind).equipmentSlot; return Boolean(slot && equipmentZone(bot)[slot]?.kind !== card.kind); });
+    if (equipmentCard) {
+      const equipment = equipmentZone(bot); const slot = cardDefinition(equipmentCard.kind).equipmentSlot!; const replacedEquipment = equipment[slot];
+      hand = hand.filter((card) => card.id !== equipmentCard.id);
+      if (replacedEquipment) { discard.push(replacedEquipment); log = addCardEvent(log, bot.name, replacedEquipment, bot.name, "discard", false); }
+      equipment[slot] = equipmentCard; bot.equipment_json = JSON.stringify(equipment);
+      log = addCardEvent(log, bot.name, equipmentCard, bot.name, "equip"); log = addLog(log, `${bot.name} equips ${cardDefinition(equipmentCard.kind).name}${replacedEquipment ? ` and discards ${cardDefinition(replacedEquipment.kind).name}` : ""}.`);
       writes.push(db().prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(bot.equipment_json, bot.id));
     }
     const oath = hand.find((card) => card.kind === "Oath");
@@ -1285,7 +1304,9 @@ async function runBots(roomId: string) {
       log = attack ? addCardEvent(log, bot.name, attack, target.name) : addCardGroupEvent(log, bot.name, attackCards, "play", true, target.name);
       if (!attack) log = addLog(log, `${bot.name} discards 2 cards with Serpent Spear to form an Attack on ${target.name}.`);
       let targetHand = changedHands.get(target.id) ?? parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((card) => card.kind === "Dodge");
-      if (dodge) {
+      if (attack && isNioShieldImmune(target, attack)) {
+        log = addLog(log, `${target.name}'s Nio Shield makes them immune to ${bot.name}'s black Attack.`);
+      } else if (dodge) {
         if (!isBotPlayer(target)) {
           log = addLog(log, `${bot.name} plays Attack on ${target.name}. Action passes from ${bot.name} to ${target.name} for Dodge response.`);
           writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
@@ -1868,12 +1889,12 @@ export async function POST(request: Request) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card); log = addLog(log, `${me.name} plays Peach and recovers 1 HP.`);
         await db.batch([db.prepare("UPDATE players SET hand_json = ?, hp = hp + 1 WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id)]);
-      } else if (cardDefinition(card.kind).equipmentSlot === "weapon") {
+      } else if (cardDefinition(card.kind).equipmentSlot) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
-        const equipment = equipmentZone(me); const replacedWeapon = equipment.weapon;
-        hand = hand.filter((item) => item.id !== card.id); equipment.weapon = card;
-        if (replacedWeapon) { discard.push(replacedWeapon); log = addCardEvent(log, me.name, replacedWeapon, me.name, "discard", false); }
-        log = addCardEvent(log, me.name, card, me.name, "equip"); log = addLog(log, `${me.name} equips ${cardDefinition(card.kind).name}${replacedWeapon ? ` and discards ${cardDefinition(replacedWeapon.kind).name}` : ""}.`);
+        const equipment = equipmentZone(me); const slot = cardDefinition(card.kind).equipmentSlot!; const replacedEquipment = equipment[slot];
+        hand = hand.filter((item) => item.id !== card.id); equipment[slot] = card;
+        if (replacedEquipment) { discard.push(replacedEquipment); log = addCardEvent(log, me.name, replacedEquipment, me.name, "discard", false); }
+        log = addCardEvent(log, me.name, card, me.name, "equip"); log = addLog(log, `${me.name} equips ${cardDefinition(card.kind).name}${replacedEquipment ? ` and discards ${cardDefinition(replacedEquipment.kind).name}` : ""}.`);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(hand), JSON.stringify(equipment), me.id),
           db.prepare("UPDATE rooms SET phase = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id),
@@ -1979,6 +2000,14 @@ export async function POST(request: Request) {
           const pending: GroupPending = { kind: "group", cardKind: "SkyPiercingHalberdAttack", sourceId: me.id, actorId: target.id, remainingIds: targets.slice(1).map((entry) => entry.id), requiredKind: "Dodge", resumePhase: phaseAfterAttack(me), reason: `Respond to Sky Piercing Halberd Attack: select Dodge or take 1 damage`, deadline: nextResponseDeadline(target), heldCards: [card] };
           log = addLog(log, `${me.name} uses their last hand card as Attack with Sky Piercing Halberd, targeting ${targets.map((entry) => entry.name).join(", ")}. ${target.name} resolves first.`);
           await beginGroupTarget(liveRoom, pending, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
+          return json({ room: await roomState(code, token) });
+        }
+        if (isNioShieldImmune(target, card)) {
+          log = addLog(log, `${target.name}'s Nio Shield makes them immune to ${me.name}'s black Attack. Action returns to ${me.name}.`);
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+            db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(me), JSON.stringify(discard), JSON.stringify(log), room.id),
+          ]);
           return json({ room: await roomState(code, token) });
         }
         let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((item) => item.kind === "Dodge");
