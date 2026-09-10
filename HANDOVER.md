@@ -45,8 +45,8 @@ This is a playable four-player alpha. The quick-test game starts immediately as 
 - automatic controller hand/permission switching to the seat that legally acts;
 - random roles and heroes, except `ME` uses Zhang Fei for testing;
 - Lord bonus HP;
-- Player 1–3 at 1 HP in quick-test mode; and
-- every non-weapon Standard card plus Frost Sword and three Attacks in `ME`'s opening hand; other weapons remain in the deck, every player starts with Fergana Steed (+1) and Shadowrunner (-1) equipped, and Player 3 also begins with three Attacks plus a Negation for bot-response testing.
+- Player 1–3 at 3 HP in quick-test mode; and
+- every non-weapon Standard card plus Frost Sword and three Attacks in `ME`'s opening hand; other weapons and all horses remain in the deck. Player 3 also begins with three Attacks plus a Negation for bot-response testing.
 
 Implemented shared rules include:
 
@@ -350,7 +350,7 @@ npm run lint
 npm test
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 19 passing test flows.
+`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 25 passing test flows.
 
 Key test files:
 

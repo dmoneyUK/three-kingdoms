@@ -120,10 +120,22 @@ function targetableCardCount(player?: PlayerRow | null) { return parse<Card[]>(p
 function frostSwordTargetableCardCount(player?: PlayerRow | null) { return parse<Card[]>(player?.hand_json ?? null, []).length + equipmentCards(player).length; }
 function weaponCard(player?: PlayerRow | null) { return equipmentZone(player).weapon; }
 function armorCard(player?: PlayerRow | null) { return equipmentZone(player).armor; }
-function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return (weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1) + (hasOffensiveHorse(player) ? 1 : 0); }
+// Extend this capability check together with the response resolver when adding
+// Eight Trigrams or enabled hero conversion/transfer skills. Passive immunity
+// (Nio Shield) resolves before this decision; unimplemented skills are not choices.
+function canRespondWithDodge(player: PlayerRow) {
+  return parse<Card[]>(player.hand_json, []).some((card) => card.kind === "Dodge");
+}
+function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1; }
 function hasOffensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).offensiveHorse); }
 function hasDefensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).defensiveHorse); }
-function attackDistance(players: PlayerRow[], sourceId: string, targetId: string) { const target = players.find((player) => player.id === targetId); return distanceBetween(players, sourceId, targetId) + (hasDefensiveHorse(target) ? 1 : 0); }
+function attackDistance(players: PlayerRow[], sourceId: string, targetId: string) {
+  const source = players.find((player) => player.id === sourceId);
+  const target = players.find((player) => player.id === targetId);
+  if (sourceId === targetId) return 0;
+  if (!source?.alive || !target?.alive) return 99;
+  return Math.max(1, distanceBetween(players, sourceId, targetId) + (hasDefensiveHorse(target) ? 1 : 0) - (hasOffensiveHorse(source) ? 1 : 0));
+}
 function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "ZhugeCrossbow"; }
 function hasGreenDragonBlade(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "GreenDragonBlade"; }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
@@ -306,16 +318,15 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   let otherHeroIndex = 0;
   const assigned = players.map((player, index) => {
     const hero = player.id === hostPlayerId ? zhangFei : otherHeroes[otherHeroIndex++];
-    const hp = player.id === hostPlayerId ? hero.hp + 1 : 1;
+    const hp = 3;
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
   await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: [...QUICK_TEST_OPENING_KINDS, "Attack", "Attack"] });
   const quickPlayers = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const quickRoom = await db().prepare("SELECT deck_json FROM rooms WHERE id = ?").bind(roomId).first<Pick<RoomRow, "deck_json">>();
-  const bots = (quickPlayers.results ?? []).filter((player) => player.id !== hostPlayerId);
-  const quickDeck = [...parse<Card[]>(quickRoom?.deck_json ?? null, []), ...bots.flatMap((player) => parse<Card[]>(player.hand_json, []))].filter((card) => card.kind !== "OffensiveHorse" && card.kind !== "DefensiveHorse");
-  const starterEquipment = (playerId: string) => JSON.stringify({ offensiveHorse: { id: `quick-offensive-${playerId}`, kind: "OffensiveHorse", suit: "♣", rank: "5" }, defensiveHorse: { id: `quick-defensive-${playerId}`, kind: "DefensiveHorse", suit: "♠", rank: "5" } } satisfies EquipmentZone);
+  const testPlayers = (quickPlayers.results ?? []).filter((player) => player.id !== hostPlayerId);
+  const quickDeck = [...parse<Card[]>(quickRoom?.deck_json ?? null, []), ...testPlayers.flatMap((player) => parse<Card[]>(player.hand_json, []))];
   const playerThreeAttacks: Card[] = [];
   while (playerThreeAttacks.length < 3) { const index = quickDeck.findIndex((card) => isAttackCard(card)); if (index < 0) break; playerThreeAttacks.push(...quickDeck.splice(index, 1)); }
   const takeFocusedBotCard = () => {
@@ -324,8 +335,7 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     return quickDeck.splice(index, 1)[0];
   };
   await db().batch([
-    ...(quickPlayers.results ?? []).map((player) => db().prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(starterEquipment(player.id), player.id)),
-    ...bots.map((player, index) => {
+    ...testPlayers.map((player, index) => {
     const testNegation: Card = { id: `quick-negation-${crypto.randomUUID()}`, kind: "Negation", suit: (["♣", "♠", "♦"] as const)[index % 3], rank: ["Q", "K", "J"][index % 3] };
     const nextHand = player.seat === 3 ? [testNegation, ...playerThreeAttacks] : [testNegation, takeFocusedBotCard(), takeFocusedBotCard(), takeFocusedBotCard()];
     return db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), player.id);
@@ -820,7 +830,7 @@ async function resolveGreenDragonAttack(room: RoomRow, pending: GreenDragonPendi
     return;
   }
   let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((card) => card.kind === "Dodge");
-  if (!isBotPlayer(target)) {
+  if (!isBotPlayer(target) && canRespondWithDodge(target)) {
     const attackPending: AttackPending = { kind: "attack", sourceId: source.id, targetId: target.id, actorId: target.id, resumePhase: pending.resumePhase, sequenceStartCardId: pending.sequenceStartCardId, reason: "Respond to Attack: play Dodge or skip and take 1 damage", deadline: nextResponseDeadline(target) };
     await db().batch([
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
@@ -986,7 +996,7 @@ async function advanceGroup(roomId: string) {
       await finishGroupStep(room, pending, players, parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
       return;
     }
-    if (!isBotPlayer(actor)) return;
+    if (!isBotPlayer(actor) && (pending.requiredKind !== "Dodge" || canRespondWithDodge(actor))) return;
     let hand = parse<Card[]>(actor.hand_json, []); const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
     const response = hand.find((card) => pending.requiredKind === "Attack" ? isAttackCard(card) : card.kind === "Dodge"); const serpentCards = !response && pending.requiredKind === "Attack" ? botSerpentSpearCards(actor, hand) : []; const responseCards = response ? [response] : serpentCards;
     const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
@@ -1202,7 +1212,7 @@ async function runBots(roomId: string) {
       log = addCardEvent(log, bot.name, oath, "All wounded players"); log = addLog(log, `${bot.name} plays Oath of the Peach Garden. ${wounded.map((player) => player.name).join(", ")} recover 1 HP.`);
     }
     const steal = hand.find((card) => card.kind === "Steal");
-    const stealTarget = players.find((player) => player.alive && player.id !== bot.id && distanceBetween(players, bot.id, player.id) === 1 && parse<Card[]>(player.hand_json, []).length > 0);
+    const stealTarget = players.find((player) => player.alive && player.id !== bot.id && attackDistance(players, bot.id, player.id) <= 1 && parse<Card[]>(player.hand_json, []).length > 0);
     if (steal && stealTarget) {
       const targetHand = parse<Card[]>(stealTarget.hand_json, []); const stolen = targetHand.shift()!;
       hand = hand.filter((card) => card.id !== steal.id); hand.push(stolen); discard.push(steal); changedHands.set(stealTarget.id, targetHand);
@@ -1264,7 +1274,7 @@ async function runBots(roomId: string) {
       await startNegation(room, { ...bot, hand_json: JSON.stringify(hand) }, playersForNegation, overindulgence, overindulgenceTarget.name, overindulgenceTarget.id, { kind: "overindulgence", targetId: overindulgenceTarget.id, cardId: overindulgence.id }, hand, deck, discard, log); return;
     }
     const rationsDepleted = hand.find((card) => card.kind === "RationsDepleted");
-    const rationsTarget = playersInTurnOrder(players, bot.seat).find((player) => player.id !== bot.id && distanceBetween(players, bot.id, player.id) <= 1 && !parse<Card[]>(player.judgement_json, []).some((delayed) => delayed.kind === "RationsDepleted"));
+    const rationsTarget = playersInTurnOrder(players, bot.seat).find((player) => player.id !== bot.id && attackDistance(players, bot.id, player.id) <= 1 && !parse<Card[]>(player.judgement_json, []).some((delayed) => delayed.kind === "RationsDepleted"));
     if (rationsDepleted && rationsTarget) {
       hand = hand.filter((card) => card.id !== rationsDepleted.id); discard.push(rationsDepleted);
       log = addCardEvent(log, bot.name, rationsDepleted, rationsTarget.name); log = addLog(log, `${bot.name} plays Rations Depleted on ${rationsTarget.name}.`);
@@ -1385,7 +1395,7 @@ async function roomState(code: string, token?: string) {
     pendingHarvest: pending?.kind === "harvest" ? { sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), previewCardId: pending.previewCardId ?? null, complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? pending.botAdvanceAt ?? 0 } : null,
     pendingTargetCard: pending?.kind === "target_card" ? { sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingDying: pending?.kind === "dying" ? { sourceId: pending.sourceId, targetId: pending.targetId, deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
-    players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), connected: isBotPlayer(player) || isTestController || Date.now() - player.connected_at < 15_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: isTestController ? parse<Card[]>(player.hand_json, []) : [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? distanceBetween(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
+    players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), connected: isBotPlayer(player) || isTestController || Date.now() - player.connected_at < 15_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: isTestController ? parse<Card[]>(player.hand_json, []) : [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
   };
 }
 
@@ -1879,7 +1889,7 @@ export async function POST(request: Request) {
       const materialIds = new Set(materials.map((item) => item.id)); hand = hand.filter((item) => !materialIds.has(item.id)); discard.push(...materials);
       log = addCardGroupEvent(log, me.name, materials, "play", true, target.name); log = addLog(log, `${me.name} discards 2 cards with Serpent Spear to form an Attack on ${target.name}.`);
       let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((item) => item.kind === "Dodge"); const sequenceStartCardId = materials[0].id;
-      if (!isBotPlayer(target)) {
+      if (!isBotPlayer(target) && canRespondWithDodge(target)) {
         log = addLog(log, `Action passes from ${me.name} to ${target.name} for Dodge response.`);
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "attack", sourceId: me.id, targetId: target.id, actorId: target.id, resumePhase: phaseAfterAttack(me), sequenceStartCardId, reason: "Respond to Attack: play Dodge or skip and take 1 damage", deadline: nextResponseDeadline(target) } satisfies AttackPending), JSON.stringify(discard), JSON.stringify(log), room.id)]);
       } else if (dodge) {
@@ -1961,7 +1971,7 @@ export async function POST(request: Request) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose another living character for Rations Depleted." }, 400);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        if (distanceBetween(rows.results ?? [], me.id, target.id) > 1) return json({ error: "Rations Depleted can target only a character within distance 1." }, 409);
+        if (attackDistance(rows.results ?? [], me.id, target.id) > 1) return json({ error: "Rations Depleted can target only a character within distance 1." }, 409);
         if (parse<Card[]>(target.judgement_json, []).some((delayed) => delayed.kind === "RationsDepleted")) return json({ error: `${target.name} already has Rations Depleted in their Judgement Zone.` }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
@@ -1978,7 +1988,7 @@ export async function POST(request: Request) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Steal." }, 400);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        if (distanceBetween(rows.results ?? [], me.id, target.id) > 1) return json({ error: "Steal can target only a character within distance 1." }, 409);
+        if (attackDistance(rows.results ?? [], me.id, target.id) > 1) return json({ error: "Steal can target only a character within distance 1." }, 409);
         if (targetableCardCount(target) === 0) return json({ error: "Choose a player who currently has at least one card." }, 400);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card); log = addCardEvent(log, me.name, card, target.name);
@@ -2023,7 +2033,7 @@ export async function POST(request: Request) {
           return json({ room: await roomState(code, token) });
         }
         let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((item) => item.kind === "Dodge");
-        if (!isBotPlayer(target)) {
+        if (!isBotPlayer(target) && canRespondWithDodge(target)) {
           log = addLog(log, `${me.name} plays Attack on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
           await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "attack", sourceId: me.id, targetId: target.id, actorId: target.id, resumePhase: phaseAfterAttack(me), sequenceStartCardId: card.id, reason: "Respond to Attack: play Dodge or skip and take 1 damage", deadline: nextResponseDeadline(target) } satisfies AttackPending), JSON.stringify(discard), JSON.stringify(log), room.id)]);
         } else if (dodge) {

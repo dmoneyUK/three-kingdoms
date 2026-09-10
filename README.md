@@ -7,7 +7,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — Standard equipment expansion with ongoing rules-engine stabilisation**
+- Current stage: **playable four-player alpha — distance-safe attacks, responsive prompts, and Standard deck audit**
 
 ## Source of knowledge
 
@@ -79,7 +79,7 @@ The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence ove
 
 ### Current stage and next milestone
 
-The shared turn and response engine is stable enough to continue the verified Standard card set. The Equipment Zone now has Armor support: Nio Shield cancels black Attack cards before Dodge or damage. Quick Test is now suitable for manual four-seat rules checks on one device. The next milestone is Eight Trigrams Formation, followed by the armour-bypassing Blue Steel Sword.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with horses in the deck. The next milestone is Eight Trigrams Formation, followed by the armour-bypassing Blue Steel Sword; the 108-card manifest audit is tracked in `ROADMAP.md`.
 
 ## Roadmap
 

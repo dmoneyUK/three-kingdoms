@@ -110,3 +110,20 @@
   .play-seat > .visible-countdown { min-width: 50px; }
   .active-step-label { top: 29%; width: 66%; padding: 5px 8px; }
 }
+/* Four equipment slots remain inside a two-column rack at every seat. */
+.player-equipment-zone { width: 118px; }
+.player-equipment-zone > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; min-height: 148px; }
+.player-equipment-card { width: 100%; min-width: 0; }
+.table-hidden-card-picker.target-card-picker { position: fixed; max-height: 85dvh; overflow-y: auto; }
+.target-picker-actions { width: 100%; position: sticky; bottom: 0; padding-top: 12px; background: #151812; }
+.target-card-picker .target-picker-actions button { width: 100%; min-height: 44px; height: auto; padding: 12px; background: #b8934b; color: #17160f; font: bold 12px Arial; }
+.target-card-picker .target-picker-actions button:disabled { opacity: .45; }
+@media (max-width: 800px) {
+  .player-equipment-zone { width: 104px; }
+  .player-equipment-zone > div { min-height: 132px; }
+}
+@media (max-width: 520px) {
+  .player-equipment-zone { width: 86px; }
+  .player-equipment-zone > div { gap: 3px; min-height: 117px; }
+  .player-equipment-card { width: 100%; min-width: 0; }
+}

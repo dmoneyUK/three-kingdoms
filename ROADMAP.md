@@ -8,13 +8,21 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable. Shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the verified Standard card set | 23 / 28 verified cards playable | Five verified Standard cards remain: Eight Trigrams Formation, Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. |
+| 3. Complete the verified Standard card set | 23 / 28 verified card identities playable; quantity audit pending | Five verified identities remain, and the 108-card manifest still needs authoritative quantities/suits/ranks reconciled with the runtime deck. |
 | 4. Equipment and distance modifiers | In progress — current feature focus | Weapon, Armor and Mount slots are playable. One armor and four verified weapons/interactions remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, role reveal, Rebel rewards, Lord/Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begin after shared cards and rules are stable. |
 | 7. Product polish | Ongoing alongside rules work | Continue mobile/UI work; sound, invitations and saved history remain planned. |
 
 ## Immediate rules correction
+
+### Current rules-engine maintenance — complete
+
+Attack and Steal targeting now share effective distance (including horses), so out-of-range targets are rejected before a card is consumed. A target with no Dodge and no implemented defensive capability is damaged immediately; response windows remain available for Dodge-capable hands and equipment. Quick Test uses three HP per seat, leaves horses in the draw deck, and the equipment rack supports four cards. Regression tests cover these paths.
+
+### Standard 108-card manifest audit — tracked
+
+`docs/STANDARD_108_DECK_MANIFEST.md` is the quantity and identity target. The five implemented gaps are Eight Trigrams Formation, Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. Before calling the deck complete, reconcile the manifest's 108 physical cards (including exact suit/rank assignments and six named mounts) with the runtime deck; do not silently substitute generic horse cards or unverified expansion cards.
 
 ### Frost Sword correction — complete
 
