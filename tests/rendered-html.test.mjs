@@ -265,7 +265,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /optimisticallyPresentedCards\.current\.add\(playedCard\.id\)/);
   assert.match(page, /optimisticallyPresentedCards\.current\.delete\(event\.card\.id\)/);
   assert.match(page, /setTimeout\(\(\) => setOptimisticPlay\(null\), UI_TIMING\.playedCard\)/);
-  assert.match(page, /setResolutionClosing\(false\); setResolutionEvents\(\[optimisticEvent\]\)/);
+  assert.match(page, /setResolutionClosing\(false\); setResolutionEvents\(retainsAtPlayer\(optimisticEvent\) \? \[optimisticEvent\] : \[\]\)/);
   assert.match(page, /const playResponseCard = async/);
   assert.match(page, /optimistic-response-/);
   assert.match(page, /hasUnseenPresentations \|\| resolutionPending/);

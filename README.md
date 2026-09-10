@@ -83,6 +83,8 @@ The shared turn and response engine now uses effective horse-adjusted distance c
 
 ## Roadmap
 
+Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation remains the next card milestone.
+
 See [ROADMAP.md](ROADMAP.md) for the active implementation roadmap and per-card implementation requirements.
 
 The broad stages are:

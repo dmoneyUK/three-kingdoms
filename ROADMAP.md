@@ -16,6 +16,10 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 
 ## Immediate rules correction
 
+### Equipment animation follow-up — complete
+
+Removed optimistic equipment entries from retained sequence cards. While a public equipment reveal is queued or active, its rack slot remains reserved but the card is hidden. The reveal travels to that slot's measured position and size, then the rack card becomes visible. Equipment summaries remain in Event History without an additional timed message. Next card: Eight Trigrams Formation.
+
 ### Current rules-engine maintenance — complete
 
 Attack and Steal targeting now share effective distance (including horses), so out-of-range targets are rejected before a card is consumed. A target with no Dodge and no implemented defensive capability is damaged immediately; response windows remain available for Dodge-capable hands and equipment. Quick Test uses three HP per seat, leaves horses in the draw deck, and the equipment rack supports four cards. Regression tests cover these paths.

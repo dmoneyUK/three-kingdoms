@@ -54,6 +54,17 @@
   animation: revealedCardsToDiscard var(--played-card-display) ease-in-out both !important;
 }
 
+/* A single visible equipment card flies to the measured rack slot. The rack
+   placeholder retains its dimensions but stays hidden until the reveal ends. */
+.active-table-reveal.equipment-flight {
+  animation: equipmentCardToSlot var(--played-card-display) ease-in-out both !important;
+}
+@keyframes equipmentCardToSlot {
+  0% { left: var(--origin-x); top: var(--origin-y); opacity: .15; transform: scale(.25); }
+  10%, 72% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
+  100% { left: var(--equipment-x, 50%); top: var(--equipment-y, 50%); opacity: 1; transform: scale(var(--equipment-scale-x, .4), var(--equipment-scale-y, .4)); }
+}
+
 /* Reach the owner early enough to remain visibly settled before React swaps in
    the small persistent copy. No frame in this animation targets the discard. */
 @keyframes sequenceCardToOwner {

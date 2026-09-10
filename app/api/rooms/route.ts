@@ -1201,7 +1201,7 @@ async function runBots(roomId: string) {
       hand = hand.filter((card) => card.id !== equipmentCard.id);
       if (replacedEquipment) { discard.push(replacedEquipment); log = addCardEvent(log, bot.name, replacedEquipment, bot.name, "discard", false); }
       equipment[slot] = equipmentCard; bot.equipment_json = JSON.stringify(equipment);
-      log = addCardEvent(log, bot.name, equipmentCard, bot.name, "equip"); log = addLog(log, `${bot.name} equips ${cardDefinition(equipmentCard.kind).name}${replacedEquipment ? ` and discards ${cardDefinition(replacedEquipment.kind).name}` : ""}.`);
+      log = addCardEvent(log, bot.name, equipmentCard, bot.name, "equip"); log = addHistory(log, `${bot.name} equips ${cardDefinition(equipmentCard.kind).name}${replacedEquipment ? ` and discards ${cardDefinition(replacedEquipment.kind).name}` : ""}.`);
       writes.push(db().prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(bot.equipment_json, bot.id));
     }
     const oath = hand.find((card) => card.kind === "Oath");
@@ -1916,7 +1916,7 @@ export async function POST(request: Request) {
         const equipment = equipmentZone(me); const slot = cardDefinition(card.kind).equipmentSlot!; const replacedEquipment = equipment[slot];
         hand = hand.filter((item) => item.id !== card.id); equipment[slot] = card;
         if (replacedEquipment) { discard.push(replacedEquipment); log = addCardEvent(log, me.name, replacedEquipment, me.name, "discard", false); }
-        log = addCardEvent(log, me.name, card, me.name, "equip"); log = addLog(log, `${me.name} equips ${cardDefinition(card.kind).name}${replacedEquipment ? ` and discards ${cardDefinition(replacedEquipment.kind).name}` : ""}.`);
+        log = addCardEvent(log, me.name, card, me.name, "equip"); log = addHistory(log, `${me.name} equips ${cardDefinition(card.kind).name}${replacedEquipment ? ` and discards ${cardDefinition(replacedEquipment.kind).name}` : ""}.`);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(hand), JSON.stringify(equipment), me.id),
           db.prepare("UPDATE rooms SET phase = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, JSON.stringify(discard), JSON.stringify(log), room.id),

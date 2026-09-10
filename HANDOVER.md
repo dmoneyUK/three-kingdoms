@@ -38,6 +38,10 @@ The standing release workflow requested by the owner is:
 
 ## Current product state
 
+Latest fix: equipment has one visible centre-to-rack flight. The prior retention filter missed optimistic entries, producing the numbered duplicate reported in screenshots. Both merged sequence entries and the final sequence renderer now filter equipment; rack visibility follows unseen, queued and active equipment events. A layout measurement with ResizeObserver supplies the real destination across seats and viewport sizes. Equipment summaries use history-only entries to avoid a second presentation delay. Existing live equipment is visible immediately on reconnect. Continue with Eight Trigrams Formation after visual regression checks.
+
+Local browser verification: played Nio Shield followed by Frost Sword. During each flight there was one centre reveal, zero numbered settled copies, and the incoming rack card was hidden; afterwards the reveal was gone and the rack card visible. The second flight's measured destination matched the second rack slot while the already-equipped Shield stayed visible.
+
 This is a playable four-player alpha. The quick-test game starts immediately as a single-device controller table with:
 
 - four human-controlled seats: `ME`, `Player 1`, `Player 2` and `Player 3`;
