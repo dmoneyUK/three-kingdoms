@@ -37,7 +37,11 @@ function movesDirectlyToDiscard(event: GameEvent) {
   return event.type === "cards" ? event.action === "discard" : event.type === "card" ? event.action === "discard" || event.action === "reveal" : false;
 }
 function retainsAtPlayer(event: GameEvent) {
-  return eventCards(event).length === 0 || (!movesDirectlyToDiscard(event) && !(event.type === "card" && event.action === "gain"));
+  // Equipment is committed to the owner's rack by the API before its public
+  // presentation is emitted. Keep the centre reveal, but do not also retain a
+  // numbered copy in the settled sequence; that duplicate made an equipped
+  // card appear to return to the player's hand before settling.
+  return eventCards(event).length === 0 || (!movesDirectlyToDiscard(event) && !(event.type === "card" && (event.action === "gain" || event.action === "equip")));
 }
 function appendUniqueEvents(current: GameEvent[], incoming: GameEvent[]) {
   return incoming.reduce((events, event) => events.some((existing) => existing.id === event.id) ? events : [...events, event], current);
