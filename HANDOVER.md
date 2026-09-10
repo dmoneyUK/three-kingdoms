@@ -38,13 +38,14 @@ The standing release workflow requested by the owner is:
 
 ## Current product state
 
-This is a playable four-player alpha. The quick-test game starts immediately with:
+This is a playable four-player alpha. The quick-test game starts immediately as a single-device controller table with:
 
-- human player `ME`;
-- bots `Player 1`, `Player 2` and `Player 3`;
+- four human-controlled seats: `ME`, `Player 1`, `Player 2` and `Player 3`;
+- all four hands displayed around their seats only in Quick Test; and
+- automatic controller hand/permission switching to the seat that legally acts;
 - random roles and heroes, except `ME` uses Zhang Fei for testing;
 - Lord bonus HP;
-- bots at 1 HP in quick-test mode; and
+- Player 1–3 at 1 HP in quick-test mode; and
 - every non-weapon Standard card plus Frost Sword and three Attacks in `ME`'s opening hand; other weapons remain in the deck, every player starts with Fergana Steed (+1) and Shadowrunner (-1) equipped, and Player 3 also begins with three Attacks plus a Negation for bot-response testing.
 
 Implemented shared rules include:
@@ -109,6 +110,8 @@ The production migration is now complete in the project configuration:
 - GitHub `main` is the sole authoritative source and `.github/workflows/deploy.yml` is the sole production release path.
 - Successful pushes validate the project, apply Cloudflare D1 migrations and deploy `three-kingdoms` to the public Worker URL.
 - The obsolete ChatGPT Sites hosting file and build dependency were removed. The migrated test runner still exits explicitly to close Cloudflare worker handles in CI, but now preserves the real test result instead of forcing success after a failure.
+
+The latest Quick Test change makes manual rule verification possible without waiting for bots. All four quick-test player rows share the local session token, but this is deliberately detected only when every four-seat player belongs to that session; normal multiplayer sessions continue to expose only their owner's hand. The API selects the legal turn or response actor as the controller perspective, so existing server ownership checks remain authoritative. The user interface shows compact visible hands beside every seat and enables only the acting seat's cards; the regular large hand remains the action control surface. Bot fixtures use the internal `botTest: true` request field so regression tests retain coverage of automatic bot turns without changing the public Quick Test flow.
 
 The latest timing change expands the shared response window:
 

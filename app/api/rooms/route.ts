@@ -1356,15 +1356,19 @@ async function roomState(code: string, token?: string) {
   const rawLog = parse<string[]>(room.log_json, []);
   const pending = parse<Pending | null>(room.pending_json, null);
   const tokenHash = token ? await hash(token) : "";
-  const me = players.find((player) => player.token_hash === tokenHash);
-  if (me) await db.prepare("UPDATE players SET connected_at = ? WHERE id = ?").bind(Date.now(), me.id).run();
   const turnPlayer = players.find((player) => player.seat === room.turn_seat);
   const actualActionPlayerId = room.phase === "response" || room.phase === "dying" ? pending?.actorId ?? pending?.targetId ?? turnPlayer?.id ?? null : turnPlayer?.id ?? null;
+  const sessionPlayers = players.filter((player) => player.token_hash === tokenHash);
+  // Quick Test deliberately shares one local controller across all four seats.
+  // A regular room still has exactly one player for each session token.
+  const isTestController = sessionPlayers.length === players.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
+  const me = isTestController ? players.find((player) => player.id === actualActionPlayerId) ?? turnPlayer ?? sessionPlayers[0] : sessionPlayers[0];
+  if (sessionPlayers.length) await db.batch(sessionPlayers.map((player) => db.prepare("UPDATE players SET connected_at = ? WHERE id = ?").bind(Date.now(), player.id)));
   const actionPlayerId = room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
   const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   return {
-    code: room.code, status: room.status, maxPlayers: room.max_players,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions: room.status === "heroes" && me?.hero_options_json ? JSON.parse(me.hero_options_json) : [],
@@ -1381,7 +1385,7 @@ async function roomState(code: string, token?: string) {
     pendingHarvest: pending?.kind === "harvest" ? { sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), previewCardId: pending.previewCardId ?? null, complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? pending.botAdvanceAt ?? 0 } : null,
     pendingTargetCard: pending?.kind === "target_card" ? { sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingDying: pending?.kind === "dying" ? { sourceId: pending.sourceId, targetId: pending.targetId, deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
-    players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), connected: isBotPlayer(player) || Date.now() - player.connected_at < 15_000, handCount: parse<Card[]>(player.hand_json, []).length, judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? distanceBetween(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
+    players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), connected: isBotPlayer(player) || isTestController || Date.now() - player.connected_at < 15_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: isTestController ? parse<Card[]>(player.hand_json, []) : [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? distanceBetween(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
   };
 }
 
@@ -1414,13 +1418,13 @@ export async function POST(request: Request) {
   if (action === "create") {
     const quickStart = body.quickStart === true; const playerName = quickStart ? "ME" : name;
     if (playerName.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
-    const roomId = crypto.randomUUID(); const playerId = crypto.randomUUID(); const token = newToken(); let code = randomCode();
+    const roomId = crypto.randomUUID(); const playerId = crypto.randomUUID(); const token = newToken(); const tokenHash = await hash(token); const botTest = body.botTest === true; let code = randomCode();
     for (let attempt = 0; attempt < 4; attempt++) { const exists = await db.prepare("SELECT 1 FROM rooms WHERE code = ?").bind(code).first(); if (!exists) break; code = randomCode(); }
     const inserts = [
       db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', 8, ?)").bind(roomId, code, playerId, Date.now()),
-      db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, playerName, await hash(token), Date.now()),
+      db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, playerName, tokenHash, Date.now()),
     ];
-    if (quickStart) for (let index = 1; index <= 3; index++) inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), roomId, `Player ${index}`, `bot:${crypto.randomUUID()}`, index, Date.now()));
+    if (quickStart) for (let index = 1; index <= 3; index++) inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), roomId, `Player ${index}`, botTest ? `bot:${crypto.randomUUID()}` : tokenHash, index, Date.now()));
     await db.batch(inserts);
     if (quickStart) {
       await resetAudit(roomId);
@@ -1452,7 +1456,15 @@ export async function POST(request: Request) {
   }
 
   const tokenHash = await hash(token);
-  const me = await db.prepare("SELECT * FROM players WHERE room_id = ? AND token_hash = ?").bind(room.id, tokenHash).first<PlayerRow>();
+  const authenticated = await db.prepare("SELECT * FROM players WHERE room_id = ? AND token_hash = ? ORDER BY seat").bind(room.id, tokenHash).all<PlayerRow>();
+  const sessionPlayers = authenticated.results ?? [];
+  const allPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+  const allRoomPlayers = allPlayers.results ?? [];
+  const pendingForController = parse<Pending | null>(room.pending_json, null);
+  const turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
+  const actionPlayerIdForController = room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
+  const isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
+  const me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
   if (action !== "start") await recordAuditAction(room, me ?? null, name, action);
   if (GAMEPLAY_ACTIONS.has(action)) {
     const currentRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
