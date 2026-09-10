@@ -38,6 +38,8 @@ The standing release workflow requested by the owner is:
 
 ## Current product state
 
+Latest Negation update: confirmed owner model starts each initial window at the affected target, includes the Stratagem user, and restarts after the latest Negation player only when a Negation is played. Existing pass queues shrink without cycling; counter windows permit previous passers and encounter the latest card player last if still eligible. Players with no Negation are automatically skipped. The API's `negated` field tracks provisional parity; no normal response resolves until the current opportunity exhausts. Surviving Duel/AOE effects receive a fresh normal-response deadline. Bot Duel now enters this same pipeline. Quick Test seat-hand selection respects the same response eligibility as the main hand. New API tests cover ordering, pass finality, parity, user inclusion, expired nested timers, early-response rejection, Spear with an Attack still held, and per-target sequencing. Eight Trigrams and hero response skills remain unimplemented.
+
 Latest fix: equipment has one visible centre-to-rack flight. The prior retention filter missed optimistic entries, producing the numbered duplicate reported in screenshots. Both merged sequence entries and the final sequence renderer now filter equipment; rack visibility follows unseen, queued and active equipment events. A layout measurement with ResizeObserver supplies the real destination across seats and viewport sizes. Equipment summaries use history-only entries to avoid a second presentation delay. Existing live equipment is visible immediately on reconnect. Continue with Eight Trigrams Formation after visual regression checks.
 
 Local browser verification: played Nio Shield followed by Frost Sword. During each flight there was one centre reveal, zero numbered settled copies, and the incoming rack card was hidden; afterwards the reveal was gone and the rack card visible. The second flight's measured destination matched the second rack slot while the already-equipped Shield stayed visible.
@@ -354,7 +356,7 @@ npm run lint
 npm test
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 25 passing test flows.
+`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 27 passing test flows.
 
 Key test files:
 

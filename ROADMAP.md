@@ -16,6 +16,10 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 
 ## Immediate rules correction
 
+### Ordered Negation windows — complete
+
+Initial windows start at the affected target and include the user; counter windows start after the latest Negation player and can reach that player last. Pass consumes one opportunity, while a newly played Negation resets eligibility. Raining Arrows and Barbarian Invasion finish each target before advancing; Duel (including bot-played Duel) uses the same Negation gate. Normal responses have fresh deadlines after the chain closes, and Attack/Serpent Spear remain alternatives when Attack is required. Next: Eight Trigrams as an additional normal Dodge response, never during Negation.
+
 ### Equipment animation follow-up — complete
 
 Removed optimistic equipment entries from retained sequence cards. While a public equipment reveal is queued or active, its rack slot remains reserved but the card is hidden. The reveal travels to that slot's measured position and size, then the rack card becomes visible. Equipment summaries remain in Event History without an additional timed message. Next card: Eight Trigrams Formation.

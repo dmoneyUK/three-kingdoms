@@ -83,6 +83,8 @@ The shared turn and response engine now uses effective horse-adjusted distance c
 
 ## Roadmap
 
+Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams remains the next card to implement.
+
 Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation remains the next card milestone.
 
 See [ROADMAP.md](ROADMAP.md) for the active implementation roadmap and per-card implementation requirements.
