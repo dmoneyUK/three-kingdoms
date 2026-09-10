@@ -79,7 +79,7 @@ The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence ove
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with horses in the deck. The next milestone is Eight Trigrams Formation, followed by the armour-bypassing Blue Steel Sword; the 108-card manifest audit is tracked in `ROADMAP.md`.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with horses in the deck. Equipment presentations now settle directly into the owner's rack without a duplicate numbered copy. The next milestone is Eight Trigrams Formation, followed by the armour-bypassing Blue Steel Sword; the 108-card manifest audit is tracked in `ROADMAP.md`.
 
 ## Roadmap
 
