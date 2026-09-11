@@ -624,6 +624,8 @@ test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeou
 
   const firstAttack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-dragon-first", targetId: bobPlayer.id });
   assert.equal(firstAttack.status, 200); assert.equal(firstAttack.data.room.pendingAttack.targetId, bobPlayer.id, "range 3 permits the opposite target");
+  assert.equal(firstAttack.data.room.pendingAttack.origin, "card", "normal Attack uses the shared Attack declaration");
+  assert.equal(firstAttack.data.room.pendingAttack.physicalCardId, "attack-dragon-first", "the physical Attack remains available to source-sensitive rules");
   const dodged = await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-dragon" });
   assert.equal(dodged.status, 200); assert.equal(dodged.data.room.pendingGreenDragon.actorId, hostPlayer.id); assert.equal(dodged.data.room.actionPlayerId, hostPlayer.id);
   const followed = await request("respond_green_dragon", { code: game.code, token: host.token, cardId: "attack-dragon-follow-up" });
@@ -665,6 +667,8 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
 
   const formed = await request("serpent_spear_attack", { code: game.code, token: host.token, cardIds: ["peach-serpent-one", "dodge-serpent-two"], targetId: bobPlayer.id });
   assert.equal(formed.status, 200); assert.equal(formed.data.room.pendingAttack.targetId, bobPlayer.id); assert.equal(formed.data.room.pendingAttack.sequenceStartCardId, "peach-serpent-one");
+  assert.equal(formed.data.room.pendingAttack.origin, "serpent_spear", "Serpent Spear uses the same Attack declaration with preserved provenance");
+  assert.equal(formed.data.room.pendingAttack.physicalCardId, undefined, "a formed Attack has no single physical Attack card");
   const formedEvent = formed.data.room.timeline.find((event) => event.type === "cards" && event.action === "play" && event.player === "Host");
   assert.deepEqual(formedEvent.cards.map((item) => item.id), ["peach-serpent-one", "dodge-serpent-two"]); assert.equal(formedEvent.target, "Bob");
   const dodged = await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-serpent-answer" });

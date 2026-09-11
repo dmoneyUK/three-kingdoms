@@ -7,7 +7,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — shared Attack/Dodge capabilities with Eight Trigrams Formation**
+- Current stage: **playable four-player alpha — shared Attack declarations with Eight Trigrams Formation**
 
 ## Source of knowledge
 
@@ -21,7 +21,7 @@ For this project, always filter the catalogue to **Standard**. Endless Legends a
 
 The project has moved beyond the initial table prototype. A complete four-player match loop runs in both normal multiplayer rooms and a single-device Quick Test table. Quick Test has no bot automation: one controller plays every seat in turn, with only the acting seat's hand visible at the bottom. Turn ownership, ordered responses, death rewards and victory checks are working. Human card and weapon responses use a 30-second action window while bot decisions retain a 10-second window in the dedicated automated regression fixture.
 
-The current feature focus is **equipment and distance modifiers** while rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
+The current feature focus is **equipment and distance modifiers** while rules-engine extraction and regression work continues. Normal Attack cards, Serpent Spear-formed Attacks and Green Dragon Blade follow-ups now enter one shared semantic Attack declaration path, preserving the physical source card when downstream rules need its provenance. Expansion cards and hero-specific abilities remain intentionally deferred.
 
 Negation response prompts now track the latest Negation in a counter-chain while retaining the original Stratagem as the root effect.
 
@@ -83,7 +83,7 @@ The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence ove
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Equipment presentations now settle directly into the owner's rack without a duplicate numbered copy. Eight Trigrams Formation is complete as the first alternative Dodge provider, including Serpent Spear-formed Attacks; the next milestone is the armor-bypassing Blue Steel Sword. The remaining 108-card manifest audit is tracked in `ROADMAP.md`.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Equipment presentations now settle directly into the owner's rack without a duplicate numbered copy. Attack cards, Serpent Spear formations and Green Dragon follow-ups converge on a shared declaration with origin and physical-card provenance; Eight Trigrams Formation remains the first alternative Dodge provider. The next milestone is the armor-bypassing Blue Steel Sword. The remaining 108-card manifest audit is tracked in `ROADMAP.md`.
 
 ## Roadmap
 
