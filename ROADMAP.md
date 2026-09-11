@@ -16,6 +16,10 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 
 ## Immediate rules correction
 
+### Negation-chain response context — complete
+
+Counter-Negation windows now retain the root Stratagem separately from the latest Negation event. Response order still starts after the latest Negation player, while prompts identify the current Negation being answered.
+
 ### Quick Test perspective privacy — complete
 
 Quick Test follows the current actor using the normal bottom seat, hand and hero/role/HP. Opponent hand previews and full-hand payloads are removed. Switching `meId` establishes a new hand baseline and cancels prior private presentations; only new same-player draw events can show PRIVATE DRAW. The baseline helper is plain ESM JavaScript so deployment tests run without a TypeScript loader. Negation order and normal multiplayer session ownership are unchanged. Next card milestone remains Eight Trigrams Formation.

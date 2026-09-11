@@ -23,6 +23,8 @@ The project has moved beyond the initial table prototype. A complete four-player
 
 The current feature focus is **equipment and distance modifiers** while rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
 
+Negation response prompts now track the latest Negation in a counter-chain while retaining the original Stratagem as the root effect.
+
 The playable alpha includes:
 
 - automatic roles and hero assignment;
