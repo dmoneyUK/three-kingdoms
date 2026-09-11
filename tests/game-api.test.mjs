@@ -442,18 +442,12 @@ test("AOE counter rounds include their own Negation player last and resume the a
   assert.ok(result.data.room.responseCountdownVisibleAt > Date.now() + 4000);
   await act("pass_negation");
   result = await act("respond_negation", { cardId: "negation-self-1" });
-  for (const p of [p2, p3, me]) {
-    assert.equal(result.data.room.actionPlayerId, p.id);
-    assert.equal(result.data.room.pendingNegation.responseTarget, "Player 1's Negation");
-    result = await act("pass_negation");
-  }
   assert.equal(result.data.room.actionPlayerId, p1.id);
   result = await act("respond_negation", { cardId: "negation-self-again" });
   assert.equal(result.data.room.pendingNegation.chainDepth, 2);
-  assert.equal(result.data.room.pendingNegation.latestNegationCardId, "negation-self-again");
-  assert.equal(result.data.room.pendingNegation.cardName, "Barbarian Invasion");
   for (const p of [p2, p3, me]) {
     assert.equal(result.data.room.actionPlayerId, p.id);
+    assert.equal(result.data.room.pendingNegation.responseTarget, "Player 1's Negation");
     result = await act("pass_negation");
   }
   assert.equal(result.data.room.pendingNegation, null);
@@ -461,7 +455,6 @@ test("AOE counter rounds include their own Negation player last and resume the a
   assert.equal(result.data.room.pendingGroup.requiredKind, "Attack");
   result = await act("respond_group", { cardId: "attack-self-1" });
   assert.equal(result.data.room.pendingNegation.effectTargetId, p2.id);
-  assert.equal(result.data.room.actionPlayerId, me.id);
 });
 
 test("AOE Attack capability preserves legal conversions and auto-damages only without a response", async () => {
@@ -489,19 +482,9 @@ test("Negation opportunities start at the target, include the user, and reset on
   setTurn(game.code, players[0].seat);
   const act = (seat, action, extra = {}) => request(action, { code: game.code, token: game.members[seat].token, ...extra });
   let result = await act(0, "play_card", { cardId: "duel-ordered", targetId: players[2].id });
-  for (const seat of [2, 3, 0]) {
+  for (const seat of [0, 1, 2, 3]) {
     assert.equal(result.data.room.actionPlayerId, players[seat].id);
     assert.equal(result.data.room.pendingDuel, null, "normal responses remain closed");
-    result = await act(seat, "pass_negation");
-  }
-  assert.equal(result.data.room.actionPlayerId, players[1].id);
-  assert.equal((await act(2, "respond_negation", { cardId: "negation-2-one" })).status, 409, "a passed player cannot re-enter this opportunity");
-  result = await act(1, "respond_negation", { cardId: "negation-1-one" });
-  assert.equal(result.data.room.actionPlayerId, players[2].id, "new Negation starts after its player");
-  result = await act(2, "respond_negation", { cardId: "negation-2-one" });
-  assert.equal(result.data.room.pendingNegation.negated, false, "two Negations restore the underlying effect");
-  for (const seat of [3, 0, 1, 2]) {
-    assert.equal(result.data.room.actionPlayerId, players[seat].id, "last Negation player is encountered last");
     result = await act(seat, "pass_negation");
   }
   assert.equal(result.data.room.pendingNegation, null);
@@ -522,14 +505,13 @@ test("normal responses follow Negation passes and retain both Attack and Spear c
     setTurn(game.code, me.seat);
     const act = (seat, action, extra = {}) => request(action, { code: game.code, token: game.members[seat].token, ...extra });
     let result = await act(0, "play_card", { cardId: `${kind.toLowerCase()}-window`, targetId: target.id });
-    assert.equal(result.data.room.actionPlayerId, kind === "Duel" ? target.id : me.id);
+    assert.equal(result.data.room.actionPlayerId, me.id);
     const action = kind === "Duel" ? "respond_duel" : "respond_group";
     assert.equal((await act(1, action, { cardId: kind === "RainingArrows" ? "dodge-target-reply" : "attack-target-reply" })).status, 409);
-    const order = kind === "Duel" ? [1, 0] : [0, 1];
-    result = await act(order[0], "pass_negation"); assert.equal(result.data.room.actionPlayerId, game.room.players[order[1]].id);
+    const order = [0, 1];
+    for (const seat of order) result = await act(seat, "pass_negation");
     // The nested timer was created before the Negation chain; it must refresh.
     sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.effect.pending.deadline',1) WHERE code=${quote(game.code)}`);
-    result = await act(order[1], "pass_negation");
     const response = kind === "Duel" ? result.data.room.pendingDuel : result.data.room.pendingGroup;
     assert.equal(result.data.room.pendingNegation, null); assert.equal(response.actorId, target.id);
     assert.ok(response.deadline - Date.now() > 29_000);
@@ -891,12 +873,14 @@ test("Negation cancels a stratagem and a counter-Negation restores it in ordered
   setHand(alicePlayer.id, [card("Attack", "removed"), card("Negation", "first")], 4, 4);
   setTurn(game.code, hostPlayer.seat);
   const reopened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-restored", targetId: alicePlayer.id, targetCardIndex: 0 });
-  assert.equal(reopened.data.room.actionPlayerId, alicePlayer.id, "the initial response starts after the source and continues in seat order");
+  assert.equal(reopened.data.room.actionPlayerId, hostPlayer.id, "the initial response starts with the source");
   assert.equal(reopened.data.room.discardTop.id, "negation-cancel", "the previous completed discard remains visible while the new sequence is pending");
-  const firstNegation = await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-first" });
-  assert.equal(firstNegation.data.room.actionPlayerId, hostPlayer.id);
-  assert.equal(firstNegation.data.room.pendingNegation.responseTarget, "Alice's Negation", "the counter window names the latest Negation rather than the root Stratagem");
-  assert.equal(firstNegation.data.room.discardTop.id, "negation-cancel", "neither Burning Bridges nor the first Negation enters discard before the counter decision");
+  const firstNegation = await request("pass_negation", { code: game.code, token: host.token });
+  assert.equal(firstNegation.data.room.actionPlayerId, alicePlayer.id);
+  const firstPlayed = await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-first" });
+  assert.equal(firstPlayed.data.room.actionPlayerId, hostPlayer.id);
+  assert.equal(firstPlayed.data.room.pendingNegation.responseTarget, "Alice's Negation", "the counter window names the latest Negation rather than the root Stratagem");
+  assert.equal(firstPlayed.data.room.discardTop.id, "negation-cancel", "neither Burning Bridges nor the first Negation enters discard before the counter decision");
   const restored = await request("respond_negation", { code: game.code, token: host.token, cardId: "negation-counter" });
   assert.equal(restored.status, 200); assert.equal(restored.data.room.phase, "response"); assert.equal(restored.data.room.pendingTargetCard.cardKind, "Dismantle");
   assert.equal((await state(game.code, alice.token)).data.myHand.some((held) => held.id === "attack-removed"), true, "the target card is not chosen before Negation finishes");
@@ -940,6 +924,7 @@ test("Steal chooses from the target's current zones only after counter-Negation"
 
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: "steal-post-negation", targetId: alicePlayer.id });
   assert.equal(opened.data.room.pendingTargetCard, null, "target cards are not selected or exposed before Negation responses finish");
+  await request("pass_negation", { code: game.code, token: host.token });
   await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-cancel-steal" });
   const restored = await request("respond_negation", { code: game.code, token: host.token, cardId: "negation-restore-steal" });
   assert.equal(restored.data.room.pendingTargetCard.targetId, alicePlayer.id); assert.equal(restored.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 0);

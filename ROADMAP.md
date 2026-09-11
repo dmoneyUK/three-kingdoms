@@ -18,7 +18,7 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 
 ### Sequential AOE and generic responses — complete
 
-Each AOE target has one turn-owner-first Negation round. Counter rounds include all eligible living players, including their latest Negation player last; passes exhaust the current round without cycling. Surviving effects use the shared Attack/Dodge response capability and cost validation in `game/responses.ts`. No-response damage is automatic. Response countdowns appear after five elapsed seconds, with the initial Negation actor indication hidden from other players during that interval. This reduces visible skip clues but is not a guarantee against timing inference. Next: Eight Trigrams as a registered Dodge provider with its own judgement resolver.
+Each Negatable Stratagem opens a once-around response round beginning with its player. AOE repeats that round separately for each target. Counter-Negation rounds also begin with the latest Negation player, then visit each eligible living player once. Surviving effects use the shared Attack/Dodge response capability and cost validation in `game/responses.ts`. No-response damage is automatic. Response countdowns appear after five elapsed seconds, with the initial Negation actor indication hidden from other players during that interval. This reduces visible skip clues but is not a guarantee against timing inference. Next: Eight Trigrams as a registered Dodge provider with its own judgement resolver.
 
 ### Negation-chain response context — complete
 
