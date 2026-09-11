@@ -49,3 +49,10 @@
              apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
              accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
              command: deploy
+         - name: Smoke test production
+           env:
+             PRODUCTION_URL: https://three-kingdoms.dai-jinge.workers.dev
+           run: |
+             set -eu
+             curl --fail --silent --show-error --location --max-time 20 "$PRODUCTION_URL/" >/dev/null
+             curl --fail --silent --show-error --location --max-time 20 "$PRODUCTION_URL/api/health" >/dev/null

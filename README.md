@@ -23,6 +23,8 @@ The project has moved beyond the initial table prototype. A complete four-player
 
 The current feature focus is **equipment and distance modifiers** while rules-engine extraction and regression work continues. Normal Attack cards, Serpent Spear-formed Attacks and Green Dragon Blade follow-ups now enter one shared semantic Attack declaration path, preserving the physical source card when downstream rules need its provenance. Delayed Stratagems now animate from the centre into the target's Judgement Zone, and Quick Test seeds Player 1 with Serpent Spear. Expansion cards and hero-specific abilities remain intentionally deferred.
 
+The Cloudflare deployment workflow now performs a post-deploy smoke test against `/` and the D1-backed `/api/health` endpoint. A successful Wrangler upload is not considered production-ready unless both checks return successfully.
+
 Negation response prompts now track the latest Negation in a counter-chain while retaining the original Stratagem as the root effect.
 
 AOE resolves one target at a time. Each target's initial Negation round starts at the current turn owner; a counter round starts after its latest Negation player and includes that player last. After all passes, an effective AOE asks for the required Attack/Dodge capability, including implemented alternatives with their normal costs. Response countdowns appear after five elapsed seconds (the deadline is unchanged). Eight Trigrams Formation is the first alternative Dodge provider; next milestone is Blue Steel Sword.
