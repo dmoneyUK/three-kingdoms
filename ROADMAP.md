@@ -8,8 +8,8 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable. Shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the verified Standard card set | 23 / 28 verified card identities playable; quantity audit pending | Five verified identities remain, and the 108-card manifest still needs authoritative quantities/suits/ranks reconciled with the runtime deck. |
-| 4. Equipment and distance modifiers | In progress — current feature focus | Weapon, Armor and Mount slots are playable. One armor and four verified weapons/interactions remain. |
+| 3. Complete the verified Standard card set | 24 / 28 verified card identities playable; quantity audit pending | Four verified identities remain, and the 108-card manifest still needs authoritative quantities/suits/ranks reconciled with the runtime deck. |
+| 4. Equipment and distance modifiers | In progress — current feature focus | Weapon, Armor and Mount slots are playable. Four verified weapon interactions remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, role reveal, Rebel rewards, Lord/Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begin after shared cards and rules are stable. |
 | 7. Product polish | Ongoing alongside rules work | Continue mobile/UI work; sound, invitations and saved history remain planned. |
@@ -18,7 +18,7 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 
 ### Sequential AOE and generic responses — complete
 
-Each Negatable Stratagem opens a once-around response round beginning with its player. AOE repeats that round separately for each target. Counter-Negation rounds also begin with the latest Negation player, then visit each eligible living player once. Surviving effects use the shared Attack/Dodge response capability and cost validation in `game/responses.ts`. No-response damage is automatic. Response countdowns appear after five elapsed seconds, with the initial Negation actor indication hidden from other players during that interval. This reduces visible skip clues but is not a guarantee against timing inference. Next: Eight Trigrams as a registered Dodge provider with its own judgement resolver.
+Each Negatable Stratagem opens a once-around response round beginning with its player. AOE repeats that round separately for each target. Counter-Negation rounds also begin with the latest Negation player, then visit each eligible living player once. Surviving effects use the shared Attack/Dodge response capability and cost validation in `game/responses.ts`. No-response damage is automatic. Response countdowns appear after five elapsed seconds, with the initial Negation actor indication hidden from other players during that interval. This reduces visible skip clues but is not a guarantee against timing inference. Next: Blue Steel Sword as the next Armor-bypass interaction.
 
 ### Negation-chain response context — complete
 
@@ -30,7 +30,7 @@ Quick Test follows the current actor using the normal bottom seat, hand and hero
 
 ### Ordered Negation windows — complete
 
-Initial targeted-card windows start at the affected target; AOE windows now start at the turn owner. Both include the user. Counter windows start after the latest Negation player and can reach that player last. Pass consumes one opportunity, while a newly played Negation resets eligibility. Raining Arrows and Barbarian Invasion finish each target before advancing; Duel (including bot-played Duel) uses the same Negation gate. Normal responses have fresh deadlines after the chain closes and accept any implemented legal provider of the required type. Next: Eight Trigrams as an additional normal Dodge response, never during Negation.
+Initial targeted-card windows start at the affected target; AOE windows now start at the turn owner. Both include the user. Counter windows start after the latest Negation player and can reach that player last. Pass consumes one opportunity, while a newly played Negation resets eligibility. Raining Arrows and Barbarian Invasion finish each target before advancing; Duel (including bot-played Duel) uses the same Negation gate. Normal responses have fresh deadlines after the chain closes and accept any implemented legal provider of the required type. Eight Trigrams is now an additional normal Dodge response, never during Negation. Next: Blue Steel Sword.
 
 ### Equipment animation follow-up — complete
 
@@ -42,7 +42,7 @@ Attack and Steal targeting now share effective distance (including horses), so o
 
 ### Standard 108-card manifest audit — tracked
 
-`docs/STANDARD_108_DECK_MANIFEST.md` is the quantity and identity target. The five implemented gaps are Eight Trigrams Formation, Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. Before calling the deck complete, reconcile the manifest's 108 physical cards (including exact suit/rank assignments and six named mounts) with the runtime deck; do not silently substitute generic horse cards or unverified expansion cards.
+`docs/STANDARD_108_DECK_MANIFEST.md` is the quantity and identity target. The four remaining gaps are Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. Before calling the deck complete, reconcile the manifest's 108 physical cards (including exact suit/rank assignments and six named mounts) with the runtime deck; do not silently substitute generic horse cards or unverified expansion cards.
 
 ### Frost Sword correction — complete
 
@@ -60,18 +60,18 @@ Passive immunity to black `[Attack]` cards is implemented. Nio Shield occupies t
 
 Regression coverage verifies human and bot targets. Blue Steel Sword must later suppress this effect for its own Attack without removing the Armor.
 
-### 1. Eight Trigrams Formation
+### 1. Eight Trigrams Formation — complete
 
 **2 ♠ — Armor**
 
-When a Dodge is needed, its owner may perform Judgement; a red result counts as `[Dodge]`.
+When a Dodge is needed, its owner may perform Judgement; a red result counts as `[Dodge]`, while a black result fails and resolves normal damage.
 
-Work:
-- reuse the authoritative Armor slot;
-- add an optional armour response before/alongside normal Dodge handling;
-- reuse the Judgement engine without corrupting the active Attack/global-card response sequence;
-- support Attack and Raining Arrows response contexts;
-- add red-success, black-failure, Skip and bot tests.
+Implemented:
+- reuses the authoritative Armor slot;
+- adds an optional armor response alongside normal Dodge handling;
+- resolves and discards the judgement card without corrupting the active Attack/global-card response sequence;
+- supports direct Attack and sequential Raining Arrows responses;
+- exposes a human/Quick Test action and deterministic bot provider, with red-success, black-failure and no-use/Skip coverage.
 
 ### 2. Blue Steel Sword
 

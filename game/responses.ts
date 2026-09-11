@@ -8,6 +8,7 @@ type ResponseOption = { provider: string; cards: Card[] };
 // resolver. Unimplemented hero text and passive immunities are not responses.
 const providers = [
   { id: "card", choices: (context: ResponseContext, kind: ResponseKind): ResponseOption[] => context.hand.filter((card) => kind === "Attack" ? isAttackCard(card) : card.kind === "Dodge").map((card) => ({ provider: "card", cards: [card] })) },
+  { id: "eight_trigrams", choices: (context: ResponseContext, kind: ResponseKind): ResponseOption[] => kind === "Dodge" && context.equipment.some((card) => card.kind === "EightTrigrams") ? [{ provider: "eight_trigrams", cards: [] }] : [] },
   { id: "serpent_spear", choices: (context: ResponseContext, kind: ResponseKind): ResponseOption[] => kind === "Attack" && context.equipment.some((card) => card.kind === "SerpentSpear") && context.hand.length >= 2 ? [{ provider: "serpent_spear", cards: context.hand.slice(0, 2) }] : [] },
 ];
 export function responseOptions(context: ResponseContext, kind: ResponseKind) {

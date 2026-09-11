@@ -7,7 +7,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — distance-safe attacks, responsive prompts, and Standard deck audit**
+- Current stage: **playable four-player alpha — shared Attack/Dodge capabilities with Eight Trigrams Formation**
 
 ## Source of knowledge
 
@@ -25,7 +25,7 @@ The current feature focus is **equipment and distance modifiers** while rules-en
 
 Negation response prompts now track the latest Negation in a counter-chain while retaining the original Stratagem as the root effect.
 
-AOE resolves one target at a time. Each target's initial Negation round starts at the current turn owner; a counter round starts after its latest Negation player and includes that player last. After all passes, an effective AOE asks for the required Attack/Dodge capability, including implemented alternatives with their normal costs. Response countdowns appear after five elapsed seconds (the deadline is unchanged). Next milestone remains Eight Trigrams Formation.
+AOE resolves one target at a time. Each target's initial Negation round starts at the current turn owner; a counter round starts after its latest Negation player and includes that player last. After all passes, an effective AOE asks for the required Attack/Dodge capability, including implemented alternatives with their normal costs. Response countdowns appear after five elapsed seconds (the deadline is unchanged). Eight Trigrams Formation is the first alternative Dodge provider; next milestone is Blue Steel Sword.
 
 The playable alpha includes:
 
@@ -66,6 +66,7 @@ The playable alpha includes:
 - Sky Piercing Halberd
 - Frost Sword
 - Nio Shield
+- Eight Trigrams Formation
 - Fergana Steed
 - Shadowrunner
 
@@ -73,23 +74,22 @@ The playable alpha includes:
 
 The verified remaining cards and implementation order are maintained in [ROADMAP.md](ROADMAP.md). The current verified remainder is:
 
-1. Eight Trigrams Formation
-2. Blue Steel Sword
-3. Yin-Yang Swords
-4. Kirin Bow
-5. Borrowed Sword
+1. Blue Steel Sword
+2. Yin-Yang Swords
+3. Kirin Bow
+4. Borrowed Sword
 
 The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence over older roadmap/card lists.
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with horses in the deck. Equipment presentations now settle directly into the owner's rack without a duplicate numbered copy. The next milestone is Eight Trigrams Formation, followed by the armour-bypassing Blue Steel Sword; the 108-card manifest audit is tracked in `ROADMAP.md`.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with horses in the deck. Equipment presentations now settle directly into the owner's rack without a duplicate numbered copy. Eight Trigrams Formation is complete as the first alternative Dodge provider; the next milestone is the armor-bypassing Blue Steel Sword. The 108-card manifest audit is tracked in `ROADMAP.md`.
 
 ## Roadmap
 
-Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams remains the next card to implement.
+Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge; Blue Steel Sword is next.
 
-Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation remains the next card milestone.
+Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation now uses the same equipment rack and presentation path.
 
 See [ROADMAP.md](ROADMAP.md) for the active implementation roadmap and per-card implementation requirements.
 

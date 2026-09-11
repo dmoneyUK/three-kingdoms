@@ -76,9 +76,9 @@ const HARVEST_CHOICE_HOLD_MS = 1400;
 const HUMAN_RESPONSE_TIMEOUT_MS = 30_000;
 const BOT_RESPONSE_TIMEOUT_MS = 10_000;
 const nextResponseDeadline = (actor?: PlayerRow | null) => Date.now() + (isBotPlayer(actor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS);
-const QUICK_TEST_EQUIPMENT_KINDS: CardKind[] = ["FrostSword", "NioShield"];
+const QUICK_TEST_EQUIPMENT_KINDS: CardKind[] = ["FrostSword", "NioShield", "EightTrigrams"];
 const QUICK_TEST_OPENING_KINDS = DECK_CARD_KINDS.filter((kind) => !cardDefinition(kind).equipmentSlot || QUICK_TEST_EQUIPMENT_KINDS.includes(kind));
-const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "respond_dodge", "take_damage", "respond_green_dragon", "pass_green_dragon", "respond_rock_cleaving", "pass_rock_cleaving", "use_frost_sword", "pass_frost_sword", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "respond_negation", "pass_negation", "preview_harvest", "choose_harvest", "choose_target_card", "start_response_timer", "start_rescue_timer", "give_peach", "skip_rescue"]);
+const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "respond_dodge", "respond_eight_trigrams", "take_damage", "respond_green_dragon", "pass_green_dragon", "respond_rock_cleaving", "pass_rock_cleaving", "use_frost_sword", "pass_frost_sword", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "respond_negation", "pass_negation", "preview_harvest", "choose_harvest", "choose_target_card", "start_response_timer", "start_rescue_timer", "give_peach", "skip_rescue"]);
 
 async function setup() {
   const db = env.DB;
@@ -714,6 +714,55 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
   return [];
 }
 
+function isRedJudgement(card: Card) { return card.suit === "♥" || card.suit === "♦"; }
+
+async function drawEightTrigrams(room: RoomRow, actor: PlayerRow, discard: Card[], log: string[]) {
+  const draw = drawCards(parse<Card[]>(room.deck_json, []), discard, 1, log);
+  const judged = draw.drawn[0];
+  if (judged) {
+    log = addCardEvent(draw.log, actor.name, judged, actor.name, "reveal");
+    discard = [...draw.discard, judged];
+  } else { discard = draw.discard; log = draw.log; }
+  return { deck: draw.deck, discard, judged, log };
+}
+
+async function resolveEightTrigramsAttack(room: RoomRow, pending: AttackPending, actor: PlayerRow, source: PlayerRow | null, discard: Card[], log: string[]) {
+  const judged = await drawEightTrigrams(room, actor, discard, log);
+  const nextRoom = { ...room, deck_json: JSON.stringify(judged.deck) };
+  if (judged.judged && isRedJudgement(judged.judged)) {
+    judged.log = addLog(judged.log, `${actor.name} judges ${judged.judged.rank}${judged.judged.suit} with Eight Trigrams Formation. The red result counts as Dodge.`);
+    await finishDodgedAttack(nextRoom, source, actor, judged.discard, judged.log, pending.resumePhase ?? phaseAfterAttack(source), pending.sequenceStartCardId ?? "", [db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id)]);
+    return;
+  }
+  judged.log = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with Eight Trigrams Formation. The result is black, so the Attack hits.`);
+  const hp = Math.max(0, (actor.hp ?? 1) - 1);
+  if (hp === 0 && source) {
+    const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+    await db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id).run();
+    await startDyingRescue(nextRoom, source, actor, rows.results ?? [], judged.deck, judged.discard, addLog(judged.log, `${actor.name} takes 1 damage from the Attack and enters Dying. Peach rescue begins in turn order.`), [], source, pending.resumePhase ?? phaseAfterAttack(source));
+    return;
+  }
+  judged.log = addLog(judged.log, `${actor.name} takes 1 damage from the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
+  await db().batch([
+    db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, actor.id),
+    db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase ?? phaseAfterAttack(source), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(judged.log), room.id),
+  ]);
+  if (source) await continueAfterDying(room.id, source.id);
+}
+
+async function resolveEightTrigramsGroup(room: RoomRow, pending: GroupPending, actor: PlayerRow, source: PlayerRow, players: PlayerRow[], discard: Card[], log: string[]) {
+  const judged = await drawEightTrigrams(room, actor, discard, log);
+  await db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id).run();
+  const nextRoom = { ...room, deck_json: JSON.stringify(judged.deck) };
+  if (judged.judged && isRedJudgement(judged.judged)) {
+    const nextLog = addLog(judged.log, `${actor.name} judges ${judged.judged.rank}${judged.judged.suit} with Eight Trigrams Formation. The red result counts as Dodge.`);
+    await finishGroupStep(nextRoom, pending, players, judged.discard, nextLog);
+    return;
+  }
+  const nextLog = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with Eight Trigrams Formation. The result is black, so the required response fails.`);
+  await resolveGroupDamage(nextRoom, pending, actor, source, players, judged.discard, nextLog);
+}
+
 async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, discard: Card[], log: string[], resumePhase: string, sequenceStartCardId: string, writes: D1PreparedStatement[] = []) {
   const followUpAttack = parse<Card[]>(source?.hand_json ?? null, []).find(isAttackCard);
   if (source?.alive && target?.alive && hasGreenDragonBlade(source) && followUpAttack) {
@@ -1009,6 +1058,7 @@ async function advanceGroup(roomId: string) {
     const option = responseOptions(context, pending.requiredKind)[0]; const response = option?.provider === "card" ? option.cards[0] : null; const responseCards = option?.cards ?? [];
     const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) continue;
+    if (option?.provider === "eight_trigrams") { await resolveEightTrigramsGroup(room, pending, actor, source, players, discard, log); return; }
     if (!responseCards.length) { await resolveGroupDamage(room, pending, actor, source, players, discard, log); return; }
     const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextPending = appendHeldGroupCards(pending, responseCards);
     log = response ? addCardEvent(log, actor.name, response) : addCardGroupEvent(log, actor.name, responseCards, "play"); log = addLog(log, response ? `${actor.name} plays ${pending.requiredKind} against ${groupCardName(pending.cardKind)}.` : `${actor.name} discards 2 cards with Serpent Spear to form an Attack against ${groupCardName(pending.cardKind)}.`);
@@ -1327,15 +1377,23 @@ async function runBots(roomId: string) {
       let targetHand = changedHands.get(target.id) ?? parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((card) => card.kind === "Dodge");
       if (attack && isNioShieldImmune(target, attack)) {
         log = addLog(log, `${target.name}'s Nio Shield makes them immune to ${bot.name}'s black Attack.`);
-      } else if (dodge) {
+      } else if (dodge || hasDodgeResponse(responseContext(target))) {
         if (!isBotPlayer(target)) {
           log = addLog(log, `${bot.name} plays Attack on ${target.name}. Action passes from ${bot.name} to ${target.name} for Dodge response.`);
           writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
           writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify({ kind: "attack", sourceId: bot.id, targetId: target.id, actorId: target.id, resumePhase: phaseAfterAttack(bot), sequenceStartCardId, reason: "Respond to Attack: select Dodge or take 1 damage", deadline: nextResponseDeadline(target) } satisfies AttackPending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
           await db().batch(writes); return;
         }
-        targetHand = targetHand.filter((card) => card.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, bot.name); log = addLog(log, `${target.name} plays Dodge and blocks the Attack.`);
-        await finishDodgedAttack(room, { ...bot, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, phaseAfterAttack(bot), sequenceStartCardId, [...writes, db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id), db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
+        if (dodge) {
+          targetHand = targetHand.filter((card) => card.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, bot.name); log = addLog(log, `${target.name} plays Dodge and blocks the Attack.`);
+          await finishDodgedAttack(room, { ...bot, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, phaseAfterAttack(bot), sequenceStartCardId, [...writes, db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id), db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
+        } else {
+          log = addLog(log, `${target.name} uses Eight Trigrams Formation to judge for Dodge.`);
+          writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
+          writes.push(db().prepare("UPDATE rooms SET deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+          await db().batch(writes);
+          await resolveEightTrigramsAttack({ ...room, deck_json: JSON.stringify(deck) }, { kind: "attack", sourceId: bot.id, targetId: target.id, actorId: target.id, resumePhase: phaseAfterAttack(bot), sequenceStartCardId, reason: "Respond to Attack: play Dodge or use Eight Trigrams" }, { ...target, hand_json: JSON.stringify(targetHand) }, { ...bot, hand_json: JSON.stringify(hand) }, discard, log);
+        }
         return;
       } else {
         if (attack && hasFrostSword(bot) && frostSwordTargetableCardCount(target) > 0) {
@@ -1780,6 +1838,18 @@ export async function POST(request: Request) {
         await continueAfterDying(room.id, me.id);
       }
     }
+    return json({ room: await roomState(code, token) });
+  }
+
+  if (action === "respond_eight_trigrams") {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
+    if (!liveRoom || liveRoom.phase !== "response" || !pending || !["attack", "group"].includes(pending.kind) || pending.actorId !== me.id || (pending.kind === "group" && pending.requiredKind !== "Dodge")) return json({ error: "Eight Trigrams Formation is not a legal response now." }, 409);
+    if (!equipmentCards(me).some((card) => card.kind === "EightTrigrams")) return json({ error: "Equip Eight Trigrams Formation before using its Judgement." }, 409);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already been resolved." }, 409);
+    const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? []; const source = players.find((player) => player.id === pending.sourceId) ?? null; const discard = parse<Card[]>(liveRoom.discard_json, []); const log = parse<string[]>(liveRoom.log_json, []);
+    if (pending.kind === "attack") await resolveEightTrigramsAttack(liveRoom, pending, me, source, discard, log);
+    else if (source) await resolveEightTrigramsGroup(liveRoom, pending, me, source, players, discard, log);
     return json({ room: await roomState(code, token) });
   }
 
