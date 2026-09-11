@@ -25,6 +25,8 @@ The current feature focus is **equipment and distance modifiers** while rules-en
 
 Negation response prompts now track the latest Negation in a counter-chain while retaining the original Stratagem as the root effect.
 
+AOE resolves one target at a time. Each target's initial Negation round starts at the current turn owner; a counter round starts after its latest Negation player and includes that player last. After all passes, an effective AOE asks for the required Attack/Dodge capability, including implemented alternatives with their normal costs. Response countdowns appear after five elapsed seconds (the deadline is unchanged). Next milestone remains Eight Trigrams Formation.
+
 The playable alpha includes:
 
 - automatic roles and hero assignment;

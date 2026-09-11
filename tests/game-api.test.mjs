@@ -229,12 +229,13 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(!discardIds(game.code).includes("barbarianinvasion-global"), "the active global card stays out of discard during its response sequence");
   assert.equal((await request("respond_group", { code: game.code, token: bob.token, cardId: "attack-barbarian-answer" })).status, 409);
   const invasionAlice = await request("respond_group", { code: game.code, token: alice.token, cardId: "attack-barbarian-answer" });
-  assert.equal(invasionAlice.status, 200); assert.equal(invasionAlice.data.room.actionPlayerId, bobPlayer.id);
+  assert.equal(invasionAlice.status, 200); assert.equal(invasionAlice.data.room.actionPlayerId, carolPlayer.id);
+  assert.equal(invasionAlice.data.room.players.find((player) => player.id === bobPlayer.id).alive, false, "Bob has no legal Attack response and automatically takes damage");
   assert.ok(!discardIds(game.code).includes("attack-barbarian-answer"), "global responses stay in the active sequence until it finishes");
   const aliceInvasionResponse = invasionAlice.data.room.timeline.find((event) => event.type === "card" && event.card.id === "attack-barbarian-answer" && event.player === "Alice");
   assert.equal(aliceInvasionResponse.target, "Alice", "an AOE response has no directional player target");
   const invasionBob = await request("take_group_damage", { code: game.code, token: bob.token });
-  assert.equal(invasionBob.status, 200); assert.equal(invasionBob.data.room.players.find((player) => player.id === bobPlayer.id).alive, false); assert.equal(invasionBob.data.room.actionPlayerId, carolPlayer.id);
+  assert.equal(invasionBob.status, 409, "an automatically resolved target cannot submit a second damage action");
   const invasionCarol = await request("respond_group", { code: game.code, token: carol.token, cardId: "attack-barbarian-answer" });
   assert.equal(invasionCarol.status, 200); assert.equal(invasionCarol.data.room.phase, "play"); assert.equal(invasionCarol.data.room.pendingGroup, null);
   assert.equal(discardIds(game.code).filter((id) => id === "barbarianinvasion-global").length, 1);
@@ -396,16 +397,17 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(controlledSeat.data.players.every((player) => player.handCards.length === 0));
 });
 
-test("Quick Test follows the entire Arrows response chain while returning only one private hand", async () => {
+test("Quick Test exhausts each AOE Negation window before the target response, with one private hand", async () => {
+  for (const [kind, required] of [["RainingArrows", "Dodge"], ["BarbarianInvasion", "Attack"]]) {
   const created = await request("create", { quickStart: true }); const { token, room } = created.data;
   const [me, ...targets] = room.players;
-  setHand(me.id, [card("RainingArrows", "perspective"), card("Negation", "perspective-user")], 3, 3);
-  for (const target of targets) setHand(target.id, [card("Negation", `perspective-${target.seat}`), card("Dodge", `perspective-${target.seat}`)], 3, 3);
+  setHand(me.id, [card(kind, "perspective"), card("Negation", "perspective-user")], 3, 3);
+  for (const target of targets) setHand(target.id, [card("Negation", `perspective-${target.seat}`), card(required, `perspective-${target.seat}`)], 3, 3);
   setTurn(room.code, me.seat);
   const act = (action, extra = {}) => request(action, { code: room.code, token, ...extra });
-  let result = await act("play_card", { cardId: "rainingarrows-perspective" });
+  let result = await act("play_card", { cardId: `${kind.toLowerCase()}-perspective` });
   for (const target of targets) {
-    const ordered = [...room.players.filter((p) => p.seat >= target.seat), ...room.players.filter((p) => p.seat < target.seat)];
+    const ordered = room.players;
     for (const responder of ordered) {
       const view = result.data.room;
       assert.equal(view.meId, responder.id); assert.equal(view.actionPlayerId, responder.id);
@@ -415,7 +417,8 @@ test("Quick Test follows the entire Arrows response chain while returning only o
       result = await act("pass_negation"); assert.equal(result.status, 200);
     }
     assert.equal(result.data.room.meId, target.id); assert.equal(result.data.room.pendingNegation, null);
-    result = await act("respond_group", { cardId: `dodge-perspective-${target.seat}` }); assert.equal(result.status, 200);
+    assert.equal(result.data.room.pendingGroup.requiredKind, required);
+    result = await act("respond_group", { cardId: `${required.toLowerCase()}-perspective-${target.seat}` }); assert.equal(result.status, 200);
   }
   assert.equal(result.data.room.meId, me.id); assert.equal(result.data.room.phase, "play");
   assert.ok(result.data.room.players.every((p) => p.handCards.length === 0));
@@ -423,6 +426,60 @@ test("Quick Test follows the entire Arrows response chain while returning only o
   const drawn = await act("draw");
   assert.ok(drawn.data.room.timeline.some((event) => event.drawPlayerId === me.id));
   assert.equal(drawn.data.drawnCards.length, 2);
+  }
+});
+
+test("AOE counter rounds include their own Negation player last and resume the affected target", async () => {
+  const created = await request("create", { quickStart: true }); const { token, room } = created.data;
+  const [me, p1, p2, p3] = room.players;
+  for (const p of room.players) setHand(p.id, [card("Negation", `self-${p.seat}`), card("Attack", `self-${p.seat}`)], 3, 3);
+  setHand(me.id, [card("BarbarianInvasion", "self-root"), card("Negation", "self-0")], 3, 3);
+  setHand(p1.id, [card("Negation", "self-1"), card("Negation", "self-again"), card("Attack", "self-1")], 3, 3);
+  setTurn(room.code, me.seat);
+  const act = (action, extra = {}) => request(action, { code: room.code, token, ...extra });
+  let result = await act("play_card", { cardId: "barbarianinvasion-self-root" });
+  assert.equal(result.data.room.actionPlayerId, me.id);
+  assert.ok(result.data.room.responseCountdownVisibleAt > Date.now() + 4000);
+  await act("pass_negation");
+  result = await act("respond_negation", { cardId: "negation-self-1" });
+  for (const p of [p2, p3, me]) {
+    assert.equal(result.data.room.actionPlayerId, p.id);
+    assert.equal(result.data.room.pendingNegation.responseTarget, "Player 1's Negation");
+    result = await act("pass_negation");
+  }
+  assert.equal(result.data.room.actionPlayerId, p1.id);
+  result = await act("respond_negation", { cardId: "negation-self-again" });
+  assert.equal(result.data.room.pendingNegation.chainDepth, 2);
+  assert.equal(result.data.room.pendingNegation.latestNegationCardId, "negation-self-again");
+  assert.equal(result.data.room.pendingNegation.cardName, "Barbarian Invasion");
+  for (const p of [p2, p3, me]) {
+    assert.equal(result.data.room.actionPlayerId, p.id);
+    result = await act("pass_negation");
+  }
+  assert.equal(result.data.room.pendingNegation, null);
+  assert.equal(result.data.room.pendingGroup.actorId, p1.id);
+  assert.equal(result.data.room.pendingGroup.requiredKind, "Attack");
+  result = await act("respond_group", { cardId: "attack-self-1" });
+  assert.equal(result.data.room.pendingNegation.effectTargetId, p2.id);
+  assert.equal(result.data.room.actionPlayerId, me.id);
+});
+
+test("AOE Attack capability preserves legal conversions and auto-damages only without a response", async () => {
+  const created = await request("create", { quickStart: true }); const { token, room } = created.data;
+  const [me, p1, p2, p3] = room.players;
+  for (const p of room.players) { setHand(p.id, [], 3, 3); setEquipment(p.id, {}); }
+  setHand(me.id, [card("BarbarianInvasion", "capability")], 3, 3);
+  setHand(p1.id, [card("Dodge", "cost1"), card("Peach", "cost2")], 3, 3);
+  setEquipment(p1.id, { weapon: card("SerpentSpear", "capability") });
+  setTurn(room.code, me.seat);
+  const act = (action, extra = {}) => request(action, { code: room.code, token, ...extra });
+  let result = await act("play_card", { cardId: "barbarianinvasion-capability" });
+  assert.equal(result.data.room.pendingGroup.actorId, p1.id, "no normal Attack, but a legal alternative keeps the decision open");
+  assert.equal((await act("respond_group", { cardIds: ["dodge-cost1"] })).status, 409);
+  result = await act("respond_group", { cardIds: ["dodge-cost1", "peach-cost2"] });
+  assert.equal(result.data.room.phase, "play");
+  assert.equal(result.data.room.players.find(p => p.id === p1.id).hp, 3);
+  for (const p of [p2, p3]) assert.equal(result.data.room.players.find(player => player.id === p.id).hp, 2);
 });
 
 test("Negation opportunities start at the target, include the user, and reset only after a card", async () => {
@@ -465,13 +522,14 @@ test("normal responses follow Negation passes and retain both Attack and Spear c
     setTurn(game.code, me.seat);
     const act = (seat, action, extra = {}) => request(action, { code: game.code, token: game.members[seat].token, ...extra });
     let result = await act(0, "play_card", { cardId: `${kind.toLowerCase()}-window`, targetId: target.id });
-    assert.equal(result.data.room.actionPlayerId, target.id);
+    assert.equal(result.data.room.actionPlayerId, kind === "Duel" ? target.id : me.id);
     const action = kind === "Duel" ? "respond_duel" : "respond_group";
     assert.equal((await act(1, action, { cardId: kind === "RainingArrows" ? "dodge-target-reply" : "attack-target-reply" })).status, 409);
-    result = await act(1, "pass_negation"); assert.equal(result.data.room.actionPlayerId, me.id, "user receives their initial opportunity");
+    const order = kind === "Duel" ? [1, 0] : [0, 1];
+    result = await act(order[0], "pass_negation"); assert.equal(result.data.room.actionPlayerId, game.room.players[order[1]].id);
     // The nested timer was created before the Negation chain; it must refresh.
     sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.effect.pending.deadline',1) WHERE code=${quote(game.code)}`);
-    result = await act(0, "pass_negation");
+    result = await act(order[1], "pass_negation");
     const response = kind === "Duel" ? result.data.room.pendingDuel : result.data.room.pendingGroup;
     assert.equal(result.data.room.pendingNegation, null); assert.equal(response.actorId, target.id);
     assert.ok(response.deadline - Date.now() > 29_000);
@@ -639,7 +697,7 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   setHand(hostPlayer.id, [card("BarbarianInvasion", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "invasion-one"), card("Dodge", "invasion-two")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "barbarianinvasion-serpent" })).status, 200);
   const invasionAnswer = await request("respond_group", { code: game.code, token: alice.token, cardIds: ["peach-invasion-one", "dodge-invasion-two"] });
-  assert.equal(invasionAnswer.status, 200); assert.equal(invasionAnswer.data.room.pendingGroup.actorId, bobPlayer.id); assert.ok(invasionAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
+  assert.equal(invasionAnswer.status, 200); assert.equal(invasionAnswer.data.room.pendingGroup, null); assert.equal(invasionAnswer.data.room.players.find(p => p.id === bobPlayer.id).hp, 3); assert.equal(invasionAnswer.data.room.players.find(p => p.id === carolPlayer.id).hp, 3); assert.ok(invasionAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
 
   const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
   setEquipment(playerOne.id); setHand(me.id, [], me.hp, me.maxHp); setHand(playerOne.id, [card("SerpentSpear", "bot"), card("Peach", "bot-one"), card("Dodge", "bot-two")], 1, 1); setHand(playerTwo.id, [card("Dodge", "bot-answer")], 1, 1); setHand(playerThree.id, [], 1, 1); setTurn(quick.data.room.code, me.seat);
@@ -907,7 +965,8 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
     sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
 
     const opened = await request("play_card", { code: game.code, token: host.token, cardId: `${kind.toLowerCase()}-per-target` });
-    assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.effectTargetId, alicePlayer.id); assert.equal(opened.data.room.actionPlayerId, alicePlayer.id);
+    assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.effectTargetId, alicePlayer.id); assert.equal(opened.data.room.actionPlayerId, hostPlayer.id);
+    await request("pass_negation", { code: game.code, token: host.token });
     assert.deepEqual(discardIds(game.code), [], `${kind} stays staged while Alice decides whether to Negate`);
     const aliceNegates = await request("respond_negation", { code: game.code, token: alice.token, cardId: `negation-${kind}-alice` });
     assert.equal(aliceNegates.status, 200); assert.equal(aliceNegates.data.room.actionPlayerId, hostPlayer.id, "the source may immediately counter or skip after a target Negates");
@@ -1181,30 +1240,29 @@ test("bot global cards resolve across consecutive rounds and return the turn to 
 
 test("Dying rescue resumes a global response chain and victory stops it immediately", { timeout: 30_000 }, async () => {
   const rescuedGame = await createHumanGame();
-  const [host, alice, bob, carol] = rescuedGame.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = rescuedGame.room.players;
+  const [host, , bob, carol] = rescuedGame.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = rescuedGame.room.players;
   setHand(hostPlayer.id, [card("BarbarianInvasion", "rescue-chain")], 5, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [card("Peach", "rescue-chain")], 4, 4); setHand(carolPlayer.id, [card("Attack", "rescue-chain")], 4, 4); setTurn(rescuedGame.code, hostPlayer.seat);
   sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(rescuedGame.code)}`);
   const started = await request("play_card", { code: rescuedGame.code, token: host.token, cardId: "barbarianinvasion-rescue-chain" });
-  assert.equal(started.data.room.actionPlayerId, alicePlayer.id);
-  const dying = await request("take_group_damage", { code: rescuedGame.code, token: alice.token });
+  const dying = started;
   assert.equal(dying.data.room.phase, "dying"); assert.equal(dying.data.room.pendingGroup.cardKind, "BarbarianInvasion", "the AOE sequence remains visible through Dying rescue"); assert.deepEqual(discardIds(rescuedGame.code), []);
   const bobPrompt = await state(rescuedGame.code, bob.token); assert.equal(bobPrompt.data.isMyAction, true); assert.equal(bobPrompt.data.pendingDying.targetId, alicePlayer.id);
   const rescued = await request("give_peach", { code: rescuedGame.code, token: bob.token, cardId: "peach-rescue-chain" });
-  assert.equal(rescued.data.room.phase, "response"); assert.equal(rescued.data.room.actionPlayerId, bobPlayer.id); assert.equal(rescued.data.room.turnSeat, hostPlayer.seat);
+  assert.equal(rescued.data.room.phase, "response"); assert.equal(rescued.data.room.actionPlayerId, carolPlayer.id); assert.equal(rescued.data.room.turnSeat, hostPlayer.seat);
+  assert.equal(rescued.data.room.players.find(p => p.id === bobPlayer.id).hp, 3);
   assert.deepEqual(discardIds(rescuedGame.code), [], "the rescue Peach remains part of the active AOE sequence");
   const bobResponded = await request("take_group_damage", { code: rescuedGame.code, token: bob.token });
-  assert.equal(bobResponded.data.room.actionPlayerId, carolPlayer.id);
+  assert.equal(bobResponded.status, 409);
   const chainFinished = await request("respond_group", { code: rescuedGame.code, token: carol.token, cardId: "attack-rescue-chain" });
   assert.equal(chainFinished.data.room.phase, "play"); assert.equal(chainFinished.data.room.turnSeat, hostPlayer.seat); assert.equal(chainFinished.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
   assert.deepEqual(discardIds(rescuedGame.code), ["barbarianinvasion-rescue-chain", "peach-rescue-chain", "attack-rescue-chain"], "AOE, rescue, and response cards enter discard together after the chain finishes");
 
   const victoryGame = await createHumanGame();
-  const [winner, rebel] = victoryGame.members; const [lord, lastRebel, loyalistOne, loyalistTwo] = victoryGame.room.players;
+  const [winner] = victoryGame.members; const [lord, lastRebel, loyalistOne, loyalistTwo] = victoryGame.room.players;
   sql(`UPDATE players SET role='Lord' WHERE id=${quote(lord.id)}; UPDATE players SET role='Rebel' WHERE id=${quote(lastRebel.id)}; UPDATE players SET role='Loyalist' WHERE id IN (${quote(loyalistOne.id)},${quote(loyalistTwo.id)})`);
   setHand(lord.id, [card("BarbarianInvasion", "winning-chain")], 5, 5); setHand(lastRebel.id, [], 1, 4); setHand(loyalistOne.id, [], 4, 4); setHand(loyalistTwo.id, [], 4, 4); setTurn(victoryGame.code, lord.seat);
   const winningCard = await request("play_card", { code: victoryGame.code, token: winner.token, cardId: "barbarianinvasion-winning-chain" });
-  assert.equal(winningCard.data.room.actionPlayerId, lastRebel.id);
-  const victory = await request("take_group_damage", { code: victoryGame.code, token: rebel.token });
+  const victory = winningCard;
   assert.equal(victory.status, 200); assert.equal(victory.data.room.status, "finished"); assert.equal(victory.data.room.phase, "finished"); assert.equal(victory.data.room.pendingGroup, null);
   assert.equal(victory.data.room.players.find((player) => player.id === loyalistOne.id).hp, 4); assert.equal(victory.data.room.players.find((player) => player.id === loyalistTwo.id).hp, 4);
   assert.ok(victory.data.room.timeline.some((event) => /Lord and Loyalist victory/.test(event.message ?? "")));

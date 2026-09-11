@@ -3,6 +3,7 @@ import { getRequestExecutionContext } from "vinext/shims/request-context";
 import { cardDefinition, DECK_CARD_KINDS, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind, EquipmentZone } from "../../../game/model";
 import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
+import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, responseOptions, selectResponse } from "../../../game/responses";
 
 export const runtime = "edge";
 
@@ -124,8 +125,9 @@ function armorCard(player?: PlayerRow | null) { return equipmentZone(player).arm
 // Eight Trigrams or enabled hero conversion/transfer skills. Passive immunity
 // (Nio Shield) resolves before this decision; unimplemented skills are not choices.
 function canRespondWithDodge(player: PlayerRow) {
-  return parse<Card[]>(player.hand_json, []).some((card) => card.kind === "Dodge");
+  return hasDodgeResponse(responseContext(player));
 }
+function responseContext(player: PlayerRow) { return { hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), hero: player.hero }; }
 function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1; }
 function hasOffensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).offensiveHorse); }
 function hasDefensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).defensiveHorse); }
@@ -931,7 +933,8 @@ async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: P
     await advanceGroup(room.id);
     return;
   }
-  const holders = playersHoldingNegation(players, actor.seat);
+  // Each AOE target gets one initial pass beginning at the current turn owner.
+  const holders = playersHoldingNegation(players, room.turn_seat ?? players.find((player) => player.id === pending.sourceId)?.seat ?? actor.seat);
   if (!holders.length) {
     writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
     await db().batch(writes);
@@ -1000,9 +1003,11 @@ async function advanceGroup(roomId: string) {
       await finishGroupStep(room, pending, players, parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
       return;
     }
-    if (!isBotPlayer(actor) && (pending.requiredKind !== "Dodge" || canRespondWithDodge(actor))) return;
+    const context = responseContext(actor);
+    const canRespond = pending.requiredKind === "Attack" ? canRespondWithAttack(context) : hasDodgeResponse(context);
+    if (!isBotPlayer(actor) && canRespond) return;
     let hand = parse<Card[]>(actor.hand_json, []); const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
-    const response = hand.find((card) => pending.requiredKind === "Attack" ? isAttackCard(card) : card.kind === "Dodge"); const serpentCards = !response && pending.requiredKind === "Attack" ? botSerpentSpearCards(actor, hand) : []; const responseCards = response ? [response] : serpentCards;
+    const option = responseOptions(context, pending.requiredKind)[0]; const response = option?.provider === "card" ? option.cards[0] : null; const responseCards = option?.cards ?? [];
     const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) continue;
     if (!responseCards.length) { await resolveGroupDamage(room, pending, actor, source, players, discard, log); return; }
@@ -1381,11 +1386,14 @@ async function roomState(code: string, token?: string) {
   const isTestController = sessionPlayers.length === players.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
   const me = isTestController ? players.find((player) => player.id === actualActionPlayerId) ?? turnPlayer ?? sessionPlayers[0] : sessionPlayers[0];
   if (sessionPlayers.length) await db.batch(sessionPlayers.map((player) => db.prepare("UPDATE players SET connected_at = ? WHERE id = ?").bind(Date.now(), player.id)));
+  const responseActor = players.find((player) => player.id === actualActionPlayerId);
+  const responseDeadline = pending && "deadline" in pending ? pending.deadline ?? 0 : 0;
+  const responseCountdownVisibleAt = room.phase === "response" && responseDeadline ? responseDeadline - (isBotPlayer(responseActor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS) + 5_000 : 0;
   const actionPlayerId = room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
   const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   return {
-    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions: room.status === "heroes" && me?.hero_options_json ? JSON.parse(me.hero_options_json) : [],
@@ -1684,8 +1692,9 @@ export async function POST(request: Request) {
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
     const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
     if (!source) return json({ error: "The card source is no longer available." }, 409);
-    const selectedResponse = action === "respond_group" ? hand.find((card) => card.id === String(body.cardId ?? "") && (pending.requiredKind === "Attack" ? isAttackCard(card) : card.kind === "Dodge")) : null; const serpentCards = action === "respond_group" && pending.requiredKind === "Attack" && !selectedResponse ? selectedSerpentSpearCards(me, hand, body.cardIds) : [];
-    if (action === "respond_group" && !selectedResponse && serpentCards.length !== 2) return json({ error: `Select a ${pending.requiredKind}${pending.requiredKind === "Attack" ? ", or use Serpent Spear with exactly 2 hand cards" : " card from your hand first"}.` }, 409);
+    const option = action === "respond_group" ? selectResponse(responseContext(me), pending.requiredKind, body.cardId, body.cardIds) : undefined;
+    const selectedResponse = option?.provider === "card" ? option.cards[0] : null; const serpentCards = option && !selectedResponse ? option.cards : [];
+    if (action === "respond_group" && !option) return json({ error: `Select a valid ${pending.requiredKind} response and pay its required costs.` }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved." }, 409);
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];

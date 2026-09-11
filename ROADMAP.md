@@ -16,6 +16,10 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 
 ## Immediate rules correction
 
+### Sequential AOE and generic responses — complete
+
+Each AOE target has one turn-owner-first Negation round. Counter rounds include all eligible living players, including their latest Negation player last; passes exhaust the current round without cycling. Surviving effects use the shared Attack/Dodge response capability and cost validation in `game/responses.ts`. No-response damage is automatic. Response countdowns appear after five elapsed seconds, with the initial Negation actor indication hidden from other players during that interval. This reduces visible skip clues but is not a guarantee against timing inference. Next: Eight Trigrams as a registered Dodge provider with its own judgement resolver.
+
 ### Negation-chain response context — complete
 
 Counter-Negation windows now retain the root Stratagem separately from the latest Negation event. Response order still starts after the latest Negation player, while prompts identify the current Negation being answered.
@@ -26,7 +30,7 @@ Quick Test follows the current actor using the normal bottom seat, hand and hero
 
 ### Ordered Negation windows — complete
 
-Initial windows start at the affected target and include the user; counter windows start after the latest Negation player and can reach that player last. Pass consumes one opportunity, while a newly played Negation resets eligibility. Raining Arrows and Barbarian Invasion finish each target before advancing; Duel (including bot-played Duel) uses the same Negation gate. Normal responses have fresh deadlines after the chain closes, and Attack/Serpent Spear remain alternatives when Attack is required. Next: Eight Trigrams as an additional normal Dodge response, never during Negation.
+Initial targeted-card windows start at the affected target; AOE windows now start at the turn owner. Both include the user. Counter windows start after the latest Negation player and can reach that player last. Pass consumes one opportunity, while a newly played Negation resets eligibility. Raining Arrows and Barbarian Invasion finish each target before advancing; Duel (including bot-played Duel) uses the same Negation gate. Normal responses have fresh deadlines after the chain closes and accept any implemented legal provider of the required type. Next: Eight Trigrams as an additional normal Dodge response, never during Negation.
 
 ### Equipment animation follow-up — complete
 
