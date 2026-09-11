@@ -38,6 +38,8 @@ The standing release workflow requested by the owner is:
 
 ## Current product state
 
+Latest perspective fix: Quick Test still selects the legal actor on the server, but player DTOs no longer expose table hands (`handCards` stays empty); `myHand` is the only private hand. The small seat previews and their CSS are removed. `game/private-hand.ts` keeps the current owner plus hand/event baselines, resetting on `meId` changes, and the private overlay is owner-scoped so a previous player's cards cannot flash during a switch. Draw Phase, Draw Two and Rebel reward log entries carry `drawPlayerId` metadata without card identities; only a new event for the same viewed player can present newly added hand cards. Gains/Harvest and repeated polling do not count as draws. Public sequence state and Negation rules are unchanged. Tests cover a complete Quick Test Arrows/pass/response cycle, return to ME, draw markers, per-seat privacy, repeated polling and card recycling. Next milestone remains Eight Trigrams Formation.
+
 Latest Negation update: confirmed owner model starts each initial window at the affected target, includes the Stratagem user, and restarts after the latest Negation player only when a Negation is played. Existing pass queues shrink without cycling; counter windows permit previous passers and encounter the latest card player last if still eligible. Players with no Negation are automatically skipped. The API's `negated` field tracks provisional parity; no normal response resolves until the current opportunity exhausts. Surviving Duel/AOE effects receive a fresh normal-response deadline. Bot Duel now enters this same pipeline. Quick Test seat-hand selection respects the same response eligibility as the main hand. New API tests cover ordering, pass finality, parity, user inclusion, expired nested timers, early-response rejection, Spear with an Attack still held, and per-target sequencing. Eight Trigrams and hero response skills remain unimplemented.
 
 Latest fix: equipment has one visible centre-to-rack flight. The prior retention filter missed optimistic entries, producing the numbered duplicate reported in screenshots. Both merged sequence entries and the final sequence renderer now filter equipment; rack visibility follows unseen, queued and active equipment events. A layout measurement with ResizeObserver supplies the real destination across seats and viewport sizes. Equipment summaries use history-only entries to avoid a second presentation delay. Existing live equipment is visible immediately on reconnect. Continue with Eight Trigrams Formation after visual regression checks.
@@ -47,7 +49,7 @@ Local browser verification: played Nio Shield followed by Frost Sword. During ea
 This is a playable four-player alpha. The quick-test game starts immediately as a single-device controller table with:
 
 - four human-controlled seats: `ME`, `Player 1`, `Player 2` and `Player 3`;
-- all four hands displayed around their seats only in Quick Test; and
+- only the controlled seat's full hand displayed in the normal bottom hand area; opponents show counts only;
 - automatic controller hand/permission switching to the seat that legally acts;
 - random roles and heroes, except `ME` uses Zhang Fei for testing;
 - Lord bonus HP;
@@ -117,7 +119,7 @@ The production migration is now complete in the project configuration:
 - Successful pushes validate the project, apply Cloudflare D1 migrations and deploy `three-kingdoms` to the public Worker URL.
 - The obsolete ChatGPT Sites hosting file and build dependency were removed. The migrated test runner still exits explicitly to close Cloudflare worker handles in CI, but now preserves the real test result instead of forcing success after a failure.
 
-The latest Quick Test change makes manual rule verification possible without waiting for bots. All four quick-test player rows share the local session token, but this is deliberately detected only when every four-seat player belongs to that session; normal multiplayer sessions continue to expose only their owner's hand. The API selects the legal turn or response actor as the controller perspective, so existing server ownership checks remain authoritative. The user interface shows compact visible hands beside every seat and enables only the acting seat's cards; the regular large hand remains the action control surface. Bot fixtures use the internal `botTest: true` request field so regression tests retain coverage of automatic bot turns without changing the public Quick Test flow.
+The latest Quick Test change makes manual rule verification possible without waiting for bots. All four quick-test player rows share the local session token, but this is deliberately detected only when every four-seat player belongs to that session; normal multiplayer sessions continue to expose only their owner's hand. The API selects the legal turn or response actor as the controller perspective, so existing server ownership checks remain authoritative. The user interface shows only the controlled hand in the normal bottom area; opponent hand counts remain public but their cards are hidden. Perspective changes reset the hand baseline without a draw presentation. Bot fixtures use the internal `botTest: true` request field so regression tests retain coverage of automatic bot turns without changing the public Quick Test flow.
 
 The latest timing change expands the shared response window:
 
@@ -356,7 +358,7 @@ npm run lint
 npm test
 ```
 
-`npm test` performs a production build and runs the API and rendered-client suites. The current expected result is 27 passing test flows.
+`npm test` performs a production build and runs the API, private-hand tracking and rendered-client suites. The current expected result is 31 passing test flows.
 
 Key test files:
 

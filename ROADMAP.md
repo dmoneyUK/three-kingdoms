@@ -16,6 +16,10 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 
 ## Immediate rules correction
 
+### Quick Test perspective privacy — complete
+
+Quick Test follows the current actor using the normal bottom seat, hand and hero/role/HP. Opponent hand previews and full-hand payloads are removed. Switching `meId` establishes a new hand baseline and cancels prior private presentations; only new same-player draw events can show PRIVATE DRAW. Negation order and normal multiplayer session ownership are unchanged. Next card milestone remains Eight Trigrams Formation.
+
 ### Ordered Negation windows — complete
 
 Initial windows start at the affected target and include the user; counter windows start after the latest Negation player and can reach that player last. Pass consumes one opportunity, while a newly played Negation resets eligibility. Raining Arrows and Barbarian Invasion finish each target before advancing; Duel (including bot-played Duel) uses the same Negation gate. Normal responses have fresh deadlines after the chain closes, and Attack/Serpent Spear remain alternatives when Attack is required. Next: Eight Trigrams as an additional normal Dodge response, never during Negation.

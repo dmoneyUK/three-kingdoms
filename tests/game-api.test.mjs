@@ -361,7 +361,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.deepEqual(quick.data.room.players.map((player) => player.name), ["ME", "Player 1", "Player 2", "Player 3"]);
   assert.deepEqual(quick.data.room.players.map((player) => player.isBot), [false, false, false, false]);
   assert.equal(quick.data.room.isTestController, true);
-  assert.ok(quick.data.room.players.every((player) => player.handCards.length === player.handCount), "single-device Quick Test exposes every seat's hand to its controller");
+  assert.ok(quick.data.room.players.every((player) => player.handCards.length === 0), "Quick Test exposes only the controlled player's myHand");
   assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
   assert.equal(quick.data.room.players.find((player) => player.name === "ME").hero, "zhang-fei");
   assert.ok(quick.data.room.players.filter((player) => player.name !== "ME").every((player) => player.hp === 3 && player.maxHp === 3));
@@ -393,6 +393,36 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const controlledSeat = await state(quick.data.room.code, quick.data.token);
   assert.equal(controlledSeat.data.meId, quickPlayerOne.id, "the same Quick Test controller becomes the active seat");
   assert.equal(controlledSeat.data.myHand.length, 2);
+  assert.ok(controlledSeat.data.players.every((player) => player.handCards.length === 0));
+});
+
+test("Quick Test follows the entire Arrows response chain while returning only one private hand", async () => {
+  const created = await request("create", { quickStart: true }); const { token, room } = created.data;
+  const [me, ...targets] = room.players;
+  setHand(me.id, [card("RainingArrows", "perspective"), card("Negation", "perspective-user")], 3, 3);
+  for (const target of targets) setHand(target.id, [card("Negation", `perspective-${target.seat}`), card("Dodge", `perspective-${target.seat}`)], 3, 3);
+  setTurn(room.code, me.seat);
+  const act = (action, extra = {}) => request(action, { code: room.code, token, ...extra });
+  let result = await act("play_card", { cardId: "rainingarrows-perspective" });
+  for (const target of targets) {
+    const ordered = [...room.players.filter((p) => p.seat >= target.seat), ...room.players.filter((p) => p.seat < target.seat)];
+    for (const responder of ordered) {
+      const view = result.data.room;
+      assert.equal(view.meId, responder.id); assert.equal(view.actionPlayerId, responder.id);
+      assert.ok(view.isMyAction); assert.ok(view.players.every((p) => p.handCards.length === 0));
+      assert.deepEqual(view.myHand, JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(responder.id)}`)));
+      assert.equal(view.myRole, view.players.find((p) => p.id === responder.id).role);
+      result = await act("pass_negation"); assert.equal(result.status, 200);
+    }
+    assert.equal(result.data.room.meId, target.id); assert.equal(result.data.room.pendingNegation, null);
+    result = await act("respond_group", { cardId: `dodge-perspective-${target.seat}` }); assert.equal(result.status, 200);
+  }
+  assert.equal(result.data.room.meId, me.id); assert.equal(result.data.room.phase, "play");
+  assert.ok(result.data.room.players.every((p) => p.handCards.length === 0));
+  setTurn(room.code, me.seat, "draw");
+  const drawn = await act("draw");
+  assert.ok(drawn.data.room.timeline.some((event) => event.drawPlayerId === me.id));
+  assert.equal(drawn.data.drawnCards.length, 2);
 });
 
 test("Negation opportunities start at the target, include the user, and reset only after a card", async () => {

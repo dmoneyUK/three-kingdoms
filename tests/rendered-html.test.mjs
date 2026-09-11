@@ -165,9 +165,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Skipping…/);
   assert.match(styles, /\.game-card\.dismantle/);
   assert.match(page, /knownHandCards/);
-  assert.match(page, /const harvestGains = new Set/);
-  assert.match(page, /if \(room\.pendingHarvest\) return/);
-  assert.match(page, /setTimeout\(\(\) => setPrivateDrawCards\(\[\]\), UI_TIMING\.privateDraw\)/);
+  assert.match(page, /updatePrivateHand/);
+  assert.doesNotMatch(page, /player\.handCards\.map|player-hand-zone/);
+  assert.match(page, /privateDrawPresentation\.playerId === room\.meId/);
   assert.match(page, /Event history/);
   assert.match(page, /card-info-button/);
   assert.match(page, /aria-label={`Explain \${definition\.name}`}/);

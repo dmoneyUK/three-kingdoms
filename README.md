@@ -19,7 +19,7 @@ For this project, always filter the catalogue to **Standard**. Endless Legends a
 
 ## Current Stage
 
-The project has moved beyond the initial table prototype. A complete four-player match loop runs in both normal multiplayer rooms and a single-device Quick Test table. Quick Test has no bot automation: one controller plays every seat in turn, with each seat's hand visible around the table. Turn ownership, ordered responses, death rewards and victory checks are working. Human card and weapon responses use a 30-second action window while bot decisions retain a 10-second window in the dedicated automated regression fixture.
+The project has moved beyond the initial table prototype. A complete four-player match loop runs in both normal multiplayer rooms and a single-device Quick Test table. Quick Test has no bot automation: one controller plays every seat in turn, with only the acting seat's hand visible at the bottom. Turn ownership, ordered responses, death rewards and victory checks are working. Human card and weapon responses use a 30-second action window while bot decisions retain a 10-second window in the dedicated automated regression fixture.
 
 The current feature focus is **equipment and distance modifiers** while rules-engine extraction and regression work continues. Expansion cards and hero-specific abilities remain intentionally deferred.
 
@@ -37,7 +37,7 @@ The playable alpha includes:
 - table-based card-resolution presentation;
 - event history and detailed rule-audit trail; and
 - deterministic quick-test setups for card and response-chain development.
-- a single-device Quick Test controller that exposes all four hands and switches control to the legal acting seat.
+- a single-device Quick Test controller that follows the legal acting seat and shows only that player's hand in the normal bottom area. Perspective changes never trigger a private draw.
 
 ### Implemented Standard cards
 
