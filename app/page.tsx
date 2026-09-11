@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card } from "../game/model";
-import { baselineHand, updatePrivateHand } from "../game/private-hand";
+import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type CardEvent = { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal"; presentation?: boolean };

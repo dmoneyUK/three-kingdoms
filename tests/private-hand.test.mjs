@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { baselineHand, updatePrivateHand } from "../game/private-hand.ts";
+import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
 
 const card = (id) => ({ id, kind: "Attack", suit: "♠", rank: "A" });
 test("perspective changes baseline existing hands without a draw, including returning to ME", () => {
