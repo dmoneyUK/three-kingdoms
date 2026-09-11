@@ -62,7 +62,7 @@ This is a playable four-player alpha. The quick-test game starts immediately as 
 - random roles and heroes, except `ME` uses Zhang Fei for testing;
 - Lord bonus HP;
 - Player 1–3 at 3 HP in quick-test mode; and
-- every non-weapon Standard card plus Frost Sword and three Attacks in `ME`'s opening hand; other weapons and all horses remain in the deck. Player 3 also begins with three Attacks plus a Negation for bot-response testing.
+- Eight Trigrams Formation plus three Attacks in `ME`'s opening hand; the remaining opening cards are drawn randomly from the shuffled Standard deck. Other weapons and all horses remain available in the deck. Player 3 also begins with three Attacks plus a Negation for bot-response testing.
 
 Implemented shared rules include:
 

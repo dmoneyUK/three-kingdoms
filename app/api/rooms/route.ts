@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getRequestExecutionContext } from "vinext/shims/request-context";
-import { cardDefinition, DECK_CARD_KINDS, isAttackCard, makeDeck } from "../../../game/cards";
+import { cardDefinition, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind, EquipmentZone } from "../../../game/model";
 import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, responseOptions, selectResponse } from "../../../game/responses";
@@ -77,7 +77,6 @@ const HUMAN_RESPONSE_TIMEOUT_MS = 30_000;
 const BOT_RESPONSE_TIMEOUT_MS = 10_000;
 const nextResponseDeadline = (actor?: PlayerRow | null) => Date.now() + (isBotPlayer(actor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS);
 const QUICK_TEST_EQUIPMENT_KINDS: CardKind[] = ["FrostSword", "NioShield", "EightTrigrams"];
-const QUICK_TEST_OPENING_KINDS = DECK_CARD_KINDS.filter((kind) => !cardDefinition(kind).equipmentSlot || QUICK_TEST_EQUIPMENT_KINDS.includes(kind));
 const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "respond_dodge", "respond_eight_trigrams", "take_damage", "respond_green_dragon", "pass_green_dragon", "respond_rock_cleaving", "pass_rock_cleaving", "use_frost_sword", "pass_frost_sword", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "respond_negation", "pass_negation", "preview_harvest", "choose_harvest", "choose_target_card", "start_response_timer", "start_rescue_timer", "give_peach", "skip_rescue"]);
 
 async function setup() {
@@ -324,7 +323,9 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
-  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: [...QUICK_TEST_OPENING_KINDS, "Attack", "Attack"] });
+  // Keep the newly implemented card available for every manual test, but let
+  // the rest of ME's opening hand come from the shuffled Standard deck.
+  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: ["EightTrigrams", "Attack", "Attack", "Attack"] });
   const quickPlayers = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const quickRoom = await db().prepare("SELECT deck_json FROM rooms WHERE id = ?").bind(roomId).first<Pick<RoomRow, "deck_json">>();
   const testPlayers = (quickPlayers.results ?? []).filter((player) => player.id !== hostPlayerId);

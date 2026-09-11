@@ -28,6 +28,8 @@ Counter-Negation windows now retain the root Stratagem separately from the lates
 
 Quick Test follows the current actor using the normal bottom seat, hand and hero/role/HP. Opponent hand previews and full-hand payloads are removed. Switching `meId` establishes a new hand baseline and cancels prior private presentations; only new same-player draw events can show PRIVATE DRAW. The baseline helper is plain ESM JavaScript so deployment tests run without a TypeScript loader. Negation order and normal multiplayer session ownership are unchanged. Next card milestone remains Eight Trigrams Formation.
 
+The Quick Test opening now guarantees the newest implemented card (currently Eight Trigrams Formation) plus three Attacks for ME; all other opening cards remain randomized from the shuffled deck.
+
 ### Ordered Negation windows — complete
 
 Initial targeted-card windows start at the affected target; AOE windows now start at the turn owner. Both include the user. Counter windows start after the latest Negation player and can reach that player last. Pass consumes one opportunity, while a newly played Negation resets eligibility. Raining Arrows and Barbarian Invasion finish each target before advancing; Duel (including bot-played Duel) uses the same Negation gate. Normal responses have fresh deadlines after the chain closes and accept any implemented legal provider of the required type. Eight Trigrams is now an additional normal Dodge response, never during Negation. Next: Blue Steel Sword.

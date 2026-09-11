@@ -367,10 +367,10 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
   assert.equal(quick.data.room.players.find((player) => player.name === "ME").hero, "zhang-fei");
   assert.ok(quick.data.room.players.filter((player) => player.name !== "ME").every((player) => player.hp === 3 && player.maxHp === 3));
-  assert.equal(quick.data.room.myHand.length, 19);
-  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "FrostSword", "NioShield", "EightTrigrams"]), "ME starts every non-equipment card and each focused-test equipment card");
+  assert.equal(quick.data.room.myHand.length, 4);
+  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "EightTrigrams"]), "ME starts with the newly implemented card and otherwise-randomized opening cards");
   assert.equal(quick.data.room.myHand.filter((openingCard) => openingCard.kind === "Attack").length, 3, "ME starts with three Attack cards");
-  assert.deepEqual(quick.data.room.myHand.filter((openingCard) => ["ZhugeCrossbow", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd"].includes(openingCard.kind)), [], "other weapons remain in the draw deck for this focused test game");
+  assert.ok(quick.data.room.myHand.some((openingCard) => openingCard.kind === "EightTrigrams"), "Eight Trigrams is guaranteed in the Quick Test opening hand");
   const quickDeck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(quick.data.room.code)}`));
   assert.ok(["ZhugeCrossbow", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd"].every((kind) => quickDeck.some((deckCard) => deckCard.kind === kind)), "every non-tested weapon remains available in the draw deck");
   assert.equal(quick.data.room.players.find((player) => player.name === "Player 3").handCount, 4);
@@ -381,7 +381,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
   assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);
   const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
-  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 21);
+  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 6);
   const quickMe = quickDraw.data.room.players.find((player) => player.name === "ME"); const quickPlayerOne = quickDraw.data.room.players.find((player) => player.name === "Player 1");
   setHand(quickMe.id, [card("Strike", "zhang-fei-1"), card("Strike", "zhang-fei-2")], quickMe.hp, quickMe.maxHp); setHand(quickPlayerOne.id, [card("Dodge", "zhang-fei-1"), card("Dodge", "zhang-fei-2")], 1, 1); setTurn(quick.data.room.code, quickMe.seat);
   const firstQuickAttack = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "strike-zhang-fei-1", targetId: quickPlayerOne.id });

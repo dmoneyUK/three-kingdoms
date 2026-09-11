@@ -41,7 +41,7 @@ The playable alpha includes:
 - table-based card-resolution presentation;
 - event history and detailed rule-audit trail; and
 - deterministic quick-test setups for card and response-chain development.
-- a single-device Quick Test controller that follows the legal acting seat and shows only that player's hand in the normal bottom area. Perspective changes never trigger a private draw.
+- a single-device Quick Test controller that follows the legal acting seat and shows only that player's hand in the normal bottom area. Perspective changes never trigger a private draw. Quick Test guarantees the newest implemented card in ME's opening hand while randomizing the rest of the opening draw.
 
 ### Implemented Standard cards
 
