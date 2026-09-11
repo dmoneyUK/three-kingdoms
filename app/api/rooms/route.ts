@@ -374,10 +374,15 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     if (index < 0) throw new Error("Quick-test deck did not contain enough focused-test cards for bot hands.");
     return quickDeck.splice(index, 1)[0];
   };
+  const takeQuickTestCard = (kind: CardKind) => {
+    const index = quickDeck.findIndex((card) => card.kind === kind);
+    if (index < 0) throw new Error(`Quick-test deck did not contain ${kind}.`);
+    return quickDeck.splice(index, 1)[0];
+  };
   await db().batch([
     ...testPlayers.map((player, index) => {
     const testNegation: Card = { id: `quick-negation-${crypto.randomUUID()}`, kind: "Negation", suit: (["♣", "♠", "♦"] as const)[index % 3], rank: ["Q", "K", "J"][index % 3] };
-    const nextHand = player.seat === 3 ? [testNegation, ...playerThreeAttacks] : [testNegation, takeFocusedBotCard(), takeFocusedBotCard(), takeFocusedBotCard()];
+    const nextHand = player.seat === 3 ? [testNegation, ...playerThreeAttacks] : player.seat === 1 ? [testNegation, takeQuickTestCard("SerpentSpear"), takeFocusedBotCard(), takeFocusedBotCard()] : [testNegation, takeFocusedBotCard(), takeFocusedBotCard(), takeFocusedBotCard()];
     return db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), player.id);
     }),
     db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(quickDeck), roomId),

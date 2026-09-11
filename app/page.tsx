@@ -38,6 +38,9 @@ function eventCards(event: GameEvent) { return event.type === "card" ? [event.ca
 function movesDirectlyToDiscard(event: GameEvent) {
   return event.type === "cards" ? event.action === "discard" : event.type === "card" ? event.action === "discard" || event.action === "reveal" : false;
 }
+function settlesInJudgement(event: GameEvent) {
+  return event.type === "card" && event.action === "play" && ["Overindulgence", "Lightning", "RationsDepleted"].includes(event.card.kind);
+}
 function retainsAtPlayer(event: GameEvent) {
   // Equipment is committed to the owner's rack by the API before its public
   // presentation is emitted. Keep the centre reveal, but do not also retain a
@@ -276,6 +279,9 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   const equipmentInFlight = new Set([optimisticPlay, activeEvent, ...eventQueue,
     ...room.timeline.filter((event) => !processedEventIds.has(event.id))]
     .flatMap((event) => event?.type === "card" && event.action === "equip" ? [event.card.id] : []));
+  const judgementInFlight = new Set([optimisticPlay, activeEvent, ...eventQueue,
+    ...room.timeline.filter((event) => !processedEventIds.has(event.id))]
+    .flatMap((event) => settlesInJudgement(event) ? [event.card.id] : []));
   const tablePresentationVisible = sequenceEvents.length > 0 || Boolean(displayedEvent && eventCards(displayedEvent).length);
   const seatCountdown = room.phase === "response" && room.actionPlayerId && responseDeadline > 0 ? { playerId: room.actionPlayerId, key: `response-${room.actionPlayerId}-${responseDeadline}`, durationMs: 0, deadline: responseDeadline, label: "Respond" }
     : room.pendingHarvest?.countdownUntil ? { playerId: room.pendingHarvest.actorId, key: `harvest-${room.pendingHarvest.actorId}-${room.pendingHarvest.countdownUntil}`, durationMs: 0, deadline: room.pendingHarvest.countdownUntil, label: room.pendingHarvest.complete ? "Closing" : "Choosing" }
@@ -408,6 +414,7 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
       <div className="play-center"><div className="draw-stack"><b>{room.deckCount}</b><span>DECK</span></div><div className="discard-stack"><b>{visibleDiscardTop ? cardDefinition(visibleDiscardTop.kind).name : "—"}</b><span>DISCARD</span></div></div>
       {canChooseTargetCard && pickerTarget && <div className="hidden-card-picker table-hidden-card-picker target-card-picker" style={{ "--angle": `${targetAngle}deg` } as React.CSSProperties} role="dialog" aria-modal="true" aria-label={`Choose one current card from ${pickerTarget.name}`}><span>{pickerTarget.name}&apos;s cards</span>{pickerTarget.handCount > 0 && <section><small>Hand</small><div>{Array.from({ length: pickerTarget.handCount }, (_, index) => <button type="button" className={targetCardZone === "hand" && targetCardIndex === index ? "selected" : ""} aria-pressed={targetCardZone === "hand" && targetCardIndex === index} key={index} onClick={() => { setTargetCardZone("hand"); setTargetCardIndex(index); setTargetCardId(""); }}>?</button>)}</div></section>}{pickerTarget.equipmentCards.length > 0 && <section><small>Equipment</small><div>{pickerTarget.equipmentCards.map((item) => <button type="button" className={targetCardZone === "equipment" && targetCardId === item.id ? "selected named" : "named"} aria-pressed={targetCardZone === "equipment" && targetCardId === item.id} key={item.id} onClick={() => { setTargetCardZone("equipment"); setTargetCardId(item.id); setTargetCardIndex(null); }}>{cardDefinition(item.kind).name}</button>)}</div></section>}{pickerTarget.judgementCards.length > 0 && <section><small>Judgement</small><div>{pickerTarget.judgementCards.map((item) => <button type="button" className={targetCardZone === "judgement" && targetCardId === item.id ? "selected named" : "named"} aria-pressed={targetCardZone === "judgement" && targetCardId === item.id} key={item.id} onClick={() => { setTargetCardZone("judgement"); setTargetCardId(item.id); setTargetCardIndex(null); }}>{cardDefinition(item.kind).name}</button>)}</div></section>}<div className="target-picker-actions">{canChooseTargetCard && <button className="primary" disabled={busy || !targetCardZone || targetCardZone === "hand" && targetCardIndex === null || targetCardZone !== "hand" && !targetCardId} onClick={() => onAction("choose_target_card", { targetCardZone, ...(targetCardZone === "hand" ? { targetCardIndex } : { targetCardId }) })}>{busy ? "Resolving…" : room.pendingTargetCard?.cardKind === "Steal" ? "Obtain selected" : "Discard selected"}</button>}</div>{error && <p className="error" role="alert">{error}</p>}</div>}
       {room.players.map((player, index) => { const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const angle = 180 + (360 / room.players.length) * relativeIndex; const radians = angle * Math.PI / 180; const attackSelection = serpentMode && canPlay || Boolean(card && isAttackCard(card)); const cardCount = player.handCount + player.equipmentCards.length + player.judgementCards.length; const targetable = Boolean(attackSelection ? (player.distance ?? 99) <= (me?.attackRange ?? 1) : card && (card.kind === "Dismantle" ? cardCount > 0 : card.kind === "Steal" ? cardCount > 0 && (player.distance ?? 99) <= 1 : card.kind === "Duel" ? true : card.kind === "Overindulgence" ? !player.judgementCards.some((delayed) => delayed.kind === "Overindulgence") : card.kind === "RationsDepleted" ? (player.distance ?? 99) <= 1 && !player.judgementCards.some((delayed) => delayed.kind === "RationsDepleted") : false)); return <div className={`player-table-seat player-table-seat-${relativeIndex}`} key={player.id} style={{ "--angle": `${angle}deg`, "--countdown-x": `${Math.cos(radians) * 76}px`, "--countdown-y": `${Math.sin(radians) * 54}px` } as React.CSSProperties}><button disabled={!room.isMyTurn || !canPlay || !player.alive || player.id === room.meId || !targetable} onClick={() => { setTarget(player.id); setTargetCardIndex(null); }} className={`started-player play-seat ${player.id === room.meId ? "self-player" : ""} ${player.seat === room.turnSeat && room.status === "playing" ? "active-turn" : ""} ${!hideNegationActor && player.id === room.actionPlayerId && room.status === "playing" ? "active-action" : ""} ${(halberdAttack ? targetIds.includes(player.id) : target === player.id) ? "targeted" : ""} ${!player.alive ? "defeated" : ""}`}><div className="seal">{player.name[0]}</div><b>{player.name}</b><small>{heroName(player.hero)} · {player.role ?? "Role hidden"}</small><span><i className={`presence-dot ${player.connected ? "online" : "offline"}`} aria-label={player.connected ? "Online" : "Offline"} />{"♥".repeat(player.hp ?? 0)} · {player.handCount} cards{player.id !== room.meId ? ` · distance ${player.distance}` : ` · Attack Range ${player.attackRange}`}</span>{player.judgementCards.length > 0 && <em className="judgement-zone">Judgement · {player.judgementCards.map((delayed) => cardDefinition(delayed.kind).name).join(", ")}</em>}{seatCountdown?.playerId === player.id && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}</button>{player.equipmentCards.length > 0 && <aside className="player-equipment-zone" aria-label={`${player.name}'s equipment`}><span>Equipment</span><div>{player.equipmentCards.map((equipment) => <button type="button" disabled={!rockCleavingResponse || player.id !== room.meId} data-equipment-id={equipment.id} style={{ visibility: equipmentInFlight.has(equipment.id) ? "hidden" : "visible" }} className={`player-equipment-card ${serpentSelected.includes(equipment.id) ? "selected-cost" : ""}`} aria-pressed={serpentSelected.includes(equipment.id)} key={equipment.id} onClick={() => setSerpentSelected((ids) => ids.includes(equipment.id) ? ids.filter((id) => id !== equipment.id) : ids.length < 2 ? [...ids, equipment.id] : ids)}><i>{equipment.rank}<small>{equipment.suit}</small></i><b>{cardDefinition(equipment.kind).name}</b><em>{cardDefinition(equipment.kind).equipmentSlot === "armor" ? "Armor" : cardDefinition(equipment.kind).equipmentSlot === "offensiveHorse" || cardDefinition(equipment.kind).equipmentSlot === "defensiveHorse" ? "Mount" : "Weapon"}</em></button>)}</div></aside>}</div>; })}
+      {room.players.map((player, index) => { if (!player.judgementCards.length) return null; const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const angle = 180 + (360 / room.players.length) * relativeIndex; return <aside className="player-judgement-zone" aria-label={`${player.name}'s Judgement Zone`} key={`judgement-${player.id}`} style={{ "--angle": `${angle}deg` } as React.CSSProperties}><span>Judgement</span><div>{player.judgementCards.map((judgement) => <div className="player-judgement-card" data-judgement-id={judgement.id} key={judgement.id} style={{ visibility: judgementInFlight.has(judgement.id) ? "hidden" : "visible" }}><CardFace card={judgement} /></div>)}</div></aside>; })}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
     </section>
     <footer className="play-command">
@@ -431,10 +438,12 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
 function TableResolutionSequence({ events, activeEvent, waitingReason, players, myTableIndex, concluding }: { events: GameEvent[]; activeEvent: GameEvent | null; waitingReason: string; players: Player[]; myTableIndex: number; concluding: boolean }) {
   const cards = events.filter(retainsAtPlayer).flatMap((event) => event.type === "card" ? [{ event, card: event.card, key: event.id }] : event.type === "cards" ? event.cards.map((card) => ({ event, card, key: `${event.id}-${card.id}` })) : []);
   const equipmentOnlySequence = cards.length > 0 && cards.every(({ event }) => event.type === "card" && event.action === "equip");
-  const cardPlayers = players.filter((player) => cards.some(({ event }) => publicPlayerName(event.player) === publicPlayerName(player.name)));
+  const judgementOnlySequence = cards.length > 0 && cards.every(({ event }) => settlesInJudgement(event));
+  const cardPlayers = players.filter((player) => cards.some(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name)));
   const activeCards = activeEvent?.type === "card" ? [activeEvent.card] : activeEvent?.type === "cards" ? activeEvent.cards : [];
   const activeCardIds = new Set(activeCards.map((card) => card.id));
   const equipmentFlightId = activeEvent?.type === "card" && activeEvent.action === "equip" ? activeEvent.card.id : null;
+  const judgementFlightId = activeEvent && settlesInJudgement(activeEvent) ? activeEvent.card.id : null;
   const revealRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const reveal = revealRef.current;
@@ -457,6 +466,27 @@ function TableResolutionSequence({ events, activeEvent, waitingReason, players, 
     observer.observe(table); observer.observe(destination);
     return () => observer.disconnect();
   }, [equipmentFlightId, players, myTableIndex]);
+  useLayoutEffect(() => {
+    const reveal = revealRef.current;
+    const table = reveal?.closest(".play-table");
+    if (!reveal || !table || !judgementFlightId) return;
+    const destination = Array.from(table.querySelectorAll<HTMLElement>("[data-judgement-id]"))
+      .find((slot) => slot.dataset.judgementId === judgementFlightId);
+    const face = reveal.querySelector<HTMLElement>(".played-card");
+    if (!destination || !face) return;
+    const measure = () => {
+      const bounds = table.getBoundingClientRect();
+      const slot = destination.getBoundingClientRect();
+      reveal.style.setProperty("--judgement-x", `${slot.left + slot.width / 2 - bounds.left}px`);
+      reveal.style.setProperty("--judgement-y", `${slot.top + slot.height / 2 - bounds.top}px`);
+      reveal.style.setProperty("--judgement-scale-x", String(slot.width / face.offsetWidth));
+      reveal.style.setProperty("--judgement-scale-y", String(slot.height / face.offsetHeight));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(table); observer.observe(destination);
+    return () => observer.disconnect();
+  }, [judgementFlightId, players, myTableIndex]);
   const activePlayer = activeEvent?.type === "card" || activeEvent?.type === "cards" ? players.find((player) => publicPlayerName(player.name) === publicPlayerName(activeEvent.player)) : undefined;
   const activePlayerIndex = activePlayer ? players.findIndex((player) => player.id === activePlayer.id) : myTableIndex;
   const activeRelativeIndex = (activePlayerIndex - myTableIndex + players.length) % players.length;
@@ -466,18 +496,18 @@ function TableResolutionSequence({ events, activeEvent, waitingReason, players, 
   const activeStyle = { "--origin-x": `${50 + Math.sin(activeRadians) * 38}%`, "--origin-y": `${50 - Math.cos(activeRadians) * 34}%`, "--settle-x": `${50 + Math.sin(activeRadians) * 24}%`, "--settle-y": `${50 - Math.cos(activeRadians) * 26}%` } as React.CSSProperties;
   return <div className={`table-resolution-layer ${concluding ? "concluding" : ""}`} role="status">
     {activeEvent && !concluding && <div className="active-step-label">{describeEvent(activeEvent)}</div>}
-    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${equipmentFlightId ? "equipment-flight" : ""} ${directDiscard ? "direct-discard" : ""}`} key={activeEvent?.id} style={activeStyle}><div>{activeCards.map((shown) => <CardFace card={shown} key={shown.id} />)}</div></div>}
+    {activeCards.length > 0 && !concluding && <div ref={revealRef} className={`active-table-reveal ${equipmentFlightId ? "equipment-flight" : ""} ${judgementFlightId ? "judgement-flight" : ""} ${directDiscard ? "direct-discard" : ""}`} key={activeEvent?.id} style={activeStyle}><div>{activeCards.map((shown) => <CardFace card={shown} key={shown.id} />)}</div></div>}
     {cardPlayers.map((player) => {
       const playerIndex = players.findIndex((candidate) => candidate.id === player.id);
       const relativeIndex = (playerIndex - myTableIndex + players.length) % players.length;
       const angle = 180 + (360 / players.length) * relativeIndex;
       const radians = angle * Math.PI / 180;
-      const playerCards = cards.filter(({ event }) => publicPlayerName(event.player) === publicPlayerName(player.name));
+      const playerCards = cards.filter(({ event }) => !settlesInJudgement(event) && publicPlayerName(event.player) === publicPlayerName(player.name));
       const playerStyle = { "--seat-x": `${50 + Math.sin(radians) * 24}%`, "--seat-y": `${50 - Math.cos(radians) * 26}%` } as React.CSSProperties;
       const equipmentOnly = playerCards.every(({ event }) => event.type === "card" && event.action === "equip");
       return <div className={`player-played-cards ${equipmentOnly ? "equipment-only" : ""}`} key={player.id} style={playerStyle}><span>{publicPlayerName(player.name)}</span><div>{playerCards.map(({ card, key }, index) => activeCardIds.has(card.id) ? null : <div className="table-played-card settled" key={key}><em>{index + 1}</em><CardFace card={card} /></div>)}</div></div>;
     })}
-    <section className="resolution-table-caption"><header><span>RESOLUTION</span><b>{concluding ? equipmentOnlySequence ? "Equipment settles into the Equipment Zone" : "Moving all played cards to discard" : waitingReason ? "Waiting for the next response" : activeEvent ? describeEvent(activeEvent) : "Sequence in progress"}</b></header><ol>{events.map((event, index) => { const roleReveal = event.type === "message" && /^(.+)'s role is revealed: ([^.]+)\.$/.test(event.message); return <li className={event.id === activeEvent?.id ? "active" : ""} key={event.id}><em>{index + 1}</em><span>{roleReveal && <strong>ROLE REVEALED · </strong>}{describeEvent(event)}</span></li>; })}</ol></section>
+    <section className="resolution-table-caption"><header><span>RESOLUTION</span><b>{concluding ? equipmentOnlySequence ? "Equipment settles into the Equipment Zone" : judgementOnlySequence ? "Judgement settles into the Judgement Zone" : "Moving all played cards to discard" : waitingReason ? "Waiting for the next response" : activeEvent ? describeEvent(activeEvent) : "Sequence in progress"}</b></header><ol>{events.map((event, index) => { const roleReveal = event.type === "message" && /^(.+)'s role is revealed: ([^.]+)\.$/.test(event.message); return <li className={event.id === activeEvent?.id ? "active" : ""} key={event.id}><em>{index + 1}</em><span>{roleReveal && <strong>ROLE REVEALED · </strong>}{describeEvent(event)}</span></li>; })}</ol></section>
   </div>;
 }
 

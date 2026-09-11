@@ -20,6 +20,10 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 
 Normal Attack cards, Serpent Spear-formed Attacks and Green Dragon Blade follow-ups now construct the same semantic `AttackDeclaration` before entering the existing Dodge, Eight Trigrams, Nio Shield, Frost Sword and damage pipeline. The declaration preserves its origin, paid physical cards and (when present) the single physical Attack card/suit, so source-sensitive rules do not confuse a formed Attack with a black physical Attack. Pending Attack state carries that provenance for downstream responses. Regression coverage compares normal and Serpent Spear response state and keeps Eight Trigrams available for both. Future Attack-providing equipment and hero skills should register as new declaration providers rather than adding another downstream resolver branch.
 
+### Delayed-card presentation and Quick Test seed — complete
+
+Overindulgence, Lightning and Rations Depleted now use a target-specific Judgement Zone presentation: the centre reveal zooms out into the target's Judgement Zone, with the settled zone card hidden until the flight completes. The resolution caption identifies the Judgement Zone instead of presenting the card as a discard. Quick Test keeps its randomized opening hands but guarantees Player 1 one Serpent Spear for manual formed-Attack testing.
+
 ### Sequential AOE and generic responses — complete
 
 Each Negatable Stratagem opens a once-around response round beginning with its player. AOE repeats that round separately for each target. Counter-Negation rounds also begin with the latest Negation player, then visit each eligible living player once. Surviving effects use the shared Attack/Dodge response capability and cost validation in `game/responses.ts`. No-response damage is automatic. Response countdowns appear after five elapsed seconds, with the initial Negation actor indication hidden from other players during that interval. This reduces visible skip clues but is not a guarantee against timing inference. Next: Blue Steel Sword as the next Armor-bypass interaction.
