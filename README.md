@@ -83,11 +83,11 @@ The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence ove
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with horses in the deck. Equipment presentations now settle directly into the owner's rack without a duplicate numbered copy. Eight Trigrams Formation is complete as the first alternative Dodge provider; the next milestone is the armor-bypassing Blue Steel Sword. The 108-card manifest audit is tracked in `ROADMAP.md`.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Equipment presentations now settle directly into the owner's rack without a duplicate numbered copy. Eight Trigrams Formation is complete as the first alternative Dodge provider, including Serpent Spear-formed Attacks; the next milestone is the armor-bypassing Blue Steel Sword. The remaining 108-card manifest audit is tracked in `ROADMAP.md`.
 
 ## Roadmap
 
-Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge; Blue Steel Sword is next.
+Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks; Blue Steel Sword is next.
 
 Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation now uses the same equipment rack and presentation path.
 

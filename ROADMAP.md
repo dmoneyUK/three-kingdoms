@@ -8,7 +8,7 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
 | 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable. Shared stratagem, judgement and sequence resolvers still need extraction. |
-| 3. Complete the verified Standard card set | 24 / 28 verified card identities playable; quantity audit pending | Four verified identities remain, and the 108-card manifest still needs authoritative quantities/suits/ranks reconciled with the runtime deck. |
+| 3. Complete the verified Standard card set | 24 / 28 verified card identities playable; mount identity corrected, quantity audit pending | Six physical mounts are now distinct in new decks. Four verified identities and the remaining 108-card quantity/suit/rank reconciliation remain. |
 | 4. Equipment and distance modifiers | In progress — current feature focus | Weapon, Armor and Mount slots are playable. Four verified weapon interactions remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, role reveal, Rebel rewards, Lord/Loyalist penalty and main victory paths work; remaining edge cases need expansion. |
 | 6. Hero-specific abilities | Deferred | Begin after shared cards and rules are stable. |
@@ -42,9 +42,11 @@ Removed optimistic equipment entries from retained sequence cards. While a publi
 
 Attack and Steal targeting now share effective distance (including horses), so out-of-range targets are rejected before a card is consumed. A target with no Dodge and no implemented defensive capability is damaged immediately; response windows remain available for Dodge-capable hands and equipment. Quick Test uses three HP per seat, leaves horses in the draw deck, and the equipment rack supports four cards. Regression tests cover these paths.
 
-### Standard 108-card manifest audit — tracked
+### Standard 108-card manifest audit — in progress
 
 `docs/STANDARD_108_DECK_MANIFEST.md` is the quantity and identity target. The four remaining gaps are Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. Before calling the deck complete, reconcile the manifest's 108 physical cards (including exact suit/rank assignments and six named mounts) with the runtime deck; do not silently substitute generic horse cards or unverified expansion cards.
+
+The six mount identities are now represented separately in new decks: Shadowrunner, Hex Mark, Yellow-Hoofed Flying-Lightning, Red Hare, Purple Bay and Fergana Steed, one physical card each. The legacy `OffensiveHorse` and `DefensiveHorse` kinds remain readable for saved rooms but are no longer dealt. The runtime deck is therefore intentionally still below 108 until the four remaining card identities and their quantities are implemented.
 
 ### Frost Sword correction — complete
 
@@ -73,6 +75,7 @@ Implemented:
 - adds an optional armor response alongside normal Dodge handling;
 - resolves and discards the judgement card without corrupting the active Attack/global-card response sequence;
 - supports direct Attack and sequential Raining Arrows responses;
+- supports Serpent Spear-formed Attacks through the same abstract Dodge capability;
 - exposes a human/Quick Test action and deterministic bot provider, with red-success, black-failure and no-use/Skip coverage.
 
 ### 2. Blue Steel Sword

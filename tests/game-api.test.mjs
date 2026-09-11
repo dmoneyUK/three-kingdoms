@@ -90,7 +90,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const displayedRoles = await Promise.all(game.members.map(async (member) => (await state(game.code, member.token)).data.myRole));
   assert.ok(displayedRoles.includes("Traitor")); assert.ok(!displayedRoles.includes("Renegade"), "the Renegade role is presented as Traitor");
   const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
-  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BumperHarvest:2", "DefensiveHorse:4", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "EightTrigrams:2", "FrostSword:1", "GreenDragonBlade:1", "Lightning:2", "Negation:3", "NioShield:1", "Oath:1", "OffensiveHorse:4", "Overindulgence:2", "Peach:8", "RainingArrows:1", "RockCleavingAxe:1", "SerpentSpear:1", "SkyPiercingHalberd:1", "Steal:5", "ZhugeCrossbow:2"]);
+  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BumperHarvest:2", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "EightTrigrams:2", "FerganaSteed:1", "FrostSword:1", "GreenDragonBlade:1", "HexMark:1", "Lightning:2", "Negation:3", "NioShield:1", "Oath:1", "Overindulgence:2", "Peach:8", "PurpleBay:1", "RainingArrows:1", "RedHare:1", "RockCleavingAxe:1", "SerpentSpear:1", "Shadowrunner:1", "SkyPiercingHalberd:1", "Steal:5", "YellowHoofedFlyingLightning:1", "ZhugeCrossbow:2"]);
   assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
   const aliceView = await state(game.code, alice.token);
   assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
@@ -377,7 +377,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(quick.data.room.code)}) AND seat=3`)).map((openingCard) => openingCard.kind), ["Negation", "Attack", "Attack", "Attack"], "Player 3 retains three seeded Attack cards");
   assert.ok(quick.data.room.players.filter((player) => player.name !== "ME").every((player) => player.handCount === 4), "focused quick-test cards replace rather than enlarge the other seats' hands");
   assert.ok(quick.data.room.players.every((player) => player.equipmentCards.length === 0 && player.hp === 3 && player.maxHp === 3), "every test seat starts at 3 HP with empty equipment");
-  assert.equal(quickDeck.filter((item) => item.kind === "OffensiveHorse" || item.kind === "DefensiveHorse").length, 8, "all existing horse copies remain in the draw pile");
+  assert.equal(quickDeck.filter((item) => ["Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed"].includes(item.kind)).length, 6, "the six distinct Standard mounts remain in the draw pile");
   assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
   assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);
   const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
@@ -682,6 +682,15 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   const invasionAnswer = await request("respond_group", { code: game.code, token: alice.token, cardIds: ["peach-invasion-one", "dodge-invasion-two"] });
   assert.equal(invasionAnswer.status, 200); assert.equal(invasionAnswer.data.room.pendingGroup, null); assert.equal(invasionAnswer.data.room.players.find(p => p.id === bobPlayer.id).hp, 3); assert.equal(invasionAnswer.data.room.players.find(p => p.id === carolPlayer.id).hp, 3); assert.ok(invasionAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
 
+  setEquipment(hostPlayer.id, { weapon: card("SerpentSpear", "trigrams-spear") });
+  setEquipment(alicePlayer.id, { armor: card("EightTrigrams", "trigrams-spear-armor") });
+  setHand(hostPlayer.id, [card("Peach", "trigrams-spear-cost-1"), card("Dodge", "trigrams-spear-cost-2")], 4, 4);
+  setHand(alicePlayer.id, [], 3, 4); setDeck(game.code, [{ ...card("Peach", "trigrams-spear-judgement"), suit: "♥", rank: "7" }]); setTurn(game.code, hostPlayer.seat);
+  const spearTrigrams = await request("serpent_spear_attack", { code: game.code, token: host.token, cardIds: ["peach-trigrams-spear-cost-1", "dodge-trigrams-spear-cost-2"], targetId: alicePlayer.id });
+  assert.equal(spearTrigrams.status, 200); assert.equal(spearTrigrams.data.room.pendingAttack?.actorId, alicePlayer.id, "Serpent Spear opens the defender's Dodge response");
+  const spearJudgement = await request("respond_eight_trigrams", { code: game.code, token: alice.token });
+  assert.equal(spearJudgement.status, 200); assert.equal(spearJudgement.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3, "red Eight Trigrams judgement blocks a Serpent Spear Attack");
+
   const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
   setEquipment(playerOne.id); setHand(me.id, [], me.hp, me.maxHp); setHand(playerOne.id, [card("SerpentSpear", "bot"), card("Peach", "bot-one"), card("Dodge", "bot-two")], 1, 1); setHand(playerTwo.id, [card("Dodge", "bot-answer")], 1, 1); setHand(playerThree.id, [], 1, 1); setTurn(quick.data.room.code, me.seat);
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 20 }, (_, index) => card("Peach", `serpent-bot-draw-${index}`))))}, discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
@@ -840,6 +849,7 @@ test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement 
   const blackAttack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-trigrams-black", targetId: alicePlayer.id });
   assert.equal(blackAttack.status, 200); const blackResult = await request("respond_eight_trigrams", { code: game.code, token: alice.token });
   assert.equal(blackResult.status, 200); assert.equal(blackResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3); assert.ok(blackResult.data.room.log.some((entry) => /Eight Trigrams Formation/.test(entry)));
+
 });
 
 test("Something Out of Nothing preserves Play Phase and reveals the stratagem without exposing drawn cards", { timeout: 30_000 }, async () => {
