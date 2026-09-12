@@ -1,7 +1,11 @@
+import { GAMEPLAY_ACTIONS } from "./protocol.js";
+
 const CARD_KINDS = new Set([
   "Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "ZhugeCrossbow", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd", "FrostSword", "NioShield", "EightTrigrams", "Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed", "OffensiveHorse", "DefensiveHorse", "RationsDepleted", "Strike",
 ]);
 const ROOM_STATUSES = new Set(["lobby", "heroes", "started", "playing", "finished"]);
+const PENDING_KINDS = new Set(["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation", "harvest", "target_card", "dying"]);
+const GAMEPLAY_ACTION_SET = new Set(GAMEPLAY_ACTIONS);
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -38,6 +42,18 @@ function normalizePending(value, kind) {
   return pending;
 }
 
+function normalizeCurrentAction(value) {
+  if (!isRecord(value) || value.version !== 1 || typeof value.kind !== "string" || !PENDING_KINDS.has(value.kind) && value.kind !== "turn" && value.kind !== "none") return null;
+  return {
+    version: 1,
+    kind: value.kind,
+    actorId: typeof value.actorId === "string" ? value.actorId : null,
+    deadline: typeof value.deadline === "number" ? value.deadline : 0,
+    reason: typeof value.reason === "string" ? value.reason : "Waiting for the next legal action",
+    legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
+  };
+}
+
 export function normalizeTimeline(value) {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => {
@@ -65,6 +81,8 @@ export function normalizeRoomData(value) {
     log: Array.isArray(value.log) ? value.log.filter((entry) => typeof entry === "string") : [],
     myHeroOptions: Array.isArray(value.myHeroOptions) ? value.myHeroOptions.filter((hero) => isRecord(hero) && typeof hero.id === "string" && typeof hero.name === "string" && typeof hero.faction === "string" && typeof hero.hp === "number" && typeof hero.ability === "string") : [],
     discardTop: normalizeCard(value.discardTop),
+    pending: isRecord(value.pending) && typeof value.pending.kind === "string" && PENDING_KINDS.has(value.pending.kind) ? { kind: value.pending.kind } : null,
+    currentAction: normalizeCurrentAction(value.currentAction),
   };
   const pendingKinds = {
     pendingAttack: "attack", pendingGreenDragon: "green_dragon", pendingRockCleaving: "rock_cleaving", pendingFrostSword: "frost_sword", pendingDuel: "duel", pendingGroup: "group", pendingNegation: "negation", pendingHarvest: "harvest", pendingTargetCard: "target_card", pendingDying: "dying",

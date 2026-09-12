@@ -1,5 +1,13 @@
 # Three Kingdoms project handover
 
+### 2026-09-12 update — canonical action protocol and shared pending state
+
+The first bounded architecture refactor is complete and validated by the full 45-test suite. `game/pending.ts` now owns the persisted `Pending` union and all its response-state variants; `app/api/rooms/route.ts` imports them instead of defining them beside HTTP/D1 code. `game/protocol.js` plus its declaration file owns the executable gameplay-action vocabulary across the Worker, browser and Node tests.
+
+`roomState()` now publishes a versioned `currentAction` for the current private viewer: `{ kind, actorId, deadline, reason, legalActions }`. Legal actions are calculated from the live authoritative state and are empty for non-actors, so this does not reveal another player's hand or available response. `app/page.tsx` now uses this canonical kind for stale-action context and uses server-issued legal actions for response buttons such as Dodge, Negation and Eight Trigrams. Existing `pendingAttack`, `pendingNegation`, etc. remain only as a temporary presentation adapter; do not add new UI rule inference to them. The next architecture task is to migrate their remaining visual detail behind a single public pending-action view and continue extracting response resolvers into `game/` modules.
+
+The room normalizer validates `currentAction`, strips unknown action names, and rendered tests verify that a canonical Negation action keeps its controls. Full API regression coverage remains green, including Quick Test, ordered AOE/Negation, response cards, equipment and Dying chains.
+
 ### 2026-09-12 update — Quick Test action synchronization and response-state safety
 
 Negation windows now record their lifecycle in the room timeline: opening, every explicit or automatic pass, new counter-Negation windows, and final closure before the underlying effect resolves. This does not change response order or rules; it makes Quick Test transitions auditable when the controller has already advanced to the next actor.

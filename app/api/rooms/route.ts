@@ -4,53 +4,12 @@ import { cardDefinition, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind, EquipmentZone } from "../../../game/model";
 import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, responseOptions, selectResponse } from "../../../game/responses";
+import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
+import type { AttackDeclaration, AttackOrigin, AttackPending, DeferredStratagem, DuelPending, DyingPending, FrostSwordPending, GreenDragonPending, GroupPending, HarvestPending, NegationPending, Pending, RockCleavingPending, TargetCardPending } from "../../../game/pending";
 
 export const runtime = "edge";
 
-type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actorId: string; resumePhase?: string; sequenceStartCardId?: string; reason: string; deadline?: number; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string };
-type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel";
-/**
- * The semantic Attack declaration shared by every source of an Attack.
- * `physicalCards` preserves the cards paid/revealed for the action while
- * `attackCard` is only set when a single physical Attack card exists.  This
- * distinction is important for effects such as Nio Shield, which inspect the
- * colour of the physical Attack card, and prevents formed Attacks from being
- * mistaken for one.
- */
-type AttackDeclaration = {
-  sourceId: string;
-  targetId: string;
-  origin: AttackOrigin;
-  physicalCards: Card[];
-  attackCard?: Card;
-  sequenceStartCardId: string;
-  resumePhase: string;
-};
-type GreenDragonPending = { kind: "green_dragon"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number };
-type RockCleavingPending = { kind: "rock_cleaving"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number };
-type FrostSwordPending = { kind: "frost_sword"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number };
-type DuelPending = { kind: "duel"; sourceId: string; targetId: string; actorId: string; opponentId: string; resumePhase: string; reason: string; deadline?: number };
-type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; actorId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; reason: string; deadline?: number; heldCards?: Card[] };
-type HarvestChoice = { cardId: string; playerId: string; playerName: string };
-type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; botAdvanceAt?: number; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 type TargetCardZone = "hand" | "equipment" | "judgement";
-type TargetCardPending = { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
-type DeferredStratagem =
-  | { kind: "draw_two"; cardId: string }
-  | { kind: "oath" }
-  | { kind: "harvest"; chooserIds: string[] }
-  | { kind: "harvest_target"; pending: HarvestPending }
-  | { kind: "dismantle"; targetId: string }
-  | { kind: "steal"; targetId: string }
-  | { kind: "duel"; pending: DuelPending }
-  | { kind: "group"; pending: GroupPending }
-  | { kind: "overindulgence"; targetId: string; cardId: string }
-  | { kind: "lightning"; targetId: string; cardId: string }
-  | { kind: "rations_depleted"; targetId: string; cardId: string }
-  | { kind: "judgement"; targetId: string; cardId: string };
-type NegationPending = { kind: "negation"; sourceId: string; actorId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; reason: string; heldCards?: Card[]; deadline?: number; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number };
-type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
-type Pending = AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | NegationPending | DyingPending;
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null };
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -95,7 +54,7 @@ const HUMAN_RESPONSE_TIMEOUT_MS = 30_000;
 const BOT_RESPONSE_TIMEOUT_MS = 10_000;
 const nextResponseDeadline = (actor?: PlayerRow | null) => Date.now() + (isBotPlayer(actor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS);
 const QUICK_TEST_EQUIPMENT_KINDS: CardKind[] = ["FrostSword", "NioShield", "EightTrigrams"];
-const GAMEPLAY_ACTIONS = new Set(["draw", "play_card", "serpent_spear_attack", "end_turn", "discard_cards", "respond_dodge", "respond_eight_trigrams", "take_damage", "respond_green_dragon", "pass_green_dragon", "respond_rock_cleaving", "pass_rock_cleaving", "use_frost_sword", "pass_frost_sword", "respond_duel", "take_duel_damage", "respond_group", "take_group_damage", "respond_negation", "pass_negation", "preview_harvest", "choose_harvest", "choose_target_card", "start_response_timer", "start_rescue_timer", "give_peach", "skip_rescue"]);
+const GAMEPLAY_ACTION_SET = new Set<string>(GAMEPLAY_ACTIONS);
 
 async function setup() {
   const db = env.DB;
@@ -1484,6 +1443,34 @@ async function runBots(roomId: string) {
   }
 }
 
+function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: Pending | null, players: PlayerRow[]): GameplayAction[] {
+  if (!actor) return [];
+  const hand = parse<Card[]>(actor.hand_json, []);
+  const response = responseContext(actor);
+  if (room.phase === "dying") return pending?.kind === "dying" && pending.actorId === actor.id
+    ? (["skip_rescue", ...(hand.some((card) => card.kind === "Peach") ? ["give_peach"] : [])] as GameplayAction[])
+    : [];
+  if (room.phase === "response") {
+    if (!pending || pending.actorId !== actor.id) return [];
+    switch (pending.kind) {
+      case "negation": return ["pass_negation", ...(hand.some((card) => card.kind === "Negation") ? ["respond_negation"] : [])];
+      case "attack": return ["take_damage", ...(hand.some((card) => card.kind === "Dodge") ? ["respond_dodge"] : []), ...(responseOptions(response, "Dodge").some((option) => option.provider === "eight_trigrams") ? ["respond_eight_trigrams"] : [])];
+      case "group": return ["take_group_damage", ...(responseOptions(response, pending.requiredKind).length ? ["respond_group"] : []), ...(pending.requiredKind === "Dodge" && responseOptions(response, "Dodge").some((option) => option.provider === "eight_trigrams") ? ["respond_eight_trigrams"] : [])];
+      case "duel": return ["take_duel_damage", ...(canRespondWithAttack(response) ? ["respond_duel"] : [])];
+      case "green_dragon": return ["pass_green_dragon", ...(hand.some(isAttackCard) ? ["respond_green_dragon"] : [])];
+      case "rock_cleaving": return ["pass_rock_cleaving", ...(rockCleavingCards(actor, hand).length >= 2 ? ["respond_rock_cleaving"] : [])];
+      case "frost_sword": return ["pass_frost_sword", ...(frostSwordTargetableCardCount(players.find((player) => player.id === pending.targetId)) > 0 ? ["use_frost_sword"] : [])];
+      case "harvest": return ["preview_harvest", "choose_harvest"];
+      case "target_card": return ["choose_target_card"];
+    }
+  }
+  if (actor.seat !== room.turn_seat) return [];
+  if (room.phase?.startsWith("draw")) return ["draw"];
+  if (room.phase?.startsWith("play")) return ["play_card", "serpent_spear_attack", "end_turn"];
+  if (room.phase === "discard") return ["discard_cards"];
+  return [];
+}
+
 async function roomState(code: string, token?: string) {
   const db = env.DB;
   const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
@@ -1508,8 +1495,18 @@ async function roomState(code: string, token?: string) {
   const actionPlayerId = room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
   const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
+  const currentAction: CurrentAction = {
+    version: 1,
+    kind: pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
+    actorId: actualActionPlayerId,
+    deadline: responseDeadline,
+    reason: actionReason,
+    // This list is calculated only for the current private view. It is never
+    // a table-wide disclosure of another player's hand or legal responses.
+    legalActions: me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [],
+  };
   return {
-    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, pending: pending ? { kind: pending.kind } : null, currentAction,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions: room.status === "heroes" && me?.hero_options_json ? JSON.parse(me.hero_options_json) : [],
@@ -1609,7 +1606,7 @@ export async function POST(request: Request) {
   let actionPlayerIdForController = room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
   let isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
   let me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
-  if (GAMEPLAY_ACTIONS.has(action)) {
+  if (GAMEPLAY_ACTION_SET.has(action)) {
     const currentRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const currentPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const issue = currentRoom ? playingStateIssue(currentRoom, currentPlayers.results ?? []) : "The game room is unavailable.";

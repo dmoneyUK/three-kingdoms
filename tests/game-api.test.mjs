@@ -893,6 +893,9 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   const played = await request("play_card", { code: room.code, token, cardId: "drawtwo-quick-live" });
   assert.equal(played.status, 200); assert.equal(played.data.room.phase, "response");
   assert.equal(played.data.room.pendingNegation.kind, "negation", "the public pending DTO retains its discriminator for the client normalizer");
+  assert.deepEqual(played.data.room.pending, { kind: "negation" }, "the canonical pending view has one discriminator");
+  assert.equal(played.data.room.currentAction.kind, "negation"); assert.equal(played.data.room.currentAction.actorId, playerTwo.id);
+  assert.deepEqual(played.data.room.currentAction.legalActions.sort(), ["pass_negation", "respond_negation"], "only the active Quick Test seat receives its legal Negation actions");
   assert.equal(played.data.room.pendingNegation.actorId, playerTwo.id); assert.equal(played.data.room.actionPlayerId, playerTwo.id); assert.equal(played.data.room.meId, playerTwo.id); assert.equal(played.data.room.isMyAction, true);
   assert.ok(played.data.room.timeline.some((event) => /Negation window opens for Something Out of Nothing's effect on Player 1/.test(event.message ?? "")), "the response window is visible in the event history");
   const stale = await request("pass_negation", { code: room.code, token, context: { actionRevision: before.data.actionRevision, meId: playerOne.id, phase: "play", pendingKind: null, actorId: playerOne.id } });

@@ -1,6 +1,10 @@
 # Three Kingdoms Roadmap
 
-## Latest stability milestone — Quick Test response synchronization
+## Latest stability milestone — canonical action protocol
+
+The first architecture-stabilisation slice is complete. `game/pending.ts` now owns the server's persisted `Pending` discriminated union rather than keeping it inside the HTTP route. `game/protocol.js` is executable shared protocol data for the Worker, browser and Node tests; it owns the gameplay action vocabulary. Every room view now contains a versioned, viewer-private `currentAction` with one canonical kind, actor, deadline, reason and legal action list. The API computes that list from authoritative state without disclosing another player's hand. The client submits stale-action context from canonical `pending.kind`, renders response capabilities from `currentAction.legalActions`, and retains the existing detailed pending projections only as a temporary presentation adapter. The room safety normalizer validates the contract and drops unknown legal actions. Tests cover normalization, client rendering, browser-context responses and the full API game suite. Next: migrate the remaining response/presentation details from `pendingX` compatibility fields to the canonical action view, then resume Blue Steel Sword.
+
+## Previous stability milestone — Quick Test response synchronization
 
 Quick Test gameplay POSTs now reload the authoritative room and derive the controlled seat from the live phase/pending actor before resolving an action. Requests carry the displayed action revision; stale requests return the latest room state instead of mutating an advanced response. The browser serializes mutations and prevents timeout/manual double submissions. The client maps each pending field to the server's exact lowercase/snake-case protocol kind before submitting that context, so valid Dodge and Negation clicks are not falsely rejected as stale. Unknown response states no longer fall back to Dodge or take-damage controls. Public pending DTOs retain their discriminator through the room-safety normalizer, so a valid Negation window cannot be mistaken for an unknown response state. Regression coverage includes ordered AOE perspective changes, stale Something Out of Nothing actions, no-Negation resolution, browser-context Dodge resolution, and safe rendering of valid and invalid response states. Negation windows now also record opening, pass, counter-window and closure events in Event History.
 
@@ -11,7 +15,7 @@ This roadmap is aligned to the verified WTK Standard card reference in `docs/OFF
 | Stage | Status | Position |
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete; regression-driven maintenance | Core ownership, phase order, repeated rounds, Dying interruption/resumption and response chains are playable and tested. |
-| 2. Strengthen the general rules engine | In progress alongside card work | Ordered pending actions and ownership checks are stable. Shared stratagem, judgement and sequence resolvers still need extraction. |
+| 2. Strengthen the general rules engine | In progress — architecture slice started | Pending-state and action vocabulary are shared; migrate the remaining response details and extract deterministic resolvers from the route. |
 | 3. Complete the verified Standard card set | 24 / 28 verified card identities playable; mount identity corrected, quantity audit pending | Six physical mounts are now distinct in new decks. Four verified identities and the remaining 108-card quantity/suit/rank reconciliation remain. |
 | 4. Equipment and distance modifiers | In progress — current feature focus | Weapon, Armor and Mount slots are playable. Four verified weapon interactions remain. |
 | 5. Complete match rules | Partly implemented | Death cleanup, role reveal, Rebel rewards, Lord/Loyalist penalty and main victory paths work; remaining edge cases need expansion. |

@@ -6,13 +6,14 @@ import type { Card } from "../game/model";
 import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
 import { responseOptions } from "../game/responses";
 import { normalizeRoomData } from "../game/room-safety.js";
+import { canUseAction, type CurrentAction, type GameplayAction } from "../game/protocol.js";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type CardEvent = { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal"; presentation?: boolean };
 type CardGroupEvent = { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | { type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean };
 type Player = { id: string; name: string; seat: number; hero: string | null; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; isBot?: boolean; role: string | null };
-type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "playing" | "finished"; maxPlayers: number; isHost: boolean; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; actorId: string; requiredKind: "Attack" | "Dodge"; deadline?: number } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; previewCardId: string | null; complete: boolean; countdownUntil: number } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingDying: { sourceId: string; targetId: string; deadline: number } | null };
+type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "playing" | "finished"; maxPlayers: number; isHost: boolean; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; actorId: string; requiredKind: "Attack" | "Dodge"; deadline?: number } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; previewCardId: string | null; complete: boolean; countdownUntil: number } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingDying: { sourceId: string; targetId: string; deadline: number } | null };
 
 function publicPlayerName(name: string) { return name.replace(/^Test General (\d+)$/, "Player $1"); }
 
@@ -108,7 +109,7 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [roomCode, token, busy, fetchRoom, room?.pendingHarvest, room?.pendingNegation, room?.pendingTargetCard]);
 
-  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | "draw" | "play_card" | "serpent_spear_attack" | "end_turn" | "respond_dodge" | "respond_eight_trigrams" | "take_damage" | "respond_green_dragon" | "pass_green_dragon" | "respond_rock_cleaving" | "pass_rock_cleaving" | "use_frost_sword" | "pass_frost_sword" | "respond_duel" | "take_duel_damage" | "respond_group" | "take_group_damage" | "respond_negation" | "pass_negation" | "preview_harvest" | "choose_harvest" | "choose_target_card" | "discard_cards" | "start_response_timer" | "start_rescue_timer" | "give_peach" | "skip_rescue", extra: Record<string, unknown> = {}) {
+  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | GameplayAction, extra: Record<string, unknown> = {}) {
     const backgroundPreview = action === "preview_harvest";
     const nonBlocking = backgroundPreview;
     const mutationKey = `${action}:${room?.actionRevision ?? room?.phase ?? "landing"}`;
@@ -196,12 +197,7 @@ function HeroSelection({ room, busy, error, onChoose, onLeave }: { room: Room; b
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
-function pendingKind(room: Room) {
-  const kindByField = {
-    pendingAttack: "attack", pendingGreenDragon: "green_dragon", pendingRockCleaving: "rock_cleaving", pendingFrostSword: "frost_sword", pendingDuel: "duel", pendingGroup: "group", pendingNegation: "negation", pendingHarvest: "harvest", pendingTargetCard: "target_card", pendingDying: "dying",
-  } as const;
-  return (Object.entries(kindByField).find(([field]) => room[field as keyof Room])?.[1] ?? null);
-}
+function pendingKind(room: Room) { return room.pending?.kind ?? null; }
 
 class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -243,7 +239,7 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   return <div className="visible-countdown" aria-label={`${label} ${remainingSeconds} seconds`}><span>{label}</span><b>{remainingSeconds}s</b></div>;
 }
 
-export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: boolean; error: string; onAction: (action: "draw" | "play_card" | "serpent_spear_attack" | "end_turn" | "respond_dodge" | "respond_eight_trigrams" | "take_damage" | "respond_green_dragon" | "pass_green_dragon" | "respond_rock_cleaving" | "pass_rock_cleaving" | "use_frost_sword" | "pass_frost_sword" | "respond_duel" | "take_duel_damage" | "respond_group" | "take_group_damage" | "respond_negation" | "pass_negation" | "preview_harvest" | "choose_harvest" | "choose_target_card" | "discard_cards" | "start_response_timer" | "start_rescue_timer" | "give_peach" | "skip_rescue", extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void }) {
+export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: boolean; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void }) {
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
   const [selected, setSelected] = useState(""); const [targetIds, setTargetIds] = useState<string[]>([]); const target = targetIds[0] ?? "";
@@ -286,8 +282,11 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
   const canChooseHarvest = room.phase === "response" && Boolean(room.pendingHarvest) && !room.pendingHarvest?.complete && room.isMyAction;
   const canChooseTargetCard = room.phase === "response" && Boolean(room.pendingTargetCard) && room.isMyAction;
+  // `currentAction` is the server's canonical response discriminator and
+  // capability list. Legacy pending fields below only supply presentation
+  // detail while the API migrates away from its compatibility projection.
   const responseType = room.phase === "response" && !room.pendingHarvest && !room.pendingTargetCard && !room.pendingFrostSword && room.isMyAction
-    ? room.pendingNegation ? "negation" : room.pendingGreenDragon ? "green_dragon" : room.pendingRockCleaving ? "rock_cleaving" : room.pendingGroup ? "group" : room.pendingDuel ? "duel" : room.pendingAttack ? "attack" : null
+    ? room.currentAction?.kind ?? null
     : null;
   const invalidResponseState = room.phase === "response" && room.isMyAction && !room.pendingHarvest && !room.pendingTargetCard && !room.pendingFrostSword && !responseType;
   const canRespond = responseType !== null;
@@ -301,14 +300,14 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const responseTimerActive = canRespond || frostSwordResponse;
   const requiredResponseKind = negationResponse ? "Negation" : greenDragonResponse || duelResponse || room.pendingGroup?.requiredKind === "Attack" ? "Attack" : responseType ? "Dodge" : null;
   const responseCardAllowed = (item: Card) => Boolean(requiredResponseKind) && (rockCleavingResponse || (requiredResponseKind === "Negation" ? item.kind === "Negation" : requiredResponseKind === "Attack" ? isAttackCard(item) : item.kind === "Dodge"));
-  const canUseEightTrigrams = canRespond && requiredResponseKind === "Dodge" && me?.equipmentCards.some((item) => item.kind === "EightTrigrams");
-  const responsePlayAction = negationResponse ? "respond_negation" : greenDragonResponse ? "respond_green_dragon" : groupResponse ? "respond_group" : duelResponse ? "respond_duel" : responseType === "attack" ? "respond_dodge" : null;
-  const responseDamageAction = negationResponse ? "pass_negation" : greenDragonResponse ? "pass_green_dragon" : rockCleavingResponse ? "pass_rock_cleaving" : groupResponse ? "take_group_damage" : duelResponse ? "take_duel_damage" : responseType === "attack" ? "take_damage" : null;
+  const canUseEightTrigrams = canUseAction(room.currentAction, "respond_eight_trigrams");
+  const responsePlayAction = (["respond_negation", "respond_green_dragon", "respond_group", "respond_duel", "respond_dodge"] as GameplayAction[]).find((action) => canUseAction(room.currentAction, action)) ?? null;
+  const responseDamageAction = (["pass_negation", "pass_green_dragon", "pass_rock_cleaving", "take_group_damage", "take_duel_damage", "take_damage"] as GameplayAction[]).find((action) => canUseAction(room.currentAction, action)) ?? null;
   const hasSerpentSpear = responseOptions({ hand: room.myHand, equipment: me?.equipmentCards ?? [], hero: me?.hero }, "Attack").some((option) => option.provider === "serpent_spear");
   const halberdAttack = Boolean(card && isAttackCard(card) && me?.equipmentCards.some((equipment) => equipment.kind === "SkyPiercingHalberd") && room.myHand.length === 1);
   const setTarget = (playerId: string) => setTargetIds((ids) => !playerId ? [] : halberdAttack ? ids.includes(playerId) ? ids.filter((id) => id !== playerId) : ids.length < 3 ? [...ids, playerId] : ids : [playerId]);
   const attackTargetsValid = targetIds.length > 0 && targetIds.every((id) => room.players.some((player) => player.id === id && player.alive && player.id !== room.meId && (player.distance ?? 99) <= (me?.attackRange ?? 1)));
-  const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && (canRespond && requiredResponseKind === "Attack" && !greenDragonResponse || room.isMyTurn && canPlay && (room.phase !== "play-struck" || me?.hero === "zhang-fei"));
+  const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && (canRespond && requiredResponseKind === "Attack" && canUseAction(room.currentAction, groupResponse ? "respond_group" : "respond_duel") && !greenDragonResponse || room.isMyTurn && canPlay && (room.phase !== "play-struck" || me?.hero === "zhang-fei"));
   const responseDeadline = room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingFrostSword?.deadline ?? room.pendingGroup?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
   const canRescue = room.phase === "dying" && room.isMyAction;
   const timelineKey = room.timeline.map((event) => event.id).join("|");

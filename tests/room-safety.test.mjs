@@ -28,3 +28,13 @@ test("rejects a malformed room payload while preserving valid room items", () =>
   assert.equal(room.myHand.length, 0);
   assert.equal(room.timeline.length, 1);
 });
+
+test("normalizes the canonical current action without trusting unknown legal actions", () => {
+  const room = normalizeRoomData({
+    code: "ACT01", status: "playing", players: [], myHand: [], timeline: [], log: [], myHeroOptions: [],
+    pending: { kind: "attack" },
+    currentAction: { version: 1, kind: "attack", actorId: "p1", deadline: 123, reason: "Dodge or take damage", legalActions: ["respond_dodge", "take_damage", "invent_action"] },
+  });
+  assert.deepEqual(room?.pending, { kind: "attack" });
+  assert.deepEqual(room?.currentAction?.legalActions, ["respond_dodge", "take_damage"]);
+});
