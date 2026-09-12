@@ -83,6 +83,19 @@ test("room reads are read-only and presence heartbeats are throttled", async () 
   assert.equal(query(`SELECT connected_at FROM players WHERE id=${quote(meId)}`), afterHeartbeat, "a fresh heartbeat does not write again");
 });
 
+test("an inactive active room is closed after five minutes without a game event", async () => {
+  const created = await request("create", { quickStart: true });
+  const { code } = created.data.room;
+  const { token } = created.data;
+  sql(`UPDATE rooms SET last_activity_at=${Date.now() - 5 * 60_000 - 1} WHERE code=${quote(code)}`);
+  const closed = await request("expire_inactive_room", { code, token });
+  assert.equal(closed.status, 200);
+  assert.equal(closed.data.room.status, "finished");
+  assert.equal(closed.data.room.phase, "finished");
+  assert.equal(closed.data.room.pending, null);
+  assert.ok(closed.data.room.log.some((message) => /five minutes with no game events/.test(message)));
+});
+
 async function createHumanGame() {
   const created = await request("create", { name: "Host" });
   assert.equal(created.status, 201);

@@ -287,6 +287,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /hiddenPoll: 60000/);
   assert.match(page, /document\.visibilityState/);
   assert.match(page, /action === "heartbeat"/);
+  assert.match(page, /expire_inactive_room/);
+  assert.match(page, /inactivityCheck: 60000/);
   assert.match(page, /send\("advance_timers"\)/);
   assert.match(page, /function pendingKind\(room: Room\) \{ return room\.pending\?\.kind \?\? null; \}/);
   assert.match(page, /currentAction\?\.kind/);

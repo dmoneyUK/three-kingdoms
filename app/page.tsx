@@ -59,6 +59,7 @@ const UI_TIMING = {
   activePoll: 1000,
   hiddenPoll: 60000,
   presenceHeartbeat: 60000,
+  inactivityCheck: 60000,
   turnDrawStart: 100,
   playedCard: 4000,
   eventMessage: 3000,
@@ -120,7 +121,7 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase]);
 
-  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | "heartbeat" | GameplayAction, extra: Record<string, unknown> = {}) {
+  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
     const backgroundPreview = action === "preview_harvest" || action === "heartbeat";
     const nonBlocking = backgroundPreview;
     const mutationKey = `${action}:${room?.actionRevision ?? room?.phase ?? "landing"}`;
@@ -153,6 +154,14 @@ export default function Home() {
   // this browser session and never makes normal GET polling write to D1.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, token, pageVisible, room?.isTestController]);
+
+  useEffect(() => {
+    if (!roomCode || !token) return;
+    const checkForInactivity = () => { void fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "expire_inactive_room", code: roomCode, token }) }); };
+    checkForInactivity();
+    const timer = setInterval(checkForInactivity, UI_TIMING.inactivityCheck);
+    return () => clearInterval(timer);
+  }, [roomCode, token]);
 
   const harvestDeadline = room?.pendingHarvest?.countdownUntil ?? 0;
   const harvestRevision = room?.actionRevision ?? "";

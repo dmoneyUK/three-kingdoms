@@ -10,7 +10,7 @@ import type { AttackDeclaration, AttackOrigin, AttackPending, DeferredStratagem,
 export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
-type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null };
+type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null };
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
 
@@ -52,6 +52,7 @@ const HARVEST_BOT_THINK_MS = 450;
 const HARVEST_CHOICE_HOLD_MS = 1400;
 const HUMAN_RESPONSE_TIMEOUT_MS = 30_000;
 const BOT_RESPONSE_TIMEOUT_MS = 10_000;
+const ROOM_IDLE_TIMEOUT_MS = 5 * 60_000;
 const nextResponseDeadline = (actor?: PlayerRow | null) => Date.now() + (isBotPlayer(actor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS);
 const QUICK_TEST_EQUIPMENT_KINDS: CardKind[] = ["FrostSword", "NioShield", "EightTrigrams"];
 const GAMEPLAY_ACTION_SET = new Set<string>(GAMEPLAY_ACTIONS);
@@ -65,6 +66,13 @@ async function recordAuditAction(room: RoomRow, actor: PlayerRow | null, actorNa
     : (await env.DB.prepare("SELECT id FROM players WHERE room_id = ? AND seat = ?").bind(room.id, room.turn_seat).first<{ id: string }>())?.id ?? null;
   await env.DB.prepare("INSERT INTO game_audit (room_id,event_type,actor_id,actor_name,action,phase_before,turn_seat_before,acting_player_before,detail_json,created_at) VALUES (?, 'action_submitted', ?, ?, ?, ?, ?, ?, ?, ?)")
     .bind(room.id, actor?.id ?? null, (actor?.name ?? actorName) || null, action, room.phase, room.turn_seat, actingPlayer, JSON.stringify({ submitted: true }), Date.now()).run();
+}
+
+async function expireInactiveRoom(room: RoomRow) {
+  if (room.status !== "playing" || Date.now() - (room.last_activity_at ?? room.created_at) < ROOM_IDLE_TIMEOUT_MS) return false;
+  const log = addHistory(parse<string[]>(room.log_json, []), "This game closes after five minutes with no game events.");
+  const closed = await env.DB.prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, log_json = ? WHERE id = ? AND status = 'playing' AND last_activity_at <= ?").bind(JSON.stringify(log), room.id, Date.now() - ROOM_IDLE_TIMEOUT_MS).run();
+  return (closed.meta.changes ?? 0) > 0;
 }
 
 function cleanName(value: unknown) { return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 20); }
@@ -1596,6 +1604,11 @@ export async function POST(request: Request) {
       if ((result.meta.changes ?? 0) > 0) console.log(JSON.stringify({ event: "d1_presence_heartbeat", endpoint: "rooms", request: "POST", roomCode: code, writes: result.meta.changes }));
     }
     return json({ ok: true });
+  }
+  if (action === "expire_inactive_room") {
+    if (!sessionPlayers.length) return json({ error: "Your player session is no longer valid." }, 403);
+    await expireInactiveRoom(room);
+    return json({ room: await roomState(code, token) });
   }
   if (GAMEPLAY_ACTION_SET.has(action)) {
     const currentRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
