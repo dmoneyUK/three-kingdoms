@@ -199,7 +199,9 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const oath = await request("play_card", { code: game.code, token: host.token, cardId: "oath-heal-all" });
   assert.equal(oath.status, 200); assert.equal(oath.data.room.phase, "play"); assert.equal(oath.data.room.players.find((player) => player.id === hostPlayer.id).hp, 4); assert.equal(oath.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4); assert.equal(oath.data.room.players.find((player) => player.id === bobPlayer.id).hp, 4);
   assert.ok(oath.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "Oath"));
-  assert.ok(oath.data.room.timeline.some((event) => /Oath of the Peach Garden/.test(event.message ?? "")));
+  const oathResult = oath.data.room.timeline.find((event) => event.type === "card" && event.card?.kind === "Oath");
+  assert.ok(oathResult?.resolutionId, "presentation events carry a separate resolution identity");
+  assert.equal(oathResult?.importance, "essential");
 
   setHand(hostPlayer.id, [card("Oath", "full-health")], 5, 5); setHand(alicePlayer.id, [], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
   const harmlessOath = await request("play_card", { code: game.code, token: host.token, cardId: "oath-full-health" });

@@ -20,6 +20,14 @@ function normalizeCards(value) {
   return Array.isArray(value) ? value.map(normalizeCard).filter(Boolean) : [];
 }
 
+function normalizePresentationMeta(entry) {
+  const metadata = {};
+  if (typeof entry.resolutionId === "string" && entry.resolutionId.length > 0) metadata.resolutionId = entry.resolutionId;
+  if (entry.importance === "essential" || entry.importance === "informational") metadata.importance = entry.importance;
+  if (entry.finalResult === true) metadata.finalResult = true;
+  return metadata;
+}
+
 function normalizePlayers(value) {
   if (!Array.isArray(value)) return [];
   return value.filter((player) => isRecord(player) && typeof player.id === "string" && typeof player.name === "string").map((player) => ({
@@ -58,14 +66,14 @@ export function normalizeTimeline(value) {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => {
     if (!isRecord(entry) || typeof entry.type !== "string") return null;
-    if (entry.type === "message") return typeof entry.message === "string" ? entry : null;
+    if (entry.type === "message") return typeof entry.message === "string" ? { ...entry, ...normalizePresentationMeta(entry) } : null;
     if (entry.type === "card") {
       const card = normalizeCard(entry.card);
-      return card ? { ...entry, card } : null;
+      return card ? { ...entry, ...normalizePresentationMeta(entry), card } : null;
     }
     if (entry.type === "cards") {
       const cards = normalizeCards(entry.cards);
-      return cards.length ? { ...entry, cards } : null;
+      return cards.length ? { ...entry, ...normalizePresentationMeta(entry), cards } : null;
     }
     return null;
   }).filter(Boolean);

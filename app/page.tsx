@@ -9,9 +9,11 @@ import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction } from "../game/protocol.js";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
-type CardEvent = { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal"; presentation?: boolean };
-type CardGroupEvent = { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
-type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | { type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean };
+type PresentationImportance = "essential" | "informational";
+type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean };
+type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal"; presentation?: boolean };
+type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
+type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
 type Player = { id: string; name: string; seat: number; hero: string | null; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; isBot?: boolean; role: string | null };
 type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "playing" | "finished"; maxPlayers: number; isHost: boolean; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; actorId: string; requiredKind: "Attack" | "Dodge"; deadline?: number } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; availableIds: string[]; choices: { cardId: string; playerId: string; playerName: string }[]; previewCardId: string | null; complete: boolean; countdownUntil: number } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingDying: { sourceId: string; targetId: string; deadline: number } | null };
 
@@ -52,6 +54,13 @@ function retainsAtPlayer(event: GameEvent) {
 }
 function appendUniqueEvents(current: GameEvent[], incoming: GameEvent[]) {
   return incoming.reduce((events, event) => events.some((existing) => existing.id === event.id) ? events : [...events, event], current);
+}
+function eventImportance(event: GameEvent) { return event.importance ?? "informational"; }
+function coalescePresentationQueue(current: GameEvent[], incoming: GameEvent[]) {
+  const combined = appendUniqueEvents(current, incoming);
+  const latestResolutionId = incoming.map((event) => event.resolutionId).filter(Boolean).at(-1);
+  if (!latestResolutionId) return combined;
+  return combined.filter((event) => event.resolutionId === latestResolutionId || eventImportance(event) === "essential" || event.finalResult === true);
 }
 
 const UI_TIMING = {
@@ -417,14 +426,16 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
       const cardsArrived = visible.some((event) => eventCards(event).length > 0);
       if (cardsArrived) resolutionRevision.current += 1;
       if (cardsArrived) visible.filter((event) => event.type === "message").forEach((event) => instantPresentationEvents.current.add(event.id));
+      const latestResolutionId = visible.map((event) => event.resolutionId).filter(Boolean).at(-1);
+      if (latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId && eventImportance(activeEvent) === "informational") setActiveEvent(null);
       if (!optimisticPlay && !activeEvent && eventQueue.length === 0) {
         const first = visible[0];
         if (first) {
           setActiveEvent(first);
           if (retainsAtPlayer(first)) setResolutionEvents((events) => appendUniqueEvents(events, [first]));
         }
-        setEventQueue(visible.slice(1));
-      } else setEventQueue((queue) => [...queue, ...visible]);
+        setEventQueue(coalescePresentationQueue([], visible.slice(1)));
+      } else setEventQueue((queue) => coalescePresentationQueue(queue, visible));
     }
     setProcessedTimelineKey(timelineKey);
   }, [room.timeline, timelineKey, optimisticPlay, activeEvent, eventQueue.length]);

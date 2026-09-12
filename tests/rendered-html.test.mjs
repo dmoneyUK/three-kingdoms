@@ -108,6 +108,11 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /event\.action === "discard" \|\| event\.action === "reveal"/);
   assert.match(page, /event\.action === "activate"/);
   assert.match(page, /function retainsAtPlayer\(event: GameEvent\)/);
+  assert.match(page, /resolutionId\?: string/);
+  assert.match(page, /function coalescePresentationQueue/);
+  assert.match(page, /eventImportance\(event\)/);
+  assert.match(roomApi, /function presentationMeta/);
+  assert.match(roomApi, /finalResult/);
   assert.match(page, /const resolutionRevision = useRef\(0\)/);
   assert.match(page, /const closingRevision = resolutionRevision\.current/);
   assert.match(page, /resolutionRevision\.current !== closingRevision/);
