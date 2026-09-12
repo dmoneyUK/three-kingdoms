@@ -317,7 +317,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /disabled=\{responseControlsDisabled\}/);
   assert.match(page, /Skip · take 1 damage/);
   assert.doesNotMatch(page, /automaticDamage/);
-  assert.match(page, /play Negation/i);
+  assert.match(page, /choose how to Negate/i);
   assert.match(page, /judgementCards/);
   assert.match(page, /equipmentCards/);
   assert.match(page, /player-equipment-zone/);
