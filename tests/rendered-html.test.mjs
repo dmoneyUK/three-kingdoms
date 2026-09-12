@@ -65,6 +65,13 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /automaticRescueSkip/);
   assert.match(page, /start_response_timer/);
   assert.match(page, /automaticResponseTimeout/);
+  assert.match(page, /const \[responseProviderId, setResponseProviderId\] = useState\(""\)/);
+  assert.match(page, /semanticResponseOptions\.map\(\(option\)/);
+  assert.match(page, /providerId: option\.providerId/);
+  assert.match(page, /selectedResponseProvider\?\.selection/);
+  assert.match(page, /responseSelectionComplete/);
+  assert.doesNotMatch(page, /eight_trigrams_dodge/);
+  assert.match(page, /const action = canPlay \? "serpent_spear_attack" : genericResponse && selectedResponseProvider \? "respond"/);
   assert.match(page, /actionRevision/);
   assert.match(page, /mutationInFlight/);
   assert.match(page, /invalidResponseState/);
@@ -297,7 +304,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /send\("advance_timers"\)/);
   assert.match(page, /function pendingKind\(room: Room\) \{ return room\.pending\?\.kind \?\? null; \}/);
   assert.match(page, /currentAction\?\.kind/);
-  assert.match(page, /canUseAction\(room\.currentAction, "respond_eight_trigrams"\)/);
+  assert.match(page, /selectedResponseProvider\?\.providerId === option\.providerId/);
   assert.match(page, /respond_negation/);
   assert.match(page, /pass_negation/);
   assert.match(page, /Skip response/);
