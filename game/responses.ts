@@ -1,49 +1,28 @@
-import { isAttackCard } from "./cards";
 import type { Card } from "./model";
+import { physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider } from "./capabilities/cards";
+import { eightTrigramsDodgeProvider } from "./capabilities/equipment/eight-trigrams";
+import { serpentSpearAttackProvider } from "./capabilities/equipment/serpent-spear";
 
 export type ResponseKind = "Attack" | "Dodge";
 export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null };
 export type SemanticAction = "attack" | "dodge" | "damage" | "recover" | "draw" | "discard" | "negate" | "judgement" | "gain_card" | "lose_card";
 export type ActionRequirement =
   | { kind: "dodge"; sourceId?: string; targetId?: string; attack?: unknown }
-  | { kind: "attack"; sourceId?: string; actorId?: string; context?: "duel" | "barbarian_invasion" | "green_dragon" };
+  | { kind: "attack"; sourceId?: string; actorId?: string; context?: "duel" | "barbarian_invasion" | "green_dragon" }
+  | { kind: "negate"; sourceId?: string; targetId?: string };
 export type ResponseSelection = { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null;
 export type CapabilityContext = ResponseContext & { requirement: ActionRequirement };
-export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge"; label: string; cards: Card[]; selection: ResponseSelection };
-export type ResponseProvider = { id: string; satisfies: "attack" | "dodge"; getOption: (context: CapabilityContext) => ResponseOption | null };
-// Add implemented conversion skills here together with their cost/selection
-// resolver. Unimplemented hero text and passive immunities are not responses.
+export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; label: string; cards: Card[]; selection: ResponseSelection };
+export type ResponseSelectionInput = { cardId?: unknown; cardIds?: unknown };
+export type ResponseExecution = { action: "respond_dodge" | "respond_eight_trigrams" | "respond_duel" | "respond_group" | "respond_negation" };
+export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation"; selection: { cardId?: string; cardIds?: string[] } };
+export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; getOption: (context: CapabilityContext) => ResponseOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
+
+// Providers own their availability and resolver choice. The engine only asks
+// the currently valid provider to satisfy an abstract requirement.
 const providers: ResponseProvider[] = [
-  {
-    id: "card",
-    satisfies: "attack",
-    getOption: (context) => {
-      const cards = context.hand.filter(isAttackCard);
-      return cards.length ? { provider: "card", providerId: "card", satisfies: "attack", label: "Play Attack", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } } : null;
-    },
-  },
-  {
-    id: "card",
-    satisfies: "dodge",
-    getOption: (context) => {
-      const cards = context.hand.filter((card) => card.kind === "Dodge");
-      return cards.length ? { provider: "card", providerId: "card", satisfies: "dodge", label: "Play Dodge", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } } : null;
-    },
-  },
-  {
-    id: "eight_trigrams_dodge",
-    satisfies: "dodge",
-    getOption: (context) => context.equipment.some((card) => card.kind === "EightTrigrams")
-      ? { provider: "eight_trigrams", providerId: "eight_trigrams_dodge", satisfies: "dodge", label: "Use Eight Trigrams", cards: [], selection: null }
-      : null,
-  },
-  {
-    id: "serpent_spear_attack",
-    satisfies: "attack",
-    getOption: (context) => context.equipment.some((card) => card.kind === "SerpentSpear") && context.hand.length >= 2
-      ? { provider: "serpent_spear", providerId: "serpent_spear_attack", satisfies: "attack", label: "Use Serpent Spear", cards: context.hand.slice(0, 2), selection: { type: "cards", min: 2, max: 2, eligibleCardIds: context.hand.map((card) => card.id) } }
-      : null,
-  },
+  physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider,
+  eightTrigramsDodgeProvider, serpentSpearAttackProvider,
 ];
 
 export function registerResponseProvider(provider: ResponseProvider) {
@@ -57,6 +36,13 @@ export function registerResponseProvider(provider: ResponseProvider) {
 export function getResponseOptions(context: CapabilityContext, requirement: ActionRequirement) {
   const satisfies = requirement.kind;
   return providers.filter((provider) => provider.satisfies === satisfies).map((provider) => provider.getOption(context)).filter((option): option is ResponseOption => Boolean(option));
+}
+
+export function resolveResponseProvider(providerId: unknown, context: ResponseExecutionContext) {
+  if (typeof providerId !== "string") return null;
+  const provider = providers.find((candidate) => candidate.id === providerId && candidate.satisfies === context.requirement.kind);
+  if (!provider || !provider.getOption(context)) return null;
+  return provider.resolve(context);
 }
 
 export function responseOptions(context: ResponseContext, kind: ResponseKind) {

@@ -4,7 +4,9 @@ import { cardDefinition, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind, EquipmentZone } from "../../../game/model";
 import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, responseOptions, selectResponse } from "../../../game/responses";
-import { canonicalResponseAction, responseDecisionFor } from "../../../game/response-decision";
+import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
+import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
+import { getTriggeredEffects } from "../../../game/capabilities/triggers";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
 import type { AttackDeclaration, AttackOrigin, AttackPending, DeferredStratagem, DuelPending, DyingPending, FrostSwordPending, GreenDragonPending, GroupPending, HarvestPending, NegationPending, Pending, RockCleavingPending, TargetCardPending } from "../../../game/pending";
 
@@ -89,7 +91,6 @@ function equipmentCards(player?: PlayerRow | null) { return Object.values(equipm
 function targetableCardCount(player?: PlayerRow | null) { return parse<Card[]>(player?.hand_json ?? null, []).length + equipmentCards(player).length + parse<Card[]>(player?.judgement_json ?? null, []).length; }
 function frostSwordTargetableCardCount(player?: PlayerRow | null) { return parse<Card[]>(player?.hand_json ?? null, []).length + equipmentCards(player).length; }
 function weaponCard(player?: PlayerRow | null) { return equipmentZone(player).weapon; }
-function armorCard(player?: PlayerRow | null) { return equipmentZone(player).armor; }
 // Extend this capability check together with the response resolver when adding
 // Eight Trigrams or enabled hero conversion/transfer skills. Passive immunity
 // (Nio Shield) resolves before this decision; unimplemented skills are not choices.
@@ -108,14 +109,12 @@ function attackDistance(players: PlayerRow[], sourceId: string, targetId: string
   return Math.max(1, distanceBetween(players, sourceId, targetId) + (hasDefensiveHorse(target) ? 1 : 0) - (hasOffensiveHorse(source) ? 1 : 0));
 }
 function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "ZhugeCrossbow"; }
-function hasGreenDragonBlade(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "GreenDragonBlade"; }
+function hasGreenDragonBlade(player?: PlayerRow | null) { return Boolean(player && getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(player) }).some((option) => option.effectId === "green_dragon_blade_attack_dodged")); }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasRockCleavingAxe(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "RockCleavingAxe"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
 function hasFrostSword(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "FrostSword"; }
-function hasNioShield(player?: PlayerRow | null) { return armorCard(player)?.kind === "NioShield"; }
-function isBlackAttack(card?: Card | null) { return Boolean(card && isAttackCard(card) && (card.suit === "♣" || card.suit === "♠")); }
-function isNioShieldImmune(target?: PlayerRow | null, attack?: Card | null) { return hasNioShield(target) && isBlackAttack(attack); }
+function isNioShieldImmune(target?: PlayerRow | null, attack?: Card | null) { return Boolean(target && resolvePassiveAttackModifiers({ targetEquipment: equipmentCards(target), attack })?.prevented); }
 function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackOrigin, physicalCards: Card[], resumePhase: string, attackCard?: Card): AttackDeclaration {
   return { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", resumePhase };
 }
@@ -1652,11 +1651,10 @@ export async function POST(request: Request) {
       return json({ error: "That action is stale. The table has advanced to the next actor.", stale: true, room: await roomState(code, token) }, 409);
     }
     if (action === "respond") {
-      const decision = responseDecisionFor(pendingForController, me ? responseContext(me) : undefined);
-      const canonical = canonicalResponseAction(pendingForController, decision, body.providerId);
-      if (!canonical) return json({ error: "That response provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      const execution = resolveResponseDecision(pendingForController, me ? responseContext(me) : undefined, body.providerId, { cardId: body.cardId, cardIds: body.cardIds });
+      if (!execution) return json({ error: "That response provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       if (!body.cardId && Array.isArray(body.cardIds) && body.cardIds.length === 1) body.cardId = body.cardIds[0];
-      action = canonical;
+      action = execution.action;
     }
   }
   if (action !== "start") await recordAuditAction(room, me ?? null, name, action);
