@@ -197,7 +197,10 @@ function heroName(id?: string | null) { return id ? id.split("-").map((part) => 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
 function pendingKind(room: Room) {
-  return ["pendingAttack", "pendingGreenDragon", "pendingRockCleaving", "pendingFrostSword", "pendingDuel", "pendingGroup", "pendingNegation", "pendingHarvest", "pendingTargetCard", "pendingDying"].find((key) => room[key as keyof Room])?.replace(/^pending/, "") ?? null;
+  const kindByField = {
+    pendingAttack: "attack", pendingGreenDragon: "green_dragon", pendingRockCleaving: "rock_cleaving", pendingFrostSword: "frost_sword", pendingDuel: "duel", pendingGroup: "group", pendingNegation: "negation", pendingHarvest: "harvest", pendingTargetCard: "target_card", pendingDying: "dying",
+  } as const;
+  return (Object.entries(kindByField).find(([field]) => room[field as keyof Room])?.[1] ?? null);
 }
 
 class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => void; children: ReactNode }, { failed: boolean }> {

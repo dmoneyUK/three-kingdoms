@@ -282,6 +282,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /Selected by \{actor\?\.name/);
   assert.match(page, /All choices complete/);
   assert.match(page, /room\?\.pendingHarvest \|\| room\?\.pendingNegation \|\| room\?\.pendingTargetCard \? UI_TIMING\.harvestPoll : UI_TIMING\.roomPoll/);
+  assert.match(page, /pendingAttack: "attack", pendingGreenDragon: "green_dragon"/);
+  assert.match(page, /pendingNegation: "negation"/);
   assert.match(page, /respond_negation/);
   assert.match(page, /pass_negation/);
   assert.match(page, /Skip response/);
