@@ -56,24 +56,6 @@ const nextResponseDeadline = (actor?: PlayerRow | null) => Date.now() + (isBotPl
 const QUICK_TEST_EQUIPMENT_KINDS: CardKind[] = ["FrostSword", "NioShield", "EightTrigrams"];
 const GAMEPLAY_ACTION_SET = new Set<string>(GAMEPLAY_ACTIONS);
 
-async function setup() {
-  const db = env.DB;
-  await db.batch([
-    db.prepare("CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, host_player_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'lobby', max_players INTEGER NOT NULL DEFAULT 8, created_at INTEGER NOT NULL, turn_seat INTEGER, phase TEXT, deck_json TEXT, discard_json TEXT, log_json TEXT, pending_json TEXT)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, room_id TEXT NOT NULL, name TEXT NOT NULL, token_hash TEXT NOT NULL, seat INTEGER NOT NULL, role TEXT, hero TEXT, hp INTEGER, max_hp INTEGER, hero_options_json TEXT, hand_json TEXT, judgement_json TEXT, equipment_json TEXT, alive INTEGER NOT NULL DEFAULT 1, connected_at INTEGER NOT NULL, UNIQUE(room_id, seat))"),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_players_room_id ON players(room_id)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS game_audit (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, room_id TEXT NOT NULL, event_key TEXT, event_type TEXT NOT NULL, actor_id TEXT, actor_name TEXT, action TEXT, phase_before TEXT, phase_after TEXT, turn_seat_before INTEGER, turn_seat_after INTEGER, acting_player_before TEXT, acting_player_after TEXT, detail_json TEXT, created_at INTEGER NOT NULL)"),
-    db.prepare("CREATE TABLE IF NOT EXISTS audit_scope (id INTEGER PRIMARY KEY NOT NULL, room_id TEXT NOT NULL)"),
-    db.prepare("CREATE INDEX IF NOT EXISTS idx_game_audit_room_id ON game_audit(room_id, id)"),
-    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS game_audit_room_event_unique ON game_audit(room_id, event_key)"),
-    db.prepare("CREATE TRIGGER IF NOT EXISTS audit_room_transition AFTER UPDATE OF status, turn_seat, phase, pending_json, log_json ON rooms WHEN EXISTS (SELECT 1 FROM audit_scope WHERE id = 1 AND room_id = NEW.id) BEGIN INSERT INTO game_audit (room_id,event_type,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at) VALUES (OLD.id,'state_transition',OLD.phase,NEW.phase,OLD.turn_seat,NEW.turn_seat,CASE WHEN OLD.phase IN ('response','dying') THEN COALESCE(json_extract(OLD.pending_json,'$.actorId'),json_extract(OLD.pending_json,'$.targetId')) ELSE (SELECT id FROM players WHERE room_id=OLD.id AND seat=OLD.turn_seat) END,CASE WHEN NEW.phase IN ('response','dying') THEN COALESCE(json_extract(NEW.pending_json,'$.actorId'),json_extract(NEW.pending_json,'$.targetId')) ELSE (SELECT id FROM players WHERE room_id=NEW.id AND seat=NEW.turn_seat) END,json_object('statusBefore',OLD.status,'statusAfter',NEW.status,'pendingBefore',OLD.pending_json,'pendingAfter',NEW.pending_json),CAST(strftime('%s','now') AS INTEGER)*1000); END"),
-    db.prepare("CREATE TRIGGER IF NOT EXISTS audit_new_game_events AFTER UPDATE OF log_json ON rooms WHEN EXISTS (SELECT 1 FROM audit_scope WHERE id = 1 AND room_id = NEW.id) BEGIN INSERT OR IGNORE INTO game_audit (room_id,event_key,event_type,actor_name,phase_after,turn_seat_after,acting_player_after,detail_json,created_at) SELECT NEW.id,CASE WHEN value LIKE '@event:%' THEN json_extract(substr(value,8),'$.id') WHEN value LIKE '@card:%' THEN json_extract(substr(value,7),'$.id') WHEN value LIKE '@history:%' THEN json_extract(substr(value,10),'$.id') ELSE 'legacy-'||hex(value) END,'game_event',CASE WHEN value LIKE '@card:%' THEN json_extract(substr(value,7),'$.player') ELSE NULL END,NEW.phase,NEW.turn_seat,CASE WHEN NEW.phase IN ('response','dying') THEN COALESCE(json_extract(NEW.pending_json,'$.actorId'),json_extract(NEW.pending_json,'$.targetId')) ELSE (SELECT id FROM players WHERE room_id=NEW.id AND seat=NEW.turn_seat) END,value,CAST(strftime('%s','now') AS INTEGER)*1000 FROM json_each(COALESCE(NEW.log_json,'[]')); END"),
-  ]);
-  const playerColumns = await db.prepare("PRAGMA table_info(players)").all<{ name: string }>();
-  if (!(playerColumns.results ?? []).some((column) => column.name === "judgement_json")) await db.prepare("ALTER TABLE players ADD COLUMN judgement_json TEXT").run();
-  if (!(playerColumns.results ?? []).some((column) => column.name === "equipment_json")) await db.prepare("ALTER TABLE players ADD COLUMN equipment_json TEXT").run();
-}
-
 async function recordAuditAction(room: RoomRow, actor: PlayerRow | null, actorName: string, action: string) {
   const scope = await env.DB.prepare("SELECT room_id FROM audit_scope WHERE id = 1").first<{ room_id: string }>();
   if (scope?.room_id !== room.id) return;
@@ -1487,7 +1469,9 @@ async function roomState(code: string, token?: string) {
   // A regular room still has exactly one player for each session token.
   const isTestController = sessionPlayers.length === players.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
   const me = isTestController ? players.find((player) => player.id === actualActionPlayerId) ?? turnPlayer ?? sessionPlayers[0] : sessionPlayers[0];
-  if (sessionPlayers.length) await db.batch(sessionPlayers.map((player) => db.prepare("UPDATE players SET connected_at = ? WHERE id = ?").bind(Date.now(), player.id)));
+  // Reading a room must not create D1 writes. Presence is refreshed by the
+  // throttled heartbeat action below, never by normal room polling.
+  const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
   const responseActor = players.find((player) => player.id === actualActionPlayerId);
   const actionRevision = [room.phase ?? "", actualActionPlayerId ?? "", room.pending_json ?? ""].join("|");
   const responseDeadline = pending && "deadline" in pending ? pending.deadline ?? 0 : 0;
@@ -1526,12 +1510,11 @@ async function roomState(code: string, token?: string) {
     pendingHarvest: pending?.kind === "harvest" ? { kind: "harvest", sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), previewCardId: pending.previewCardId ?? null, complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? pending.botAdvanceAt ?? 0 } : null,
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
-    players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), connected: isBotPlayer(player) || isTestController || Date.now() - player.connected_at < 15_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
+    players: players.map((player) => ({ id: player.id, name: player.name.replace(/^Test General (\d+)$/, "Player $1"), seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), connected: isBotPlayer(player) || isTestController || viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, isBot: isBotPlayer(player), role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
   };
 }
 
 export async function GET(request: Request) {
-  await setup();
   const url = new URL(request.url);
   const code = (url.searchParams.get("code") ?? "").toUpperCase();
   const token = url.searchParams.get("token") ?? "";
@@ -1543,14 +1526,11 @@ export async function GET(request: Request) {
     const result = await env.DB.prepare("SELECT id,event_key,event_type,actor_id,actor_name,action,phase_before,phase_after,turn_seat_before,turn_seat_after,acting_player_before,acting_player_after,detail_json,created_at FROM game_audit WHERE room_id = ? ORDER BY id").bind(room.id).all();
     return json({ code, audit: result.results ?? [] });
   }
-  const liveRoom = await env.DB.prepare("SELECT id FROM rooms WHERE code = ?").bind(code).first<{ id: string }>();
-  if (liveRoom) { await expireDyingRescue(liveRoom.id); await advanceHarvest(liveRoom.id); }
   const state = await roomState(code, token);
   return state ? json(state) : json({ error: "Room not found." }, 404);
 }
 
 export async function POST(request: Request) {
-  await setup();
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   const action = String(body.action ?? "");
   const name = cleanName(body.name);
@@ -1582,7 +1562,7 @@ export async function POST(request: Request) {
   if (!room) return json({ error: "Room not found. Check the five-character code." }, 404);
   // Let the acting client submit its automatic decline at the deadline before
   // the general expiry check races that same request.
-  if (!["give_peach", "skip_rescue"].includes(action)) await expireDyingRescue(room.id);
+  if (GAMEPLAY_ACTION_SET.has(action) && !["give_peach", "skip_rescue", "advance_timers"].includes(action)) await expireDyingRescue(room.id);
 
   if (action === "join") {
     if (name.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
@@ -1606,6 +1586,17 @@ export async function POST(request: Request) {
   let actionPlayerIdForController = room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
   let isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
   let me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
+  if (action === "heartbeat") {
+    if (!sessionPlayers.length) return json({ error: "Your player session is no longer valid." }, 403);
+    // Quick Test has four seats behind one controller token. Its state does
+    // not need four presence writes, and the projected seats are always live.
+    if (!isTestController) {
+      const now = Date.now();
+      const result = await db.prepare("UPDATE players SET connected_at = ? WHERE room_id = ? AND token_hash = ? AND connected_at < ?").bind(now, room.id, tokenHash, now - 60_000).run();
+      if ((result.meta.changes ?? 0) > 0) console.log(JSON.stringify({ event: "d1_presence_heartbeat", endpoint: "rooms", request: "POST", roomCode: code, writes: result.meta.changes }));
+    }
+    return json({ ok: true });
+  }
   if (GAMEPLAY_ACTION_SET.has(action)) {
     const currentRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const currentPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
@@ -1630,6 +1621,12 @@ export async function POST(request: Request) {
     }
   }
   if (action !== "start") await recordAuditAction(room, me ?? null, name, action);
+
+  if (action === "advance_timers") {
+    await expireDyingRescue(room.id);
+    await advanceHarvest(room.id);
+    return json({ room: await roomState(code, token) });
+  }
 
   if (action === "add_test_players") {
     if (!me || me.id !== room.host_player_id) return json({ error: "Only the host can add test players." }, 403);

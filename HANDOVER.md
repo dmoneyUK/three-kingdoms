@@ -2,7 +2,15 @@
 
 ### 2026-09-12 update — canonical action protocol and shared pending state
 
-The first bounded architecture refactor is complete and validated by the full 45-test suite. `game/pending.ts` now owns the persisted `Pending` union and all its response-state variants; `app/api/rooms/route.ts` imports them instead of defining them beside HTTP/D1 code. `game/protocol.js` plus its declaration file owns the executable gameplay-action vocabulary across the Worker, browser and Node tests.
+The first bounded architecture refactor is complete and validated by the full regression suite. `game/pending.ts` now owns the persisted `Pending` union and all its response-state variants; `app/api/rooms/route.ts` imports them instead of defining them beside HTTP/D1 code. `game/protocol.js` plus its declaration file owns the executable gameplay-action vocabulary across the Worker, browser and Node tests.
+
+### 2026-09-12 update — D1 usage and polling stabilisation
+
+Normal room GETs are now strictly read-only. `roomState()` no longer updates `players.connected_at`; `GET /api/rooms` no longer advances Dying/Bumper Harvest state; and all runtime `CREATE TABLE`, index, trigger and legacy `ALTER TABLE` checks have been removed. Cloudflare D1 migrations are the schema authority at deployment time.
+
+The browser now polls every 8 seconds while idle, every second during a response/Dying state, and every 60 seconds when hidden. Normal multiplayer presence uses a separate `heartbeat` POST that writes only when the player's timestamp is older than 60 seconds. Quick Test deliberately skips that heartbeat because its four seats share a controller token and are projected live. The Worker emits a small, token-free log only when that throttled heartbeat actually writes. `/api/health` is Worker-only so external health probes cannot create D1 reads.
+
+`advance_timers` is the explicit, context-validated action that advances elapsed Bumper Harvest deadlines. This retains timer resolution without making ordinary reads mutate game state. Tests verify GET state leaves `connected_at` untouched and that a fresh heartbeat does not perform a second write. Next work remains the incremental `currentAction` UI migration, then Blue Steel Sword.
 
 `roomState()` now publishes a versioned `currentAction` for the current private viewer: `{ kind, actorId, deadline, reason, legalActions }`. Legal actions are calculated from the live authoritative state and are empty for non-actors, so this does not reveal another player's hand or available response. `app/page.tsx` now uses this canonical kind for stale-action context and uses server-issued legal actions for response buttons such as Dodge, Negation and Eight Trigrams. Existing `pendingAttack`, `pendingNegation`, etc. remain only as a temporary presentation adapter; do not add new UI rule inference to them. The next architecture task is to migrate their remaining visual detail behind a single public pending-action view and continue extracting response resolvers into `game/` modules.
 
@@ -68,7 +76,7 @@ Delayed Stratagem cards (`Overindulgence`, `Lightning` and `Rations Depleted`) n
 
 ### 2026-09-12 update — production smoke test
 
-The live Worker was checked directly: the root route returned 200 and the runtime tail showed the latest version completing requests without exceptions. `GET /api/rooms` remains a room lookup endpoint and correctly returns 404 without a room code. A new D1-backed `/api/health` endpoint and a post-deploy workflow smoke test now verify both `/` and `/api/health` after every production deploy.
+The live Worker was checked directly: the root route returned 200 and the runtime tail showed the latest version completing requests without exceptions. `GET /api/rooms` remains a read-only room lookup endpoint and correctly returns 404 without a room code. A Worker-only `/api/health` endpoint and a post-deploy workflow smoke test now verify both `/` and `/api/health` after every production deploy without adding D1 health-probe reads.
 
 ### 2026-09-12 update — room payload safety
 
@@ -149,7 +157,7 @@ The Frost Sword selector is rendered inside the bright response prompt and names
 
 Steal and Burning Bridges now present their post-Negation target-card picker as a centered, bright response panel instead of a rotated, dim table overlay. Their existing target-card validation and explicit confirmation flow are unchanged.
 
-Player presence is now surfaced per seat. Authenticated room polling refreshes `connected_at`; bots are always online, and human seats are marked offline after 15 seconds without a heartbeat. This is informational only and does not remove a player or alter turn ownership.
+Player presence is now surfaced per seat. Room polling never refreshes `connected_at`; a separate human heartbeat updates it at most once per minute, bots and Quick Test seats are always online, and human seats become offline after 90 seconds without a heartbeat. This is informational only and does not remove a player or alter turn ownership.
 
 Horse equipment is now authoritative in the two dedicated equipment slots. `attackRangeFor` includes the owner's Offensive Horse bonus, while `attackDistance` applies a target's Defensive Horse penalty to Attack range checks. Quick-test setup removes horse cards from the draw/hand pools and equips both horses for every player.
 
@@ -299,8 +307,10 @@ All intentional production waits are now centralised or recorded here:
 
 | Behaviour | Duration | Purpose |
 | --- | ---: | --- |
-| Normal room polling | 2500 ms | Refresh other-player and bot activity. |
-| Bumper Harvest polling | 300 ms | Keep shared previews and choices responsive. |
+| Normal room polling | 8000 ms | Refresh table state without D1 writes. |
+| Active response polling | 1000 ms | Keep an active response synchronized; GET remains read-only. |
+| Hidden-tab polling | 60000 ms | Reduce background traffic while allowing eventual refresh. |
+| Presence heartbeat | 60000 ms | Throttled human presence write; Quick Test skips it. |
 | Automatic draw start | 100 ms | Let the turn-owner banner render, then claim Draw Phase. |
 | Played/revealed card | 4000 ms | Show the public card, source and target. This no longer waits for the action response. |
 | Event or role-reveal message | 3000 ms | Show important public state changes. |
@@ -308,7 +318,7 @@ All intentional production waits are now centralised or recorded here:
 | Normal card and weapon response | 10000 ms | Give the acting player time to select a legal response or skip, including weapon-effect decisions. |
 | Peach rescue decision | 5000 ms | Give each eligible player a private chance to select Peach or pass. |
 
-Every blocking presentation and decision overlay shows a live countdown. Bumper Harvest also exposes its bot preview and final-choice deadlines to all viewers; continuous room polling remains intentionally invisible because it is a repeating refresh rather than a blocking wait.
+Every blocking presentation and decision overlay shows a live countdown. Bumper Harvest also exposes its bot preview and final-choice deadlines to all viewers; the lower-frequency read-only room refresh remains intentionally invisible because it is not a blocking wait.
 
 Card presentations now use one cumulative table-resolution layer. Earlier steps remain visible while later card responses and effect messages are added, and response-based sequences stay open until the server leaves Response, Dying or Resolving. The centre caption includes the development-source rules explanation from `game/cards.ts`.
 

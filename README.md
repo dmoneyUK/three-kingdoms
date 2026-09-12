@@ -7,7 +7,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — shared Attack declarations with Eight Trigrams Formation**
+- Current stage: **playable four-player alpha — architecture and D1 polling stabilisation**
 
 ## Source of knowledge
 
@@ -23,7 +23,9 @@ The project has moved beyond the initial table prototype. A complete four-player
 
 The current focus is **architecture stabilisation before the next weapon**. Normal Attack cards, Serpent Spear-formed Attacks and Green Dragon Blade follow-ups enter one shared semantic Attack declaration path, preserving the physical source card when downstream rules need its provenance. The persisted pending-decision union now lives in `game/pending.ts`, outside the HTTP route. The API publishes a canonical private `currentAction` (`kind`, actor, deadline, reason and legal actions), and the browser uses it for response selection and stale-action context instead of reconstructing the pending kind from nullable fields. Legacy projected pending fields remain temporarily for presentation detail while the UI migrates incrementally. Delayed Stratagems animate from the centre into the target's Judgement Zone, and Quick Test seeds Player 1 with Serpent Spear. Quick Test gameplay actions validate a live controller revision, return the newest room on stale actions, and serialize timeout/manual submissions. The UI no longer invents Dodge or damage controls for an unknown response state.
 
-The Cloudflare deployment workflow now performs a post-deploy smoke test against `/` and the D1-backed `/api/health` endpoint. A successful Wrangler upload is not considered production-ready unless both checks return successfully.
+The Cloudflare deployment workflow now performs a post-deploy smoke test against `/` and the Worker-only `/api/health` endpoint. A successful Wrangler upload is not considered production-ready unless both checks return successfully.
+
+Room reads are now deliberately read-only: they do not refresh presence, progress gameplay, or run schema DDL. The browser polls every 8 seconds while idle, every second during an active response, and every 60 seconds in a hidden tab. Normal multiplayer presence uses a separate 60-second throttled heartbeat; Quick Test writes no presence rows. Timer-driven Bumper Harvest transitions use an explicit action at the authoritative deadline rather than GET polling. The next milestone remains the next Standard card, Blue Steel Sword, after the remaining `currentAction` presentation migration.
 
 Room payloads are normalized at the API and client boundary: malformed timeline entries, null players, incomplete cards, nullable equipment/Judgement collections, and stale pending states are discarded or defaulted before React renders. Public projected pending DTOs retain their kind discriminator, so valid Negation, Harvest, target-card and Dying responses survive this safety boundary and keep their controls. An incompatible restored session is cleared with a recovery message, and a game-screen error boundary prevents one corrupt room from taking down the whole application.
 
@@ -87,7 +89,7 @@ The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence ove
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Equipment and delayed Stratagem presentations now settle directly into their owner's Equipment or Judgement Zone without a duplicate numbered copy. Attack cards, Serpent Spear formations and Green Dragon follow-ups converge on a shared declaration with origin and physical-card provenance. Quick Test controller races are guarded by an authoritative action revision, and invalid generic response fallbacks are suppressed. Eight Trigrams Formation remains the first alternative Dodge provider. The next milestone is the armor-bypassing Blue Steel Sword. The remaining 108-card manifest audit is tracked in `ROADMAP.md`.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Equipment and delayed Stratagem presentations now settle directly into their owner's Equipment or Judgement Zone without a duplicate numbered copy. Attack cards, Serpent Spear formations and Green Dragon follow-ups converge on a shared declaration with origin and physical-card provenance. Quick Test controller races are guarded by an authoritative action revision, and invalid generic response fallbacks are suppressed. Room reads are non-mutating and D1-efficient. Eight Trigrams Formation remains the first alternative Dodge provider. The next milestone is the armor-bypassing Blue Steel Sword. The remaining 108-card manifest audit is tracked in `ROADMAP.md`.
 
 ## Roadmap
 

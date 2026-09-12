@@ -1,5 +1,9 @@
 # Three Kingdoms Roadmap
 
+## Latest stability milestone — D1-efficient room reads
+
+Room GET requests are now read-only: they no longer update presence, advance game timers, or run DDL/schema checks. Migrations remain the deployment-time schema authority. The client uses 8-second idle polling, 1-second response polling, and 60-second hidden-tab polling. Human presence is a separate, guarded 60-second heartbeat; Quick Test produces no four-seat presence writes. Bumper Harvest deadline progression is explicitly submitted once by the active client instead of being a side effect of fast polling. Regression coverage verifies a room read leaves `connected_at` unchanged and a fresh heartbeat produces no second write. Next: finish the incremental action-view migration, then implement Blue Steel Sword.
+
 ## Latest stability milestone — canonical action protocol
 
 The first architecture-stabilisation slice is complete. `game/pending.ts` now owns the server's persisted `Pending` discriminated union rather than keeping it inside the HTTP route. `game/protocol.js` is executable shared protocol data for the Worker, browser and Node tests; it owns the gameplay action vocabulary. Every room view now contains a versioned, viewer-private `currentAction` with one canonical kind, actor, deadline, reason and legal action list. The API computes that list from authoritative state without disclosing another player's hand. The client submits stale-action context from canonical `pending.kind`, renders response capabilities from `currentAction.legalActions`, and retains the existing detailed pending projections only as a temporary presentation adapter. The room safety normalizer validates the contract and drops unknown legal actions. Tests cover normalization, client rendering, browser-context responses and the full API game suite. Next: migrate the remaining response/presentation details from `pendingX` compatibility fields to the canonical action view, then resume Blue Steel Sword.
@@ -34,7 +38,7 @@ Overindulgence, Lightning and Rations Depleted now use a target-specific Judgeme
 
 ### Production health checks — complete
 
-The Cloudflare workflow now smoke-tests the deployed root page and a D1-backed `/api/health` route after `wrangler deploy`. This catches Worker startup or binding failures that a successful upload alone cannot detect.
+The Cloudflare workflow now smoke-tests the deployed root page and a Worker-only `/api/health` route after `wrangler deploy`. This catches Worker startup failures that a successful upload alone cannot detect without turning continuous health monitoring into D1 reads.
 
 ### Room payload safety — complete
 

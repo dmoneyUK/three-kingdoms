@@ -55,8 +55,10 @@ function appendUniqueEvents(current: GameEvent[], incoming: GameEvent[]) {
 }
 
 const UI_TIMING = {
-  roomPoll: 2500,
-  harvestPoll: 300,
+  roomPoll: 8000,
+  activePoll: 1000,
+  hiddenPoll: 60000,
+  presenceHeartbeat: 60000,
   turnDrawStart: 100,
   playedCard: 4000,
   eventMessage: 3000,
@@ -71,6 +73,7 @@ export default function Home() {
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [pageVisible, setPageVisible] = useState(true);
   const stateEpoch = useRef(0);
   const mutationInFlight = useRef<string | null>(null);
   const latestAppliedMutation = useRef(0);
@@ -102,15 +105,23 @@ export default function Home() {
     } catch { localStorage.removeItem("three-realms-session"); }
   }, [fetchRoom]);
 
+  useEffect(() => {
+    const updateVisibility = () => setPageVisible(document.visibilityState !== "hidden");
+    updateVisibility();
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => document.removeEventListener("visibilitychange", updateVisibility);
+  }, []);
+
   const roomCode = room?.code;
   useEffect(() => {
     if (!roomCode || !token || busy) return;
-    const timer = setInterval(() => fetchRoom(roomCode, token, true), room?.pendingHarvest || room?.pendingNegation || room?.pendingTargetCard ? UI_TIMING.harvestPoll : UI_TIMING.roomPoll);
+    const interval = !pageVisible ? UI_TIMING.hiddenPoll : room?.phase === "response" || room?.phase === "dying" ? UI_TIMING.activePoll : UI_TIMING.roomPoll;
+    const timer = setInterval(() => fetchRoom(roomCode, token, true), interval);
     return () => clearInterval(timer);
-  }, [roomCode, token, busy, fetchRoom, room?.pendingHarvest, room?.pendingNegation, room?.pendingTargetCard]);
+  }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase]);
 
-  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | GameplayAction, extra: Record<string, unknown> = {}) {
-    const backgroundPreview = action === "preview_harvest";
+  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | "heartbeat" | GameplayAction, extra: Record<string, unknown> = {}) {
+    const backgroundPreview = action === "preview_harvest" || action === "heartbeat";
     const nonBlocking = backgroundPreview;
     const mutationKey = `${action}:${room?.actionRevision ?? room?.phase ?? "landing"}`;
     if (!nonBlocking && mutationInFlight.current === mutationKey) return false;
@@ -119,12 +130,13 @@ export default function Home() {
     const epoch = nonBlocking ? stateEpoch.current : ++stateEpoch.current; const mutationSequence = nonBlocking ? latestAppliedMutation.current : epoch;
     if (!nonBlocking) { setBusy(true); setError(""); }
     try {
-      const context = room && !["create", "join", "start", "add_test_players", "choose_hero"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId } : undefined;
+      const context = room && !["create", "join", "start", "add_test_players", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId } : undefined;
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...extra }) });
       const rawData = await response.json() as { error?: string; token?: string; room?: unknown };
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
       if (data.room && mutationSequence >= latestAppliedMutation.current && (nonBlocking || epoch === stateEpoch.current)) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
-      if (!response.ok || !data.room) throw new Error(data.error ?? "Something went wrong.");
+      if (!response.ok || action !== "heartbeat" && !data.room) throw new Error(data.error ?? "Something went wrong.");
+      if (action === "heartbeat") return true;
       const nextToken = data.token ?? token;
       if (epoch === stateEpoch.current && mutationSequence >= latestAppliedMutation.current) { latestAppliedMutation.current = mutationSequence; setToken(nextToken); setRoom(data.room); setCode(data.room.code); }
       localStorage.setItem("three-realms-session", JSON.stringify({ code: data.room.code, token: nextToken, name }));
@@ -132,6 +144,27 @@ export default function Home() {
     } catch (cause) { if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong."); return false; }
     finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); } }
   }
+
+  useEffect(() => {
+    if (!roomCode || !token || !pageVisible || room?.isTestController) return;
+    const timer = setInterval(() => { void send("heartbeat"); }, UI_TIMING.presenceHeartbeat);
+    return () => clearInterval(timer);
+  // Presence is independent of room mutations; it intentionally tracks only
+  // this browser session and never makes normal GET polling write to D1.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomCode, token, pageVisible, room?.isTestController]);
+
+  const harvestDeadline = room?.pendingHarvest?.countdownUntil ?? 0;
+  const harvestRevision = room?.actionRevision ?? "";
+  useEffect(() => {
+    if (!roomCode || !token || !pageVisible || !harvestDeadline) return;
+    const timer = setTimeout(() => { void send("advance_timers"); }, Math.max(0, harvestDeadline - Date.now()));
+    return () => clearTimeout(timer);
+  // The authoritative deadline is supplied by the server. Polling remains a
+  // one-second fallback for another viewer, but only this explicit action may
+  // advance timer-driven Harvest state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomCode, token, pageVisible, harvestDeadline, harvestRevision]);
 
   function leave() {
     stateEpoch.current += 1; setRoom(null); setError("");

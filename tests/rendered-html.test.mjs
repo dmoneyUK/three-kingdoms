@@ -32,6 +32,7 @@ test("server-renders the Three Kingdoms lobby", async () => {
 
 test("client keeps the turn, response, presentation, and selection controls", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const healthApi = await readFile(new URL("../app/api/health/route.ts", import.meta.url), "utf8");
   const styles = `${await readFile(new URL("../app/globals.css", import.meta.url), "utf8")}\n${await readFile(new URL("../app/sequence-overrides.css", import.meta.url), "utf8")}`;
   const cards = await readFile(new URL("../game/cards.ts", import.meta.url), "utf8");
   const roomApi = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
@@ -281,7 +282,12 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /setSequenceScopeStartId\(""\)/);
   assert.match(page, /Selected by \{actor\?\.name/);
   assert.match(page, /All choices complete/);
-  assert.match(page, /room\?\.pendingHarvest \|\| room\?\.pendingNegation \|\| room\?\.pendingTargetCard \? UI_TIMING\.harvestPoll : UI_TIMING\.roomPoll/);
+  assert.match(page, /roomPoll: 8000/);
+  assert.match(page, /activePoll: 1000/);
+  assert.match(page, /hiddenPoll: 60000/);
+  assert.match(page, /document\.visibilityState/);
+  assert.match(page, /action === "heartbeat"/);
+  assert.match(page, /send\("advance_timers"\)/);
   assert.match(page, /function pendingKind\(room: Room\) \{ return room\.pending\?\.kind \?\? null; \}/);
   assert.match(page, /currentAction\?\.kind/);
   assert.match(page, /canUseAction\(room\.currentAction, "respond_eight_trigrams"\)/);
@@ -301,6 +307,11 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /player-equipment-card/);
   assert.match(page, /presence-dot/);
   assert.match(roomApi, /connected_at/);
+  assert.match(roomApi, /action === "heartbeat"/);
+  assert.match(roomApi, /action === "advance_timers"/);
+  assert.doesNotMatch(roomApi, /async function setup\(/);
+  assert.doesNotMatch(roomApi, /await setup\(\)/);
+  assert.doesNotMatch(healthApi, /SELECT 1/);
   assert.match(page, /reveals for judgement/);
   assert.match(page, /card\.kind === "RationsDepleted"/);
   assert.match(page, /\["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted"\]\.includes\(card\.kind\)/);

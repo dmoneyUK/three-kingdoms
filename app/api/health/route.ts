@@ -1,12 +1,8 @@
-import { env } from "cloudflare:workers";
-
 export const runtime = "edge";
 
 export async function GET() {
-  try {
-    await env.DB.prepare("SELECT 1").first();
-    return Response.json({ ok: true, database: "available" }, { headers: { "Cache-Control": "no-store" } });
-  } catch {
-    return Response.json({ ok: false, database: "unavailable" }, { status: 503, headers: { "Cache-Control": "no-store" } });
-  }
+  // Deployment smoke tests need to verify that the Worker can serve a
+  // request. They do not need to turn a frequent availability probe into a
+  // D1 read, so database-dependent checks remain in game requests instead.
+  return Response.json({ ok: true, worker: "available" }, { headers: { "Cache-Control": "no-store" } });
 }

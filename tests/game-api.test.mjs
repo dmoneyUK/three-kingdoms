@@ -39,6 +39,13 @@ async function waitForState(code, token, predicate) {
   for (let attempt = 0; attempt < 500; attempt++) {
     const result = await state(code, token);
     if (predicate(result.data)) return result.data;
+    // Production GETs are intentionally read-only. Tests that model a live
+    // client therefore submit the explicit timer transition once a published
+    // deadline has elapsed, instead of relying on a polling side effect.
+    const pendingJson = query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`);
+    const pending = pendingJson ? JSON.parse(pendingJson) : null;
+    const deadline = pending?.completeAt ?? pending?.botAdvanceAt ?? pending?.deadline ?? 0;
+    if (deadline > 0 && deadline <= Date.now()) await request("advance_timers", { code, token });
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.fail("room state did not reach the expected condition");
@@ -59,6 +66,22 @@ function setEquipment(playerId, equipment = {}) { sql(`UPDATE players SET equipm
 function setDeck(roomCode, cards) { sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(cards))}, discard_json='[]' WHERE code=${quote(roomCode)}`); }
 function setTurn(roomCode, seat, phase = "play") { sql(`UPDATE rooms SET turn_seat=${seat}, phase=${quote(phase)}, pending_json=NULL, status='playing' WHERE code=${quote(roomCode)}`); }
 function discardIds(roomCode) { return query(`SELECT json_extract(value,'$.id') FROM rooms,json_each(rooms.discard_json) WHERE rooms.code=${quote(roomCode)}`).split("\n").filter(Boolean); }
+
+test("room reads are read-only and presence heartbeats are throttled", async () => {
+  const created = await request("create", { name: "Presence Host" });
+  assert.equal(created.status, 201);
+  const { code, meId } = created.data.room;
+  const { token } = created.data;
+  const beforeRead = query(`SELECT connected_at FROM players WHERE id=${quote(meId)}`);
+  assert.equal((await state(code, token)).status, 200);
+  assert.equal(query(`SELECT connected_at FROM players WHERE id=${quote(meId)}`), beforeRead, "GET room state must not write presence");
+  sql(`UPDATE players SET connected_at=0 WHERE id=${quote(meId)}`);
+  assert.equal((await request("heartbeat", { code, token })).status, 200);
+  const afterHeartbeat = query(`SELECT connected_at FROM players WHERE id=${quote(meId)}`);
+  assert.ok(Number(afterHeartbeat) > 0, "a stale presence timestamp is refreshed");
+  assert.equal((await request("heartbeat", { code, token })).status, 200);
+  assert.equal(query(`SELECT connected_at FROM players WHERE id=${quote(meId)}`), afterHeartbeat, "a fresh heartbeat does not write again");
+});
 
 async function createHumanGame() {
   const created = await request("create", { name: "Host" });
