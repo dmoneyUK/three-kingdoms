@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const baseUrl = process.env.GAME_TEST_URL ?? "http://localhost:3137";
-const d1Directory = new URL("../.wrangler/state/v3/d1/miniflare-D1DatabaseObject/", import.meta.url);
+const d1Directory = new URL("../.wrangler/test-state/v3/d1/miniflare-D1DatabaseObject/", import.meta.url);
 
 async function request(action, values = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {

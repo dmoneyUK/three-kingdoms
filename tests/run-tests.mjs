@@ -1,20 +1,24 @@
 import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 
 const port = 3137;
-let url = `http://localhost:${port}`;
+const url = `http://localhost:${port}`;
 let server = null;
 let output = "";
+const testStatePath = resolve(new URL("../", import.meta.url).pathname, ".wrangler/test-state");
 
-try {
-  const existing = await fetch("http://localhost:3000/");
-  if (existing.ok && (await existing.text()).includes("Three Kingdoms")) url = "http://localhost:3000";
-} catch { /* No reusable development server. */ }
-
-if (url.endsWith(String(port))) {
-  server = spawn("npm", ["run", "dev", "--", "--port", String(port)], { cwd: new URL("../", import.meta.url), env: { ...process.env }, stdio: ["ignore", "pipe", "pipe"] });
-  server.stdout.on("data", (chunk) => { output += chunk; });
-  server.stderr.on("data", (chunk) => { output += chunk; });
+// CI starts with an empty Miniflare D1 directory. Apply the same tracked
+// migrations the production deploy uses before the API suite creates a room.
+// Its isolated state never touches a developer's running local game database.
+const migration = spawnSync("npx", ["wrangler", "d1", "migrations", "apply", "three-kingdoms-db", "--local", "--persist-to", testStatePath, "-c", "dist/server/wrangler.json"], { cwd: new URL("../", import.meta.url), env: { ...process.env }, encoding: "utf8" });
+if (migration.status !== 0) {
+  throw new Error(`Failed to initialize local D1 for tests.\n${migration.stdout}\n${migration.stderr}`);
 }
+
+server = spawn("npx", ["wrangler", "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", String(port), "--local", "--persist-to", testStatePath, "--show-interactive-dev-session=false"], { cwd: new URL("../", import.meta.url), env: { ...process.env }, stdio: ["ignore", "pipe", "pipe"] });
+server.stdout.on("data", (chunk) => { output += chunk; });
+server.stderr.on("data", (chunk) => { output += chunk; });
 
 async function waitForServer() {
   if (!server) return;
