@@ -11,6 +11,6 @@ export const serpentSpearAttackProvider: ResponseProvider = {
     const selected = context.selection.cardIds ?? [];
     const eligible = new Set(context.hand.map((card) => card.id));
     if (selected.length !== 2 || new Set(selected).size !== 2 || !selected.every((id) => eligible.has(id))) return null;
-    return context.pendingKind === "group" ? { action: "respond_group" } : context.pendingKind === "duel" ? { action: "respond_duel" } : null;
+    return { status: "satisfied", providerId: "serpent_spear_attack", satisfies: "attack", consumeCardIds: selected, resolution: "cards" };
   },
 };

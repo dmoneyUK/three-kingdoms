@@ -31,13 +31,13 @@ test("new hero providers can discover and execute without editing core response 
     getOption: (context) => context.hero === "test-hero"
       ? { provider: "test_hero_black_dodge", providerId: "test_hero_black_dodge", satisfies: "dodge", label: "Use Hero Skill", cards: [], selection: null }
       : null,
-    resolve: (context) => context.pendingKind === "attack" ? { action: "respond_dodge" } : null,
+    resolve: () => ({ status: "satisfied", providerId: "test_hero_black_dodge", satisfies: "dodge", resolution: "cards" }),
   });
   try {
     const options = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "dodge" });
     assert.ok(options.some((option) => option.providerId === "test_hero_black_dodge"));
     const pending = { kind: "attack", sourceId: "p1", targetId: "p2", actorId: "p2", resumePhase: "play", reason: "Dodge", deadline: 0 };
-    assert.deepEqual(resolveResponseDecision(pending, { hand: [], equipment: [], hero: "test-hero" }, "test_hero_black_dodge", {}), { action: "respond_dodge" });
+    assert.deepEqual(resolveResponseDecision(pending, { hand: [], equipment: [], hero: "test-hero" }, "test_hero_black_dodge", {}), { status: "satisfied", providerId: "test_hero_black_dodge", satisfies: "dodge", resolution: "cards" });
   } finally {
     unregister();
   }
@@ -48,9 +48,16 @@ test("generic response submission is derived from a live requirement and provide
   const decision = responseDecisionFor(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null });
   assert.equal(decision?.requirement, "dodge");
   assert.deepEqual(decision?.options.map((option) => option.providerId), ["card", "eight_trigrams_dodge"]);
-  assert.deepEqual(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "card", { cardId: "dodge-1" }), { action: "respond_dodge" });
-  assert.deepEqual(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "eight_trigrams_dodge", {}), { action: "respond_eight_trigrams" });
+  assert.deepEqual(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "card", { cardId: "dodge-1" }), { status: "satisfied", providerId: "card", satisfies: "dodge", consumeCardIds: ["dodge-1"], resolution: "cards" });
+  assert.deepEqual(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "eight_trigrams_dodge", {}), { status: "satisfied", providerId: "eight_trigrams_dodge", satisfies: "dodge", resolution: "judgement" });
   assert.equal(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "invented_provider", {}), null);
+});
+
+test("Zhen Ji's black-card Dodge is a provider with a semantic card cost", () => {
+  const blackPeach = { ...card("Peach", "black-peach"), suit: "♠" };
+  const options = getResponseOptions({ hand: [blackPeach], equipment: [], hero: "zhen-ji" }, { kind: "dodge" });
+  assert.deepEqual(options.map((option) => option.providerId), ["zhen_ji_black_card_dodge"]);
+  assert.deepEqual(resolveResponseDecision({ kind: "attack", sourceId: "p1", targetId: "p2", actorId: "p2", resumePhase: "play", reason: "Dodge" }, { hand: [blackPeach], equipment: [], hero: "zhen-ji" }, "zhen_ji_black_card_dodge", { cardId: blackPeach.id }), { status: "satisfied", providerId: "zhen_ji_black_card_dodge", satisfies: "dodge", consumeCardIds: [blackPeach.id], resolution: "cards" });
 });
 
 test("passive and triggered equipment capabilities are discovered outside the route", () => {

@@ -95,7 +95,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /function pendingTimelineSequence/);
   assert.match(page, /pendingGreenDragon/);
   assert.match(page, /pendingRockCleaving/);
-  assert.match(page, /room\.phase === "response" && room\.actionPlayerId && responseDeadline > 0/);
+  assert.match(page, /room\.phase === "response" && responseDecisionReady && room\.actionPlayerId && responseDeadline > 0/);
   assert.doesNotMatch(page, /label: "Next step"/);
   assert.match(page, /Use Rock Cleaving Axe/);
   assert.match(page, /Your Attack was blocked by Dodge/);
@@ -301,10 +301,13 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /respond_negation/);
   assert.match(page, /pass_negation/);
   assert.match(page, /Skip response/);
-  assert.match(page, /presentationBusy && !canRespond/);
+  assert.match(page, /presentationBusy && \(canRespond \|\| frostSwordResponse \|\| !canRescue\)/);
   assert.match(page, /responseDamageAction && onAction\(responseDamageAction\)/);
   assert.match(page, /const presentImmediately = !optimisticPlay && !activeEvent && eventQueue\.length === 0/);
   assert.doesNotMatch(page, /if \(busy \|\| presentationBusy\) return; const key = `\$\{room\.actionPlayerId\}/);
+  assert.match(page, /const responseDecisionReady = \(canRespond \|\| frostSwordResponse\) && !presentationBusy/);
+  assert.match(page, /if \(busy \|\| !responseDecisionReady\) return; const key = `\$\{room\.actionPlayerId\}/);
+  assert.match(page, /disabled=\{responseControlsDisabled\}/);
   assert.match(page, /Skip · take 1 damage/);
   assert.doesNotMatch(page, /automaticDamage/);
   assert.match(page, /play Negation/i);

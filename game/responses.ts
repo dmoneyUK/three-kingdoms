@@ -2,6 +2,7 @@ import type { Card } from "./model";
 import { physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider } from "./capabilities/cards";
 import { eightTrigramsDodgeProvider } from "./capabilities/equipment/eight-trigrams";
 import { serpentSpearAttackProvider } from "./capabilities/equipment/serpent-spear";
+import { zhenJiBlackCardDodgeProvider } from "./capabilities/heroes/zhen-ji";
 
 export type ResponseKind = "Attack" | "Dodge";
 export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null };
@@ -14,7 +15,14 @@ export type ResponseSelection = { type: "cards"; min: number; max: number; eligi
 export type CapabilityContext = ResponseContext & { requirement: ActionRequirement };
 export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; label: string; cards: Card[]; selection: ResponseSelection };
 export type ResponseSelectionInput = { cardId?: unknown; cardIds?: unknown };
-export type ResponseExecution = { action: "respond_dodge" | "respond_eight_trigrams" | "respond_duel" | "respond_group" | "respond_negation" };
+/** A provider reports the semantic result and costs, never an HTTP action. */
+export type ResponseExecution = {
+  status: "satisfied";
+  providerId: string;
+  satisfies: "attack" | "dodge" | "negate";
+  consumeCardIds?: string[];
+  resolution?: "cards" | "judgement";
+};
 export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation"; selection: { cardId?: string; cardIds?: string[] } };
 export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; getOption: (context: CapabilityContext) => ResponseOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
 
@@ -22,7 +30,7 @@ export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "ne
 // the currently valid provider to satisfy an abstract requirement.
 const providers: ResponseProvider[] = [
   physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider,
-  eightTrigramsDodgeProvider, serpentSpearAttackProvider,
+  eightTrigramsDodgeProvider, serpentSpearAttackProvider, zhenJiBlackCardDodgeProvider,
 ];
 
 export function registerResponseProvider(provider: ResponseProvider) {

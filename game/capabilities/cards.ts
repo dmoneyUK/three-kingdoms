@@ -17,7 +17,7 @@ export const physicalAttackProvider: ResponseProvider = {
   resolve: (context) => {
     const card = selectedCard(context, context.hand.filter(isAttackCard));
     if (!card) return null;
-    return context.pendingKind === "group" ? { action: "respond_group" } : context.pendingKind === "duel" ? { action: "respond_duel" } : null;
+    return { status: "satisfied", providerId: "card", satisfies: "attack", consumeCardIds: [card.id], resolution: "cards" };
   },
 };
 
@@ -31,7 +31,7 @@ export const physicalDodgeProvider: ResponseProvider = {
   resolve: (context) => {
     const card = selectedCard(context, context.hand.filter((card) => card.kind === "Dodge"));
     if (!card) return null;
-    return context.pendingKind === "attack" ? { action: "respond_dodge" } : context.pendingKind === "group" ? { action: "respond_group" } : null;
+    return { status: "satisfied", providerId: "card", satisfies: "dodge", consumeCardIds: [card.id], resolution: "cards" };
   },
 };
 
@@ -42,5 +42,8 @@ export const physicalNegationProvider: ResponseProvider = {
     const cards = context.hand.filter((card) => card.kind === "Negation");
     return cards.length ? { provider: "negation_card", providerId: "negation_card", satisfies: "negate", label: "Play Negation", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } } : null;
   },
-  resolve: (context) => selectedCard(context, context.hand.filter((card) => card.kind === "Negation")) && context.pendingKind === "negation" ? { action: "respond_negation" } : null,
+  resolve: (context) => {
+    const card = selectedCard(context, context.hand.filter((item) => item.kind === "Negation"));
+    return card ? { status: "satisfied", providerId: "negation_card", satisfies: "negate", consumeCardIds: [card.id], resolution: "cards" } : null;
+  },
 };

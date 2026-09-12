@@ -3,7 +3,7 @@ import { getRequestExecutionContext } from "vinext/shims/request-context";
 import { cardDefinition, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind, EquipmentZone } from "../../../game/model";
 import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
-import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, responseOptions, selectResponse } from "../../../game/responses";
+import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, responseOptions, selectResponse, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { getTriggeredEffects } from "../../../game/capabilities/triggers";
@@ -98,6 +98,15 @@ function canRespondWithDodge(player: PlayerRow) {
   return hasDodgeResponse(responseContext(player));
 }
 function responseContext(player: PlayerRow) { return { hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), hero: player.hero }; }
+function compatibilityResponseAction(pending: Pending | null, execution: ResponseExecution): GameplayAction | null {
+  if (!pending || execution.status !== "satisfied") return null;
+  if (execution.resolution === "judgement") return pending.kind === "attack" || pending.kind === "group" ? "respond_eight_trigrams" : null;
+  if (pending.kind === "negation" && execution.satisfies === "negate") return "respond_negation";
+  if (pending.kind === "attack" && execution.satisfies === "dodge") return "respond_dodge";
+  if (pending.kind === "group" && (execution.satisfies === "attack" || execution.satisfies === "dodge")) return "respond_group";
+  if (pending.kind === "duel" && execution.satisfies === "attack") return "respond_duel";
+  return null;
+}
 function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1; }
 function hasOffensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).offensiveHorse); }
 function hasDefensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).defensiveHorse); }
@@ -1559,6 +1568,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   let action = String(body.action ?? "");
+  let responseExecution: ResponseExecution | null = null;
   const name = cleanName(body.name);
   const db = env.DB;
 
@@ -1651,10 +1661,14 @@ export async function POST(request: Request) {
       return json({ error: "That action is stale. The table has advanced to the next actor.", stale: true, room: await roomState(code, token) }, 409);
     }
     if (action === "respond") {
-      const execution = resolveResponseDecision(pendingForController, me ? responseContext(me) : undefined, body.providerId, { cardId: body.cardId, cardIds: body.cardIds });
-      if (!execution) return json({ error: "That response provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      if (!body.cardId && Array.isArray(body.cardIds) && body.cardIds.length === 1) body.cardId = body.cardIds[0];
-      action = execution.action;
+      responseExecution = resolveResponseDecision(pendingForController, me ? responseContext(me) : undefined, body.providerId, { cardId: body.cardId, cardIds: body.cardIds });
+      const compatibleAction = responseExecution ? compatibilityResponseAction(pendingForController, responseExecution) : null;
+      if (!responseExecution || !compatibleAction) return json({ error: "That response provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (responseExecution.consumeCardIds?.length) {
+        body.cardIds = responseExecution.consumeCardIds;
+        body.cardId = responseExecution.consumeCardIds[0];
+      }
+      action = compatibleAction;
     }
   }
   if (action !== "start") await recordAuditAction(room, me ?? null, name, action);
@@ -1732,7 +1746,10 @@ export async function POST(request: Request) {
     const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     if (!liveRoom || liveRoom.phase !== "response" || !pending || !["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation"].includes(pending.kind) || pending.actorId !== me.id) return json({ error: "You are not the acting player for this response timer." }, 409);
     const responsePending = pending as AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | NegationPending;
-    if ((responsePending.deadline ?? 0) <= 0) {
+    // The client calls this only after its public presentation barrier opens.
+    // Re-arm a human's clock at that point so the full response interval is
+    // visible and usable; bot deadlines remain server-created and unchanged.
+    if ((responsePending.deadline ?? 0) <= 0 || !isBotPlayer(me)) {
       const timedPending = { ...responsePending, deadline: nextResponseDeadline(me) };
       await db.prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(JSON.stringify(timedPending), room.id, liveRoom.pending_json).run();
     }
@@ -1840,7 +1857,8 @@ export async function POST(request: Request) {
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
     const opponent = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.opponentId).first<PlayerRow>();
     if (!opponent) return json({ error: "The other duelist is no longer available." }, 409);
-    const selectedAttack = action === "respond_duel" ? hand.find((card) => card.id === String(body.cardId ?? "") && isAttackCard(card)) : null; const serpentCards = action === "respond_duel" && !selectedAttack ? selectedSerpentSpearCards(me, hand, body.cardIds) : [];
+    const semanticCards = responseExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
+    const selectedAttack = action === "respond_duel" ? responseExecution ? semanticCards.length === 1 ? semanticCards[0] : null : hand.find((card) => card.id === String(body.cardId ?? "") && isAttackCard(card)) : null; const serpentCards = action === "respond_duel" && !selectedAttack ? responseExecution ? semanticCards : selectedSerpentSpearCards(me, hand, body.cardIds) : [];
     if (action === "respond_duel" && !selectedAttack && serpentCards.length !== 2) return json({ error: "Select an Attack, or use Serpent Spear with exactly 2 hand cards." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Duel response has already been resolved." }, 409);
@@ -1866,9 +1884,10 @@ export async function POST(request: Request) {
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
     const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
     if (!source) return json({ error: "The card source is no longer available." }, 409);
-    const option = action === "respond_group" ? selectResponse(responseContext(me), pending.requiredKind, body.cardId, body.cardIds) : undefined;
-    const selectedResponse = option?.provider === "card" ? option.cards[0] : null; const serpentCards = option && !selectedResponse ? option.cards : [];
-    if (action === "respond_group" && !option) return json({ error: `Select a valid ${pending.requiredKind} response and pay its required costs.` }, 409);
+    const semanticCards = responseExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
+    const option = action === "respond_group" && !responseExecution ? selectResponse(responseContext(me), pending.requiredKind, body.cardId, body.cardIds) : undefined;
+    const selectedResponse = responseExecution ? semanticCards.length === 1 ? semanticCards[0] : null : option?.provider === "card" ? option.cards[0] : null; const serpentCards = responseExecution ? semanticCards.length > 1 ? semanticCards : [] : option && !selectedResponse ? option.cards : [];
+    if (action === "respond_group" && !responseExecution && !option || action === "respond_group" && responseExecution && !semanticCards.length) return json({ error: `Select a valid ${pending.requiredKind} response and pay its required costs.` }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved." }, 409);
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
@@ -1975,7 +1994,7 @@ export async function POST(request: Request) {
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "attack" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Attack response." }, 409);
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
-    const selectedDodge = action === "respond_dodge" ? hand.find((card) => card.id === String(body.cardId ?? "") && card.kind === "Dodge") : null;
+    const selectedDodge = action === "respond_dodge" ? responseExecution?.consumeCardIds?.length === 1 ? hand.find((card) => card.id === responseExecution?.consumeCardIds?.[0]) ?? null : hand.find((card) => card.id === String(body.cardId ?? "") && card.kind === "Dodge") : null;
     if (action === "respond_dodge" && !selectedDodge) return json({ error: "Select a Dodge card from your hand first." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved." }, 409);
     if (action === "respond_dodge") {

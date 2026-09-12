@@ -764,7 +764,8 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   assert.ok(skippedPrompt.data.room.pendingRockCleaving.deadline - Date.now() > 29_000, "Rock Cleaving Axe receives a new 30-second window after Dodge");
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: bob.token, cardIds: ["peach-axe-skip-one", "rockcleavingaxe-equip"] })).status, 409, "only the attacker owns the Axe decision");
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: host.token, cardIds: ["peach-axe-skip-one", "peach-axe-skip-one"] })).status, 409, "the same card cannot pay both costs");
-  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.equal(timed.data.room.pendingRockCleaving.deadline, skippedPrompt.data.room.pendingRockCleaving.deadline, "the client timer request preserves the server-created Axe deadline");
+  const priorDeadline = skippedPrompt.data.room.pendingRockCleaving.deadline;
+  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(timed.data.room.pendingRockCleaving.deadline >= priorDeadline, "the visible Axe prompt re-arms its human response deadline");
   const skipped = await request("pass_rock_cleaving", { code: game.code, token: host.token });
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "play-struck"); assert.equal(skipped.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
@@ -896,6 +897,23 @@ test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement 
   assert.equal(blackAttack.status, 200); const blackResult = await request("respond_eight_trigrams", { code: game.code, token: alice.token });
   assert.equal(blackResult.status, 200); assert.equal(blackResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3); assert.ok(blackResult.data.room.log.some((entry) => /Eight Trigrams Formation/.test(entry)));
 
+});
+
+test("generic response executes Zhen Ji's black-card Dodge without a physical Dodge", async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(hostPlayer && alicePlayer);
+  sql(`UPDATE players SET hero='zhen-ji' WHERE id=${quote(alicePlayer.id)}`);
+  const blackPeach = { ...card("Peach", "qingguo"), suit: "♠" };
+  setHand(hostPlayer.id, [card("Attack", "qingguo")], 4, 5); setHand(alicePlayer.id, [blackPeach], 4); setTurn(game.code, hostPlayer.seat);
+  const attacked = await request("play_card", { code: game.code, token: host.token, cardId: "attack-qingguo", targetId: alicePlayer.id });
+  assert.equal(attacked.status, 200);
+  const aliceView = await state(game.code, alice.token);
+  assert.ok(aliceView.data.currentAction.options.some((option) => option.providerId === "zhen_ji_black_card_dodge"));
+  const resolved = await request("respond", { code: game.code, token: alice.token, providerId: "zhen_ji_black_card_dodge", cardId: blackPeach.id });
+  assert.equal(resolved.status, 200);
+  assert.equal(resolved.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
+  assert.ok(discardIds(game.code).includes(blackPeach.id));
 });
 
 test("Something Out of Nothing preserves Play Phase and reveals the stratagem without exposing drawn cards", { timeout: 30_000 }, async () => {
