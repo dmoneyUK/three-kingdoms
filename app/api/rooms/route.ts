@@ -287,7 +287,13 @@ function gameTimeline(entries: string[]) {
       events.push({ type: "card", ...card });
     } catch { /* Ignore malformed historical events. */ }
   }
-  return events;
+  return events.filter((event) => {
+    if (!event || typeof event.type !== "string") return false;
+    if (event.type === "message") return typeof event.message === "string";
+    if (event.type === "card") return Boolean(event.card && typeof event.card === "object" && typeof (event.card as { id?: unknown }).id === "string" && typeof (event.card as { kind?: unknown }).kind === "string");
+    if (event.type === "cards") return Array.isArray(event.cards) && event.cards.length > 0 && event.cards.every((card) => Boolean(card && typeof card === "object" && typeof (card as { id?: unknown }).id === "string" && typeof (card as { kind?: unknown }).kind === "string"));
+    return false;
+  });
 }
 async function claimTurnAction(roomId: string, seat: number, phase: string) {
   const result = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase = ?").bind(roomId, seat, phase).run();

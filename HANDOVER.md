@@ -50,6 +50,10 @@ Delayed Stratagem cards (`Overindulgence`, `Lightning` and `Rations Depleted`) n
 
 The live Worker was checked directly: the root route returned 200 and the runtime tail showed the latest version completing requests without exceptions. `GET /api/rooms` remains a room lookup endpoint and correctly returns 404 without a room code. A new D1-backed `/api/health` endpoint and a post-deploy workflow smoke test now verify both `/` and `/api/health` after every production deploy.
 
+### 2026-09-12 update — room payload safety
+
+The frontend now normalizes API room payloads before state updates, filtering null players, incomplete cards, and invalid timeline entries. The API also filters malformed persisted timeline records before returning them. Regression tests cover valid data, null entries, missing nested card data, empty collections, and malformed room payloads.
+
 ### 2026-09-11 update — named mounts and Eight Trigrams response coverage
 
 Eight Trigrams Formation is registered in the Standard deck and Armor slot. When an Attack, including a Serpent Spear-formed Attack, or Raining Arrows requires Dodge, the acting player can either play a normal Dodge or choose **Use Eight Trigrams**. The server performs one Judgement, reveals and discards that card, treats red as a successful Dodge, and resolves black as normal damage. The same capability is available to bots and Quick Test; regression coverage now includes a Serpent Spear-formed Attack. The six physical Standard mounts are also now distinct one-copy card kinds in new decks; legacy generic horse kinds are retained only for saved-room compatibility. The next implementation is Blue Steel Sword, followed by the remaining manifest cards needed to reach 108.

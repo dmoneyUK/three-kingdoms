@@ -5,6 +5,7 @@ import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card } from "../game/model";
 import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
 import { responseOptions } from "../game/responses";
+import { normalizeRoomData } from "../game/room-safety.js";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type CardEvent = { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal"; presentation?: boolean };
@@ -76,7 +77,9 @@ export default function Home() {
     try {
       const response = await fetch(`/api/rooms?code=${roomCode}&token=${playerToken}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Room is no longer available.");
-      const nextRoom = await response.json(); if (epoch === stateEpoch.current) setRoom(nextRoom);
+      const nextRoom = normalizeRoomData(await response.json()) as Room | null;
+      if (!nextRoom) throw new Error("The room returned invalid data.");
+      if (epoch === stateEpoch.current) setRoom(nextRoom as Room);
     } catch (cause) { if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room."); }
   }, []);
 
@@ -102,7 +105,8 @@ export default function Home() {
     if (!nonBlocking) { setBusy(true); setError(""); }
     try {
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...extra }) });
-      const data = await response.json() as { error?: string; token?: string; room?: Room };
+      const rawData = await response.json() as { error?: string; token?: string; room?: unknown };
+      const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
       if (!response.ok || !data.room) throw new Error(data.error ?? "Something went wrong.");
       const nextToken = data.token ?? token;
       if (epoch === stateEpoch.current) { setToken(nextToken); setRoom(data.room); setCode(data.room.code); }

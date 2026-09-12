@@ -28,6 +28,10 @@ Overindulgence, Lightning and Rations Depleted now use a target-specific Judgeme
 
 The Cloudflare workflow now smoke-tests the deployed root page and a D1-backed `/api/health` route after `wrangler deploy`. This catches Worker startup or binding failures that a successful upload alone cannot detect.
 
+### Room payload safety — complete
+
+The API filters malformed timeline records and the client normalizes room arrays before rendering. Null entries, incomplete cards, missing optional collections, and empty arrays now degrade safely instead of taking down the page.
+
 ### Sequential AOE and generic responses — complete
 
 Each Negatable Stratagem opens a once-around response round beginning with its player. AOE repeats that round separately for each target. Counter-Negation rounds also begin with the latest Negation player, then visit each eligible living player once. Surviving effects use the shared Attack/Dodge response capability and cost validation in `game/responses.ts`. No-response damage is automatic. Response countdowns appear after five elapsed seconds, with the initial Negation actor indication hidden from other players during that interval. This reduces visible skip clues but is not a guarantee against timing inference. Next: Blue Steel Sword as the next Armor-bypass interaction.
