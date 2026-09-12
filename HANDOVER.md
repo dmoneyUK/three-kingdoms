@@ -52,7 +52,7 @@ The live Worker was checked directly: the root route returned 200 and the runtim
 
 ### 2026-09-12 update — room payload safety
 
-The frontend now normalizes API room payloads before state updates, filtering null players, incomplete cards, and invalid timeline entries. The API also filters malformed persisted timeline records before returning them. Regression tests cover valid data, null entries, missing nested card data, empty collections, and malformed room payloads.
+The frontend now applies one complete Room DTO normalizer before state updates, covering players, Equipment/Judgement zones, hands, timeline, log, hero options, discard top, and every pending state. The API also filters malformed persisted timeline records before returning them. Invalid restored sessions are cleared with a recovery message, and a GameRoom error boundary logs status/phase/pending kind plus the exception without private hands or tokens. Regression tests render a malformed-but-recoverable room through the actual GameRoom path as well as covering null entries, missing nested card data, empty collections, and malformed saved payloads.
 
 ### 2026-09-11 update — named mounts and Eight Trigrams response coverage
 

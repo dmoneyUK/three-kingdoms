@@ -30,7 +30,7 @@ The Cloudflare workflow now smoke-tests the deployed root page and a D1-backed `
 
 ### Room payload safety — complete
 
-The API filters malformed timeline records and the client normalizes room arrays before rendering. Null entries, incomplete cards, missing optional collections, and empty arrays now degrade safely instead of taking down the page.
+The API filters malformed timeline records and one authoritative client normalizer validates the complete Room DTO before rendering. Null entries, incomplete cards, nullable player zones, missing optional collections, stale pending states, and empty arrays now degrade safely instead of taking down the page. Restored incompatible sessions are cleared, and a GameRoom error boundary logs only safe state context while returning the user to recovery.
 
 ### Sequential AOE and generic responses — complete
 

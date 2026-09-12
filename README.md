@@ -25,7 +25,7 @@ The current feature focus is **equipment and distance modifiers** while rules-en
 
 The Cloudflare deployment workflow now performs a post-deploy smoke test against `/` and the D1-backed `/api/health` endpoint. A successful Wrangler upload is not considered production-ready unless both checks return successfully.
 
-Room payloads are normalized at the API and client boundary: malformed timeline entries, null players, and incomplete cards are discarded so a bad persisted event cannot crash the game UI.
+Room payloads are normalized at the API and client boundary: malformed timeline entries, null players, incomplete cards, nullable equipment/Judgement collections, and stale pending states are discarded or defaulted before React renders. An incompatible restored session is cleared with a recovery message, and a game-screen error boundary prevents one corrupt room from taking down the whole application.
 
 Negation response prompts now track the latest Negation in a counter-chain while retaining the original Stratagem as the root effect.
 

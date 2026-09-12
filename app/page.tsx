@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, FormEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card } from "../game/model";
 import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
@@ -39,8 +39,8 @@ function eventCards(event: GameEvent) { return event.type === "card" ? [event.ca
 function movesDirectlyToDiscard(event: GameEvent) {
   return event.type === "cards" ? event.action === "discard" : event.type === "card" ? event.action === "discard" || event.action === "reveal" : false;
 }
-function settlesInJudgement(event: GameEvent) {
-  return event.type === "card" && event.action === "play" && ["Overindulgence", "Lightning", "RationsDepleted"].includes(event.card.kind);
+function settlesInJudgement(event: GameEvent | null | undefined) {
+  return Boolean(event && event.type === "card" && event.action === "play" && ["Overindulgence", "Lightning", "RationsDepleted"].includes(event.card.kind));
 }
 function retainsAtPlayer(event: GameEvent) {
   // Equipment is committed to the owner's rack by the API before its public
@@ -78,9 +78,15 @@ export default function Home() {
       const response = await fetch(`/api/rooms?code=${roomCode}&token=${playerToken}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Room is no longer available.");
       const nextRoom = normalizeRoomData(await response.json()) as Room | null;
-      if (!nextRoom) throw new Error("The room returned invalid data.");
+      if (!nextRoom) throw new Error("Previous game data is no longer compatible. Start a new game.");
       if (epoch === stateEpoch.current) setRoom(nextRoom as Room);
-    } catch (cause) { if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room."); }
+    } catch (cause) {
+      if (cause instanceof Error && /Previous game data|no longer available/.test(cause.message)) {
+        localStorage.removeItem("three-realms-session");
+        if (epoch === stateEpoch.current) { setRoom(null); setCode(""); setToken(""); }
+      }
+      if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room.");
+    }
   }, []);
 
   useEffect(() => {
@@ -120,7 +126,7 @@ export default function Home() {
     stateEpoch.current += 1; setRoom(null); setError("");
   }
 
-  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoom room={room} busy={busy} error={error} onAction={send} onLeave={leave} />;
+  if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} busy={busy} error={error} onAction={send} onLeave={leave} /></GameRoomErrorBoundary>;
   if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
   if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onLeave={leave} />;
 
@@ -180,6 +186,35 @@ function HeroSelection({ room, busy, error, onChoose, onLeave }: { room: Room; b
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
+function pendingKind(room: Room) {
+  return ["pendingAttack", "pendingGreenDragon", "pendingRockCleaving", "pendingFrostSword", "pendingDuel", "pendingGroup", "pendingNegation", "pendingHarvest", "pendingTargetCard", "pendingDying"].find((key) => room[key as keyof Room])?.replace(/^pending/, "") ?? null;
+}
+
+class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => void; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  componentDidCatch(error: Error, info: { componentStack?: string }) {
+    console.error("[GameRoom render failure]", {
+      status: this.props.room.status,
+      phase: this.props.room.phase,
+      pendingKind: pendingKind(this.props.room),
+      error: error.message,
+      component: info.componentStack?.split("\n").find(Boolean) ?? "GameRoom",
+    });
+    this.setState({ failed: true });
+  }
+
+  recover = () => {
+    localStorage.removeItem("three-realms-session");
+    this.props.onRecover();
+  };
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <main className="landing-shell"><section className="entry-card recovery-card"><span className="eyebrow">ROOM RECOVERY</span><h1>Previous game data is no longer compatible.</h1><p>Your saved room could not be rendered safely. Start a new game to continue.</p><button className="gold-button" onClick={this.recover}>Start a new game</button></section></main>;
+  }
+}
+
 function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuing in" }: { durationMs: number; deadline?: number; visibleAt?: number; label?: string }) {
   const [remainingMs, setRemainingMs] = useState(durationMs);
   const [visible, setVisible] = useState(visibleAt === 0);
@@ -195,7 +230,7 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
   return <div className="visible-countdown" aria-label={`${label} ${remainingSeconds} seconds`}><span>{label}</span><b>{remainingSeconds}s</b></div>;
 }
 
-function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: boolean; error: string; onAction: (action: "draw" | "play_card" | "serpent_spear_attack" | "end_turn" | "respond_dodge" | "respond_eight_trigrams" | "take_damage" | "respond_green_dragon" | "pass_green_dragon" | "respond_rock_cleaving" | "pass_rock_cleaving" | "use_frost_sword" | "pass_frost_sword" | "respond_duel" | "take_duel_damage" | "respond_group" | "take_group_damage" | "respond_negation" | "pass_negation" | "preview_harvest" | "choose_harvest" | "choose_target_card" | "discard_cards" | "start_response_timer" | "start_rescue_timer" | "give_peach" | "skip_rescue", extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void }) {
+export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: boolean; error: string; onAction: (action: "draw" | "play_card" | "serpent_spear_attack" | "end_turn" | "respond_dodge" | "respond_eight_trigrams" | "take_damage" | "respond_green_dragon" | "pass_green_dragon" | "respond_rock_cleaving" | "pass_rock_cleaving" | "use_frost_sword" | "pass_frost_sword" | "respond_duel" | "take_duel_damage" | "respond_group" | "take_group_damage" | "respond_negation" | "pass_negation" | "preview_harvest" | "choose_harvest" | "choose_target_card" | "discard_cards" | "start_response_timer" | "start_rescue_timer" | "give_peach" | "skip_rescue", extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void }) {
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
   const [selected, setSelected] = useState(""); const [targetIds, setTargetIds] = useState<string[]>([]); const target = targetIds[0] ?? "";
@@ -280,11 +315,10 @@ function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room; busy: 
   // Preserve slot layout while hiding cards that still have a public flight.
   // Include unseen events to avoid a one-frame rack flash on a server update.
   const processedEventIds = new Set(processedTimelineKey.split("|"));
-  const equipmentInFlight = new Set([optimisticPlay, activeEvent, ...eventQueue,
-    ...room.timeline.filter((event) => !processedEventIds.has(event.id))]
-    .flatMap((event) => event?.type === "card" && event.action === "equip" ? [event.card.id] : []));
-  const judgementInFlight = new Set([optimisticPlay, activeEvent, ...eventQueue,
-    ...room.timeline.filter((event) => !processedEventIds.has(event.id))]
+  const pendingPresentationEvents = [optimisticPlay, activeEvent, ...eventQueue, ...room.timeline.filter((event) => !processedEventIds.has(event.id))].filter((event): event is GameEvent => Boolean(event));
+  const equipmentInFlight = new Set(pendingPresentationEvents
+    .flatMap((event) => event.type === "card" && event.action === "equip" ? [event.card.id] : []));
+  const judgementInFlight = new Set(pendingPresentationEvents
     .flatMap((event) => settlesInJudgement(event) ? [event.card.id] : []));
   const tablePresentationVisible = sequenceEvents.length > 0 || Boolean(displayedEvent && eventCards(displayedEvent).length);
   const seatCountdown = room.phase === "response" && room.actionPlayerId && responseDeadline > 0 ? { playerId: room.actionPlayerId, key: `response-${room.actionPlayerId}-${responseDeadline}`, durationMs: 0, deadline: responseDeadline, label: "Respond" }
