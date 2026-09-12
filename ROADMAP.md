@@ -1,5 +1,9 @@
 # Three Kingdoms Roadmap
 
+## Latest stability milestone — Quick Test response synchronization
+
+Quick Test gameplay POSTs now reload the authoritative room and derive the controlled seat from the live phase/pending actor before resolving an action. Requests carry the displayed action revision; stale requests return the latest room state instead of mutating an advanced response. The browser serializes mutations and prevents timeout/manual double submissions. Unknown response states no longer fall back to Dodge or take-damage controls. Regression coverage includes ordered AOE perspective changes, stale Something Out of Nothing actions, no-Negation resolution, and safe rendering of an invalid response state.
+
 This roadmap is aligned to the verified WTK Standard card reference in `docs/OFFICIAL_CARD_REFERENCE.md`.
 
 ## Progress summary

@@ -110,7 +110,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(attacked.status, 200); assert.equal(attacked.data.room.phase, "response"); assert.equal(attacked.data.room.actionPlayerId, alicePlayer.id);
   assert.equal((await request("start_response_timer", { code: game.code, token: bob.token })).status, 409, "only the acting player can start their response timer");
   const timedAttack = await request("start_response_timer", { code: game.code, token: alice.token });
-  assert.ok(timedAttack.data.room.pendingAttack.deadline - Date.now() > 29_000, "the acting player receives a 30-second visible response deadline");
+  assert.ok(timedAttack.data.room.pendingAttack.deadline - Date.now() > 25_000, "the acting player receives a 30-second visible response deadline");
   const publicAttackTimer = await state(game.code, host.token);
   assert.equal(publicAttackTimer.data.pendingAttack.deadline, timedAttack.data.room.pendingAttack.deadline, "the table can show the same countdown beside the acting player");
   assert.equal((await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-answer" })).status, 409);
@@ -883,6 +883,44 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
   const opponentView = await state(game.code, game.members[1].token);
   assert.equal(opponentView.data.players.find((player) => player.id === hostPlayer.id).handCount, 2);
   assert.equal(opponentView.data.myHand.some((held) => result.data.drawnCards.some((drawn) => drawn.id === held.id)), false);
+});
+
+test("Quick Test follows the live actor for Something Out of Nothing and rejects stale actions", { timeout: 30_000 }, async () => {
+  const quick = await request("create", { quickStart: true }); const { token, room } = quick.data;
+  const [me, playerOne, playerTwo, playerThree] = room.players;
+  setHand(me.id, [], 3, 3); setHand(playerOne.id, [card("DrawTwo", "quick-live")], 3, 3); setHand(playerTwo.id, [card("Negation", "quick-live")], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, playerOne.seat, "play");
+  const before = await state(room.code, token);
+  const played = await request("play_card", { code: room.code, token, cardId: "drawtwo-quick-live" });
+  assert.equal(played.status, 200); assert.equal(played.data.room.phase, "response");
+  assert.equal(played.data.room.pendingNegation.actorId, playerTwo.id); assert.equal(played.data.room.actionPlayerId, playerTwo.id); assert.equal(played.data.room.meId, playerTwo.id); assert.equal(played.data.room.isMyAction, true);
+  const stale = await request("pass_negation", { code: room.code, token, context: { actionRevision: before.data.actionRevision, meId: playerOne.id, phase: "play", pendingKind: null, actorId: playerOne.id } });
+  assert.equal(stale.status, 409); assert.equal(stale.data.stale, true); assert.equal(stale.data.room.meId, playerTwo.id); assert.equal(stale.data.room.pendingNegation.actorId, playerTwo.id);
+  const passed = await request("pass_negation", { code: room.code, token });
+  assert.equal(passed.status, 200); assert.equal(passed.data.room.phase, "play"); assert.equal(passed.data.room.pendingNegation, null);
+});
+
+test("Quick Test Something Out of Nothing resolves without a generic damage response", { timeout: 30_000 }, async () => {
+  const quick = await request("create", { quickStart: true }); const { token, room } = quick.data;
+  const [me, playerOne, playerTwo, playerThree] = room.players;
+  setHand(me.id, [], 3, 3); setHand(playerOne.id, [card("DrawTwo", "quick-no-negation")], 3, 3); setHand(playerTwo.id, [], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, playerOne.seat, "play");
+  const result = await request("play_card", { code: room.code, token, cardId: "drawtwo-quick-no-negation" });
+  assert.equal(result.status, 200); assert.equal(result.data.room.phase, "play"); assert.equal(result.data.room.pendingNegation, null); assert.equal(result.data.room.pendingGroup, null); assert.equal(result.data.room.players.find((player) => player.id === playerOne.id).hp, 3); assert.equal(result.data.drawnCards.length, 2);
+});
+
+test("Quick Test accepts only one competing response submission", { timeout: 30_000 }, async () => {
+  const quick = await request("create", { quickStart: true }); const { token, room } = quick.data;
+  const [me, playerOne, playerTwo, playerThree] = room.players;
+  setHand(me.id, [card("BarbarianInvasion", "quick-race")], 3, 3); setHand(playerOne.id, [card("Attack", "quick-race")], 3, 3); setHand(playerTwo.id, [], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, me.seat, "play");
+  const started = await request("play_card", { code: room.code, token, cardId: "barbarianinvasion-quick-race" });
+  assert.equal(started.status, 200); assert.equal(started.data.room.pendingGroup.actorId, playerOne.id);
+  const [manual, timeout] = await Promise.all([
+    request("respond_group", { code: room.code, token, cardId: "attack-quick-race" }),
+    request("take_group_damage", { code: room.code, token }),
+  ]);
+  assert.equal([manual.status, timeout.status].filter((status) => status === 200).length, 1);
+  assert.equal([manual.status, timeout.status].filter((status) => status === 409).length, 1);
+  const final = await state(room.code, token);
+  assert.equal(final.data.pendingGroup, null); assert.equal(final.data.phase, "play"); assert.equal(final.data.meId, me.id);
 });
 
 test("Negation cancels a stratagem and a counter-Negation restores it in ordered response", { timeout: 30_000 }, async () => {

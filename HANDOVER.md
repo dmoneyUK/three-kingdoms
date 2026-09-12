@@ -1,5 +1,11 @@
 # Three Kingdoms project handover
 
+### 2026-09-12 update — Quick Test action synchronization and response-state safety
+
+Gameplay POSTs now reload the authoritative room/player snapshot immediately before controller resolution. In Quick Test, the acting seat is derived from the live phase and pending actor rather than an earlier snapshot. The client sends an action revision/context; stale requests are rejected with the latest normalized room state so the perspective can recover immediately. Blocking mutations are serialized to prevent timeout/manual duplicate submissions, while background Bumper Harvest previews remain non-blocking. The client also applies authoritative mutation responses monotonically so a failed later request cannot hide an earlier accepted state.
+
+The generic response UI now derives an explicit response type. If a response phase has no recognized pending response, it shows a diagnostic waiting message and does not render Dodge, take-damage, or response timers. Something Out of Nothing therefore only exposes Negation/pass when applicable and otherwise resolves directly to its draw-two effect. Tests cover Quick Test actor switching, stale action rejection, no-Negation Draw Two resolution, and invalid response rendering.
+
 Use this document to continue development in a new chat. Start from the latest `main` branch and read `README.md` for the public-facing roadmap.
 
 ## Product goal

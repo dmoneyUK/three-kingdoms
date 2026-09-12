@@ -1495,13 +1495,14 @@ async function roomState(code: string, token?: string) {
   const me = isTestController ? players.find((player) => player.id === actualActionPlayerId) ?? turnPlayer ?? sessionPlayers[0] : sessionPlayers[0];
   if (sessionPlayers.length) await db.batch(sessionPlayers.map((player) => db.prepare("UPDATE players SET connected_at = ? WHERE id = ?").bind(Date.now(), player.id)));
   const responseActor = players.find((player) => player.id === actualActionPlayerId);
+  const actionRevision = [room.phase ?? "", actualActionPlayerId ?? "", room.pending_json ?? ""].join("|");
   const responseDeadline = pending && "deadline" in pending ? pending.deadline ?? 0 : 0;
   const responseCountdownVisibleAt = room.phase === "response" && responseDeadline ? responseDeadline - (isBotPlayer(responseActor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS) + 5_000 : 0;
   const actionPlayerId = room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
   const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   return {
-    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions: room.status === "heroes" && me?.hero_options_json ? JSON.parse(me.hero_options_json) : [],
@@ -1570,7 +1571,7 @@ export async function POST(request: Request) {
 
   const code = String(body.code ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
   const token = String(body.token ?? "");
-  const room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
+  let room = await db.prepare("SELECT * FROM rooms WHERE code = ?").bind(code).first<RoomRow>();
   if (!room) return json({ error: "Room not found. Check the five-character code." }, 404);
   // Let the acting client submit its automatic decline at the deadline before
   // the general expiry check races that same request.
@@ -1590,21 +1591,38 @@ export async function POST(request: Request) {
 
   const tokenHash = await hash(token);
   const authenticated = await db.prepare("SELECT * FROM players WHERE room_id = ? AND token_hash = ? ORDER BY seat").bind(room.id, tokenHash).all<PlayerRow>();
-  const sessionPlayers = authenticated.results ?? [];
-  const allPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-  const allRoomPlayers = allPlayers.results ?? [];
-  const pendingForController = parse<Pending | null>(room.pending_json, null);
-  const turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
-  const actionPlayerIdForController = room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
-  const isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
-  const me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
-  if (action !== "start") await recordAuditAction(room, me ?? null, name, action);
+  let sessionPlayers = authenticated.results ?? [];
+  let allPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+  let allRoomPlayers = allPlayers.results ?? [];
+  let pendingForController = parse<Pending | null>(room.pending_json, null);
+  let turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
+  let actionPlayerIdForController = room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
+  let isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
+  let me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
   if (GAMEPLAY_ACTIONS.has(action)) {
     const currentRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const currentPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const issue = currentRoom ? playingStateIssue(currentRoom, currentPlayers.results ?? []) : "The game room is unavailable.";
     if (issue) return json({ error: `Game state check failed: ${issue}` }, 409);
+    if (!currentRoom) return json({ error: "The game room is unavailable." }, 409);
+    room = currentRoom;
+    allPlayers = currentPlayers;
+    allRoomPlayers = currentPlayers.results ?? [];
+    sessionPlayers = allRoomPlayers.filter((player) => player.token_hash === tokenHash);
+    pendingForController = parse<Pending | null>(room.pending_json, null);
+    turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
+    actionPlayerIdForController = room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
+    isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
+    me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
+    const submitted = body.context && typeof body.context === "object" ? body.context as { actionRevision?: unknown; meId?: unknown; phase?: unknown; pendingKind?: unknown; actorId?: unknown } : null;
+    const expectedRevision = [room.phase ?? "", actionPlayerIdForController ?? "", room.pending_json ?? ""].join("|");
+    const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: pendingForController?.kind ?? null, actorId: actionPlayerIdForController ?? null };
+    const contextMismatch = submitted && (submitted.actionRevision !== undefined && String(submitted.actionRevision) !== expectedRevision || submitted.meId !== undefined && String(submitted.meId) !== String(expectedContext.meId) || submitted.phase !== undefined && String(submitted.phase) !== String(expectedContext.phase) || submitted.pendingKind !== undefined && String(submitted.pendingKind) !== String(expectedContext.pendingKind) || submitted.actorId !== undefined && String(submitted.actorId) !== String(expectedContext.actorId));
+    if (contextMismatch) {
+      return json({ error: "That action is stale. The table has advanced to the next actor.", stale: true, room: await roomState(code, token) }, 409);
+    }
   }
+  if (action !== "start") await recordAuditAction(room, me ?? null, name, action);
 
   if (action === "add_test_players") {
     if (!me || me.id !== room.host_player_id) return json({ error: "Only the host can add test players." }, 403);

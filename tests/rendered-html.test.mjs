@@ -64,6 +64,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /automaticRescueSkip/);
   assert.match(page, /start_response_timer/);
   assert.match(page, /automaticResponseTimeout/);
+  assert.match(page, /actionRevision/);
+  assert.match(page, /mutationInFlight/);
+  assert.match(page, /invalidResponseState/);
+  assert.doesNotMatch(page, /: "take_damage";/);
   assert.match(page, /playedCard: 4000/);
   assert.match(page, /eventMessage: 3000/);
   assert.match(page, /privateDraw: 3000/);
@@ -248,7 +252,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /choose_harvest/);
   assert.match(page, /preview_harvest/);
   assert.match(page, /backgroundPreview = action === "preview_harvest"/);
-  assert.match(page, /action === "choose_harvest"/);
+  assert.doesNotMatch(page, /nonBlocking = backgroundPreview \|\| action === "choose_harvest"/);
   assert.match(page, /publishHarvestPreview/);
   assert.match(page, /queuedHarvestPreview/);
   assert.match(page, /previewCardId/);
@@ -282,7 +286,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /pass_negation/);
   assert.match(page, /Skip response/);
   assert.match(page, /presentationBusy && !canRespond/);
-  assert.match(page, /className="end" disabled=\{busy\} onClick=\{\(\) => onAction\(responseDamageAction\)\}/);
+  assert.match(page, /responseDamageAction && onAction\(responseDamageAction\)/);
   assert.match(page, /const presentImmediately = !optimisticPlay && !activeEvent && eventQueue\.length === 0/);
   assert.doesNotMatch(page, /if \(busy \|\| presentationBusy\) return; const key = `\$\{room\.actionPlayerId\}/);
   assert.match(page, /Skip · take 1 damage/);
