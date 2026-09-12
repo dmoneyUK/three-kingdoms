@@ -885,7 +885,10 @@ test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement 
   setDeck(game.code, [{ ...card("Peach", "judgement-red"), suit: "♥", rank: "7" }]); setTurn(game.code, hostPlayer.seat);
   const redAttack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-trigrams-red", targetId: alicePlayer.id });
   assert.equal(redAttack.status, 200); assert.equal(redAttack.data.room.pendingAttack.actorId, alicePlayer.id);
-  const redResult = await request("respond_eight_trigrams", { code: game.code, token: alice.token });
+  const redView = await state(game.code, alice.token);
+  assert.equal(redView.data.currentAction.requirement, "dodge");
+  assert.ok(redView.data.currentAction.options.some((option) => option.providerId === "eight_trigrams_dodge"));
+  const redResult = await request("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge" });
   assert.equal(redResult.status, 200); assert.equal(redResult.data.room.pendingAttack, null); assert.equal(redResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
   setHand(hostPlayer.id, [card("Attack", "trigrams-black")], 4, 4); setDeck(game.code, [{ ...card("Peach", "judgement-black"), suit: "♣", rank: "8" }]); setTurn(game.code, hostPlayer.seat);
@@ -933,7 +936,9 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   assert.equal(played.data.room.pendingNegation.kind, "negation", "the public pending DTO retains its discriminator for the client normalizer");
   assert.deepEqual(played.data.room.pending, { kind: "negation" }, "the canonical pending view has one discriminator");
   assert.equal(played.data.room.currentAction.kind, "negation"); assert.equal(played.data.room.currentAction.actorId, playerTwo.id);
-  assert.deepEqual(played.data.room.currentAction.legalActions.sort(), ["pass_negation", "respond_negation"], "only the active Quick Test seat receives its legal Negation actions");
+  assert.deepEqual(played.data.room.currentAction.legalActions.sort(), ["pass_negation", "respond", "respond_negation"], "only the active Quick Test seat receives its legal Negation actions");
+  assert.equal(played.data.room.currentAction.requirement, "negate");
+  assert.equal(played.data.room.currentAction.options[0]?.providerId, "negation_card");
   assert.equal(played.data.room.pendingNegation.actorId, playerTwo.id); assert.equal(played.data.room.actionPlayerId, playerTwo.id); assert.equal(played.data.room.meId, playerTwo.id); assert.equal(played.data.room.isMyAction, true);
   assert.ok(played.data.room.timeline.some((event) => /Negation window opens for Something Out of Nothing's effect on Player 1/.test(event.message ?? "")), "the response window is visible in the event history");
   const stale = await request("pass_negation", { code: room.code, token, context: { actionRevision: before.data.actionRevision, meId: playerOne.id, phase: "play", pendingKind: null, actorId: playerOne.id } });

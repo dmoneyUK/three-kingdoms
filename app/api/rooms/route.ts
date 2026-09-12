@@ -4,6 +4,7 @@ import { cardDefinition, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind, EquipmentZone } from "../../../game/model";
 import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, responseOptions, selectResponse } from "../../../game/responses";
+import { canonicalResponseAction, responseDecisionFor } from "../../../game/response-decision";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
 import type { AttackDeclaration, AttackOrigin, AttackPending, DeferredStratagem, DuelPending, DyingPending, FrostSwordPending, GreenDragonPending, GroupPending, HarvestPending, NegationPending, Pending, RockCleavingPending, TargetCardPending } from "../../../game/pending";
 
@@ -1452,17 +1453,16 @@ async function runBots(roomId: string) {
 function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: Pending | null, players: PlayerRow[]): GameplayAction[] {
   if (!actor) return [];
   const hand = parse<Card[]>(actor.hand_json, []);
-  const response = responseContext(actor);
   if (room.phase === "dying") return pending?.kind === "dying" && pending.actorId === actor.id
     ? (["skip_rescue", ...(hand.some((card) => card.kind === "Peach") ? ["give_peach"] : [])] as GameplayAction[])
     : [];
   if (room.phase === "response") {
     if (!pending || pending.actorId !== actor.id) return [];
     switch (pending.kind) {
-      case "negation": return ["pass_negation", ...(hand.some((card) => card.kind === "Negation") ? ["respond_negation"] : [])];
-      case "attack": return ["take_damage", ...(hand.some((card) => card.kind === "Dodge") ? ["respond_dodge"] : []), ...(responseOptions(response, "Dodge").some((option) => option.provider === "eight_trigrams") ? ["respond_eight_trigrams"] : [])];
-      case "group": return ["take_group_damage", ...(responseOptions(response, pending.requiredKind).length ? ["respond_group"] : []), ...(pending.requiredKind === "Dodge" && responseOptions(response, "Dodge").some((option) => option.provider === "eight_trigrams") ? ["respond_eight_trigrams"] : [])];
-      case "duel": return ["take_duel_damage", ...(canRespondWithAttack(response) ? ["respond_duel"] : [])];
+      case "negation": { const options = responseDecisionFor(pending, responseContext(actor))?.options ?? []; return ["pass_negation", ...(options.length ? ["respond", "respond_negation"] : [])]; }
+      case "attack": { const options = responseDecisionFor(pending, responseContext(actor))?.options ?? []; return ["take_damage", ...(options.length ? ["respond"] : []), ...(options.some((option) => option.providerId === "card") ? ["respond_dodge"] : []), ...(options.some((option) => option.providerId === "eight_trigrams_dodge") ? ["respond_eight_trigrams"] : [])]; }
+      case "group": { const options = responseDecisionFor(pending, responseContext(actor))?.options ?? []; return ["take_group_damage", ...(options.length ? ["respond"] : []), ...(options.length ? ["respond_group"] : []), ...(options.some((option) => option.providerId === "eight_trigrams_dodge") ? ["respond_eight_trigrams"] : [])]; }
+      case "duel": { const options = responseDecisionFor(pending, responseContext(actor))?.options ?? []; return ["take_duel_damage", ...(options.length ? ["respond", "respond_duel"] : [])]; }
       case "green_dragon": return ["pass_green_dragon", ...(hand.some(isAttackCard) ? ["respond_green_dragon"] : [])];
       case "rock_cleaving": return ["pass_rock_cleaving", ...(rockCleavingCards(actor, hand).length >= 2 ? ["respond_rock_cleaving"] : [])];
       case "frost_sword": return ["pass_frost_sword", ...(frostSwordTargetableCardCount(players.find((player) => player.id === pending.targetId)) > 0 ? ["use_frost_sword"] : [])];
@@ -1476,6 +1476,7 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
   if (room.phase === "discard") return ["discard_cards"];
   return [];
 }
+
 
 async function roomState(code: string, token?: string) {
   const db = env.DB;
@@ -1503,6 +1504,7 @@ async function roomState(code: string, token?: string) {
   const actionPlayerId = room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
   const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
+  const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(pending, me ? responseContext(me) : undefined) : null;
   const currentAction: CurrentAction = {
     version: 1,
     kind: pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
@@ -1512,6 +1514,7 @@ async function roomState(code: string, token?: string) {
     // This list is calculated only for the current private view. It is never
     // a table-wide disclosure of another player's hand or legal responses.
     legalActions: me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [],
+    ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
   };
   return {
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, pending: pending ? { kind: pending.kind } : null, currentAction,
@@ -1556,7 +1559,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
-  const action = String(body.action ?? "");
+  let action = String(body.action ?? "");
   const name = cleanName(body.name);
   const db = env.DB;
 
@@ -1647,6 +1650,13 @@ export async function POST(request: Request) {
     const contextMismatch = submitted && (submitted.actionRevision !== undefined && String(submitted.actionRevision) !== expectedRevision || submitted.meId !== undefined && String(submitted.meId) !== String(expectedContext.meId) || submitted.phase !== undefined && String(submitted.phase) !== String(expectedContext.phase) || submitted.pendingKind !== undefined && String(submitted.pendingKind) !== String(expectedContext.pendingKind) || submitted.actorId !== undefined && String(submitted.actorId) !== String(expectedContext.actorId));
     if (contextMismatch) {
       return json({ error: "That action is stale. The table has advanced to the next actor.", stale: true, room: await roomState(code, token) }, 409);
+    }
+    if (action === "respond") {
+      const decision = responseDecisionFor(pendingForController, me ? responseContext(me) : undefined);
+      const canonical = canonicalResponseAction(pendingForController, decision, body.providerId);
+      if (!canonical) return json({ error: "That response provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (!body.cardId && Array.isArray(body.cardIds) && body.cardIds.length === 1) body.cardId = body.cardIds[0];
+      action = canonical;
     }
   }
   if (action !== "start") await recordAuditAction(room, me ?? null, name, action);

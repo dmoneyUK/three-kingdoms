@@ -52,6 +52,14 @@ function normalizePending(value, kind) {
 
 function normalizeCurrentAction(value) {
   if (!isRecord(value) || value.version !== 1 || typeof value.kind !== "string" || !PENDING_KINDS.has(value.kind) && value.kind !== "turn" && value.kind !== "none") return null;
+  const requirement = value.requirement === "attack" || value.requirement === "dodge" || value.requirement === "negate" ? value.requirement : undefined;
+  const options = Array.isArray(value.options) ? value.options.filter(isRecord).flatMap((option) => {
+    if (typeof option.providerId !== "string" || typeof option.label !== "string" || option.satisfies !== requirement) return [];
+    const selection = option.selection === null ? null : isRecord(option.selection) && option.selection.type === "cards" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
+      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string") }
+      : null;
+    return [{ providerId: option.providerId, satisfies: option.satisfies, label: option.label, selection }];
+  }) : [];
   return {
     version: 1,
     kind: value.kind,
@@ -59,6 +67,7 @@ function normalizeCurrentAction(value) {
     deadline: typeof value.deadline === "number" ? value.deadline : 0,
     reason: typeof value.reason === "string" ? value.reason : "Waiting for the next legal action",
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
+    ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
   };
 }
 
