@@ -35,3 +35,19 @@ test("unknown response state never renders a generic damage action", () => {
   assert.doesNotMatch(html, /Skip · take 1 damage/);
   assert.match(html, /Waiting for the latest response state/);
 });
+
+test("a normalized Negation response retains its legal controls", () => {
+  const room = normalizeRoomData({
+    code: "SAFE3", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [{ id: "p1", name: "ME", seat: 0, hero: "zhang-fei", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" }],
+    myHand: [card("negation", "Negation")], turnSeat: 0, phase: "response", deckCount: 0, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play Negation or pass", isMyAction: true,
+    pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null,
+    pendingNegation: { kind: "negation", sourceId: "p1", actorId: "p1", effectTargetId: "p1", cardName: "Something Out of Nothing", responseTarget: "Something Out of Nothing's effect on ME", negated: false, deadline: 0 },
+    pendingHarvest: null, pendingTargetCard: null, pendingDying: null,
+  });
+  assert.ok(room?.pendingNegation, "the normalizer must keep a valid public Negation DTO");
+  const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(html, /Play Negation/);
+  assert.match(html, /Skip response/);
+  assert.doesNotMatch(html, /Waiting for the latest response state/);
+});
