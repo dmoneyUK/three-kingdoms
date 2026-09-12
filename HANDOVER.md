@@ -30,7 +30,7 @@ The room projection now exposes that discovery as a viewer-private `currentActio
 
 ### 2026-09-12 update — atomic response presentation gate
 
-`app/page.tsx` now treats one response as one interaction. While a card/effect presentation is active, every provider, decline action, card/cost selector and seat countdown is held behind `responseDecisionReady`; they become available together after the presentation settles. The acting client then re-arms the normal 30-second human clock through `start_response_timer`; bot pending responses retain their immediate 10-second deadline. This removes the mismatch where Eight Trigrams was blocked while Dodge or Take Damage remained usable. API and rendered-source tests cover the timer re-arm and shared gate. Next: make semantic `ResponsePending` canonical, then reduce legacy compatibility actions.
+`app/page.tsx` now treats one response as one interaction. While a card/effect presentation is active, every provider, decline action, card/cost selector and seat countdown is held behind `responseDecisionReady`; they become available together after the presentation settles. Human pending responses are persisted unarmed and the acting client may arm exactly one 30-second deadline through `start_response_timer`; duplicate requests and refreshes preserve that original deadline. Bot pending responses retain their immediate 10-second deadline. This removes the mismatch where Eight Trigrams was blocked while Dodge or Take Damage remained usable. API and rendered-source tests cover the shared gate and idempotent timer. Next: render server-projected response options generically, then make semantic `ResponsePending` canonical and reduce legacy compatibility actions.
 
 ### 2026-09-12 update — semantic provider execution
 

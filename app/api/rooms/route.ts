@@ -58,7 +58,12 @@ const HARVEST_CHOICE_HOLD_MS = 1400;
 const HUMAN_RESPONSE_TIMEOUT_MS = 30_000;
 const BOT_RESPONSE_TIMEOUT_MS = 10_000;
 const ROOM_IDLE_TIMEOUT_MS = 5 * 60_000;
-const nextResponseDeadline = (actor?: PlayerRow | null) => Date.now() + (isBotPlayer(actor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS);
+// Human decisions do not begin their clock until the client has finished the
+// public presentation and explicitly arms it. Bot decisions have no such UI
+// barrier, so their short clock starts as soon as they become pending.
+const nextResponseDeadline = (actor?: PlayerRow | null, startHumanClock = false) => isBotPlayer(actor) || startHumanClock
+  ? Date.now() + (isBotPlayer(actor) ? BOT_RESPONSE_TIMEOUT_MS : HUMAN_RESPONSE_TIMEOUT_MS)
+  : 0;
 const QUICK_TEST_EQUIPMENT_KINDS: CardKind[] = ["FrostSword", "NioShield", "EightTrigrams"];
 const GAMEPLAY_ACTION_SET = new Set<string>(GAMEPLAY_ACTIONS);
 
@@ -1746,11 +1751,10 @@ export async function POST(request: Request) {
     const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     if (!liveRoom || liveRoom.phase !== "response" || !pending || !["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation"].includes(pending.kind) || pending.actorId !== me.id) return json({ error: "You are not the acting player for this response timer." }, 409);
     const responsePending = pending as AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | NegationPending;
-    // The client calls this only after its public presentation barrier opens.
-    // Re-arm a human's clock at that point so the full response interval is
-    // visible and usable; bot deadlines remain server-created and unchanged.
-    if ((responsePending.deadline ?? 0) <= 0 || !isBotPlayer(me)) {
-      const timedPending = { ...responsePending, deadline: nextResponseDeadline(me) };
+    // Idempotent: a refresh or duplicate request must never extend a human
+    // decision. Only an unarmed pending response can receive its clock.
+    if ((responsePending.deadline ?? 0) <= 0) {
+      const timedPending = { ...responsePending, deadline: nextResponseDeadline(me, true) };
       await db.prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(JSON.stringify(timedPending), room.id, liveRoom.pending_json).run();
     }
     return json({ room: await roomState(code, token) });

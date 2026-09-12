@@ -144,9 +144,12 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   setHand(hostPlayer.id, [card("Attack", "dodge")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "answer")], 4); setTurn(game.code, hostPlayer.seat);
   const attacked = await request("play_card", { code: game.code, token: host.token, cardId: "attack-dodge", targetId: alicePlayer.id });
   assert.equal(attacked.status, 200); assert.equal(attacked.data.room.phase, "response"); assert.equal(attacked.data.room.actionPlayerId, alicePlayer.id);
+  assert.equal(attacked.data.room.pendingAttack.deadline, 0, "a human response stays unarmed until its presentation is ready");
   assert.equal((await request("start_response_timer", { code: game.code, token: bob.token })).status, 409, "only the acting player can start their response timer");
   const timedAttack = await request("start_response_timer", { code: game.code, token: alice.token });
   assert.ok(timedAttack.data.room.pendingAttack.deadline - Date.now() > 25_000, "the acting player receives a 30-second visible response deadline");
+  const repeatedTimer = await request("start_response_timer", { code: game.code, token: alice.token });
+  assert.equal(repeatedTimer.data.room.pendingAttack.deadline, timedAttack.data.room.pendingAttack.deadline, "repeated timer starts must not extend a human response deadline");
   const publicAttackTimer = await state(game.code, host.token);
   assert.equal(publicAttackTimer.data.pendingAttack.deadline, timedAttack.data.room.pendingAttack.deadline, "the table can show the same countdown beside the acting player");
   assert.equal((await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-answer" })).status, 409);
@@ -187,7 +190,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(challenged.status, 200); assert.equal(challenged.data.room.phase, "response"); assert.equal(challenged.data.room.actionPlayerId, alicePlayer.id); assert.equal(challenged.data.room.pendingDuel.opponentId, hostPlayer.id);
   assert.equal((await request("respond_duel", { code: game.code, token: bob.token, cardId: "attack-alice-answer" })).status, 409);
   const aliceAnswers = await request("respond_duel", { code: game.code, token: alice.token, cardId: "attack-alice-answer" });
-  assert.equal(aliceAnswers.status, 200); assert.equal(aliceAnswers.data.room.actionPlayerId, hostPlayer.id); assert.ok((aliceAnswers.data.room.pendingDuel.deadline ?? 0) - Date.now() > 29_000, "a new Duel responder receives a fresh 30-second timer");
+  assert.equal(aliceAnswers.status, 200); assert.equal(aliceAnswers.data.room.actionPlayerId, hostPlayer.id); assert.equal(aliceAnswers.data.room.pendingDuel.deadline, 0, "a new human Duel responder stays unarmed until the response is visible");
   const hostAnswers = await request("respond_duel", { code: game.code, token: host.token, cardId: "attack-host-answer" });
   assert.equal(hostAnswers.status, 200); assert.equal(hostAnswers.data.room.actionPlayerId, alicePlayer.id);
   const losesDuel = await request("take_duel_damage", { code: game.code, token: alice.token });
@@ -479,7 +482,7 @@ test("AOE counter rounds include their own Negation player last and resume the a
   const act = (action, extra = {}) => request(action, { code: room.code, token, ...extra });
   let result = await act("play_card", { cardId: "barbarianinvasion-self-root" });
   assert.equal(result.data.room.actionPlayerId, me.id);
-  assert.ok(result.data.room.responseCountdownVisibleAt > Date.now() + 4000);
+  assert.equal(result.data.room.responseCountdownVisibleAt, 0, "a human Negation window has no countdown before its presentation is ready");
   await act("pass_negation");
   result = await act("respond_negation", { cardId: "negation-self-1" });
   assert.equal(result.data.room.actionPlayerId, p1.id);
@@ -529,7 +532,7 @@ test("Negation opportunities start at the target, include the user, and reset on
   }
   assert.equal(result.data.room.pendingNegation, null);
   assert.equal(result.data.room.pendingDuel.actorId, players[2].id);
-  assert.ok(result.data.room.pendingDuel.deadline - Date.now() > 29_000);
+  assert.equal(result.data.room.pendingDuel.deadline, 0, "the deferred human Duel response is unarmed until displayed");
   assert.equal((await act(2, "respond_negation", { cardId: "negation-2-two" })).status, 409, "closed window cannot be reopened");
   result = await act(2, "respond_duel", { cardId: "attack-2-reply" });
   assert.equal(result.status, 200); assert.equal(result.data.room.pendingDuel.actorId, players[0].id);
@@ -550,11 +553,9 @@ test("normal responses follow Negation passes and retain both Attack and Spear c
     assert.equal((await act(1, action, { cardId: kind === "RainingArrows" ? "dodge-target-reply" : "attack-target-reply" })).status, 409);
     const order = [0, 1];
     for (const seat of order) result = await act(seat, "pass_negation");
-    // The nested timer was created before the Negation chain; it must refresh.
-    sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.effect.pending.deadline',1) WHERE code=${quote(game.code)}`);
     const response = kind === "Duel" ? result.data.room.pendingDuel : result.data.room.pendingGroup;
     assert.equal(result.data.room.pendingNegation, null); assert.equal(response.actorId, target.id);
-    assert.ok(response.deadline - Date.now() > 29_000);
+    assert.equal(response.deadline, 0, "a deferred human response waits for its own visible-decision timer");
     const extra = kind === "RainingArrows" ? { cardId: "dodge-target-reply" } : { cardIds: ["dodge-target-reply", "peach-spear-cost"] };
     result = await act(1, action, extra); assert.equal(result.status, 200, "Spear is usable even when a normal Attack is also held");
     assert.equal(result.data.room.players.find((p) => p.id === target.id).hp, 4);
@@ -757,15 +758,14 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
 
   setHand(hostPlayer.id, [card("Attack", "axe-skip"), card("Peach", "axe-skip-one")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "axe-skip")], 4); setTurn(game.code, hostPlayer.seat);
   const dodgePrompt = await request("play_card", { code: game.code, token: host.token, cardId: "attack-axe-skip", targetId: alicePlayer.id });
-  assert.equal(dodgePrompt.status, 200); assert.ok(dodgePrompt.data.room.pendingAttack.deadline - Date.now() > 29_000, "Dodge receives its own fresh 30-second window");
-  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',${Date.now() + 500}) WHERE code=${quote(game.code)}`);
+  assert.equal(dodgePrompt.status, 200); assert.equal(dodgePrompt.data.room.pendingAttack.deadline, 0, "Dodge waits for the visible-decision timer");
   const skippedPrompt = await request("respond_dodge", { code: game.code, token: alice.token, cardId: "dodge-axe-skip" });
   assert.equal(skippedPrompt.data.room.pendingRockCleaving.actorId, hostPlayer.id); assert.equal(skippedPrompt.data.room.actionPlayerId, hostPlayer.id);
-  assert.ok(skippedPrompt.data.room.pendingRockCleaving.deadline - Date.now() > 29_000, "Rock Cleaving Axe receives a new 30-second window after Dodge");
+  assert.equal(skippedPrompt.data.room.pendingRockCleaving.deadline, 0, "Rock Cleaving Axe waits for the visible-decision timer after Dodge");
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: bob.token, cardIds: ["peach-axe-skip-one", "rockcleavingaxe-equip"] })).status, 409, "only the attacker owns the Axe decision");
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: host.token, cardIds: ["peach-axe-skip-one", "peach-axe-skip-one"] })).status, 409, "the same card cannot pay both costs");
-  const priorDeadline = skippedPrompt.data.room.pendingRockCleaving.deadline;
-  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(timed.data.room.pendingRockCleaving.deadline >= priorDeadline, "the visible Axe prompt re-arms its human response deadline");
+  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(timed.data.room.pendingRockCleaving.deadline - Date.now() > 25_000, "the visible Axe prompt arms its human response deadline");
+  const repeatedAxeTimer = await request("start_response_timer", { code: game.code, token: host.token }); assert.equal(repeatedAxeTimer.data.room.pendingRockCleaving.deadline, timed.data.room.pendingRockCleaving.deadline, "repeated Axe timer starts preserve the original deadline");
   const skipped = await request("pass_rock_cleaving", { code: game.code, token: host.token });
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "play-struck"); assert.equal(skipped.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
@@ -798,7 +798,7 @@ test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dod
 
   setHand(hostPlayer.id, [card("Attack", "last")], 4, 4); setHand(alicePlayer.id, [card("Dodge", "alice")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [card("Dodge", "carol")], 4, 4); setTurn(game.code, hostPlayer.seat);
   const launched = await request("play_card", { code: game.code, token: host.token, cardId: "attack-last", targetIds: [alicePlayer.id, bobPlayer.id, carolPlayer.id] });
-  assert.equal(launched.status, 200); assert.equal(launched.data.room.pendingGroup.cardKind, "SkyPiercingHalberdAttack"); assert.equal(launched.data.room.pendingGroup.actorId, alicePlayer.id); assert.equal(launched.data.room.pendingGroup.deadline - Date.now() > 29_000, true);
+  assert.equal(launched.status, 200); assert.equal(launched.data.room.pendingGroup.cardKind, "SkyPiercingHalberdAttack"); assert.equal(launched.data.room.pendingGroup.actorId, alicePlayer.id); assert.equal(launched.data.room.pendingGroup.deadline, 0, "the human Halberd response waits for the visible-decision timer");
   assert.deepEqual(discardIds(game.code), [], "the final-hand Attack remains held until every Halberd target has resolved");
   const aliceDodge = await request("respond_group", { code: game.code, token: alice.token, cardId: "dodge-alice" });
   assert.equal(aliceDodge.status, 200); assert.equal(aliceDodge.data.room.pendingGroup.actorId, carolPlayer.id, "the target without Dodge takes damage immediately and the next eligible seat becomes active");
@@ -1093,6 +1093,7 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
     assert.equal(aliceNegates.status, 200); assert.equal(aliceNegates.data.room.actionPlayerId, hostPlayer.id, "the source may immediately counter or skip after a target Negates");
     assert.deepEqual(discardIds(game.code), [], `the ${kind} and first Negation both remain staged`);
     const counterTimer = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(counterTimer.data.room.pendingNegation.deadline > Date.now());
+    const repeatedCounterTimer = await request("start_response_timer", { code: game.code, token: host.token }); assert.equal(repeatedCounterTimer.data.room.pendingNegation.deadline, counterTimer.data.room.pendingNegation.deadline, "counter-Negation timer remains idempotent");
     const protectedAlice = await request("pass_negation", { code: game.code, token: host.token });
     assert.equal(protectedAlice.status, 200); assert.equal(protectedAlice.data.room.pendingNegation.effectTargetId, bobPlayer.id, `${kind} opens Bob's separate Negation opportunity`);
     const bobWindowClosed = await request("pass_negation", { code: game.code, token: host.token });
