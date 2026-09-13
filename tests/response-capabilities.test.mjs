@@ -5,6 +5,7 @@ import { resolveResponseDecision, responseDecisionFor } from "../game/response-d
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
 import { continueTriggerEvent } from "../game/decisions/triggers.ts";
+import { applyResponseSatisfied, applyResponseDeclined } from "../game/decisions/responses.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
@@ -133,4 +134,17 @@ test("a non-terminal trigger outcome reopens the event without naming its provid
   };
   assert.deepEqual(continueTriggerEvent(pending, { status: "resolved", effectId: "test_reaction", outcome: { kind: "continue_event" } }, 42)?.resolvedEffectIds, ["test_reaction"]);
   assert.equal(continueTriggerEvent(pending, { status: "resolved", effectId: "terminal", outcome: { kind: "force_damage", amount: 1, consumeCardIds: ["a", "b"] } }), null);
+});
+
+test("canonical response outcomes preserve semantic continuation without provider dispatch", () => {
+  const pending = {
+    kind: "response",
+    actorId: "target",
+    requirement: { kind: "dodge", sourceId: "source", targetId: "target" },
+    reason: "Attack response",
+    continuation: { kind: "attack", sourceId: "source", targetId: "target", resumePhase: "play" },
+  };
+  const execution = { status: "satisfied", satisfies: "dodge", consumeCardIds: ["dodge-1"] };
+  assert.deepEqual(applyResponseSatisfied(pending, execution), { continuation: pending.continuation, consumeCardIds: ["dodge-1"] });
+  assert.deepEqual(applyResponseDeclined(pending), { continuation: pending.continuation });
 });

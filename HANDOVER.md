@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Current baseline
 
-As of 2026-09-13 the working Round 1 migration is based on `727008f` plus local trigger-lifecycle changes. Trigger outcomes are strongly discriminated, target-card selection keys are opaque, canonical damage-about-to-apply reactions use the event-shaped trigger protocol, and selected provider labels are preserved as generic presentation metadata. Build and lint pass. The full local suite still exposes bot-trigger regressions that must be fixed before this round is committed and pushed. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
+As of 2026-09-13 the working baseline is `2e31cd4` plus the current canonical Attack/Dodge response migration. Trigger outcomes are strongly discriminated, target-card selection keys are opaque, canonical damage-about-to-apply reactions use the event-shaped trigger protocol, bots use the same trigger registry, and selected provider labels are preserved as generic presentation metadata. Attack responses submitted through `respond` now stay on the semantic path; the bounded legacy adapter remains only for Duel, Group, and Negation while those continuations migrate. Build, lint, and diff checks pass. Do not add new cards or hero abilities until canonical response continuation and generic secondary Judgement work are complete.
 
 Repository and service:
 
@@ -136,9 +136,10 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — architecture first
 
-1. **Finish Round 1 trigger bots and generic continuation resumption.** Keep all optional reactions on the same live provider engine and resume each domain event correctly when the final provider declines. The current working bot path still strands an attack-dodged trigger and must be corrected before commit.
-2. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
-3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword only after the preceding architecture work is green.
+1. **Complete canonical response continuation.** Migrate Duel, Group, and Negation satisfied/declined outcomes onto the same semantic response engine used by Attack/Dodge, without translating canonical commands back into legacy verbs.
+2. **Generalize secondary resolution.** Route provider-requested Judgement through one continuation-agnostic semantic outcome path, then migrate the remaining trigger continuation and direct event-ID barriers.
+3. **Retire compatibility response/trigger actions incrementally.** Keep old verbs and pending shapes only at the saved-client/state boundary until architecture-level tests prove they are no longer needed by new gameplay.
+4. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword only after the three architecture rounds are green.
 
 ## Standard card roadmap status
 
