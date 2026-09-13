@@ -3,7 +3,7 @@ import test from "node:test";
 import { getResponseOptions, registerResponseProvider, responseOptions, selectResponse } from "../game/responses.ts";
 import { resolveResponseDecision, responseDecisionFor } from "../game/response-decision.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
-import { getTriggeredEffects } from "../game/capabilities/triggers.ts";
+import { getTriggeredEffects, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
@@ -83,5 +83,7 @@ test("Zhen Ji's black-card Dodge is a provider with a semantic card cost", () =>
 test("passive and triggered equipment capabilities are discovered outside the route", () => {
   assert.deepEqual(resolvePassiveAttackModifiers({ targetEquipment: [card("NioShield", "shield")], attack: { ...card("Attack", "black-attack"), suit: "♠" } }), { prevented: true, reason: "Nio Shield" });
   assert.equal(resolvePassiveAttackModifiers({ targetEquipment: [card("NioShield", "shield")], attack: { ...card("Attack", "red-attack"), suit: "♥" } }), null);
-  assert.deepEqual(getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("GreenDragonBlade", "dragon")] }), [{ effectId: "green_dragon_blade_attack_dodged", label: "Use Green Dragon Blade" }]);
+  const sourceHand = [card("Attack", "follow-up")];
+  assert.deepEqual(getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("GreenDragonBlade", "dragon")], sourceHand }), [{ effectId: "green_dragon_blade_attack_dodged", label: "Use Green Dragon Blade", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["follow-up"] } }]);
+  assert.deepEqual(resolveTriggeredEffect("green_dragon_blade_attack_dodged", { event: "attack_dodged", sourceEquipment: [card("GreenDragonBlade", "dragon")], sourceHand }, { cardId: "follow-up" }), { status: "resolved", effectId: "green_dragon_blade_attack_dodged", consumeCardIds: ["follow-up"] });
 });

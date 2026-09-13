@@ -249,7 +249,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(officialReference, /`RationsDepleted` \| Rations Depleted \| 199 \| Endless Legends/);
   assert.match(schema, /equipmentJson: text\("equipment_json"\)/);
   assert.match(roomApi, /hasZhugeCrossbow/);
-  assert.match(roomApi, /hasGreenDragonBlade/);
+  assert.match(roomApi, /resolveTriggeredEffect/);
+  assert.match(roomApi, /triggerId/);
   assert.match(roomApi, /hasSerpentSpear/);
   assert.match(roomApi, /hasRockCleavingAxe/);
   assert.match(roomApi, /hasSkyPiercingHalberd/);

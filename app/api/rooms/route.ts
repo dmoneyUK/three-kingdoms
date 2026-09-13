@@ -6,7 +6,7 @@ import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrde
 import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, responseOptions, selectResponse, type JudgementResolution, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
-import { getTriggeredEffects } from "../../../game/capabilities/triggers";
+import { getTriggeredEffects, resolveTriggeredEffect } from "../../../game/capabilities/triggers";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
 import { asLegacyResponsePending, asResponsePending, serializePending, type AttackDeclaration, type AttackOrigin, type AttackPending, type DeferredStratagem, type DuelPending, type DyingPending, type FrostSwordPending, type GreenDragonPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type RockCleavingPending, type TargetCardPending } from "../../../game/pending";
 
@@ -127,7 +127,6 @@ function attackDistance(players: PlayerRow[], sourceId: string, targetId: string
   return Math.max(1, distanceBetween(players, sourceId, targetId) + (hasDefensiveHorse(target) ? 1 : 0) - (hasOffensiveHorse(source) ? 1 : 0));
 }
 function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "ZhugeCrossbow"; }
-function hasGreenDragonBlade(player?: PlayerRow | null) { return Boolean(player && getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(player) }).some((option) => option.effectId === "green_dragon_blade_attack_dodged")); }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasRockCleavingAxe(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "RockCleavingAxe"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
@@ -809,10 +808,10 @@ async function resolveJudgementResponse(room: RoomRow, pending: Pending, actor: 
 }
 
 async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, discard: Card[], log: string[], resumePhase: string, sequenceStartCardId: string, writes: D1PreparedStatement[] = []) {
-  const followUpAttack = parse<Card[]>(source?.hand_json ?? null, []).find(isAttackCard);
-  if (source?.alive && target?.alive && hasGreenDragonBlade(source) && followUpAttack) {
-    const pending: GreenDragonPending = { kind: "green_dragon", sourceId: source.id, targetId: target.id, actorId: source.id, resumePhase, sequenceStartCardId, reason: `Green Dragon Blade: play another Attack on ${target.name}, or skip`, deadline: nextResponseDeadline(source) };
-    log = addLog(log, `${source.name}'s Attack is blocked. Green Dragon Blade may continue against ${target.name}.`);
+  const greenDragon = source ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []) }).find((option) => option.effectId === "green_dragon_blade_attack_dodged") : null;
+  if (source?.alive && target?.alive && greenDragon) {
+    const pending: GreenDragonPending = { kind: "green_dragon", triggerId: greenDragon.effectId, sourceId: source.id, targetId: target.id, actorId: source.id, resumePhase, sequenceStartCardId, reason: `${greenDragon.label}: play another Attack on ${target.name}, or skip`, deadline: nextResponseDeadline(source) };
+    log = addLog(log, `${source.name}'s Attack is blocked. ${greenDragon.label} may continue against ${target.name}.`);
     writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
     await db().batch(writes);
     await advanceGreenDragon(room.id);
@@ -964,11 +963,15 @@ async function advanceGreenDragon(roomId: string) {
   if (!room || room.phase !== "response" || pending?.kind !== "green_dragon") return;
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const players = rows.results ?? [];
   const source = players.find((player) => player.id === pending.sourceId && player.alive); const target = players.find((player) => player.id === pending.targetId && player.alive);
-  const hand = parse<Card[]>(source?.hand_json ?? null, []); const attack = hand.find(isAttackCard);
-  if (source && target && attack && hasGreenDragonBlade(source) && !isBotPlayer(source)) return;
+  const hand = parse<Card[]>(source?.hand_json ?? null, []);
+  const option = source ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: hand }).find((candidate) => candidate.effectId === (pending.triggerId ?? "green_dragon_blade_attack_dodged")) : null;
+  const attackId = option?.selection?.eligibleCardIds[0];
+  const execution = source && attackId ? resolveTriggeredEffect(pending.triggerId ?? "green_dragon_blade_attack_dodged", { event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: hand }, { cardId: attackId }) : null;
+  const attack = execution?.consumeCardIds?.length === 1 ? hand.find((card) => card.id === execution.consumeCardIds?.[0]) ?? null : null;
+  if (source && target && attack && !isBotPlayer(source)) return;
   const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
   if ((claim.meta.changes ?? 0) <= 0) return;
-  if (!source || !target || !attack || !hasGreenDragonBlade(source)) {
+  if (!source || !target || !attack || !execution) {
     const log = addLog(parse<string[]>(room.log_json, []), `${source?.name ?? "The attacker"} does not continue with Green Dragon Blade.`);
     await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), roomId).run();
     if (source) await continueAfterDying(roomId, source.id);
@@ -1966,8 +1969,13 @@ export async function POST(request: Request) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "green_dragon" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Green Dragon Blade response." }, 409);
-    const hand = parse<Card[]>(me.hand_json, []); const attack = action === "respond_green_dragon" ? hand.find((card) => card.id === String(body.cardId ?? "") && isAttackCard(card)) : null;
-    if (action === "respond_green_dragon" && !attack) return json({ error: "Select an Attack card from your hand first." }, 409);
+    const hand = parse<Card[]>(me.hand_json, []);
+    const triggerId = pending.triggerId ?? "green_dragon_blade_attack_dodged";
+    const execution = action === "respond_green_dragon"
+      ? resolveTriggeredEffect(triggerId, { event: "attack_dodged", sourceEquipment: equipmentCards(me), sourceHand: hand }, { cardId: body.cardId })
+      : null;
+    const attack = execution?.consumeCardIds?.length === 1 ? hand.find((card) => card.id === execution.consumeCardIds?.[0]) ?? null : null;
+    if (action === "respond_green_dragon" && (!execution || !attack)) return json({ error: "Select a valid triggered Attack first." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Green Dragon Blade decision has already moved on." }, 409);
     if (!attack) {
@@ -1977,7 +1985,7 @@ export async function POST(request: Request) {
     } else {
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
       const target = players.find((player) => player.id === pending.targetId && player.alive);
-      if (!target || !hasGreenDragonBlade(me)) {
+      if (!target || !execution) {
         const log = addLog(parse<string[]>(liveRoom.log_json, []), "The Green Dragon Blade follow-up no longer has a valid target or equipped weapon.");
         await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id).run();
       } else await resolveGreenDragonAttack(liveRoom, pending, me, target, players, attack, hand, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []));

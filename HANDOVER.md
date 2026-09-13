@@ -1,5 +1,11 @@
 # Three Kingdoms project handover
 
+### 2026-09-13 update — executable Green Dragon Blade trigger
+
+Green Dragon Blade is now the first provider-owned triggered effect. `game/capabilities/triggers.ts` defines a trigger option, selection and semantic execution contract; the Green Dragon module declares its `attack_dodged` availability and validates the chosen follow-up Attack from the source's live hand. `finishDodgedAttack`, bot advancement and the compatibility `respond_green_dragon` action now query/resolve that trigger rather than checking a weapon directly. `GreenDragonPending.triggerId` preserves the provider identity while the existing pending UI and protocol action remain a bounded compatibility layer.
+
+Next: migrate Rock Cleaving Axe (`attack_dodged`) and Frost Sword (`damage_about_to_apply`) one at a time onto the same executable-trigger contract. Do not redesign `ResponsePending` or response providers during that work; after triggers, replace the global presentation-idle gate with decision-specific `readyAfterEventId`.
+
 ### 2026-09-13 update — generic provider-owned Judgement resolution
 
 `ResponseExecution` now distinguishes an immediately `satisfied` requirement from `requires_resolution`. Eight Trigrams is the first provider using that secondary path: it requests a generic Judgement effect and owns the red-card success predicate and presentation text. The route's generic Judgement executor draws/reveals/discards the card and resumes the stored Attack or AOE continuation according to the result; it no longer maps `judgement` to Eight Trigrams. The legacy `respond_eight_trigrams` action remains only as a compatibility entry point and reuses the same provider resolution.
