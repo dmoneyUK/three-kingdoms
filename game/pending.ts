@@ -3,7 +3,7 @@ import type { ActionRequirement } from "./responses";
 import type { TriggerEvent } from "./capabilities/triggers";
 
 /** The one persisted decision in a room, independent of HTTP and D1. */
-export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel";
+export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered";
 export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; sequenceStartCardId: string; resumePhase: string };
 export type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actorId: string; resumePhase?: string; sequenceStartCardId?: string; reason: string; deadline?: number; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; readyAfterEventId?: string };
 export type GreenDragonPending = { kind: "green_dragon"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };

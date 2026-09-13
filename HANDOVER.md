@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Current baseline
 
-As of 2026-09-13 the committed architecture baseline is `aa0d954` (`Generalize attack-dodged trigger outcomes`). The next local migration makes trigger outcomes strongly discriminated and separates hidden target-card selection keys from physical card IDs. Build, lint and focused capability/safety tests pass; run the full local suite again before committing. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
+As of 2026-09-13 the committed architecture baseline is `721e66c` (`Strengthen semantic trigger outcomes`). Trigger outcomes are strongly discriminated, target-card selection keys are opaque, and canonical damage-about-to-apply reactions now use the event-shaped trigger protocol. Build and lint pass; the architecture and Frost regressions pass. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
 
 Repository and service:
 
@@ -120,7 +120,7 @@ Events already present on initial load/reload are treated as presented; optimist
 
 `TriggerPending` is now the persisted wrapper for weapon reactions. It records the semantic event (`attack_dodged` or `damage_about_to_apply`), the acting player, deadline/reason and a bounded continuation. `roomState()` projects the current actor's private trigger option(s), and the client submits `trigger` or `decline_trigger`. The route recomputes the provider from live equipment/hand/target state and rejects a mismatched or stale provider.
 
-Green Dragon Blade, Rock Cleaving Axe and Frost Sword are covered end-to-end through this protocol. Their older pending shapes and action names remain compatibility adapters while saved rooms, bot advancement and the existing continuation resolvers are migrated incrementally. Do not add new capabilities to those legacy branches.
+Green Dragon Blade, Rock Cleaving Axe and Frost Sword are covered end-to-end through this protocol. Frost now uses the generic `damage_about_to_apply` continuation and semantic `prevent_damage` outcome; older pending shapes and action names remain compatibility adapters for saved rooms and bots. Do not add new capabilities to those legacy branches.
 
 ### B. Decision presentation barriers are now transition-owned
 
@@ -136,7 +136,7 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — architecture first
 
-1. **Migrate damage-about-to-apply continuation.** Move Frost Sword to the same event-shaped semantic outcome handler after generic target-card selection is projected through `currentAction`; do not regress its target-card UI while doing so.
+1. **Migrate trigger bots and generic continuation resumption.** Keep all optional reactions on the same live provider engine and resume each domain event correctly when the final provider declines.
 2. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
 3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword only after the preceding architecture work is green.
 
