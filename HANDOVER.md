@@ -97,6 +97,8 @@ Trigger discovery is now event-centric and returns **0..N** legal providers. `Tr
 
 Providers now return semantic trigger outcomes (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) rather than requiring orchestration to branch on their IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect and reopens the same event with the remaining live options. The next migration step is to make the terminal outcome continuations equally event-shaped, replacing the remaining legacy weapon-named continuation handlers.
 
+Legacy request-name translation now lives exclusively in `game/compat/legacy-actions.ts`. It translates old response/weapon verbs at the API boundary; canonical engine code should use the semantic response/trigger protocol only. Keep this adapter narrowly compatibility-only and do not add new gameplay logic to it.
+
 ### 5. Decision-specific presentation barrier
 
 Presentation uses `resolutionId` separately from `actionRevision`. `currentAction.presentation` now contains:

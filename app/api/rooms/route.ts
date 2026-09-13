@@ -8,6 +8,7 @@ import { responseDecisionFor, resolveResponseDecision } from "../../../game/resp
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { getTriggeredEffects, resolveTriggeredEffect } from "../../../game/capabilities/triggers";
 import { continueTriggerEvent } from "../../../game/decisions/triggers";
+import { legacyResponseActionFor, normalizeLegacyTriggerAction } from "../../../game/compat/legacy-actions";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
 import { asLegacyResponsePending, asLegacyTriggerPending, asResponsePending, asTriggerPending, serializePending, type AttackDeclaration, type AttackOrigin, type AttackPending, type DeferredStratagem, type DuelPending, type DyingPending, type FrostSwordPending, type GreenDragonPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type RockCleavingPending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
@@ -140,15 +141,6 @@ function canRespondWithDodge(player: PlayerRow) {
   return hasDodgeResponse(responseContext(player));
 }
 function responseContext(player: PlayerRow) { return { hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), hero: player.hero }; }
-function compatibilityResponseAction(pending: Pending | null, execution: ResponseExecution): GameplayAction | null {
-  const continuation = asLegacyResponsePending(pending) as Pending | null;
-  if (!continuation || execution.status !== "satisfied") return null;
-  if (continuation.kind === "negation" && execution.satisfies === "negate") return "respond_negation";
-  if (continuation.kind === "attack" && execution.satisfies === "dodge") return "respond_dodge";
-  if (continuation.kind === "group" && (execution.satisfies === "attack" || execution.satisfies === "dodge")) return "respond_group";
-  if (continuation.kind === "duel" && execution.satisfies === "attack") return "respond_duel";
-  return null;
-}
 function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1; }
 function hasOffensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).offensiveHorse); }
 function hasDefensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).defensiveHorse); }
@@ -1675,14 +1667,7 @@ export async function POST(request: Request) {
   let triggerExecution: ReturnType<typeof resolveTriggeredEffect> = null;
   // Saved clients may still submit these names. Translate once at the HTTP
   // boundary; the domain path below is canonical trigger/decline_trigger.
-  const legacyTrigger = {
-    respond_green_dragon: { action: "trigger", providerId: "green_dragon_blade_attack_dodged" },
-    pass_green_dragon: { action: "decline_trigger" },
-    respond_rock_cleaving: { action: "trigger", providerId: "rock_cleaving_axe_attack_dodged" },
-    pass_rock_cleaving: { action: "decline_trigger" },
-    use_frost_sword: { action: "trigger", providerId: "frost_sword_damage_about_to_apply" },
-    pass_frost_sword: { action: "decline_trigger" },
-  }[action];
+  const legacyTrigger = normalizeLegacyTriggerAction(action);
   if (legacyTrigger) {
     action = legacyTrigger.action;
     if (legacyTrigger.providerId) body.providerId = legacyTrigger.providerId;
@@ -1797,7 +1782,7 @@ export async function POST(request: Request) {
       if (responseExecution?.status === "requires_resolution") {
         action = "resolve_response_secondary";
       }
-      const compatibleAction = responseExecution ? compatibilityResponseAction(pendingForController, responseExecution) : null;
+      const compatibleAction = responseExecution ? legacyResponseActionFor(pendingForController, responseExecution) : null;
       if (!responseExecution || (responseExecution.status === "satisfied" && !compatibleAction)) return json({ error: "That response provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       if (responseExecution.consumeCardIds?.length) {
         body.cardIds = responseExecution.consumeCardIds;
