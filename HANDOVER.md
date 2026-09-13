@@ -2,6 +2,21 @@
 
 Use this file to continue development in a new chat. Start from the latest `main` branch, then read `AGENTS.md`, `README.md`, and `ROADMAP.md` before changing code.
 
+## Persistent active milestone contract
+
+The semantic execution architecture is **not complete yet**. Do not start Blue Steel Sword, another card, or a new hero ability until this checklist is fully implemented and tested. Do not split it into micro-commits that stop after adding helpers or continuation-specific branches.
+
+Required completion criteria:
+
+1. Negation scheduling discovers all legal `negate` providers, preserves seat order, advances declines correctly, toggles parity on successful Negation, and opens the correct counter-window.
+2. Judgement is resolved once into a semantic satisfied/unsatisfied outcome and then enters the shared canonical response-continuation path for Attack, Group, Duel, and Negation.
+3. Secondary-response prerequisites are validated before an atomic room claim, or every claimed path deterministically restores/continues state without a resolving no-op.
+4. Humans and bots use the same semantic trigger continuation executor for `attack_dodged_event` and `damage_about_to_apply_event`.
+5. Exhausted damage reactions apply exactly one original damage and enter Dying/rescue when necessary; exhausted Attack reactions finish without adding damage.
+6. End-to-end regressions prove Negation order/parity, Judgement success/failure, Duel bot continuation, damage/Attack trigger exhaustion, human/bot parity, stale actions, and no room left in `resolving`.
+
+Only after all six criteria are green may the final compatibility isolation, canonical-client, direct-event-ID, and synthetic extensibility cleanup round begin. If any item is open, report the architecture milestone as incomplete.
+
 ## Current baseline
 
 As of 2026-09-13 the working baseline is `752cfb6` plus the semantic execution-layer follow-up in the current working tree. Trigger outcomes are strongly discriminated, target-card selection keys are opaque, canonical damage-about-to-apply reactions use the event-shaped trigger protocol, bots use the same response/trigger capability selection, and selected provider labels are preserved as generic presentation metadata. Canonical Negation scheduling now discovers any legal negate provider rather than only physical Negation cards; exhausted trigger decisions share one event-specific continuation executor for humans and bots; secondary Judgement paths are guarded across Attack, Group, Duel, and Negation. Build, lint, diff checks, and the full 59-test local suite pass. Saved-room compatibility remains isolated at the boundary; no new cards or hero abilities should be added until the final architecture review.
