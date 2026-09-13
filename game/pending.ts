@@ -41,7 +41,23 @@ export type ResponsePending = {
   readyAfterEventId?: string;
   continuation: ResponseContinuation;
 };
-export type TriggerContinuation = GreenDragonPending | RockCleavingPending | FrostSwordPending;
+/** Effect-resumption data for new canonical trigger decisions. */
+export type AttackDodgedTriggerContinuation = {
+  kind: "attack_dodged_event";
+  sourceId: string;
+  targetId: string;
+  resumePhase: string;
+  sequenceStartCardId: string;
+};
+export type DamageAboutToApplyTriggerContinuation = {
+  kind: "damage_about_to_apply_event";
+  sourceId: string;
+  targetId: string;
+  resumePhase: string;
+  sequenceStartCardId: string;
+};
+/** Legacy shapes remain readable for already-saved games only. */
+export type TriggerContinuation = AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | GreenDragonPending | RockCleavingPending | FrostSwordPending;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Current baseline
 
-As of 2026-09-13 the local architecture baseline is commit `7112368` (`Capture response presentation barriers`). The next commit advances trigger orchestration but should be treated as an incremental migration: build, lint, diff checks and the complete local 56-test suite passed before it was pushed. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
+As of 2026-09-13 the local architecture baseline is commit `03987ad` (`Isolate legacy decision action adapters`). The current uncommitted migration makes `attack_dodged` terminal outcomes event-shaped. Build, lint and diff checks pass; run the full local suite again without a parallel local Worker before committing. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
 
 Repository and service:
 
@@ -95,7 +95,7 @@ Frost Sword correctly excludes Judgement Zone cards.
 
 Trigger discovery is now event-centric and returns **0..N** legal providers. `TriggerPending.resolvedEffectIds` prevents the same optional reaction from being offered twice during one event. The route rebuilds capability-neutral live source/target context and validates the submitted provider against the entire remaining option set. Old `respond_green_dragon`, `respond_rock_cleaving`, and Frost Sword action names are translated only at the HTTP boundary; new clients use `trigger` / `decline_trigger`.
 
-Providers now return semantic trigger outcomes (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) rather than requiring orchestration to branch on their IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect and reopens the same event with the remaining live options. The next migration step is to make the terminal outcome continuations equally event-shaped, replacing the remaining legacy weapon-named continuation handlers.
+Providers now return semantic trigger outcomes (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) rather than requiring orchestration to branch on their IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect, reopens the same event with the remaining live options, or immediately resumes its continuation when none remains. `attack_dodged` terminal outcomes now use generic `applyFollowUpAttackOutcome()` and `applyForcedDamageOutcome()` domain functions; canonical execution switches on the semantic outcome and not on Green Dragon Blade or Rock Cleaving Axe. Legacy bot schedulers retain narrow adapters while they are migrated.
 
 Legacy request-name translation now lives exclusively in `game/compat/legacy-actions.ts`. It translates old response/weapon verbs at the API boundary; canonical engine code should use the semantic response/trigger protocol only. Keep this adapter narrowly compatibility-only and do not add new gameplay logic to it.
 
@@ -136,9 +136,9 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — architecture first
 
-1. **Complete provider-agnostic trigger continuations.** The registry/projection is now 0..N; migrate the remaining Green Dragon, Rock Cleaving and Frost continuation executors so their provider identity never appears in generic route orchestration.
+1. **Migrate damage-about-to-apply continuation.** Move Frost Sword to the same event-shaped semantic outcome handler after generic target-card selection is projected through `currentAction`; do not regress its target-card UI while doing so.
 2. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
-3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword.
+3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword only after the preceding architecture work is green.
 
 ## Standard card roadmap status
 

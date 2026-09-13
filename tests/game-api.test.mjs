@@ -673,7 +673,7 @@ test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeou
   assert.equal(firstAttack.data.room.pendingAttack.origin, "card", "normal Attack uses the shared Attack declaration");
   assert.equal(firstAttack.data.room.pendingAttack.physicalCardId, "attack-dragon-first", "the physical Attack remains available to source-sensitive rules");
   const dodged = await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-dragon" });
-  assert.equal(dodged.status, 200); assert.equal(dodged.data.room.pendingGreenDragon.actorId, hostPlayer.id); assert.equal(dodged.data.room.actionPlayerId, hostPlayer.id);
+  assert.equal(dodged.status, 200); assert.equal(dodged.data.room.currentAction.kind, "trigger"); assert.equal(dodged.data.room.actionPlayerId, hostPlayer.id);
   const dragonTrigger = await state(game.code, host.token);
   assert.equal(dragonTrigger.data.currentAction.kind, "trigger"); assert.equal(dragonTrigger.data.currentAction.triggerOptions[0].effectId, "green_dragon_blade_attack_dodged");
   const persistedDragonTrigger = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
@@ -686,7 +686,7 @@ test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeou
 
   setHand(hostPlayer.id, [card("Attack", "dragon-skip-first"), card("Attack", "dragon-kept")], 4, 4); setHand(bobPlayer.id, [card("Dodge", "dragon-skip")], 3, 4); setTurn(game.code, hostPlayer.seat);
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-dragon-skip-first", targetId: bobPlayer.id })).status, 200);
-  assert.equal((await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-dragon-skip" })).data.room.pendingGreenDragon.actorId, hostPlayer.id);
+  assert.equal((await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-dragon-skip" })).data.room.currentAction.actorId, hostPlayer.id);
   const skipped = await request("pass_green_dragon", { code: game.code, token: host.token });
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "play-struck"); assert.ok(skipped.data.room.myHand.some((held) => held.id === "attack-dragon-kept"), "skipping preserves the unused follow-up Attack");
 
@@ -770,19 +770,19 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   const dodgePrompt = await request("play_card", { code: game.code, token: host.token, cardId: "attack-axe-skip", targetId: alicePlayer.id });
   assert.equal(dodgePrompt.status, 200); assert.equal(dodgePrompt.data.room.pendingAttack.deadline, 0, "Dodge waits for the visible-decision timer");
   const skippedPrompt = await request("respond_dodge", { code: game.code, token: alice.token, cardId: "dodge-axe-skip" });
-  assert.equal(skippedPrompt.data.room.pendingRockCleaving.actorId, hostPlayer.id); assert.equal(skippedPrompt.data.room.actionPlayerId, hostPlayer.id);
-  assert.equal(skippedPrompt.data.room.pendingRockCleaving.deadline, 0, "Rock Cleaving Axe waits for the visible-decision timer after Dodge");
+  assert.equal(skippedPrompt.data.room.currentAction.kind, "trigger"); assert.equal(skippedPrompt.data.room.actionPlayerId, hostPlayer.id);
+  assert.equal(skippedPrompt.data.room.currentAction.deadline, 0, "Rock Cleaving Axe waits for the visible-decision timer after Dodge");
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: bob.token, cardIds: ["peach-axe-skip-one", "rockcleavingaxe-equip"] })).status, 409, "only the attacker owns the Axe decision");
   assert.equal((await request("respond_rock_cleaving", { code: game.code, token: host.token, cardIds: ["peach-axe-skip-one", "peach-axe-skip-one"] })).status, 409, "the same card cannot pay both costs");
-  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(timed.data.room.pendingRockCleaving.deadline - Date.now() > 25_000, "the visible Axe prompt arms its human response deadline");
-  const repeatedAxeTimer = await request("start_response_timer", { code: game.code, token: host.token }); assert.equal(repeatedAxeTimer.data.room.pendingRockCleaving.deadline, timed.data.room.pendingRockCleaving.deadline, "repeated Axe timer starts preserve the original deadline");
+  const timed = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(timed.data.room.currentAction.deadline - Date.now() > 25_000, "the visible Axe prompt arms its human response deadline");
+  const repeatedAxeTimer = await request("start_response_timer", { code: game.code, token: host.token }); assert.equal(repeatedAxeTimer.data.room.currentAction.deadline, timed.data.room.currentAction.deadline, "repeated Axe timer starts preserve the original deadline");
   const skipped = await request("pass_rock_cleaving", { code: game.code, token: host.token });
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "play-struck"); assert.equal(skipped.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
   setHand(hostPlayer.id, [card("Attack", "axe-force"), card("Peach", "axe-cost")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "axe-force")], 2); setEquipment(hostPlayer.id, { weapon: card("RockCleavingAxe", "cost") }); setTurn(game.code, hostPlayer.seat);
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-axe-force", targetId: alicePlayer.id })).status, 200);
   const forcePrompt = await request("respond_dodge", { code: game.code, token: alice.token, cardId: "dodge-axe-force" });
-  assert.equal(forcePrompt.data.room.pendingRockCleaving.sequenceStartCardId, "attack-axe-force");
+  assert.equal(forcePrompt.data.room.currentAction.kind, "trigger");
   const axeTrigger = await state(game.code, host.token);
   assert.equal(axeTrigger.data.currentAction.kind, "trigger"); assert.equal(axeTrigger.data.currentAction.triggerOptions[0].effectId, "rock_cleaving_axe_attack_dodged");
   const forced = await request("trigger", { code: game.code, token: host.token, providerId: "rock_cleaving_axe_attack_dodged", cardIds: ["peach-axe-cost", "rockcleavingaxe-cost"] });
