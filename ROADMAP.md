@@ -78,7 +78,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The current architecture baseline is `5c3c19b` plus the final bot-response and barrier cleanup. Local validation is green (58 tests, build, lint, and diff check); GitHub Actions remains the release gate for the pushed commit.
+The current architecture baseline is `1e95f34` plus semantic response/trigger execution completion. Local validation is green (58 tests, build, lint, and diff check); GitHub Actions remains the release gate for the pushed commit. Canonical Negation declines now advance through all responders, secondary Judgement resumes Attack/Group/Duel/Negation safely, and exhausted trigger events resume their event-specific continuation including deferred damage.
 
 Before continuing gameplay work, obtain a normal green Actions run for the current head. A workflow startup failure is neither a test failure nor a successful validation.
 
@@ -87,7 +87,7 @@ Before continuing gameplay work, obtain a normal green Actions run for the curre
 | Stage | Status | Position |
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete | Turn ownership, phases, ordered responses, Dying interruption/resumption and repeated rounds are playable and regression-covered. |
-| 2. Strengthen the general rules engine | Advanced; compatibility cleanup remains | Semantic responses, trigger decisions and transition-owned presentation barriers are established. Next: retire compatibility paths incrementally, then return to the card roadmap. |
+| 2. Strengthen the general rules engine | Advanced; compatibility cleanup remains | Semantic responses, trigger decisions, canonical Negation/secondary Judgement handling and event-specific trigger resumption are established. Next: retire compatibility paths incrementally, then return to the card roadmap. |
 | 3. Complete the verified Standard card identities | **24 / 28 playable** | Four verified identities remain: Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. |
 | 4. Reconcile the physical Standard deck | In progress | `docs/STANDARD_108_DECK_MANIFEST.md` remains the exact quantity/suit/rank target. |
 | 5. Complete match rules | Partly implemented | Main death/reward/victory paths work; edge cases still need expansion. |

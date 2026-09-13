@@ -1,4 +1,4 @@
-import type { TriggerExecution } from "../capabilities/triggers";
+import type { TriggerExecution, TriggerOption } from "../capabilities/triggers";
 import type { TriggerPending } from "../pending";
 
 export type TriggerResume =
@@ -49,7 +49,7 @@ export function resumeTriggerContinuation(
 }
 
 /** Deterministic bot policy: choose the first legal option; target-card costs use the first keys. */
-export function chooseBotTrigger(options: readonly { effectId: string; selection: { type: "cards"; eligibleCardIds: string[] } | { type: "target_cards"; eligibleKeys: string[] } | null }[]) {
+export function chooseBotTrigger(options: readonly TriggerOption[]) {
   const option = options[0];
   if (!option) return null;
   if (!option.selection) return { providerId: option.effectId };

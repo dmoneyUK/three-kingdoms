@@ -4,7 +4,7 @@ import { getResponseOptions, registerResponseProvider, responseOptions, selectRe
 import { resolveResponseDecision, responseDecisionFor } from "../game/response-decision.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
-import { continueTriggerEvent } from "../game/decisions/triggers.ts";
+import { continueTriggerEvent, chooseBotTrigger } from "../game/decisions/triggers.ts";
 import { applyResponseSatisfied, applyResponseDeclined } from "../game/decisions/responses.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
@@ -134,6 +134,11 @@ test("a non-terminal trigger outcome reopens the event without naming its provid
   };
   assert.deepEqual(continueTriggerEvent(pending, { status: "resolved", effectId: "test_reaction", outcome: { kind: "continue_event" } }, 42)?.resolvedEffectIds, ["test_reaction"]);
   assert.equal(continueTriggerEvent(pending, { status: "resolved", effectId: "terminal", outcome: { kind: "force_damage", amount: 1, consumeCardIds: ["a", "b"] } }), null);
+});
+
+test("bot trigger selection honors generic card and target-card maxima", () => {
+  assert.deepEqual(chooseBotTrigger([{ effectId: "cards", label: "Cards", selection: { type: "cards", min: 2, max: 2, eligibleCardIds: ["a", "b", "c"] } }]), { providerId: "cards", cardIds: ["a", "b"] });
+  assert.deepEqual(chooseBotTrigger([{ effectId: "target", label: "Target", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["hand:0", "equipment:armor"] } }]), { providerId: "target", cardKeys: ["hand:0"] });
 });
 
 test("canonical response outcomes preserve semantic continuation without provider dispatch", () => {
