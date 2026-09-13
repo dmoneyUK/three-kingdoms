@@ -11,6 +11,10 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 
 ## Source of knowledge
 
+### Semantic execution status
+
+The current semantic layer discovers Negation through any legal provider, shares event-specific trigger continuation for human and bot decisions, and safely resumes secondary Judgement across Attack, Group, Duel, and Negation continuations. Remaining architecture work is compatibility isolation and direct presentation-event ownership; no new cards should be added before that cleanup.
+
 The official **War of the Three Kingdoms (WTK) Game Card catalogue** is the primary source of truth for card names, product membership, categories and card rule meaning:
 
 - **WTK Game Card catalogue:** https://wtkgames.com/gameCard/
