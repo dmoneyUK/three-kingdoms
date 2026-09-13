@@ -76,6 +76,19 @@ const UI_TIMING = {
   sequenceDiscard: 700,
 } as const;
 
+async function readApiJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // Development middleware can occasionally return a plain-text error page.
+    // Never surface its implementation text as a JSON parsing failure in-game.
+    throw new Error(response.status >= 500
+      ? "The local game server had a temporary error. Please try again."
+      : "The game server returned an invalid response. Please try again.");
+  }
+}
+
 export default function Home() {
   const name = "ME";
   const [code, setCode] = useState("");
@@ -93,7 +106,7 @@ export default function Home() {
     try {
       const response = await fetch(`/api/rooms?code=${roomCode}&token=${playerToken}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Room is no longer available.");
-      const nextRoom = normalizeRoomData(await response.json()) as Room | null;
+      const nextRoom = normalizeRoomData(await readApiJson(response)) as Room | null;
       if (!nextRoom) throw new Error("Previous game data is no longer compatible. Start a new game.");
       if (epoch === stateEpoch.current) setRoom(nextRoom as Room);
     } catch (cause) {
@@ -142,7 +155,7 @@ export default function Home() {
     try {
       const context = room && !["create", "join", "start", "add_test_players", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId } : undefined;
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...extra }) });
-      const rawData = await response.json() as { error?: string; token?: string; room?: unknown };
+      const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown }>(response);
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
       if (data.room && mutationSequence >= latestAppliedMutation.current && (nonBlocking || epoch === stateEpoch.current)) { latestAppliedMutation.current = Math.max(latestAppliedMutation.current, mutationSequence); setToken(data.token ?? token); setRoom(data.room); setCode(data.room.code); }
       if (!response.ok || action !== "heartbeat" && !data.room) throw new Error(data.error ?? "Something went wrong.");
@@ -346,7 +359,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const invalidResponseState = room.phase === "response" && room.isMyAction && !room.pendingHarvest && !room.pendingTargetCard && !room.pendingFrostSword && !responseType;
   const canRespond = responseType !== null;
   const duelResponse = responseType === "duel";
-  const groupResponse = responseType === "group";
   const negationResponse = responseType === "negation";
   const greenDragonResponse = responseType === "green_dragon";
   const rockCleavingResponse = responseType === "rock_cleaving";
@@ -469,12 +481,35 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   useEffect(() => { if (!historyOpen) return; const close = (event: KeyboardEvent) => event.key === "Escape" && setHistoryOpen(false); window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [historyOpen]);
   useEffect(() => { if (!infoCard) return; const close = (event: KeyboardEvent) => event.key === "Escape" && setInfoCard(null); window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard]);
   useEffect(() => { const timer = setTimeout(() => { setSelected(""); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.turnSeat, room.phase, room.meId]);
+  // A response may advance to another decision without changing the turn,
+  // phase, or acting seat. The authoritative revision identifies that new
+  // decision and prevents a previous provider/cost from leaking into it.
+  useEffect(() => { const timer = setTimeout(() => { setResponseProviderId(""); setSelected(""); setSerpentSelected([]); }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
   useEffect(() => { if (!responseTimerActive || !responseDamageAction && !frostSwordResponse) { automaticResponseTimeout.current = ""; return; } if (busy || !responseDecisionReady) return; const key = `${room.actionPlayerId}-${room.pendingNegation?.cardName ?? room.pendingGreenDragon?.sourceId ?? room.pendingRockCleaving?.sourceId ?? room.pendingFrostSword?.sourceId ?? room.pendingGroup?.cardKind ?? room.pendingDuel?.sourceId ?? room.pendingAttack?.sourceId ?? "response"}`; const startKey = `start-${key}`; const timerPrefix = `timer-${key}-`; if (automaticResponseTimeout.current !== startKey && !automaticResponseTimeout.current.startsWith(timerPrefix)) { automaticResponseTimeout.current = startKey; onActionRef.current("start_response_timer"); return; } if (responseDeadline <= 0) return; automaticResponseTimeout.current = `timer-${key}-${responseDeadline}`; const timer = setTimeout(() => { automaticResponseTimeout.current = `expired-${key}-${responseDeadline}`; const action = frostSwordResponse ? "pass_frost_sword" : responseDamageAction; if (action) void onActionRef.current(action); }, Math.max(0, responseDeadline - Date.now())); return () => clearTimeout(timer); }, [responseTimerActive, frostSwordResponse, busy, responseDecisionReady, responseDeadline, responseDamageAction, room.actionPlayerId, room.pendingNegation?.cardName, room.pendingGreenDragon?.sourceId, room.pendingRockCleaving?.sourceId, room.pendingFrostSword?.sourceId, room.pendingGroup?.cardKind, room.pendingDuel?.sourceId, room.pendingAttack?.sourceId]);
   useEffect(() => { if (!canRescue) { automaticRescueSkip.current = ""; return; } if (busy || presentationBusy) return; const key = `${room.pendingDying?.targetId}-${room.actionPlayerId}`; const deadline = room.pendingDying?.deadline ?? 0; if (deadline <= 0) { const startKey = `start-${key}`; if (automaticRescueSkip.current !== startKey) { automaticRescueSkip.current = startKey; onActionRef.current("start_rescue_timer"); } return; } const timerKey = `timer-${key}-${deadline}`; if (automaticRescueSkip.current === timerKey) return; automaticRescueSkip.current = timerKey; const timer = setTimeout(() => { automaticRescueSkip.current = `skip-${key}`; onActionRef.current("skip_rescue"); }, Math.max(0, deadline - Date.now())); return () => clearTimeout(timer); }, [canRescue, busy, presentationBusy, room.pendingDying?.targetId, room.pendingDying?.deadline, room.actionPlayerId]);
   const publishHarvestPreview = async (cardId: string) => { queuedHarvestPreview.current = cardId; if (harvestPreviewInFlight.current) return; harvestPreviewInFlight.current = true; while (queuedHarvestPreview.current !== null) { const nextCardId = queuedHarvestPreview.current; queuedHarvestPreview.current = null; await onAction("preview_harvest", { cardId: nextCardId || null }); } harvestPreviewInFlight.current = false; };
   const playResponseCard = async () => { if (!card || !me || !responsePlayAction || !responseCardAllowed(card)) return; const responseCard = card; const responseTarget = room.pendingDuel ? room.players.find((player) => player.id === room.pendingDuel?.opponentId)?.name ?? me.name : me.name; const optimisticEvent: CardEvent & { type: "card" } = { id: `optimistic-response-${responseCard.id}`, type: "card", player: me.name, target: responseTarget, card: responseCard, action: "play" }; const presentImmediately = !optimisticPlay && !activeEvent && eventQueue.length === 0; if (presentImmediately) { resolutionRevision.current += 1; optimisticallyPresentedCards.current.add(responseCard.id); setResolutionClosing(false); setResolutionEvents((events) => events.some((event) => event.type === "card" && event.card.id === responseCard.id) ? events : [...events, optimisticEvent]); setOptimisticPlay(optimisticEvent); } setSelected(""); const accepted = await onAction(responsePlayAction, { cardId: responseCard.id, ...(responsePlayAction === "respond" ? { providerId: selectedResponseProvider?.providerId ?? "card" } : {}) }); if (!accepted && presentImmediately) { optimisticallyPresentedCards.current.delete(responseCard.id); setOptimisticPlay(null); setResolutionEvents((events) => events.filter((event) => event.id !== optimisticEvent.id)); } };
+  const submitResponseProvider = async (provider = selectedResponseProvider) => {
+    if (!provider || !genericResponse || !me) return;
+    const selection = provider.selection;
+    const selectedIds = provider.providerId === selectedResponseProvider?.providerId ? responseSelectedCardIds : [];
+    if (selection && (selectedIds.length < selection.min || selectedIds.length > selection.max || selectedIds.some((id) => !selection.eligibleCardIds.includes(id)))) return;
+    const materials = selectedIds.map((id) => room.myHand.find((item) => item.id === id)).filter((item): item is Card => Boolean(item));
+    if (materials.length !== selectedIds.length) return;
+    const responseTarget = room.pendingDuel ? room.players.find((player) => player.id === room.pendingDuel?.opponentId)?.name ?? me.name : me.name;
+    const optimisticEvent: GameEvent | null = materials.length === 1
+      ? { id: `optimistic-response-${provider.providerId}-${materials[0].id}`, type: "card", player: me.name, target: responseTarget, card: materials[0], action: "play" }
+      : materials.length > 1
+        ? { id: `optimistic-response-${provider.providerId}-${materials.map((item) => item.id).join("-")}`, type: "cards", player: me.name, target: responseTarget, cards: materials, action: "play" }
+        : null;
+    const presentImmediately = Boolean(optimisticEvent && !optimisticPlay && !activeEvent && eventQueue.length === 0);
+    if (presentImmediately && optimisticEvent) { resolutionRevision.current += 1; materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id)); setResolutionClosing(false); setResolutionEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent); }
+    setResponseProviderId(""); setSelected(""); setSerpentSelected([]);
+    const accepted = await onAction("respond", { providerId: provider.providerId, ...(selectedIds.length === 1 ? { cardId: selectedIds[0] } : selectedIds.length > 1 ? { cardIds: selectedIds } : {}) });
+    if (!accepted && presentImmediately && optimisticEvent) { materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id)); setOptimisticPlay(null); setResolutionEvents((events) => events.filter((event) => event.id !== optimisticEvent.id)); }
+  };
   const playSerpentAttack = async () => {
-    if (!me || serpentSelected.length !== 2) return;
+    if (!me || !canPlay || serpentSelected.length !== 2) return;
     const materials = serpentSelected.map((id) => room.myHand.find((item) => item.id === id)).filter((item): item is Card => Boolean(item));
     if (materials.length !== 2) return;
     const responseTarget = room.pendingDuel ? room.players.find((player) => player.id === room.pendingDuel?.opponentId)?.name ?? me.name : me.name;
@@ -487,10 +522,9 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
       materials.forEach((item) => optimisticallyPresentedCards.current.add(item.id));
       setResolutionClosing(false); setResolutionEvents((events) => appendUniqueEvents(events, [optimisticEvent])); setOptimisticPlay(optimisticEvent);
     }
-    const action = canPlay ? "serpent_spear_attack" : genericResponse && selectedResponseProvider ? "respond" : groupResponse ? "respond_group" : duelResponse ? "respond_duel" : null;
-    if (!action) return;
+    const action = "serpent_spear_attack";
     setSerpentMode(false); setSerpentSelected([]); setSelected(""); setTargetIds([]);
-    const accepted = await onAction(action, { cardIds: materials.map((item) => item.id), ...(canPlay ? { targetId: target } : {}), ...(action === "respond" ? { providerId: selectedResponseProvider?.providerId } : {}) });
+    const accepted = await onAction(action, { cardIds: materials.map((item) => item.id), targetId: target });
     if (!accepted && presentImmediately) {
       materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id));
       setOptimisticPlay(null); setResolutionEvents((events) => events.filter((event) => event.id !== optimisticEvent.id));
@@ -547,7 +581,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
         <div>
           {rescueDecisionReady && <><button className="primary" disabled={busy || card?.kind !== "Peach"} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Play Peach"}</button><button className="end" disabled={busy} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip rescue"}</button></>}
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
-          {canRespond && <>{rockCleavingResponse ? <button className="primary" disabled={responseControlsDisabled || serpentSelected.length !== 2} onClick={playRockCleaving}>{busy ? "Discarding…" : "Use Rock Cleaving Axe"}</button> : semanticResponseOptions.length && genericResponse ? <>{semanticResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${selectedResponseProvider?.providerId === option.providerId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = selectedResponseProvider?.providerId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{selectedResponseProvider?.providerId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="primary" disabled={responseControlsDisabled} onClick={() => onAction("respond", { providerId: option.providerId })}>{busy ? "Resolving…" : option.label}</button>)}{selectedResponseProvider?.selection && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete} onClick={responseSelectionMax === 1 ? playResponseCard : playSerpentAttack}>{busy ? "Playing…" : `Use ${selectedResponseProvider.label}`}</button>}</> : <button className="primary" disabled={responseControlsDisabled || !card || !responseCardAllowed(card)} onClick={playResponseCard}>{busy ? "Playing…" : greenDragonResponse ? "Continue Attack" : `Play ${requiredResponseKind}`}</button>}<button className="end" disabled={responseControlsDisabled || !responseDamageAction} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{busy ? "Skipping…" : negationResponse ? "Skip response" : greenDragonResponse ? "Skip follow-up" : rockCleavingResponse ? "Skip Axe" : "Skip · take 1 damage"}</button></>}
+          {canRespond && <>{rockCleavingResponse ? <button className="primary" disabled={responseControlsDisabled || serpentSelected.length !== 2} onClick={playRockCleaving}>{busy ? "Discarding…" : "Use Rock Cleaving Axe"}</button> : semanticResponseOptions.length && genericResponse ? <>{semanticResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${selectedResponseProvider?.providerId === option.providerId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = selectedResponseProvider?.providerId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{selectedResponseProvider?.providerId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="primary" disabled={responseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>)}{selectedResponseProvider?.selection && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete} onClick={() => submitResponseProvider()}>{busy ? "Playing…" : `Use ${selectedResponseProvider.label}`}</button>}</> : <button className="primary" disabled={responseControlsDisabled || !card || !responseCardAllowed(card)} onClick={playResponseCard}>{busy ? "Playing…" : greenDragonResponse ? "Continue Attack" : `Play ${requiredResponseKind}`}</button>}<button className="end" disabled={responseControlsDisabled || !responseDamageAction} onClick={() => responseDamageAction && onAction(responseDamageAction)}>{busy ? "Skipping…" : negationResponse ? "Skip response" : greenDragonResponse ? "Skip follow-up" : rockCleavingResponse ? "Skip Axe" : "Skip · take 1 damage"}</button></>}
           {room.isMyTurn && room.phase === "discard" && <button className="end" disabled={busy || discardSelected.length !== excessCards} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
           {room.isMyTurn && canPlay && <>{canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Use a card normally" : "Use Serpent Spear"}</button>}<button className="primary" disabled={serpentMode ? busy || presentationBusy || serpentSelected.length !== 2 || !attackTargetsValid : busy || presentationBusy || !card || (isAttackCard(card) && (!attackTargetsValid || room.phase === "play-struck")) || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted"].includes(card.kind) && !target) || card.kind === "Dodge" || card.kind === "Negation"} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : "Play selected"}</button><button className="end" disabled={busy || presentationBusy} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "Finish Play Phase"}</button></>}
         </div>

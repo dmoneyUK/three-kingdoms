@@ -30,7 +30,7 @@ The room projection now exposes that discovery as a viewer-private `currentActio
 
 ### 2026-09-12 update — atomic response presentation gate
 
-`app/page.tsx` now treats one response as one interaction. While a card/effect presentation is active, every provider, decline action, card/cost selector and seat countdown is held behind `responseDecisionReady`; they become available together after the presentation settles. Human pending responses are persisted unarmed and the acting client may arm exactly one 30-second deadline through `start_response_timer`; duplicate requests and refreshes preserve that original deadline. Bot pending responses retain their immediate 10-second deadline. This removes the mismatch where Eight Trigrams was blocked while Dodge or Take Damage remained usable. The response controls now render the private `currentAction.options` generically: no-cost providers execute directly, while card-cost providers are explicitly selected before eligible cards can be chosen. React no longer names Eight Trigrams or Serpent Spear in its response branch. API and rendered-source tests cover the shared gate, idempotent timer and generic option rendering. Next: make semantic `ResponsePending` canonical, then replace the Eight-Trigrams-specific Judgement compatibility adapter with generic Judgement resolution.
+`app/page.tsx` now treats one response as one interaction. While a card/effect presentation is active, every provider, decline action, card/cost selector and seat countdown is held behind `responseDecisionReady`; they become available together after the presentation settles. Human pending responses are persisted unarmed and the acting client may arm exactly one 30-second deadline through `start_response_timer`; duplicate requests and refreshes preserve that original deadline. Bot pending responses retain their immediate 10-second deadline. This removes the mismatch where Eight Trigrams was blocked while Dodge or Take Damage remained usable. The response controls render the private `currentAction.options` generically: no-cost providers execute directly, while selected card-cost providers submit through `submitResponseProvider()` after validating their own `min`, `max`, and eligible IDs. This works for any supported card count; `playSerpentAttack()` is now only the Play Phase weapon action. Response selection resets when `actionRevision` changes, preventing state leakage across chained decisions. API and rendered-source tests cover the shared gate, idempotent timer and generic option rendering. Next: make semantic `ResponsePending` canonical, then replace the Eight-Trigrams-specific Judgement compatibility adapter with generic Judgement resolution.
 
 ### 2026-09-12 update — semantic provider execution
 
@@ -430,6 +430,8 @@ Follow this checklist:
 Do not begin hero-specific details until the owner changes the current priority.
 
 ## Tests and local development
+
+For local phone testing, run the game with `VINEXT_LAN_TEST=1 npm run dev -- --hostname 0.0.0.0 --port 3000`. The opt-in flag retains Vite's live-reload socket but disables its development overlay, so a transient LAN reconnect cannot hide the game; it does not alter game rules, the API, or the local D1 database. Client API reads also reject non-JSON development error pages with a recoverable game message rather than exposing a JSON parsing exception.
 
 Requirements: Node.js `>=22.13.0`.
 
