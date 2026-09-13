@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Current baseline
 
-As of 2026-09-13 the reviewed gameplay baseline is commit `d783d7a` (`Complete trigger and presentation architecture`). Its parent `0c255a4` completed the full GitHub Actions workflow successfully. The workflow created for `d783d7a` failed to start and reported zero jobs, so that commit itself has not yet been CI-validated. Before the next gameplay release, make sure the current head gets a normal green Actions run.
+As of 2026-09-13 the local architecture baseline is commit `7112368` (`Capture response presentation barriers`). The next commit advances trigger orchestration but should be treated as an incremental migration: build, lint, diff checks and the complete local 56-test suite passed before it was pushed. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
 
 Repository and service:
 
@@ -93,6 +93,8 @@ Representative migrated triggers:
 
 Frost Sword correctly excludes Judgement Zone cards.
 
+Trigger discovery is now event-centric and returns **0..N** legal providers. `TriggerPending.resolvedEffectIds` prevents the same optional reaction from being offered twice during one event. The route rebuilds capability-neutral live source/target context and validates the submitted provider against the entire remaining option set. Old `respond_green_dragon`, `respond_rock_cleaving`, and Frost Sword action names are translated only at the HTTP boundary; new clients use `trigger` / `decline_trigger`.
+
 ### 5. Decision-specific presentation barrier
 
 Presentation uses `resolutionId` separately from `actionRevision`. `currentAction.presentation` now contains:
@@ -130,8 +132,9 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — architecture first
 
-1. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
-2. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword.
+1. **Complete provider-agnostic trigger continuations.** The registry/projection is now 0..N; migrate the remaining Green Dragon, Rock Cleaving and Frost continuation executors so their provider identity never appears in generic route orchestration.
+2. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
+3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword.
 
 ## Standard card roadmap status
 

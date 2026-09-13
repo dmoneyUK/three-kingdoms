@@ -104,6 +104,7 @@ function frostSwordTriggerContext(source: PlayerRow, target: PlayerRow) {
   return {
     event: "damage_about_to_apply" as const,
     sourceEquipment: equipmentCards(source),
+    sourceHand: parse<Card[]>(source.hand_json, []),
     targetHand: parse<Card[]>(target.hand_json, []),
     targetEquipment: equipmentCards(target),
   };
@@ -118,16 +119,17 @@ function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
   const source = players.find((player) => player.id === continuation.sourceId) ?? null;
   const target = players.find((player) => player.id === continuation.targetId) ?? null;
   if (!source || !target) return null;
-  if (pending.event === "damage_about_to_apply") return frostSwordTriggerContext(source, target);
-  const hand = parse<Card[]>(source.hand_json, []);
-  return continuation.kind === "rock_cleaving"
-    ? { event: "attack_dodged" as const, sourceEquipment: equipmentCards(source), sourceCards: rockCleavingCards(source, hand) }
-    : { event: "attack_dodged" as const, sourceEquipment: equipmentCards(source), sourceHand: hand };
+  return {
+    event: pending.event,
+    sourceEquipment: equipmentCards(source),
+    sourceHand: parse<Card[]>(source.hand_json, []),
+    targetHand: parse<Card[]>(target.hand_json, []),
+    targetEquipment: equipmentCards(target),
+  };
 }
-function triggerOptionFor(pending: TriggerPending, players: PlayerRow[]) {
+function triggerOptionsFor(pending: TriggerPending, players: PlayerRow[]) {
   const context = triggerContextFor(pending, players);
-  const triggerId = pending.continuation.triggerId ?? (pending.continuation.kind === "green_dragon" ? "green_dragon_blade_attack_dodged" : pending.continuation.kind === "rock_cleaving" ? "rock_cleaving_axe_attack_dodged" : "frost_sword_damage_about_to_apply");
-  return context ? getTriggeredEffects(context).find((option) => option.effectId === triggerId) ?? null : null;
+  return context ? getTriggeredEffects(context, pending.resolvedEffectIds) : [];
 }
 function weaponCard(player?: PlayerRow | null) { return equipmentZone(player).weapon; }
 // Extend this capability check together with the response resolver when adding
@@ -1557,7 +1559,7 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
       return ["decline_response", ...(options.length ? ["respond"] : [])];
     }
     const trigger = asTriggerPending(pending);
-    if (trigger) return ["decline_trigger", ...(triggerOptionFor(trigger, players) ? ["trigger"] : [])];
+    if (trigger) return ["decline_trigger", ...(triggerOptionsFor(trigger, players).length ? ["trigger"] : [])];
     switch (pending.kind) {
       case "green_dragon": return ["pass_green_dragon", ...(hand.some(isAttackCard) ? ["respond_green_dragon"] : [])];
       case "rock_cleaving": {
@@ -1607,7 +1609,7 @@ async function roomState(code: string, token?: string) {
   const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me) : undefined) : null;
-  const triggerOptions = me?.id === actualActionPlayerId && triggerPending ? triggerOptionFor(triggerPending, players) : null;
+  const triggerOptions = me?.id === actualActionPlayerId && triggerPending ? triggerOptionsFor(triggerPending, players) : [];
   const presentation = room.phase === "response" && pending
     ? { resolutionId: responsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: responsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? latestDecisionPresentationEventId(rawLog, responsePending?.resolutionId) ?? latestDecisionPresentationEventId(rawLog) }
     : undefined;
@@ -1621,7 +1623,7 @@ async function roomState(code: string, token?: string) {
     // a table-wide disclosure of another player's hand or legal responses.
     legalActions: me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [],
     ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
-    ...(triggerPending ? { triggerEvent: triggerPending.event, triggerOptions: triggerOptions ? [triggerOptions] : [], declineAction: "decline_trigger" as GameplayAction } : {}),
+    ...(triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, declineAction: "decline_trigger" as GameplayAction } : {}),
     ...(presentation ? { presentation } : {}),
   };
   return {
@@ -1669,6 +1671,21 @@ export async function POST(request: Request) {
   const body = await request.json<Record<string, unknown>>().catch(() => ({}));
   let action = String(body.action ?? "");
   let responseExecution: ResponseExecution | null = null;
+  let triggerExecution: ReturnType<typeof resolveTriggeredEffect> = null;
+  // Saved clients may still submit these names. Translate once at the HTTP
+  // boundary; the domain path below is canonical trigger/decline_trigger.
+  const legacyTrigger = {
+    respond_green_dragon: { action: "trigger", providerId: "green_dragon_blade_attack_dodged" },
+    pass_green_dragon: { action: "decline_trigger" },
+    respond_rock_cleaving: { action: "trigger", providerId: "rock_cleaving_axe_attack_dodged" },
+    pass_rock_cleaving: { action: "decline_trigger" },
+    use_frost_sword: { action: "trigger", providerId: "frost_sword_damage_about_to_apply" },
+    pass_frost_sword: { action: "decline_trigger" },
+  }[action];
+  if (legacyTrigger) {
+    action = legacyTrigger.action;
+    if (legacyTrigger.providerId) body.providerId = legacyTrigger.providerId;
+  }
   const name = cleanName(body.name);
   const db = env.DB;
 
@@ -1791,19 +1808,16 @@ export async function POST(request: Request) {
       const trigger = asTriggerPending(pendingForController);
       if (!trigger || !me) return json({ error: "There is no trigger decision available.", stale: true, room: await roomState(code, token) }, 409);
       const context = triggerContextFor(trigger, allRoomPlayers);
-      const triggerId = trigger.continuation.triggerId ?? (trigger.continuation.kind === "green_dragon" ? "green_dragon_blade_attack_dodged" : trigger.continuation.kind === "rock_cleaving" ? "rock_cleaving_axe_attack_dodged" : "frost_sword_damage_about_to_apply");
-      if (action === "trigger" && String(body.providerId ?? "") !== triggerId) {
+      const triggerId = String(body.providerId ?? "");
+      const available = context ? getTriggeredEffects(context, trigger.resolvedEffectIds) : [];
+      if (action === "trigger" && !available.some((option) => option.effectId === triggerId)) {
         return json({ error: "That trigger provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       }
-      const execution = action === "trigger" && context ? resolveTriggeredEffect(triggerId, context, { cardId: body.cardId, cardIds: body.cardIds, cardKeys: body.cardKeys }) : null;
-      if (action === "trigger" && !execution) return json({ error: "That trigger option is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      if (execution?.consumeCardIds?.length) { body.cardIds = execution.consumeCardIds; body.cardId = execution.consumeCardIds[0]; }
-      if (execution?.targetCardIds?.length) body.cardKeys = (Array.isArray(body.cardKeys) ? body.cardKeys : []);
-      action = trigger.continuation.kind === "green_dragon"
-        ? execution ? "respond_green_dragon" : "pass_green_dragon"
-        : trigger.continuation.kind === "rock_cleaving"
-          ? execution ? "respond_rock_cleaving" : "pass_rock_cleaving"
-          : execution ? "use_frost_sword" : "pass_frost_sword";
+      triggerExecution = action === "trigger" && context ? resolveTriggeredEffect(triggerId, context, { cardId: body.cardId, cardIds: body.cardIds, cardKeys: body.cardKeys }) : null;
+      if (action === "trigger" && !triggerExecution) return json({ error: "That trigger option is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (triggerExecution?.consumeCardIds?.length) { body.cardIds = triggerExecution.consumeCardIds; body.cardId = triggerExecution.consumeCardIds[0]; }
+      if (triggerExecution?.targetCardIds?.length) body.cardKeys = (Array.isArray(body.cardKeys) ? body.cardKeys : []);
+      action = triggerExecution ? "apply_trigger" : "decline_trigger_effect";
     }
   }
   if (action !== "start") await recordAuditAction(room, me ?? null, name, action);
@@ -2056,17 +2070,17 @@ export async function POST(request: Request) {
     return json({ room: await roomState(code, token) });
   }
 
-  if (["respond_green_dragon", "pass_green_dragon"].includes(action)) {
+  if (["apply_trigger", "decline_trigger_effect"].includes(action)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const trigger = asTriggerPending(stored); const pending = asLegacyTriggerPending(stored) as GreenDragonPending | null;
-    if (!liveRoom || liveRoom.phase !== "response" || trigger?.continuation.kind !== "green_dragon" || pending?.kind !== "green_dragon" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Green Dragon Blade response." }, 409);
+    if (trigger?.continuation.kind !== "green_dragon" || pending?.kind !== "green_dragon") {
+      // A different generic trigger continuation may handle this canonical action below.
+    } else {
+    if (!liveRoom || liveRoom.phase !== "response" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this triggered response." }, 409);
     const hand = parse<Card[]>(me.hand_json, []);
-    const triggerId = pending.triggerId ?? "green_dragon_blade_attack_dodged";
-    const execution = action === "respond_green_dragon"
-      ? resolveTriggeredEffect(triggerId, { event: "attack_dodged", sourceEquipment: equipmentCards(me), sourceHand: hand }, { cardId: body.cardId })
-      : null;
+    const execution = action === "apply_trigger" ? triggerExecution : null;
     const attack = execution?.consumeCardIds?.length === 1 ? hand.find((card) => card.id === execution.consumeCardIds?.[0]) ?? null : null;
-    if (action === "respond_green_dragon" && (!execution || !attack)) return json({ error: "Select a valid triggered Attack first." }, 409);
+    if (action === "apply_trigger" && (!execution || !attack)) return json({ error: "Select a valid triggered Attack first." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Green Dragon Blade decision has already moved on." }, 409);
     if (!attack) {
@@ -2082,19 +2096,20 @@ export async function POST(request: Request) {
       } else await resolveGreenDragonAttack(liveRoom, pending, me, target, players, attack, hand, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []));
     }
     return json({ room: await roomState(code, token) });
+    }
   }
 
-  if (["respond_rock_cleaving", "pass_rock_cleaving"].includes(action)) {
+  if (["apply_trigger", "decline_trigger_effect"].includes(action)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const trigger = asTriggerPending(stored); const pending = asLegacyTriggerPending(stored) as RockCleavingPending | null;
-    if (!liveRoom || liveRoom.phase !== "response" || trigger?.continuation.kind !== "rock_cleaving" || pending?.kind !== "rock_cleaving" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Rock Cleaving Axe response." }, 409);
+    if (trigger?.continuation.kind !== "rock_cleaving" || pending?.kind !== "rock_cleaving") {
+      // Continue to the next event continuation.
+    } else {
+    if (!liveRoom || liveRoom.phase !== "response" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this triggered response." }, 409);
     const hand = parse<Card[]>(me.hand_json, []); const cards = rockCleavingCards(me, hand);
-    const triggerId = pending.triggerId ?? "rock_cleaving_axe_attack_dodged";
-    const execution = action === "respond_rock_cleaving"
-      ? resolveTriggeredEffect(triggerId, { event: "attack_dodged", sourceEquipment: equipmentCards(me), sourceCards: cards }, { cardIds: body.cardIds })
-      : null;
+    const execution = action === "apply_trigger" ? triggerExecution : null;
     const materials = execution?.consumeCardIds?.map((id) => cards.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
-    if (action === "respond_rock_cleaving" && (!execution || materials.length !== 2)) return json({ error: "Select 2 different cards allowed by this triggered effect first." }, 409);
+    if (action === "apply_trigger" && (!execution || materials.length !== 2)) return json({ error: "Select 2 different cards allowed by this triggered effect first." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Rock Cleaving Axe decision has already moved on." }, 409);
     if (!materials.length) {
@@ -2110,22 +2125,23 @@ export async function POST(request: Request) {
       } else await resolveRockCleaving(liveRoom, pending, me, target, players, materials, hand, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []));
     }
     return json({ room: await roomState(code, token) });
+    }
   }
 
-  if (["use_frost_sword", "pass_frost_sword"].includes(action)) {
+  if (["apply_trigger", "decline_trigger_effect"].includes(action)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const trigger = asTriggerPending(stored); const pending = asLegacyTriggerPending(stored) as FrostSwordPending | null;
-    if (!liveRoom || liveRoom.phase !== "response" || trigger?.continuation.kind !== "frost_sword" || pending?.kind !== "frost_sword" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Frost Sword decision." }, 409);
+    if (trigger?.continuation.kind !== "frost_sword" || pending?.kind !== "frost_sword") {
+      // This was not a recognized trigger continuation.
+    } else {
+    if (!liveRoom || liveRoom.phase !== "response" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this triggered decision." }, 409);
     const target = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.targetId).first<PlayerRow>();
-    const context = target ? frostSwordTriggerContext(me, target) : null;
-    const execution = action === "use_frost_sword" && context
-      ? resolveTriggeredEffect(pending.triggerId ?? "frost_sword_damage_about_to_apply", context, { cardKeys: body.cardKeys })
-      : null;
-    if (action === "use_frost_sword" && !execution?.targetCardIds?.length) return json({ error: "Choose one or two different cards allowed by this triggered effect first." }, 409);
+    const execution = action === "apply_trigger" ? triggerExecution : null;
+    if (action === "apply_trigger" && !execution?.targetCardIds?.length) return json({ error: "Choose one or two different cards allowed by this triggered effect first." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Frost Sword decision has already moved on." }, 409);
     let log = parse<string[]>(liveRoom.log_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []);
-    if (action === "use_frost_sword" && target?.alive && execution?.targetCardIds?.length) {
+    if (action === "apply_trigger" && target?.alive && execution?.targetCardIds?.length) {
       await resolveFrostSword(liveRoom, pending, me, target, discard, log, execution.targetCardIds);
     } else {
       log = addLog(log, `${me.name} does not use Frost Sword. ${target?.name ?? "The target"} takes 1 damage.`);
@@ -2139,6 +2155,11 @@ export async function POST(request: Request) {
       }
     }
     return json({ room: await roomState(code, token) });
+    }
+  }
+
+  if (["apply_trigger", "decline_trigger_effect"].includes(action)) {
+    return json({ error: "This triggered effect is no longer available.", stale: true, room: await roomState(code, token) }, 409);
   }
 
   if (action === "respond_eight_trigrams") {

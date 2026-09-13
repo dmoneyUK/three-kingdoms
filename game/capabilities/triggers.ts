@@ -4,6 +4,10 @@ import { rockCleavingAxeDodgedAttackTrigger } from "./equipment/rock-cleaving-ax
 import { frostSwordDamageAboutToApplyTrigger } from "./equipment/frost-sword";
 
 export type TriggerEvent = "attack_dodged" | "damage_about_to_apply";
+/**
+ * The event context is deliberately capability-neutral. Providers decide which
+ * source/target cards they can use; orchestration only knows the domain event.
+ */
 export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[]; targetHand?: Card[]; targetEquipment?: Card[] };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown };
 export type TriggerSelectionConstraint = { type: "cards" | "target_cards"; min: number; max: number; eligibleCardIds: string[] };
@@ -18,9 +22,19 @@ export type TriggeredEffect = {
 
 const triggers: TriggeredEffect[] = [greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger];
 
+/** Test and future capability modules can extend an event without route edits. */
+export function registerTriggeredEffect(effect: TriggeredEffect) {
+  triggers.push(effect);
+  return () => {
+    const index = triggers.indexOf(effect);
+    if (index >= 0) triggers.splice(index, 1);
+  };
+}
+
 /** Returns triggered effects supplied by the relevant equipped/hero capabilities. */
-export function getTriggeredEffects(context: TriggerContext) {
-  return triggers.filter((trigger) => trigger.event === context.event).map((trigger) => trigger.getOption(context)).filter((option): option is TriggerOption => Boolean(option));
+export function getTriggeredEffects(context: TriggerContext, resolvedEffectIds: readonly string[] = []) {
+  const resolved = new Set(resolvedEffectIds);
+  return triggers.filter((trigger) => trigger.event === context.event && !resolved.has(trigger.id)).map((trigger) => trigger.getOption(context)).filter((option): option is TriggerOption => Boolean(option));
 }
 
 /** Revalidates a selected triggered effect against the live source state. */

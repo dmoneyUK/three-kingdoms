@@ -19,7 +19,12 @@ export type DeferredStratagem =
   | { kind: "dismantle"; targetId: string } | { kind: "steal"; targetId: string } | { kind: "duel"; pending: DuelPending } | { kind: "group"; pending: GroupPending }
   | { kind: "overindulgence"; targetId: string; cardId: string } | { kind: "lightning"; targetId: string; cardId: string } | { kind: "rations_depleted"; targetId: string; cardId: string } | { kind: "judgement"; targetId: string; cardId: string };
 export type NegationPending = { kind: "negation"; sourceId: string; actorId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; reason: string; heldCards?: Card[]; deadline?: number; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; readyAfterEventId?: string };
-export type ResponseContinuation = AttackPending | GroupPending | DuelPending | NegationPending;
+/** Only effect-resumption data belongs in a canonical response continuation. */
+export type AttackContinuation = Omit<AttackPending, "kind" | "actorId" | "reason" | "deadline" | "readyAfterEventId"> & { kind: "attack" };
+export type GroupContinuation = Omit<GroupPending, "kind" | "actorId" | "reason" | "deadline" | "readyAfterEventId"> & { kind: "group" };
+export type DuelContinuation = Omit<DuelPending, "kind" | "actorId" | "reason" | "deadline" | "readyAfterEventId"> & { kind: "duel" };
+export type NegationContinuation = Omit<NegationPending, "kind" | "actorId" | "reason" | "deadline" | "readyAfterEventId"> & { kind: "negation" };
+export type ResponseContinuation = AttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation;
 
 /**
  * The canonical persisted decision for a player who must satisfy a semantic
@@ -48,12 +53,23 @@ export type TriggerPending = {
   resolutionId?: string;
   /** Exact public presentation event that must finish before this decision opens. */
   readyAfterEventId?: string;
+  /** Optional effects already resolved for this one domain event. */
+  resolvedEffectIds?: string[];
   continuation: TriggerContinuation;
 };
 export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
 export type Pending = AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | NegationPending | ResponsePending | TriggerPending | DyingPending;
 
 type LegacyResponsePending = AttackPending | GroupPending | DuelPending | NegationPending;
+
+function continuationForLegacy(pending: LegacyResponsePending): ResponseContinuation {
+  const continuation = { ...pending } as Partial<LegacyResponsePending>;
+  delete continuation.actorId;
+  delete continuation.reason;
+  delete continuation.deadline;
+  delete continuation.readyAfterEventId;
+  return continuation as ResponseContinuation;
+}
 
 function requirementForLegacyResponse(pending: LegacyResponsePending): ActionRequirement {
   switch (pending.kind) {
@@ -69,16 +85,16 @@ export function asResponsePending(pending: Pending | null | undefined): Response
   if (!pending) return null;
   if (pending.kind === "response") return pending;
   if (!["attack", "group", "duel", "negation"].includes(pending.kind)) return null;
-  const continuation = pending as LegacyResponsePending;
+  const legacy = pending as LegacyResponsePending;
   return {
     kind: "response",
-    actorId: continuation.actorId,
-    requirement: requirementForLegacyResponse(continuation),
-    reason: continuation.reason,
-    deadline: continuation.deadline,
-    resolutionId: continuation.resolutionId,
-    readyAfterEventId: continuation.readyAfterEventId,
-    continuation,
+    actorId: legacy.actorId,
+    requirement: requirementForLegacyResponse(legacy),
+    reason: legacy.reason,
+    deadline: legacy.deadline,
+    resolutionId: legacy.resolutionId,
+    readyAfterEventId: legacy.readyAfterEventId,
+    continuation: continuationForLegacy(legacy),
   };
 }
 

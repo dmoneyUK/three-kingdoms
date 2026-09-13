@@ -3,7 +3,7 @@ import test from "node:test";
 import { getResponseOptions, registerResponseProvider, responseOptions, selectResponse } from "../game/responses.ts";
 import { resolveResponseDecision, responseDecisionFor } from "../game/response-decision.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
-import { getTriggeredEffects, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
+import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
@@ -96,4 +96,28 @@ test("passive and triggered equipment capabilities are discovered outside the ro
   const frostContext = { event: "damage_about_to_apply", sourceEquipment: [card("FrostSword", "frost")], targetHand, targetEquipment };
   assert.deepEqual(getTriggeredEffects(frostContext), [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", min: 1, max: 2, eligibleCardIds: ["hand:0", "frost-armor"] } }]);
   assert.deepEqual(resolveTriggeredEffect("frost_sword_damage_about_to_apply", frostContext, { cardKeys: ["hand:0", "frost-armor"] }), { status: "resolved", effectId: "frost_sword_damage_about_to_apply", targetCardIds: ["frost-hand", "frost-armor"] });
+});
+
+test("multiple event triggers are projected without route-level provider selection", () => {
+  const unregisterFirst = registerTriggeredEffect({
+    id: "test_first_dodged_trigger",
+    event: "attack_dodged",
+    getOption: () => ({ effectId: "test_first_dodged_trigger", label: "First test reaction", selection: null }),
+    resolve: () => ({ status: "resolved", effectId: "test_first_dodged_trigger" }),
+  });
+  const unregisterSecond = registerTriggeredEffect({
+    id: "test_second_dodged_trigger",
+    event: "attack_dodged",
+    getOption: () => ({ effectId: "test_second_dodged_trigger", label: "Second test reaction", selection: null }),
+    resolve: () => ({ status: "resolved", effectId: "test_second_dodged_trigger" }),
+  });
+  try {
+    const context = { event: "attack_dodged", sourceEquipment: [], sourceHand: [] };
+    assert.deepEqual(getTriggeredEffects(context).slice(-2).map((option) => option.effectId), ["test_first_dodged_trigger", "test_second_dodged_trigger"]);
+    assert.deepEqual(resolveTriggeredEffect("test_second_dodged_trigger", context, {}), { status: "resolved", effectId: "test_second_dodged_trigger" });
+    assert.ok(!getTriggeredEffects(context, ["test_first_dodged_trigger"]).some((option) => option.effectId === "test_first_dodged_trigger"));
+  } finally {
+    unregisterSecond();
+    unregisterFirst();
+  }
 });
