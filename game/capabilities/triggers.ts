@@ -12,7 +12,13 @@ export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sou
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown };
 export type TriggerSelectionConstraint = { type: "cards" | "target_cards"; min: number; max: number; eligibleCardIds: string[] };
 export type TriggerOption = { effectId: string; label: string; selection: TriggerSelectionConstraint | null };
-export type TriggerExecution = { status: "resolved"; effectId: string; consumeCardIds?: string[]; targetCardIds?: string[] };
+/**
+ * Providers describe the semantic consequence of accepting their option. The
+ * decision engine may branch on this small domain vocabulary, never on a
+ * weapon or hero provider ID.
+ */
+export type TriggerOutcome = "follow_up_attack" | "force_damage" | "prevent_damage" | "continue_event";
+export type TriggerExecution = { status: "resolved"; effectId: string; outcome: TriggerOutcome; consumeCardIds?: string[]; targetCardIds?: string[] };
 export type TriggeredEffect = {
   id: string;
   event: TriggerEvent;

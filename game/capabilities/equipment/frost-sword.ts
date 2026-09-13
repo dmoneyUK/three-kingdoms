@@ -20,7 +20,7 @@ export const frostSwordDamageAboutToApplyTrigger: TriggeredEffect = {
     const equipment = context.targetEquipment ?? [];
     const cards = keys.map((key) => key.startsWith("hand:") ? hand[Number(key.slice(5))] : equipment.find((card) => card.id === key));
     return cards.every((card): card is NonNullable<typeof card> => Boolean(card))
-      ? { status: "resolved", effectId: "frost_sword_damage_about_to_apply", targetCardIds: cards.map((card) => card.id) }
+      ? { status: "resolved", effectId: "frost_sword_damage_about_to_apply", outcome: "prevent_damage", targetCardIds: cards.map((card) => card.id) }
       : null;
   },
 };

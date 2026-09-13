@@ -95,6 +95,8 @@ Frost Sword correctly excludes Judgement Zone cards.
 
 Trigger discovery is now event-centric and returns **0..N** legal providers. `TriggerPending.resolvedEffectIds` prevents the same optional reaction from being offered twice during one event. The route rebuilds capability-neutral live source/target context and validates the submitted provider against the entire remaining option set. Old `respond_green_dragon`, `respond_rock_cleaving`, and Frost Sword action names are translated only at the HTTP boundary; new clients use `trigger` / `decline_trigger`.
 
+Providers now return semantic trigger outcomes (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) rather than requiring orchestration to branch on their IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect and reopens the same event with the remaining live options. The next migration step is to make the terminal outcome continuations equally event-shaped, replacing the remaining legacy weapon-named continuation handlers.
+
 ### 5. Decision-specific presentation barrier
 
 Presentation uses `resolutionId` separately from `actionRevision`. `currentAction.presentation` now contains:

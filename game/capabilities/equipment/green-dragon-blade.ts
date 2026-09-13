@@ -13,6 +13,6 @@ export const greenDragonBladeDodgedAttackTrigger: TriggeredEffect = {
   resolve: (context, selection) => {
     const cardId = typeof selection.cardId === "string" ? selection.cardId : "";
     const attack = (context.sourceHand ?? []).find((card) => card.id === cardId && isAttackCard(card));
-    return attack ? { status: "resolved", effectId: "green_dragon_blade_attack_dodged", consumeCardIds: [attack.id] } : null;
+    return attack ? { status: "resolved", effectId: "green_dragon_blade_attack_dodged", outcome: "follow_up_attack", consumeCardIds: [attack.id] } : null;
   },
 };

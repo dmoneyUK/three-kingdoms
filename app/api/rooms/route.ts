@@ -7,6 +7,7 @@ import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, response
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { getTriggeredEffects, resolveTriggeredEffect } from "../../../game/capabilities/triggers";
+import { continueTriggerEvent } from "../../../game/decisions/triggers";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
 import { asLegacyResponsePending, asLegacyTriggerPending, asResponsePending, asTriggerPending, serializePending, type AttackDeclaration, type AttackOrigin, type AttackPending, type DeferredStratagem, type DuelPending, type DyingPending, type FrostSwordPending, type GreenDragonPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type RockCleavingPending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
@@ -1821,6 +1822,36 @@ export async function POST(request: Request) {
     }
   }
   if (action !== "start") await recordAuditAction(room, me ?? null, name, action);
+
+  // A provider may resolve an optional reaction without consuming the domain
+  // event itself. Keep the same event open, exclude that provider, and derive
+  // the next complete live option set. This is the 0..N trigger path used by
+  // future hero/equipment reactions; it deliberately knows no provider IDs.
+  if (action === "apply_trigger" && triggerExecution?.outcome === "continue_event") {
+    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+    const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
+    const trigger = asTriggerPending(stored);
+    if (!liveRoom || liveRoom.phase !== "response" || !trigger || trigger.actorId !== me.id) {
+      return json({ error: "That triggered effect is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+    }
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That triggered effect has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+    const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+    const players = rows.results ?? [];
+    const next = continueTriggerEvent(trigger, triggerExecution, nextResponseDeadline(players.find((player) => player.id === trigger.actorId)));
+    if (!next) return json({ error: "That triggered effect cannot continue this event.", stale: true, room: await roomState(code, token) }, 409);
+    const remaining = triggerOptionsFor(next, players);
+    const log = addLog(parse<string[]>(liveRoom.log_json, []), `${me.name} resolves an optional reaction. ${remaining.length ? "Another reaction remains available." : "No further reactions remain."}`);
+    if (remaining.length) {
+      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(next), JSON.stringify(log), room.id).run();
+    } else {
+      // A no-op reaction has no domain continuation of its own; the existing
+      // compatibility continuation remains the authoritative resumption path.
+      await db.prepare("UPDATE rooms SET phase = ?, pending_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase, serializePending(next), JSON.stringify(log), room.id).run();
+    }
+    return json({ room: await roomState(code, token) });
+  }
 
   if (action === "resolve_response_secondary") {
     if (!me || responseExecution?.status !== "requires_resolution" || responseExecution.resolution.kind !== "judgement") {
