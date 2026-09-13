@@ -222,13 +222,17 @@ function latestDecisionPresentationEventId(log: string[], resolutionId?: string 
   return fallback;
 }
 /** Capture the event barrier at the transition that creates a decision. */
-function withPresentationBarrier<T extends { readyAfterEventId?: string }>(pending: T, log: string[]) {
-  return { ...pending, readyAfterEventId: pending.readyAfterEventId ?? latestDecisionPresentationEventId(log) ?? undefined };
+function withPresentationBarrier<T extends { readyAfterEventId?: string }>(pending: T, log: string[], eventId?: string) {
+  return { ...pending, readyAfterEventId: pending.readyAfterEventId ?? eventId ?? latestDecisionPresentationEventId(log) ?? undefined };
 }
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
   return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}) };
 }
 function addLog(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@event:${JSON.stringify({ id: crypto.randomUUID(), message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
+function addLogWithId(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
+  const id = crypto.randomUUID();
+  return { log: [...log.slice(-199), `@event:${JSON.stringify({ id, message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`], eventId: id };
+}
 function addFinalResult(log: string[], message: string, drawPlayerId?: string, resolutionId?: string) { return addLog(log, message, drawPlayerId, { resolutionId, importance: "essential", finalResult: true }); }
 function addHistory(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@history:${JSON.stringify({ id: crypto.randomUUID(), message, presentation: false, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
 function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta) { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player, target, card, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential") })}`]; }
@@ -921,8 +925,8 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
       deadline: nextResponseDeadline(source),
       continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId },
     };
-    log = addLog(log, `${source.name}'s Attack is blocked. ${options.length === 1 ? options[0].label : "Optional reactions"} may apply.`);
-    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log)), JSON.stringify(discard), JSON.stringify(log), room.id));
+    const presentation = addLogWithId(log, `${source.name}'s Attack is blocked. ${options.length === 1 ? options[0].label : "Optional reactions"} may apply.`);
+    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
     await db().batch(writes);
     return;
   }
@@ -2033,15 +2037,16 @@ export async function POST(request: Request) {
     }
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
-    const pending = asLegacyResponsePending(stored) as AttackPending | GroupPending | null;
-    if (!liveRoom || liveRoom.phase !== "response" || !pending || !["attack", "group"].includes(pending.kind) || pending.actorId !== me.id) {
+    const pending = asResponsePending(stored);
+    if (!liveRoom || liveRoom.phase !== "response" || !pending || !["attack", "group", "duel", "negation"].includes(pending.continuation.kind) || pending.actorId !== me.id) {
       return json({ error: "You are not the acting player for this Judgement response." }, 409);
     }
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already been resolved." }, 409);
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const players = rows.results ?? [];
-    const source = players.find((player) => player.id === pending.sourceId) ?? null;
+    const sourceId = "sourceId" in pending.continuation ? pending.continuation.sourceId : "";
+    const source = players.find((player) => player.id === sourceId) ?? null;
     await resolveJudgementResponse(liveRoom, pending, me, source, players, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []), responseExecution.resolution);
     return json({ room: await roomState(code, token) });
   }
