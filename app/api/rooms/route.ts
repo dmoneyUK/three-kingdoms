@@ -854,8 +854,10 @@ async function resolveJudgementGroupResponse(room: RoomRow, pending: GroupPendin
 }
 
 async function resolveJudgementResponse(room: RoomRow, pending: Pending, actor: PlayerRow, source: PlayerRow | null, players: PlayerRow[], discard: Card[], log: string[], resolution: JudgementResolution) {
-  if (pending.kind === "attack") return resolveJudgementAttackResponse(room, pending, actor, source, discard, log, resolution);
-  if (pending.kind === "group" && source) return resolveJudgementGroupResponse(room, pending, actor, source, players, discard, log, resolution);
+  const response = asResponsePending(pending);
+  const continuation = response?.continuation;
+  if (continuation?.kind === "attack") return resolveJudgementAttackResponse(room, asLegacyResponsePending(response) as AttackPending, actor, source, discard, log, resolution);
+  if (continuation?.kind === "group" && source) return resolveJudgementGroupResponse(room, asLegacyResponsePending(response) as GroupPending, actor, source, players, discard, log, resolution);
 }
 
 /** Runs the same live provider discovery and semantic outcome path for bots. */
@@ -1889,7 +1891,7 @@ export async function POST(request: Request) {
         body.cardIds = canonicalResponse.consumeCardIds;
         body.cardId = canonicalResponse.consumeCardIds[0];
       }
-      if (responseExecution.status === "satisfied" && responsePending?.continuation.kind !== "negation") action = `apply_response_${responsePending?.continuation.kind ?? "unknown"}`;
+      if (responseExecution.status === "satisfied") action = `apply_response_${responsePending?.continuation.kind ?? "unknown"}`;
       else if (compatibleAction) action = compatibleAction;
     }
     if (action === "decline_trigger" || action === "trigger") {
@@ -2128,12 +2130,13 @@ export async function POST(request: Request) {
     return json({ room: await roomState(code, token) });
   }
 
-  if (["respond_negation", "pass_negation"].includes(action)) {
+  if (["apply_response_negation", "respond_negation", "pass_negation"].includes(action)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = asLegacyResponsePending(stored) as NegationPending | null;
     if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "negation" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Negation response." }, 409);
-    let hand = parse<Card[]>(me.hand_json, []); const negation = action === "respond_negation" ? hand.find((card) => card.id === String(body.cardId ?? "") && card.kind === "Negation") : null;
-    if (action === "respond_negation" && !negation) return json({ error: "Select a Negation card from your hand first." }, 409);
+    let hand = parse<Card[]>(me.hand_json, []); const canonicalRespond = action === "apply_response_negation" && responseExecution?.status === "satisfied";
+    const negation = canonicalRespond ? hand.find((card) => card.id === responseExecution?.consumeCardIds?.[0] && card.kind === "Negation") : action === "respond_negation" ? hand.find((card) => card.id === String(body.cardId ?? "") && card.kind === "Negation") : null;
+    if ((canonicalRespond || action === "respond_negation") && !negation) return json({ error: "Select a Negation card from your hand first." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Negation decision has already moved on." }, 409);
     if (negation) {
       hand = hand.filter((card) => card.id !== negation.id); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
