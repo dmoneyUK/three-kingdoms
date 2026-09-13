@@ -1,5 +1,11 @@
 # Three Kingdoms project handover
 
+### 2026-09-13 update — executable Rock Cleaving Axe trigger
+
+Rock Cleaving Axe now uses the same executable `attack_dodged` trigger contract as Green Dragon Blade. Its equipment module owns whether the weapon is equipped, exposes every legal Hand/Equipment card as an exact-two-card selection, and validates the submitted pair against live state. `finishDodgedAttack`, bot advancement, legal-action projection and `respond_rock_cleaving` now consume that semantic execution. The existing Rock Cleaving pending screen/protocol actions remain compatibility-only; the Axe itself is still legally usable as one of the two discarded cards.
+
+Next: migrate Frost Sword as the first `damage_about_to_apply` trigger. Keep the current response/continuation architecture intact; after the three representative trigger migrations, work on the decision-specific `readyAfterEventId` presentation barrier.
+
 ### 2026-09-13 update — executable Green Dragon Blade trigger
 
 Green Dragon Blade is now the first provider-owned triggered effect. `game/capabilities/triggers.ts` defines a trigger option, selection and semantic execution contract; the Green Dragon module declares its `attack_dodged` availability and validates the chosen follow-up Attack from the source's live hand. `finishDodgedAttack`, bot advancement and the compatibility `respond_green_dragon` action now query/resolve that trigger rather than checking a weapon directly. `GreenDragonPending.triggerId` preserves the provider identity while the existing pending UI and protocol action remain a bounded compatibility layer.

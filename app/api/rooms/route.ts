@@ -128,7 +128,6 @@ function attackDistance(players: PlayerRow[], sourceId: string, targetId: string
 }
 function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "ZhugeCrossbow"; }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
-function hasRockCleavingAxe(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "RockCleavingAxe"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
 function hasFrostSword(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "FrostSword"; }
 function isNioShieldImmune(target?: PlayerRow | null, attack?: Card | null) { return Boolean(target && resolvePassiveAttackModifiers({ targetEquipment: equipmentCards(target), attack })?.prevented); }
@@ -159,12 +158,6 @@ function selectedSerpentSpearCards(player: PlayerRow | null | undefined, hand: C
 }
 function botSerpentSpearCards(player: PlayerRow | null | undefined, hand: Card[]) { return hasSerpentSpear(player) && hand.length >= 2 ? hand.slice(0, 2) : []; }
 function rockCleavingCards(player: PlayerRow | null | undefined, hand: Card[]) { return [...hand, ...equipmentCards(player)]; }
-function selectedRockCleavingCards(player: PlayerRow | null | undefined, hand: Card[], value: unknown) {
-  if (!hasRockCleavingAxe(player) || !Array.isArray(value)) return [];
-  const ids = value.map(String); if (ids.length !== 2 || new Set(ids).size !== 2) return [];
-  const available = rockCleavingCards(player, hand);
-  return ids.map((id) => available.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
-}
 function phaseAfterAttack(player?: PlayerRow | null) { return playPhaseAfterAttack(player, hasZhugeCrossbow(player)); }
 function latestResolutionId(log: string[]) {
   for (let index = log.length - 1; index >= 0; index--) {
@@ -817,9 +810,11 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
     await advanceGreenDragon(room.id);
     return;
   }
-  if (source?.alive && target?.alive && hasRockCleavingAxe(source) && rockCleavingCards(source, parse<Card[]>(source.hand_json, [])).length >= 2) {
-    const pending: RockCleavingPending = { kind: "rock_cleaving", sourceId: source.id, targetId: target.id, actorId: source.id, resumePhase, sequenceStartCardId, reason: `Rock Cleaving Axe: discard 2 cards to force the Attack's damage on ${target.name}, or skip`, deadline: nextResponseDeadline(source) };
-    log = addLog(log, `${source.name}'s Attack is blocked. Rock Cleaving Axe may force its damage on ${target.name}.`);
+  const rockCards = source ? rockCleavingCards(source, parse<Card[]>(source.hand_json, [])) : [];
+  const rockCleaving = source ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceCards: rockCards }).find((option) => option.effectId === "rock_cleaving_axe_attack_dodged") : null;
+  if (source?.alive && target?.alive && rockCleaving) {
+    const pending: RockCleavingPending = { kind: "rock_cleaving", triggerId: rockCleaving.effectId, sourceId: source.id, targetId: target.id, actorId: source.id, resumePhase, sequenceStartCardId, reason: `${rockCleaving.label}: discard 2 cards to force the Attack's damage on ${target.name}, or skip`, deadline: nextResponseDeadline(source) };
+    log = addLog(log, `${source.name}'s Attack is blocked. ${rockCleaving.label} may force its damage on ${target.name}.`);
     writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
     await db().batch(writes);
     await advanceRockCleaving(room.id);
@@ -899,11 +894,14 @@ async function advanceRockCleaving(roomId: string) {
   if (!room || room.phase !== "response" || pending?.kind !== "rock_cleaving") return;
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const players = rows.results ?? [];
   const source = players.find((player) => player.id === pending.sourceId && player.alive); const target = players.find((player) => player.id === pending.targetId && player.alive);
-  const hand = parse<Card[]>(source?.hand_json ?? null, []); const materials = rockCleavingCards(source, hand).slice(0, 2);
-  if (source && target && materials.length === 2 && hasRockCleavingAxe(source) && !isBotPlayer(source)) return;
+  const hand = parse<Card[]>(source?.hand_json ?? null, []); const cards = rockCleavingCards(source, hand);
+  const option = source ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceCards: cards }).find((candidate) => candidate.effectId === (pending.triggerId ?? "rock_cleaving_axe_attack_dodged")) : null;
+  const execution = source && option ? resolveTriggeredEffect(pending.triggerId ?? "rock_cleaving_axe_attack_dodged", { event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceCards: cards }, { cardIds: option.selection?.eligibleCardIds.slice(0, 2) }) : null;
+  const materials = execution?.consumeCardIds?.map((id) => cards.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
+  if (source && target && materials.length === 2 && !isBotPlayer(source)) return;
   const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
   if ((claim.meta.changes ?? 0) <= 0) return;
-  if (!source || !target || materials.length !== 2 || !hasRockCleavingAxe(source)) {
+  if (!source || !target || materials.length !== 2 || !execution) {
     const log = addLog(parse<string[]>(room.log_json, []), `${source?.name ?? "The attacker"} does not use Rock Cleaving Axe.`);
     await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), roomId).run();
     if (source) await continueAfterDying(roomId, source.id);
@@ -1500,7 +1498,10 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
     }
     switch (pending.kind) {
       case "green_dragon": return ["pass_green_dragon", ...(hand.some(isAttackCard) ? ["respond_green_dragon"] : [])];
-      case "rock_cleaving": return ["pass_rock_cleaving", ...(rockCleavingCards(actor, hand).length >= 2 ? ["respond_rock_cleaving"] : [])];
+      case "rock_cleaving": {
+        const option = getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(actor), sourceCards: rockCleavingCards(actor, hand) }).find((candidate) => candidate.effectId === (pending.triggerId ?? "rock_cleaving_axe_attack_dodged"));
+        return ["pass_rock_cleaving", ...(option ? ["respond_rock_cleaving"] : [])];
+      }
       case "frost_sword": return ["pass_frost_sword", ...(frostSwordTargetableCardCount(players.find((player) => player.id === pending.targetId)) > 0 ? ["use_frost_sword"] : [])];
       case "harvest": return ["preview_harvest", "choose_harvest"];
       case "target_card": return ["choose_target_card"];
@@ -1997,8 +1998,13 @@ export async function POST(request: Request) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const pending = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "rock_cleaving" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Rock Cleaving Axe response." }, 409);
-    const hand = parse<Card[]>(me.hand_json, []); const materials = action === "respond_rock_cleaving" ? selectedRockCleavingCards(me, hand, body.cardIds) : [];
-    if (action === "respond_rock_cleaving" && materials.length !== 2) return json({ error: "Select 2 different cards from your hand or Equipment Zone first." }, 409);
+    const hand = parse<Card[]>(me.hand_json, []); const cards = rockCleavingCards(me, hand);
+    const triggerId = pending.triggerId ?? "rock_cleaving_axe_attack_dodged";
+    const execution = action === "respond_rock_cleaving"
+      ? resolveTriggeredEffect(triggerId, { event: "attack_dodged", sourceEquipment: equipmentCards(me), sourceCards: cards }, { cardIds: body.cardIds })
+      : null;
+    const materials = execution?.consumeCardIds?.map((id) => cards.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
+    if (action === "respond_rock_cleaving" && (!execution || materials.length !== 2)) return json({ error: "Select 2 different cards allowed by this triggered effect first." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Rock Cleaving Axe decision has already moved on." }, 409);
     if (!materials.length) {
@@ -2008,7 +2014,7 @@ export async function POST(request: Request) {
     } else {
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
       const target = players.find((player) => player.id === pending.targetId && player.alive);
-      if (!target || !hasRockCleavingAxe(me)) {
+      if (!target || !execution) {
         const log = addLog(parse<string[]>(liveRoom.log_json, []), "The Rock Cleaving Axe response no longer has a valid target or equipped weapon.");
         await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id).run();
       } else await resolveRockCleaving(liveRoom, pending, me, target, players, materials, hand, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []));

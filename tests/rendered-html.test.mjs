@@ -252,7 +252,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(roomApi, /resolveTriggeredEffect/);
   assert.match(roomApi, /triggerId/);
   assert.match(roomApi, /hasSerpentSpear/);
-  assert.match(roomApi, /hasRockCleavingAxe/);
+  assert.match(roomApi, /rock_cleaving_axe_attack_dodged/);
   assert.match(roomApi, /hasSkyPiercingHalberd/);
   assert.match(roomApi, /hasFrostSword/);
   assert.match(roomApi, /respond_rock_cleaving/);

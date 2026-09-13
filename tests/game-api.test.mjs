@@ -593,6 +593,7 @@ test("no-Dodge auto resolution keeps Frost Sword and shield checks and skips emp
   const game = await createHumanGame(); const [host, , , carol] = game.members;
   const [me, first, second, last] = game.room.players;
   for (const player of game.room.players) { setHand(player.id, [], 3, 3); setEquipment(player.id); }
+  sql(`UPDATE players SET hero=NULL WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})`);
   setHand(me.id, [card("Attack", "no-dodge-frost")], 3, 3);
   setHand(first.id, [card("Peach", "frost-kept")], 3, 3);
   setEquipment(me.id, { weapon: card("FrostSword", "no-dodge") }); setTurn(game.code, me.seat);

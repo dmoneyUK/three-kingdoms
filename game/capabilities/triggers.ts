@@ -1,8 +1,9 @@
 import type { Card } from "../model";
 import { greenDragonBladeDodgedAttackTrigger } from "./equipment/green-dragon-blade";
+import { rockCleavingAxeDodgedAttackTrigger } from "./equipment/rock-cleaving-axe";
 
 export type TriggerEvent = "attack_dodged";
-export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[] };
+export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[] };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown };
 export type TriggerOption = { effectId: string; label: string; selection: { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null };
 export type TriggerExecution = { status: "resolved"; effectId: string; consumeCardIds?: string[] };
@@ -13,7 +14,7 @@ export type TriggeredEffect = {
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
 };
 
-const triggers: TriggeredEffect[] = [greenDragonBladeDodgedAttackTrigger];
+const triggers: TriggeredEffect[] = [greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger];
 
 /** Returns triggered effects supplied by the relevant equipped/hero capabilities. */
 export function getTriggeredEffects(context: TriggerContext) {
