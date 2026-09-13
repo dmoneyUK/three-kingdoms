@@ -20,10 +20,11 @@ export type TriggerOption = { effectId: string; label: string; selection: Trigge
  * weapon or hero provider ID.
  */
 export type TriggerExecution =
-  | { status: "resolved"; effectId: string; outcome: { kind: "follow_up_attack"; attackCardId: string } }
-  | { status: "resolved"; effectId: string; outcome: { kind: "force_damage"; amount: number; consumeCardIds: string[] } }
-  | { status: "resolved"; effectId: string; outcome: { kind: "prevent_damage"; targetCardIds: string[] } }
-  | { status: "resolved"; effectId: string; outcome: { kind: "continue_event" } };
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "follow_up_attack"; attackCardId: string } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "force_damage"; amount: number; consumeCardIds: string[] } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "prevent_damage"; targetCardIds: string[] } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "continue_event" } };
+export type TriggerPresentation = { label: string };
 export type TriggeredEffect = {
   id: string;
   event: TriggerEvent;

@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Current baseline
 
-As of 2026-09-13 the committed architecture baseline is `721e66c` (`Strengthen semantic trigger outcomes`). Trigger outcomes are strongly discriminated, target-card selection keys are opaque, and canonical damage-about-to-apply reactions now use the event-shaped trigger protocol. Build and lint pass; the architecture and Frost regressions pass. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
+As of 2026-09-13 the working Round 1 migration is based on `727008f` plus local trigger-lifecycle changes. Trigger outcomes are strongly discriminated, target-card selection keys are opaque, canonical damage-about-to-apply reactions use the event-shaped trigger protocol, and selected provider labels are preserved as generic presentation metadata. Build and lint pass. The full local suite still exposes bot-trigger regressions that must be fixed before this round is committed and pushed. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
 
 Repository and service:
 
@@ -136,7 +136,7 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — architecture first
 
-1. **Migrate trigger bots and generic continuation resumption.** Keep all optional reactions on the same live provider engine and resume each domain event correctly when the final provider declines.
+1. **Finish Round 1 trigger bots and generic continuation resumption.** Keep all optional reactions on the same live provider engine and resume each domain event correctly when the final provider declines. The current working bot path still strands an attack-dodged trigger and must be corrected before commit.
 2. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
 3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword only after the preceding architecture work is green.
 

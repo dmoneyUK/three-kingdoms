@@ -7,10 +7,10 @@ import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, response
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { getTriggeredEffects, resolveTriggeredEffect } from "../../../game/capabilities/triggers";
-import { continueTriggerEvent } from "../../../game/decisions/triggers";
+import { continueTriggerEvent, resumeTriggerContinuation } from "../../../game/decisions/triggers";
 import { legacyResponseActionFor, normalizeLegacyTriggerAction } from "../../../game/compat/legacy-actions";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
-import { asLegacyResponsePending, asLegacyTriggerPending, asResponsePending, asTriggerPending, serializePending, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type DeferredStratagem, type DuelPending, type DyingPending, type FrostSwordPending, type GreenDragonPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type RockCleavingPending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { asLegacyResponsePending, asLegacyTriggerPending, asResponsePending, asTriggerPending, serializePending, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelPending, type DyingPending, type FrostSwordPending, type GreenDragonPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type RockCleavingPending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
 export const runtime = "edge";
 
@@ -857,25 +857,58 @@ async function resolveJudgementResponse(room: RoomRow, pending: Pending, actor: 
   if (pending.kind === "group" && source) return resolveJudgementGroupResponse(room, pending, actor, source, players, discard, log, resolution);
 }
 
+/** Runs the same live provider discovery and semantic outcome path for bots. */
+async function advanceCanonicalBotTrigger(roomId: string) {
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  const pending = asTriggerPending(parse<Pending | null>(room?.pending_json ?? null, null));
+  if (!room || room.phase !== "response" || !pending) return;
+  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+  const players = rows.results ?? []; const actor = players.find((player) => player.id === pending.actorId && player.alive);
+  if (!actor || !isBotPlayer(actor)) return;
+  const context = triggerContextFor(pending, players); const options = context ? triggerOptionsFor(pending, players) : [];
+  const option = options[0];
+  if (!context || !option) {
+    const source = players.find((player) => player.id === pending.continuation.sourceId);
+    if (source) await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL WHERE id = ? AND phase = 'response'").bind(pending.continuation.resumePhase, roomId).run();
+    return;
+  }
+  const selection = option.selection?.type === "cards"
+    ? (option.selection.max === 1 ? { cardId: option.selection.eligibleCardIds[0] } : { cardIds: option.selection.eligibleCardIds.slice(0, option.selection.max) })
+    : option.selection?.type === "target_cards"
+      ? { cardKeys: option.selection.eligibleKeys.slice(0, option.selection.max) }
+      : {};
+  const execution = resolveTriggeredEffect(option.effectId, context, selection);
+  if (!execution) return;
+  const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
+  if ((claim.meta.changes ?? 0) <= 0) return;
+  const source = players.find((player) => player.id === pending.continuation.sourceId && player.alive); const target = players.find((player) => player.id === pending.continuation.targetId && player.alive);
+  if (!source || !target) return;
+  const discard = parse<Card[]>(room.discard_json, []); const log = addLog(parse<string[]>(room.log_json, []), `${actor.name} resolves ${option.label}.`);
+  if (execution.outcome.kind === "follow_up_attack") {
+    const hand = parse<Card[]>(source.hand_json, []); const attack = hand.find((card) => card.id === execution.outcome.attackCardId);
+    if (attack) await applyFollowUpAttackOutcome(room, pending.continuation as AttackDodgedTriggerContinuation, source, target, players, attack, hand, discard, log, option.label);
+  } else if (execution.outcome.kind === "force_damage") {
+    const hand = parse<Card[]>(source.hand_json, []); const materials = execution.outcome.consumeCardIds.map((id) => [...hand, ...equipmentCards(source)].find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
+    if (materials.length === execution.outcome.consumeCardIds.length) await applyForcedDamageOutcome(room, pending.continuation as AttackDodgedTriggerContinuation, source, target, players, materials, hand, discard, log, execution.outcome.amount, option.label);
+  } else if (execution.outcome.kind === "prevent_damage") {
+    await applyPreventDamageOutcome(room, pending.continuation as DamageAboutToApplyTriggerContinuation, source, target, discard, log, execution.outcome.targetCardIds);
+  } else {
+    const next = continueTriggerEvent(pending, execution, nextResponseDeadline(actor)); const remaining = next ? triggerOptionsFor(next, players) : [];
+    if (next && remaining.length) await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ? WHERE id = ?").bind(serializePending(next), roomId).run();
+    else await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL WHERE id = ?").bind(pending.continuation.resumePhase, roomId).run();
+  }
+}
+
 async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, target: PlayerRow | null, discard: Card[], log: string[], resumePhase: string, sequenceStartCardId: string, writes: D1PreparedStatement[] = []) {
   const options = source && target ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []), targetHand: parse<Card[]>(target.hand_json, []), targetEquipment: equipmentCards(target) }) : [];
   if (source?.alive && target?.alive && options.length) {
-    // Bot advancement still consumes the old saved-continuation adapters while
-    // its scheduler is migrated. Human and Quick Test decisions below are
-    // fully event-shaped.
     if (isBotPlayer(source)) {
-      const option = options[0];
-      log = addLog(log, `${source.name}'s Attack is blocked. ${option.label.replace(/^Use\s+/, "")} may continue.`);
-      if (option.effectId === "green_dragon_blade_attack_dodged") {
-        const legacy: GreenDragonPending = { kind: "green_dragon", triggerId: option.effectId, sourceId: source.id, targetId: target.id, actorId: source.id, resumePhase, sequenceStartCardId, reason: option.label, deadline: nextResponseDeadline(source) };
-        writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(legacy, log)), JSON.stringify(discard), JSON.stringify(log), room.id));
-        await db().batch(writes); await advanceGreenDragon(room.id); return;
-      }
-      if (option.effectId === "rock_cleaving_axe_attack_dodged") {
-        const legacy: RockCleavingPending = { kind: "rock_cleaving", triggerId: option.effectId, sourceId: source.id, targetId: target.id, actorId: source.id, resumePhase, sequenceStartCardId, reason: option.label, deadline: nextResponseDeadline(source) };
-        writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(legacy, log)), JSON.stringify(discard), JSON.stringify(log), room.id));
-        await db().batch(writes); await advanceRockCleaving(room.id); return;
-      }
+      const pending: TriggerPending = withPresentationBarrier({ kind: "trigger", event: "attack_dodged", actorId: source.id, reason: `${source.name}'s Attack is blocked. An optional reaction may apply.`, deadline: nextResponseDeadline(source), continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId } }, log);
+      log = addLog(log, `${source.name}'s Attack is blocked. ${options[0].label.replace(/^Use\s+/, "")} may continue.`);
+      writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
+      await db().batch(writes);
+      await advanceCanonicalBotTrigger(room.id);
+      return;
     }
     const pending: TriggerPending = {
       kind: "trigger",
@@ -896,13 +929,14 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
 }
 
 /** Applies the semantic force-damage outcome after an Attack has been dodged. */
-async function applyForcedDamageOutcome(room: RoomRow, continuation: AttackDodgedTriggerContinuation, source: PlayerRow, target: PlayerRow, players: PlayerRow[], materials: Card[], hand: Card[], discard: Card[], log: string[], amount = 1) {
+async function applyForcedDamageOutcome(room: RoomRow, continuation: AttackDodgedTriggerContinuation, source: PlayerRow, target: PlayerRow, players: PlayerRow[], materials: Card[], hand: Card[], discard: Card[], log: string[], amount = 1, presentationLabel = "Optional reaction") {
+  const displayLabel = presentationLabel.replace(/^Use\s+/, "");
   const materialIds = new Set(materials.map((card) => card.id));
   const nextHand = hand.filter((card) => !materialIds.has(card.id));
   const nextEquipment = Object.fromEntries(Object.entries(equipmentZone(source)).filter(([, card]) => !card || !materialIds.has(card.id))) as EquipmentZone;
   discard.push(...materials);
-  log = addCardGroupEvent(log, source.name, materials, "play", true, target.name, `${source.name} uses an optional reaction to force damage on ${target.name}.`);
-  log = addLog(log, `${source.name} pays for an optional reaction and forces ${amount} damage on ${target.name}.`);
+  log = addCardGroupEvent(log, source.name, materials, "play", true, target.name, `${source.name} discards ${materials.length} cards with ${displayLabel} to force damage on ${target.name}.`);
+  log = addLog(log, `${source.name} discards ${materials.length} cards with ${displayLabel} and forces ${amount} damage on ${target.name}.`);
   const sourceWrites = [
     db().prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextEquipment), source.id),
   ];
@@ -962,6 +996,8 @@ async function applyPreventDamageOutcome(room: RoomRow, continuation: DamageAbou
 
 // Retained only to advance an already-persisted legacy bot decision during the
 // saved-room compatibility window. New decisions use event continuations.
+// Legacy saved-room adapter; new rooms use advanceCanonicalBotTrigger.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function advanceFrostSword(roomId: string) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const stored = parse<Pending | null>(room?.pending_json ?? null, null); const trigger = asTriggerPending(stored);
   const pending = asLegacyTriggerPending(stored) as FrostSwordPending | null;
@@ -984,6 +1020,8 @@ async function advanceFrostSword(roomId: string) {
   await continueAfterDying(room.id, source.id);
 }
 
+// Legacy saved-room adapter; new rooms use advanceCanonicalBotTrigger.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function advanceRockCleaving(roomId: string) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const stored = parse<Pending | null>(room?.pending_json ?? null, null); const trigger = asTriggerPending(stored);
@@ -1008,11 +1046,12 @@ async function advanceRockCleaving(roomId: string) {
 }
 
 /** Applies the semantic follow-up-Attack outcome after an Attack has been dodged. */
-async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDodgedTriggerContinuation, source: PlayerRow, target: PlayerRow, players: PlayerRow[], attack: Card, sourceHand: Card[], discard: Card[], log: string[]) {
+async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDodgedTriggerContinuation, source: PlayerRow, target: PlayerRow, players: PlayerRow[], attack: Card, sourceHand: Card[], discard: Card[], log: string[], presentationLabel = "optional reaction") {
+  const displayLabel = presentationLabel.replace(/^Use\s+/, "");
   const nextSourceHand = sourceHand.filter((card) => card.id !== attack.id);
   const updatedSource = { ...source, hand_json: JSON.stringify(nextSourceHand) } satisfies PlayerRow;
   const declaration = { ...attackDeclaration(source, target, "triggered", [attack], continuation.resumePhase, attack), sequenceStartCardId: continuation.sequenceStartCardId } satisfies AttackDeclaration;
-  discard.push(attack); log = addCardEvent(log, source.name, attack, target.name); log = addLog(log, `${source.name} plays a triggered follow-up Attack on ${target.name}.`);
+  discard.push(attack); log = addCardEvent(log, source.name, attack, target.name); log = addLog(log, `${source.name} uses ${displayLabel} to play another Attack on ${target.name}.`);
   if (isNioShieldImmune(target, attackPhysicalCard(declaration))) {
     log = addLog(log, `${target.name}'s Nio Shield makes them immune to the black Attack. Action returns to ${source.name}.`);
     await db().batch([
@@ -1053,6 +1092,8 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
   await continueAfterDying(room.id, source.id);
 }
 
+// Legacy saved-room adapter; new rooms use advanceCanonicalBotTrigger.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function advanceGreenDragon(roomId: string) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const stored = parse<Pending | null>(room?.pending_json ?? null, null); const trigger = asTriggerPending(stored);
@@ -1558,11 +1599,11 @@ async function runBots(roomId: string) {
       } else {
         const frostOption = attack ? frostSwordTriggerOption(bot, target) : null;
         if (attack && frostOption) {
-          log = addLog(log, `${bot.name}'s Attack would damage ${target.name}. Frost Sword may prevent that damage and discard up to 2 of ${target.name}'s cards.`);
-          const pending: FrostSwordPending = { kind: "frost_sword", sourceId: bot.id, targetId: target.id, actorId: bot.id, resumePhase: phaseAfterAttack(bot), sequenceStartCardId, reason: `Frost Sword: prevent damage and discard up to 2 cards from ${target.name}, or deal 1 damage`, deadline: nextResponseDeadline(bot), triggerId: frostOption.effectId };
+          log = addLog(log, `${bot.name}'s Attack would damage ${target.name}. Optional reactions may prevent that damage.`);
+          const pending = damageTriggerPending(bot, target, phaseAfterAttack(bot), sequenceStartCardId, log);
           writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
           writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log)), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
-          await db().batch(writes); await advanceFrostSword(roomId); return;
+          await db().batch(writes); await advanceCanonicalBotTrigger(roomId); return;
         }
         target.hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} takes 1 damage${target.hp === 0 ? " and enters Dying. Peach rescue begins in turn order." : `. Action returns to ${bot.name}.`}`);
         if (target.hp === 0) {
@@ -1857,6 +1898,10 @@ export async function POST(request: Request) {
         return json({ error: "That trigger provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       }
       triggerExecution = action === "trigger" && context ? resolveTriggeredEffect(triggerId, context, { cardId: body.cardId, cardIds: body.cardIds, cardKeys: body.cardKeys }) : null;
+      if (triggerExecution) {
+        const selectedOption = available.find((option) => option.effectId === triggerId);
+        triggerExecution = { ...triggerExecution, presentation: selectedOption ? { label: selectedOption.label } : undefined };
+      }
       if (action === "trigger" && !triggerExecution) return json({ error: "That trigger option is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       if (triggerExecution?.outcome.kind === "force_damage") { body.cardIds = triggerExecution.outcome.consumeCardIds; body.cardId = triggerExecution.outcome.consumeCardIds[0]; }
       if (triggerExecution?.outcome.kind === "prevent_damage") body.cardKeys = (Array.isArray(body.cardKeys) ? body.cardKeys : []);
@@ -1884,13 +1929,16 @@ export async function POST(request: Request) {
     const next = continueTriggerEvent(trigger, triggerExecution, nextResponseDeadline(players.find((player) => player.id === trigger.actorId)));
     if (!next) return json({ error: "That triggered effect cannot continue this event.", stale: true, room: await roomState(code, token) }, 409);
     const remaining = triggerOptionsFor(next, players);
+    const resumed = resumeTriggerContinuation(trigger, triggerExecution, remaining.length > 0, nextResponseDeadline(players.find((player) => player.id === trigger.actorId)));
+    if (!resumed) return json({ error: "That triggered effect cannot continue this event.", stale: true, room: await roomState(code, token) }, 409);
     const log = addLog(parse<string[]>(liveRoom.log_json, []), `${me.name} resolves an optional reaction. ${remaining.length ? "Another reaction remains available." : "No further reactions remain."}`);
     if (remaining.length) {
-      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(next), JSON.stringify(log), room.id).run();
+      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(resumed.kind === "reopen" ? resumed.pending : next), JSON.stringify(log), room.id).run();
     } else {
-      const resumePhase = next.continuation.resumePhase;
+      const continuation = resumed.kind === "resume" ? resumed.continuation : next.continuation;
+      const resumePhase = continuation.resumePhase;
       await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(resumePhase, JSON.stringify(log), room.id).run();
-      const source = players.find((player) => player.id === next.continuation.sourceId);
+      const source = players.find((player) => player.id === continuation.sourceId);
       if (source) await continueAfterDying(room.id, source.id);
     }
     return json({ room: await roomState(code, token) });
@@ -1957,7 +2005,7 @@ export async function POST(request: Request) {
         if (!attack) return json({ error: "The selected reaction no longer has its required card.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
-        await applyFollowUpAttackOutcome(liveRoom, continuation, source, target, players, attack, hand, discard, log);
+        await applyFollowUpAttackOutcome(liveRoom, continuation, source, target, players, attack, hand, discard, log, triggerExecution.presentation?.label);
         return json({ room: await roomState(code, token) });
       }
       if (triggerExecution?.outcome.kind === "force_damage") {
@@ -1966,7 +2014,7 @@ export async function POST(request: Request) {
         if (materials.length !== triggerExecution.outcome.consumeCardIds.length || materials.length === 0) return json({ error: "The selected reaction no longer has its required costs.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
-        await applyForcedDamageOutcome(liveRoom, continuation, source, target, players, materials, hand, discard, log, triggerExecution.outcome.amount);
+        await applyForcedDamageOutcome(liveRoom, continuation, source, target, players, materials, hand, discard, log, triggerExecution.outcome.amount, triggerExecution.presentation?.label);
         return json({ room: await roomState(code, token) });
       }
       return json({ error: "That triggered outcome does not apply to this event.", stale: true, room: await roomState(code, token) }, 409);
