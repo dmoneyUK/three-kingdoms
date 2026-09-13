@@ -2,6 +2,12 @@
 
 ## Latest stability milestone — D1-efficient room reads
 
+## Latest architecture milestone — canonical response decisions
+
+The response migration now persists `ResponsePending` as the single response-decision wrapper. It records the semantic requirement (`attack`, `dodge` or `negate`) and the small continuation needed to resume the source effect. Attack, Duel, AOE and Negation flows therefore all derive their legal alternatives from the same capability registry while retaining their distinct domain continuations. `currentAction` v3 exposes only the acting player's semantic response, its canonical `respond` / `decline_response` actions, and provider interaction mode. Physical response cards are **implicit** and can be clicked immediately; abilities are **explicit**, so Qingguo and future skills never need to be guessed from a selected card. Compatibility actions and detailed pending projections are retained only until the remaining route paths are migrated.
+
+Next: generic provider-owned Judgement resolution, then executable triggered-effect providers. Afterwards, replace the global presentation-idle check with a decision-specific `readyAfterEventId` barrier and retire the compatibility response actions.
+
 Room GET requests are now read-only: they no longer update presence, advance game timers, or run DDL/schema checks. Migrations remain the deployment-time schema authority. The client uses 8-second idle polling, 1-second response polling, and 60-second hidden-tab polling. Human presence is a separate, guarded 60-second heartbeat; Quick Test produces no four-seat presence writes. Bumper Harvest deadline progression is explicitly submitted once by the active client instead of being a side effect of fast polling. Regression coverage verifies a room read leaves `connected_at` unchanged and a fresh heartbeat produces no second write. Next: finish the incremental action-view migration, then implement Blue Steel Sword.
 
 Active games now have a five-minute no-event expiry. A D1 activity trigger records real room-state transitions, not GET polling or presence heartbeats. An open client checks once per minute and on room load; if the five-minute deadline has passed, the match becomes finished with a public closing event. A completely clientless Worker cannot run a timer by itself, so an abandoned room is finalized on the next check or when someone returns.

@@ -4,7 +4,7 @@ const CARD_KINDS = new Set([
   "Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "ZhugeCrossbow", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd", "FrostSword", "NioShield", "EightTrigrams", "Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed", "OffensiveHorse", "DefensiveHorse", "RationsDepleted", "Strike",
 ]);
 const ROOM_STATUSES = new Set(["lobby", "heroes", "started", "playing", "finished"]);
-const PENDING_KINDS = new Set(["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation", "harvest", "target_card", "dying"]);
+const PENDING_KINDS = new Set(["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation", "harvest", "target_card", "dying", "response"]);
 const GAMEPLAY_ACTION_SET = new Set(GAMEPLAY_ACTIONS);
 
 function isRecord(value) {
@@ -51,23 +51,26 @@ function normalizePending(value, kind) {
 }
 
 function normalizeCurrentAction(value) {
-  if (!isRecord(value) || value.version !== 1 || typeof value.kind !== "string" || !PENDING_KINDS.has(value.kind) && value.kind !== "turn" && value.kind !== "none") return null;
+  if (!isRecord(value) || (value.version !== 1 && value.version !== 3) || typeof value.kind !== "string" || !PENDING_KINDS.has(value.kind) && value.kind !== "turn" && value.kind !== "none") return null;
   const requirement = value.requirement === "attack" || value.requirement === "dodge" || value.requirement === "negate" ? value.requirement : undefined;
   const options = Array.isArray(value.options) ? value.options.filter(isRecord).flatMap((option) => {
     if (typeof option.providerId !== "string" || typeof option.label !== "string" || option.satisfies !== requirement) return [];
     const selection = option.selection === null ? null : isRecord(option.selection) && option.selection.type === "cards" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
       ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string") }
       : null;
-    return [{ providerId: option.providerId, satisfies: option.satisfies, label: option.label, selection }];
+    const activation = option.activation === "explicit" ? "explicit" : option.activation === "implicit" || value.version === 1 ? "implicit" : null;
+    if (!activation) return [];
+    return [{ providerId: option.providerId, satisfies: option.satisfies, activation, label: option.label, selection }];
   }) : [];
   return {
-    version: 1,
+    version: value.version,
     kind: value.kind,
     actorId: typeof value.actorId === "string" ? value.actorId : null,
     deadline: typeof value.deadline === "number" ? value.deadline : 0,
     reason: typeof value.reason === "string" ? value.reason : "Waiting for the next legal action",
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
+    ...(isRecord(value.presentation) ? { presentation: { resolutionId: typeof value.presentation.resolutionId === "string" ? value.presentation.resolutionId : null, readyAfterEventId: typeof value.presentation.readyAfterEventId === "string" ? value.presentation.readyAfterEventId : null } } : {}),
   };
 }
 

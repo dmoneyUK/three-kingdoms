@@ -1,5 +1,13 @@
 # Three Kingdoms project handover
 
+### 2026-09-13 update — canonical semantic ResponsePending and response view v3
+
+`ResponsePending` is now the persisted form for every semantic Attack, Dodge and Negation response. It carries the actor, `ActionRequirement`, deadline/reason/resolution identity and a bounded legacy-shaped continuation for Attack, Group, Duel or Negation. Existing route resolvers read that continuation through `asLegacyResponsePending()` while all new writes use `serializePending()`, making the migration backward-compatible without maintaining a second rules engine.
+
+`currentAction` v3 projects one private `kind: "response"` decision with `respond` and `decline_response` as its canonical actions. Each provider projects `activation`: implicit physical Attack/Dodge/Negation cards are selectable immediately; explicit skills/equipment such as Qingguo and Eight Trigrams enter an intentional ability mode. The browser clears provider/card selection on `actionRevision`, so a chained response cannot inherit prior selection. The server still accepts legacy provider-specific response actions temporarily, but validates canonical `respond`/`decline_response` against freshly loaded authoritative state. All 54 local regression tests pass.
+
+Next architecture work: replace the Eight-Trigrams-specific Judgement adapter with generic provider-owned Judgement resolution, then move Green Dragon Blade, Rock Cleaving Axe and Frost Sword trigger execution out of route-specific branches. The presentation barrier remains globally safe (`!presentationBusy`); only after those semantics are stable should it become decision-specific with `readyAfterEventId`.
+
 ### 2026-09-12 update — canonical action protocol and shared pending state
 
 The first bounded architecture refactor is complete and validated by the full regression suite. `game/pending.ts` now owns the persisted `Pending` union and all its response-state variants; `app/api/rooms/route.ts` imports them instead of defining them beside HTTP/D1 code. `game/protocol.js` plus its declaration file owns the executable gameplay-action vocabulary across the Worker, browser and Node tests.

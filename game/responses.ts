@@ -13,7 +13,9 @@ export type ActionRequirement =
   | { kind: "negate"; sourceId?: string; targetId?: string };
 export type ResponseSelection = { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null;
 export type CapabilityContext = ResponseContext & { requirement: ActionRequirement };
-export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; label: string; cards: Card[]; selection: ResponseSelection };
+export type ResponseActivation = "implicit" | "explicit";
+export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; label: string; cards: Card[]; selection: ResponseSelection };
+export type ResponseProviderOption = Omit<ResponseOption, "activation">;
 export type ResponseSelectionInput = { cardId?: unknown; cardIds?: unknown };
 /** A provider reports the semantic result and costs, never an HTTP action. */
 export type ResponseExecution = {
@@ -24,7 +26,7 @@ export type ResponseExecution = {
   resolution?: "cards" | "judgement";
 };
 export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation"; selection: { cardId?: string; cardIds?: string[] } };
-export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; getOption: (context: CapabilityContext) => ResponseOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
+export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; getOption: (context: CapabilityContext) => ResponseProviderOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
 
 // Providers own their availability and resolver choice. The engine only asks
 // the currently valid provider to satisfy an abstract requirement.
@@ -43,7 +45,10 @@ export function registerResponseProvider(provider: ResponseProvider) {
 
 export function getResponseOptions(context: CapabilityContext, requirement: ActionRequirement) {
   const satisfies = requirement.kind;
-  return providers.filter((provider) => provider.satisfies === satisfies).map((provider) => provider.getOption(context)).filter((option): option is ResponseOption => Boolean(option));
+  return providers.filter((provider) => provider.satisfies === satisfies).flatMap((provider) => {
+    const option = provider.getOption(context);
+    return option ? [{ ...option, activation: provider.activation }] : [];
+  });
 }
 
 export function resolveResponseProvider(providerId: unknown, context: ResponseExecutionContext) {

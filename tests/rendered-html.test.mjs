@@ -66,7 +66,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /start_response_timer/);
   assert.match(page, /automaticResponseTimeout/);
   assert.match(page, /const \[responseProviderId, setResponseProviderId\] = useState\(""\)/);
-  assert.match(page, /semanticResponseOptions\.map\(\(option\)/);
+  assert.match(page, /semanticResponseOptions\.filter\(\(option\) => option\.activation === "explicit"\)\.map/);
   assert.match(page, /submitResponseProvider\(option\)/);
   assert.match(page, /selectedResponseProvider\?\.selection/);
   assert.match(page, /responseSelectionComplete/);
@@ -311,7 +311,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /send\("advance_timers"\)/);
   assert.match(page, /function pendingKind\(room: Room\) \{ return room\.pending\?\.kind \?\? null; \}/);
   assert.match(page, /currentAction\?\.kind/);
-  assert.match(page, /selectedResponseProvider\?\.providerId === option\.providerId/);
+  assert.match(page, /responseProviderId === option\.providerId/);
   assert.match(page, /respond_negation/);
   assert.match(page, /pass_negation/);
   assert.match(page, /Skip response/);
@@ -320,7 +320,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /const presentImmediately = !optimisticPlay && !activeEvent && eventQueue\.length === 0/);
   assert.doesNotMatch(page, /if \(busy \|\| presentationBusy\) return; const key = `\$\{room\.actionPlayerId\}/);
   assert.match(page, /const responseDecisionReady = \(canRespond \|\| frostSwordResponse\) && !presentationBusy/);
-  assert.match(page, /if \(busy \|\| !responseDecisionReady\) return; const key = `\$\{room\.actionPlayerId\}/);
+  assert.match(page, /if \(busy \|\| !responseDecisionReady\) return; const key = room\.actionRevision/);
   assert.match(page, /disabled=\{responseControlsDisabled\}/);
   assert.match(page, /Skip · take 1 damage/);
   assert.doesNotMatch(page, /automaticDamage/);

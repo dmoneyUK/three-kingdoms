@@ -4,6 +4,7 @@ import type { ResponseProvider } from "../../responses";
 export const zhenJiBlackCardDodgeProvider: ResponseProvider = {
   id: "zhen_ji_black_card_dodge",
   satisfies: "dodge",
+  activation: "explicit",
   getOption: (context) => {
     if (context.hero !== "zhen-ji") return null;
     const cards = context.hand.filter((card) => card.suit === "♠" || card.suit === "♣");

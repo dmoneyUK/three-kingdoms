@@ -10,6 +10,7 @@ function selectedCard(context: Parameters<ResponseProvider["resolve"]>[0], cards
 export const physicalAttackProvider: ResponseProvider = {
   id: "card",
   satisfies: "attack",
+  activation: "implicit",
   getOption: (context) => {
     const cards = context.hand.filter(isAttackCard);
     return cards.length ? { provider: "card", providerId: "card", satisfies: "attack", label: "Play Attack", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } } : null;
@@ -24,6 +25,7 @@ export const physicalAttackProvider: ResponseProvider = {
 export const physicalDodgeProvider: ResponseProvider = {
   id: "card",
   satisfies: "dodge",
+  activation: "implicit",
   getOption: (context) => {
     const cards = context.hand.filter((card) => card.kind === "Dodge");
     return cards.length ? { provider: "card", providerId: "card", satisfies: "dodge", label: "Play Dodge", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } } : null;
@@ -38,6 +40,7 @@ export const physicalDodgeProvider: ResponseProvider = {
 export const physicalNegationProvider: ResponseProvider = {
   id: "negation_card",
   satisfies: "negate",
+  activation: "implicit",
   getOption: (context) => {
     const cards = context.hand.filter((card) => card.kind === "Negation");
     return cards.length ? { provider: "negation_card", providerId: "negation_card", satisfies: "negate", label: "Play Negation", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } } : null;

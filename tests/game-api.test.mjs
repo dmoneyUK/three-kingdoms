@@ -952,9 +952,9 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   const played = await request("play_card", { code: room.code, token, cardId: "drawtwo-quick-live" });
   assert.equal(played.status, 200); assert.equal(played.data.room.phase, "response");
   assert.equal(played.data.room.pendingNegation.kind, "negation", "the public pending DTO retains its discriminator for the client normalizer");
-  assert.deepEqual(played.data.room.pending, { kind: "negation" }, "the canonical pending view has one discriminator");
-  assert.equal(played.data.room.currentAction.kind, "negation"); assert.equal(played.data.room.currentAction.actorId, playerTwo.id);
-  assert.deepEqual(played.data.room.currentAction.legalActions.sort(), ["pass_negation", "respond", "respond_negation"], "only the active Quick Test seat receives its legal Negation actions");
+  assert.deepEqual(played.data.room.pending, { kind: "response" }, "the canonical pending view exposes one semantic response discriminator");
+  assert.equal(played.data.room.currentAction.kind, "response"); assert.equal(played.data.room.currentAction.actorId, playerTwo.id);
+  assert.deepEqual(played.data.room.currentAction.legalActions.sort(), ["decline_response", "respond"], "only the active Quick Test seat receives canonical response actions");
   assert.equal(played.data.room.currentAction.requirement, "negate");
   assert.equal(played.data.room.currentAction.options[0]?.providerId, "negation_card");
   assert.equal(played.data.room.pendingNegation.actorId, playerTwo.id); assert.equal(played.data.room.actionPlayerId, playerTwo.id); assert.equal(played.data.room.meId, playerTwo.id); assert.equal(played.data.room.isMyAction, true);

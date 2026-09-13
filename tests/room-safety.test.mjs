@@ -37,5 +37,5 @@ test("normalizes the canonical current action without trusting unknown legal act
   });
   assert.deepEqual(room?.pending, { kind: "attack" });
   assert.deepEqual(room?.currentAction?.legalActions, ["respond", "respond_dodge", "take_damage"]);
-  assert.deepEqual(room?.currentAction?.options, [{ providerId: "card", satisfies: "dodge", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["dodge-1"] } }]);
+  assert.deepEqual(room?.currentAction?.options, [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["dodge-1"] } }]);
 });

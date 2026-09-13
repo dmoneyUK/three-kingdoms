@@ -4,6 +4,7 @@ import type { ResponseProvider } from "../../responses";
 export const eightTrigramsDodgeProvider: ResponseProvider = {
   id: "eight_trigrams_dodge",
   satisfies: "dodge",
+  activation: "explicit",
   getOption: (context) => context.equipment.some((card) => card.kind === "EightTrigrams")
     ? { provider: "eight_trigrams", providerId: "eight_trigrams_dodge", satisfies: "dodge", label: "Use Eight Trigrams", cards: [], selection: null }
     : null,
