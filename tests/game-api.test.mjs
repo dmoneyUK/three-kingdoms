@@ -669,7 +669,9 @@ test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeou
   assert.equal(firstAttack.data.room.pendingAttack.physicalCardId, "attack-dragon-first", "the physical Attack remains available to source-sensitive rules");
   const dodged = await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-dragon" });
   assert.equal(dodged.status, 200); assert.equal(dodged.data.room.pendingGreenDragon.actorId, hostPlayer.id); assert.equal(dodged.data.room.actionPlayerId, hostPlayer.id);
-  const followed = await request("respond_green_dragon", { code: game.code, token: host.token, cardId: "attack-dragon-follow-up" });
+  const dragonTrigger = await state(game.code, host.token);
+  assert.equal(dragonTrigger.data.currentAction.kind, "trigger"); assert.equal(dragonTrigger.data.currentAction.triggerOptions[0].effectId, "green_dragon_blade_attack_dodged");
+  const followed = await request("trigger", { code: game.code, token: host.token, providerId: "green_dragon_blade_attack_dodged", cardId: "attack-dragon-follow-up" });
   assert.equal(followed.status, 200); assert.equal(followed.data.room.pendingAttack, null, "an exhausted defender takes follow-up damage without another response");
   const damaged = await takeDamageIfPending(game.code, bob.token);
   assert.equal(damaged.status, 200); assert.equal(damaged.data.room.players.find((player) => player.id === bobPlayer.id).hp, 3); assert.equal(damaged.data.room.phase, "play-struck");
@@ -774,7 +776,9 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-axe-force", targetId: alicePlayer.id })).status, 200);
   const forcePrompt = await request("respond_dodge", { code: game.code, token: alice.token, cardId: "dodge-axe-force" });
   assert.equal(forcePrompt.data.room.pendingRockCleaving.sequenceStartCardId, "attack-axe-force");
-  const forced = await request("respond_rock_cleaving", { code: game.code, token: host.token, cardIds: ["peach-axe-cost", "rockcleavingaxe-cost"] });
+  const axeTrigger = await state(game.code, host.token);
+  assert.equal(axeTrigger.data.currentAction.kind, "trigger"); assert.equal(axeTrigger.data.currentAction.triggerOptions[0].effectId, "rock_cleaving_axe_attack_dodged");
+  const forced = await request("trigger", { code: game.code, token: host.token, providerId: "rock_cleaving_axe_attack_dodged", cardIds: ["peach-axe-cost", "rockcleavingaxe-cost"] });
   assert.equal(forced.status, 200); assert.equal(forced.data.room.phase, "play-struck"); assert.equal(forced.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
   assert.equal(forced.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards.length, 0, "the Axe itself may be one of the two discarded cards");
   assert.ok(discardIds(game.code).includes("peach-axe-cost")); assert.ok(discardIds(game.code).includes("rockcleavingaxe-cost"));
@@ -832,7 +836,9 @@ test("Frost Sword offers its owner the choice to prevent Attack damage and disca
   assert.equal(attack.status, 200);
   const damage = await takeDamageIfPending(game.code, alice.token);
   assert.equal(damage.status, 200); assert.equal(damage.data.room.pendingFrostSword.actorId, hostPlayer.id);
-  const frost = await request("use_frost_sword", { code: game.code, token: host.token, cardKeys: ["hand:0", "hand:1"] });
+  const frostTrigger = await state(game.code, host.token);
+  assert.equal(frostTrigger.data.currentAction.kind, "trigger"); assert.equal(frostTrigger.data.currentAction.triggerOptions[0].effectId, "frost_sword_damage_about_to_apply");
+  const frost = await request("trigger", { code: game.code, token: host.token, providerId: "frost_sword_damage_about_to_apply", cardKeys: ["hand:0", "hand:1"] });
   assert.equal(frost.status, 200); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Frost Sword prevents the Attack damage"); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 1, "Frost Sword discards two target cards");
 
   setHand(hostPlayer.id, [card("Attack", "judgement-only")], 4, 4); setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, [card("Lightning", "protected-zone")]); setTurn(game.code, hostPlayer.seat);

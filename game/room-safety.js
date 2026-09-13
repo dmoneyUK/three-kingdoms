@@ -4,7 +4,7 @@ const CARD_KINDS = new Set([
   "Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "ZhugeCrossbow", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd", "FrostSword", "NioShield", "EightTrigrams", "Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed", "OffensiveHorse", "DefensiveHorse", "RationsDepleted", "Strike",
 ]);
 const ROOM_STATUSES = new Set(["lobby", "heroes", "started", "playing", "finished"]);
-const PENDING_KINDS = new Set(["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation", "harvest", "target_card", "dying", "response"]);
+const PENDING_KINDS = new Set(["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation", "harvest", "target_card", "dying", "response", "trigger"]);
 const GAMEPLAY_ACTION_SET = new Set(GAMEPLAY_ACTIONS);
 
 function isRecord(value) {
@@ -62,6 +62,13 @@ function normalizeCurrentAction(value) {
     if (!activation) return [];
     return [{ providerId: option.providerId, satisfies: option.satisfies, activation, label: option.label, selection }];
   }) : [];
+  const triggerOptions = Array.isArray(value.triggerOptions) ? value.triggerOptions.filter(isRecord).flatMap((option) => {
+    if (typeof option.effectId !== "string" || typeof option.label !== "string") return [];
+    const selection = option.selection === null ? null : isRecord(option.selection) && (option.selection.type === "cards" || option.selection.type === "target_cards") && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
+      ? { type: option.selection.type, min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string") }
+      : null;
+    return [{ effectId: option.effectId, label: option.label, selection }];
+  }) : [];
   return {
     version: value.version,
     kind: value.kind,
@@ -70,6 +77,7 @@ function normalizeCurrentAction(value) {
     reason: typeof value.reason === "string" ? value.reason : "Waiting for the next legal action",
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
+    ...(value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
     ...(isRecord(value.presentation) ? { presentation: { resolutionId: typeof value.presentation.resolutionId === "string" ? value.presentation.resolutionId : null, readyAfterEventId: typeof value.presentation.readyAfterEventId === "string" ? value.presentation.readyAfterEventId : null } } : {}),
   };
 }

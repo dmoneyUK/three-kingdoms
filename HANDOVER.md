@@ -110,35 +110,11 @@ Events already present on initial load/reload are treated as presented; optimist
 
 ## Important architecture boundaries still remaining
 
-### A. Trigger discovery/execution is generic, but trigger orchestration is not
+### A. Canonical trigger decisions are now the public protocol; continuations remain compatible
 
-The central route still explicitly schedules concrete trigger IDs and keeps dedicated pending/action branches for:
+`TriggerPending` is now the persisted wrapper for weapon reactions. It records the semantic event (`attack_dodged` or `damage_about_to_apply`), the acting player, deadline/reason and a bounded continuation. `roomState()` projects the current actor's private trigger option(s), and the client submits `trigger` or `decline_trigger`. The route recomputes the provider from live equipment/hand/target state and rejects a mismatched or stale provider.
 
-- `green_dragon` / `respond_green_dragon` / `pass_green_dragon`;
-- `rock_cleaving` / `respond_rock_cleaving` / `pass_rock_cleaving`;
-- `frost_sword` / `use_frost_sword` / `pass_frost_sword`.
-
-This means a future hero ability reacting to `attack_dodged` or `damage_about_to_apply` still requires edits to central orchestration even though its provider logic could live in the registry.
-
-**Next architecture target:** introduce a canonical trigger decision, analogous to `ResponsePending`.
-
-Suggested direction:
-
-```ts
-type TriggerPending = {
-  kind: "trigger";
-  actorId: string;
-  event: TriggerEvent;
-  reason: string;
-  deadline?: number;
-  resolutionId?: string;
-  continuation: TriggerContinuation;
-};
-```
-
-Project private trigger options from authoritative state and submit them through canonical actions such as `trigger` / `decline_trigger`. Persist what happened (`attack_dodged`, `damage_about_to_apply`) and the continuation; derive which equipment/hero capabilities are currently available. Do not persist a weapon name as the rule.
-
-Do this incrementally. Avoid a universal effects DSL.
+Green Dragon Blade, Rock Cleaving Axe and Frost Sword are covered end-to-end through this protocol. Their older pending shapes and action names remain compatibility adapters while saved rooms, bot advancement and the existing continuation resolvers are migrated incrementally. Do not add new capabilities to those legacy branches.
 
 ### B. The response presentation barrier is exact on the client but inferred on the server
 
@@ -158,11 +134,9 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — architecture first
 
-1. **Get the current head green in GitHub Actions.** The `d783d7a` workflow failed at startup before any job ran; treat that as unvalidated until a normal workflow completes.
-2. **Introduce generic TriggerPending / TriggerDecision orchestration.** Migrate Green Dragon Blade, Rock Cleaving Axe, and Frost Sword onto it without changing their already-correct capability modules.
-3. **Capture `readyAfterEventId` at decision creation.** Stop inferring the barrier from log scanning once every decision creator can provide it explicitly.
-4. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
-5. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword.
+1. **Capture `readyAfterEventId` at decision creation.** Stop inferring the barrier from log scanning once every decision creator can provide it explicitly.
+2. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
+3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword.
 
 ## Standard card roadmap status
 

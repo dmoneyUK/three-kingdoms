@@ -1,5 +1,6 @@
 import type { Card } from "./model";
 import type { ActionRequirement } from "./responses";
+import type { TriggerEvent } from "./capabilities/triggers";
 
 /** The one persisted decision in a room, independent of HTTP and D1. */
 export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel";
@@ -34,8 +35,20 @@ export type ResponsePending = {
   resolutionId?: string;
   continuation: ResponseContinuation;
 };
+export type TriggerContinuation = GreenDragonPending | RockCleavingPending | FrostSwordPending;
+
+/** A capability reaction to an already-established domain event. */
+export type TriggerPending = {
+  kind: "trigger";
+  actorId: string;
+  event: TriggerEvent;
+  reason: string;
+  deadline?: number;
+  resolutionId?: string;
+  continuation: TriggerContinuation;
+};
 export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
-export type Pending = AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | NegationPending | ResponsePending | DyingPending;
+export type Pending = AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | NegationPending | ResponsePending | TriggerPending | DyingPending;
 
 type LegacyResponsePending = AttackPending | GroupPending | DuelPending | NegationPending;
 
@@ -79,7 +92,41 @@ export function asLegacyResponsePending(pending: unknown): Pending | unknown {
   };
 }
 
+type LegacyTriggerPending = GreenDragonPending | RockCleavingPending | FrostSwordPending;
+function triggerEventFor(pending: LegacyTriggerPending): TriggerEvent {
+  return pending.kind === "frost_sword" ? "damage_about_to_apply" : "attack_dodged";
+}
+
+/** Converts legacy weapon-specific trigger state into one semantic trigger decision. */
+export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
+  if (!pending) return null;
+  if (pending.kind === "trigger") return pending;
+  if (!["green_dragon", "rock_cleaving", "frost_sword"].includes(pending.kind)) return null;
+  const continuation = pending as LegacyTriggerPending;
+  return {
+    kind: "trigger",
+    actorId: continuation.actorId,
+    event: triggerEventFor(continuation),
+    reason: continuation.reason,
+    deadline: continuation.deadline,
+    continuation,
+  };
+}
+
+/** Lets existing effect resolvers read a trigger continuation during migration. */
+export function asLegacyTriggerPending(pending: unknown): Pending | unknown {
+  if (!pending || typeof pending !== "object" || (pending as { kind?: unknown }).kind !== "trigger") return pending;
+  const trigger = pending as TriggerPending;
+  return {
+    ...trigger.continuation,
+    actorId: trigger.actorId,
+    reason: trigger.reason,
+    ...(trigger.deadline === undefined ? {} : { deadline: trigger.deadline }),
+    ...(trigger.resolutionId === undefined ? {} : { resolutionId: trigger.resolutionId }),
+  };
+}
+
 /** Serializes all new semantic response decisions in their canonical form. */
 export function serializePending(pending: unknown) {
-  return JSON.stringify(asResponsePending(pending as Pending | null | undefined) ?? pending);
+  return JSON.stringify(asResponsePending(pending as Pending | null | undefined) ?? asTriggerPending(pending as Pending | null | undefined) ?? pending);
 }
