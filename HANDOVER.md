@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Current baseline
 
-As of 2026-09-13 the working baseline is `2e31cd4` plus the current canonical Attack/Dodge response migration. Trigger outcomes are strongly discriminated, target-card selection keys are opaque, canonical damage-about-to-apply reactions use the event-shaped trigger protocol, bots use the same trigger registry, and selected provider labels are preserved as generic presentation metadata. Attack responses submitted through `respond` now stay on the semantic path; the bounded legacy adapter remains only for Duel, Group, and Negation while those continuations migrate. Build, lint, and diff checks pass. Do not add new cards or hero abilities until canonical response continuation and generic secondary Judgement work are complete.
+As of 2026-09-13 the working baseline is `dbc028d`, extending `2e31cd4` with canonical semantic response execution for Attack, Duel, and Group continuations. Trigger outcomes are strongly discriminated, target-card selection keys are opaque, canonical damage-about-to-apply reactions use the event-shaped trigger protocol, bots use the same trigger registry, and selected provider labels are preserved as generic presentation metadata. Canonical `respond` submissions now enter continuation-specific domain operations without translating back to legacy response verbs; the bounded adapter remains for Negation and secondary Judgement migration. Build, lint, diff checks, and the full 58-test local suite pass. Do not add new cards or hero abilities until canonical Negation/secondary-resolution work is complete.
 
 Repository and service:
 
