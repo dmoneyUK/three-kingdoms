@@ -1,537 +1,202 @@
 # Three Kingdoms project handover
 
-### 2026-09-13 update — executable Frost Sword pre-damage trigger
+Use this file to continue development in a new chat. Start from the latest `main` branch, then read `AGENTS.md`, `README.md`, and `ROADMAP.md` before changing code.
 
-Frost Sword is now the representative provider-owned `damage_about_to_apply` trigger. Its equipment module contributes the private target-card selection contract (hidden Hand slots plus public Equipment cards) and validates the selected one or two cards against the target's live state. The route now requests and executes the trigger instead of inspecting Frost Sword itself; it receives only the semantic target card IDs to discard. Frost Sword continues to exclude Judgement Zone cards, and its existing attacker-owned modal remains a compatibility presentation adapter.
+## Current baseline
 
-### 2026-09-13 update — decision-specific response presentation barrier
+As of 2026-09-13 the reviewed gameplay baseline is commit `d783d7a` (`Complete trigger and presentation architecture`). Its parent `0c255a4` completed the full GitHub Actions workflow successfully. The workflow created for `d783d7a` failed to start and reported zero jobs, so that commit itself has not yet been CI-validated. Before the next gameplay release, make sure the current head gets a normal green Actions run.
 
-Every response now projects the concrete public `readyAfterEventId` that must finish displaying before it becomes interactive. The client records completed presentation IDs and opens every provider, decline action and response timer together after that event—rather than waiting for the entire global animation queue to be idle. Events already present on an initial/reloaded screen are treated as presented, while optimistically displayed cards are marked complete when their authoritative event arrives.
-
-Next: retire the remaining compatibility response protocol branches and shrink legacy-shaped response continuations only where an equivalent semantic continuation is fully covered. Do not remove compatibility paths used by saved games or the dedicated trigger prompts prematurely.
-
-### 2026-09-13 update — executable Rock Cleaving Axe trigger
-
-Rock Cleaving Axe now uses the same executable `attack_dodged` trigger contract as Green Dragon Blade. Its equipment module owns whether the weapon is equipped, exposes every legal Hand/Equipment card as an exact-two-card selection, and validates the submitted pair against live state. `finishDodgedAttack`, bot advancement, legal-action projection and `respond_rock_cleaving` now consume that semantic execution. The existing Rock Cleaving pending screen/protocol actions remain compatibility-only; the Axe itself is still legally usable as one of the two discarded cards.
-
-Next: migrate Frost Sword as the first `damage_about_to_apply` trigger. Keep the current response/continuation architecture intact; after the three representative trigger migrations, work on the decision-specific `readyAfterEventId` presentation barrier.
-
-### 2026-09-13 update — executable Green Dragon Blade trigger
-
-Green Dragon Blade is now the first provider-owned triggered effect. `game/capabilities/triggers.ts` defines a trigger option, selection and semantic execution contract; the Green Dragon module declares its `attack_dodged` availability and validates the chosen follow-up Attack from the source's live hand. `finishDodgedAttack`, bot advancement and the compatibility `respond_green_dragon` action now query/resolve that trigger rather than checking a weapon directly. `GreenDragonPending.triggerId` preserves the provider identity while the existing pending UI and protocol action remain a bounded compatibility layer.
-
-Next: migrate Rock Cleaving Axe (`attack_dodged`) and Frost Sword (`damage_about_to_apply`) one at a time onto the same executable-trigger contract. Do not redesign `ResponsePending` or response providers during that work; after triggers, replace the global presentation-idle gate with decision-specific `readyAfterEventId`.
-
-### 2026-09-13 update — generic provider-owned Judgement resolution
-
-`ResponseExecution` now distinguishes an immediately `satisfied` requirement from `requires_resolution`. Eight Trigrams is the first provider using that secondary path: it requests a generic Judgement effect and owns the red-card success predicate and presentation text. The route's generic Judgement executor draws/reveals/discards the card and resumes the stored Attack or AOE continuation according to the result; it no longer maps `judgement` to Eight Trigrams. The legacy `respond_eight_trigrams` action remains only as a compatibility entry point and reuses the same provider resolution.
-
-Response capability discovery now enforces an explicit interaction invariant: at most one implicit provider may be available for a requirement, while any number of ability/equipment providers can be explicit. The capability test hero declares `activation: "explicit"`, and regression tests cover both the projected activation and rejection of a second implicit provider. Next: migrate Green Dragon Blade, Rock Cleaving Axe and Frost Sword one at a time into executable triggered-effect providers; leave the `ResponsePending` continuation adapter intact until those trigger semantics are stable.
-
-### 2026-09-13 update — canonical semantic ResponsePending and response view v3
-
-`ResponsePending` is now the persisted form for every semantic Attack, Dodge and Negation response. It carries the actor, `ActionRequirement`, deadline/reason/resolution identity and a bounded legacy-shaped continuation for Attack, Group, Duel or Negation. Existing route resolvers read that continuation through `asLegacyResponsePending()` while all new writes use `serializePending()`, making the migration backward-compatible without maintaining a second rules engine.
-
-`currentAction` v3 projects one private `kind: "response"` decision with `respond` and `decline_response` as its canonical actions. Each provider projects `activation`: implicit physical Attack/Dodge/Negation cards are selectable immediately; explicit skills/equipment such as Qingguo and Eight Trigrams enter an intentional ability mode. The browser clears provider/card selection on `actionRevision`, so a chained response cannot inherit prior selection. The server still accepts legacy provider-specific response actions temporarily, but validates canonical `respond`/`decline_response` against freshly loaded authoritative state. All 54 local regression tests pass.
-
-Next architecture work: replace the Eight-Trigrams-specific Judgement adapter with generic provider-owned Judgement resolution, then move Green Dragon Blade, Rock Cleaving Axe and Frost Sword trigger execution out of route-specific branches. The presentation barrier remains globally safe (`!presentationBusy`); only after those semantics are stable should it become decision-specific with `readyAfterEventId`.
-
-### 2026-09-12 update — canonical action protocol and shared pending state
-
-The first bounded architecture refactor is complete and validated by the full regression suite. `game/pending.ts` now owns the persisted `Pending` union and all its response-state variants; `app/api/rooms/route.ts` imports them instead of defining them beside HTTP/D1 code. `game/protocol.js` plus its declaration file owns the executable gameplay-action vocabulary across the Worker, browser and Node tests.
-
-### 2026-09-12 update — D1 usage and polling stabilisation
-
-Normal room GETs are now strictly read-only. `roomState()` no longer updates `players.connected_at`; `GET /api/rooms` no longer advances Dying/Bumper Harvest state; and all runtime `CREATE TABLE`, index, trigger and legacy `ALTER TABLE` checks have been removed. Cloudflare D1 migrations are the schema authority at deployment time.
-
-The browser now polls every 8 seconds while idle, every second during a response/Dying state, and every 60 seconds when hidden. Normal multiplayer presence uses a separate `heartbeat` POST that writes only when the player's timestamp is older than 60 seconds. Quick Test deliberately skips that heartbeat because its four seats share a controller token and are projected live. The Worker emits a small, token-free log only when that throttled heartbeat actually writes. `/api/health` is Worker-only so external health probes cannot create D1 reads.
-
-`advance_timers` is the explicit, context-validated action that advances elapsed Bumper Harvest deadlines. This retains timer resolution without making ordinary reads mutate game state. Tests verify GET state leaves `connected_at` untouched and that a fresh heartbeat does not perform a second write. Next work remains the incremental `currentAction` UI migration, then Blue Steel Sword.
-
-### 2026-09-12 update — five-minute inactive-match expiry
-
-Active (`playing`) rooms now finish after five minutes without a room-state event. Migration `0007_idle_room_expiry.sql` adds `last_activity_at` plus a D1 trigger that updates it only when game-relevant room fields change. GET polling, presence heartbeats and the inactivity check itself do not extend the deadline. The browser submits a lightweight expiry check when a room loads and then once per minute. This is the earliest practical enforcement in a Worker without a permanently running scheduler: if no browser is open, the abandoned match is finalized on the next player visit/check. Regression coverage forces an aged active room and verifies that it becomes finished, clears pending state and records the public close reason.
-
-### 2026-09-12 update — presentation sequence identity
-
-Timeline presentation metadata now includes a `resolutionId` separate from the existing `actionRevision` used for stale-action/concurrency checks. Group and Negation pending state carries that identity through each target and counter-round. Server-created card/group events are essential by default; ordinary audit messages are informational; selected completion messages are marked `finalResult`. The client coalesces informational events when a newer resolution arrives, while retaining essential results, so rapid Negation passes do not leave a long presentation queue blocking the next legal action. No gameplay transition or stale-action rule was changed.
-
-### 2026-09-12 update — capability-driven response foundation
-
-`game/responses.ts` now defines semantic actions/requirements, `ResponseProvider`, capability context, provider IDs, and selection constraints. Physical Attack/Dodge cards, Eight Trigrams, and Serpent Spear are discovered through the registry. `responseOptions()` and existing protocol actions remain compatible while `legalActionsFor()` now checks provider IDs rather than individual card kinds for response availability. A test-only provider demonstrates that future hero/equipment capabilities can register without editing Attack/Duel/AOE resolution code.
-
-The room projection now exposes that discovery as a viewer-private `currentAction.requirement`, provider `options`, and `declineAction`. The pure `game/response-decision.ts` module owns this pending-requirement-to-private-options mapping. Providers now own both validation and resolver selection: `resolveResponseDecision()` recomputes the live provider and invokes its `resolve()` method, removing the central `canonicalResponseAction()` provider switch. Physical cards remain core providers; Eight Trigrams and Serpent Spear now each live under `game/capabilities/equipment/`. A test-only hero both appears and executes through generic `respond`, proving that a future hero conversion does not need an Attack/Duel/AOE edit. Existing per-provider actions deliberately remain as compatibility fallbacks until the full protocol migration is complete. Next: add `PassiveModifier` and `TriggeredEffect` interfaces, migrate Nio Shield and Green Dragon Blade, then persist the semantic requirement as the single canonical pending decision.
-
-`game/capabilities/passive.ts` now owns passive Attack modification and `game/capabilities/triggers.ts` owns Attack-dodged trigger discovery. Nio Shield contributes its black-Attack immunity through the passive registry, before any Dodge requirement is created. Green Dragon Blade contributes its follow-up availability through the trigger registry, while its existing pending/resolution mechanics remain deliberately compatible. Unit coverage verifies both are discovered outside the HTTP route. Next: make `ResponsePending` canonical, then move triggered resolution itself from route branches into executable trigger providers.
-
-### 2026-09-12 update — atomic response presentation gate
-
-`app/page.tsx` now treats one response as one interaction. While a card/effect presentation is active, every provider, decline action, card/cost selector and seat countdown is held behind `responseDecisionReady`; they become available together after the presentation settles. Human pending responses are persisted unarmed and the acting client may arm exactly one 30-second deadline through `start_response_timer`; duplicate requests and refreshes preserve that original deadline. Bot pending responses retain their immediate 10-second deadline. This removes the mismatch where Eight Trigrams was blocked while Dodge or Take Damage remained usable. The response controls render the private `currentAction.options` generically: no-cost providers execute directly, while selected card-cost providers submit through `submitResponseProvider()` after validating their own `min`, `max`, and eligible IDs. This works for any supported card count; `playSerpentAttack()` is now only the Play Phase weapon action. Response selection resets when `actionRevision` changes, preventing state leakage across chained decisions. API and rendered-source tests cover the shared gate, idempotent timer and generic option rendering. Next: make semantic `ResponsePending` canonical, then replace the Eight-Trigrams-specific Judgement compatibility adapter with generic Judgement resolution.
-
-### 2026-09-12 update — semantic provider execution
-
-`ResponseProvider.resolve()` now produces a semantic result (`satisfied`, requirement type, optional card costs, and card/Judgement resolution) rather than returning an HTTP action. `POST respond` recomputes and validates that provider against live state, then uses one compatibility adapter based on the pending requirement. Existing legacy handlers remain intact during migration, but no longer need to know which equipment or hero supplied a valid card response. Zhen Ji's Qingguo is implemented as the first live hero provider: a black hand card satisfies a Dodge requirement through generic `respond`, is discarded correctly, and leaves the defender unharmed. Unit and API tests cover both provider semantics and the full route path. Next: introduce a requirement-centric `ResponsePending` persistence model and migrate the compatibility handlers incrementally.
-
-### 2026-09-12 update — isolated D1 test bootstrap
-
-The GitHub Actions failure was caused by test startup, not the capability code: a fresh Miniflare D1 had no schema because `tests/run-tests.mjs` started the Worker without applying migrations. The runner now applies all tracked D1 migrations to `.wrangler/test-state`, launches a separate Worker on port 3137 against that state, and points SQL fixture helpers there. It never migrates or reuses `.wrangler/state`, so the local game server at port 3000 stays untouched. A clean isolated run passes all 52 tests. Next: implement `decisionReady` so the response options and decline action share one presentation barrier.
-
-`roomState()` now publishes a versioned `currentAction` for the current private viewer: `{ kind, actorId, deadline, reason, legalActions }`. Legal actions are calculated from the live authoritative state and are empty for non-actors, so this does not reveal another player's hand or available response. `app/page.tsx` now uses this canonical kind for stale-action context and uses server-issued legal actions for response buttons such as Dodge, Negation and Eight Trigrams. Existing `pendingAttack`, `pendingNegation`, etc. remain only as a temporary presentation adapter; do not add new UI rule inference to them. The next architecture task is to migrate their remaining visual detail behind a single public pending-action view and continue extracting response resolvers into `game/` modules.
-
-The room normalizer validates `currentAction`, strips unknown action names, and rendered tests verify that a canonical Negation action keeps its controls. Full API regression coverage remains green, including Quick Test, ordered AOE/Negation, response cards, equipment and Dying chains.
-
-### 2026-09-12 update — Quick Test action synchronization and response-state safety
-
-Negation windows now record their lifecycle in the room timeline: opening, every explicit or automatic pass, new counter-Negation windows, and final closure before the underlying effect resolves. This does not change response order or rules; it makes Quick Test transitions auditable when the controller has already advanced to the next actor.
-
-Fixed a client/server DTO mismatch found in a live Quick Test Negation window: the server's projected `pendingNegation` lacked `kind: "negation"`, so the strict room normalizer discarded it while preserving the response phase and actor. The screen therefore showed “Waiting for the latest response state…” with no legal controls. All projected pending DTOs now include their discriminator, and a rendered regression verifies that Negation shows Play and Skip controls after normalization.
-
-Fixed the follow-up live Dodge issue: the browser derived action context from UI field names (`pendingAttack` → `Attack`) while the stale-action guard expects protocol kinds (`attack`, `green_dragon`, `negation`, etc.). This caused legal response clicks to return stale-action errors. The client now maps every pending field explicitly to its server kind. Regression coverage submits a Dodge with the same action context the browser sends.
-
-Gameplay POSTs now reload the authoritative room/player snapshot immediately before controller resolution. In Quick Test, the acting seat is derived from the live phase and pending actor rather than an earlier snapshot. The client sends an action revision/context; stale requests are rejected with the latest normalized room state so the perspective can recover immediately. Blocking mutations are serialized to prevent timeout/manual duplicate submissions, while background Bumper Harvest previews remain non-blocking. The client also applies authoritative mutation responses monotonically so a failed later request cannot hide an earlier accepted state.
-
-The generic response UI now derives an explicit response type. If a response phase has no recognized pending response, it shows a diagnostic waiting message and does not render Dodge, take-damage, or response timers. Something Out of Nothing therefore only exposes Negation/pass when applicable and otherwise resolves directly to its draw-two effect. Tests cover Quick Test actor switching, stale action rejection, no-Negation Draw Two resolution, and invalid response rendering.
-
-Use this document to continue development in a new chat. Start from the latest `main` branch and read `README.md` for the public-facing roadmap.
-
-## Product goal
-
-Build an English, browser-based version of the classic *War of the Three Kingdoms* card game for a small private group of friends.
-
-Product decisions already made:
-
-- Focus exclusively on WTK Standard, the classic hidden-role product. Endless Legends and Kingdom Wars are deferred.
-- Prioritise general turn, card, death and victory rules before hero-specific abilities.
-- Add cards incrementally, normally one card at a time, with tests for each new transition.
-- Use official English card names and rule meaning, but original visual design.
-- Do not ship official card artwork without permission from the rights holder.
-- The player-facing name for the internal `Renegade` role is **Traitor**.
-- The public game must remain playable without GitHub or ChatGPT sign-in.
-- Mobile clarity and visible action order are important: always show the turn owner, phase, acting player, card, source and target.
-- Public played/revealed cards currently remain for 4 seconds; event messages and private draws remain for 3 seconds. Human card and weapon-effect responses allow 30 seconds, bot responses allow 10 seconds, and Dying rescue decisions retain their separate 5-second action window.
-
-## Repositories and live service
+Repository and service:
 
 - Workspace: `/Users/jingedai/Documents/ChatGPT/WTK`
 - GitHub: <https://github.com/dmoneyUK/three-kingdoms>
-- GitHub branch: `main`
-- Live Cloudflare Worker: <https://three-kingdoms.dai-jinge.workers.dev/>
-- Cloudflare configuration: `wrangler.jsonc`
+- Branch: `main`
+- Live Worker: <https://three-kingdoms.dai-jinge.workers.dev/>
+- Cloudflare config: `wrangler.jsonc`
 - Production workflow: `.github/workflows/deploy.yml`
 
-GitHub and Cloudflare are the only source and deployment services for this project. Do not update or deploy the retired ChatGPT Sites copy. Keep Cloudflare credentials only in GitHub Actions secrets; never store them in source files, remote URLs or persistent Git configuration.
+The active ruleset is **WTK Standard only**. Use `docs/OFFICIAL_CARD_REFERENCE.md`, the official WTK Standard rulebook, and YOKA/WTK official English terminology. Do not add Endless Legends or Kingdom Wars cards unless the owner changes scope. Do not ship official artwork without permission.
 
-The standing release workflow requested by the owner is:
+## Product state
 
-1. Implement and validate the change.
-2. Commit and push the exact commit to GitHub `main`.
-3. Let `.github/workflows/deploy.yml` run lint, tests, the D1 migrations, build and Cloudflare Worker deployment.
-4. Confirm the GitHub Actions run and production Worker succeed, then return the live URL and GitHub commit.
+The game is a playable browser alpha for small private groups. Normal multiplayer and Quick Test both support the main four-player loop, ordered responses, equipment, Dying/Peach rescue, death cleanup, role reveal, rewards/penalties, and core victory paths.
 
-## Current product state
+Quick Test is a single-controller table: one token controls four human-style seats and the UI follows the current legal actor while exposing only that actor's private hand. Keep this deliberate perspective-switching model when adding response or trigger decisions.
 
-### 2026-09-11 update — shared Attack declaration pipeline
+Room GETs are read-only. Presence uses a throttled heartbeat. Tests use an isolated Miniflare D1 under `.wrangler/test-state`, not the normal local development database. Human response clocks are armed only after the visible decision becomes available; duplicate timer starts are idempotent.
 
-Normal Attack cards, Serpent Spear formations and Green Dragon Blade follow-ups now converge on a semantic `AttackDeclaration` in `app/api/rooms/route.ts`. The declaration keeps the source, target, origin, paid physical cards, sequence anchor and optional physical Attack card/suit. Pending Attack responses retain this provenance, while the existing shared Dodge/Attack capability and weapon/equipment resolvers continue to decide the outcome. This means a Serpent Spear-formed Attack reaches Eight Trigrams through the same pending path as a normal Attack without being misclassified as a black physical Attack for Nio Shield. Regression assertions cover both origins. Future Attack alternatives should create declarations and reuse the resolver rather than adding source-specific response branches.
+## Architecture that is now established
 
-### 2026-09-11 update — Judgement Zone presentation and Quick Test seed
+### 1. Canonical semantic response decisions
 
-Delayed Stratagem cards (`Overindulgence`, `Lightning` and `Rations Depleted`) now fly from the centre reveal into a target-specific Judgement Zone. The target zone uses compact card faces and hides the settled card only while its public reveal is active, avoiding a duplicate card in the source player's played-card area. Quick Test now guarantees Player 1 a Serpent Spear while keeping the rest of the opening cards randomized.
+`game/pending.ts` persists `ResponsePending` as the canonical wrapper for Attack/Dodge/Negation response periods:
 
-### 2026-09-12 update — production smoke test
-
-The live Worker was checked directly: the root route returned 200 and the runtime tail showed the latest version completing requests without exceptions. `GET /api/rooms` remains a read-only room lookup endpoint and correctly returns 404 without a room code. A Worker-only `/api/health` endpoint and a post-deploy workflow smoke test now verify both `/` and `/api/health` after every production deploy without adding D1 health-probe reads.
-
-### 2026-09-12 update — room payload safety
-
-The frontend now applies one complete Room DTO normalizer before state updates, covering players, Equipment/Judgement zones, hands, timeline, log, hero options, discard top, and every pending state. The API also filters malformed persisted timeline records before returning them. Invalid restored sessions are cleared with a recovery message, and a GameRoom error boundary logs status/phase/pending kind plus the exception without private hands or tokens. Regression tests render a malformed-but-recoverable room through the actual GameRoom path as well as covering null entries, missing nested card data, empty collections, and malformed saved payloads.
-
-### 2026-09-11 update — named mounts and Eight Trigrams response coverage
-
-Eight Trigrams Formation is registered in the Standard deck and Armor slot. When an Attack, including a Serpent Spear-formed Attack, or Raining Arrows requires Dodge, the acting player can either play a normal Dodge or choose **Use Eight Trigrams**. The server performs one Judgement, reveals and discards that card, treats red as a successful Dodge, and resolves black as normal damage. The same capability is available to bots and Quick Test; regression coverage now includes a Serpent Spear-formed Attack. The six physical Standard mounts are also now distinct one-copy card kinds in new decks; legacy generic horse kinds are retained only for saved-room compatibility. The next implementation is Blue Steel Sword, followed by the remaining manifest cards needed to reach 108.
-
-Latest AOE update: every Negation window starts with the player who played the current Stratagem, including the AOE source and the latest Negation player, then visits each eligible living player once and stops before returning. This applies separately to each AOE target. The queue's final pass resumes the stored group or skips a negated target. `game/responses.ts` centralizes normal Attack/Dodge and implemented alternative providers, capability detection and selected cost validation; AOE uses it for both human and bot decisions. Serpent Spear remains the only implemented alternative Attack provider. Eight Trigrams/hero conversions must register their actual resolver and costs before being offered. Empty response capabilities auto-resolve damage. The public countdown appears five seconds into the unchanged 30s human/10s bot deadline; the early Negation actor label/highlight is hidden from opponents. This is UI concealment only: protocol actor IDs and timing can still reveal information; guaranteed secrecy would require a different uniform response-window protocol. Quick Test necessarily reveals its controlled seat. Tests cover both AOE pass rounds, self-countering, conversion costs and automatic no-response damage. Next milestone: Eight Trigrams Formation.
-
-Latest Negation fix: pending response state retains the root Stratagem for final resolution while storing the latest Negation player/card, chain depth and response target. Counter-round prompts now say whose Negation is being answered; response order and pass semantics are unchanged. API regression coverage verifies the initial root prompt and updated counter prompt.
-
-Latest perspective fix: Quick Test still selects the legal actor on the server, but player DTOs no longer expose table hands (`handCards` stays empty); `myHand` is the only private hand. The small seat previews and their CSS are removed. `game/private-hand.js` keeps the current owner plus hand/event baselines, resetting on `meId` changes, and the private overlay is owner-scoped so a previous player's cards cannot flash during a switch. Draw Phase, Draw Two and Rebel reward log entries carry `drawPlayerId` metadata without card identities; only a new event for the same viewed player can present newly added hand cards. Gains/Harvest and repeated polling do not count as draws. The helper is plain ESM JavaScript so Node's deployment test runner can import it without a TypeScript loader. Public sequence state and Negation rules are unchanged. Tests cover a complete Quick Test Arrows/pass/response cycle, return to ME, draw markers, per-seat privacy, repeated polling and card recycling. Next milestone remains Eight Trigrams Formation.
-
-Latest Negation update: confirmed owner model starts targeted-card initial windows at the affected target (AOE now starts at the turn owner), includes the Stratagem user, and restarts after the latest Negation player only when a Negation is played. Existing pass queues shrink without cycling; counter windows permit previous passers and encounter the latest card player last if still eligible. Players with no Negation are automatically skipped. The API's `negated` field tracks provisional parity; no normal response resolves until the current opportunity exhausts. Surviving Duel/AOE effects receive a fresh normal-response deadline. Bot Duel now enters this same pipeline. Quick Test controlled-hand selection respects the same response eligibility as the main hand. New API tests cover ordering, pass finality, parity, user inclusion, expired nested timers, early-response rejection, Spear with an Attack still held, and per-target sequencing. Eight Trigrams and hero response skills remain unimplemented.
-
-Latest fix: equipment has one visible centre-to-rack flight. The prior retention filter missed optimistic entries, producing the numbered duplicate reported in screenshots. Both merged sequence entries and the final sequence renderer now filter equipment; rack visibility follows unseen, queued and active equipment events. A layout measurement with ResizeObserver supplies the real destination across seats and viewport sizes. Equipment summaries use history-only entries to avoid a second presentation delay. Existing live equipment is visible immediately on reconnect. Continue with Eight Trigrams Formation after visual regression checks.
-
-Local browser verification: played Nio Shield followed by Frost Sword. During each flight there was one centre reveal, zero numbered settled copies, and the incoming rack card was hidden; afterwards the reveal was gone and the rack card visible. The second flight's measured destination matched the second rack slot while the already-equipped Shield stayed visible.
-
-This is a playable four-player alpha. The quick-test game starts immediately as a single-device controller table with:
-
-- four human-controlled seats: `ME`, `Player 1`, `Player 2` and `Player 3`;
-- only the controlled seat's full hand displayed in the normal bottom hand area; opponents show counts only;
-- automatic controller hand/permission switching to the seat that legally acts;
-- random roles and heroes, except `ME` uses Zhang Fei for testing;
-- Lord bonus HP;
-- Player 1–3 at 3 HP in quick-test mode; and
-- Eight Trigrams Formation plus three Attacks in `ME`'s opening hand; the remaining opening cards are drawn randomly from the shuffled Standard deck. Other weapons and all horses remain available in the deck. Player 3 also begins with three Attacks plus a Negation for bot-response testing.
-
-Implemented shared rules include:
-
-- Draw, Play, Discard and Ending phases;
-- authoritative turn owner, acting player and ordered response state;
-- seat order, living-player distance and range-1 Attack;
-- Attack/Dodge, Duel and ordered global-card response chains;
-- Attack and Dodge responses to global AOE cards are presented without a player-to-player direction;
-- Peach healing and turn-ordered Dying rescue;
-- death, defeated-hand cleanup, public role reveal, Rebel defeat reward, the Lord's Loyalist-kill penalty and match victory checks;
-- bot draw, play, response, rescue, discard and repeated-round operation;
-- private draws, inline ordered Peach rescue controls and public action presentations;
-- one-room audit storage, cleared when a new game starts; and
-- a scrollable Event History debug window.
-
-Implemented cards:
-
-1. Attack
-2. Dodge
-3. Peach
-4. Something Out of Nothing
-5. Burning Bridges
-6. Steal
-7. Duel
-8. Oath of the Peach Garden
-9. Barbarian Invasion
-10. Raining Arrows
-11. Bumper Harvest
-12. Negation
-13. Overindulgence
-14. Lightning
-15. Zhuge Crossbow
-16. Green Dragon Blade
-17. Serpent Spear
-18. Rock Cleaving Axe
-
-Rations Depleted was previously implemented during development, but the official
-catalogue classifies it as Endless Legends. Its compatibility code and tests are
-preserved, while it is excluded from every new Standard deck and quick-test hand.
-
-`Strike` remains only as a saved-game compatibility alias for Attack.
-
-## Recent interaction work
-
-The latest Frost Sword correction keeps the portrait modal's two result choices visible and makes the discard branch attacker-controlled. Selecting **Choose cards to discard** exposes the target's hidden hand slots and public equipment cards; the attacker confirms one or two distinct cards via `cardKeys`. The API validates those selections before preventing damage and discarding them. Judgement Zone cards are never eligible. The target does not choose, and no selection is accepted when the target has no eligible hand/equipment cards. The quick-test ME hand now explicitly includes three Attacks.
-
-The Frost Sword selector is rendered inside the bright response prompt and names the attacked player, so portrait users no longer have to interact with a shadowed picker behind the modal. The selection remains staged until the attacker presses the discard confirmation.
-
-Steal and Burning Bridges now present their post-Negation target-card picker as a centered, bright response panel instead of a rotated, dim table overlay. Their existing target-card validation and explicit confirmation flow are unchanged.
-
-Player presence is now surfaced per seat. Room polling never refreshes `connected_at`; a separate human heartbeat updates it at most once per minute, bots and Quick Test seats are always online, and human seats become offline after 90 seconds without a heartbeat. This is informational only and does not remove a player or alter turn ownership.
-
-Horse equipment is now authoritative in the two dedicated equipment slots. `attackRangeFor` includes the owner's Offensive Horse bonus, while `attackDistance` applies a target's Defensive Horse penalty to Attack range checks. Quick-test setup removes horse cards from the draw/hand pools and equips both horses for every player.
-
-The verified WTK Standard catalogue contains 28 active cards. Twenty-three are complete; remaining work is Eight Trigrams Formation, weapons (Blue Steel Sword, Yin-Yang Swords, Kirin Bow), and Borrowed Sword. The active, dependency-ordered list is maintained in `ROADMAP.md`; do not reintroduce older unverified cards such as Six Swords of Wu, Two-bladed Trident, Alliance, Rest and Reorganization, or Know your Enemy. Kingdom Wars and Endless Legends cards remain out of scope.
-
-Nio Shield is the first complete Armor card. The Equipment Zone now has an authoritative Armor slot and replaces only the existing Armor. A shielded player is immune to a black Attack before a Dodge prompt or damage, including a bot target and Sky Piercing Halberd sequence; red Attacks remain normal. Quick-test `ME` begins with Nio Shield alongside Frost Sword, and the card rack labels Weapon, Armor and Mount cards correctly.
-
-The production migration is now complete in the project configuration:
-
-- GitHub `main` is the sole authoritative source and `.github/workflows/deploy.yml` is the sole production release path.
-- Successful pushes validate the project, apply Cloudflare D1 migrations and deploy `three-kingdoms` to the public Worker URL.
-- The obsolete ChatGPT Sites hosting file and build dependency were removed. The migrated test runner still exits explicitly to close Cloudflare worker handles in CI, but now preserves the real test result instead of forcing success after a failure.
-
-The latest Quick Test change makes manual rule verification possible without waiting for bots. All four quick-test player rows share the local session token, but this is deliberately detected only when every four-seat player belongs to that session; normal multiplayer sessions continue to expose only their owner's hand. The API selects the legal turn or response actor as the controller perspective, so existing server ownership checks remain authoritative. The user interface shows only the controlled hand in the normal bottom area; opponent hand counts remain public but their cards are hidden. Perspective changes reset the hand baseline without a draw presentation. Bot fixtures use the internal `botTest: true` request field so regression tests retain coverage of automatic bot turns without changing the public Quick Test flow.
-
-The latest timing change expands the shared response window:
-
-- Human response decisions are 30 seconds for Attack/Dodge, Duel, Negation, Barbarian Invasion, Raining Arrows and weapon effects. Bots retain a 10-second window and normally advance immediately.
-- The Frost Sword response modal keeps both result buttons visible on narrow portrait screens. Its attacker-controlled discard branch shows the target's eligible hidden Hand slots and public Equipment cards, then requires the attacker to confirm one or two selections. Judgement cards are deliberately absent.
-- Each new normal-response pending state receives a fresh server-created deadline. A waiting source player has no countdown; after a defender plays Dodge, the source receives a new 30-second Green Dragon Blade or Rock Cleaving Axe decision with an immediate Skip control.
-- A Rock Cleaving Axe decision has a dimmed, centre-table pop-up in addition to the footer controls, so it cannot be lost among card presentation events. It states the two-card cost and exposes both Use and Skip actions while leaving the hand and Equipment Zone selectable as payment.
-- Seat countdowns are deliberately limited to real pending decisions (response, Bumper Harvest choice, and Peach rescue). The old card-presentation `Next step` countdown was removed: it incorrectly looked like an action timer after equipment and other completed plays.
-- Every response still exposes its immediate Play or Skip action, and its visible countdown remains attached to the acting player.
-- Peach rescue intentionally keeps its independent 5-second deadline.
-- Deterministic coverage checks both an ordinary Dodge window and a Rock Cleaving Axe weapon-effect window.
-
-The latest weapon milestone added Frost Sword:
-
-- Frost Sword (official card 40) equips in the shared Weapon slot and gives its owner Attack Range 2.
-- When its Attack would deal damage, the owner receives a fresh 30-second human choice (10 seconds for a bot): prevent that damage and discard up to two of the target's current cards, or let the one damage resolve normally.
-- Both human and bot targets now enter this authoritative Frost Sword pending state. In particular, an undefended bot target no longer takes immediate damage before the owner can see the centred prompt.
-- The centered panel always states both choices: **Discard up to 2 cards** or **Deal 1 damage**. One available card is enough for the discard branch, and Frost Sword's automatic deadline now passes to normal damage rather than leaving a human owner in a stale response state. Its discard resolver includes only Hand and Equipment Zone cards; a Judgement Zone card cannot be selected.
-- The owner selects the exact one or two cards from the target's Hand or Equipment Zone. Judgement Zone cards are never eligible, matching the verified Standard wording.
-
-The preceding weapon milestone added Sky Piercing Halberd:
-
-- Sky Piercing Halberd (official card 188) equips in the shared Weapon slot and gives its owner Attack Range 4.
-- When the owner uses their final hand card as an Attack, they may select one to three living opponents within range. Multiple selected targets resolve in table order, one at a time, with a fresh 30-second human Dodge-or-damage decision (10 seconds for a bot) for each acting target.
-- The multi-target Attack is not a stratagem: it does not open a Negation window. It retains the one Attack card as a single visible sequence until every chosen target has resolved.
-- Bots select two legal targets when their last hand card is Attack, and deterministic coverage verifies range, final-hand restriction, ordered ownership, Dodge, damage, completion and bot use.
-
-The preceding weapon milestone added Rock Cleaving Axe:
-
-- Rock Cleaving Axe (official card 186) equips in the shared Weapon slot and gives its owner Attack Range 3.
-- When its owner's Attack is blocked by Dodge, the attacker receives an ordered 30-second human decision (10 seconds for a bot) to select exactly two different cards or skip immediately.
-- The cost accepts any combination of hand and equipped cards, including the Rock Cleaving Axe itself. A valid payment forces the blocked Attack's 1 damage and continues into normal Dying rescue when lethal.
-- Attack, Dodge and both revealed payment cards retain the original Attack sequence identifier and stay together on the table until the decision and damage finish.
-- Bots automatically use a legal two-card payment. Quick-test mode gives `ME` one copy, and deterministic coverage protects range, response ownership, timer, duplicate rejection, skip, self-discard, forced damage, presentation and bot use.
-
-The latest rules and session stabilisation completed three related fixes:
-
-- The browser session survives refresh and intentional Exit. Refresh restores the table automatically; Exit returns to the landing screen without deleting the device token and exposes a one-tap **Rejoin game** action.
-- Dying rescue uses the same hand-and-command interaction pattern as Negation. Only the authoritative acting rescuer may select and play Peach or press **Skip rescue**; the old private modal was removed while the existing ordered five-second deadline remains.
-- Burning Bridges and Steal no longer preselect a hand-card ID before Negation. A dedicated `target_card` pending state opens only after the entire Negation/counter-Negation chain resolves, then lets the source choose from the target's current hand, Weapon slot or Judgement Zone. All sequence cards stay held until that final choice commits them together.
-- Deterministic coverage reproduces the reported stale-card case: a target spends its only hand card as Negation, the source counter-Negates, and Steal can then obtain the target's equipped Serpent Spear instead of incorrectly reporting that no card remains.
-
-The latest weapon milestone added Serpent Spear:
-
-- Serpent Spear (official card 181) equips in the shared Weapon slot and gives its owner Attack Range 3.
-- During the Play Phase, its owner can explicitly enter Serpent Spear mode, select exactly two different hand cards and choose a legal target to form an Attack.
-- The same two-card formation is legal whenever that owner must play Attack in Duel or against Barbarian Invasion; it is not offered for Dodge, Negation or Green Dragon Blade follow-ups.
-- Normal Attack limits, distance, Dodge, damage and ordered response ownership remain authoritative. Both payment cards appear as one grouped play event and remain in the complete table sequence until it concludes.
-- Bots equip Serpent Spear and form an Attack when they have no ordinary Attack. Quick-test mode gives `ME` one copy, and deterministic coverage protects range, duplicate-cost rejection, Dodge, Duel, Barbarian Invasion, sequence anchoring and bot use.
-
-The latest table-layout refinement separates equipment from player identity:
-
-- Equipped weapons appear as compact, face-up cards in a dedicated rack beside their owner's seat.
-- Player targeting, turn highlighting and response countdowns remain attached to the fixed player panel rather than moving with the rack.
-- The rack is a reusable public Equipment Zone container, ready for later armour and offensive/defensive horse slots.
-
-The latest weapon milestone added authoritative Attack Range and Green Dragon Blade:
-
-- Green Dragon Blade (official card 180) equips in the shared Weapon slot and gives its owner Attack Range 3.
-- When an Attack is blocked by Dodge, a living owner who still has an Attack receives an ordered response to continue against the same target or skip; the normal response countdown and action ownership checks apply.
-- Repeated Green Dragon Blade Attacks retain the first Attack's sequence identifier so every Attack and Dodge remains together until the full chain concludes.
-- Bots equip Green Dragon Blade, select targets using their equipped Attack Range and automatically use legal follow-up Attacks.
-- Quick-test mode gives `ME` one Green Dragon Blade, and deterministic coverage protects opposite-seat range, human follow-up, fixed-target enforcement, bot follow-up and sequence retention.
-
-The preceding rule and presentation fixes corrected delayed-card and Bumper Harvest Negation:
-
-- A delayed card now emits a fresh `activate` card event when its Judgement Negation window opens. The client anchors the visible response sequence to this current event instead of the card's original Play Phase event, preventing intervening discards from reappearing around every player.
-- Bumper Harvest reveals its shared pool once, then opens a separate Negation window for each affected player in turn order.
-- A successful Negation cancels only that player's chance to choose. The same revealed pool continues to later players, and the skipped player's leftover card is discarded when the full Harvest sequence concludes.
-- Bumper Harvest, its Negation responses and any leftover revealed cards stay out of the logical discard pile until the complete sequence finishes.
-- Deterministic coverage reproduces the delayed-Lightning presentation anchor and a first-player Bumper Harvest Negation followed by the remaining three choices.
-
-The preceding milestone introduced the Equipment Zone foundation and Zhuge Crossbow:
-
-- Every player now has a persisted, publicly projected Weapon slot.
-- Equipping Zhuge Crossbow removes it from hand, replaces and discards the previous weapon, and presents it as equipment rather than as an ordinary discard.
-- An equipped Zhuge Crossbow removes the normal one-Attack-per-turn limit for both humans and bots.
-- Bots equip the weapon before attacking and can continue using Attack cards while legal targets remain.
-- Defeat cleanup discards equipment, and the Lord's Loyalist-kill penalty now clears the Lord's equipment as well as the hand.
-- Quick-test mode gives `ME` one Zhuge Crossbow, while deterministic coverage protects equip, replacement, repeated Attack, bot use and cleanup.
-
-The preceding scope change locked every new game to WTK Standard:
-
-- The official catalogue product filter is recorded for every mapped card.
-- `game/cards.ts` marks cards as Standard or Endless Legends.
-- Only Standard cards in `DECK_COUNTS` enter shuffled decks and quick-test hands.
-- Rations Depleted remains readable in older state and retains deterministic compatibility coverage, but bots and players cannot receive it in a newly created game.
-- Sky Piercing Halberd is complete. Continue through the remaining Standard weapons; Borrowed Sword follows once their shared interactions are mature.
-
-The preceding rules change added Lightning and made delayed-card resolution reusable:
-
-- Lightning is placed in its owner's Judgement Zone and can be Negated before placement.
-- Each delayed card now resolves individually, preserving later cards and their own Negation windows.
-- A Spade 2–9 judgement deals 3 source-free thunder damage and enters the normal Peach rescue flow when lethal.
-- Every other judgement transfers Lightning to the next eligible living character without creating a duplicate Lightning in one Judgement Zone.
-- Bots place and resolve Lightning, and quick-test mode gives `ME` a Lightning card.
-- Deterministic API coverage protects placement, duplicate prevention, transfer and damage.
-- The frontend now scopes retained table cards to the latest authoritative pending sequence. This prevents cards from completed turns being merged into a later Lightning, Negation or other response window; the backend already commits completed ordinary plays to discard and clears their pending state.
-
-Earlier interaction work concentrated on latency and Bumper Harvest:
-
-- Opening automatic draw begins after approximately 0.1 seconds instead of waiting behind the turn banner.
-- A card played during Play Phase is presented optimistically while the server validates it.
-- Optimistic played cards expire locally after 4 seconds instead of waiting for the server response; the later authoritative copy is recorded but not presented twice.
-- Bumper Harvest selection previews are non-blocking and queued, so a player can change their selected card without waiting for network round trips.
-- Confirming a Bumper Harvest card shades it immediately as `Chosen by ME`; the authoritative server choice then advances in the background.
-- Bot Bumper Harvest choices are deliberately paced: selection rises, confirmation shades and names the chooser, then the next player begins.
-- The final set of Bumper Harvest choices remains visible briefly before the panel closes.
-- Bumper Harvest gains are excluded from the private-draw presentation, keeping the shared choice panel continuously visible as later players act.
-
-Manual mobile testing should continue to watch for stale selection previews, repeated action presentations or any response that leaves the room in `resolving` state.
-
-## Architecture
-
-### Client
-
-`app/page.tsx` contains the current single-page client experience:
-
-- lobby, quick start and hero selection;
-- table layout and hand controls;
-- polling and action submission;
-- optimistic card-play and Bumper Harvest feedback;
-- presentation queue, private draws, rescue prompt and Event History; and
-- mobile-facing action labels.
-
-`app/globals.css` contains the complete visual system and responsive layout.
-
-The client is not authoritative. It may provide optimistic feedback, but all rule transitions must be validated by the server.
-
-### Production timing audit
-
-All intentional production waits are now centralised or recorded here:
-
-| Behaviour | Duration | Purpose |
-| --- | ---: | --- |
-| Normal room polling | 8000 ms | Refresh table state without D1 writes. |
-| Active response polling | 1000 ms | Keep an active response synchronized; GET remains read-only. |
-| Hidden-tab polling | 60000 ms | Reduce background traffic while allowing eventual refresh. |
-| Presence heartbeat | 60000 ms | Throttled human presence write; Quick Test skips it. |
-| Automatic draw start | 100 ms | Let the turn-owner banner render, then claim Draw Phase. |
-| Played/revealed card | 4000 ms | Show the public card, source and target. This no longer waits for the action response. |
-| Event or role-reveal message | 3000 ms | Show important public state changes. |
-| Private draw | 3000 ms | Let only the drawing player inspect new cards. |
-| Normal card and weapon response | 10000 ms | Give the acting player time to select a legal response or skip, including weapon-effect decisions. |
-| Peach rescue decision | 5000 ms | Give each eligible player a private chance to select Peach or pass. |
-
-Every blocking presentation and decision overlay shows a live countdown. Bumper Harvest also exposes its bot preview and final-choice deadlines to all viewers; the lower-frequency read-only room refresh remains intentionally invisible because it is not a blocking wait.
-
-Card presentations now use one cumulative table-resolution layer. Earlier steps remain visible while later card responses and effect messages are added, and response-based sequences stay open until the server leaves Response, Dying or Resolving. The centre caption includes the development-source rules explanation from `game/cards.ts`.
-
-The resolution is spatially anchored to the table: each active card travels from its player’s seat to a large centre reveal, then settles in a numbered face-up row in front of that player. Multiple cards remain ordered per player. Once no response or resolving phase remains, every player row animates into the central discard pile together over 700 ms.
-| Bumper Harvest bot think | 450 ms | Show which bot is about to choose. |
-| Bumper Harvest raised/confirmed choice | 1400 ms | Make each bot selection visible before advancing. |
-| Final Bumper Harvest choices | 1400 ms | Leave the completed shaded choices visible briefly. |
-
-Zero-millisecond timers only defer React state updates to the next task; they are not user-visible pauses. CSS presentation durations are aligned with the React timers. Test polling delays exist only under `tests/` and do not affect production.
-
-### Server and game engine
-
-`app/api/rooms/route.ts` is the authoritative room API and currently contains most orchestration logic:
-
-- room lifecycle and player sessions;
-- roles, heroes and match setup;
-- D1 reads/writes and audit capture;
-- action validation and phase claims;
-- card resolution, pending-response state, Dying rescue and victory;
-- bots; and
-- public/private room-state projection.
-
-Important pending-state kinds are Attack, Duel, group response, Bumper Harvest and Dying rescue. Only the player identified by the authoritative pending action may act. Preserve atomic phase/pending claims when changing this code.
-
-`game/rules.ts` contains reusable living-player order, next-seat, distance and post-Attack phase helpers. More rule logic should gradually move into reusable functions rather than further enlarging the API route.
-
-`game/model.ts` defines card kinds and core shared types.
-
-`game/cards.ts` is the card catalogue, deck composition and Attack compatibility layer.
-
-### Persistence
-
-The Cloudflare Worker uses D1 through the logical `DB` binding in `wrangler.jsonc`.
-
-Main tables:
-
-- `rooms`: status, turn, phase, deck, discard, event log and pending action;
-- `players`: seat, hidden role, hero, HP, hand, judgement/equipment zones and private session hash;
-- `game_audit`: transition and action audit rows; and
-- `audit_scope`: identifies the one room whose audit is retained.
-
-Schema definitions are in `db/schema.ts`; migrations are in `drizzle/`.
-
-## Rule and naming source
-
-Read `docs/OFFICIAL_CARD_REFERENCE.md` before adding or renaming a card. The active ruleset is WTK Standard, using its official product page and rulebook together with YOKA Games' English catalogue filtered to Standard:
-
-- <https://www.wtkgames.com/product/Standard/>
-- <https://wtkgames.com/gameCard/>
-- <https://api.wtkgames.com/api/card>
-
-Keep official links and research in project documentation, not in the player interface. Paraphrase effects and use original visuals.
-
-Internal identifiers may differ from player-facing names for compatibility:
-
-- `DrawTwo` → Something Out of Nothing
-- `Dismantle` → Burning Bridges
-- `BumperHarvest` → Bumper Harvest
-- `Negation` → Negation
-- `Overindulgence` → Overindulgence
-- `Lightning` → Lightning
-- `RationsDepleted` → Rations Depleted (dormant Endless Legends compatibility only)
-- internal `Renegade` → player-facing Traitor
-- legacy `Strike` → Attack
-
-## Adding the next card
-
-Follow this checklist:
-
-1. Verify the official English name, category, card ID and rule meaning.
-2. Confirm the card belongs to the official Standard product filter, then add a stable `CardKind` in `game/model.ts`.
-3. Add its definition and explicit deck count in `game/cards.ts`.
-4. Ensure focused quick-test mode gives `ME` every non-weapon card plus only the current tested weapon; other weapons stay in the deck. Seed Player 3 with three Attacks and keep required bot response cards.
-5. If it is a defence/response card, ensure bots can receive and legally play it in tests.
-6. Add authoritative validation and resolution to the server.
-7. Reuse or extract ordered pending-response logic rather than allowing simultaneous responders.
-8. Add bot behaviour.
-9. Add clear source/target presentation and private information handling.
-10. Add API transition tests and rendered-control assertions.
-
-Do not begin hero-specific details until the owner changes the current priority.
-
-## Tests and local development
-
-For local phone testing, run the game with `VINEXT_LAN_TEST=1 npm run dev -- --hostname 0.0.0.0 --port 3000`. The opt-in flag retains Vite's live-reload socket but disables its development overlay, so a transient LAN reconnect cannot hide the game; it does not alter game rules, the API, or the local D1 database. Client API reads also reject non-JSON development error pages with a recoverable game message rather than exposing a JSON parsing exception.
-
-Requirements: Node.js `>=22.13.0`.
-
-```bash
-npm install
-npm run dev
-npm run lint
-npm test
+```ts
+type ResponsePending = {
+  kind: "response";
+  actorId: string;
+  requirement: ActionRequirement;
+  reason: string;
+  deadline?: number;
+  resolutionId?: string;
+  continuation: ResponseContinuation;
+};
 ```
 
-`npm test` performs a production build and runs the API, private-hand tracking and rendered-client suites. The current expected result is 33 passing test flows.
+The continuation is still legacy-shaped (`AttackPending`, `GroupPending`, `DuelPending`, or `NegationPending`) so existing resolvers and saved games can migrate incrementally. `serializePending()` writes the canonical wrapper; `asLegacyResponsePending()` is a bounded compatibility adapter. Do not create a second rules engine just to remove that adapter.
 
-Key test files:
+`currentAction` v3 is the private authoritative action view. For semantic responses it exposes the requirement, canonical `respond` / `decline_response`, provider options, deadline, actor, and presentation barrier. The browser must not infer legal response options from hero/equipment state.
 
-- `tests/game-api.test.mjs`: room, phase, card, bot, rescue, victory, Bumper Harvest and audit transitions.
-- `tests/rendered-html.test.mjs`: rendered UI and source-level interaction regressions.
-- `tests/run-tests.mjs`: local test server orchestration.
+### 2. Response providers own capability semantics
 
-When a manual game exposes a bug, add a deterministic regression before or alongside the fix. In particular, protect player order, action ownership, duplicate-action rejection and resumption after Dying.
+`game/responses.ts` owns semantic requirements and the provider registry. Physical Attack/Dodge/Negation cards are providers alongside equipment and hero abilities.
 
-## Audit and debugging
+Current important providers:
 
-The player UI exposes **Event History** as a debug tool. The API audit can be retrieved by a valid room member with:
+- physical Attack / Dodge / Negation cards;
+- Eight Trigrams Formation as an explicit Dodge provider;
+- Serpent Spear as an explicit Attack provider;
+- Zhen Ji Qingguo as an explicit Dodge provider using one black hand card.
 
-```text
-GET /api/rooms?code=ROOM_CODE&token=PLAYER_TOKEN&audit=1
+The response interaction invariant is deliberate:
+
+- **0 or 1 implicit provider** for the ordinary/default physical-card route;
+- **0..N explicit providers** for equipment or hero abilities.
+
+Ordinary physical response cards can therefore be selected directly. Alternative abilities require an explicit choice. The registry throws if two implicit providers are simultaneously available.
+
+A provider returns a semantic execution result, not an HTTP action. Immediate responses return `status: "satisfied"`; abilities requiring a secondary effect return `status: "requires_resolution"`.
+
+### 3. Generic provider-owned Judgement
+
+Eight Trigrams no longer maps `judgement` to a special Eight-Trigrams route. It requests a generic Judgement resolution and owns the success predicate (red result = Dodge). The generic engine reveals/discards the Judgement card and resumes the Attack/AOE continuation according to the result.
+
+This is the model for future hero/equipment abilities that perform Judgement: the provider owns the rule for interpreting the revealed card; central Attack code must not know the provider identity.
+
+### 4. Passive and triggered capability modules
+
+Nio Shield is implemented through the passive Attack-modifier registry before a Dodge requirement is created.
+
+`game/capabilities/triggers.ts` now defines a real executable trigger contract with:
+
+- trigger event;
+- option discovery;
+- selection constraints;
+- live revalidation / resolution;
+- semantic execution output.
+
+Representative migrated triggers:
+
+- Green Dragon Blade — `attack_dodged`, select one valid follow-up Attack;
+- Rock Cleaving Axe — `attack_dodged`, discard exactly two current Hand/Equipment cards;
+- Frost Sword — `damage_about_to_apply`, choose one or two target Hand/Equipment cards and replace the damage with discards.
+
+Frost Sword correctly excludes Judgement Zone cards.
+
+### 5. Decision-specific presentation barrier
+
+Presentation uses `resolutionId` separately from `actionRevision`. `currentAction.presentation` now contains:
+
+```ts
+{
+  resolutionId: string | null;
+  readyAfterEventId: string | null;
+}
 ```
 
-The audit is intentionally scoped to one room and reset when a new game starts. Use it to reconstruct phase, turn-seat and acting-player changes when a reported game becomes stuck.
+The client records completed event IDs and opens all response providers, decline, selectors, and the human response timer together only after `readyAfterEventId` has been presented. It no longer waits for the entire unrelated global presentation queue to become idle.
 
-## Roadmap position and recommended next work
+Events already present on initial load/reload are treated as presented; optimistically displayed cards are marked complete when their authoritative event arrives.
 
-The project is currently between:
+## Important architecture boundaries still remaining
 
-- Stage 2: strengthen and centralise the general rules engine; and
-- Stage 4: expand the new Weapon slot into complete Equipment Zones and distance modifiers.
+### A. Trigger discovery/execution is generic, but trigger orchestration is not
 
-Recommended next sequence:
+The central route still explicitly schedules concrete trigger IDs and keeps dedicated pending/action branches for:
 
-1. Continue extracting shared ordered-response/resolution helpers from `app/api/rooms/route.ts`.
-2. Negation (official card 108) now has ordered Play/Pass controls, bot responses, counter-Negation parity, quick-test cards, deterministic single-target coverage and a fresh response window for every Barbarian Invasion or Raining Arrows target, including AOE cards played by bots.
-3. Overindulgence (official card 177) adds the public Judgement Zone, placement-time Negation, duplicate prevention, public judgement reveals, Heart success, non-Heart Play Phase skipping and bot resolution.
-4. Lightning (official card 107) is complete: self-placement, duplicate prevention, placement/judgement Negation, Spade 2–9 judgement, 3 source-free thunder damage, Dying rescue, transfer to the next eligible living character, bot play and deterministic tests.
-5. Equipment Zone foundation, a separate face-up rack beside each seat, authoritative Attack Range, Zhuge Crossbow, Green Dragon Blade, Serpent Spear, Rock Cleaving Axe, Sky Piercing Halberd and Frost Sword are complete. Burning Bridges and Steal now target current hand, equipment or judgement cards only after Negation finishes.
-6. Continue through the remaining Standard weapons, then add Borrowed Sword after weapon interactions are mature.
-7. Continue through armour, horses, distance modifiers and remaining response-chain edge cases.
-8. Extend role-outcome and defeat cleanup to future equipment and judgement cards.
-9. Add hero abilities only after shared Standard rules and cards are stable.
+- `green_dragon` / `respond_green_dragon` / `pass_green_dragon`;
+- `rock_cleaving` / `respond_rock_cleaving` / `pass_rock_cleaving`;
+- `frost_sword` / `use_frost_sword` / `pass_frost_sword`.
 
-## Known boundaries
+This means a future hero ability reacting to `attack_dodged` or `damage_about_to_apply` still requires edits to central orchestration even though its provider logic could live in the registry.
 
-- The game uses HTTP polling, not WebSockets.
-- Only the current action owner can submit a legal action; there is no simultaneous response system.
-- A Negation window is deliberately exclusive: the acting player may play Negation or use the visible Skip response control; the underlying Dodge/Attack action becomes available only after the stratagem window resolves. AOE response windows then expose the required Dodge/Attack choice directly, without being hidden by unrelated cards in hand.
-- The live Standard Judgement Zone supports Overindulgence and Lightning. Dormant compatibility handling for Rations Depleted remains covered by tests. Delayed cards resolve one at a time so Negation, transfer and Dying interruptions do not consume later judgement cards.
-- The Equipment Zone has Weapon, Armor, Offensive Mount and Defensive Mount slots, rendered as face-up cards in the rack beside each owner. Zhuge Crossbow, Green Dragon Blade, Serpent Spear, Rock Cleaving Axe, Sky Piercing Halberd, Frost Sword and Nio Shield are playable, and equipped weapon range is authoritative for Attack targeting. Nio Shield cancels black Attack cards before Dodge or damage. Frost Sword lets its owner choose one or two current target Hand or Equipment cards after choosing the damage-replacement branch; Judgement Zone cards are never eligible. Sky Piercing Halberd resolves its final-hand multi-target Attack as a held sequence; its specialised response path does not yet combine with other post-Dodge weapon effects. Rock Cleaving Axe may discard cards from hand and/or the Equipment Zone, including itself, after Dodge. Eight Trigrams Formation is the next equipment milestone. Burning Bridges and Steal can already select the current Weapon or a delayed card after their Negation chain.
-- Bumper Harvest Negation is target-specific: a cancelled player does not choose, later players continue, and any leftover revealed card is discarded with the held Harvest/Negation sequence at completion.
-- Most hero abilities are intentionally placeholders; Zhang Fei's repeated Attack behaviour is the principal test exception.
-- Reconnect uses the private room session stored on the device. Refresh restores automatically and Exit offers a one-tap same-device rejoin; cross-device account recovery is not implemented.
-- Saved match history, player profiles, statistics, sound and richer invitations are not implemented.
-- The Cloudflare Worker is public, but the GitHub repository may remain private and requires collaborator access for contributors.
+**Next architecture target:** introduce a canonical trigger decision, analogous to `ResponsePending`.
 
-## Safe continuation prompt
+Suggested direction:
 
-In the next chat, say:
+```ts
+type TriggerPending = {
+  kind: "trigger";
+  actorId: string;
+  event: TriggerEvent;
+  reason: string;
+  deadline?: number;
+  resolutionId?: string;
+  continuation: TriggerContinuation;
+};
+```
 
-> Continue the Three Kingdoms project from the latest `main`. Read `HANDOVER.md`, `README.md` and `docs/OFFICIAL_CARD_REFERENCE.md` first. Keep the active ruleset strictly WTK Standard, preserve the general-rules-before-heroes priority, run all tests, then push the validated commit to GitHub `main` and confirm its GitHub Actions deployment to the existing Cloudflare Worker. Do not use ChatGPT Sites.
+Project private trigger options from authoritative state and submit them through canonical actions such as `trigger` / `decline_trigger`. Persist what happened (`attack_dodged`, `damage_about_to_apply`) and the continuation; derive which equipment/hero capabilities are currently available. Do not persist a weapon name as the rule.
+
+Do this incrementally. Avoid a universal effects DSL.
+
+### B. The response presentation barrier is exact on the client but inferred on the server
+
+The client correctly waits on one `readyAfterEventId`, but `roomState()` currently derives that ID by scanning `log_json` with `latestDecisionPresentationEventId()`.
+
+Prefer the stronger invariant:
+
+> when a transition creates a decision, that transition records the exact public event that must finish before the decision becomes interactive.
+
+Carry/store that exact event ID with the decision instead of reconstructing it later from the latest event in a resolution. This will matter for AOE targets, chained Negation, and future hero-trigger chains where several events share one `resolutionId`.
+
+### C. Legacy protocol branches remain deliberately
+
+`GAMEPLAY_ACTIONS` still contains compatibility response/trigger verbs such as `respond_dodge`, `respond_group`, `respond_negation`, `respond_eight_trigrams`, and the weapon-specific trigger actions. Legacy response continuation shapes also remain.
+
+Do not remove them in a big-bang cleanup. First finish equivalent semantic trigger orchestration and exact decision barriers, keep saved-game compatibility covered, then delete compatibility branches one path at a time with regression tests.
+
+## Recommended next work — architecture first
+
+1. **Get the current head green in GitHub Actions.** The `d783d7a` workflow failed at startup before any job ran; treat that as unvalidated until a normal workflow completes.
+2. **Introduce generic TriggerPending / TriggerDecision orchestration.** Migrate Green Dragon Blade, Rock Cleaving Axe, and Frost Sword onto it without changing their already-correct capability modules.
+3. **Capture `readyAfterEventId` at decision creation.** Stop inferring the barrier from log scanning once every decision creator can provide it explicitly.
+4. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
+5. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword.
+
+## Standard card roadmap status
+
+The verified active roadmap is 28 card identities. **24 / 28 are currently treated as playable.** The remaining verified identities are:
+
+1. Blue Steel Sword
+2. Yin-Yang Swords
+3. Kirin Bow
+4. Borrowed Sword
+
+`docs/STANDARD_108_DECK_MANIFEST.md` remains the physical 108-card target. Before declaring the Standard deck complete, reconcile every physical card, suit/rank assignment, quantity, and the six named mounts with the runtime deck.
+
+Blue Steel Sword should be the next card after the architecture work above. Its Attack ignores Armor effects without unequipping the Armor, so it is also a useful proof that passive modifiers can be suppressed contextually rather than hard-coded into Armor cards.
+
+## Key gameplay/rules invariants
+
+- A core rule should request a semantic result (`Dodge`, `Attack`, `Negate`) rather than know every way it can be produced.
+- Physical cards, equipment, hero conversions, and future effects provide capabilities around those semantic requirements.
+- Passive effects such as Nio Shield happen before the response requirement if the Attack is already prevented.
+- Triggered effects happen after the relevant domain event (`attack_dodged`, `damage_about_to_apply`, etc.).
+- Server state is authoritative. Options visible to one acting player must not leak to other viewers.
+- Presentation may delay an entire decision, but must never enable one legal choice while another legal choice in the same decision is still blocked.
+- Human response timers must not begin before the visible decision is ready and must never extend on refresh/duplicate requests.
+- Normal GET polling must stay read-only.
+- Keep Quick Test perspective switching deterministic and private.
+
+## Validation and release rules
+
+Before a functional release, follow `AGENTS.md`:
+
+- update `README.md` and this handover for functional changes;
+- keep deterministic/Quick Test coverage current;
+- run build, full tests, lint, and `git diff --check`;
+- push the validated commit to `main`;
+- use GitHub Actions as the only production deployment path.
+
+Do not claim local tests ran unless they actually ran. A GitHub workflow startup failure is not evidence that the code failed tests; it is also not evidence that the code passed them.
