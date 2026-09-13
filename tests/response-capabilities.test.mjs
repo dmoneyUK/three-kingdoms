@@ -90,4 +90,10 @@ test("passive and triggered equipment capabilities are discovered outside the ro
   const axeCards = [card("Peach", "axe-one"), card("RockCleavingAxe", "axe")];
   assert.deepEqual(getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [axeCards[1]], sourceCards: axeCards }), [{ effectId: "rock_cleaving_axe_attack_dodged", label: "Use Rock Cleaving Axe", selection: { type: "cards", min: 2, max: 2, eligibleCardIds: ["axe-one", "axe"] } }]);
   assert.deepEqual(resolveTriggeredEffect("rock_cleaving_axe_attack_dodged", { event: "attack_dodged", sourceEquipment: [axeCards[1]], sourceCards: axeCards }, { cardIds: ["axe-one", "axe"] }), { status: "resolved", effectId: "rock_cleaving_axe_attack_dodged", consumeCardIds: ["axe-one", "axe"] });
+
+  const targetHand = [card("Peach", "frost-hand")];
+  const targetEquipment = [card("NioShield", "frost-armor")];
+  const frostContext = { event: "damage_about_to_apply", sourceEquipment: [card("FrostSword", "frost")], targetHand, targetEquipment };
+  assert.deepEqual(getTriggeredEffects(frostContext), [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", min: 1, max: 2, eligibleCardIds: ["hand:0", "frost-armor"] } }]);
+  assert.deepEqual(resolveTriggeredEffect("frost_sword_damage_about_to_apply", frostContext, { cardKeys: ["hand:0", "frost-armor"] }), { status: "resolved", effectId: "frost_sword_damage_about_to_apply", targetCardIds: ["frost-hand", "frost-armor"] });
 });

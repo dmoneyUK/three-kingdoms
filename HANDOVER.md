@@ -1,5 +1,15 @@
 # Three Kingdoms project handover
 
+### 2026-09-13 update — executable Frost Sword pre-damage trigger
+
+Frost Sword is now the representative provider-owned `damage_about_to_apply` trigger. Its equipment module contributes the private target-card selection contract (hidden Hand slots plus public Equipment cards) and validates the selected one or two cards against the target's live state. The route now requests and executes the trigger instead of inspecting Frost Sword itself; it receives only the semantic target card IDs to discard. Frost Sword continues to exclude Judgement Zone cards, and its existing attacker-owned modal remains a compatibility presentation adapter.
+
+### 2026-09-13 update — decision-specific response presentation barrier
+
+Every response now projects the concrete public `readyAfterEventId` that must finish displaying before it becomes interactive. The client records completed presentation IDs and opens every provider, decline action and response timer together after that event—rather than waiting for the entire global animation queue to be idle. Events already present on an initial/reloaded screen are treated as presented, while optimistically displayed cards are marked complete when their authoritative event arrives.
+
+Next: retire the remaining compatibility response protocol branches and shrink legacy-shaped response continuations only where an equivalent semantic continuation is fully covered. Do not remove compatibility paths used by saved games or the dedicated trigger prompts prematurely.
+
 ### 2026-09-13 update — executable Rock Cleaving Axe trigger
 
 Rock Cleaving Axe now uses the same executable `attack_dodged` trigger contract as Green Dragon Blade. Its equipment module owns whether the weapon is equipped, exposes every legal Hand/Equipment card as an exact-two-card selection, and validates the submitted pair against live state. `finishDodgedAttack`, bot advancement, legal-action projection and `respond_rock_cleaving` now consume that semantic execution. The existing Rock Cleaving pending screen/protocol actions remain compatibility-only; the Axe itself is still legally usable as one of the two discarded cards.

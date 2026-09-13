@@ -254,7 +254,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(roomApi, /hasSerpentSpear/);
   assert.match(roomApi, /rock_cleaving_axe_attack_dodged/);
   assert.match(roomApi, /hasSkyPiercingHalberd/);
-  assert.match(roomApi, /hasFrostSword/);
+  assert.match(roomApi, /frostSwordTriggerOption/);
   assert.match(roomApi, /respond_rock_cleaving/);
   assert.match(roomApi, /serpent_spear_attack/);
   assert.match(roomApi, /attackRangeFor/);
@@ -320,7 +320,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /responseDamageAction && onAction\(responseDamageAction\)/);
   assert.match(page, /const presentImmediately = !optimisticPlay && !activeEvent && eventQueue\.length === 0/);
   assert.doesNotMatch(page, /if \(busy \|\| presentationBusy\) return; const key = `\$\{room\.actionPlayerId\}/);
-  assert.match(page, /const responseDecisionReady = \(canRespond \|\| frostSwordResponse\) && !presentationBusy/);
+  assert.match(page, /const responseReadyAfterEventId = room\.currentAction\?\.presentation\?\.readyAfterEventId \?\? null/);
+  assert.match(page, /const responsePresentationReady = !responseReadyAfterEventId \|\| presentedEventIds\.has\(responseReadyAfterEventId\)/);
+  assert.match(page, /const responseDecisionReady = \(canRespond \|\| frostSwordResponse\) && responsePresentationReady/);
   assert.match(page, /if \(busy \|\| !responseDecisionReady\) return; const key = room\.actionRevision/);
   assert.match(page, /disabled=\{responseControlsDisabled\}/);
   assert.match(page, /Skip · take 1 damage/);

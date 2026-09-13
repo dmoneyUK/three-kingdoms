@@ -328,6 +328,9 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const privateDrawCards = useMemo(() => privateDrawPresentation.playerId === room.meId ? privateDrawPresentation.cards : [], [privateDrawPresentation, room.meId]);
   const knownHandCards = useRef(baselineHand(room.meId, room.myHand, room.timeline));
   const [eventQueue, setEventQueue] = useState<GameEvent[]>([]); const [activeEvent, setActiveEvent] = useState<GameEvent | null>(null); const seenEvents = useRef(new Set((room.timeline ?? []).map((event) => event.id)));
+  // Events already present when the screen mounts have no new animation to
+  // wait for. New event IDs enter this set only after their presentation ends.
+  const [presentedEventIds, setPresentedEventIds] = useState<Set<string>>(() => new Set((room.timeline ?? []).map((event) => event.id)));
   const instantPresentationEvents = useRef(new Set<string>());
   const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>(initialPendingSequence);
   const [resolutionClosing, setResolutionClosing] = useState(false);
@@ -396,7 +399,9 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   // expose (or start timing) one provider before the preceding public effect
   // has finished presenting: every provider and the decline branch open
   // together once the decision is visible.
-  const responseDecisionReady = (canRespond || frostSwordResponse) && !presentationBusy;
+  const responseReadyAfterEventId = room.currentAction?.presentation?.readyAfterEventId ?? null;
+  const responsePresentationReady = !responseReadyAfterEventId || presentedEventIds.has(responseReadyAfterEventId);
+  const responseDecisionReady = (canRespond || frostSwordResponse) && responsePresentationReady;
   const responseControlsDisabled = busy || !responseDecisionReady;
   const rescueDecisionReady = canRescue && !presentationBusy;
   const drawWaitingForPresentation = room.isMyTurn && Boolean(room.phase?.startsWith("draw")) && presentationBusy;
@@ -446,15 +451,17 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   useEffect(() => {
     const fresh = (room.timeline ?? []).filter((event) => !seenEvents.current.has(event.id));
     fresh.forEach((event) => seenEvents.current.add(event.id));
+    const immediatelyPresented = new Set<string>();
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
-      if (event.type === "card" && optimisticallyPresentedCards.current.delete(event.card.id)) return false;
+      if (event.type === "card" && optimisticallyPresentedCards.current.delete(event.card.id)) { immediatelyPresented.add(event.id); return false; }
       if (event.type === "cards" && event.action === "play") {
         const matched = event.cards.map((card) => optimisticallyPresentedCards.current.delete(card.id));
-        if (matched.every(Boolean)) return false;
+        if (matched.every(Boolean)) { immediatelyPresented.add(event.id); return false; }
       }
       return true;
     });
+    if (immediatelyPresented.size) setPresentedEventIds((ids) => new Set([...ids, ...immediatelyPresented]));
     if (visible.length) {
       setResolutionClosing(false);
       const cardsArrived = visible.some((event) => eventCards(event).length > 0);
@@ -478,7 +485,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
   useEffect(() => { const unseenEvents = timelineKey.split("|").filter(Boolean).some((id) => !seenEvents.current.has(id)); const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || activeEvent || eventQueue.length || unseenEvents || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, current?.name, lastTimelineId, timelineKey, activeEvent, eventQueue.length]);
   useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setResolutionEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
-  useEffect(() => { if (!activeEvent) return; const instant = instantPresentationEvents.current.delete(activeEvent.id); const displayTime = instant ? 0 : activeEvent.type === "card" || activeEvent.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage; const timer = setTimeout(() => { if (movesDirectlyToDiscard(activeEvent)) setVisibleDiscardTop(latestDiscardTop.current); setActiveEvent(null); }, displayTime); return () => clearTimeout(timer); }, [activeEvent]);
+  useEffect(() => { if (!activeEvent) return; const instant = instantPresentationEvents.current.delete(activeEvent.id); const displayTime = instant ? 0 : activeEvent.type === "card" || activeEvent.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage; const timer = setTimeout(() => { if (movesDirectlyToDiscard(activeEvent)) setVisibleDiscardTop(latestDiscardTop.current); setPresentedEventIds((ids) => ids.has(activeEvent.id) ? ids : new Set([...ids, activeEvent.id])); setActiveEvent(null); }, displayTime); return () => clearTimeout(timer); }, [activeEvent]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (sequenceEvents.length || optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing) return; const timer = setTimeout(() => setVisibleDiscardTop(room.discardTop), 0); return () => clearTimeout(timer); }, [room.discardTop, room.phase, sequenceEvents.length, optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, resolutionClosing]);
@@ -555,7 +562,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
     }
   };
   const play = async () => { if (!card || !me || (isAttackCard(card) && !attackTargetsValid)) return; const playedCard = card; const definition = cardDefinition(card.kind); const needsTarget = isAttackCard(card) || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"; const displayTarget = halberdAttack ? targetIds.map((id) => room.players.find((player) => player.id === id)?.name).filter(Boolean).join(", ") : targetPlayer?.name ?? (card.kind === "BumperHarvest" || card.kind === "Oath" ? "All living players" : card.kind === "BarbarianInvasion" || card.kind === "RainingArrows" ? "All other players" : me.name); const optimisticEvent: CardEvent & { type: "card" } = { id: `optimistic-${card.id}`, type: "card", player: me.name, target: displayTarget, card, action: definition.equipmentSlot ? "equip" : "play" }; resolutionRevision.current += 1; optimisticallyPresentedCards.current.add(playedCard.id); setResolutionClosing(false); setResolutionEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []); setOptimisticPlay(optimisticEvent); setSelected(""); setTargetIds([]); const accepted = await onAction("play_card", { cardId: playedCard.id, ...(needsTarget ? { targetId: target, ...(halberdAttack ? { targetIds } : {}) } : {}) }); if (!accepted) { optimisticallyPresentedCards.current.delete(playedCard.id); setOptimisticPlay(null); setResolutionEvents([]); } };
-  const commandPrompt = presentationBusy && (canRespond || frostSwordResponse || !canRescue) ? "Showing the current game event…"
+  const commandPrompt = !responseDecisionReady && (canRespond || frostSwordResponse) ? "Showing the current game event…"
     : room.status === "finished" ? "The match has ended"
     : room.phase === "dying" ? room.isMyAction ? "Your action · select a Peach and play it, or skip rescue" : "Waiting — no rescue action is required from you"
     : room.pendingHarvest ? room.pendingHarvest.complete ? "Bumper Harvest · showing all confirmed choices" : canChooseHarvest ? "Your action · choose one revealed Bumper Harvest card" : `Waiting for ${actor?.name ?? "the next player"} to choose from Bumper Harvest`

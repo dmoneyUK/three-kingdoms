@@ -1,12 +1,14 @@
 import type { Card } from "../model";
 import { greenDragonBladeDodgedAttackTrigger } from "./equipment/green-dragon-blade";
 import { rockCleavingAxeDodgedAttackTrigger } from "./equipment/rock-cleaving-axe";
+import { frostSwordDamageAboutToApplyTrigger } from "./equipment/frost-sword";
 
-export type TriggerEvent = "attack_dodged";
-export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[] };
-export type TriggerSelection = { cardId?: unknown; cardIds?: unknown };
-export type TriggerOption = { effectId: string; label: string; selection: { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null };
-export type TriggerExecution = { status: "resolved"; effectId: string; consumeCardIds?: string[] };
+export type TriggerEvent = "attack_dodged" | "damage_about_to_apply";
+export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[]; targetHand?: Card[]; targetEquipment?: Card[] };
+export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown };
+export type TriggerSelectionConstraint = { type: "cards" | "target_cards"; min: number; max: number; eligibleCardIds: string[] };
+export type TriggerOption = { effectId: string; label: string; selection: TriggerSelectionConstraint | null };
+export type TriggerExecution = { status: "resolved"; effectId: string; consumeCardIds?: string[]; targetCardIds?: string[] };
 export type TriggeredEffect = {
   id: string;
   event: TriggerEvent;
@@ -14,7 +16,7 @@ export type TriggeredEffect = {
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
 };
 
-const triggers: TriggeredEffect[] = [greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger];
+const triggers: TriggeredEffect[] = [greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger];
 
 /** Returns triggered effects supplied by the relevant equipped/hero capabilities. */
 export function getTriggeredEffects(context: TriggerContext) {
