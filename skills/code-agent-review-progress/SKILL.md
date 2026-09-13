@@ -10,6 +10,8 @@ description: Review the latest repository code, assess change impact and quality
 Use this skill when the user asks to review the latest repository code/change and give feedback or next instructions to a coding agent.
 
 The skill must:
+- produce the final review as a direct report to the coding agent, not as an explanation to the user about the review process;
+- never mention the skill, its internal formulas, thresholds, weighting method, or how the review mechanism works unless the user explicitly asks;
 - identify what changed since the last reviewed baseline;
 - explain architectural, runtime/product, client, persistence, compatibility, testing, and deployment impact;
 - find correctness risks, incomplete migrations, abstraction leaks, regressions, duplicated paths, stale documentation, and missing tests;
@@ -217,15 +219,25 @@ Possible reasons:
 
 ### Adjustment rule
 
+If progress is below plan, the review must first require the coding agent to check **why the previously agreed exit criteria were missed**. The agent should distinguish between:
+- a genuine blocker/dependency discovered during implementation;
+- an unexpected correctness/CI problem that consumed the round;
+- materially expanded scope that was not visible when the plan was made;
+- or simply splitting the work too finely / stopping after scaffolding or micro-commits.
+
 If progress is below plan **without a real new blocker or material scope increase**:
+- state clearly that missing the agreed round target is **not acceptable**;
+- tell the coding agent to stick to the agreed round instead of silently redefining it;
 - push the coding agent harder next round;
-- combine tightly coupled tasks;
-- explicitly say not to stop after adding one helper/type/adapter;
-- require the round to close multiple acceptance criteria;
+- combine tightly coupled tasks into one coherent batch;
+- explicitly say not to stop after adding one helper/type/adapter or after one narrow commit;
+- require the round to close the listed acceptance criteria before treating it as complete;
+- require the coding agent to include a short explanation in its completion summary of why the previous round missed its target and what changed to prevent another undersized round;
 - require full validation after the coherent batch is complete;
 - keep or reduce the original final-round deadline rather than automatically adding more rounds.
 
 If progress is below plan **because scope or dependencies materially expanded**:
+- require the coding agent to identify the concrete newly-discovered blocker/dependency and why it could not reasonably have been included in the previous round;
 - do not simply accuse the coding agent of being slow;
 - recalculate complexity points and dependency layers;
 - update completion percentage and remaining rounds;
@@ -236,6 +248,24 @@ If progress is ahead of plan:
 - reduce the remaining-round estimate;
 - combine the next planned layers when safe;
 - do not invent extra cleanup solely to fill the old schedule.
+
+## Plan adherence
+
+Previously agreed round scope is a delivery commitment, not a loose suggestion.
+
+When reviewing a later round:
+
+- compare the implementation against the exact prior exit criteria;
+- do not let the coding agent redefine a missed item as "future work" merely because it was not finished;
+- do not treat several narrow commits as a completed round if the round's acceptance criteria remain open;
+- if an agreed item was skipped, require the agent to check and explain why it was skipped;
+- if the explanation is only that the work was split into smaller pieces, explicitly reject that as a reason to extend the schedule;
+- tell the agent to remain on the same round and finish the coupled work before moving to the next round;
+- only revise the estimate when there is evidence of a genuine blocker, materially expanded scope, migration constraint, or production incident that changes the original assumptions.
+
+A behind-schedule report should use unambiguous language. For example:
+
+`This round did not meet the agreed exit criteria. Check why the missed items were not completed. If there is no genuine new blocker, this is not acceptable: do not split this work into another micro-round. Stay on the agreed scope and finish the remaining P0/P1 items together before moving on.`
 
 ## Priority rules
 
@@ -250,6 +280,8 @@ Never spend a planned architecture round primarily on P2/P3 while P0/P1 blockers
 ## Direct coding-agent output
 
 The final answer should normally be written **to the coding agent**, not as advice to the user.
+
+The report must stand on its own as an engineering review. **Never mention this skill, the internal scoring method, progress-ratio thresholds, weighting formulas, or how the review process works.** Do not say things such as "using the review skill", "the skill says", "under the skill threshold", or "the skill's point system". Internal calculations may guide the conclusion, but the coding agent should only see the resulting project assessment, missed commitments, priorities, and required next work.
 
 Do not begin with "You can send this". Begin directly, for example:
 
@@ -276,16 +308,19 @@ Call out what is strong and what remains structurally incomplete. Separate corre
 
 ### 4. Progress vs plan
 
-State:
-- previous round plan;
-- expected work/points;
-- actual work/points;
-- progress ratio;
-- whether on plan, somewhat behind, or materially behind;
-- reason for divergence;
-- whether the response is **push harder** or **revise estimate**.
+State in normal project-management language:
+- the previous round's agreed outcomes;
+- which outcomes were actually completed;
+- which promised exit criteria were missed;
+- whether progress is on plan, somewhat behind, or materially behind;
+- the most likely reason for the divergence;
+- whether the next instruction is **push harder** or **revise the estimate**.
 
-If no previous contract can be recovered, say so and establish a new contract rather than inventing historical numbers.
+Do not expose internal weighting/ratio formulas unless the user explicitly asks.
+
+When the round is behind, explicitly tell the coding agent to **check why the missed items were not completed**. If there is no genuine newly-discovered blocker or materially expanded scope, say clearly that the undersized delivery is **not acceptable** and that the agent must stick to the agreed round instead of splitting it into more micro-iterations.
+
+If no previous plan can be recovered, say so and establish a new plan rather than inventing historical progress.
 
 ### 5. Next-round instructions
 
@@ -293,7 +328,7 @@ Give P0/P1 work first. The next round must have explicit exit criteria and shoul
 
 Be specific about what must disappear from old paths and what end-to-end tests must prove.
 
-### 6. Iteration contract
+### 6. Iteration target
 
 End with:
 - `Estimated completion: X%`
@@ -303,7 +338,7 @@ End with:
 - `Do not start: ...`
 - `When to revise estimate: ...`
 
-This contract becomes the comparison baseline for the next review.
+These targets become the comparison baseline for the next review.
 
 ## Tone
 
@@ -315,7 +350,7 @@ Do not call work "complete" because types/helpers/docs say it is complete.
 
 Do not repeatedly ask for tiny follow-up changes if several tightly coupled issues can be finished safely in one round.
 
-When progress is slow due to micro-iteration rather than genuine complexity, say so clearly and instruct the agent to batch more work.
+When progress is slow due to micro-iteration rather than genuine complexity, say so clearly. State that this is not acceptable, require the agent to inspect why the agreed work was missed, and instruct it to stay on the agreed round and batch the remaining tightly-coupled work until the exit criteria are met.
 
 When the original estimate was wrong, say so clearly and update it instead of forcing an unrealistic deadline.
 
