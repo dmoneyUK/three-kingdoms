@@ -17,14 +17,19 @@ export type ResponseActivation = "implicit" | "explicit";
 export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; label: string; cards: Card[]; selection: ResponseSelection };
 export type ResponseProviderOption = Omit<ResponseOption, "activation">;
 export type ResponseSelectionInput = { cardId?: unknown; cardIds?: unknown };
-/** A provider reports the semantic result and costs, never an HTTP action. */
-export type ResponseExecution = {
-  status: "satisfied";
-  providerId: string;
-  satisfies: "attack" | "dodge" | "negate";
-  consumeCardIds?: string[];
-  resolution?: "cards" | "judgement";
+export type JudgementResolution = {
+  kind: "judgement";
+  /** The provider owns how its revealed card is interpreted. */
+  succeeds: (card: Card | undefined) => boolean;
+  label: string;
+  successText: string;
+  failureText: string;
 };
+export type ResolutionEffect = JudgementResolution;
+/** A provider reports the semantic result and costs, never an HTTP action. */
+export type ResponseExecution =
+  | { status: "satisfied"; providerId: string; satisfies: "attack" | "dodge" | "negate"; consumeCardIds?: string[]; resolution?: "cards" }
+  | { status: "requires_resolution"; providerId: string; satisfies: "attack" | "dodge" | "negate"; resolution: ResolutionEffect };
 export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation"; selection: { cardId?: string; cardIds?: string[] } };
 export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; getOption: (context: CapabilityContext) => ResponseProviderOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
 
@@ -45,10 +50,16 @@ export function registerResponseProvider(provider: ResponseProvider) {
 
 export function getResponseOptions(context: CapabilityContext, requirement: ActionRequirement) {
   const satisfies = requirement.kind;
-  return providers.filter((provider) => provider.satisfies === satisfies).flatMap((provider) => {
+  const options = providers.filter((provider) => provider.satisfies === satisfies).flatMap((provider) => {
     const option = provider.getOption(context);
     return option ? [{ ...option, activation: provider.activation }] : [];
   });
+  // The ordinary physical-card route is the sole immediate/default route.
+  // Every alternative capability must ask the player to choose it explicitly.
+  if (options.filter((option) => option.activation === "implicit").length > 1) {
+    throw new Error(`Response requirement ${satisfies} has more than one implicit provider.`);
+  }
+  return options;
 }
 
 export function resolveResponseProvider(providerId: unknown, context: ResponseExecutionContext) {

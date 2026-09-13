@@ -894,7 +894,7 @@ test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement 
 
   setHand(hostPlayer.id, [card("Attack", "trigrams-black")], 4, 4); setDeck(game.code, [{ ...card("Peach", "judgement-black"), suit: "♣", rank: "8" }]); setTurn(game.code, hostPlayer.seat);
   const blackAttack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-trigrams-black", targetId: alicePlayer.id });
-  assert.equal(blackAttack.status, 200); const blackResult = await request("respond_eight_trigrams", { code: game.code, token: alice.token });
+  assert.equal(blackAttack.status, 200); const blackResult = await request("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge" });
   assert.equal(blackResult.status, 200); assert.equal(blackResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3); assert.ok(blackResult.data.room.log.some((entry) => /Eight Trigrams Formation/.test(entry)));
 
 });

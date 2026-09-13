@@ -1,5 +1,11 @@
 # Three Kingdoms project handover
 
+### 2026-09-13 update — generic provider-owned Judgement resolution
+
+`ResponseExecution` now distinguishes an immediately `satisfied` requirement from `requires_resolution`. Eight Trigrams is the first provider using that secondary path: it requests a generic Judgement effect and owns the red-card success predicate and presentation text. The route's generic Judgement executor draws/reveals/discards the card and resumes the stored Attack or AOE continuation according to the result; it no longer maps `judgement` to Eight Trigrams. The legacy `respond_eight_trigrams` action remains only as a compatibility entry point and reuses the same provider resolution.
+
+Response capability discovery now enforces an explicit interaction invariant: at most one implicit provider may be available for a requirement, while any number of ability/equipment providers can be explicit. The capability test hero declares `activation: "explicit"`, and regression tests cover both the projected activation and rejection of a second implicit provider. Next: migrate Green Dragon Blade, Rock Cleaving Axe and Frost Sword one at a time into executable triggered-effect providers; leave the `ResponsePending` continuation adapter intact until those trigger semantics are stable.
+
 ### 2026-09-13 update — canonical semantic ResponsePending and response view v3
 
 `ResponsePending` is now the persisted form for every semantic Attack, Dodge and Negation response. It carries the actor, `ActionRequirement`, deadline/reason/resolution identity and a bounded legacy-shaped continuation for Attack, Group, Duel or Negation. Existing route resolvers read that continuation through `asLegacyResponsePending()` while all new writes use `serializePending()`, making the migration backward-compatible without maintaining a second rules engine.
