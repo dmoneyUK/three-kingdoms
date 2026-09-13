@@ -1592,13 +1592,21 @@ async function runBots(roomId: string) {
           targetHand = targetHand.filter((card) => card.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, bot.name); log = addLog(log, `${target.name} plays Dodge and blocks the Attack.`);
           await finishDodgedAttack(room, { ...bot, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, declaration.resumePhase, declaration.sequenceStartCardId, [...writes, db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id), db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
         } else {
-          log = addLog(log, `${target.name} uses Eight Trigrams Formation to judge for Dodge.`);
-          writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
-          writes.push(db().prepare("UPDATE rooms SET deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
-          await db().batch(writes);
-          const pending: AttackPending = { kind: "attack", sourceId: bot.id, targetId: target.id, actorId: target.id, resumePhase: phaseAfterAttack(bot), sequenceStartCardId, reason: "Respond to Attack: play Dodge or use Eight Trigrams" };
-          const execution = resolveResponseDecision(pending, responseContext({ ...target, hand_json: JSON.stringify(targetHand) }), "eight_trigrams_dodge", {});
-          if (execution?.status === "requires_resolution" && execution.resolution.kind === "judgement") {
+          const pending: AttackPending = { kind: "attack", sourceId: bot.id, targetId: target.id, actorId: target.id, resumePhase: phaseAfterAttack(bot), sequenceStartCardId, reason: "Respond to Attack: provide Dodge or take damage" };
+          const decision = responseDecisionFor(asResponsePending(pending), responseContext({ ...target, hand_json: JSON.stringify(targetHand) }));
+          const option = decision?.options[0];
+          const cardId = option?.selection?.type === "cards" ? option.selection.eligibleCardIds[0] : undefined;
+          const execution = option ? resolveResponseDecision(pending, responseContext({ ...target, hand_json: JSON.stringify(targetHand) }), option.providerId, { cardId }) : null;
+          if (execution?.status === "satisfied" && execution.consumeCardIds?.length === 1) {
+            const used = targetHand.find((card) => card.id === execution.consumeCardIds?.[0]);
+            if (used) {
+              targetHand = targetHand.filter((card) => card.id !== used.id); discard.push(used); log = addCardEvent(log, target.name, used, bot.name); log = addLog(log, `${target.name} uses ${option?.label ?? "a Dodge provider"}.`);
+              await finishDodgedAttack(room, { ...bot, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, declaration.resumePhase, declaration.sequenceStartCardId, [...writes, db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id), db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
+            }
+          } else if (execution?.status === "requires_resolution" && execution.resolution.kind === "judgement") {
+            writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
+            writes.push(db().prepare("UPDATE rooms SET deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+            await db().batch(writes);
             await resolveJudgementResponse({ ...room, deck_json: JSON.stringify(deck) }, pending, { ...target, hand_json: JSON.stringify(targetHand) }, { ...bot, hand_json: JSON.stringify(hand) }, players, discard, log, execution.resolution);
           }
         }

@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Current baseline
 
-As of 2026-09-13 the working baseline is `62795ef` plus canonical secondary-response dispatch and direct event-ID barrier support for newly-created trigger decisions. Trigger outcomes are strongly discriminated, target-card selection keys are opaque, canonical damage-about-to-apply reactions use the event-shaped trigger protocol, bots use the same trigger registry, and selected provider labels are preserved as generic presentation metadata. Canonical `respond` submissions now enter continuation-specific domain operations for Attack, Duel, Group, and Negation without translating successful commands back to legacy verbs. Secondary Judgement is dispatched from the canonical ResponsePending wrapper and resumes through the shared continuation boundary. Build, lint, diff checks, and the full 58-test local suite pass. Saved-room compatibility remains isolated; no new cards or hero abilities should be added until the final legacy cleanup is reviewed.
+As of 2026-09-13 the working baseline is `5c3c19b` plus the final bot-response and event-barrier cleanup in the current worktree. Trigger outcomes are strongly discriminated, target-card selection keys are opaque, canonical damage-about-to-apply reactions use the event-shaped trigger protocol, bots use the same response/trigger capability selection, and selected provider labels are preserved as generic presentation metadata. Canonical `respond` submissions enter continuation-specific domain operations for Attack, Duel, Group, and Negation without translating successful commands back to legacy verbs. Secondary Judgement is dispatched from the canonical ResponsePending wrapper and resumes through the shared continuation boundary. Build, lint, diff checks, and the full 58-test local suite pass. Saved-room compatibility remains isolated at the boundary; no new cards or hero abilities should be added until the final architecture review.
 
 Repository and service:
 
@@ -136,10 +136,9 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — architecture first
 
-1. **Complete canonical response continuation.** Migrate Duel, Group, and Negation satisfied/declined outcomes onto the same semantic response engine used by Attack/Dodge, without translating canonical commands back into legacy verbs.
-2. **Generalize secondary resolution.** Route provider-requested Judgement through one continuation-agnostic semantic outcome path, then migrate the remaining trigger continuation and direct event-ID barriers.
-3. **Retire compatibility response/trigger actions incrementally.** Keep old verbs and pending shapes only at the saved-client/state boundary until architecture-level tests prove they are no longer needed by new gameplay.
-4. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword only after the three architecture rounds are green.
+1. **Review the completed architecture boundary.** New gameplay should use canonical response/trigger commands, semantic providers, event continuations, and explicit presentation barriers.
+2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
+3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword after the architecture review.
 
 ## Standard card roadmap status
 

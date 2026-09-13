@@ -64,7 +64,7 @@ This remains deliberately bounded; do **not** build a universal effects DSL.
 
 The browser now waits for one concrete `currentAction.presentation.readyAfterEventId`, which fixes the earlier global-presentation gate and keeps all legal choices/timer atomic.
 
-Each newly created canonical response or trigger now captures the exact event ID at the transition that creates the decision and stores it with the decision. This avoids ambiguity when several events share one `resolutionId`, including AOE targets, counter-Negation chains and weapon triggers. `roomState()` retains its log scan only as a compatibility fallback for old saved rooms.
+Canonical decisions now accept an exact presentation event ID from event creation; new trigger creation uses that direct reference, while older response creators continue through the compatibility fallback until their next focused migration. `roomState()` retains log scanning only for old saved rooms.
 
 ## Compatibility cleanup — incremental and saved-room safe
 
@@ -78,7 +78,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The reviewed gameplay commit `d783d7a` (`Complete trigger and presentation architecture`) had a GitHub Actions **startup failure with zero jobs**, so it has not itself been CI-validated. Its parent `0c255a4` completed the workflow successfully.
+The current architecture baseline is `5c3c19b` plus the final bot-response and barrier cleanup. Local validation is green (58 tests, build, lint, and diff check); GitHub Actions remains the release gate for the pushed commit.
 
 Before continuing gameplay work, obtain a normal green Actions run for the current head. A workflow startup failure is neither a test failure nor a successful validation.
 
