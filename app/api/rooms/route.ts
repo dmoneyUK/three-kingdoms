@@ -107,6 +107,7 @@ function frostSwordTriggerContext(source: PlayerRow, target: PlayerRow) {
     event: "damage_about_to_apply" as const,
     sourceEquipment: equipmentCards(source),
     sourceHand: parse<Card[]>(source.hand_json, []),
+    targetId: target.id,
     targetHand: parse<Card[]>(target.hand_json, []),
     targetEquipment: equipmentCards(target),
   };
@@ -125,6 +126,7 @@ function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
     event: pending.event,
     sourceEquipment: equipmentCards(source),
     sourceHand: parse<Card[]>(source.hand_json, []),
+    targetId: target.id,
     targetHand: parse<Card[]>(target.hand_json, []),
     targetEquipment: equipmentCards(target),
   };
@@ -941,8 +943,8 @@ async function advanceFrostSword(roomId: string) {
   const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
   const context = source && target ? frostSwordTriggerContext(source, target) : null;
   const option = context ? getTriggeredEffects(context).find((candidate) => candidate.effectId === (pending.triggerId ?? "frost_sword_damage_about_to_apply")) : null;
-  const execution = context && option ? resolveTriggeredEffect(pending.triggerId ?? "frost_sword_damage_about_to_apply", context, { cardKeys: option.selection?.eligibleCardIds.slice(0, 2) }) : null;
-  if (source.alive && target.alive && execution?.targetCardIds?.length) return resolveFrostSword(room, pending, source, target, discard, log, execution.targetCardIds);
+  const execution = context && option && option.selection?.type === "target_cards" ? resolveTriggeredEffect(pending.triggerId ?? "frost_sword_damage_about_to_apply", context, { cardKeys: option.selection.eligibleKeys.slice(0, 2) }) : null;
+  if (source.alive && target.alive && execution?.outcome.kind === "prevent_damage" && execution.outcome.targetCardIds.length) return resolveFrostSword(room, pending, source, target, discard, log, execution.outcome.targetCardIds);
   const hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${source.name} does not use Frost Sword. ${target.name} takes 1 damage.`);
   if (hp === 0) {
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
@@ -962,7 +964,7 @@ async function advanceRockCleaving(roomId: string) {
   const hand = parse<Card[]>(source?.hand_json ?? null, []); const cards = rockCleavingCards(source, hand);
   const option = source ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceCards: cards }).find((candidate) => candidate.effectId === (pending.triggerId ?? "rock_cleaving_axe_attack_dodged")) : null;
   const execution = source && option ? resolveTriggeredEffect(pending.triggerId ?? "rock_cleaving_axe_attack_dodged", { event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceCards: cards }, { cardIds: option.selection?.eligibleCardIds.slice(0, 2) }) : null;
-  const materials = execution?.consumeCardIds?.map((id) => cards.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
+  const materials = execution?.outcome.kind === "force_damage" ? execution.outcome.consumeCardIds.map((id) => cards.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) : [];
   if (source && target && materials.length === 2 && !isBotPlayer(source)) return;
   const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
   if ((claim.meta.changes ?? 0) <= 0) return;
@@ -1032,7 +1034,7 @@ async function advanceGreenDragon(roomId: string) {
   const option = source ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: hand }).find((candidate) => candidate.effectId === (pending.triggerId ?? "green_dragon_blade_attack_dodged")) : null;
   const attackId = option?.selection?.eligibleCardIds[0];
   const execution = source && attackId ? resolveTriggeredEffect(pending.triggerId ?? "green_dragon_blade_attack_dodged", { event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: hand }, { cardId: attackId }) : null;
-  const attack = execution?.consumeCardIds?.length === 1 ? hand.find((card) => card.id === execution.consumeCardIds?.[0]) ?? null : null;
+  const attack = execution?.outcome.kind === "follow_up_attack" ? hand.find((card) => card.id === execution.outcome.attackCardId) ?? null : null;
   if (source && target && attack && !isBotPlayer(source)) return;
   const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
   if ((claim.meta.changes ?? 0) <= 0) return;
@@ -1818,8 +1820,8 @@ export async function POST(request: Request) {
       }
       triggerExecution = action === "trigger" && context ? resolveTriggeredEffect(triggerId, context, { cardId: body.cardId, cardIds: body.cardIds, cardKeys: body.cardKeys }) : null;
       if (action === "trigger" && !triggerExecution) return json({ error: "That trigger option is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      if (triggerExecution?.consumeCardIds?.length) { body.cardIds = triggerExecution.consumeCardIds; body.cardId = triggerExecution.consumeCardIds[0]; }
-      if (triggerExecution?.targetCardIds?.length) body.cardKeys = (Array.isArray(body.cardKeys) ? body.cardKeys : []);
+      if (triggerExecution?.outcome.kind === "force_damage") { body.cardIds = triggerExecution.outcome.consumeCardIds; body.cardId = triggerExecution.outcome.consumeCardIds[0]; }
+      if (triggerExecution?.outcome.kind === "prevent_damage") body.cardKeys = (Array.isArray(body.cardKeys) ? body.cardKeys : []);
       action = triggerExecution ? "apply_trigger" : "decline_trigger_effect";
     }
   }
@@ -1829,7 +1831,7 @@ export async function POST(request: Request) {
   // event itself. Keep the same event open, exclude that provider, and derive
   // the next complete live option set. This is the 0..N trigger path used by
   // future hero/equipment reactions; it deliberately knows no provider IDs.
-  if (action === "apply_trigger" && triggerExecution?.outcome === "continue_event") {
+  if (action === "apply_trigger" && triggerExecution?.outcome.kind === "continue_event") {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
@@ -1880,15 +1882,15 @@ export async function POST(request: Request) {
         if (source) await continueAfterDying(room.id, source.id);
         return json({ room: await roomState(code, token) });
       }
-      if (triggerExecution?.outcome === "follow_up_attack") {
-        const attack = triggerExecution.consumeCardIds?.length === 1 ? hand.find((card) => card.id === triggerExecution.consumeCardIds?.[0]) ?? null : null;
+      if (triggerExecution?.outcome.kind === "follow_up_attack") {
+        const attack = hand.find((card) => card.id === triggerExecution.outcome.attackCardId) ?? null;
         if (!attack) return json({ error: "The selected reaction no longer has its required card.", stale: true, room: await roomState(code, token) }, 409);
         await applyFollowUpAttackOutcome(liveRoom, continuation, source, target, players, attack, hand, discard, log);
         return json({ room: await roomState(code, token) });
       }
-      if (triggerExecution?.outcome === "force_damage") {
+      if (triggerExecution?.outcome.kind === "force_damage") {
         const cards = rockCleavingCards(source, hand);
-        const materials = triggerExecution.consumeCardIds?.map((id) => cards.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
+        const materials = triggerExecution.outcome.consumeCardIds.map((id) => cards.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
         if (materials.length !== 2) return json({ error: "The selected reaction no longer has its required costs.", stale: true, room: await roomState(code, token) }, 409);
         await applyForcedDamageOutcome(liveRoom, continuation, source, target, players, materials, hand, discard, log);
         return json({ room: await roomState(code, token) });
@@ -2212,12 +2214,12 @@ export async function POST(request: Request) {
     if (!liveRoom || liveRoom.phase !== "response" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this triggered decision." }, 409);
     const target = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.targetId).first<PlayerRow>();
     const execution = action === "apply_trigger" ? triggerExecution : null;
-    if (action === "apply_trigger" && !execution?.targetCardIds?.length) return json({ error: "Choose one or two different cards allowed by this triggered effect first." }, 409);
+    if (action === "apply_trigger" && (!execution || execution.outcome.kind !== "prevent_damage" || !execution.outcome.targetCardIds.length)) return json({ error: "Choose one or two different cards allowed by this triggered effect first." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Frost Sword decision has already moved on." }, 409);
     let log = parse<string[]>(liveRoom.log_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []);
-    if (action === "apply_trigger" && target?.alive && execution?.targetCardIds?.length) {
-      await resolveFrostSword(liveRoom, pending, me, target, discard, log, execution.targetCardIds);
+    if (action === "apply_trigger" && target?.alive && execution?.outcome.kind === "prevent_damage" && execution.outcome.targetCardIds.length) {
+      await resolveFrostSword(liveRoom, pending, me, target, discard, log, execution.outcome.targetCardIds);
     } else {
       log = addLog(log, `${me.name} does not use Frost Sword. ${target?.name ?? "The target"} takes 1 damage.`);
       const hp = Math.max(0, (target?.hp ?? 1) - 1);

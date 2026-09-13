@@ -16,7 +16,7 @@ export const rockCleavingAxeDodgedAttackTrigger: TriggeredEffect = {
     const available = context.sourceCards ?? [...(context.sourceHand ?? []), ...context.sourceEquipment];
     const cards = ids.map((id) => available.find((card) => card.id === id));
     return cards.every((card): card is NonNullable<typeof card> => Boolean(card))
-      ? { status: "resolved", effectId: "rock_cleaving_axe_attack_dodged", outcome: "force_damage", consumeCardIds: ids }
+      ? { status: "resolved", effectId: "rock_cleaving_axe_attack_dodged", outcome: { kind: "force_damage", amount: 1, consumeCardIds: ids } }
       : null;
   },
 };

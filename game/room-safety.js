@@ -64,9 +64,11 @@ function normalizeCurrentAction(value) {
   }) : [];
   const triggerOptions = Array.isArray(value.triggerOptions) ? value.triggerOptions.filter(isRecord).flatMap((option) => {
     if (typeof option.effectId !== "string" || typeof option.label !== "string") return [];
-    const selection = option.selection === null ? null : isRecord(option.selection) && (option.selection.type === "cards" || option.selection.type === "target_cards") && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
-      ? { type: option.selection.type, min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string") }
-      : null;
+    const selection = option.selection === null ? null : isRecord(option.selection) && option.selection.type === "cards" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
+      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string") }
+      : isRecord(option.selection) && option.selection.type === "target_cards" && typeof option.selection.targetId === "string" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleKeys)
+        ? { type: "target_cards", targetId: option.selection.targetId, min: option.selection.min, max: option.selection.max, eligibleKeys: option.selection.eligibleKeys.filter((id) => typeof id === "string") }
+        : null;
     return [{ effectId: option.effectId, label: option.label, selection }];
   }) : [];
   return {

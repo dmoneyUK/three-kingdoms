@@ -8,17 +8,22 @@ export type TriggerEvent = "attack_dodged" | "damage_about_to_apply";
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
  */
-export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[]; targetHand?: Card[]; targetEquipment?: Card[] };
+export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[] };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown };
-export type TriggerSelectionConstraint = { type: "cards" | "target_cards"; min: number; max: number; eligibleCardIds: string[] };
+export type TriggerSelectionConstraint =
+  | { type: "cards"; min: number; max: number; eligibleCardIds: string[] }
+  | { type: "target_cards"; targetId: string; min: number; max: number; eligibleKeys: string[] };
 export type TriggerOption = { effectId: string; label: string; selection: TriggerSelectionConstraint | null };
 /**
  * Providers describe the semantic consequence of accepting their option. The
  * decision engine may branch on this small domain vocabulary, never on a
  * weapon or hero provider ID.
  */
-export type TriggerOutcome = "follow_up_attack" | "force_damage" | "prevent_damage" | "continue_event";
-export type TriggerExecution = { status: "resolved"; effectId: string; outcome: TriggerOutcome; consumeCardIds?: string[]; targetCardIds?: string[] };
+export type TriggerExecution =
+  | { status: "resolved"; effectId: string; outcome: { kind: "follow_up_attack"; attackCardId: string } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "force_damage"; amount: number; consumeCardIds: string[] } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "prevent_damage"; targetCardIds: string[] } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "continue_event" } };
 export type TriggeredEffect = {
   id: string;
   event: TriggerEvent;

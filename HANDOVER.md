@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Current baseline
 
-As of 2026-09-13 the local architecture baseline is commit `03987ad` (`Isolate legacy decision action adapters`). The current uncommitted migration makes `attack_dodged` terminal outcomes event-shaped. Build, lint and diff checks pass; run the full local suite again without a parallel local Worker before committing. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
+As of 2026-09-13 the committed architecture baseline is `aa0d954` (`Generalize attack-dodged trigger outcomes`). The next local migration makes trigger outcomes strongly discriminated and separates hidden target-card selection keys from physical card IDs. Build, lint and focused capability/safety tests pass; run the full local suite again before committing. Do not add new cards or hero abilities until the remaining canonical trigger-continuation and compatibility work is complete.
 
 Repository and service:
 
@@ -95,7 +95,7 @@ Frost Sword correctly excludes Judgement Zone cards.
 
 Trigger discovery is now event-centric and returns **0..N** legal providers. `TriggerPending.resolvedEffectIds` prevents the same optional reaction from being offered twice during one event. The route rebuilds capability-neutral live source/target context and validates the submitted provider against the entire remaining option set. Old `respond_green_dragon`, `respond_rock_cleaving`, and Frost Sword action names are translated only at the HTTP boundary; new clients use `trigger` / `decline_trigger`.
 
-Providers now return semantic trigger outcomes (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) rather than requiring orchestration to branch on their IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect, reopens the same event with the remaining live options, or immediately resumes its continuation when none remains. `attack_dodged` terminal outcomes now use generic `applyFollowUpAttackOutcome()` and `applyForcedDamageOutcome()` domain functions; canonical execution switches on the semantic outcome and not on Green Dragon Blade or Rock Cleaving Axe. Legacy bot schedulers retain narrow adapters while they are migrated.
+Providers now return a discriminated semantic trigger outcome (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) with compiler-enforced payloads. Target-card constraints carry a target player plus opaque `eligibleKeys`; hidden hand IDs are never exposed as card IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect, reopens the same event with the remaining live options, or immediately resumes its continuation when none remains. `attack_dodged` terminal outcomes now use generic `applyFollowUpAttackOutcome()` and `applyForcedDamageOutcome()` domain functions; canonical execution switches on the semantic outcome and not on Green Dragon Blade or Rock Cleaving Axe. Legacy bot schedulers retain narrow adapters while they are migrated.
 
 Legacy request-name translation now lives exclusively in `game/compat/legacy-actions.ts`. It translates old response/weapon verbs at the API boundary; canonical engine code should use the semantic response/trigger protocol only. Keep this adapter narrowly compatibility-only and do not add new gameplay logic to it.
 

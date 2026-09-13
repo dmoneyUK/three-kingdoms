@@ -86,17 +86,17 @@ test("passive and triggered equipment capabilities are discovered outside the ro
   assert.equal(resolvePassiveAttackModifiers({ targetEquipment: [card("NioShield", "shield")], attack: { ...card("Attack", "red-attack"), suit: "♥" } }), null);
   const sourceHand = [card("Attack", "follow-up")];
   assert.deepEqual(getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("GreenDragonBlade", "dragon")], sourceHand }), [{ effectId: "green_dragon_blade_attack_dodged", label: "Use Green Dragon Blade", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["follow-up"] } }]);
-  assert.deepEqual(resolveTriggeredEffect("green_dragon_blade_attack_dodged", { event: "attack_dodged", sourceEquipment: [card("GreenDragonBlade", "dragon")], sourceHand }, { cardId: "follow-up" }), { status: "resolved", effectId: "green_dragon_blade_attack_dodged", outcome: "follow_up_attack", consumeCardIds: ["follow-up"] });
+  assert.deepEqual(resolveTriggeredEffect("green_dragon_blade_attack_dodged", { event: "attack_dodged", sourceEquipment: [card("GreenDragonBlade", "dragon")], sourceHand }, { cardId: "follow-up" }), { status: "resolved", effectId: "green_dragon_blade_attack_dodged", outcome: { kind: "follow_up_attack", attackCardId: "follow-up" } });
 
   const axeCards = [card("Peach", "axe-one"), card("RockCleavingAxe", "axe")];
   assert.deepEqual(getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [axeCards[1]], sourceCards: axeCards }), [{ effectId: "rock_cleaving_axe_attack_dodged", label: "Use Rock Cleaving Axe", selection: { type: "cards", min: 2, max: 2, eligibleCardIds: ["axe-one", "axe"] } }]);
-  assert.deepEqual(resolveTriggeredEffect("rock_cleaving_axe_attack_dodged", { event: "attack_dodged", sourceEquipment: [axeCards[1]], sourceCards: axeCards }, { cardIds: ["axe-one", "axe"] }), { status: "resolved", effectId: "rock_cleaving_axe_attack_dodged", outcome: "force_damage", consumeCardIds: ["axe-one", "axe"] });
+  assert.deepEqual(resolveTriggeredEffect("rock_cleaving_axe_attack_dodged", { event: "attack_dodged", sourceEquipment: [axeCards[1]], sourceCards: axeCards }, { cardIds: ["axe-one", "axe"] }), { status: "resolved", effectId: "rock_cleaving_axe_attack_dodged", outcome: { kind: "force_damage", amount: 1, consumeCardIds: ["axe-one", "axe"] } });
 
   const targetHand = [card("Peach", "frost-hand")];
   const targetEquipment = [card("NioShield", "frost-armor")];
-  const frostContext = { event: "damage_about_to_apply", sourceEquipment: [card("FrostSword", "frost")], targetHand, targetEquipment };
-  assert.deepEqual(getTriggeredEffects(frostContext), [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", min: 1, max: 2, eligibleCardIds: ["hand:0", "frost-armor"] } }]);
-  assert.deepEqual(resolveTriggeredEffect("frost_sword_damage_about_to_apply", frostContext, { cardKeys: ["hand:0", "frost-armor"] }), { status: "resolved", effectId: "frost_sword_damage_about_to_apply", outcome: "prevent_damage", targetCardIds: ["frost-hand", "frost-armor"] });
+  const frostContext = { event: "damage_about_to_apply", targetId: "target", sourceEquipment: [card("FrostSword", "frost")], targetHand, targetEquipment };
+  assert.deepEqual(getTriggeredEffects(frostContext), [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "target", min: 1, max: 2, eligibleKeys: ["hand:0", "frost-armor"] } }]);
+  assert.deepEqual(resolveTriggeredEffect("frost_sword_damage_about_to_apply", frostContext, { cardKeys: ["hand:0", "frost-armor"] }), { status: "resolved", effectId: "frost_sword_damage_about_to_apply", outcome: { kind: "prevent_damage", targetCardIds: ["frost-hand", "frost-armor"] } });
 });
 
 test("multiple event triggers are projected without route-level provider selection", () => {
@@ -104,18 +104,18 @@ test("multiple event triggers are projected without route-level provider selecti
     id: "test_first_dodged_trigger",
     event: "attack_dodged",
     getOption: () => ({ effectId: "test_first_dodged_trigger", label: "First test reaction", selection: null }),
-    resolve: () => ({ status: "resolved", effectId: "test_first_dodged_trigger", outcome: "continue_event" }),
+    resolve: () => ({ status: "resolved", effectId: "test_first_dodged_trigger", outcome: { kind: "continue_event" } }),
   });
   const unregisterSecond = registerTriggeredEffect({
     id: "test_second_dodged_trigger",
     event: "attack_dodged",
     getOption: () => ({ effectId: "test_second_dodged_trigger", label: "Second test reaction", selection: null }),
-    resolve: () => ({ status: "resolved", effectId: "test_second_dodged_trigger", outcome: "continue_event" }),
+    resolve: () => ({ status: "resolved", effectId: "test_second_dodged_trigger", outcome: { kind: "continue_event" } }),
   });
   try {
     const context = { event: "attack_dodged", sourceEquipment: [], sourceHand: [] };
     assert.deepEqual(getTriggeredEffects(context).slice(-2).map((option) => option.effectId), ["test_first_dodged_trigger", "test_second_dodged_trigger"]);
-    assert.deepEqual(resolveTriggeredEffect("test_second_dodged_trigger", context, {}), { status: "resolved", effectId: "test_second_dodged_trigger", outcome: "continue_event" });
+    assert.deepEqual(resolveTriggeredEffect("test_second_dodged_trigger", context, {}), { status: "resolved", effectId: "test_second_dodged_trigger", outcome: { kind: "continue_event" } });
     assert.ok(!getTriggeredEffects(context, ["test_first_dodged_trigger"]).some((option) => option.effectId === "test_first_dodged_trigger"));
   } finally {
     unregisterSecond();
@@ -131,6 +131,6 @@ test("a non-terminal trigger outcome reopens the event without naming its provid
     reason: "Optional reactions",
     continuation: { kind: "green_dragon", sourceId: "source", targetId: "target", actorId: "source", resumePhase: "play", sequenceStartCardId: "attack", reason: "legacy continuation" },
   };
-  assert.deepEqual(continueTriggerEvent(pending, { status: "resolved", effectId: "test_reaction", outcome: "continue_event" }, 42)?.resolvedEffectIds, ["test_reaction"]);
-  assert.equal(continueTriggerEvent(pending, { status: "resolved", effectId: "terminal", outcome: "force_damage" }), null);
+  assert.deepEqual(continueTriggerEvent(pending, { status: "resolved", effectId: "test_reaction", outcome: { kind: "continue_event" } }, 42)?.resolvedEffectIds, ["test_reaction"]);
+  assert.equal(continueTriggerEvent(pending, { status: "resolved", effectId: "terminal", outcome: { kind: "force_damage", amount: 1, consumeCardIds: ["a", "b"] } }), null);
 });

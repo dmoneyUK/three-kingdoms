@@ -10,7 +10,7 @@ export const frostSwordDamageAboutToApplyTrigger: TriggeredEffect = {
     const equipmentIds = (context.targetEquipment ?? []).map((card) => card.id);
     const eligibleCardIds = [...handKeys, ...equipmentIds];
     return eligibleCardIds.length
-      ? { effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", min: 1, max: 2, eligibleCardIds } }
+      ? { effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: context.targetId ?? "", min: 1, max: 2, eligibleKeys: eligibleCardIds } }
       : null;
   },
   resolve: (context, selection) => {
@@ -20,7 +20,7 @@ export const frostSwordDamageAboutToApplyTrigger: TriggeredEffect = {
     const equipment = context.targetEquipment ?? [];
     const cards = keys.map((key) => key.startsWith("hand:") ? hand[Number(key.slice(5))] : equipment.find((card) => card.id === key));
     return cards.every((card): card is NonNullable<typeof card> => Boolean(card))
-      ? { status: "resolved", effectId: "frost_sword_damage_about_to_apply", outcome: "prevent_damage", targetCardIds: cards.map((card) => card.id) }
+      ? { status: "resolved", effectId: "frost_sword_damage_about_to_apply", outcome: { kind: "prevent_damage", targetCardIds: cards.map((card) => card.id) } }
       : null;
   },
 };

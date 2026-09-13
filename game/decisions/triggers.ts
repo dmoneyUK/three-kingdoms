@@ -11,7 +11,7 @@ export function continueTriggerEvent(
   execution: TriggerExecution,
   deadline?: number,
 ): TriggerPending | null {
-  if (execution.outcome !== "continue_event") return null;
+  if (execution.outcome.kind !== "continue_event") return null;
   return {
     ...pending,
     resolvedEffectIds: [...new Set([...(pending.resolvedEffectIds ?? []), execution.effectId])],
