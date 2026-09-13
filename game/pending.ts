@@ -6,9 +6,9 @@ import type { TriggerEvent } from "./capabilities/triggers";
 export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel";
 export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; sequenceStartCardId: string; resumePhase: string };
 export type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actorId: string; resumePhase?: string; sequenceStartCardId?: string; reason: string; deadline?: number; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string };
-export type GreenDragonPending = { kind: "green_dragon"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string };
-export type RockCleavingPending = { kind: "rock_cleaving"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string };
-export type FrostSwordPending = { kind: "frost_sword"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string };
+export type GreenDragonPending = { kind: "green_dragon"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };
+export type RockCleavingPending = { kind: "rock_cleaving"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };
+export type FrostSwordPending = { kind: "frost_sword"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };
 export type DuelPending = { kind: "duel"; sourceId: string; targetId: string; actorId: string; opponentId: string; resumePhase: string; reason: string; deadline?: number };
 export type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; actorId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; reason: string; deadline?: number; heldCards?: Card[]; resolutionId?: string };
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
@@ -45,6 +45,8 @@ export type TriggerPending = {
   reason: string;
   deadline?: number;
   resolutionId?: string;
+  /** Exact public presentation event that must finish before this decision opens. */
+  readyAfterEventId?: string;
   continuation: TriggerContinuation;
 };
 export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
@@ -109,6 +111,7 @@ export function asTriggerPending(pending: Pending | null | undefined): TriggerPe
     event: triggerEventFor(continuation),
     reason: continuation.reason,
     deadline: continuation.deadline,
+    readyAfterEventId: continuation.readyAfterEventId,
     continuation,
   };
 }
@@ -123,6 +126,7 @@ export function asLegacyTriggerPending(pending: unknown): Pending | unknown {
     reason: trigger.reason,
     ...(trigger.deadline === undefined ? {} : { deadline: trigger.deadline }),
     ...(trigger.resolutionId === undefined ? {} : { resolutionId: trigger.resolutionId }),
+    ...(trigger.readyAfterEventId === undefined ? {} : { readyAfterEventId: trigger.readyAfterEventId }),
   };
 }
 

@@ -213,6 +213,10 @@ function latestDecisionPresentationEventId(log: string[], resolutionId?: string 
   }
   return fallback;
 }
+/** Capture the event barrier at the transition that creates a decision. */
+function withPresentationBarrier<T extends { readyAfterEventId?: string }>(pending: T, log: string[]) {
+  return { ...pending, readyAfterEventId: pending.readyAfterEventId ?? latestDecisionPresentationEventId(log) ?? undefined };
+}
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
   return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}) };
 }
@@ -851,7 +855,7 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
   if (source?.alive && target?.alive && greenDragon) {
     const pending: GreenDragonPending = { kind: "green_dragon", triggerId: greenDragon.effectId, sourceId: source.id, targetId: target.id, actorId: source.id, resumePhase, sequenceStartCardId, reason: `${greenDragon.label}: play another Attack on ${target.name}, or skip`, deadline: nextResponseDeadline(source) };
     log = addLog(log, `${source.name}'s Attack is blocked. ${greenDragon.label} may continue against ${target.name}.`);
-    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
+    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log)), JSON.stringify(discard), JSON.stringify(log), room.id));
     await db().batch(writes);
     await advanceGreenDragon(room.id);
     return;
@@ -861,7 +865,7 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
   if (source?.alive && target?.alive && rockCleaving) {
     const pending: RockCleavingPending = { kind: "rock_cleaving", triggerId: rockCleaving.effectId, sourceId: source.id, targetId: target.id, actorId: source.id, resumePhase, sequenceStartCardId, reason: `${rockCleaving.label}: discard 2 cards to force the Attack's damage on ${target.name}, or skip`, deadline: nextResponseDeadline(source) };
     log = addLog(log, `${source.name}'s Attack is blocked. ${rockCleaving.label} may force its damage on ${target.name}.`);
-    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
+    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log)), JSON.stringify(discard), JSON.stringify(log), room.id));
     await db().batch(writes);
     await advanceRockCleaving(room.id);
     return;
@@ -1511,7 +1515,7 @@ async function runBots(roomId: string) {
           log = addLog(log, `${bot.name}'s Attack would damage ${target.name}. Frost Sword may prevent that damage and discard up to 2 of ${target.name}'s cards.`);
           const pending: FrostSwordPending = { kind: "frost_sword", sourceId: bot.id, targetId: target.id, actorId: bot.id, resumePhase: phaseAfterAttack(bot), sequenceStartCardId, reason: `Frost Sword: prevent damage and discard up to 2 cards from ${target.name}, or deal 1 damage`, deadline: nextResponseDeadline(bot), triggerId: frostOption.effectId };
           writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
-          writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+          writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log)), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
           await db().batch(writes); await advanceFrostSword(roomId); return;
         }
         target.hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} takes 1 damage${target.hp === 0 ? " and enters Dying. Peach rescue begins in turn order." : `. Action returns to ${bot.name}.`}`);
@@ -1603,7 +1607,7 @@ async function roomState(code: string, token?: string) {
   const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me) : undefined) : null;
   const triggerOptions = me?.id === actualActionPlayerId && triggerPending ? triggerOptionFor(triggerPending, players) : null;
   const presentation = room.phase === "response" && pending
-    ? { resolutionId: responsePending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: latestDecisionPresentationEventId(rawLog, responsePending?.resolutionId) ?? latestDecisionPresentationEventId(rawLog) }
+    ? { resolutionId: responsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: triggerPending?.readyAfterEventId ?? latestDecisionPresentationEventId(rawLog, responsePending?.resolutionId) ?? latestDecisionPresentationEventId(rawLog) }
     : undefined;
   const currentAction: CurrentAction = {
     version: 3,
@@ -2162,7 +2166,7 @@ export async function POST(request: Request) {
     } else if (source?.alive && frostSwordTriggerOption(source, me)) {
       const frost: FrostSwordPending = { kind: "frost_sword", sourceId: source.id, targetId: me.id, actorId: source.id, resumePhase: pending.resumePhase ?? phaseAfterAttack(source), sequenceStartCardId: pending.sequenceStartCardId ?? "", reason: `Frost Sword: prevent damage and discard up to 2 cards from ${me.name}, or deal 1 damage`, deadline: nextResponseDeadline(source), triggerId: "frost_sword_damage_about_to_apply" };
       log = addLog(log, `${source.name}'s Attack would damage ${me.name}. Frost Sword may prevent that damage and discard up to 2 of ${me.name}'s cards.`);
-      await db.batch([db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(frost), JSON.stringify(log), room.id)]);
+      await db.batch([db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(frost, log)), JSON.stringify(log), room.id)]);
       return json({ room: await roomState(code, token) });
     } else {
       const hp = Math.max(0, (me.hp ?? 1) - 1);

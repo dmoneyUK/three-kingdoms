@@ -126,6 +126,8 @@ Prefer the stronger invariant:
 
 Carry/store that exact event ID with the decision instead of reconstructing it later from the latest event in a resolution. This will matter for AOE targets, chained Negation, and future hero-trigger chains where several events share one `resolutionId`.
 
+Canonical `TriggerPending` now follows this rule: Green Dragon Blade, Rock Cleaving Axe and Frost Sword capture the public event ID that opens their decision when the transition creates it. `roomState()` consumes that stored ID first. Apply the same capture to remaining `ResponsePending` creators before removing the legacy scanning fallback for older saved rooms.
+
 ### C. Legacy protocol branches remain deliberately
 
 `GAMEPLAY_ACTIONS` still contains compatibility response/trigger verbs such as `respond_dodge`, `respond_group`, `respond_negation`, `respond_eight_trigrams`, and the weapon-specific trigger actions. Legacy response continuation shapes also remain.
