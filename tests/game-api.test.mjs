@@ -145,6 +145,11 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const attacked = await request("play_card", { code: game.code, token: host.token, cardId: "attack-dodge", targetId: alicePlayer.id });
   assert.equal(attacked.status, 200); assert.equal(attacked.data.room.phase, "response"); assert.equal(attacked.data.room.actionPlayerId, alicePlayer.id);
   assert.equal(attacked.data.room.pendingAttack.deadline, 0, "a human response stays unarmed until its presentation is ready");
+  const persistedAttackResponse = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  const aliceAttackView = await state(game.code, alice.token);
+  assert.equal(persistedAttackResponse.kind, "response", "new response decisions persist in their canonical wrapper");
+  assert.ok(persistedAttackResponse.readyAfterEventId, "the response records its public presentation barrier when it is created");
+  assert.equal(aliceAttackView.data.currentAction.presentation.readyAfterEventId, persistedAttackResponse.readyAfterEventId, "the acting player receives the persisted response barrier rather than a room-state log inference");
   assert.equal((await request("start_response_timer", { code: game.code, token: bob.token })).status, 409, "only the acting player can start their response timer");
   const timedAttack = await request("start_response_timer", { code: game.code, token: alice.token });
   assert.ok(timedAttack.data.room.pendingAttack.deadline - Date.now() > 25_000, "the acting player receives a 30-second visible response deadline");

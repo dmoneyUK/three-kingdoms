@@ -116,17 +116,11 @@ Events already present on initial load/reload are treated as presented; optimist
 
 Green Dragon Blade, Rock Cleaving Axe and Frost Sword are covered end-to-end through this protocol. Their older pending shapes and action names remain compatibility adapters while saved rooms, bot advancement and the existing continuation resolvers are migrated incrementally. Do not add new capabilities to those legacy branches.
 
-### B. The response presentation barrier is exact on the client but inferred on the server
+### B. Decision presentation barriers are now transition-owned
 
-The client correctly waits on one `readyAfterEventId`, but `roomState()` currently derives that ID by scanning `log_json` with `latestDecisionPresentationEventId()`.
+Every newly created canonical `ResponsePending` and `TriggerPending` stores `readyAfterEventId` at the transition that creates it. This includes normal and Serpent Spear Attacks, Duel exchanges, AOE/halberd targets, initial and counter-Negation windows, delayed-card Judgement Negation, and the representative weapon triggers.
 
-Prefer the stronger invariant:
-
-> when a transition creates a decision, that transition records the exact public event that must finish before the decision becomes interactive.
-
-Carry/store that exact event ID with the decision instead of reconstructing it later from the latest event in a resolution. This will matter for AOE targets, chained Negation, and future hero-trigger chains where several events share one `resolutionId`.
-
-Canonical `TriggerPending` now follows this rule: Green Dragon Blade, Rock Cleaving Axe and Frost Sword capture the public event ID that opens their decision when the transition creates it. `roomState()` consumes that stored ID first. Apply the same capture to remaining `ResponsePending` creators before removing the legacy scanning fallback for older saved rooms.
+`roomState()` consumes the persisted value first. Its log scan is now a **saved-room fallback only** for pre-migration pending JSON that lacks a barrier. Keep that fallback until stale persisted rooms have aged out or are deliberately migrated; never use it for new decision creators.
 
 ### C. Legacy protocol branches remain deliberately
 
@@ -136,9 +130,8 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — architecture first
 
-1. **Capture `readyAfterEventId` at decision creation.** Stop inferring the barrier from log scanning once every decision creator can provide it explicitly.
-2. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
-3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword.
+1. **Retire compatibility response/trigger actions incrementally.** Keep backward compatibility until each semantic replacement is covered.
+2. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword.
 
 ## Standard card roadmap status
 

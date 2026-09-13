@@ -20,11 +20,11 @@ The response refactor has reached its intended core shape:
 
 This response architecture should now be treated as the foundation, not redesigned again.
 
-## Next architecture milestone — generic trigger decisions
+## Architecture status — semantic responses, triggers, and presentation barriers
 
-Trigger **providers** are generic, but trigger **orchestration** is still route-specific. Central code still knows the dedicated Green Dragon Blade, Rock Cleaving Axe and Frost Sword pending/action branches.
+Trigger providers and the public trigger protocol are generic. The small continuation executors for Green Dragon Blade, Rock Cleaving Axe and Frost Sword remain route-specific only as a saved-room-safe compatibility layer; no new capability should add another provider-specific client action.
 
-The next architecture step is a canonical trigger decision analogous to `ResponsePending`:
+The canonical trigger decision is now implemented alongside `ResponsePending`:
 
 ```ts
 type TriggerPending = {
@@ -38,7 +38,7 @@ type TriggerPending = {
 };
 ```
 
-Target flow:
+Established flow:
 
 ```text
 domain event occurs
@@ -56,17 +56,17 @@ provider validates + resolves semantic cost/effect
 resume continuation
 ```
 
-The route should not need a new weapon/hero name when another capability reacts to an existing trigger event.
+The route does not need a new weapon/hero name when another capability reacts to an existing trigger event.
 
-Do this incrementally. Do **not** build a universal effects DSL.
+This remains deliberately bounded; do **not** build a universal effects DSL.
 
 ## Presentation architecture follow-up
 
 The browser now waits for one concrete `currentAction.presentation.readyAfterEventId`, which fixes the earlier global-presentation gate and keeps all legal choices/timer atomic.
 
-The server currently derives that barrier later by scanning `log_json`. Strengthen this by capturing the exact event ID at the transition that creates the decision and carrying/storing it with the decision. This avoids ambiguity when several events share one `resolutionId`, especially during AOE, Negation chains and future hero-trigger chains.
+Each newly created canonical response or trigger now captures the exact event ID at the transition that creates the decision and stores it with the decision. This avoids ambiguity when several events share one `resolutionId`, including AOE targets, counter-Negation chains and weapon triggers. `roomState()` retains its log scan only as a compatibility fallback for old saved rooms.
 
-## Compatibility cleanup — after semantic trigger orchestration
+## Compatibility cleanup — incremental and saved-room safe
 
 Legacy protocol/pending compatibility still exists intentionally:
 
@@ -74,7 +74,7 @@ Legacy protocol/pending compatibility still exists intentionally:
 - weapon-specific trigger actions such as `respond_green_dragon`, `respond_rock_cleaving`, `use_frost_sword` and their pass actions;
 - legacy-shaped `ResponseContinuation` variants.
 
-Remove these one path at a time only after the equivalent semantic decision is fully covered. Keep saved-game compatibility until the replacement path is proven.
+Remove these one path at a time only after the equivalent semantic decision is fully covered. Keep saved-game compatibility until the replacement path is proven; do not add any new card or hero capability to a legacy action branch.
 
 ## Validation status
 
@@ -87,7 +87,7 @@ Before continuing gameplay work, obtain a normal green Actions run for the curre
 | Stage | Status | Position |
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete | Turn ownership, phases, ordered responses, Dying interruption/resumption and repeated rounds are playable and regression-covered. |
-| 2. Strengthen the general rules engine | Advanced; final architecture migration in progress | Semantic responses are established. Next: generic trigger decisions, exact transition-owned presentation barriers, then incremental compatibility cleanup. |
+| 2. Strengthen the general rules engine | Advanced; compatibility cleanup remains | Semantic responses, trigger decisions and transition-owned presentation barriers are established. Next: retire compatibility paths incrementally, then return to the card roadmap. |
 | 3. Complete the verified Standard card identities | **24 / 28 playable** | Four verified identities remain: Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. |
 | 4. Reconcile the physical Standard deck | In progress | `docs/STANDARD_108_DECK_MANIFEST.md` remains the exact quantity/suit/rank target. |
 | 5. Complete match rules | Partly implemented | Main death/reward/victory paths work; edge cases still need expansion. |
