@@ -20,6 +20,22 @@ test("capability discovery exposes semantic Dodge and Attack providers", () => {
   assert.deepEqual(attack[0].selection?.eligibleCardIds, ["peach-1", "dodge-2"]);
 });
 
+test("Negation scheduling can discover a non-card provider", () => {
+  const unregister = registerResponseProvider({
+    id: "test_hero_negate",
+    satisfies: "negate",
+    activation: "explicit",
+    getOption: () => ({ provider: "test_hero", providerId: "test_hero_negate", satisfies: "negate", label: "Use test Negate", cards: [], selection: null }),
+    resolve: () => ({ status: "satisfied", providerId: "test_hero_negate", satisfies: "negate" }),
+  });
+  try {
+    const options = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "negate", sourceId: "p1", targetId: "p2" });
+    assert.equal(options[0]?.providerId, "test_hero_negate");
+  } finally {
+    unregister();
+  }
+});
+
 test("legacy response helpers remain compatible while using semantic providers", () => {
   const context = { hand: [card("Dodge", "dodge-1"), card("Dodge", "dodge-2")], equipment: [], hero: null };
   assert.equal(responseOptions(context, "Dodge").length, 2);

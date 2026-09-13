@@ -482,7 +482,8 @@ test("AOE counter rounds include their own Negation player last and resume the a
   const [me, p1, p2, p3] = room.players;
   for (const p of room.players) setHand(p.id, [card("Negation", `self-${p.seat}`), card("Attack", `self-${p.seat}`)], 3, 3);
   setHand(me.id, [card("BarbarianInvasion", "self-root"), card("Negation", "self-0")], 3, 3);
-  setHand(p1.id, [card("Negation", "self-1"), card("Negation", "self-again"), card("Attack", "self-1")], 3, 3);
+  setHand(p1.id, [card("Negation", "self-1"), card("Attack", "self-1")], 3, 3);
+  setHand(p2.id, [card("Negation", "self-again"), card("Attack", "self-2")], 3, 3);
   setTurn(room.code, me.seat);
   const act = (action, extra = {}) => request(action, { code: room.code, token, ...extra });
   let result = await act("play_card", { cardId: "barbarianinvasion-self-root" });
@@ -490,12 +491,12 @@ test("AOE counter rounds include their own Negation player last and resume the a
   assert.equal(result.data.room.responseCountdownVisibleAt, 0, "a human Negation window has no countdown before its presentation is ready");
   await act("pass_negation");
   result = await act("respond_negation", { cardId: "negation-self-1" });
-  assert.equal(result.data.room.actionPlayerId, p1.id);
+  assert.equal(result.data.room.actionPlayerId, p2.id);
   result = await act("respond_negation", { cardId: "negation-self-again" });
   assert.equal(result.data.room.pendingNegation.chainDepth, 2);
-  for (const p of [p2, p3, me]) {
+  for (const p of [p3, me]) {
     assert.equal(result.data.room.actionPlayerId, p.id);
-    assert.equal(result.data.room.pendingNegation.responseTarget, "Player 1's Negation");
+    assert.equal(result.data.room.pendingNegation.responseTarget, "Player 2's Negation");
     result = await act("pass_negation");
   }
   assert.equal(result.data.room.pendingNegation, null);
