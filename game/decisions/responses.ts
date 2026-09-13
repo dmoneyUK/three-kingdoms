@@ -1,10 +1,22 @@
-import type { ResponseExecution } from "../responses";
+import type { Card } from "../model";
+import type { ResponseExecution, JudgementResolution } from "../responses";
 import type { ResponsePending } from "../pending";
 
 export type ResponseApplication = {
   continuation: ResponsePending["continuation"];
   consumeCardIds: string[];
 };
+
+export type ResponseJudgementResult = {
+  status: "satisfied" | "unsatisfied";
+  card?: Card;
+  rule: JudgementResolution;
+};
+
+/** Performs only the secondary response judgement; continuation consequences stay outside this operation. */
+export function resolveResponseJudgement(card: Card | undefined, rule: JudgementResolution): ResponseJudgementResult {
+  return { status: rule.succeeds(card) ? "satisfied" : "unsatisfied", ...(card ? { card } : {}), rule };
+}
 
 /**
  * Canonical response transition boundary. Providers only report the semantic
