@@ -74,6 +74,7 @@ test("canonical room orchestration discovers damage triggers generically", async
   assert.doesNotMatch(route, /withPresentationBarrier\([^\n]*,\s*log\s*\)/);
   assert.match(route, /function withPresentationBarrier<[\s\S]*eventId: string/);
   assert.doesNotMatch(route, /eventId \?\? latestDecisionPresentationEventId/);
+  assert.match(route, /legacyPendingNeedsBarrierRecovery/);
 });
 
 test("new hero providers can discover and execute without editing core response code", () => {
