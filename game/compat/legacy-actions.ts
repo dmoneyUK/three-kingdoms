@@ -1,5 +1,7 @@
-import { asLegacyResponsePending, type Pending } from "../pending";
-import type { ResponseExecution } from "../responses";
+type LegacyResponseInput = {
+  action: "respond" | "decline_response";
+  providerId?: string;
+};
 
 /**
  * Temporary saved-client boundary. New UI code submits canonical actions;
@@ -16,13 +18,23 @@ export function normalizeLegacyTriggerAction(action: string) {
   }[action];
 }
 
-/** Maps a semantic satisfied response onto an old continuation only at the boundary. */
-export function legacyResponseActionFor(pending: Pending | null, execution: ResponseExecution) {
-  const continuation = asLegacyResponsePending(pending) as Pending | null;
-  if (!continuation || execution.status !== "satisfied") return null;
-  if (continuation.kind === "negation" && execution.satisfies === "negate") return "respond_negation";
-  if (continuation.kind === "attack" && execution.satisfies === "dodge") return "respond_dodge";
-  if (continuation.kind === "group" && (execution.satisfies === "attack" || execution.satisfies === "dodge")) return "respond_group";
-  if (continuation.kind === "duel" && execution.satisfies === "attack") return "respond_duel";
-  return null;
+/**
+ * Old clients name the concrete card/equipment action.  New gameplay never
+ * sees those names: translate once at ingress to the semantic decision.
+ * A two-card legacy Duel/AOE response was Serpent Spear; every other legacy
+ * physical response is the ordinary card provider.
+ */
+export function normalizeLegacyResponseAction(action: string, cardIds?: unknown): LegacyResponseInput | undefined {
+  const usesTwoCards = Array.isArray(cardIds) && cardIds.length === 2;
+  switch (action) {
+    case "respond_dodge": return { action: "respond", providerId: "card" };
+    case "respond_eight_trigrams": return { action: "respond", providerId: "eight_trigrams_dodge" };
+    case "respond_negation": return { action: "respond", providerId: "negation_card" };
+    case "respond_duel":
+    case "respond_group": return { action: "respond", providerId: usesTwoCards ? "serpent_spear_attack" : "card" };
+    case "take_damage":
+    case "take_duel_damage":
+    case "take_group_damage":
+    case "pass_negation": return { action: "decline_response" };
+  }
 }

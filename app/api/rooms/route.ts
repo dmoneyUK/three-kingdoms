@@ -9,7 +9,7 @@ import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passiv
 import { getTriggeredEffects, resolveTriggeredEffect } from "../../../game/capabilities/triggers";
 import { continueTriggerEvent, resumeTriggerContinuation, chooseBotTrigger } from "../../../game/decisions/triggers";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../../../game/decisions/responses";
-import { normalizeLegacyTriggerAction } from "../../../game/compat/legacy-actions";
+import { normalizeLegacyResponseAction, normalizeLegacyTriggerAction } from "../../../game/compat/legacy-actions";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
 import { asLegacyResponsePending, asLegacyTriggerPending, asResponsePending, asTriggerPending, serializePending, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelPending, type DyingPending, type FrostSwordPending, type GreenDragonPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type RockCleavingPending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
@@ -1869,8 +1869,13 @@ export async function POST(request: Request) {
   let canonicalResponseSatisfied = false;
   let canonicalResponseDeclined = false;
   let canonicalResponseKind: string | null = null;
-  // Saved clients may still submit these names. Translate once at the HTTP
-  // boundary; the domain path below is canonical trigger/decline_trigger.
+  // Saved clients may still submit concrete names. Translate them once at the
+  // HTTP boundary; the domain path below only receives semantic decisions.
+  const legacyResponse = normalizeLegacyResponseAction(action, body.cardIds);
+  if (legacyResponse) {
+    action = legacyResponse.action;
+    if (legacyResponse.providerId) body.providerId = legacyResponse.providerId;
+  }
   const legacyTrigger = normalizeLegacyTriggerAction(action);
   if (legacyTrigger) {
     action = legacyTrigger.action;

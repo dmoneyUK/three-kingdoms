@@ -311,13 +311,13 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /responseProviderId === option\.providerId/);
   assert.match(page, /decline_response/);
   assert.match(page, /Skip response/);
-  assert.match(page, /responseDecisionReady = \(canRespond \|\| frostSwordResponse \|\| triggerResponse\) && responsePresentationReady/);
+  assert.match(page, /responseDecisionReady = \(canRespond \|\| triggerResponse\) && responsePresentationReady/);
   assert.match(page, /responseDamageAction && onAction\(responseDamageAction\)/);
   assert.match(page, /const presentImmediately = !optimisticPlay && !activeEvent && eventQueue\.length === 0/);
   assert.doesNotMatch(page, /if \(busy \|\| presentationBusy\) return; const key = `\$\{room\.actionPlayerId\}/);
   assert.match(page, /const responseReadyAfterEventId = room\.currentAction\?\.presentation\?\.readyAfterEventId \?\? null/);
   assert.match(page, /const responsePresentationReady = !responseReadyAfterEventId \|\| presentedEventIds\.has\(responseReadyAfterEventId\)/);
-  assert.match(page, /const responseDecisionReady = \(canRespond \|\| frostSwordResponse \|\| triggerResponse\) && responsePresentationReady/);
+  assert.match(page, /const responseDecisionReady = \(canRespond \|\| triggerResponse\) && responsePresentationReady/);
   assert.match(page, /if \(busy \|\| !responseDecisionReady\) return; const key = room\.actionRevision/);
   assert.match(page, /disabled=\{responseControlsDisabled\}/);
   assert.match(page, /Skip · take 1 damage/);

@@ -6,6 +6,7 @@ import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
 import { continueTriggerEvent, chooseBotTrigger } from "../game/decisions/triggers.ts";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
+import { normalizeLegacyResponseAction } from "../game/compat/legacy-actions.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
@@ -40,6 +41,13 @@ test("legacy response helpers remain compatible while using semantic providers",
   const context = { hand: [card("Dodge", "dodge-1"), card("Dodge", "dodge-2")], equipment: [], hero: null };
   assert.equal(responseOptions(context, "Dodge").length, 2);
   assert.equal(selectResponse(context, "Dodge", "dodge-2", undefined)?.cards[0].id, "dodge-2");
+});
+
+test("legacy response requests normalize once to semantic providers", () => {
+  assert.deepEqual(normalizeLegacyResponseAction("respond_dodge"), { action: "respond", providerId: "card" });
+  assert.deepEqual(normalizeLegacyResponseAction("respond_negation"), { action: "respond", providerId: "negation_card" });
+  assert.deepEqual(normalizeLegacyResponseAction("respond_group", ["a", "b"]), { action: "respond", providerId: "serpent_spear_attack" });
+  assert.deepEqual(normalizeLegacyResponseAction("pass_negation"), { action: "decline_response" });
 });
 
 test("new hero providers can discover and execute without editing core response code", () => {

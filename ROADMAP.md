@@ -64,7 +64,7 @@ This remains deliberately bounded; do **not** build a universal effects DSL.
 
 The browser now waits for one concrete `currentAction.presentation.readyAfterEventId`, which fixes the earlier global-presentation gate and keeps all legal choices/timer atomic.
 
-Canonical decisions now accept an exact presentation event ID from event creation; new trigger creation uses that direct reference, while older response creators continue through the compatibility fallback until their next focused migration. `roomState()` retains log scanning only for old saved rooms.
+Canonical damage-trigger decisions accept the exact presentation event ID from event creation. The final cleanup must extend that direct ownership to every newly-created response/trigger decision; `roomState()` may retain log scanning only for old saved rooms during that migration.
 
 ## Compatibility cleanup — incremental and saved-room safe
 
@@ -78,9 +78,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution round is validated locally: build, lint, diff check, and all 61 tests pass. The current implementation now uses one semantic Response Judgement result/continuation boundary, provider-aware Negation scheduling for counter-windows, canonical response dispatch without action-string rewriting, a canonical-only current client, direct event IDs for damage-reaction trigger creation, pre-claim continuation validation, and shared trigger continuation for human and bot paths. The remaining milestone is the final compatibility/client/event-ID cleanup; do not begin Blue Steel Sword before that is complete.
-
-The current architecture baseline is `1e95f34` plus semantic response/trigger execution completion. Local validation is green (58 tests, build, lint, and diff check); GitHub Actions remains the release gate for the pushed commit. Canonical Negation declines now advance through all responders, secondary Judgement resumes Attack/Group/Duel/Negation safely, and exhausted trigger events resume their event-specific continuation including deferred damage.
+The semantic execution round is validated locally: build, lint, diff check, and all 61 tests pass. The current implementation uses one semantic Response Judgement result/continuation boundary, provider-aware Negation scheduling for counter-windows, canonical response dispatch, pre-claim continuation validation, and shared trigger continuation for human and bot paths. Older response and trigger request names now normalize once at ingress; the current client renders canonical decisions only, including generic hidden-hand and Equipment target-card trigger selection. The remaining milestone is direct event-ID ownership for every new decision plus removal of saved-state/client compatibility scaffolding; do not begin Blue Steel Sword before that is complete.
 
 Before continuing gameplay work, obtain a normal green Actions run for the current head. A workflow startup failure is neither a test failure nor a successful validation.
 

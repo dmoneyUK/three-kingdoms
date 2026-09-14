@@ -11,8 +11,12 @@ async function request(action, values = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const response = await fetch(`${baseUrl}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...values }) });
     const text = await response.text();
-    if (text) return { status: response.status, data: JSON.parse(text) };
-    if (response.status !== 500 || attempt === 2) assert.fail(`${action} returned an empty ${response.status} response`);
+    if (text) {
+      try { return { status: response.status, data: JSON.parse(text) }; }
+      catch {
+        if (response.status < 500 || attempt === 2) assert.fail(`${action} returned a non-JSON ${response.status} response: ${text.slice(0, 120)}`);
+      }
+    } else if (response.status !== 500 || attempt === 2) assert.fail(`${action} returned an empty ${response.status} response`);
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`${action} did not return a response`);
@@ -22,8 +26,12 @@ async function state(code, token, audit = false) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const response = await fetch(`${baseUrl}/api/rooms?code=${code}&token=${token}${audit ? "&audit=1" : ""}`);
     const text = await response.text();
-    if (text) return { status: response.status, data: JSON.parse(text) };
-    if (response.status !== 500 || attempt === 2) assert.fail(`room state returned an empty ${response.status} response`);
+    if (text) {
+      try { return { status: response.status, data: JSON.parse(text) }; }
+      catch {
+        if (response.status < 500 || attempt === 2) assert.fail(`room state returned a non-JSON ${response.status} response: ${text.slice(0, 120)}`);
+      }
+    } else if (response.status !== 500 || attempt === 2) assert.fail(`room state returned an empty ${response.status} response`);
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error("room state did not return a response");
