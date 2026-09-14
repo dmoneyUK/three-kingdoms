@@ -40,6 +40,7 @@ async function state(code, token, audit = false) {
 async function takeDamageIfPending(code, token) {
   const current = await state(code, token);
   if (current.data.pendingAttack && current.data.actionPlayerId === current.data.meId) return request("take_damage", { code, token });
+  if (current.data.currentAction?.kind === "trigger" && current.data.actionPlayerId === current.data.meId) return request("decline_trigger", { code, token });
   return { status: 200, data: { room: current.data } };
 }
 

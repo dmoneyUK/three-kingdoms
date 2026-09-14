@@ -9,6 +9,8 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
 - Current stage: **playable four-player alpha — architecture and D1 polling stabilisation**
 
+The latest architecture pass routes physical, Serpent Spear, and triggered follow-up Attacks through the same damage-about-to-apply provider discovery. Saved-client Frost compatibility is only projected when Frost is an actually available provider; generic damage events are not mislabeled as Frost Sword.
+
 ## Source of knowledge
 
 ### Semantic execution status

@@ -1825,6 +1825,8 @@ async function roomState(code: string, token?: string) {
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me) : undefined) : null;
   const triggerOptions = me?.id === actualActionPlayerId && triggerPending ? triggerOptionsFor(triggerPending, players) : [];
+  const legacyFrostAvailable = triggerPending?.event === "damage_about_to_apply"
+    && triggerOptionsFor(triggerPending, players).some((option) => option.effectId === "frost_sword_damage_about_to_apply");
   const presentation = room.phase === "response" && pending
     ? { resolutionId: responsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: responsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? latestDecisionPresentationEventId(rawLog, responsePending?.resolutionId) ?? latestDecisionPresentationEventId(rawLog) }
     : undefined;
@@ -1853,7 +1855,7 @@ async function roomState(code: string, token?: string) {
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or
     // decline_trigger.
-    pendingFrostSword: pending?.kind === "frost_sword" ? pending : triggerPending?.event === "damage_about_to_apply" ? {
+    pendingFrostSword: pending?.kind === "frost_sword" ? pending : legacyFrostAvailable ? {
       kind: "frost_sword", sourceId: triggerPending.continuation.sourceId, targetId: triggerPending.continuation.targetId,
       actorId: triggerPending.actorId, resumePhase: triggerPending.continuation.resumePhase,
       sequenceStartCardId: triggerPending.continuation.sequenceStartCardId, reason: triggerPending.reason,
