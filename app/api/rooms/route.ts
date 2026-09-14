@@ -972,9 +972,9 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
   const options = source && target ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []), targetHand: parse<Card[]>(target.hand_json, []), targetEquipment: equipmentCards(target) }) : [];
   if (source?.alive && target?.alive && options.length) {
     if (isBotPlayer(source)) {
-      const pending: TriggerPending = withPresentationBarrier({ kind: "trigger", event: "attack_dodged", actorId: source.id, reason: `${source.name}'s Attack is blocked. An optional reaction may apply.`, deadline: nextResponseDeadline(source), continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId } }, log);
-      log = addLog(log, `${source.name}'s Attack is blocked. ${options[0].label.replace(/^Use\s+/, "")} may continue.`);
-      writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
+      const presentation = addLogWithId(log, `${source.name}'s Attack is blocked. ${options[0].label.replace(/^Use\s+/, "")} may continue.`);
+      const pending: TriggerPending = withPresentationBarrier({ kind: "trigger", event: "attack_dodged", actorId: source.id, reason: `${source.name}'s Attack is blocked. An optional reaction may apply.`, deadline: nextResponseDeadline(source), continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId } }, presentation.log, presentation.eventId);
+      writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
       await db().batch(writes);
       await advanceCanonicalBotTrigger(room.id);
       return;
