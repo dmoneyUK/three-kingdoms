@@ -78,7 +78,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution layer is implemented but not yet signed off: the latest run reported 63/65 tests, with intermittent Green Dragon and Rations regressions, and the final synthetic-provider end-to-end proofs remain to be added. Damage reactions enter through one shared imminent-Attack-damage transition, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Saved-state compatibility remains a bounded input/state adapter; do not begin Blue Steel Sword until the final validation is deterministic.
+The semantic execution layer is implemented but not yet signed off. Earlier local runs observed intermittent Green Dragon and Rations regressions; the authoritative 2026-09-14 GitHub run for `96b9e3c` passed 65/65 tests plus deployment and production smoke. Repeat-run validation and the final synthetic-provider end-to-end proofs remain required. Damage reactions enter through one shared imminent-Attack-damage transition, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Saved-state compatibility remains a bounded input/state adapter; do not begin Blue Steel Sword until the final validation is deterministic.
 
 Before continuing gameplay work, obtain a normal green Actions run for the current head. A workflow startup failure is neither a test failure nor a successful validation.
 

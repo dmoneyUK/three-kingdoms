@@ -3,7 +3,7 @@ import { getRequestExecutionContext } from "vinext/shims/request-context";
 import { cardDefinition, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind, EquipmentZone } from "../../../game/model";
 import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
-import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, getResponseOptions, responseOptions, selectResponse, type JudgementResolution, type ResponseExecution } from "../../../game/responses";
+import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, getResponseOptions, selectResponse, type JudgementResolution, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { getTriggeredEffects, resolveTriggeredEffect } from "../../../game/capabilities/triggers";
@@ -783,12 +783,18 @@ async function advanceNegation(roomId: string) {
     if (!room || room.phase !== "response" || pending?.kind !== "negation") return;
     const actor = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.actorId).first<PlayerRow>();
     if (!actor) { await resolveDeferredStratagem(roomId, pending); return; }
-    const hand = parse<Card[]>(actor.hand_json, []); const negation = hand.find((card) => card.kind === "Negation");
-    if (negation && !isBotPlayer(actor)) return;
+    const hand = parse<Card[]>(actor.hand_json, []);
+    const decision = responseDecisionFor(asResponsePending(pending), responseContext(actor));
+    const option = decision?.options[0];
+    const selection = option?.selection?.type === "cards"
+      ? option.selection.max === 1 ? { cardId: option.selection.eligibleCardIds[0] } : { cardIds: option.selection.eligibleCardIds.slice(0, option.selection.max) }
+      : {};
+    const execution = option ? resolveResponseDecision(pending, responseContext(actor), option.providerId, selection) : null;
+    if (option && !isBotPlayer(actor)) return;
     // Bots use Negation defensively for their own affected character. They do
     // not blindly counter an existing Negation or spend one on another
     // character's decision; human players may still choose either action.
-    const botWillNegate = Boolean(negation && !pending.negated && actor.id === pending.effectTargetId);
+    const botWillNegate = Boolean(execution?.status === "satisfied" && !pending.negated && actor.id === pending.effectTargetId);
     const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) continue;
     if (!botWillNegate) {
       let log = parse<string[]>(room.log_json, []);
@@ -799,14 +805,19 @@ async function advanceNegation(roomId: string) {
       await db().prepare("UPDATE rooms SET phase = 'resolving', log_json = ? WHERE id = ?").bind(JSON.stringify(log), roomId).run();
       await resolveDeferredStratagem(roomId, pending); return;
     }
-    if (!negation) return;
-    const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []); const nextHand = hand.filter((card) => card.id !== negation.id);
-    log = addCardEvent(log, actor.name, negation, actor.name, "play", true, { resolutionId: pending.resolutionId }); log = addLog(log, `${actor.name} plays Negation ${pending.negated ? "to restore" : "to cancel"} ${pending.cardName}'s effect.`, undefined, { resolutionId: pending.resolutionId });
+    if (!execution || execution.status !== "satisfied") return;
+    const consumed = execution.consumeCardIds ?? [];
+    const consumedCards = consumed.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
+    if (consumedCards.length !== consumed.length) return;
+    const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []); const nextHand = hand.filter((card) => !consumed.includes(card.id));
+      if (consumedCards.length === 1) log = addCardEvent(log, actor.name, consumedCards[0], actor.name, "play", true, { resolutionId: pending.resolutionId });
+      else if (consumedCards.length > 1) log = addCardGroupEvent(log, actor.name, consumedCards, "play", true, actor.name, `${actor.name} uses ${option?.label ?? "a Negation provider"}.`, { resolutionId: pending.resolutionId });
+    log = addLog(log, `${actor.name} uses ${option?.label ?? "a Negation provider"} ${pending.negated ? "to restore" : "to cancel"} ${pending.cardName}'s effect.`, undefined, { resolutionId: pending.resolutionId });
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const updatedPlayers = (rows.results ?? []).map((player) => player.id === actor.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player); const holders = playersWithNegateProvider(updatedPlayers, nextAliveSeat(updatedPlayers, actor.seat), negationRequirement(pending));
-    const nextActor = holders[0] ?? actor; const next: NegationPending = { ...pending, readyAfterEventId: undefined, negated: !pending.negated, actorId: nextActor.id, remainingIds: holders.slice(1).map((player) => player.id), responseTarget: `${actor.name}'s Negation`, latestNegationPlayerId: actor.id, latestNegationCardId: negation.id, chainDepth: (pending.chainDepth ?? 0) + 1, reason: `Play Negation on ${actor.name}'s Negation, or pass`, deadline: nextResponseDeadline(nextActor), ...(pending.heldCards ? { heldCards: [...pending.heldCards, negation] } : { }) };
+    const nextActor = holders[0] ?? actor; const next: NegationPending = { ...pending, readyAfterEventId: undefined, negated: !pending.negated, actorId: nextActor.id, remainingIds: holders.slice(1).map((player) => player.id), responseTarget: `${actor.name}'s Negation`, latestNegationPlayerId: actor.id, latestNegationCardId: consumedCards[0]?.id, chainDepth: (pending.chainDepth ?? 0) + 1, reason: `Play Negation on ${actor.name}'s Negation, or pass`, deadline: nextResponseDeadline(nextActor), ...(pending.heldCards && consumedCards.length ? { heldCards: [...pending.heldCards, ...consumedCards] } : { }) };
     const presentation = addLogWithId(log, `New Negation window opens for ${next.responseTarget}.`, undefined, { resolutionId: pending.resolutionId });
     log = presentation.log;
-    if (!pending.heldCards) discard.push(negation);
+    if (!pending.heldCards) discard.push(...consumedCards);
     await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), actor.id), db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(holders.length ? "response" : "resolving", holders.length ? serializePending(withPresentationBarrier(next, log, presentation.eventId)) : room.pending_json, JSON.stringify(discard), JSON.stringify(log), roomId)]);
     if (!holders.length) { await resolveDeferredStratagem(roomId, next); return; }
   }
@@ -954,13 +965,17 @@ type AttackDamageTransition = {
   writes?: D1PreparedStatement[];
   onDamageApplied?: (hp: number) => Promise<void> | void;
 };
+type AttackDamageResult =
+  | { kind: "reaction_pending" }
+  | { kind: "dying" }
+  | { kind: "damage_applied"; hp: number; log: string[] };
 
 /**
  * The single imminent-damage boundary for every Attack origin. Capability
  * discovery, the canonical reaction decision, original damage, and Dying all
  * belong here; Attack callers only provide their continuation and presentation.
  */
-async function resolveAttackDamageAboutToApply({ room, source, target, players, sourceHand, discard, log, resumePhase, sequenceStartCardId, label = "Attack", writes = [], onDamageApplied }: AttackDamageTransition) {
+async function resolveAttackDamageAboutToApply({ room, source, target, players, sourceHand, discard, log, resumePhase, sequenceStartCardId, label = "Attack", writes = [], onDamageApplied }: AttackDamageTransition): Promise<AttackDamageResult> {
   const options = damageTriggerOptions(source, target);
   if (options.length) {
     const presentation = addLogWithId(log, `${source.name}'s ${label} would damage ${target.name}. Optional reactions may prevent that damage.`);
@@ -971,7 +986,7 @@ async function resolveAttackDamageAboutToApply({ room, source, target, players, 
       db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id),
     ]);
     if (isBotPlayer(source)) await advanceCanonicalBotTrigger(room.id);
-    return true;
+    return { kind: "reaction_pending" };
   }
 
   const hp = Math.max(0, (target.hp ?? 1) - 1);
@@ -981,7 +996,7 @@ async function resolveAttackDamageAboutToApply({ room, source, target, players, 
       ...writes,
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id),
     ], source, resumePhase);
-    return;
+    return { kind: "dying" };
   }
   await db().batch([
     ...writes,
@@ -991,7 +1006,7 @@ async function resolveAttackDamageAboutToApply({ room, source, target, players, 
   ]);
   if (onDamageApplied) await onDamageApplied(hp);
   else await continueAfterDying(room.id, source.id);
-  return false;
+  return { kind: "damage_applied", hp, log: damageLog };
 }
 
 /** Runs the same live provider discovery and semantic outcome path for bots. */
@@ -1299,14 +1314,18 @@ async function advanceDuel(roomId: string) {
       ? option.selection.max === 1 ? { cardId: option.selection.eligibleCardIds[0] } : { cardIds: option.selection.eligibleCardIds.slice(0, option.selection.max) }
       : {};
     const execution = option ? resolveResponseDecision(pending, responseContext(actor), option.providerId, selection) : null;
-    const consumed = execution?.status === "satisfied" ? (execution.consumeCardIds ?? []) : [];
+    const semanticSatisfied = execution?.status === "satisfied";
+    const consumed = semanticSatisfied ? (execution.consumeCardIds ?? []) : [];
     const attackCards = consumed.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
     const attack = attackCards.length === 1 && isAttackCard(attackCards[0]) ? attackCards[0] : null;
     const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) continue;
-    if (!attackCards.length) { await resolveDuelLoss(room, pending, actor, opponent, discard, log); return; }
+    if (!semanticSatisfied || attackCards.length !== consumed.length) { await resolveDuelLoss(room, pending, actor, opponent, discard, log); return; }
     const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
-    const presentation = attack ? addCardEventWithId(log, actor.name, attack, opponent.name) : addCardGroupEventWithId(log, actor.name, attackCards, "play", true, opponent.name);
+    const presentation = attack
+      ? addCardEventWithId(log, actor.name, attack, opponent.name)
+      : attackCards.length ? addCardGroupEventWithId(log, actor.name, attackCards, "play", true, opponent.name)
+      : addLogWithId(log, `${actor.name} uses ${option?.label ?? "an Attack provider"} in the Duel.`, undefined);
     log = addLog(presentation.log, attack ? `${actor.name} plays Attack in the Duel. Action passes to ${opponent.name}.` : `${actor.name} uses ${option?.label ?? "an Attack provider"} to form an Attack in the Duel. Action passes to ${opponent.name}.`);
     // A newly declared Duel attack is a new decision, so its visual barrier
     // must follow the card just presented rather than the previous exchange.
@@ -1423,16 +1442,21 @@ async function advanceGroup(roomId: string) {
     const canRespond = pending.requiredKind === "Attack" ? canRespondWithAttack(context) : hasDodgeResponse(context);
     if (!isBotPlayer(actor) && canRespond) return;
     let hand = parse<Card[]>(actor.hand_json, []); const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
-    const option = responseOptions(context, pending.requiredKind)[0]; const response = option?.provider === "card" ? option.cards[0] : null; const responseCards = option?.cards ?? [];
+    const decision = responseDecisionFor(asResponsePending(pending), context);
+    const option = decision?.options[0];
+    const selection = option?.selection?.type === "cards" ? option.selection.max === 1 ? { cardId: option.selection.eligibleCardIds[0] } : { cardIds: option.selection.eligibleCardIds.slice(0, option.selection.max) } : {};
+    const semanticExecution = option ? resolveResponseDecision(pending, context, option.providerId, selection) : null;
+    const responseCards = semanticExecution?.status === "satisfied" ? (semanticExecution.consumeCardIds ?? []).map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) : [];
     const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) continue;
-    const secondaryExecution = option ? resolveResponseDecision(pending, responseContext(actor), option.providerId, {}) : null;
+    const secondaryExecution = semanticExecution;
     if (secondaryExecution?.status === "requires_resolution" && secondaryExecution.resolution.kind === "judgement") {
       await applyResponseOutcome(room, pending, actor, source, players, discard, log, secondaryExecution.resolution);
       return;
     }
-    if (!responseCards.length) { await resolveGroupDamage(room, pending, actor, source, players, discard, log); return; }
+    if (!semanticExecution || semanticExecution.status !== "satisfied" || responseCards.length !== (semanticExecution.consumeCardIds ?? []).length) { await resolveGroupDamage(room, pending, actor, source, players, discard, log); return; }
     const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextPending = appendHeldGroupCards(pending, responseCards);
+    const response = responseCards.length === 1 ? responseCards[0] : null;
     log = response ? addCardEvent(log, actor.name, response, actor.name, "play", true, { resolutionId: pending.resolutionId }) : addCardGroupEvent(log, actor.name, responseCards, "play", true, actor.name, undefined, { resolutionId: pending.resolutionId }); log = addLog(log, response ? `${actor.name} plays ${pending.requiredKind} against ${groupCardName(pending.cardKind)}.` : `${actor.name} discards 2 cards with Serpent Spear to form an Attack against ${groupCardName(pending.cardKind)}.`, undefined, { resolutionId: pending.resolutionId });
     await finishGroupStep(room, nextPending, players, discard, log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
     return;
@@ -1783,13 +1807,15 @@ async function runBots(roomId: string) {
         }
         return;
       } else {
-        const waitingForDamageReaction = await resolveAttackDamageAboutToApply({
+        const damageResult = await resolveAttackDamageAboutToApply({
           room, source: bot, target, players, sourceHand: hand, discard, log,
           resumePhase: phaseAfterAttack(bot), sequenceStartCardId,
           label: attack ? "Attack" : "Serpent Spear Attack", writes,
           onDamageApplied: (hp) => { target.hp = hp; },
         });
-        if (waitingForDamageReaction) return;
+        if (damageResult.kind === "reaction_pending" || damageResult.kind === "dying") return;
+        log = damageResult.log;
+        target.hp = damageResult.hp;
       }
     }
     if (attack && target && hasZhugeCrossbow(bot) && hand.some(isAttackCard)) {
@@ -2134,6 +2160,7 @@ export async function POST(request: Request) {
     if (remaining.length) {
       const reopened = resumed.kind === "reopen" ? resumed.pending : next;
       await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(reopened, presentation.log, presentation.eventId)), JSON.stringify(presentation.log), room.id).run();
+      if (isBotPlayer(actor)) await advanceCanonicalBotTrigger(room.id);
     } else {
       const continuation = resumed.kind === "resume" ? resumed.continuation : next.continuation;
       await resumeCanonicalTriggerContinuation(liveRoom, continuation as AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation, players, parse<Card[]>(liveRoom.discard_json, []), presentation.log);
@@ -2320,17 +2347,21 @@ export async function POST(request: Request) {
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = asLegacyResponsePending(stored) as NegationPending | null;
     if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "negation" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Negation response." }, 409);
     let hand = parse<Card[]>(me.hand_json, []); const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "negation";
-    const negation = canonicalRespond ? hand.find((card) => card.id === responseExecution?.consumeCardIds?.[0] && card.kind === "Negation") : null;
-    if (canonicalRespond && !negation) return json({ error: "Select a Negation card from your hand first." }, 409);
+    const consumedIds = canonicalRespond ? (responseExecution?.consumeCardIds ?? []) : [];
+    const consumedCards = consumedIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
+    if (canonicalRespond && (!responseExecution || responseExecution.status !== "satisfied" || consumedCards.length !== consumedIds.length)) return json({ error: "That Negation provider is no longer available." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Negation decision has already moved on." }, 409);
-    if (negation) {
-      hand = hand.filter((card) => card.id !== negation.id); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
-      log = addCardEvent(log, me.name, negation, me.name); log = addLog(log, `${me.name} plays Negation ${pending.negated ? "to restore" : "to cancel"} ${pending.cardName}'s effect.`);
+    if (canonicalRespond) {
+      hand = hand.filter((card) => !consumedIds.includes(card.id)); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
+      if (consumedCards.length === 1) log = addCardEvent(log, me.name, consumedCards[0], me.name);
+      else if (consumedCards.length > 1) log = addCardGroupEvent(log, me.name, consumedCards, "play", true, me.name);
+      const negationAction = responseExecution?.providerId === "negation_card" ? "plays Negation" : `uses ${responseExecution?.providerId ?? "a Negation provider"}`;
+      log = addLog(log, `${me.name} ${negationAction} ${pending.negated ? "to restore" : "to cancel"} ${pending.cardName}'s effect.`);
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const updatedPlayers = (rows.results ?? []).map((player) => player.id === me.id ? { ...player, hand_json: JSON.stringify(hand) } : player); const holders = playersWithNegateProvider(updatedPlayers, nextAliveSeat(updatedPlayers, me.seat), negationRequirement(pending));
-      const nextActor = holders[0] ?? me; const next: NegationPending = { ...pending, readyAfterEventId: undefined, negated: !pending.negated, actorId: nextActor.id, remainingIds: holders.slice(1).map((player) => player.id), responseTarget: `${me.name}'s Negation`, latestNegationPlayerId: me.id, latestNegationCardId: negation.id, chainDepth: (pending.chainDepth ?? 0) + 1, reason: `Play Negation on ${me.name}'s Negation, or pass`, deadline: nextResponseDeadline(nextActor), ...(pending.heldCards ? { heldCards: [...pending.heldCards, negation] } : { }) };
+      const nextActor = holders[0] ?? me; const next: NegationPending = { ...pending, readyAfterEventId: undefined, negated: !pending.negated, actorId: nextActor.id, remainingIds: holders.slice(1).map((player) => player.id), responseTarget: `${me.name}'s Negation`, latestNegationPlayerId: me.id, latestNegationCardId: consumedCards[0]?.id, chainDepth: (pending.chainDepth ?? 0) + 1, reason: `Play Negation on ${me.name}'s Negation, or pass`, deadline: nextResponseDeadline(nextActor), ...(pending.heldCards && consumedCards.length ? { heldCards: [...pending.heldCards, ...consumedCards] } : { }) };
       const presentation = addLogWithId(log, `New Negation window opens for ${next.responseTarget}.`);
       log = presentation.log;
-      if (!pending.heldCards) discard.push(negation);
+      if (!pending.heldCards) discard.push(...consumedCards);
       await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(holders.length ? "response" : "resolving", serializePending(withPresentationBarrier(next, log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(log), room.id)]);
       if (holders.length) await advanceNegation(room.id); else await resolveDeferredStratagem(room.id, next);
     } else if (pending.remainingIds[0]) {
@@ -2421,16 +2452,17 @@ export async function POST(request: Request) {
     if (!opponent) return json({ error: "The other duelist is no longer available." }, 409);
     const semanticCards = responseExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
     const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "duel";
-    const selectedAttack = canonicalRespond && responseExecution && semanticCards.length === 1 ? semanticCards[0] : null; const serpentCards = canonicalRespond && !selectedAttack && responseExecution ? semanticCards : [];
-    if (canonicalRespond && !selectedAttack && serpentCards.length !== 2) return json({ error: "Select an Attack, or use Serpent Spear with exactly 2 hand cards." }, 409);
+    const selectedAttack = canonicalRespond && responseExecution && semanticCards.length === 1 && isAttackCard(semanticCards[0]) ? semanticCards[0] : null;
+    const serpentCards = canonicalRespond && !selectedAttack && responseExecution && semanticCards.length === 2 ? semanticCards : [];
+    if (canonicalRespond && responseExecution && semanticCards.length !== (selectedAttack ? 1 : serpentCards.length)) return json({ error: "The selected Attack provider requested unavailable costs." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Duel response has already been resolved." }, 409);
-    if (!selectedAttack && !serpentCards.length) {
+    if (!canonicalRespond || !responseExecution) {
       await resolveDuelLoss(liveRoom, pending, me, opponent, discard, log);
     } else {
       const attackCards = selectedAttack ? [selectedAttack] : serpentCards; const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
-      const presentation = selectedAttack ? addCardEventWithId(log, me.name, selectedAttack, opponent.name) : addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name);
-      log = addLog(presentation.log, selectedAttack ? `${me.name} plays Attack in the Duel. Action passes to ${opponent.name}.` : `${me.name} discards 2 cards with Serpent Spear to form an Attack in the Duel. Action passes to ${opponent.name}.`);
+      const presentation = selectedAttack ? addCardEventWithId(log, me.name, selectedAttack, opponent.name) : attackCards.length ? addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name) : addLogWithId(log, `${me.name} uses ${responseExecution.providerId} in the Duel.`, undefined);
+      log = addLog(presentation.log, selectedAttack ? `${me.name} plays Attack in the Duel. Action passes to ${opponent.name}.` : attackCards.length ? `${me.name} discards cards to form an Attack in the Duel. Action passes to ${opponent.name}.` : `${me.name} forms an Attack in the Duel. Action passes to ${opponent.name}.`);
       const nextPending: DuelPending = withPresentationBarrier({ ...pending, readyAfterEventId: undefined, actorId: opponent.id, opponentId: me.id, reason: "Respond to Duel: select Attack or take 1 damage", deadline: nextResponseDeadline(opponent) }, log, presentation.eventId);
       await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
@@ -2448,19 +2480,21 @@ export async function POST(request: Request) {
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
     const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
     if (!source) return json({ error: "The card source is no longer available." }, 409);
-    const semanticCards = responseExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
     const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "group";
-    const option = undefined;
-    const selectedResponse = responseExecution ? semanticCards.length === 1 ? semanticCards[0] : null : option?.provider === "card" ? option.cards[0] : null; const serpentCards = responseExecution ? semanticCards.length > 1 ? semanticCards : [] : option && !selectedResponse ? option.cards : [];
-    if (canonicalRespond && !responseExecution && !option || canonicalRespond && responseExecution && !semanticCards.length) return json({ error: `Select a valid ${pending.requiredKind} response and pay its required costs.` }, 409);
+    const legacyOption = !responseExecution && canonicalRespond ? selectResponse(responseContext(me), pending.requiredKind, body.cardId, body.cardIds) : undefined;
+    const groupExecution = responseExecution ?? (legacyOption ? resolveResponseDecision(pending, responseContext(me), legacyOption.providerId, { cardId: legacyOption.cards[0]?.id, cardIds: legacyOption.cards.map((card) => card.id) }) : null);
+    const groupCards = groupExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
+    const selectedResponse = groupExecution && groupCards.length === 1 ? groupCards[0] : null;
+    const serpentCards = groupExecution && groupCards.length > 1 ? groupCards : [];
+    if (canonicalRespond && (!groupExecution || groupExecution.status !== "satisfied" || groupCards.length !== (groupExecution.consumeCardIds ?? []).length)) return json({ error: `Select a valid ${pending.requiredKind} response and pay its required costs.` }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved." }, 409);
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
-    if (!selectedResponse && !serpentCards.length) {
+    if (!canonicalRespond || !groupExecution) {
       await resolveGroupDamage(liveRoom, pending, me, source, players, discard, log);
     } else {
       const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextPending = appendHeldGroupCards(pending, responseCards);
-      log = selectedResponse ? addCardEvent(log, me.name, selectedResponse) : addCardGroupEvent(log, me.name, responseCards, "play"); log = addLog(log, selectedResponse ? `${me.name} plays ${pending.requiredKind} against ${groupCardName(pending.cardKind)}.` : `${me.name} discards 2 cards with Serpent Spear to form an Attack against ${groupCardName(pending.cardKind)}.`);
+      log = selectedResponse ? addCardEvent(log, me.name, selectedResponse) : responseCards.length ? addCardGroupEvent(log, me.name, responseCards, "play") : addLog(log, `${me.name} uses ${groupExecution.providerId} against ${groupCardName(pending.cardKind)}.`); log = addLog(log, selectedResponse ? `${me.name} plays ${pending.requiredKind} against ${groupCardName(pending.cardKind)}.` : responseCards.length ? `${me.name} discards cards with Serpent Spear to form an Attack against ${groupCardName(pending.cardKind)}.` : `${me.name} satisfies the ${pending.requiredKind} requirement against ${groupCardName(pending.cardKind)}.`);
       await finishGroupStep(liveRoom, nextPending, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
     }
     return json({ room: await roomState(code, token) });
