@@ -78,7 +78,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution layer is validated locally: build, lint, diff check, and all 63 tests pass. Legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and the client uses the generic hidden-hand and Equipment target-card selection contract. The remaining final-round audit is limited to direct event-ID ownership for every newly-created decision and removal of saved-state compatibility scaffolding; do not begin Blue Steel Sword before that audit is complete.
+The semantic execution layer is validated locally: build, lint, diff check, and all 64 tests pass. Damage reactions enter through generic event-provider discovery, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and the client uses the generic hidden-hand and Equipment target-card selection contract. The remaining final-round audit is limited to direct event-ID ownership for every newly-created decision and removal of saved-state compatibility scaffolding; do not begin Blue Steel Sword before that audit is complete.
 
 Before continuing gameplay work, obtain a normal green Actions run for the current head. A workflow startup failure is neither a test failure nor a successful validation.
 

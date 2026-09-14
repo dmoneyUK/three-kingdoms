@@ -60,6 +60,13 @@ test("generic decision modules do not encode equipment or hero provider IDs", as
   assert.doesNotMatch(orchestration, /eight_trigrams|serpent_spear|green_dragon|rock_cleaving|frost_sword|qingguo/i);
 });
 
+test("canonical room orchestration discovers damage triggers generically", async () => {
+  const route = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(route, /frostSwordTriggerOption\s*\(/);
+  assert.match(route, /getTriggeredEffects\(frostSwordTriggerContext\(source, target\)\)/);
+  assert.match(route, /damageTriggerOptions\([^)]*\)\.length/);
+});
+
 test("new hero providers can discover and execute without editing core response code", () => {
   const unregister = registerResponseProvider({
     id: "test_hero_black_dodge",

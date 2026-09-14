@@ -113,10 +113,8 @@ function frostSwordTriggerContext(source: PlayerRow, target: PlayerRow) {
     targetEquipment: equipmentCards(target),
   };
 }
-function frostSwordTriggerOption(source?: PlayerRow | null, target?: PlayerRow | null) {
-  return source && target
-    ? getTriggeredEffects(frostSwordTriggerContext(source, target)).find((option) => option.effectId === "frost_sword_damage_about_to_apply")
-    : null;
+function damageTriggerOptions(source?: PlayerRow | null, target?: PlayerRow | null) {
+  return source && target ? getTriggeredEffects(frostSwordTriggerContext(source, target)) : [];
 }
 function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase: string, sequenceStartCardId: string, readyAfterEventId: string): TriggerPending {
   return withPresentationBarrier({
@@ -1685,7 +1683,8 @@ async function runBots(roomId: string) {
         if (!isBotPlayer(target)) {
           log = addLog(log, `${bot.name} plays Attack on ${target.name}. Action passes from ${bot.name} to ${target.name} for Dodge response.`);
           writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
-          writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackPending(declaration, target), log)), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+          const presentation = addLogWithId(log, `${bot.name} plays Attack on ${target.name}. Action passes to ${target.name} for Dodge response.`);
+          writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackPending(declaration, target), presentation.log, presentation.eventId)), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log), roomId));
           await db().batch(writes); return;
         }
         if (dodge) {
@@ -1712,13 +1711,13 @@ async function runBots(roomId: string) {
         }
         return;
       } else {
-        const frostOption = attack ? frostSwordTriggerOption(bot, target) : null;
-        if (attack && frostOption) {
+        const damageOptions = attack ? damageTriggerOptions(bot, target) : [];
+        if (attack && damageOptions.length) {
           const presentation = addLogWithId(log, `${bot.name}'s Attack would damage ${target.name}. Optional reactions may prevent that damage.`);
           log = presentation.log;
           const pending = damageTriggerPending(bot, target, phaseAfterAttack(bot), sequenceStartCardId, presentation.eventId);
           writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
-          writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log)), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
+          writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log, presentation.eventId)), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
           await db().batch(writes); await advanceCanonicalBotTrigger(roomId); return;
         }
         target.hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} takes 1 damage${target.hp === 0 ? " and enters Dying. Peach rescue begins in turn order." : `. Action returns to ${bot.name}.`}`);
@@ -1765,7 +1764,7 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
         const option = getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(actor), sourceCards: rockCleavingCards(actor, hand) }).find((candidate) => candidate.effectId === (pending.triggerId ?? "rock_cleaving_axe_attack_dodged"));
         return ["pass_rock_cleaving", ...(option ? ["respond_rock_cleaving"] : [])];
       }
-      case "frost_sword": return ["pass_frost_sword", ...(frostSwordTriggerOption(actor, players.find((player) => player.id === pending.targetId)) ? ["use_frost_sword"] : [])];
+      case "frost_sword": return ["pass_frost_sword", ...(damageTriggerOptions(actor, players.find((player) => player.id === pending.targetId)).length ? ["use_frost_sword"] : [])];
       case "harvest": return ["preview_harvest", "choose_harvest"];
       case "target_card": return ["choose_target_card"];
     }
@@ -2504,7 +2503,7 @@ export async function POST(request: Request) {
       const dodge = selectedDodge as Card;
       hand = hand.filter((card) => card.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, me.name, dodge, source?.name ?? "Attack"); log = addLog(log, `${me.name} plays Dodge and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
       await finishDodgedAttack(liveRoom, source, { ...me, hand_json: JSON.stringify(hand) }, discard, log, pending.resumePhase ?? phaseAfterAttack(source), pending.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
-    } else if (source?.alive && frostSwordTriggerOption(source, me)) {
+    } else if (source?.alive && damageTriggerOptions(source, me).length) {
       const presentation = addLogWithId(log, `${source.name}'s Attack would damage ${me.name}. Optional reactions may prevent that damage.`);
       log = presentation.log;
       const trigger = damageTriggerPending(source, me, pending.resumePhase ?? phaseAfterAttack(source), pending.sequenceStartCardId ?? "", presentation.eventId);
@@ -2616,8 +2615,8 @@ export async function POST(request: Request) {
       let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((item) => item.kind === "Dodge");
       const declaration = attackDeclaration(me, target, "serpent_spear", materials, phaseAfterAttack(me));
       if (!isBotPlayer(target) && canRespondWithDodge(target)) {
-        log = addLog(log, `Action passes from ${me.name} to ${target.name} for Dodge response.`);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackPending(declaration, target), log)), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+        const presentation = addLogWithId(log, `Action passes from ${me.name} to ${target.name} for Dodge response.`);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackPending(declaration, target), presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
       } else if (dodge) {
         targetHand = targetHand.filter((item) => item.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, me.name); log = addLog(log, `${target.name} plays Dodge and blocks the formed Attack.`);
         await finishDodgedAttack(liveRoom, { ...me, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, declaration.resumePhase, declaration.sequenceStartCardId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
@@ -2761,12 +2760,12 @@ export async function POST(request: Request) {
         }
         let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((item) => item.kind === "Dodge");
         if (!isBotPlayer(target) && canRespondWithDodge(target)) {
-          log = addLog(log, `${me.name} plays Attack on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
-          await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackPending(declaration, target), log)), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+          const presentation = addLogWithId(log, `${me.name} plays Attack on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
+          await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackPending(declaration, target), presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
         } else if (dodge) {
             targetHand = targetHand.filter((item) => item.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, me.name); log = addLog(log, `${target.name} plays Dodge and blocks the Attack.`);
             await finishDodgedAttack(liveRoom, { ...me, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, declaration.resumePhase, declaration.sequenceStartCardId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
-        } else if (frostSwordTriggerOption(me, target)) {
+        } else if (damageTriggerOptions(me, target).length) {
           const presentation = addLogWithId(log, `${me.name}'s Attack would damage ${target.name}. Optional reactions may prevent that damage.`);
           log = presentation.log;
           const trigger = damageTriggerPending(me, target, phaseAfterAttack(me), card.id, presentation.eventId);
