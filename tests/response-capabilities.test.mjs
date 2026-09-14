@@ -63,11 +63,12 @@ test("generic decision modules do not encode equipment or hero provider IDs", as
 test("canonical room orchestration discovers damage triggers generically", async () => {
   const route = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
   assert.doesNotMatch(route, /frostSwordTriggerOption\s*\(/);
-  assert.match(route, /getTriggeredEffects\(damageTriggerContext\(source, target\)\)/);
+  assert.match(route, /function resolveAttackDamageAboutToApply/);
+  assert.match(route, /const options = damageTriggerOptions\(source, target\)/);
   assert.doesNotMatch(route, /frostSwordTriggerContext|frostSwordTriggerOption/);
-  assert.match(route, /damageTriggerOptions\([^)]*\)\.length/);
-  assert.match(route, /Serpent Spear Attack would damage/);
-  assert.match(route, /follow-up.*damageTriggerOptions/s);
+  assert.equal((route.match(/resolveAttackDamageAboutToApply\(/g) ?? []).length >= 4, true);
+  assert.doesNotMatch(route, /Serpent Spear Attack would damage/);
+  assert.doesNotMatch(route, /applyFollowUpAttackOutcome[\s\S]{0,1200}damageTriggerOptions/);
   assert.doesNotMatch(route, /Green Dragon Blade follow-up Attack/);
   assert.match(route, /effectId === "frost_sword_damage_about_to_apply"/);
   assert.match(route, /advances to the next target[\s\S]*withPresentationBarrier\(next/);
@@ -193,7 +194,7 @@ test("semantic trigger continuation reopens remaining reactions and resumes exha
   const reopened = resumeTriggerContinuation(pending, first, true, 20);
   assert.equal(reopened?.kind, "reopen");
   assert.deepEqual(reopened?.pending.resolvedEffectIds, ["synthetic-a"]);
-  assert.equal(reopened?.pending.readyAfterEventId, "event-1");
+  assert.equal(reopened?.pending.readyAfterEventId, undefined, "reopening clears the old barrier so orchestration can bind the new event");
 
   const exhausted = resumeTriggerContinuation(reopened.pending, { status: "resolved", effectId: "synthetic-b", outcome: { kind: "continue_event" } }, false, 30);
   assert.equal(exhausted?.kind, "resume");

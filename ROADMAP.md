@@ -78,7 +78,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution layer is validated locally: build, lint, diff check, and all 65 tests pass. Damage reactions enter through generic event-provider discovery, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and the client uses the generic hidden-hand and Equipment target-card selection contract. Newly-created response and trigger decisions retain transition-owned event IDs, and the barrier helper requires those IDs rather than inferring them from logs. Provider-specific trigger dialogs have been removed from the active client. Semantic trigger tests cover reopening remaining reactions and resuming exhausted events. The remaining final-round audit is saved-state compatibility isolation and the accompanying API-level extensibility review; do not begin Blue Steel Sword before that audit is complete.
+The semantic execution layer is implemented but not yet signed off: the latest run reported 63/65 tests, with intermittent Green Dragon and Rations regressions, and the final synthetic-provider end-to-end proofs remain to be added. Damage reactions enter through one shared imminent-Attack-damage transition, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Saved-state compatibility remains a bounded input/state adapter; do not begin Blue Steel Sword until the final validation is deterministic.
 
 Before continuing gameplay work, obtain a normal green Actions run for the current head. A workflow startup failure is neither a test failure nor a successful validation.
 
@@ -87,7 +87,7 @@ Before continuing gameplay work, obtain a normal green Actions run for the curre
 | Stage | Status | Position |
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete | Turn ownership, phases, ordered responses, Dying interruption/resumption and repeated rounds are playable and regression-covered. |
-| 2. Strengthen the general rules engine | Advanced; compatibility cleanup remains | Semantic responses, trigger decisions, canonical Negation/secondary Judgement handling and event-specific trigger resumption are established. Next: retire compatibility paths incrementally, then return to the card roadmap. |
+| 2. Strengthen the general rules engine | Final validation | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented; deterministic regressions and synthetic end-to-end extensibility proofs remain. |
 | 3. Complete the verified Standard card identities | **24 / 28 playable** | Four verified identities remain: Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. |
 | 4. Reconcile the physical Standard deck | In progress | `docs/STANDARD_108_DECK_MANIFEST.md` remains the exact quantity/suit/rank target. |
 | 5. Complete match rules | Partly implemented | Main death/reward/victory paths work; edge cases still need expansion. |

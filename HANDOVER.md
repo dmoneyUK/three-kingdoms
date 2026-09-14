@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Persistent active milestone contract
 
-The semantic execution architecture is **not complete yet**. Do not start Blue Steel Sword, another card, or a new hero ability until this checklist is fully implemented and tested. Do not split it into micro-commits that stop after adding helpers or continuation-specific branches.
+The semantic execution architecture is **implemented but incomplete pending final validation**. Do not start Blue Steel Sword until deterministic full tests and the required synthetic end-to-end extensibility proofs are green. Preserve the shared transition boundaries below and do not revert to micro-patches.
 
 Required completion criteria:
 
@@ -21,7 +21,7 @@ Only after all six criteria are green may the final compatibility isolation, can
 
 Group/AOE target advancement now creates a fresh public presentation event and assigns that exact event ID to the next response barrier. Canonical pending projections do not infer missing barriers from history; only legacy persisted pending shapes use that migration fallback.
 
-As of 2026-09-14 the working baseline includes the final-round compatibility boundary changes on top of `6e0deb8`. Damage-about-to-apply decisions now enter through an event-named generic provider context for physical, Serpent Spear, and triggered follow-up Attacks; old-client Frost projection is emitted only when the live Frost provider is actually available. Legacy response requests normalize once at ingress, canonical response execution uses semantic providers, canonical trigger UI owns hidden-hand and named-equipment selection, and newly-created response/trigger decisions retain the event ID supplied by their transition. Dead provider-specific response dialogs and controls have been removed from the active client; the generic trigger renderer is now the only current trigger interaction path. The decision barrier helper requires an explicit event ID and no longer infers new barriers from log history. Semantic trigger tests cover reopening remaining reactions and resuming exhausted attack/damage events. Build, lint, diff checks, and the full 65-test local suite pass. Saved-room compatibility and end-to-end extensibility proofs remain the final bounded audit; no new cards or hero abilities should be added until that audit is signed off.
+As of 2026-09-14 the working baseline includes the coherent semantic architecture package. One shared imminent-damage transition now handles physical, Serpent Spear, triggered follow-up, and bot Attacks; secondary Judgement and trigger reopen transitions create fresh exact presentation barriers. Legacy response requests normalize once at ingress, canonical response execution uses semantic providers, canonical trigger UI owns hidden-hand and named-equipment selection, and old pending shapes remain only as saved-room adapters. The latest suite is close but not deterministic (63/65 in the latest run); synthetic end-to-end extensibility proofs remain open.
 
 Repository and service:
 
@@ -151,11 +151,11 @@ Every newly created canonical `ResponsePending` and `TriggerPending` stores `rea
 
 Do not remove them in a big-bang cleanup. First finish equivalent semantic trigger orchestration and exact decision barriers, keep saved-game compatibility covered, then delete compatibility branches one path at a time with regression tests.
 
-## Recommended next work — architecture first
+## Recommended next work — finish validation
 
-1. **Review the completed architecture boundary.** New gameplay should use canonical response/trigger commands, semantic providers, event continuations, and explicit presentation barriers.
+1. **Finish validation at the completed boundary.** Add the required synthetic end-to-end provider tests and eliminate the intermittent Green Dragon/Rations failures.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
-3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword after the architecture review.
+3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword only after the checklist is green.
 
 ## Standard card roadmap status
 

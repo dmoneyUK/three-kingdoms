@@ -31,6 +31,9 @@ export function continueTriggerEvent(
   return {
     ...pending,
     resolvedEffectIds: [...new Set([...(pending.resolvedEffectIds ?? []), execution.effectId])],
+    // Reopening is a new visible decision. The orchestration layer must bind
+    // it to the presentation event explaining the newly available options.
+    readyAfterEventId: undefined,
     ...(deadline === undefined ? {} : { deadline }),
   };
 }
