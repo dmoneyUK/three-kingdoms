@@ -70,6 +70,7 @@ test("canonical room orchestration discovers damage triggers generically", async
   assert.match(route, /follow-up.*damageTriggerOptions/s);
   assert.doesNotMatch(route, /Green Dragon Blade follow-up Attack/);
   assert.match(route, /effectId === "frost_sword_damage_about_to_apply"/);
+  assert.match(route, /advances to the next target[\s\S]*withPresentationBarrier\(next/);
   assert.doesNotMatch(route, /withPresentationBarrier\([^\n]*,\s*log\s*\)/);
   assert.match(route, /function withPresentationBarrier<[\s\S]*eventId: string/);
   assert.doesNotMatch(route, /eventId \?\? latestDecisionPresentationEventId/);

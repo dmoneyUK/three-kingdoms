@@ -1326,7 +1326,8 @@ async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: P
 async function finishGroupStep(room: RoomRow, pending: GroupPending, players: PlayerRow[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
   const next = nextGroupPending(pending, players);
   if (next) {
-    await beginGroupTarget(room, next, players, discard, log, writes);
+    const presentation = addLogWithId(log, `${groupCardName(pending.cardKind)} advances to the next target.`);
+    await beginGroupTarget(room, withPresentationBarrier(next, presentation.log, presentation.eventId), players, discard, presentation.log, writes);
     return;
   }
   writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(commitHeldGroupCards(discard, pending)), JSON.stringify(addFinalResult(log, `${groupCardName(pending.cardKind)} finishes resolving.`, undefined, pending.resolutionId)), room.id));
