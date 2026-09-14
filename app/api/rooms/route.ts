@@ -224,8 +224,8 @@ function latestDecisionPresentationEventId(log: string[], resolutionId?: string 
  * Log scanning is intentionally not performed here; it is reserved for legacy
  * saved-state normalization in roomState().
  */
-function withPresentationBarrier<T extends { readyAfterEventId?: string }>(pending: T, _legacyLog: string[], eventId?: string) {
-  return { ...pending, readyAfterEventId: pending.readyAfterEventId ?? eventId ?? undefined };
+function withPresentationBarrier<T extends { readyAfterEventId?: string }>(pending: T, _legacyLog: string[], eventId: string) {
+  return { ...pending, readyAfterEventId: pending.readyAfterEventId ?? eventId };
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {

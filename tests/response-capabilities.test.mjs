@@ -66,6 +66,8 @@ test("canonical room orchestration discovers damage triggers generically", async
   assert.match(route, /getTriggeredEffects\(frostSwordTriggerContext\(source, target\)\)/);
   assert.match(route, /damageTriggerOptions\([^)]*\)\.length/);
   assert.doesNotMatch(route, /withPresentationBarrier\([^\n]*,\s*log\s*\)/);
+  assert.match(route, /function withPresentationBarrier<[\s\S]*eventId: string/);
+  assert.doesNotMatch(route, /eventId \?\? latestDecisionPresentationEventId/);
 });
 
 test("new hero providers can discover and execute without editing core response code", () => {
