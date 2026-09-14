@@ -19,7 +19,7 @@ Only after all six criteria are green may the final compatibility isolation, can
 
 ## Current baseline
 
-As of 2026-09-14 the working baseline includes the final-round compatibility boundary changes on top of `0fbe9e9`. Damage-about-to-apply decisions now discover all live trigger providers generically; legacy response requests normalize once at ingress, canonical response execution uses semantic providers, canonical trigger UI owns hidden-hand and named-equipment selection, and direct event barriers are preserved for the migrated response/trigger creators. Build, lint, diff checks, and the full 64-test local suite pass. Saved-room compatibility remains isolated at the boundary; no new cards or hero abilities should be added until the remaining direct-barrier audit and architecture review are complete.
+As of 2026-09-14 the working baseline includes the final-round compatibility boundary changes on top of `0fbe9e9`. Damage-about-to-apply decisions now discover all live trigger providers generically; legacy response requests normalize once at ingress, canonical response execution uses semantic providers, canonical trigger UI owns hidden-hand and named-equipment selection, and Attack, Duel, Group/AOE and Halberd response creators capture the event ID that opened their decision. Build, lint, diff checks, and the full 64-test local suite pass. Saved-room compatibility remains isolated at the boundary; no new cards or hero abilities should be added until the remaining direct-barrier audit and architecture review are complete.
 
 Repository and service:
 
