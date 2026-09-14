@@ -111,11 +111,11 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /pendingRockCleaving/);
   assert.match(page, /room\.phase === "response" && responseDecisionReady && room\.actionPlayerId && responseDeadline > 0/);
   assert.doesNotMatch(page, /label: "Next step"/);
-  assert.match(page, /Use Rock Cleaving Axe/);
-  assert.match(page, /Your Attack was blocked by Dodge/);
-  assert.match(page, /weapon-response-backdrop/);
-  assert.match(page, /Rock Cleaving Axe decision/);
-  assert.match(page, /weapon-response-prompt/);
+  assert.doesNotMatch(page, /Use Rock Cleaving Axe/);
+  assert.doesNotMatch(page, /Your Attack was blocked by Dodge/);
+  assert.doesNotMatch(page, /weapon-response-backdrop/);
+  assert.doesNotMatch(page, /Rock Cleaving Axe decision/);
+  assert.doesNotMatch(page, /weapon-response-prompt/);
   assert.match(page, /selected-cost/);
   assert.match(page, /sequenceStartCardId/);
   assert.match(page, /function movesDirectlyToDiscard\(event: GameEvent\)/);

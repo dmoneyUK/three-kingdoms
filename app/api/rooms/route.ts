@@ -219,9 +219,13 @@ function latestDecisionPresentationEventId(log: string[], resolutionId?: string 
   }
   return fallback;
 }
-/** Capture the event barrier at the transition that creates a decision. */
-function withPresentationBarrier<T extends { readyAfterEventId?: string }>(pending: T, log: string[], eventId?: string) {
-  return { ...pending, readyAfterEventId: pending.readyAfterEventId ?? eventId ?? latestDecisionPresentationEventId(log) ?? undefined };
+/** Capture the exact event barrier at the transition that creates a decision.
+ * New decisions must pass the event id returned by addLogWithId/addCardEventWithId.
+ * Log scanning is intentionally not performed here; it is reserved for legacy
+ * saved-state normalization in roomState().
+ */
+function withPresentationBarrier<T extends { readyAfterEventId?: string }>(pending: T, _legacyLog: string[], eventId?: string) {
+  return { ...pending, readyAfterEventId: pending.readyAfterEventId ?? eventId ?? undefined };
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
