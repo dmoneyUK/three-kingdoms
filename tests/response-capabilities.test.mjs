@@ -66,6 +66,9 @@ test("canonical room orchestration discovers damage triggers generically", async
   assert.match(route, /getTriggeredEffects\(damageTriggerContext\(source, target\)\)/);
   assert.doesNotMatch(route, /frostSwordTriggerContext|frostSwordTriggerOption/);
   assert.match(route, /damageTriggerOptions\([^)]*\)\.length/);
+  assert.match(route, /Serpent Spear Attack would damage/);
+  assert.match(route, /follow-up.*damageTriggerOptions/s);
+  assert.doesNotMatch(route, /Green Dragon Blade follow-up Attack/);
   assert.doesNotMatch(route, /withPresentationBarrier\([^\n]*,\s*log\s*\)/);
   assert.match(route, /function withPresentationBarrier<[\s\S]*eventId: string/);
   assert.doesNotMatch(route, /eventId \?\? latestDecisionPresentationEventId/);

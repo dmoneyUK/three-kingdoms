@@ -1181,14 +1181,24 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
   }
   if (dodge) {
     targetHand = targetHand.filter((card) => card.id !== dodge.id); const updatedTarget = { ...target, hand_json: JSON.stringify(targetHand) } satisfies PlayerRow;
-    discard.push(dodge); log = addCardEvent(log, target.name, dodge, source.name); log = addLog(log, `${target.name} plays Dodge and blocks the Green Dragon Blade follow-up Attack.`);
+    discard.push(dodge); log = addCardEvent(log, target.name, dodge, source.name); log = addLog(log, `${target.name} plays Dodge and blocks the ${displayLabel} follow-up Attack.`);
     await finishDodgedAttack(room, updatedSource, updatedTarget, discard, log, continuation.resumePhase, continuation.sequenceStartCardId, [
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
     ]);
     return;
   }
-  const hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} takes 1 damage from the Green Dragon Blade follow-up${hp === 0 ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
+  const damageOptions = damageTriggerOptions(source, target);
+  if (damageOptions.length) {
+    const presentation = addLogWithId(log, `${source.name}'s ${displayLabel} Attack would damage ${target.name}. Optional reactions may prevent that damage.`);
+    const pending = damageTriggerPending(source, target, continuation.resumePhase, continuation.sequenceStartCardId, presentation.eventId);
+    await db().batch([
+      db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
+      db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id),
+    ]);
+    return;
+  }
+  const hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} takes 1 damage from the ${displayLabel} follow-up${hp === 0 ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
   if (hp === 0) {
     await startDyingRescue(room, updatedSource, target, players, parse<Card[]>(room.deck_json, []), discard, log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id)], updatedSource, continuation.resumePhase);
     return;
@@ -2627,6 +2637,10 @@ export async function POST(request: Request) {
       } else if (dodge) {
         targetHand = targetHand.filter((item) => item.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, me.name); log = addLog(log, `${target.name} plays Dodge and blocks the formed Attack.`);
         await finishDodgedAttack(liveRoom, { ...me, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, declaration.resumePhase, declaration.sequenceStartCardId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
+      } else if (damageTriggerOptions(me, target).length) {
+        const presentation = addLogWithId(log, `${me.name}'s Serpent Spear Attack would damage ${target.name}. Optional reactions may prevent that damage.`);
+        const trigger = damageTriggerPending(me, target, phaseAfterAttack(me), declaration.sequenceStartCardId, presentation.eventId);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(trigger), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
       } else {
         const hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} takes 1 damage${hp === 0 ? " and enters Dying. Peach rescue begins in turn order." : `. Action returns to ${me.name}.`}`);
         if (hp === 0) await startDyingRescue(liveRoom, me, target, players, deck, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
