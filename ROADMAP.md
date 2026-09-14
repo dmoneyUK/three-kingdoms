@@ -18,7 +18,7 @@ The response refactor has reached its intended core shape:
 - Green Dragon Blade, Rock Cleaving Axe and Frost Sword use executable triggered-effect capability modules;
 - response interaction waits on a decision-specific `readyAfterEventId` instead of the entire presentation queue.
 
-This response architecture should now be treated as the foundation, not redesigned again.
+This response architecture should now be treated as the foundation, not redesigned again. The current final audit checks saved-room compatibility and end-to-end synthetic provider proofs; it is not a new gameplay feature milestone.
 
 ## Architecture status — semantic responses, triggers, and presentation barriers
 

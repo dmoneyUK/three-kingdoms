@@ -103,7 +103,7 @@ function parsePersistedPending(value: string | null): Pending | null {
 function equipmentZone(player?: PlayerRow | null) { return parse<EquipmentZone>(player?.equipment_json ?? null, {}); }
 function equipmentCards(player?: PlayerRow | null) { return Object.values(equipmentZone(player)).filter((card): card is Card => Boolean(card)); }
 function targetableCardCount(player?: PlayerRow | null) { return parse<Card[]>(player?.hand_json ?? null, []).length + equipmentCards(player).length + parse<Card[]>(player?.judgement_json ?? null, []).length; }
-function frostSwordTriggerContext(source: PlayerRow, target: PlayerRow) {
+function damageTriggerContext(source: PlayerRow, target: PlayerRow) {
   return {
     event: "damage_about_to_apply" as const,
     sourceEquipment: equipmentCards(source),
@@ -114,7 +114,7 @@ function frostSwordTriggerContext(source: PlayerRow, target: PlayerRow) {
   };
 }
 function damageTriggerOptions(source?: PlayerRow | null, target?: PlayerRow | null) {
-  return source && target ? getTriggeredEffects(frostSwordTriggerContext(source, target)) : [];
+  return source && target ? getTriggeredEffects(damageTriggerContext(source, target)) : [];
 }
 function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase: string, sequenceStartCardId: string, readyAfterEventId: string): TriggerPending {
   return withPresentationBarrier({
@@ -1115,7 +1115,7 @@ async function advanceFrostSword(roomId: string) {
   const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
   if ((claim.meta.changes ?? 0) <= 0) return;
   const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
-  const context = source && target ? frostSwordTriggerContext(source, target) : null;
+  const context = source && target ? damageTriggerContext(source, target) : null;
   const option = context ? getTriggeredEffects(context).find((candidate) => candidate.effectId === (pending.triggerId ?? "frost_sword_damage_about_to_apply")) : null;
   const execution = context && option && option.selection?.type === "target_cards" ? resolveTriggeredEffect(pending.triggerId ?? "frost_sword_damage_about_to_apply", context, { cardKeys: option.selection.eligibleKeys.slice(0, 2) }) : null;
   if (source.alive && target.alive && execution?.outcome.kind === "prevent_damage" && execution.outcome.targetCardIds.length) return resolveFrostSword(room, pending, source, target, discard, log, execution.outcome.targetCardIds);

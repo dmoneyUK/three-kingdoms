@@ -63,7 +63,8 @@ test("generic decision modules do not encode equipment or hero provider IDs", as
 test("canonical room orchestration discovers damage triggers generically", async () => {
   const route = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
   assert.doesNotMatch(route, /frostSwordTriggerOption\s*\(/);
-  assert.match(route, /getTriggeredEffects\(frostSwordTriggerContext\(source, target\)\)/);
+  assert.match(route, /getTriggeredEffects\(damageTriggerContext\(source, target\)\)/);
+  assert.doesNotMatch(route, /frostSwordTriggerContext|frostSwordTriggerOption/);
   assert.match(route, /damageTriggerOptions\([^)]*\)\.length/);
   assert.doesNotMatch(route, /withPresentationBarrier\([^\n]*,\s*log\s*\)/);
   assert.match(route, /function withPresentationBarrier<[\s\S]*eventId: string/);
