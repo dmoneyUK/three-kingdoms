@@ -5,7 +5,7 @@ import { resolveResponseDecision, responseDecisionFor } from "../game/response-d
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
 import { continueTriggerEvent, chooseBotTrigger } from "../game/decisions/triggers.ts";
-import { applyResponseSatisfied, applyResponseDeclined } from "../game/decisions/responses.ts";
+import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
@@ -168,4 +168,15 @@ test("canonical response outcomes preserve semantic continuation without provide
   const execution = { status: "satisfied", satisfies: "dodge", consumeCardIds: ["dodge-1"] };
   assert.deepEqual(applyResponseSatisfied(pending, execution), { continuation: pending.continuation, consumeCardIds: ["dodge-1"] });
   assert.deepEqual(applyResponseDeclined(pending), { continuation: pending.continuation });
+});
+
+test("secondary Judgement produces one semantic outcome for every response continuation", () => {
+  const rule = { kind: "judgement", label: "red Judgement", succeeds: (judged) => judged?.suit === "♥", successText: "succeeds", failureText: "fails" };
+  const continuations = ["attack", "group", "duel", "negation"];
+  for (const kind of continuations) {
+    const pending = { kind: "response", actorId: "p2", requirement: { kind: "dodge", sourceId: "p1", targetId: "p2" }, reason: "response", continuation: { kind } };
+    assert.equal(resolveResponseJudgement({ ...card("Peach", `${kind}-red`), suit: "♥" }, rule).status, "satisfied");
+    assert.equal(resolveResponseJudgement(card("Peach", `${kind}-black`), rule).status, "unsatisfied");
+    assert.equal(applyResponseDeclined(pending).continuation.kind, kind);
+  }
 });

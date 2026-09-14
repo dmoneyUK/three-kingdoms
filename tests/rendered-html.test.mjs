@@ -261,15 +261,11 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(roomApi, /"equip"/);
   assert.match(page, /card\.kind === "Steal"/);
   assert.match(page, /cardKind: "Dismantle" \| "Steal"/);
-  assert.match(page, /respond_duel/);
-  assert.match(page, /take_duel_damage/);
-  assert.match(page, /respond_group/);
   assert.match(page, /Use Serpent Spear/);
   assert.match(page, /Form Attack/);
   assert.match(page, /serpentSelected/);
   assert.match(page, /event\.target === event\.player && \(isAttackCard\(event\.card\) \|\| event\.card\.kind === "Dodge"\)/);
   assert.match(page, /responds with/);
-  assert.match(page, /take_group_damage/);
   assert.match(page, /choose_harvest/);
   assert.match(page, /preview_harvest/);
   assert.match(page, /backgroundPreview = action === "preview_harvest"/);
@@ -313,8 +309,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /function pendingKind\(room: Room\) \{ return room\.pending\?\.kind \?\? null; \}/);
   assert.match(page, /currentAction\?\.kind/);
   assert.match(page, /responseProviderId === option\.providerId/);
-  assert.match(page, /respond_negation/);
-  assert.match(page, /pass_negation/);
+  assert.match(page, /decline_response/);
   assert.match(page, /Skip response/);
   assert.match(page, /responseDecisionReady = \(canRespond \|\| frostSwordResponse \|\| triggerResponse\) && responsePresentationReady/);
   assert.match(page, /responseDamageAction && onAction\(responseDamageAction\)/);

@@ -976,7 +976,7 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   assert.ok(played.data.room.timeline.some((event) => /Negation window opens for Something Out of Nothing's effect on Player 1/.test(event.message ?? "")), "the response window is visible in the event history");
   const stale = await request("pass_negation", { code: room.code, token, context: { actionRevision: before.data.actionRevision, meId: playerOne.id, phase: "play", pendingKind: null, actorId: playerOne.id } });
   assert.equal(stale.status, 409); assert.equal(stale.data.stale, true); assert.equal(stale.data.room.meId, playerTwo.id); assert.equal(stale.data.room.pendingNegation.actorId, playerTwo.id);
-  const passed = await request("pass_negation", { code: room.code, token });
+  const passed = await request("decline_response", { code: room.code, token });
   assert.equal(passed.status, 200); assert.equal(passed.data.room.phase, "play"); assert.equal(passed.data.room.pendingNegation, null);
   assert.ok(passed.data.room.timeline.some((event) => /Negation window closes for Something Out of Nothing's effect on Player 1/.test(event.message ?? "")), "the completed response window is visible in the event history");
 });

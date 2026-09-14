@@ -8,7 +8,7 @@ import { responseDecisionFor, resolveResponseDecision } from "../../../game/resp
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { getTriggeredEffects, resolveTriggeredEffect } from "../../../game/capabilities/triggers";
 import { continueTriggerEvent, resumeTriggerContinuation, chooseBotTrigger } from "../../../game/decisions/triggers";
-import { applyResponseSatisfied, resolveResponseJudgement } from "../../../game/decisions/responses";
+import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../../../game/decisions/responses";
 import { normalizeLegacyTriggerAction } from "../../../game/compat/legacy-actions";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
 import { asLegacyResponsePending, asLegacyTriggerPending, asResponsePending, asTriggerPending, serializePending, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelPending, type DyingPending, type FrostSwordPending, type GreenDragonPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type RockCleavingPending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
@@ -118,7 +118,7 @@ function frostSwordTriggerOption(source?: PlayerRow | null, target?: PlayerRow |
     ? getTriggeredEffects(frostSwordTriggerContext(source, target)).find((option) => option.effectId === "frost_sword_damage_about_to_apply")
     : null;
 }
-function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase: string, sequenceStartCardId: string, log: string[]): TriggerPending {
+function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase: string, sequenceStartCardId: string, readyAfterEventId: string): TriggerPending {
   return withPresentationBarrier({
     kind: "trigger",
     event: "damage_about_to_apply",
@@ -126,7 +126,7 @@ function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase:
     reason: `Choose an optional reaction before ${target.name} takes damage, or skip`,
     deadline: nextResponseDeadline(source),
     continuation: { kind: "damage_about_to_apply_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId },
-  }, log);
+  }, [], readyAfterEventId);
 }
 function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
   const continuation = pending.continuation;
@@ -1701,8 +1701,9 @@ async function runBots(roomId: string) {
       } else {
         const frostOption = attack ? frostSwordTriggerOption(bot, target) : null;
         if (attack && frostOption) {
-          log = addLog(log, `${bot.name}'s Attack would damage ${target.name}. Optional reactions may prevent that damage.`);
-          const pending = damageTriggerPending(bot, target, phaseAfterAttack(bot), sequenceStartCardId, log);
+          const presentation = addLogWithId(log, `${bot.name}'s Attack would damage ${target.name}. Optional reactions may prevent that damage.`);
+          log = presentation.log;
+          const pending = damageTriggerPending(bot, target, phaseAfterAttack(bot), sequenceStartCardId, presentation.eventId);
           writes.push(db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id));
           writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log)), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
           await db().batch(writes); await advanceCanonicalBotTrigger(roomId); return;
@@ -1975,9 +1976,9 @@ export async function POST(request: Request) {
     if (action === "decline_response") {
       const response = asResponsePending(pendingForController);
       if (!response) return json({ error: "There is no response decision to decline.", stale: true, room: await roomState(code, token) }, 409);
-      applyResponseDeclined(response);
+      const declined = applyResponseDeclined(response);
       canonicalResponseDeclined = true;
-      canonicalResponseKind = response.continuation.kind;
+      canonicalResponseKind = declined.continuation.kind;
     }
     if (action === "respond") {
       responseExecution = resolveResponseDecision(pendingForController, me ? responseContext(me) : undefined, body.providerId, { cardId: body.cardId, cardIds: body.cardIds });
@@ -2488,8 +2489,9 @@ export async function POST(request: Request) {
       hand = hand.filter((card) => card.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, me.name, dodge, source?.name ?? "Attack"); log = addLog(log, `${me.name} plays Dodge and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
       await finishDodgedAttack(liveRoom, source, { ...me, hand_json: JSON.stringify(hand) }, discard, log, pending.resumePhase ?? phaseAfterAttack(source), pending.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
     } else if (source?.alive && frostSwordTriggerOption(source, me)) {
-      const trigger = damageTriggerPending(source, me, pending.resumePhase ?? phaseAfterAttack(source), pending.sequenceStartCardId ?? "", log);
-      log = addLog(log, `${source.name}'s Attack would damage ${me.name}. Optional reactions may prevent that damage.`);
+      const presentation = addLogWithId(log, `${source.name}'s Attack would damage ${me.name}. Optional reactions may prevent that damage.`);
+      log = presentation.log;
+      const trigger = damageTriggerPending(source, me, pending.resumePhase ?? phaseAfterAttack(source), pending.sequenceStartCardId ?? "", presentation.eventId);
       await db.batch([db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(trigger), JSON.stringify(log), room.id)]);
       return json({ room: await roomState(code, token) });
     } else {
@@ -2749,8 +2751,9 @@ export async function POST(request: Request) {
             targetHand = targetHand.filter((item) => item.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, me.name); log = addLog(log, `${target.name} plays Dodge and blocks the Attack.`);
             await finishDodgedAttack(liveRoom, { ...me, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, declaration.resumePhase, declaration.sequenceStartCardId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
         } else if (frostSwordTriggerOption(me, target)) {
-          const trigger = damageTriggerPending(me, target, phaseAfterAttack(me), card.id, log);
-          log = addLog(log, `${me.name}'s Attack would damage ${target.name}. Optional reactions may prevent that damage.`);
+          const presentation = addLogWithId(log, `${me.name}'s Attack would damage ${target.name}. Optional reactions may prevent that damage.`);
+          log = presentation.log;
+          const trigger = damageTriggerPending(me, target, phaseAfterAttack(me), card.id, presentation.eventId);
           await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(trigger), JSON.stringify(discard), JSON.stringify(log), room.id)]);
         } else {
           const hp = Math.max(0, (target.hp ?? 1) - 1); log = addLog(log, `${target.name} takes 1 damage${hp === 0 ? " and enters Dying. Peach rescue begins in turn order." : `. Action returns to ${me.name}.`}`);
