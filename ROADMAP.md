@@ -78,7 +78,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution round is validated locally: build, lint, diff check, and all 60 tests pass. The current implementation now uses one semantic Response Judgement result/continuation boundary, provider-aware Negation scheduling, pre-claim continuation validation, and shared trigger continuation for human and bot paths. The remaining milestone is the final compatibility/client/event-ID cleanup; do not begin Blue Steel Sword before that is complete.
+The semantic execution round is validated locally: build, lint, diff check, and all 60 tests pass. The current implementation now uses one semantic Response Judgement result/continuation boundary, provider-aware Negation scheduling for counter-windows, canonical response dispatch without action-string rewriting, pre-claim continuation validation, and shared trigger continuation for human and bot paths. The remaining milestone is the final compatibility/client/event-ID cleanup; do not begin Blue Steel Sword before that is complete.
 
 The current architecture baseline is `1e95f34` plus semantic response/trigger execution completion. Local validation is green (58 tests, build, lint, and diff check); GitHub Actions remains the release gate for the pushed commit. Canonical Negation declines now advance through all responders, secondary Judgement resumes Attack/Group/Duel/Negation safely, and exhausted trigger events resume their event-specific continuation including deferred damage.
 
