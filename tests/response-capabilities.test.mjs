@@ -4,7 +4,7 @@ import { getResponseOptions, registerResponseProvider, responseOptions, selectRe
 import { resolveResponseDecision, responseDecisionFor } from "../game/response-decision.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
-import { continueTriggerEvent, chooseBotTrigger } from "../game/decisions/triggers.ts";
+import { continueTriggerEvent, chooseBotTrigger, createTriggerDecision, resumeTriggerContinuation } from "../game/decisions/triggers.ts";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
 import { normalizeLegacyResponseAction } from "../game/compat/legacy-actions.ts";
 import { readFile } from "node:fs/promises";
@@ -178,6 +178,24 @@ test("a non-terminal trigger outcome reopens the event without naming its provid
   };
   assert.deepEqual(continueTriggerEvent(pending, { status: "resolved", effectId: "test_reaction", outcome: { kind: "continue_event" } }, 42)?.resolvedEffectIds, ["test_reaction"]);
   assert.equal(continueTriggerEvent(pending, { status: "resolved", effectId: "terminal", outcome: { kind: "force_damage", amount: 1, consumeCardIds: ["a", "b"] } }), null);
+});
+
+test("semantic trigger continuation reopens remaining reactions and resumes exhausted events", () => {
+  const pending = createTriggerDecision("attack_dodged", "source", { kind: "attack_dodged_event", sourceId: "source", targetId: "target", resumePhase: "play", sequenceStartCardId: "attack" }, "Optional reactions", 10, "event-1");
+  const first = { status: "resolved", effectId: "synthetic-a", outcome: { kind: "continue_event" } };
+  const reopened = resumeTriggerContinuation(pending, first, true, 20);
+  assert.equal(reopened?.kind, "reopen");
+  assert.deepEqual(reopened?.pending.resolvedEffectIds, ["synthetic-a"]);
+  assert.equal(reopened?.pending.readyAfterEventId, "event-1");
+
+  const exhausted = resumeTriggerContinuation(reopened.pending, { status: "resolved", effectId: "synthetic-b", outcome: { kind: "continue_event" } }, false, 30);
+  assert.equal(exhausted?.kind, "resume");
+  assert.equal(exhausted?.continuation.kind, "attack_dodged_event");
+
+  const damagePending = createTriggerDecision("damage_about_to_apply", "source", { kind: "damage_about_to_apply_event", sourceId: "source", targetId: "target", resumePhase: "play", sequenceStartCardId: "attack" }, "Optional damage reactions", 10, "damage-event-1");
+  const damageResume = resumeTriggerContinuation(damagePending, { status: "resolved", effectId: "synthetic-damage", outcome: { kind: "continue_event" } }, false, 30);
+  assert.equal(damageResume?.kind, "resume");
+  assert.equal(damageResume?.continuation.kind, "damage_about_to_apply_event");
 });
 
 test("bot trigger selection honors generic card and target-card maxima", () => {
