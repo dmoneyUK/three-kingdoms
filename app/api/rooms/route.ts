@@ -1272,7 +1272,7 @@ async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: P
       await finishGroupStep(room, pending, players, discard, log, writes);
       return;
     }
-    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log)), JSON.stringify(discard), JSON.stringify(log), room.id));
+    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
     await db().batch(writes);
     await advanceGroup(room.id);
     return;
@@ -1280,13 +1280,13 @@ async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: P
   // Each AOE target gets one initial pass beginning at the current turn owner.
   const holders = playersWithNegateProvider(players, room.turn_seat ?? players.find((player) => player.id === pending.sourceId)?.seat ?? actor.seat, { kind: "negate", sourceId: pending.sourceId, targetId: actor.id });
   if (!holders.length) {
-    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, log)), JSON.stringify(discard), JSON.stringify(log), room.id));
+    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(log), room.id));
     await db().batch(writes);
     await advanceGroup(room.id);
     return;
   }
   const cardName = groupCardName(pending.cardKind);
-  const negation: NegationPending = withPresentationBarrier({
+  const negation: NegationPending = {
     kind: "negation",
     sourceId: pending.sourceId,
     actorId: holders[0].id,
@@ -1302,7 +1302,8 @@ async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: P
     heldCards: pending.heldCards,
     reason: `Play Negation to cancel ${cardName}'s effect on ${actor.name}, or pass`,
     deadline: nextResponseDeadline(holders[0]),
-  }, log);
+    readyAfterEventId: pending.readyAfterEventId,
+  };
   writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(negation), JSON.stringify(discard), JSON.stringify(log), room.id));
   await db().batch(writes);
   await advanceNegation(room.id);
@@ -1417,7 +1418,7 @@ async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, player
     await advanceHarvest(room.id);
     return;
   }
-  const negation: NegationPending = withPresentationBarrier({
+  const negation: NegationPending = {
     kind: "negation",
     sourceId: pending.sourceId,
     actorId: holders[0].id,
@@ -1432,7 +1433,8 @@ async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, player
     heldCards: pending.heldCards,
     reason: `Play Negation to cancel Bumper Harvest's effect on ${actor.name}, or pass`,
     deadline: nextResponseDeadline(holders[0]),
-  }, log);
+    readyAfterEventId: pending.readyAfterEventId,
+  };
   writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(negation), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
   await db().batch(writes);
   await advanceNegation(room.id);
