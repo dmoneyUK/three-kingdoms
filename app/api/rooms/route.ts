@@ -967,6 +967,7 @@ type AttackDamageTransition = {
   label?: string;
   writes?: D1PreparedStatement[];
   onDamageApplied?: (hp: number) => Promise<void> | void;
+  skipTriggers?: boolean;
 };
 type AttackDamageResult =
   | { kind: "reaction_pending" }
@@ -978,9 +979,9 @@ type AttackDamageResult =
  * discovery, the canonical reaction decision, original damage, and Dying all
  * belong here; Attack callers only provide their continuation and presentation.
  */
-async function resolveAttackDamageAboutToApply({ room, source, target, players, sourceHand, discard, log, resumePhase, sequenceStartCardId, label = "Attack", writes = [], onDamageApplied }: AttackDamageTransition): Promise<AttackDamageResult> {
+async function resolveAttackDamageAboutToApply({ room, source, target, players, sourceHand, discard, log, resumePhase, sequenceStartCardId, label = "Attack", writes = [], onDamageApplied, skipTriggers = false }: AttackDamageTransition): Promise<AttackDamageResult> {
   const options = damageTriggerOptions(source, target);
-  if (options.length) {
+  if (!skipTriggers && options.length) {
     const presentation = addLogWithId(log, `${source.name}'s ${label} would damage ${target.name}. Optional reactions may prevent that damage.`);
     const pending = damageTriggerPending(source, target, resumePhase, sequenceStartCardId, presentation.eventId);
     await db().batch([
@@ -1173,17 +1174,19 @@ async function resumeCanonicalTriggerContinuation(room: RoomRow, continuation: A
     return;
   }
   if (!source || !target) return;
-  const hp = Math.max(0, (target.hp ?? 1) - 1);
-  const nextLog = addLog(log, `${target.name} takes 1 damage. ${hp === 0 ? "Peach rescue begins in turn order." : `Action returns to ${source.name}.`}`);
-  if (hp === 0) {
-    await startDyingRescue(room, source, target, players, parse<Card[]>(room.deck_json, []), discard, nextLog, [], source, continuation.resumePhase);
-  } else {
-    await db().batch([
-      db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id),
-      db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(nextLog), room.id),
-    ]);
-    await continueAfterDying(room.id, source.id);
-  }
+  const nextLog = addLog(log, `${source.name}'s optional reactions finish. Original damage resumes.`);
+  await resolveAttackDamageAboutToApply({
+    room,
+    source,
+    target,
+    players,
+    sourceHand: parse<Card[]>(source.hand_json, []),
+    discard,
+    log: nextLog,
+    resumePhase: continuation.resumePhase,
+    sequenceStartCardId: continuation.sequenceStartCardId,
+    skipTriggers: true,
+  });
 }
 
 // Retained only to advance an already-persisted legacy bot decision during the

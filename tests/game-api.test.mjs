@@ -1511,6 +1511,51 @@ test("damage_about_to_apply trigger exhaustion resumes original Attack damage on
   assert.match(persisted, /^play-struck:$/, "the room is not stranded in response or resolving");
 });
 
+test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exactly once", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, , bob] = game.members;
+  const [hostPlayer, alicePlayer, bobPlayer] = game.room.players;
+  assert.ok(hostPlayer && alicePlayer && bobPlayer);
+
+  setEquipment(hostPlayer.id, {
+    armor: card("NioShield", "test-trigger-a-lethal-equipped"),
+    defensiveHorse: card("NioShield", "test-trigger-b-lethal-equipped"),
+  });
+  setHand(hostPlayer.id, [card("Attack", "lethal-damage-trigger-chain")], 4, 4);
+  setHand(alicePlayer.id, [], 1, 4);
+  setHand(bobPlayer.id, [card("Peach", "lethal-rescue")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  const attack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-lethal-damage-trigger-chain", targetId: alicePlayer.id });
+  assert.equal(attack.status, 200);
+  assert.deepEqual(attack.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["test_damage_about_to_apply_a", "test_damage_about_to_apply_b"]);
+
+  await request("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a" });
+  const afterB = await request("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b" });
+  assert.equal(afterB.status, 200);
+  assert.equal(afterB.data.room.phase, "dying");
+  assert.equal(afterB.data.room.pending?.kind, "dying");
+  assert.equal(afterB.data.room.currentAction.kind, "dying");
+  assert.equal(afterB.data.room.pendingDying.targetId, alicePlayer.id);
+  assert.equal(afterB.data.room.players.find((player) => player.id === alicePlayer.id).hp, 0);
+  assert.equal(afterB.data.room.players.find((player) => player.id === alicePlayer.id).alive, true, "shared Dying keeps the target rescuable");
+  assert.equal(afterB.data.room.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1);
+  assert.equal(afterB.data.room.log.filter((entry) => /enters Dying/.test(entry)).length, 1);
+  assert.equal(afterB.data.room.log.filter((entry) => /resolves an optional reaction/.test(entry)).length, 2);
+  assert.equal(afterB.data.room.log.filter((entry) => /Peach rescue begins/.test(entry)).length, 1);
+
+  const rescued = await request("give_peach", { code: game.code, token: bob.token, cardId: "peach-lethal-rescue" });
+  assert.equal(rescued.status, 200);
+  assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
+  assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).alive, true);
+  assert.equal(rescued.data.room.pendingDying, null);
+  assert.equal(rescued.data.room.currentAction.kind, "turn");
+  assert.equal(rescued.data.room.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1, "rescue does not replay damage");
+  assert.equal(rescued.data.room.log.filter((entry) => /enters Dying/.test(entry)).length, 1, "Dying begins once");
+  const persisted = query(`SELECT phase || ':' || COALESCE(pending_json, '') FROM rooms WHERE code=${quote(game.code)}`);
+  assert.match(persisted, /^play-struck:$/, "the shared rescue pipeline returns to the turn sequence");
+});
+
 test("Dying rescue resumes a global response chain and victory stops it immediately", { timeout: 30_000 }, async () => {
   const rescuedGame = await createHumanGame();
   const [host, , bob, carol] = rescuedGame.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = rescuedGame.room.players;
