@@ -239,6 +239,42 @@ test("successful Negation never repairs or infers chain depth from stale fields"
   assert.equal(transitioned.chainDepth, 1); assert.equal(transitioned.negated, false);
 });
 
+test("human, bot, and Judgement Negation continuations share the same semantic fields", () => {
+  const pending = { kind: "negation", sourceId: "source", actorId: "actor", remainingIds: ["next"], negated: false, cardName: "Dismantle", effectTargetId: "target", resumePhase: "play", effect: { kind: "judgement", targetId: "target", cardId: "delay" }, reason: "respond", chainDepth: 0 };
+  const actor = { id: "actor", name: "Actor" };
+  const negationCard = card("Negation", "negation-card");
+  const human = applySuccessfulNegation(pending, actor, [negationCard]);
+  const bot = applySuccessfulNegation(pending, actor, [negationCard]);
+  const judgement = applySuccessfulNegation(pending, actor);
+  const semantic = (state) => ({ negated: state.negated, latestNegationPlayerId: state.latestNegationPlayerId, chainDepth: state.chainDepth, responseTarget: state.responseTarget });
+  assert.deepEqual(semantic(human), { negated: true, latestNegationPlayerId: "actor", chainDepth: 1, responseTarget: "Actor's Negation" });
+  assert.deepEqual(semantic(bot), semantic(human));
+  assert.deepEqual(semantic(judgement), semantic(human));
+});
+
+test("successful Judgement Negation carries transitioned state across both responder outcomes", async () => {
+  const route = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
+  const branchStart = route.indexOf("async function applyNegationResponseOutcome");
+  const branchEnd = route.indexOf("async function applyResponseOutcome", branchStart);
+  const branch = route.slice(branchStart, branchEnd);
+  assert.match(branch, /playersWithNegateProvider\(players, nextAliveSeat\(players, actor\.seat\), negationRequirement\(transitioned\)\)/);
+  assert.match(branch, /phase = 'resolving', pending_json = \?, deck_json = \?, discard_json = \?, log_json = \?/);
+  assert.match(branch, /\.bind\(serializePending\(transitioned\), JSON\.stringify\(judged\.deck\), JSON\.stringify\(judged\.discard\), JSON\.stringify\(nextLog\), room\.id\)/);
+
+  const pending = { kind: "negation", sourceId: "source", actorId: "actor", remainingIds: [], negated: false, cardName: "Overindulgence", effectTargetId: "target", resumePhase: "draw", effect: { kind: "judgement", targetId: "target", cardId: "delayed" }, reason: "respond", chainDepth: 0 };
+  const rule = { kind: "judgement", label: "red Judgement", succeeds: (judged) => judged?.suit === "♥", successText: "succeeds", failureText: "fails" };
+  const judged = resolveResponseJudgement({ ...card("Dodge", "red-judgement"), suit: "♥" }, rule);
+  assert.equal(judged.status, "satisfied");
+  const transitioned = applySuccessfulNegation(pending, { id: "actor", name: "Actor" });
+  const withAnotherResponder = { ...transitioned, actorId: "next", remainingIds: [] };
+  assert.equal(withAnotherResponder.actorId, "next");
+  assert.deepEqual({ negated: withAnotherResponder.negated, chainDepth: withAnotherResponder.chainDepth, latestNegationPlayerId: withAnotherResponder.latestNegationPlayerId }, { negated: true, chainDepth: 1, latestNegationPlayerId: "actor" });
+  const resolverInputWhenNoResponder = transitioned;
+  assert.equal(resolverInputWhenNoResponder.negated, true);
+  assert.equal(resolverInputWhenNoResponder.chainDepth, 1);
+  assert.equal(resolverInputWhenNoResponder.latestNegationPlayerId, "actor");
+});
+
 test("secondary Judgement produces one semantic outcome for every response continuation", () => {
   const rule = { kind: "judgement", label: "red Judgement", succeeds: (judged) => judged?.suit === "♥", successText: "succeeds", failureText: "fails" };
   const continuations = ["attack", "group", "duel", "negation"];

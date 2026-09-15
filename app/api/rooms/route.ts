@@ -932,8 +932,8 @@ async function applyNegationResponseOutcome(room: RoomRow, pending: NegationPend
     await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
       .bind(serializePending(decision.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(decision.log), room.id).run();
   } else {
-    await db().prepare("UPDATE rooms SET phase = 'resolving', deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(nextLog), room.id).run();
+    await db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+      .bind(serializePending(transitioned), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(nextLog), room.id).run();
     await resolveDeferredStratagem(room.id, transitioned);
   }
 }
