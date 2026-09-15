@@ -51,6 +51,8 @@ The active game table now presents all four seats in a responsive board, with th
 
 The leave-game Exit control now lives on the game surface, so it remains available with the top bar hidden. Game Messages displays rows without a visible title and has a non-blocking fold/unfold button; the redundant turn-status strip was removed to give the player board more room.
 
+Secret roles are rendered only in the local player square. The Negation skip button retains its final action label during submission instead of exposing transient “Skipping” text, preventing visible button flicker. Compact equipment and Judgement tiles now share a fixed card aspect ratio, and player squares have additional vertical room for their zones.
+
 Equipment cards in the Equipment Zone and delayed cards in each Judgement Zone retain an info button linked to the existing card explanation dialog. The controls are separate from equipment response-cost selection and do not change gameplay state.
 
 Fresh validation for this change: `npm test` passed all 80 tests (including the latest-five, rolling-retention, deduplication, and private-message projection tests); final `npm run lint`, `npm run build`, and `git diff --check` also passed.

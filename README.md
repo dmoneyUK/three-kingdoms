@@ -19,6 +19,8 @@ The game table now uses a responsive four-seat player board with no in-game top 
 
 The game surface keeps Exit available independently of the hidden top bar. The compact message panel shows message rows directly and can be folded to free table space; the separate turn-status strip is intentionally omitted from the board.
 
+Player squares show a secret-role badge only for the local player. Negation skip controls keep a stable label while a request is in flight, avoiding transient status flicker. Equipment and Judgement tiles use a uniform compact card ratio, with taller player squares allowing the zone contents to remain readable.
+
 ## Source of knowledge
 
 ### Semantic execution status

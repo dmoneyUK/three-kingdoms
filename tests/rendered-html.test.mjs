@@ -41,6 +41,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /player-board/);
   assert.match(page, /game-exit/);
   assert.match(page, /messagesCollapsed/);
+  assert.match(page, /private-role/);
+  assert.match(page, /Skip response/);
+  assert.doesNotMatch(page, /busy \? "Skipping…" : requiredResponseKind === "Negation"/);
   assert.doesNotMatch(page, /PUBLIC HISTORY/);
   assert.match(page, /player-square/);
   assert.match(page, /player\.handCount\} cards/);
@@ -49,7 +52,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /send\("create", \{ quickStart: true \}\)/);
   assert.doesNotMatch(page, /previousTurn/);
   assert.match(page, /Play selected/);
-  assert.match(page, /Skip · take 1 damage/);
+  assert.match(page, /Skip response/);
   assert.match(page, /Play Peach/);
   assert.match(page, /Skip rescue/);
   assert.doesNotMatch(page, /rescuePeaches\.map/);
@@ -331,7 +334,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /const responseDecisionReady = \(canRespond \|\| triggerResponse\) && responsePresentationReady/);
   assert.match(page, /if \(busy \|\| !responseDecisionReady\) return; const key = room\.actionRevision/);
   assert.match(page, /disabled=\{responseControlsDisabled\}/);
-  assert.match(page, /Skip · take 1 damage/);
+  assert.match(page, /Skip response/);
   assert.doesNotMatch(page, /automaticDamage/);
   assert.match(page, /choose how to Negate/i);
   assert.match(page, /judgementCards/);
