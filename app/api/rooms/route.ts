@@ -2163,7 +2163,7 @@ export async function POST(request: Request) {
     if (remaining.length) {
       const reopened = resumed.kind === "reopen" ? resumed.pending : next;
       await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(reopened, presentation.log, presentation.eventId)), JSON.stringify(presentation.log), room.id).run();
-      if (isBotPlayer(actor)) await advanceCanonicalBotTrigger(room.id);
+      if (isBotPlayer(me)) await advanceCanonicalBotTrigger(room.id);
     } else {
       const continuation = resumed.kind === "resume" ? resumed.continuation : next.continuation;
       await resumeCanonicalTriggerContinuation(liveRoom, continuation as AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation, players, parse<Card[]>(liveRoom.discard_json, []), presentation.log);
@@ -2603,12 +2603,16 @@ export async function POST(request: Request) {
     if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "attack" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Attack response." }, 409);
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
     const canonicalDodge = canonicalResponseSatisfied && canonicalResponseKind === "attack";
-    const selectedDodge = canonicalDodge ? responseExecution?.consumeCardIds?.length === 1 ? hand.find((card) => card.id === responseExecution?.consumeCardIds?.[0]) ?? null : null : null;
-    if (canonicalDodge && !selectedDodge) return json({ error: "Select a Dodge card from your hand first." }, 409);
+    const dodgeIds = canonicalDodge ? (responseExecution?.consumeCardIds ?? []) : [];
+    const dodgeCards = dodgeIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
+    if (canonicalDodge && dodgeCards.length !== dodgeIds.length) return json({ error: "That Dodge provider is no longer available." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved." }, 409);
     if (canonicalDodge) {
-      const dodge = selectedDodge as Card;
-      hand = hand.filter((card) => card.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, me.name, dodge, source?.name ?? "Attack"); log = addLog(log, `${me.name} plays Dodge and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
+      const dodgeIdsSet = new Set(dodgeIds);
+      hand = hand.filter((card) => !dodgeIdsSet.has(card.id)); discard.push(...dodgeCards);
+      if (dodgeCards.length === 1) log = addCardEvent(log, me.name, dodgeCards[0], source?.name ?? "Attack");
+      else log = addLogWithId(log, `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"}.` ).log;
+      log = addLog(log, dodgeCards.length ? `${me.name} plays Dodge and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.` : `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"} and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
       await finishDodgedAttack(liveRoom, source, { ...me, hand_json: JSON.stringify(hand) }, discard, log, pending.resumePhase ?? phaseAfterAttack(source), pending.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
     } else {
       if (!source?.alive) {

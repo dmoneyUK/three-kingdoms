@@ -33,7 +33,7 @@ test("Negation scheduling can discover a non-card provider", () => {
   });
   try {
     const options = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "negate", sourceId: "p1", targetId: "p2" });
-    assert.equal(options[0]?.providerId, "test_hero_negate");
+    assert.equal(options.find((option) => option.providerId === "test_hero_negate")?.providerId, "test_hero_negate");
   } finally {
     unregister();
   }

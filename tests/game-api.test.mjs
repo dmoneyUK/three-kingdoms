@@ -500,9 +500,9 @@ test("AOE counter rounds include their own Negation player last and resume the a
   assert.equal(result.data.room.responseCountdownVisibleAt, 0, "a human Negation window has no countdown before its presentation is ready");
   await act("pass_negation");
   result = await act("respond_negation", { cardId: "negation-self-1" });
-  assert.equal(result.data.room.actionPlayerId, p2.id);
+  assert.equal(result.data.room.actionPlayerId, p2.id); assert.equal(result.data.room.pendingNegation.chainDepth, 1); assert.equal(result.data.room.pendingNegation.negated, true); assert.equal(result.data.room.pendingNegation.latestNegationPlayerId, p1.id);
   result = await act("respond_negation", { cardId: "negation-self-again" });
-  assert.equal(result.data.room.pendingNegation.chainDepth, 2);
+  assert.equal(result.data.room.pendingNegation.chainDepth, 2); assert.equal(result.data.room.pendingNegation.negated, false); assert.equal(result.data.room.pendingNegation.latestNegationPlayerId, p2.id);
   for (const p of [p3, me]) {
     assert.equal(result.data.room.actionPlayerId, p.id);
     assert.equal(result.data.room.pendingNegation.responseTarget, "Player 2's Negation");
@@ -1382,6 +1382,45 @@ test("bot global cards resolve across consecutive rounds and return the turn to 
   assert.equal(afterArrows.isMyTurn, true); assert.ok(afterArrows.timeline.some((event) => event.type === "card" && event.player === "Player 3" && event.card.kind === "RainingArrows"));
   const botArrowResponses = afterArrows.timeline.filter((event) => event.type === "card" && event.card.id.startsWith("dodge-arrows-response"));
   assert.ok(botArrowResponses.length >= 1); assert.ok(botArrowResponses.every((event) => event.target === event.player));
+});
+
+test("bot Duel continuation chooses Attack through semantic provider discovery", { timeout: 30_000 }, async () => {
+  const quick = await request("create", { quickStart: true, botTest: true });
+  const { code, players } = quick.data.room; const token = quick.data.token;
+  const [me, bot] = players;
+  for (const player of players) setHand(player.id, [], 4, 4);
+  setHand(me.id, [card("Attack", "duel-human")], 4, 4);
+  sql(`UPDATE players SET hero='test-hero' WHERE id=${quote(bot.id)}`);
+  setHand(bot.id, [card("Duel", "duel-bot")], 4, 4);
+  sql(`UPDATE rooms SET deck_json='[]', discard_json='[]' WHERE code=${quote(code)}`);
+  setTurn(code, me.seat, "draw");
+  await request("draw", { code, token });
+  const started = await request("end_turn", { code, token });
+  assert.equal(started.status, 200);
+  const duel = await waitForState(code, token, (room) => room.pendingDuel?.actorId === me.id);
+  assert.equal(duel.pendingDuel.sourceId, bot.id);
+  const first = await request("respond_duel", { code, token, cardId: "attack-duel-human" });
+  assert.equal(first.status, 200);
+  const botReply = await waitForState(code, token, (room) => room.pendingDuel?.actorId === me.id && room.pendingDuel?.opponentId === bot.id && room.pendingDuel?.sourceId === bot.id);
+  assert.equal(JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(code)}`)).some((entry) => /Use test Attack/.test(entry)), true, "the bot Duel answer came from semantic provider discovery");
+  assert.equal(botReply.pendingDuel.actorId, me.id);
+});
+
+test("unknown semantic Dodge and Negate providers cross the real API and D1 boundary", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members; const [hostPlayer, alicePlayer] = game.room.players;
+  sql(`UPDATE players SET hero='test-hero' WHERE id=${quote(alicePlayer.id)}`);
+  setHand(hostPlayer.id, [card("Attack", "semantic-dodge")], 4, 4); setHand(alicePlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const attack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-semantic-dodge", targetId: alicePlayer.id });
+  assert.equal(attack.status, 200); const aliceView = await state(game.code, alice.token); assert.ok(aliceView.data.currentAction.options.some((option) => option.providerId === "test_semantic_dodge"));
+  const dodged = await request("respond", { code: game.code, token: alice.token, providerId: "test_semantic_dodge" });
+  assert.equal(dodged.status, 200); assert.equal(dodged.data.room.phase, "play-struck"); assert.equal(dodged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
+
+  sql(`UPDATE players SET hero='test-hero' WHERE id=${quote(alicePlayer.id)}`);
+  setHand(hostPlayer.id, [card("Dismantle", "semantic-negate")], 4, 4); setHand(alicePlayer.id, [card("Attack", "semantic-kept")], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-semantic-negate", targetId: alicePlayer.id, targetCardIndex: 0 });
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.actionPlayerId, alicePlayer.id); const negateView = await state(game.code, alice.token); assert.ok(negateView.data.currentAction.options.some((option) => option.providerId === "test_semantic_negate"));
+  const negated = await request("respond", { code: game.code, token: alice.token, providerId: "test_semantic_negate" });
+  assert.equal(negated.status, 200); assert.equal(negated.data.room.phase, "response"); assert.equal(negated.data.room.pendingNegation.chainDepth, 1); assert.equal(negated.data.room.pendingNegation.negated, true);
 });
 
 test("Dying rescue resumes a global response chain and victory stops it immediately", { timeout: 30_000 }, async () => {

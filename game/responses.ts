@@ -3,6 +3,7 @@ import { physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider
 import { eightTrigramsDodgeProvider } from "./capabilities/equipment/eight-trigrams";
 import { serpentSpearAttackProvider } from "./capabilities/equipment/serpent-spear";
 import { zhenJiBlackCardDodgeProvider } from "./capabilities/heroes/zhen-ji";
+import { testSemanticResponseProviders } from "./capabilities/test-fixtures";
 
 export type ResponseKind = "Attack" | "Dodge";
 export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null };
@@ -38,6 +39,7 @@ export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "ne
 const providers: ResponseProvider[] = [
   physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider,
   eightTrigramsDodgeProvider, serpentSpearAttackProvider, zhenJiBlackCardDodgeProvider,
+  ...testSemanticResponseProviders,
 ];
 
 export function registerResponseProvider(provider: ResponseProvider) {
