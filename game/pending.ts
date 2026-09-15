@@ -50,6 +50,11 @@ export type AttackDodgedTriggerContinuation = {
   sequenceStartCardId: string;
   resolutionId?: string;
 };
+export type AttackTargetedTriggerContinuation = {
+  kind: "attack_targeted_event";
+  declaration: AttackDeclaration;
+  group?: GroupPending;
+};
 export type DamageAboutToApplyTriggerContinuation = {
   kind: "damage_about_to_apply_event";
   sourceId: string;
@@ -58,7 +63,7 @@ export type DamageAboutToApplyTriggerContinuation = {
   sequenceStartCardId: string;
 };
 /** Legacy shapes remain readable for already-saved games only. */
-export type TriggerContinuation = AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | GreenDragonPending | RockCleavingPending | FrostSwordPending;
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | GreenDragonPending | RockCleavingPending | FrostSwordPending;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

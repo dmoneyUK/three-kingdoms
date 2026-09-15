@@ -17,6 +17,7 @@ The response refactor has reached its intended core shape:
 - Nio Shield is a passive Attack modifier;
 - Green Dragon Blade, Rock Cleaving Axe and Frost Sword use executable triggered-effect capability modules;
 - response interaction waits on a decision-specific `readyAfterEventId` instead of the entire presentation queue.
+- `attack_targeted` is a reusable capability event. Its persisted semantic decision may be target-owned, so Quick Test and multiplayer project private choices to the established target actor.
 
 This response architecture is complete and should now be treated as the foundation, not redesigned again. Saved-room compatibility and end-to-end synthetic provider proofs are covered by the green final validation batch.
 
@@ -78,7 +79,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human seats and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Human-seat regressions cover authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety. Synthetic-provider isolation is complete: test fixtures are explicitly registered only in the test Worker and are absent from production registries. Saved-state compatibility remains a bounded input/state adapter. Blue Steel Sword is now in progress through the shared passive attack-modifier path; the other missing Standard identities remain out of the dealt deck until implemented.
+The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human seats and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, and `attack_targeted` now supports target-owned choices with live hand revalidation and original-Attack continuation. Legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Human-seat regressions cover authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety. Synthetic-provider isolation is complete: test fixtures are explicitly registered only in the test Worker and are absent from production registries. Saved-state compatibility remains a bounded input/state adapter. Yin-Yang Swords is implemented; Kirin Bow and Borrowed Sword remain out of the dealt deck.
 
 ## Progress summary
 
@@ -86,7 +87,7 @@ The semantic execution layer is complete. Successful Negation uses one pure pari
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete | Turn ownership, phases, ordered responses, Dying interruption/resumption and repeated rounds are playable and regression-covered. |
 | 2. Strengthen the general rules engine | Complete | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented and covered by deterministic regressions and synthetic end-to-end extensibility proofs. |
-| 3. Complete the verified Standard card identities | **24 / 28 playable** | Four verified identities remain: Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. |
+| 3. Complete the verified Standard card identities | **26 / 28 playable** | Two verified identities remain: Kirin Bow and Borrowed Sword. |
 | 4. Reconcile the physical Standard deck | In progress | `docs/STANDARD_108_DECK_MANIFEST.md` remains the exact quantity/suit/rank target. |
 | 5. Complete match rules | Partly implemented | Main death/reward/victory paths work; edge cases still need expansion. |
 | 6. Hero-specific abilities | Deferred except architecture proofs | Qingguo is the first live proof. Broad hero work begins after shared cards/rules architecture is stable. |
@@ -149,19 +150,20 @@ Architecture/rules work:
 
 This is the next card after the architecture work above because it is a good proof that passive capabilities can be contextually suppressed without hard-coding Armor identities into the Attack resolver.
 
-### 2. Yin-Yang Swords
+### 2. Yin-Yang Swords — implemented
 
 **2 ♠ — Weapon — Attack Range 2**
 
 When `[Attack]` targets a character of the opposite gender, that target chooses to discard one hand card or let the attacker draw one card.
 
-Work:
+Implemented:
 
 - make hero gender authoritative game state;
 - introduce a target-owned Attack trigger/decision;
 - offer discard-one-hand-card vs attacker-draw;
 - if the target has no hand card, only the draw branch remains;
 - test human-seat, same-gender and opposite-gender paths.
+- reusable `attack_targeted` discovery supports target ownership, opaque hand selection, stale-safe resolution, and Halberd target independence.
 
 ### 3. Kirin Bow
 

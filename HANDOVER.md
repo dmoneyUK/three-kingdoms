@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Completed architecture invariants
 
-The semantic execution architecture milestone is **complete**. Fresh deterministic full tests and the required synthetic end-to-end extensibility proofs are green. Preserve the shared transition boundaries below and begin the next milestone with Blue Steel Sword.
+The semantic execution architecture milestone is **complete**. Fresh deterministic full tests and the required synthetic end-to-end extensibility proofs are green. Yin-Yang Swords now extends it through the reusable `attack_targeted` event and target-owned decision actor; preserve those boundaries while the remaining Standard cards are implemented.
 
 Completed architecture guarantees:
 
@@ -170,18 +170,16 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — begin the next milestone
 
-1. **Finish Blue Steel Sword.** Its card identity, deck copy, armor-suppression modifier, Dodge-provider interaction, and regressions are in progress; keep the completed semantic response/trigger boundaries.
+1. **Continue Kirin Bow.** Keep the completed semantic response/trigger boundaries and the reusable target-owned `attack_targeted` event.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
-3. **Continue the WTK Standard card roadmap**, starting with Blue Steel Sword.
+3. **Continue the WTK Standard card roadmap**, with Kirin Bow before Borrowed Sword.
 
 ## Standard card roadmap status
 
-The verified active roadmap is 28 card identities. **24 / 28 are currently treated as playable.** The remaining verified identities are:
+The verified active roadmap is 28 card identities. **26 / 28 are currently treated as playable.** The remaining verified identities are:
 
-1. Blue Steel Sword
-2. Yin-Yang Swords
-3. Kirin Bow
-4. Borrowed Sword
+1. Kirin Bow
+2. Borrowed Sword
 
 `docs/STANDARD_108_DECK_MANIFEST.md` remains the physical 108-card target. Before declaring the Standard deck complete, reconcile every physical card, suit/rank assignment, quantity, and the six named mounts with the runtime deck.
 

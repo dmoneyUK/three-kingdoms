@@ -9,7 +9,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
 - Current stage: **playable four-player alpha — non-blocking Game Messages history and exact card presentation barriers**
 
-The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, and human-controlled Quick Test Attacks, through one imminent-damage transition. Every newly visible response or trigger decision receives a fresh exact presentation barrier, including secondary Judgement, Group/AOE advancement, Negation, and trigger reopen. Canonical ResponsePending/TriggerPending projections no longer infer a missing barrier from the event log; that recovery is limited to legacy persisted pending shapes. Saved-client Frost compatibility is only projected when Frost is an actually available provider; generic damage events are not mislabeled as Frost Sword. Exhausted damage reactions re-enter that same damage transition, so lethal damage opens the ordinary shared Dying/Peach pending decision exactly once. Blue Steel Sword is now being added through the shared passive attack-modifier path; the other missing Standard identities remain out of the dealt deck until implemented.
+The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, and human-controlled Quick Test Attacks, through one imminent-damage transition. The reusable `attack_targeted` event now discovers target-owned semantic decisions before Armor/Dodge resolution, with private opaque hand selection and original-Attack continuation. Yin-Yang Swords is implemented through that provider-neutral path; Kirin Bow and Borrowed Sword remain out of the dealt deck until implemented.
 
 Successful Judgement-based Negation now applies one transitioned parity/depth state before either opening a counter-window or resolving the effect.
 
@@ -99,6 +99,7 @@ The playable alpha includes:
 - Rock Cleaving Axe
 - Sky Piercing Halberd
 - Frost Sword
+- Yin-Yang Swords
 - Nio Shield
 - Eight Trigrams Formation
 - Fergana Steed
@@ -121,7 +122,7 @@ The shared turn and response engine now uses effective horse-adjusted distance c
 
 ## Roadmap
 
-Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. Successful Negation now has one pure semantic transition for human seats and Judgement paths, with focused parity/depth regression coverage; a successful Judgement with no remaining responder persists that transitioned state before resolution. The real Worker/D1 E2E proof for unknown semantic Attack, zero-card Dodge, and zero-card Negate providers is green, and the canonical response boundary preserves 0, 1, and many provider-reported card costs. Synthetic-provider isolation is complete. Fresh final validation is green: three consecutive full suites passed 78/78, and lint, build, and `git diff --check` passed. Semantic response/trigger architecture milestone complete. Blue Steel Sword is now the next milestone.
+Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture remains complete; Kirin Bow is the next milestone.
 
 Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation now uses the same equipment rack and presentation path. Equipment and Judgement Zone cards retain an info button that opens their existing card explanation dialog. Informational gameplay messages are displayed separately in the Game Messages panel and do not hold cards, decisions, turns, timers, or later animations.
 

@@ -2,17 +2,19 @@ import type { Card } from "../model";
 import { greenDragonBladeDodgedAttackTrigger } from "./equipment/green-dragon-blade";
 import { rockCleavingAxeDodgedAttackTrigger } from "./equipment/rock-cleaving-axe";
 import { frostSwordDamageAboutToApplyTrigger } from "./equipment/frost-sword";
+import { yinYangSwordsAttackTargeted } from "./equipment/yin-yang-swords";
 
-export type TriggerEvent = "attack_dodged" | "damage_about_to_apply";
+export type TriggerEvent = "attack_targeted" | "attack_dodged" | "damage_about_to_apply";
 /**
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
  */
-export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[] };
-export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown };
+export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null };
+export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown; choice?: unknown };
 export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[] }
-  | { type: "target_cards"; targetId: string; min: number; max: number; eligibleKeys: string[] };
+  | { type: "target_cards"; targetId: string; min: number; max: number; eligibleKeys: string[] }
+  | { type: "choice"; choices: { id: string; label: string }[]; eligibleHandKeys: string[] };
 export type TriggerOption = { effectId: string; label: string; selection: TriggerSelectionConstraint | null };
 /**
  * Providers describe the semantic consequence of accepting their option. The
@@ -23,6 +25,8 @@ export type TriggerExecution =
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "follow_up_attack"; attackCardId: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "force_damage"; amount: number; consumeCardIds: string[] } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "prevent_damage"; targetCardIds: string[] } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "target_discard"; targetCardId: string } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "attacker_draw" } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "continue_event" } };
 export type TriggerPresentation = { label: string };
 export type TriggeredEffect = {
@@ -32,7 +36,7 @@ export type TriggeredEffect = {
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
 };
 
-const triggers: TriggeredEffect[] = [greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {

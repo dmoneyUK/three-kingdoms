@@ -77,6 +77,7 @@ export const DECK_COUNTS: Partial<Record<CardKind, number>> = {
   Lightning: 2,
   ZhugeCrossbow: 2,
   BlueSteelSword: 1,
+  YinYangSwords: 1,
   GreenDragonBlade: 1,
   SerpentSpear: 1,
   RockCleavingAxe: 1,

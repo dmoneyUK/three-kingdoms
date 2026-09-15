@@ -10,6 +10,7 @@ import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement
 import { normalizeLegacyResponseAction } from "../game/compat/legacy-actions.ts";
 import { readFile } from "node:fs/promises";
 import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
+import { heroGender } from "../game/heroes.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
@@ -173,6 +174,14 @@ test("passive and triggered equipment capabilities are discovered outside the ro
   const frostContext = { event: "damage_about_to_apply", targetId: "target", sourceEquipment: [card("FrostSword", "frost")], targetHand, targetEquipment };
   assert.deepEqual(getTriggeredEffects(frostContext), [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "target", min: 1, max: 2, eligibleKeys: ["hand:0", "frost-armor"] } }]);
   assert.deepEqual(resolveTriggeredEffect("frost_sword_damage_about_to_apply", frostContext, { cardKeys: ["hand:0", "frost-armor"] }), { status: "resolved", effectId: "frost_sword_damage_about_to_apply", outcome: { kind: "prevent_damage", targetCardIds: ["frost-hand", "frost-armor"] } });
+});
+
+test("Yin-Yang Swords is a target-owned attack_targeted capability with live legal choices", () => {
+  const context = { event: "attack_targeted", sourceEquipment: [card("YinYangSwords", "yy")], sourceGender: heroGender("zhang-fei"), targetGender: heroGender("zhen-ji"), targetId: "target", targetHand: [card("Peach", "hidden")], targetEquipment: [] };
+  assert.deepEqual(getTriggeredEffects(context), [{ effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", selection: { type: "choice", choices: [{ id: "discard", label: "Discard 1 hand card" }, { id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: ["hand:0"] } }]);
+  assert.deepEqual(resolveTriggeredEffect("yin_yang_swords_attack_targeted", context, { choice: "discard", cardKeys: ["hand:0"] })?.outcome, { kind: "target_discard", targetCardId: "hidden" });
+  assert.deepEqual(getTriggeredEffects({ ...context, targetHand: [] })[0].selection, { type: "choice", choices: [{ id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: [] });
+  assert.equal(getTriggeredEffects({ ...context, sourceGender: "female" }).length, 0);
 });
 
 test("Blue Steel Sword suppresses Armor effects and Armor-based Dodge alternatives for its Attack", () => {

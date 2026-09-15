@@ -60,5 +60,9 @@ export function chooseBotTrigger(options: readonly TriggerOption[]) {
     const ids = option.selection.eligibleCardIds.slice(0, option.selection.max);
     return ids.length === 1 ? { providerId: option.effectId, cardId: ids[0] } : { providerId: option.effectId, cardIds: ids };
   }
+  if (option.selection.type === "choice") {
+    const choice = option.selection.choices[0]?.id;
+    return choice === "discard" && option.selection.eligibleHandKeys.length ? { providerId: option.effectId, choice, cardKeys: [option.selection.eligibleHandKeys[0]] } : { providerId: option.effectId, choice };
+  }
   return { providerId: option.effectId, cardKeys: option.selection.eligibleKeys.slice(0, option.selection.max) };
 }
