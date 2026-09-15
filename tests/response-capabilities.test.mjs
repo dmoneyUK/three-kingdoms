@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getResponseOptions, registerResponseProvider, responseOptions, selectResponse } from "../game/responses.ts";
 import { resolveResponseDecision, responseDecisionFor } from "../game/response-decision.ts";
+import { applySuccessfulNegation } from "../game/decisions/negation.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
 import { continueTriggerEvent, chooseBotTrigger, createTriggerDecision, resumeTriggerContinuation } from "../game/decisions/triggers.ts";
@@ -222,6 +223,20 @@ test("canonical response outcomes preserve semantic continuation without provide
   const execution = { status: "satisfied", satisfies: "dodge", consumeCardIds: ["dodge-1"] };
   assert.deepEqual(applyResponseSatisfied(pending, execution), { continuation: pending.continuation, consumeCardIds: ["dodge-1"] });
   assert.deepEqual(applyResponseDeclined(pending), { continuation: pending.continuation });
+});
+
+test("successful Negation has one canonical parity/depth transition", () => {
+  const pending = { kind: "negation", sourceId: "source", actorId: "actor", remainingIds: [], negated: false, cardName: "Dismantle", effectTargetId: "target", resumePhase: "play", effect: { kind: "judgement", targetId: "target", cardId: "delay" }, reason: "respond", chainDepth: 0 };
+  const first = applySuccessfulNegation(pending, { id: "first", name: "First" });
+  assert.equal(first.negated, true); assert.equal(first.chainDepth, 1); assert.equal(first.latestNegationPlayerId, "first");
+  const second = applySuccessfulNegation({ ...first, actorId: "second", chainDepth: 1 }, { id: "second", name: "Second" });
+  assert.equal(second.negated, false); assert.equal(second.chainDepth, 2); assert.equal(second.latestNegationPlayerId, "second");
+});
+
+test("successful Negation never repairs or infers chain depth from stale fields", () => {
+  const pending = { kind: "negation", sourceId: "source", actorId: "actor", remainingIds: [], negated: true, cardName: "Dismantle", effectTargetId: "target", resumePhase: "play", effect: { kind: "judgement", targetId: "target", cardId: "delay" }, reason: "respond", chainDepth: 0, latestNegationPlayerId: "stale" };
+  const transitioned = applySuccessfulNegation(pending, { id: "actor", name: "Actor" });
+  assert.equal(transitioned.chainDepth, 1); assert.equal(transitioned.negated, false);
 });
 
 test("secondary Judgement produces one semantic outcome for every response continuation", () => {
