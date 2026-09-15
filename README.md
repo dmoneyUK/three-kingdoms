@@ -11,6 +11,8 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 
 The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, and bot Attacks, through one imminent-damage transition. Every newly visible response or trigger decision receives a fresh exact presentation barrier, including secondary Judgement, Group/AOE advancement, Negation, and trigger reopen. Canonical ResponsePending/TriggerPending projections no longer infer a missing barrier from the event log; that recovery is limited to legacy persisted pending shapes. Saved-client Frost compatibility is only projected when Frost is an actually available provider; generic damage events are not mislabeled as Frost Sword.
 
+Successful Judgement-based Negation now applies one transitioned parity/depth state before either opening a counter-window or resolving the effect.
+
 ## Source of knowledge
 
 ### Semantic execution status

@@ -19,6 +19,8 @@ Only after all six criteria are green may the final compatibility isolation, can
 
 ## Current baseline
 
+Successful Judgement-based Negation now uses one transitioned parity/depth state for both counter-window and no-responder resolution.
+
 Group/AOE target advancement now creates a fresh public presentation event and assigns that exact event ID to the next response barrier. Canonical pending projections do not infer missing barriers from history; only legacy persisted pending shapes use that migration fallback.
 
 As of 2026-09-15 the working baseline includes the coherent semantic architecture package. One shared imminent-damage transition now handles physical, Serpent Spear, triggered follow-up, and bot Attacks; its discriminated result owns bot continuation state. Secondary Judgement and trigger reopen transitions create fresh exact presentation barriers. Legacy response requests normalize once at ingress, canonical response execution uses semantic providers including zero-cost providers, canonical trigger UI owns hidden-hand and named-equipment selection, and old pending shapes remain only as saved-room adapters. Earlier local runs observed intermittent Green Dragon and Rations failures; the authoritative GitHub run for `96b9e3c` passed 65/65 plus deployment and smoke. Repeat-run validation and synthetic end-to-end extensibility proofs remain open.
