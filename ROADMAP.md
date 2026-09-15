@@ -78,7 +78,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human, bot, and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Saved-state compatibility remains a bounded input/state adapter. Final validation on the current head passed three consecutive full suites at 78/78, plus `npm run lint`, `npm run build`, and `git diff --check`. Semantic response/trigger architecture milestone complete. Blue Steel Sword is the next milestone; production release still requires the normal green GitHub Actions, Cloudflare deployment, and production smoke path.
+The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human seats and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Human-seat regressions cover authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety. Synthetic-provider isolation is complete: test fixtures are explicitly registered only in the test Worker and are absent from production registries. Saved-state compatibility remains a bounded input/state adapter. Final validation on the current head passed three consecutive full suites at 78/78, plus `npm run lint`, `npm run build`, and `git diff --check`. Semantic response/trigger architecture milestone complete. Blue Steel Sword is the next milestone; production release still requires the normal green GitHub Actions, Cloudflare deployment, and production smoke path.
 
 ## Progress summary
 
@@ -161,7 +161,7 @@ Work:
 - introduce a target-owned Attack trigger/decision;
 - offer discard-one-hand-card vs attacker-draw;
 - if the target has no hand card, only the draw branch remains;
-- test human/bot, same-gender and opposite-gender paths.
+- test human-seat, same-gender and opposite-gender paths.
 
 ### 3. Kirin Bow
 
