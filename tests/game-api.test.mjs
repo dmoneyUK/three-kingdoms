@@ -1423,6 +1423,53 @@ test("unknown semantic Dodge and Negate providers cross the real API and D1 boun
   assert.equal(negated.status, 200); assert.equal(negated.data.room.phase, "response"); assert.equal(negated.data.room.pendingNegation.chainDepth, 1); assert.equal(negated.data.room.pendingNegation.negated, true);
 });
 
+test("attack_dodged trigger continuation reopens every synthetic provider through Worker/D1", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host");
+  const alicePlayer = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(hostPlayer && alicePlayer);
+
+  // The test-only trigger registry is inert unless these markers are persisted
+  // in the isolated room, so this exercises the same live discovery path as a
+  // future equipment or hero capability without adding a Standard card.
+  setEquipment(hostPlayer.id, {
+    armor: card("NioShield", "test-trigger-a-equipped"),
+    defensiveHorse: card("NioShield", "test-trigger-b-equipped"),
+  });
+  setHand(hostPlayer.id, [card("Attack", "trigger-chain")], 4, 4);
+  setHand(alicePlayer.id, [card("Dodge", "trigger-chain")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  const attack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-trigger-chain", targetId: alicePlayer.id });
+  assert.equal(attack.status, 200);
+  assert.equal(attack.data.room.pendingAttack.actorId, alicePlayer.id);
+
+  const dodged = await request("respond_dodge", { code: game.code, token: alice.token, cardId: "dodge-trigger-chain" });
+  assert.equal(dodged.status, 200);
+  const offered = await state(game.code, host.token);
+  assert.equal(offered.data.currentAction.kind, "trigger");
+  assert.deepEqual(offered.data.currentAction.triggerOptions.map((option) => option.effectId), ["test_attack_dodged_a", "test_attack_dodged_b"]);
+
+  const afterA = await request("trigger", { code: game.code, token: host.token, providerId: "test_attack_dodged_a" });
+  assert.equal(afterA.status, 200);
+  assert.equal(afterA.data.room.currentAction.kind, "trigger");
+  assert.deepEqual(afterA.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["test_attack_dodged_b"], "provider A is excluded when the same event reopens");
+  const reopened = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(reopened.resolvedEffectIds, ["test_attack_dodged_a"]);
+
+  const afterB = await request("trigger", { code: game.code, token: host.token, providerId: "test_attack_dodged_b" });
+  assert.equal(afterB.status, 200);
+  assert.equal(afterB.data.room.phase, "play-struck", "the original Attack-dodged continuation resumes after trigger exhaustion");
+  assert.equal(afterB.data.room.pending, null);
+  assert.equal(afterB.data.room.currentAction.kind, "turn");
+  assert.equal(afterB.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "a continue_event reaction does not add damage");
+  const triggerResolutions = afterB.data.room.log.filter((entry) => /resolves an optional reaction/.test(entry));
+  assert.equal(triggerResolutions.length, 2, "each synthetic provider resolves exactly once");
+  const persisted = query(`SELECT phase || ':' || COALESCE(pending_json, '') FROM rooms WHERE code=${quote(game.code)}`);
+  assert.match(persisted, /^play-struck:$/, "the room is not stranded in response or resolving");
+});
+
 test("Dying rescue resumes a global response chain and victory stops it immediately", { timeout: 30_000 }, async () => {
   const rescuedGame = await createHumanGame();
   const [host, , bob, carol] = rescuedGame.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = rescuedGame.room.players;
