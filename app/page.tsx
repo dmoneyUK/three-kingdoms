@@ -7,6 +7,7 @@ import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
 import { responseOptions } from "../game/responses";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction } from "../game/protocol.js";
+import { latestPublicMessages } from "../game/messages.js";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type PresentationImportance = "essential" | "informational";
@@ -71,7 +72,6 @@ const UI_TIMING = {
   inactivityCheck: 60000,
   turnDrawStart: 100,
   playedCard: 4000,
-  eventMessage: 3000,
   privateDraw: 3000,
   sequenceDiscard: 700,
 } as const;
@@ -334,7 +334,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   // Events already present when the screen mounts have no new animation to
   // wait for. New event IDs enter this set only after their presentation ends.
   const [presentedEventIds, setPresentedEventIds] = useState<Set<string>>(() => new Set((room.timeline ?? []).map((event) => event.id)));
-  const instantPresentationEvents = useRef(new Set<string>());
   const [resolutionEvents, setResolutionEvents] = useState<GameEvent[]>(initialPendingSequence);
   const [resolutionClosing, setResolutionClosing] = useState(false);
   const [sequenceScopeStartId, setSequenceScopeStartId] = useState(initialPendingSequence[0]?.id ?? "");
@@ -410,8 +409,9 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingGroup?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
   const canRescue = room.phase === "dying" && room.isMyAction;
   const timelineKey = room.timeline.map((event) => event.id).join("|");
-  const hasUnseenPresentations = processedTimelineKey !== timelineKey;
+  const hasUnseenPresentations = room.timeline.some((event) => event.type !== "message" && event.presentation !== false && !presentedEventIds.has(event.id));
   const presentationBusy = Boolean(optimisticPlay || activeEvent || eventQueue.length || resolutionClosing || turnNotice || privateDrawCards.length || hasUnseenPresentations);
+  const gameMessages = useMemo(() => latestPublicMessages(room.timeline, describeEvent), [room.timeline]);
   // A response is one decision, even when it has several providers.  Do not
   // expose (or start timing) one provider before the preceding public effect
   // has finished presenting: every provider and the decline branch open
@@ -471,6 +471,9 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
     const immediatelyPresented = new Set<string>();
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
+      // Informational text is projected into Game Messages and never enters
+      // the sequential visual presentation barrier.
+      if (event.type === "message") return false;
       if (event.type === "card" && optimisticallyPresentedCards.current.delete(event.card.id)) { immediatelyPresented.add(event.id); return false; }
       if (event.type === "cards" && event.action === "play") {
         const matched = event.cards.map((card) => optimisticallyPresentedCards.current.delete(card.id));
@@ -483,7 +486,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
       setResolutionClosing(false);
       const cardsArrived = visible.some((event) => eventCards(event).length > 0);
       if (cardsArrived) resolutionRevision.current += 1;
-      if (cardsArrived) visible.filter((event) => event.type === "message").forEach((event) => instantPresentationEvents.current.add(event.id));
       const latestResolutionId = visible.map((event) => event.resolutionId).filter(Boolean).at(-1);
       if (latestResolutionId && activeEvent?.resolutionId && activeEvent.resolutionId !== latestResolutionId && eventImportance(activeEvent) === "informational") setActiveEvent(null);
       if (!optimisticPlay && !activeEvent && eventQueue.length === 0) {
@@ -500,9 +502,9 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   useEffect(() => { if (!optimisticPlay) return; const timer = setTimeout(() => setOptimisticPlay(null), UI_TIMING.playedCard); return () => clearTimeout(timer); }, [optimisticPlay]);
   useEffect(() => { if (!livePendingStartId || livePendingStartId === sequenceScopeStartId) return; const timer = setTimeout(() => setSequenceScopeStartId(livePendingStartId), 0); return () => clearTimeout(timer); }, [livePendingStartId, sequenceScopeStartId]);
   useEffect(() => { if (!harvestSubmitting || room.pendingHarvest?.actorId === harvestSubmitting.playerId && !room.pendingHarvest.choices.some((choice) => choice.cardId === harvestSubmitting.cardId && choice.playerId === harvestSubmitting.playerId)) return; const timer = setTimeout(() => setHarvestSubmitting(null), 0); return () => clearTimeout(timer); }, [harvestSubmitting, room.pendingHarvest]);
-  useEffect(() => { const unseenEvents = timelineKey.split("|").filter(Boolean).some((id) => !seenEvents.current.has(id)); const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || activeEvent || eventQueue.length || unseenEvents || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, current?.name, lastTimelineId, timelineKey, activeEvent, eventQueue.length]);
+  useEffect(() => { const turnKey = `${room.turnSeat}-${lastTimelineId}`; if (room.status !== "playing" || !room.phase?.startsWith("draw") || activeEvent || eventQueue.length || hasUnseenPresentations || automaticDraw.current === turnKey) return; const noticeTimer = setTimeout(() => setTurnNotice(`${current?.name ?? "Player"}'s turn`), 0); const drawTimer = setTimeout(() => { setTurnNotice(""); if (room.isMyTurn && automaticDraw.current !== turnKey) { automaticDraw.current = turnKey; onActionRef.current("draw"); } }, UI_TIMING.turnDrawStart); return () => { clearTimeout(noticeTimer); clearTimeout(drawTimer); }; }, [room.turnSeat, room.phase, room.status, room.isMyTurn, current?.name, lastTimelineId, hasUnseenPresentations, activeEvent, eventQueue.length]);
   useEffect(() => { if (optimisticPlay || activeEvent || !eventQueue.length) return; const timer = setTimeout(() => { const next = eventQueue[0]; setActiveEvent(next); if (retainsAtPlayer(next)) setResolutionEvents((events) => appendUniqueEvents(events, [next])); setEventQueue((queue) => queue.slice(1)); }, 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue]);
-  useEffect(() => { if (!activeEvent) return; const instant = instantPresentationEvents.current.delete(activeEvent.id); const displayTime = instant ? 0 : activeEvent.type === "card" || activeEvent.type === "cards" ? UI_TIMING.playedCard : UI_TIMING.eventMessage; const timer = setTimeout(() => { if (movesDirectlyToDiscard(activeEvent)) setVisibleDiscardTop(latestDiscardTop.current); setPresentedEventIds((ids) => ids.has(activeEvent.id) ? ids : new Set([...ids, activeEvent.id])); setActiveEvent(null); }, displayTime); return () => clearTimeout(timer); }, [activeEvent]);
+  useEffect(() => { if (!activeEvent) return; const displayTime = activeEvent.type === "card" || activeEvent.type === "cards" ? UI_TIMING.playedCard : 0; const timer = setTimeout(() => { if (movesDirectlyToDiscard(activeEvent)) setVisibleDiscardTop(latestDiscardTop.current); setPresentedEventIds((ids) => ids.has(activeEvent.id) ? ids : new Set([...ids, activeEvent.id])); setActiveEvent(null); }, displayTime); return () => clearTimeout(timer); }, [activeEvent]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing || !resolutionEvents.length) return; const timer = setTimeout(() => setResolutionClosing(true), 0); return () => clearTimeout(timer); }, [optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, room.phase, resolutionClosing, resolutionEvents.length]);
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (sequenceEvents.length || optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing) return; const timer = setTimeout(() => setVisibleDiscardTop(room.discardTop), 0); return () => clearTimeout(timer); }, [room.discardTop, room.phase, sequenceEvents.length, optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, resolutionClosing]);
@@ -573,6 +575,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   return <main className="game-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button type="button" className="text-button history-button" onClick={() => setHistoryOpen(true)}>Event history</button><button className="text-button" onClick={onLeave}>Exit</button></div></header>
     <section className="action-strip" aria-live="polite"><div className="action-step"><small>TURN OWNER</small><b>{current?.name ?? "—"}</b></div><span className="action-arrow">→</span><div className="action-step"><small>CURRENT PHASE</small><b>{phaseName(room.phase)}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{drawWaitingForPresentation ? "NEXT TO ACT" : "ACTING NOW"}</small><b>{actor?.name ?? "—"}{room.isMyAction ? " · YOU" : ""}</b><em>{drawWaitingForPresentation ? "Your draw waits until earlier events finish" : room.actionReason}</em></div></section>
     <section className={`play-table ${sequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`}>
+      <aside className="game-messages" aria-label="Game Messages"><header><span>PUBLIC HISTORY</span><b>Game Messages</b></header><div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div></aside>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {privateDrawCards.length > 0 && !activeEvent && eventQueue.length === 0 && <div className="played-card-stage private-draw-stage" role="status"><Countdown key={privateDrawCards.map((drawn) => drawn.id).join("-")} durationMs={UI_TIMING.privateDraw} label="Cards close in" /><div className="card-action-title"><b>PRIVATE DRAW</b><span>Only you can see these cards</span></div><div className="private-draw-row">{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div>}
       {tablePresentationVisible && <TableResolutionSequence events={sequenceEvents} activeEvent={displayedEvent} waitingReason={!activeEvent && !optimisticPlay && !eventQueue.length && (room.phase === "response" || room.phase === "dying" || room.phase === "resolving") ? room.actionReason : ""} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}

@@ -235,7 +235,10 @@ function withPresentationBarrier<T extends { readyAfterEventId?: string }>(pendi
 
 function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log: string[], message: string): { pending: T; log: string[] } {
   const presentation = addLogWithId(log, message);
-  return { pending: withPresentationBarrier({ ...pending, readyAfterEventId: undefined }, presentation.log, presentation.eventId) as T, log: presentation.log };
+  // This is informational history only. A reopened decision must not wait for
+  // its message; callers that created an essential visual event bind that
+  // event explicitly instead.
+  return { pending: { ...pending, readyAfterEventId: undefined } as T, log: presentation.log };
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
@@ -821,7 +824,8 @@ async function advanceNegation(roomId: string) {
     const presentation = addLogWithId(log, `New Negation window opens for ${next.responseTarget}.`, undefined, { resolutionId: pending.resolutionId });
     log = presentation.log;
     if (!pending.heldCards) discard.push(...consumedCards);
-    await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), actor.id), db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(holders.length ? "response" : "resolving", serializePending(withPresentationBarrier(next, log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(log), roomId)]);
+    const readyAfterEventId = latestDecisionPresentationEventId(log, pending.resolutionId);
+    await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), actor.id), db().prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(holders.length ? "response" : "resolving", serializePending(readyAfterEventId ? withPresentationBarrier(next, log, readyAfterEventId) : next), JSON.stringify(discard), JSON.stringify(log), roomId)]);
     if (!holders.length) { await resolveDeferredStratagem(roomId, next); return; }
   }
 }
@@ -840,7 +844,10 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
     await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id), db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(sequenceDiscard), JSON.stringify(log), room.id)]);
     return resolveDeferredStratagem(room.id, pending);
   }
-  const pending: NegationPending = withPresentationBarrier({ kind: "negation", ...base, actorId: holders[0].id, remainingIds: holders.slice(1).map((player) => player.id), reason: `Play Negation to cancel ${cardDefinition(card.kind).name}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(holders[0]) }, log, presentation.eventId);
+  const readyAfterEventId = latestDecisionPresentationEventId(log, base.resolutionId);
+  const pending: NegationPending = readyAfterEventId
+    ? withPresentationBarrier({ kind: "negation", ...base, actorId: holders[0].id, remainingIds: holders.slice(1).map((player) => player.id), reason: `Play Negation to cancel ${cardDefinition(card.kind).name}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(holders[0]) }, log, readyAfterEventId)
+    : { kind: "negation", ...base, actorId: holders[0].id, remainingIds: holders.slice(1).map((player) => player.id), reason: `Play Negation to cancel ${cardDefinition(card.kind).name}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(holders[0]) };
   await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id), db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(sequenceDiscard), JSON.stringify(log), room.id)]);
   await advanceNegation(room.id);
   return [];
@@ -1074,7 +1081,8 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
     if (isBotPlayer(source)) {
       const presentation = addLogWithId(log, `${source.name}'s Attack is blocked. ${options[0].label.replace(/^Use\s+/, "")} may continue.`);
       const resolutionId = latestResolutionId(presentation.log);
-      const pending: TriggerPending = withPresentationBarrier({ kind: "trigger", event: "attack_dodged", actorId: source.id, resolutionId, reason: `${source.name}'s Attack is blocked. An optional reaction may apply.`, deadline: nextResponseDeadline(source), continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId, resolutionId } }, presentation.log, presentation.eventId);
+      const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, resolutionId);
+      const pending: TriggerPending = { kind: "trigger", event: "attack_dodged", actorId: source.id, resolutionId, reason: `${source.name}'s Attack is blocked. An optional reaction may apply.`, deadline: nextResponseDeadline(source), continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId, resolutionId }, ...(readyAfterEventId ? { readyAfterEventId } : {}) };
       writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
       await db().batch(writes);
       await advanceCanonicalBotTrigger(room.id);
@@ -1091,7 +1099,8 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
       deadline: nextResponseDeadline(source),
       continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId, resolutionId },
     };
-    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
+    const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, resolutionId);
+    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(readyAfterEventId ? withPresentationBarrier(pending, presentation.log, readyAfterEventId) : pending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
     await db().batch(writes);
     return;
   }
@@ -1250,7 +1259,7 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
   const nextSourceHand = sourceHand.filter((card) => card.id !== attack.id);
   const updatedSource = { ...source, hand_json: JSON.stringify(nextSourceHand) } satisfies PlayerRow;
   const declaration = { ...attackDeclaration(source, target, "triggered", [attack], continuation.resumePhase, attack), sequenceStartCardId: continuation.sequenceStartCardId, resolutionId: continuation.resolutionId } satisfies AttackDeclaration;
-  discard.push(attack); log = addCardEvent(log, source.name, attack, target.name); log = addLog(log, `${source.name} uses ${displayLabel} to play another Attack on ${target.name}.`);
+  discard.push(attack); const followUpPresentation = addCardEventWithId(log, source.name, attack, target.name); log = addLog(followUpPresentation.log, `${source.name} uses ${displayLabel} to play another Attack on ${target.name}.`);
   if (isNioShieldImmune(target, attackPhysicalCard(declaration))) {
     log = addLog(log, `${target.name}'s Nio Shield makes them immune to the black Attack. Action returns to ${source.name}.`);
     await db().batch([
@@ -1263,7 +1272,7 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
   let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((card) => card.kind === "Dodge");
   if (!isBotPlayer(target) && canRespondWithDodge(target)) {
     const presentation = addLogWithId(log, `${source.name} plays a triggered Attack on ${target.name}. Action passes to ${target.name} for Dodge response.`);
-    const attackPendingState = withPresentationBarrier(attackPending(declaration, target), presentation.log, presentation.eventId);
+    const attackPendingState = withPresentationBarrier(attackPending(declaration, target), presentation.log, followUpPresentation.eventId);
     await db().batch([
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
       db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(attackPendingState), JSON.stringify(discard), JSON.stringify(presentation.log), room.id),
@@ -1410,7 +1419,8 @@ async function finishGroupStep(room: RoomRow, pending: GroupPending, players: Pl
   const next = nextGroupPending(pending, players);
   if (next) {
     const presentation = addLogWithId(log, `${groupCardName(pending.cardKind)} advances to the next target.`);
-    await beginGroupTarget(room, withPresentationBarrier(next, presentation.log, presentation.eventId), players, discard, presentation.log, writes);
+    const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, pending.resolutionId);
+    await beginGroupTarget(room, readyAfterEventId ? withPresentationBarrier(next, presentation.log, readyAfterEventId) : { ...next, readyAfterEventId: undefined }, players, discard, presentation.log, writes);
     return;
   }
   writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(commitHeldGroupCards(discard, pending)), JSON.stringify(addFinalResult(log, `${groupCardName(pending.cardKind)} finishes resolving.`, undefined, pending.resolutionId)), room.id));
@@ -2179,7 +2189,7 @@ export async function POST(request: Request) {
     const presentation = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${me.name} resolves an optional reaction. ${remaining.length ? "Another reaction remains available." : "No further reactions remain."}`);
     if (remaining.length) {
       const reopened = resumed.kind === "reopen" ? resumed.pending : next;
-      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(reopened, presentation.log, presentation.eventId)), JSON.stringify(presentation.log), room.id).run();
+      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending({ ...reopened, readyAfterEventId: undefined }), JSON.stringify(presentation.log), room.id).run();
       if (isBotPlayer(me)) await advanceCanonicalBotTrigger(room.id);
     } else {
       const continuation = resumed.kind === "resume" ? resumed.continuation : next.continuation;
@@ -2384,13 +2394,14 @@ export async function POST(request: Request) {
       const presentation = addLogWithId(log, `New Negation window opens for ${next.responseTarget}.`);
       log = presentation.log;
       if (!pending.heldCards) discard.push(...consumedCards);
-      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(holders.length ? "response" : "resolving", serializePending(withPresentationBarrier(next, log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+      const readyAfterEventId = latestDecisionPresentationEventId(log, pending.resolutionId);
+      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(holders.length ? "response" : "resolving", serializePending(readyAfterEventId ? withPresentationBarrier(next, log, readyAfterEventId) : next), JSON.stringify(discard), JSON.stringify(log), room.id)]);
       if (holders.length) await advanceNegation(room.id); else await resolveDeferredStratagem(room.id, next);
     } else if (pending.remainingIds[0]) {
       const presentation = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${me.name} passes the Negation opportunity for ${pending.responseTarget ?? pending.cardName}.`);
       const log = presentation.log;
       const nextActor = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.remainingIds[0]).first<PlayerRow>(); const next: NegationPending = { ...pending, actorId: pending.remainingIds[0], remainingIds: pending.remainingIds.slice(1), deadline: nextResponseDeadline(nextActor) };
-      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(next, log, presentation.eventId)), JSON.stringify(log), room.id).run(); await advanceNegation(room.id);
+      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending({ ...next, readyAfterEventId: undefined }), JSON.stringify(log), room.id).run(); await advanceNegation(room.id);
     } else {
       let log = addLog(parse<string[]>(liveRoom.log_json, []), `${me.name} passes the Negation opportunity for ${pending.responseTarget ?? pending.cardName}.`);
       log = addLog(log, `Negation window closes for ${pending.responseTarget ?? pending.cardName}; resolving the effect.`);
@@ -2485,7 +2496,9 @@ export async function POST(request: Request) {
       const attackCards = selectedAttack ? [selectedAttack] : serpentCards; const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
       const presentation = selectedAttack ? addCardEventWithId(log, me.name, selectedAttack, opponent.name) : attackCards.length ? addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name) : addLogWithId(log, `${me.name} uses ${responseExecution.providerId} in the Duel.`, undefined);
       log = addLog(presentation.log, selectedAttack ? `${me.name} plays Attack in the Duel. Action passes to ${opponent.name}.` : attackCards.length ? `${me.name} discards cards to form an Attack in the Duel. Action passes to ${opponent.name}.` : `${me.name} forms an Attack in the Duel. Action passes to ${opponent.name}.`);
-      const nextPending: DuelPending = withPresentationBarrier({ ...pending, readyAfterEventId: undefined, actorId: opponent.id, opponentId: me.id, reason: "Respond to Duel: select Attack or take 1 damage", deadline: nextResponseDeadline(opponent) }, log, presentation.eventId);
+      const nextPending: DuelPending = attackCards.length
+        ? withPresentationBarrier({ ...pending, readyAfterEventId: undefined, actorId: opponent.id, opponentId: me.id, reason: "Respond to Duel: select Attack or take 1 damage", deadline: nextResponseDeadline(opponent) }, log, presentation.eventId)
+        : { ...pending, readyAfterEventId: undefined, actorId: opponent.id, opponentId: me.id, reason: "Respond to Duel: select Attack or take 1 damage", deadline: nextResponseDeadline(opponent) };
       await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
         db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(log), room.id),
@@ -2733,7 +2746,9 @@ export async function POST(request: Request) {
       const declaration = attackDeclaration(me, target, "serpent_spear", materials, phaseAfterAttack(me));
       if (!isBotPlayer(target) && canRespondWithDodge(target)) {
         const presentation = addLogWithId(log, `Action passes from ${me.name} to ${target.name} for Dodge response.`);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackPending(declaration, target), presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
+        const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, latestResolutionId(presentation.log));
+        const nextPending = readyAfterEventId ? withPresentationBarrier(attackPending(declaration, target), presentation.log, readyAfterEventId) : attackPending(declaration, target);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
       } else if (dodge) {
         targetHand = targetHand.filter((item) => item.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, me.name); log = addLog(log, `${target.name} plays Dodge and blocks the formed Attack.`);
         await finishDodgedAttack(liveRoom, { ...me, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, declaration.resumePhase, declaration.sequenceStartCardId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
@@ -2876,7 +2891,7 @@ export async function POST(request: Request) {
         let targetHand = parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((item) => item.kind === "Dodge");
         if (!isBotPlayer(target) && canRespondWithDodge(target)) {
           const presentation = addLogWithId(log, `${me.name} plays Attack on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
-          await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackPending(declaration, target), presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
+          await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackPending(declaration, target), presentation.log, attackPresentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
         } else if (dodge) {
             targetHand = targetHand.filter((item) => item.id !== dodge.id); discard.push(dodge); log = addCardEvent(log, target.name, dodge, me.name); log = addLog(log, `${target.name} plays Dodge and blocks the Attack.`);
             await finishDodgedAttack(liveRoom, { ...me, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, declaration.resumePhase, declaration.sequenceStartCardId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);

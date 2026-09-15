@@ -84,7 +84,11 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /invalidResponseState/);
   assert.doesNotMatch(page, /: "take_damage";/);
   assert.match(page, /playedCard: 4000/);
-  assert.match(page, /eventMessage: 3000/);
+  assert.doesNotMatch(page, /eventMessage: 3000/);
+  assert.match(page, /latestPublicMessages/);
+  assert.match(page, /Game Messages/);
+  assert.match(page, /event\.type === "message"\) return false/);
+  assert.match(page, /event\.type !== "message" && event\.presentation !== false/);
   assert.match(page, /privateDraw: 3000/);
   assert.match(page, /function Countdown/);
   assert.match(page, /visible-countdown/);
@@ -130,10 +134,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /const resolutionRevision = useRef\(0\)/);
   assert.match(page, /const closingRevision = resolutionRevision\.current/);
   assert.match(page, /resolutionRevision\.current !== closingRevision/);
-  assert.match(page, /const instantPresentationEvents = useRef\(new Set<string>\(\)\)/);
   assert.match(page, /const cardsArrived = visible\.some\(\(event\) => eventCards\(event\)\.length > 0\)/);
-  assert.match(page, /instantPresentationEvents\.current\.add\(event\.id\)/);
-  assert.match(page, /const displayTime = instant \? 0/);
+  assert.match(page, /if \(event\.type === "message"\) return false/);
+  assert.match(page, /const displayTime = activeEvent\.type === "card" \|\| activeEvent\.type === "cards" \? UI_TIMING\.playedCard : 0/);
   assert.match(page, /const tablePresentationVisible = sequenceEvents\.length > 0 \|\| Boolean\(displayedEvent && eventCards\(displayedEvent\)\.length\)/);
   assert.match(page, /directDiscard \? "direct-discard" : ""/);
   assert.match(styles, /@keyframes revealedCardsToDiscard/);
