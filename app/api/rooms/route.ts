@@ -1793,12 +1793,22 @@ async function runBots(roomId: string) {
           const pending: AttackPending = { kind: "attack", sourceId: bot.id, targetId: target.id, actorId: target.id, resumePhase: phaseAfterAttack(bot), sequenceStartCardId, reason: "Respond to Attack: provide Dodge or take damage" };
           const decision = responseDecisionFor(asResponsePending(pending), responseContext({ ...target, hand_json: JSON.stringify(targetHand) }));
           const option = decision?.options[0];
-          const cardId = option?.selection?.type === "cards" ? option.selection.eligibleCardIds[0] : undefined;
-          const execution = option ? resolveResponseDecision(pending, responseContext({ ...target, hand_json: JSON.stringify(targetHand) }), option.providerId, { cardId }) : null;
-          if (execution?.status === "satisfied" && execution.consumeCardIds?.length === 1) {
-            const used = targetHand.find((card) => card.id === execution.consumeCardIds?.[0]);
-            if (used) {
-              targetHand = targetHand.filter((card) => card.id !== used.id); discard.push(used); log = addCardEvent(log, target.name, used, bot.name); log = addLog(log, `${target.name} uses ${option?.label ?? "a Dodge provider"}.`);
+          const selection = option?.selection?.type === "cards"
+            ? option.selection.max === 1
+              ? { cardId: option.selection.eligibleCardIds[0] }
+              : { cardIds: option.selection.eligibleCardIds.slice(0, option.selection.max) }
+            : {};
+          const execution = option ? resolveResponseDecision(pending, responseContext({ ...target, hand_json: JSON.stringify(targetHand) }), option.providerId, selection) : null;
+          if (execution?.status === "satisfied") {
+            const consumedIds = execution.consumeCardIds ?? [];
+            const consumed = consumedIds.map((id) => targetHand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
+            if (new Set(consumedIds).size === consumedIds.length && consumed.length === consumedIds.length) {
+              const consumedSet = new Set(consumedIds);
+              targetHand = targetHand.filter((card) => !consumedSet.has(card.id));
+              discard.push(...consumed);
+              if (consumed.length === 1) log = addCardEvent(log, target.name, consumed[0], bot.name);
+              else if (consumed.length > 1) log = addCardGroupEvent(log, target.name, consumed, "discard", true, bot.name);
+              log = addLog(log, consumed.length ? `${target.name} uses ${option?.label ?? "a Dodge provider"}.` : `${target.name} uses ${option?.label ?? "a Dodge provider"} without a card.`);
               await finishDodgedAttack(room, { ...bot, hand_json: JSON.stringify(hand) }, { ...target, hand_json: JSON.stringify(targetHand) }, discard, log, declaration.resumePhase, declaration.sequenceStartCardId, [...writes, db().prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(hand), bot.hp, bot.id), db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id)]);
             }
           } else if (execution?.status === "requires_resolution" && execution.resolution.kind === "judgement") {

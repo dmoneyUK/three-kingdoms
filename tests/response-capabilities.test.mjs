@@ -220,8 +220,10 @@ test("canonical response outcomes preserve semantic continuation without provide
     reason: "Attack response",
     continuation: { kind: "attack", sourceId: "source", targetId: "target", resumePhase: "play" },
   };
-  const execution = { status: "satisfied", satisfies: "dodge", consumeCardIds: ["dodge-1"] };
-  assert.deepEqual(applyResponseSatisfied(pending, execution), { continuation: pending.continuation, consumeCardIds: ["dodge-1"] });
+  for (const consumeCardIds of [[], ["dodge-1"], ["dodge-1", "dodge-2"]]) {
+    const execution = { status: "satisfied", satisfies: "dodge", consumeCardIds };
+    assert.deepEqual(applyResponseSatisfied(pending, execution), { continuation: pending.continuation, consumeCardIds });
+  }
   assert.deepEqual(applyResponseDeclined(pending), { continuation: pending.continuation });
 });
 
