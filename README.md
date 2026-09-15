@@ -15,6 +15,8 @@ Successful Judgement-based Negation now applies one transitioned parity/depth st
 
 Game Messages is now a compact persistent projection of the public server timeline, retaining the latest five deduplicated public messages in a scrollable top-left panel without adding polling or a second history store. Informational text never enters the sequential visual presentation queue: response availability and timers still wait for the exact `readyAfterEventId` card or essential visual event, while card settlement animations retain their existing 4-second centre presentation.
 
+The game table now uses a responsive four-seat player board with no in-game top bar. Each player square keeps the hero name, HP, hand count, compact equipment and Judgement cards together; the turn status identifies the acting player and phase, and distance is no longer shown in player UI cards.
+
 ## Source of knowledge
 
 ### Semantic execution status

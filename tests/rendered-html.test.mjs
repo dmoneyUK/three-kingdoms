@@ -38,9 +38,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   const roomApi = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
   const schema = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
   const officialReference = await readFile(new URL("../docs/OFFICIAL_CARD_REFERENCE.md", import.meta.url), "utf8");
-  assert.match(page, /TURN OWNER/);
-  assert.match(page, /CURRENT PHASE/);
-  assert.match(page, /ACTING NOW/);
+  assert.match(page, /player-board-status/);
+  assert.match(page, /<span>TURN<\/span>/);
+  assert.match(page, /player-square/);
+  assert.match(page, /player\.handCount\} cards/);
   assert.match(page, /onActionRef\.current\("draw"\)/);
   assert.match(page, /turnDrawStart: 100/);
   assert.match(page, /send\("create", \{ quickStart: true \}\)/);
