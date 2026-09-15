@@ -13,7 +13,7 @@ The latest architecture pass routes every Attack origin, including physical, Ser
 
 Successful Judgement-based Negation now applies one transitioned parity/depth state before either opening a counter-window or resolving the effect.
 
-Game Messages is now a compact persistent projection of the public server timeline, retaining the latest ten deduplicated public messages without adding polling or a second history store. Informational text never enters the sequential visual presentation queue: response availability and timers still wait for the exact `readyAfterEventId` card or essential visual event, while card settlement animations retain their existing 4-second centre presentation.
+Game Messages is now a compact persistent projection of the public server timeline, retaining the latest five deduplicated public messages in a scrollable top-left panel without adding polling or a second history store. Informational text never enters the sequential visual presentation queue: response availability and timers still wait for the exact `readyAfterEventId` card or essential visual event, while card settlement animations retain their existing 4-second centre presentation.
 
 ## Source of knowledge
 

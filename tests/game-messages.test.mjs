@@ -4,9 +4,9 @@ import { latestPublicMessages } from "../game/messages.js";
 
 const describe = (event) => event.message ?? `${event.player} plays ${event.card}`;
 
-test("game messages retain the latest ten public timeline entries", () => {
+test("game messages retain the latest five public timeline entries", () => {
   const timeline = Array.from({ length: 12 }, (_, index) => ({ id: `event-${index}`, type: "message", message: `Message ${index}` }));
-  assert.deepEqual(latestPublicMessages(timeline, describe).map((entry) => entry.message), Array.from({ length: 10 }, (_, index) => `Message ${index + 2}`));
+  assert.deepEqual(latestPublicMessages(timeline, describe).map((entry) => entry.message), Array.from({ length: 5 }, (_, index) => `Message ${index + 7}`));
 });
 
 test("game messages deduplicate polling and omit private draw messages", () => {
