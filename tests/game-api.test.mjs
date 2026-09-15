@@ -1470,6 +1470,47 @@ test("attack_dodged trigger continuation reopens every synthetic provider throug
   assert.match(persisted, /^play-struck:$/, "the room is not stranded in response or resolving");
 });
 
+test("damage_about_to_apply trigger exhaustion resumes original Attack damage once", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host");
+  const alicePlayer = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(hostPlayer && alicePlayer);
+
+  setEquipment(hostPlayer.id, {
+    armor: card("NioShield", "test-trigger-a-equipped"),
+    defensiveHorse: card("NioShield", "test-trigger-b-equipped"),
+  });
+  setHand(hostPlayer.id, [card("Attack", "damage-trigger-chain")], 4, 4);
+  setHand(alicePlayer.id, [], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  const attack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-damage-trigger-chain", targetId: alicePlayer.id });
+  assert.equal(attack.status, 200);
+  assert.equal(attack.data.room.currentAction.kind, "trigger");
+  assert.deepEqual(attack.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["test_damage_about_to_apply_a", "test_damage_about_to_apply_b"]);
+  assert.equal(attack.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "damage is deferred while reactions are open");
+
+  const afterA = await request("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a" });
+  assert.equal(afterA.status, 200);
+  assert.equal(afterA.data.room.currentAction.kind, "trigger");
+  assert.deepEqual(afterA.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["test_damage_about_to_apply_b"], "provider A is excluded when the damage event reopens");
+  const reopened = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(reopened.resolvedEffectIds, ["test_damage_about_to_apply_a"]);
+  assert.equal(afterA.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "reopening does not apply damage early");
+
+  const afterB = await request("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b" });
+  assert.equal(afterB.status, 200);
+  assert.equal(afterB.data.room.phase, "play-struck", "the original Attack continuation resumes after trigger exhaustion");
+  assert.equal(afterB.data.room.pending, null);
+  assert.equal(afterB.data.room.currentAction.kind, "turn");
+  assert.equal(afterB.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3, "original Attack damage is applied exactly once");
+  assert.equal(afterB.data.room.log.filter((entry) => /Alice takes 1 damage\./.test(entry)).length, 1, "the damage transition is recorded exactly once");
+  assert.equal(afterB.data.room.log.filter((entry) => /resolves an optional reaction/.test(entry)).length, 2, "each synthetic provider resolves exactly once");
+  const persisted = query(`SELECT phase || ':' || COALESCE(pending_json, '') FROM rooms WHERE code=${quote(game.code)}`);
+  assert.match(persisted, /^play-struck:$/, "the room is not stranded in response or resolving");
+});
+
 test("Dying rescue resumes a global response chain and victory stops it immediately", { timeout: 30_000 }, async () => {
   const rescuedGame = await createHumanGame();
   const [host, , bob, carol] = rescuedGame.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = rescuedGame.room.players;
