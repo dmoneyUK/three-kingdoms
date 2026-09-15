@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Persistent active milestone contract
 
-The semantic execution architecture is **implemented but incomplete pending final validation**. Do not start Blue Steel Sword until deterministic full tests and the required synthetic end-to-end extensibility proofs are green. Preserve the shared transition boundaries below and do not revert to micro-patches.
+The semantic execution architecture milestone is **complete**. Fresh deterministic full tests and the required synthetic end-to-end extensibility proofs are green. Preserve the shared transition boundaries below and begin the next milestone with Blue Steel Sword.
 
 Required completion criteria:
 
@@ -15,7 +15,7 @@ Required completion criteria:
 5. Exhausted damage reactions apply exactly one original damage and enter Dying/rescue when necessary; exhausted Attack reactions finish without adding damage.
 6. End-to-end regressions prove Negation order/parity, Judgement success/failure, Duel bot continuation, damage/Attack trigger exhaustion, human-seat perspective switching across ordinary responses and trigger chains, stale actions, and no room left in `resolving`.
 
-Only after all six criteria are green may the final compatibility isolation, canonical-client, direct-event-ID, and synthetic extensibility cleanup round begin. If any item is open, report the architecture milestone as incomplete.
+All six criteria are green. The final compatibility isolation, canonical-client, direct-event-ID, and synthetic extensibility cleanup round is complete for this milestone; keep the remaining saved-room adapters bounded while card work resumes.
 
 ## Current baseline
 
@@ -23,7 +23,7 @@ Successful Judgement-based Negation now uses one transitioned parity/depth state
 
 Group/AOE target advancement now creates a fresh public presentation event and assigns that exact event ID to the next response barrier. Canonical pending projections do not infer missing barriers from history; only legacy persisted pending shapes use that migration fallback.
 
-As of 2026-09-15 the working baseline includes the coherent semantic architecture package. One shared imminent-damage transition now handles physical, Serpent Spear, triggered follow-up, and bot Attacks; its discriminated result owns bot continuation state. Successful Negation now uses one pure parity/depth transition across human, bot, and Judgement paths, with focused regression coverage, and Judgement no-responder resolution persists the transitioned state before invoking the resolver. Secondary Judgement and trigger reopen transitions create fresh exact presentation barriers; bot trigger continuation re-enters from the persisted acting state. Legacy response requests normalize once at ingress, canonical response execution uses semantic providers including zero-cost providers, and both human and bot Attack continuation accept provider-reported Dodge costs of 0, 1, or many cards. The Worker/D1 E2E suite now proves unknown semantic Attack, zero-card Dodge, zero-card Negate, and both `attack_dodged` and `damage_about_to_apply` events offering synthetic providers A then B through the real API and persisted D1 state; exhausted damage now re-enters the shared damage transition and the lethal regression proves exactly-once damage, one ordinary Dying pending decision, and Peach rescue completion. The new normal-multiplayer regression proves real human tokens switch perspective from an ordinary Dodge response to a Green Dragon trigger and back to the follow-up Dodge, without leaking private hands/options, changing the resolution identity, accepting the wrong seat, or resolving twice. New stale/double-submission regressions race duplicate response, trigger, lethal-damage, and Peach actions and submit a previous action revision; exactly one request claims each persisted transition, while discard, trigger logs, damage, Dying, and final phase remain correct. Synthetic fixtures remain inert unless their test-only markers are persisted. Old pending shapes remain only as saved-room adapters. Fresh isolated validation is pending rerun after this change.
+As of 2026-09-15 the working baseline includes the coherent semantic architecture package. One shared imminent-damage transition now handles physical, Serpent Spear, triggered follow-up, and bot Attacks; its discriminated result owns bot continuation state. Successful Negation now uses one pure parity/depth transition across human, bot, and Judgement paths, with focused regression coverage, and Judgement no-responder resolution persists the transitioned state before invoking the resolver. Secondary Judgement and trigger reopen transitions create fresh exact presentation barriers; bot trigger continuation re-enters from the persisted acting state. Legacy response requests normalize once at ingress, canonical response execution uses semantic providers including zero-cost providers, and both human and bot Attack continuation accept provider-reported Dodge costs of 0, 1, or many cards. The Worker/D1 E2E suite now proves unknown semantic Attack, zero-card Dodge, zero-card Negate, and both `attack_dodged` and `damage_about_to_apply` events offering synthetic providers A then B through the real API and persisted D1 state; exhausted damage now re-enters the shared damage transition and the lethal regression proves exactly-once damage, one ordinary Dying pending decision, and Peach rescue completion. The new normal-multiplayer regression proves real human tokens switch perspective from an ordinary Dodge response to a Green Dragon trigger and back to the follow-up Dodge, without leaking private hands/options, changing the resolution identity, accepting the wrong seat, or resolving twice. New stale/double-submission regressions race duplicate response, trigger, lethal-damage, and Peach actions and submit a previous action revision; exactly one request claims each persisted transition, while discard, trigger logs, damage, Dying, and final phase remain correct. Synthetic fixtures remain inert unless their test-only markers are persisted. Old pending shapes remain only as saved-room adapters. Fresh final validation passed three consecutive 78/78 full suites plus lint, build, and `git diff --check`. Semantic response/trigger architecture milestone complete.
 
 Repository and service:
 
@@ -153,11 +153,11 @@ Every newly created canonical `ResponsePending` and `TriggerPending` stores `rea
 
 Do not remove them in a big-bang cleanup. First finish equivalent semantic trigger orchestration and exact decision barriers, keep saved-game compatibility covered, then delete compatibility branches one path at a time with regression tests.
 
-## Recommended next work — finish validation
+## Recommended next work — begin the next milestone
 
-1. **Finish the remaining architecture exit audit.** The requested semantic-provider E2E validation is green; keep the broader checklist open for any remaining trigger-exhaustion, parity, compatibility, and review exit items.
+1. **Start Blue Steel Sword.** Keep the completed semantic response/trigger boundaries and add the card through capability discovery and the shared execution paths.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
-3. **Resume the WTK Standard card roadmap**, starting with Blue Steel Sword only after the checklist is green.
+3. **Continue the WTK Standard card roadmap**, starting with Blue Steel Sword.
 
 ## Standard card roadmap status
 

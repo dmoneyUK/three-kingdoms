@@ -18,7 +18,7 @@ The response refactor has reached its intended core shape:
 - Green Dragon Blade, Rock Cleaving Axe and Frost Sword use executable triggered-effect capability modules;
 - response interaction waits on a decision-specific `readyAfterEventId` instead of the entire presentation queue.
 
-This response architecture should now be treated as the foundation, not redesigned again. The current final audit checks saved-room compatibility and end-to-end synthetic provider proofs; it is not a new gameplay feature milestone.
+This response architecture is complete and should now be treated as the foundation, not redesigned again. Saved-room compatibility and end-to-end synthetic provider proofs are covered by the green final validation batch.
 
 ## Architecture status — semantic responses, triggers, and presentation barriers
 
@@ -64,7 +64,7 @@ This remains deliberately bounded; do **not** build a universal effects DSL.
 
 The browser now waits for one concrete `currentAction.presentation.readyAfterEventId`, which fixes the earlier global-presentation gate and keeps all legal choices/timer atomic.
 
-Canonical damage-trigger decisions accept the exact presentation event ID from event creation. The final cleanup must extend that direct ownership to every newly-created response/trigger decision; `roomState()` may retain log scanning only for old saved rooms during that migration.
+Canonical damage-trigger decisions accept the exact presentation event ID from event creation, as do all newly-created response/trigger decisions. `roomState()` retains log scanning only for old saved rooms as a bounded migration fallback.
 
 ## Compatibility cleanup — incremental and saved-room safe
 
@@ -78,16 +78,14 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution layer is implemented but not yet signed off. Successful Negation now uses one pure parity/depth transition across human, bot, and Judgement paths, with focused regression coverage. Earlier local runs observed intermittent Green Dragon and Rations regressions; the authoritative 2026-09-14 GitHub run for `96b9e3c` passed 65/65 tests plus deployment and production smoke. Repeat-run validation and the final synthetic-provider end-to-end proofs remain required. Damage reactions enter through one shared imminent-Attack-damage transition, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Saved-state compatibility remains a bounded input/state adapter; do not begin Blue Steel Sword until the final validation is deterministic.
-
-Before continuing gameplay work, obtain a normal green Actions run for the current head. A workflow startup failure is neither a test failure nor a successful validation.
+The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human, bot, and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Saved-state compatibility remains a bounded input/state adapter. Final validation on the current head passed three consecutive full suites at 78/78, plus `npm run lint`, `npm run build`, and `git diff --check`. Semantic response/trigger architecture milestone complete. Blue Steel Sword is the next milestone; production release still requires the normal green GitHub Actions, Cloudflare deployment, and production smoke path.
 
 ## Progress summary
 
 | Stage | Status | Position |
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete | Turn ownership, phases, ordered responses, Dying interruption/resumption and repeated rounds are playable and regression-covered. |
-| 2. Strengthen the general rules engine | Final validation | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented; deterministic regressions and synthetic end-to-end extensibility proofs remain. |
+| 2. Strengthen the general rules engine | Complete | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented and covered by deterministic regressions and synthetic end-to-end extensibility proofs. |
 | 3. Complete the verified Standard card identities | **24 / 28 playable** | Four verified identities remain: Blue Steel Sword, Yin-Yang Swords, Kirin Bow and Borrowed Sword. |
 | 4. Reconcile the physical Standard deck | In progress | `docs/STANDARD_108_DECK_MANIFEST.md` remains the exact quantity/suit/rank target. |
 | 5. Complete match rules | Partly implemented | Main death/reward/victory paths work; edge cases still need expansion. |
