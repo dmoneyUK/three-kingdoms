@@ -18,7 +18,7 @@ test("normalized malformed room state renders through GameRoom", () => {
   });
   assert.ok(room);
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(html, /player-board-status/);
+  assert.match(html, /game-exit/);
   assert.match(html, /Attack/);
   assert.doesNotMatch(html, /Cannot read properties of null/);
 });
