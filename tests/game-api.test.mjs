@@ -1638,6 +1638,156 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.match(persisted, /^play-struck:$/, "the shared rescue pipeline returns to the turn sequence");
 });
 
+test("stale and concurrent response submissions claim each transition once", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice] = game.members;
+  const [hostPlayer, alicePlayer, bobPlayer] = game.room.players;
+  assert.ok(hostPlayer && alicePlayer && bobPlayer);
+
+  setHand(hostPlayer.id, [card("Attack", "stale-response")], 4, 4);
+  setHand(alicePlayer.id, [card("Dodge", "stale-response")], 4, 4);
+  setHand(bobPlayer.id, [card("Peach", "stale-response-rescue")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: "attack-stale-response", targetId: alicePlayer.id });
+  assert.equal(opened.status, 200);
+  const staleContext = {
+    actionRevision: opened.data.room.actionRevision,
+    meId: hostPlayer.id,
+    phase: "play",
+    pendingKind: null,
+    actorId: hostPlayer.id,
+  };
+  const prompt = await state(game.code, alice.token);
+  assert.equal(prompt.data.actionPlayerId, alicePlayer.id);
+
+  const stale = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-stale-response", context: staleContext });
+  assert.equal(stale.status, 409);
+  assert.equal(stale.data.stale, true);
+  assert.equal(stale.data.room.pendingAttack.actorId, alicePlayer.id);
+
+  const context = {
+    actionRevision: prompt.data.actionRevision,
+    meId: alicePlayer.id,
+    phase: prompt.data.phase,
+    pendingKind: "response",
+    actorId: alicePlayer.id,
+  };
+  const results = await Promise.all([
+    request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-stale-response", context }),
+    request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-stale-response", context }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 200).length, 1, "exactly one duplicate response claims the Attack");
+  assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, "the losing duplicate is reported stale");
+
+  const finished = await state(game.code, host.token);
+  assert.equal(finished.data.players.find((player) => player.id === alicePlayer.id).hp, 4);
+  assert.equal(finished.data.log.filter((entry) => /Alice plays Dodge and blocks the Attack/.test(entry)).length, 1, "Dodge is consumed and logged once");
+  assert.equal(discardIds(game.code).filter((id) => id === "dodge-stale-response").length, 1, "the Dodge enters discard once");
+  assert.notEqual(finished.data.phase, "resolving");
+  assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), "", "the response does not strand the room");
+});
+
+test("stale and concurrent trigger submissions execute optional reactions once", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host");
+  const alicePlayer = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(hostPlayer && alicePlayer);
+
+  setEquipment(hostPlayer.id, {
+    armor: card("NioShield", "test-trigger-a-equipped"),
+    defensiveHorse: card("NioShield", "test-trigger-b-equipped"),
+  });
+  setHand(hostPlayer.id, [card("Attack", "stale-trigger")], 4, 4);
+  setHand(alicePlayer.id, [card("Dodge", "stale-trigger")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  await request("play_card", { code: game.code, token: host.token, cardId: "attack-stale-trigger", targetId: alicePlayer.id });
+  await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-stale-trigger" });
+  const offered = await state(game.code, host.token);
+  assert.equal(offered.data.currentAction.kind, "trigger");
+  const context = {
+    actionRevision: offered.data.actionRevision,
+    meId: hostPlayer.id,
+    phase: offered.data.phase,
+    pendingKind: "trigger",
+    actorId: hostPlayer.id,
+  };
+
+  const results = await Promise.all([
+    request("trigger", { code: game.code, token: host.token, providerId: "test_attack_dodged_a", context }),
+    request("trigger", { code: game.code, token: host.token, providerId: "test_attack_dodged_a", context }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 200).length, 1, "exactly one duplicate trigger claims the event");
+  assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, "the losing trigger is reported stale");
+
+  const afterA = await state(game.code, host.token);
+  assert.deepEqual(afterA.data.currentAction.triggerOptions.map((option) => option.effectId), ["test_attack_dodged_b"]);
+  assert.equal(afterA.data.log.filter((entry) => /resolves an optional reaction/.test(entry)).length, 1, "the trigger executes once");
+  const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(pending.resolvedEffectIds, ["test_attack_dodged_a"]);
+
+  const finished = await request("decline_trigger", { code: game.code, token: host.token });
+  assert.equal(finished.status, 200);
+  assert.equal(finished.data.room.phase, "play-struck");
+  assert.equal(finished.data.room.pending, null);
+  assert.notEqual(finished.data.room.phase, "resolving");
+  assert.equal(finished.data.room.log.filter((entry) => /resolves an optional reaction/.test(entry)).length, 1);
+});
+
+test("concurrent lethal damage continuation enters Dying once and accepts one rescue", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, , bob] = game.members;
+  const [hostPlayer, alicePlayer, bobPlayer] = game.room.players;
+  assert.ok(hostPlayer && alicePlayer && bobPlayer);
+
+  setEquipment(hostPlayer.id, {
+    armor: card("NioShield", "test-trigger-a-equipped"),
+    defensiveHorse: card("NioShield", "test-trigger-b-equipped"),
+  });
+  setHand(hostPlayer.id, [card("Attack", "double-lethal")], 4, 4);
+  setHand(alicePlayer.id, [], 1, 4);
+  setHand(bobPlayer.id, [card("Peach", "double-lethal")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  await request("play_card", { code: game.code, token: host.token, cardId: "attack-double-lethal", targetId: alicePlayer.id });
+  await request("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a" });
+  const results = await Promise.all([
+    request("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b" }),
+    request("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b" }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 200).length, 1);
+  assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1);
+
+  const dying = await state(game.code, bob.token);
+  assert.equal(dying.data.phase, "dying");
+  assert.equal(dying.data.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1);
+  assert.equal(dying.data.log.filter((entry) => /enters Dying/.test(entry)).length, 1);
+  assert.equal(dying.data.players.find((player) => player.id === alicePlayer.id).hp, 0);
+
+  const rescueContext = {
+    actionRevision: dying.data.actionRevision,
+    meId: dying.data.meId,
+    phase: dying.data.phase,
+    pendingKind: dying.data.pending?.kind,
+    actorId: dying.data.actionPlayerId,
+  };
+  const rescues = await Promise.all([
+    request("give_peach", { code: game.code, token: bob.token, cardId: "peach-double-lethal", context: rescueContext }),
+    request("give_peach", { code: game.code, token: bob.token, cardId: "peach-double-lethal", context: rescueContext }),
+  ]);
+  assert.equal(rescues.filter((result) => result.status === 200).length, 1, `exactly one Peach rescue claims Dying: ${JSON.stringify(rescues)}`);
+  assert.equal(rescues.filter((result) => result.status === 409).length, 1, "the duplicate rescue is rejected");
+  const finished = await state(game.code, host.token);
+  assert.equal(finished.data.players.find((player) => player.id === alicePlayer.id).hp, 1);
+  assert.equal(finished.data.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1);
+  assert.equal(finished.data.log.filter((entry) => /Peach rescue begins/.test(entry)).length, 1);
+  assert.equal(discardIds(game.code).filter((id) => id === "peach-double-lethal").length, 1);
+  assert.notEqual(finished.data.phase, "resolving");
+  assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), "");
+});
+
 test("Dying rescue resumes a global response chain and victory stops it immediately", { timeout: 30_000 }, async () => {
   const rescuedGame = await createHumanGame();
   const [host, , bob, carol] = rescuedGame.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = rescuedGame.room.players;
