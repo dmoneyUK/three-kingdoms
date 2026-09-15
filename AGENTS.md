@@ -18,7 +18,7 @@ Do not report this milestone complete until every item below is implemented and 
 - all secondary-response prerequisites are validated before claiming the room, or every post-claim path performs a deterministic recovery transition;
 - humans and bots use one semantic trigger continuation executor for `attack_dodged_event` and `damage_about_to_apply_event`;
 - exhausted damage reactions apply the original damage exactly once and enter Dying/rescue when required;
-- required end-to-end regressions exist for Negation ordering/parity, Judgement success/failure, Duel bot continuation, trigger exhaustion, and human/bot parity;
+- required end-to-end regressions exist for Negation ordering/parity, Judgement success/failure, Duel bot continuation, trigger exhaustion, and human-seat perspective switching across ordinary responses and trigger chains;
 - only after the semantic round is green may the final compatibility/client/event-ID cleanup round begin.
 
 For each implementation round, keep this checklist visible in the task notes, run the full local validation suite, and update `README.md` and `HANDOVER.md` to match the actual state. If any checklist item remains open, explicitly say the milestone is incomplete rather than claiming completion.

@@ -182,6 +182,7 @@ function attackPending(declaration: AttackDeclaration, target: PlayerRow): Attac
     reason: "Respond to Attack: play Dodge or use an eligible Dodge alternative, or skip and take 1 damage",
     deadline: nextResponseDeadline(target),
     origin: declaration.origin,
+    ...(declaration.resolutionId ? { resolutionId: declaration.resolutionId } : {}),
     ...(physicalCard ? { physicalCardId: physicalCard.id, physicalSuit: physicalCard.suit } : {}),
   };
 }
@@ -1072,21 +1073,24 @@ async function finishDodgedAttack(room: RoomRow, source: PlayerRow | null, targe
   if (source?.alive && target?.alive && options.length) {
     if (isBotPlayer(source)) {
       const presentation = addLogWithId(log, `${source.name}'s Attack is blocked. ${options[0].label.replace(/^Use\s+/, "")} may continue.`);
-      const pending: TriggerPending = withPresentationBarrier({ kind: "trigger", event: "attack_dodged", actorId: source.id, reason: `${source.name}'s Attack is blocked. An optional reaction may apply.`, deadline: nextResponseDeadline(source), continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId } }, presentation.log, presentation.eventId);
+      const resolutionId = latestResolutionId(presentation.log);
+      const pending: TriggerPending = withPresentationBarrier({ kind: "trigger", event: "attack_dodged", actorId: source.id, resolutionId, reason: `${source.name}'s Attack is blocked. An optional reaction may apply.`, deadline: nextResponseDeadline(source), continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId, resolutionId } }, presentation.log, presentation.eventId);
       writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
       await db().batch(writes);
       await advanceCanonicalBotTrigger(room.id);
       return;
     }
+    const presentation = addLogWithId(log, `${source.name}'s Attack is blocked. ${options.length === 1 ? options[0].label : "Optional reactions"} may apply.`);
+    const resolutionId = latestResolutionId(presentation.log);
     const pending: TriggerPending = {
       kind: "trigger",
       event: "attack_dodged",
       actorId: source.id,
+      resolutionId,
       reason: `Choose an optional reaction to ${target.name}'s Dodge, or skip`,
       deadline: nextResponseDeadline(source),
-      continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId },
+      continuation: { kind: "attack_dodged_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId, resolutionId },
     };
-    const presentation = addLogWithId(log, `${source.name}'s Attack is blocked. ${options.length === 1 ? options[0].label : "Optional reactions"} may apply.`);
     writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
     await db().batch(writes);
     return;
@@ -1245,7 +1249,7 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
   const displayLabel = presentationLabel.replace(/^Use\s+/, "");
   const nextSourceHand = sourceHand.filter((card) => card.id !== attack.id);
   const updatedSource = { ...source, hand_json: JSON.stringify(nextSourceHand) } satisfies PlayerRow;
-  const declaration = { ...attackDeclaration(source, target, "triggered", [attack], continuation.resumePhase, attack), sequenceStartCardId: continuation.sequenceStartCardId } satisfies AttackDeclaration;
+  const declaration = { ...attackDeclaration(source, target, "triggered", [attack], continuation.resumePhase, attack), sequenceStartCardId: continuation.sequenceStartCardId, resolutionId: continuation.resolutionId } satisfies AttackDeclaration;
   discard.push(attack); log = addCardEvent(log, source.name, attack, target.name); log = addLog(log, `${source.name} uses ${displayLabel} to play another Attack on ${target.name}.`);
   if (isNioShieldImmune(target, attackPhysicalCard(declaration))) {
     log = addLog(log, `${target.name}'s Nio Shield makes them immune to the black Attack. Action returns to ${source.name}.`);

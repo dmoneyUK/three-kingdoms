@@ -533,6 +533,88 @@ test("AOE Attack capability preserves legal conversions and auto-damages only wi
   for (const p of [p2, p3]) assert.equal(result.data.room.players.find(player => player.id === p.id).hp, 2);
 });
 
+test("human seat switching preserves private decisions across response and trigger chains", async () => {
+  const game = await createHumanGame();
+  const [host, alice, bob] = game.members;
+  const [hostPlayer, alicePlayer, bobPlayer] = game.room.players;
+  const ids = (room) => room.myHand.map((held) => held.id).sort();
+
+  // Ordinary response: the attack changes the acting seat from Host to Alice.
+  setHand(hostPlayer.id, [card("Attack", "seat-switch")], 4, 4);
+  setHand(alicePlayer.id, [card("Dodge", "seat-switch"), card("Peach", "alice-private")], 4, 4);
+  setHand(bobPlayer.id, [card("Attack", "bob-private")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: "attack-seat-switch", targetId: alicePlayer.id });
+  assert.equal(opened.status, 200);
+  const hostResponse = (await state(game.code, host.token)).data;
+  const aliceResponse = (await state(game.code, alice.token)).data;
+  const bobResponse = (await state(game.code, bob.token)).data;
+  const responseResolutionId = aliceResponse.currentAction.presentation.resolutionId;
+  assert.equal(hostResponse.meId, hostPlayer.id);
+  assert.equal(aliceResponse.meId, alicePlayer.id);
+  assert.equal(aliceResponse.actionPlayerId, alicePlayer.id);
+  assert.equal(aliceResponse.isMyAction, true);
+  assert.equal(hostResponse.isMyAction, false);
+  assert.equal(bobResponse.isMyAction, false);
+  assert.deepEqual(ids(aliceResponse), ["dodge-seat-switch", "peach-alice-private"]);
+  assert.deepEqual(ids(hostResponse), []);
+  assert.deepEqual(ids(bobResponse), ["attack-bob-private"]);
+  assert.ok(aliceResponse.currentAction.options.some((option) => option.providerId === "card"));
+  assert.deepEqual(hostResponse.currentAction.options ?? [], []);
+  assert.deepEqual(bobResponse.currentAction.options ?? [], []);
+  assert.equal(hostResponse.currentAction.presentation.resolutionId, responseResolutionId);
+  assert.equal(bobResponse.currentAction.presentation.resolutionId, responseResolutionId);
+  assert.equal((await request("respond", { code: game.code, token: host.token, providerId: "card", cardId: "dodge-seat-switch" })).status, 409, "the previous seat cannot answer after the actor changes");
+  const answered = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-seat-switch" });
+  assert.equal(answered.status, 200);
+  assert.equal(answered.data.room.phase, "play-struck");
+  assert.equal((await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-seat-switch" })).status, 409, "the same response cannot resolve twice");
+  assert.equal((await state(game.code, host.token)).data.players.find((player) => player.id === alicePlayer.id).hp, 4);
+
+  // Trigger chain: Dodge changes the actor to Host for Green Dragon, then the
+  // follow-up Attack changes it back to Bob for the ordinary response.
+  setEquipment(hostPlayer.id, { weapon: card("GreenDragonBlade", "seat-switch") });
+  setHand(hostPlayer.id, [card("Attack", "trigger-first"), card("Attack", "trigger-follow-up")], 4, 4);
+  setHand(alicePlayer.id, [], 4, 4);
+  setHand(bobPlayer.id, [card("Dodge", "trigger-response"), card("Peach", "bob-private")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+  const triggerAttack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-trigger-first", targetId: bobPlayer.id });
+  assert.equal(triggerAttack.status, 200);
+  const dodged = await request("respond", { code: game.code, token: bob.token, providerId: "card", cardId: "dodge-trigger-response" });
+  assert.equal(dodged.status, 200);
+  setHand(bobPlayer.id, [card("Dodge", "trigger-response"), card("Peach", "bob-private")], 4, 4);
+  const hostTrigger = (await state(game.code, host.token)).data;
+  const bobBeforeTrigger = (await state(game.code, bob.token)).data;
+  const triggerResolutionId = hostTrigger.currentAction.presentation.resolutionId;
+  assert.equal(hostTrigger.meId, hostPlayer.id);
+  assert.equal(hostTrigger.actionPlayerId, hostPlayer.id);
+  assert.equal(hostTrigger.currentAction.kind, "trigger");
+  assert.ok(hostTrigger.currentAction.triggerOptions.some((option) => option.effectId === "green_dragon_blade_attack_dodged"));
+  assert.equal(bobBeforeTrigger.meId, bobPlayer.id);
+  assert.equal(bobBeforeTrigger.isMyAction, false);
+  assert.deepEqual(bobBeforeTrigger.currentAction.triggerOptions ?? [], []);
+  assert.deepEqual(ids(hostTrigger), ["attack-trigger-follow-up"]);
+  assert.deepEqual(ids(bobBeforeTrigger), ["dodge-trigger-response", "peach-bob-private"]);
+  assert.equal(bobBeforeTrigger.currentAction.presentation.resolutionId, triggerResolutionId);
+  assert.equal((await request("trigger", { code: game.code, token: bob.token, providerId: "green_dragon_blade_attack_dodged", cardId: "attack-trigger-follow-up" })).status, 409, "the defender cannot answer the attacker's trigger");
+  const followUp = await request("trigger", { code: game.code, token: host.token, providerId: "green_dragon_blade_attack_dodged", cardId: "attack-trigger-follow-up" });
+  assert.equal(followUp.status, 200);
+  const bobResponseAgain = (await state(game.code, bob.token)).data;
+  const hostAfterSwitch = (await state(game.code, host.token)).data;
+  assert.equal(bobResponseAgain.meId, bobPlayer.id);
+  assert.equal(bobResponseAgain.actionPlayerId, bobPlayer.id);
+  assert.equal(bobResponseAgain.isMyAction, true);
+  assert.equal(bobResponseAgain.currentAction.kind, "response");
+  assert.ok(bobResponseAgain.currentAction.options.some((option) => option.providerId === "card"));
+  assert.deepEqual(hostAfterSwitch.currentAction.options ?? [], []);
+  assert.equal(bobResponseAgain.currentAction.presentation.resolutionId, triggerResolutionId);
+  const followUpAnswered = await request("respond", { code: game.code, token: bob.token, providerId: "card", cardId: "dodge-trigger-response" });
+  assert.equal(followUpAnswered.status, 200);
+  assert.equal(followUpAnswered.data.room.phase, "play-struck");
+  assert.equal((await request("respond", { code: game.code, token: bob.token, providerId: "card", cardId: "dodge-trigger-response" })).status, 409, "the trigger chain cannot resolve its response twice");
+  assert.equal((await state(game.code, host.token)).data.players.find((player) => player.id === bobPlayer.id).hp, 4);
+});
+
 test("Negation opportunities start at the target, include the user, and reset only after a card", async () => {
   const game = await createHumanGame(); const players = game.room.players;
   for (const player of players) setHand(player.id, [card("Negation", `${player.seat}-one`), card("Negation", `${player.seat}-two`), card("Attack", `${player.seat}-reply`)], 4, 4);
