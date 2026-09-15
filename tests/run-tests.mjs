@@ -16,7 +16,7 @@ if (migration.status !== 0) {
   throw new Error(`Failed to initialize local D1 for tests.\n${migration.stdout}\n${migration.stderr}`);
 }
 
-server = spawn("npx", ["wrangler", "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", String(port), "--local", "--persist-to", testStatePath, "--show-interactive-dev-session=false"], { cwd: new URL("../", import.meta.url), env: { ...process.env }, stdio: ["ignore", "pipe", "pipe"] });
+server = spawn("npx", ["wrangler", "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", String(port), "--local", "--persist-to", testStatePath, "--var", "WTK_TEST_CAPABILITIES:1", "--show-interactive-dev-session=false"], { cwd: new URL("../", import.meta.url), env: { ...process.env }, stdio: ["ignore", "pipe", "pipe"] });
 server.stdout.on("data", (chunk) => { output += chunk; });
 server.stderr.on("data", (chunk) => { output += chunk; });
 
@@ -35,7 +35,10 @@ try {
   const tests = spawn(process.execPath, ["--import", "tsx", "--test", "--test-concurrency=1", "tests/private-hand.test.mjs", "tests/response-capabilities.test.mjs", "tests/room-safety.test.mjs", "tests/room-safety-render.test.mjs", "tests/rendered-html.test.mjs", "tests/game-api.test.mjs"], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_URL: url }, stdio: "inherit" });
   process.exitCode = await new Promise((resolve) => tests.on("exit", resolve)) ?? 1;
   if (process.exitCode !== 0) process.stderr.write(`\nTest server output:\n${output}\n`);
-} finally { server?.kill("SIGTERM"); }
+} finally {
+  if (server) { try { await fetch(`${url}/__test/cleanup-capabilities`); } catch { /* The server may already have exited. */ } }
+  server?.kill("SIGTERM");
+}
 
 // Cloudflare's development server can leave worker handles alive in CI. Exit
 // explicitly, but preserve the test result instead of masking failures.

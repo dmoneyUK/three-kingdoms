@@ -9,8 +9,30 @@ import { continueTriggerEvent, chooseBotTrigger, createTriggerDecision, resumeTr
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
 import { normalizeLegacyResponseAction } from "../game/compat/legacy-actions.ts";
 import { readFile } from "node:fs/promises";
+import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
+
+test("production registries exclude synthetic semantic capabilities", () => {
+  const responseOptions = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" });
+  const triggerOptions = getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("Test", "test-trigger-a")] });
+  assert.deepEqual(responseOptions, []);
+  assert.deepEqual(triggerOptions, []);
+  assert.equal(testSemanticResponseProviders.length, 3);
+  assert.equal(testSemanticTriggers.length, 4);
+});
+
+test("isolated capability setup registers and cleans up synthetic providers", () => {
+  const unregister = registerTestSemanticCapabilities();
+  try {
+    assert.deepEqual(getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" }).map((option) => option.providerId), ["test_semantic_attack"]);
+    assert.deepEqual(getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("Test", "test-trigger-a")] }).map((option) => option.effectId), ["test_attack_dodged_a"]);
+  } finally {
+    unregister();
+  }
+  assert.deepEqual(getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" }), []);
+  assert.deepEqual(getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("Test", "test-trigger-a")] }), []);
+});
 
 test("capability discovery exposes semantic Dodge and Attack providers", () => {
   const dodge = getResponseOptions({ hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, { kind: "dodge", sourceId: "p1", targetId: "p2" });

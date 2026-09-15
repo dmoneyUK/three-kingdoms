@@ -1,6 +1,8 @@
 import type { Card } from "../model";
 import type { ResponseProvider } from "../responses";
 import type { TriggeredEffect } from "./triggers";
+import { registerResponseProvider } from "../responses";
+import { registerTriggeredEffect } from "./triggers";
 
 // These capabilities are intentionally inert unless a test-only hero or
 // equipment marker is installed directly in the isolated D1 fixture. They
@@ -51,3 +53,12 @@ export const testSemanticTriggers: TriggeredEffect[] = [
   continueTrigger("test_damage_about_to_apply_a", "damage_about_to_apply", "test-trigger-a", "Test damage reaction A"),
   continueTrigger("test_damage_about_to_apply_b", "damage_about_to_apply", "test-trigger-b", "Test damage reaction B"),
 ];
+
+/** Installs synthetic capabilities only for an isolated test environment. */
+export function registerTestSemanticCapabilities() {
+  const unregisterResponses = testSemanticResponseProviders.map((provider) => registerResponseProvider(provider));
+  const unregisterTriggers = testSemanticTriggers.map((trigger) => registerTriggeredEffect(trigger));
+  return () => {
+    for (const unregister of [...unregisterTriggers, ...unregisterResponses].reverse()) unregister();
+  };
+}

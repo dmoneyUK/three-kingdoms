@@ -5,6 +5,7 @@ import handler from "vinext/server/app-router-entry";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  WTK_TEST_CAPABILITIES?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -12,6 +13,17 @@ interface Env {
       };
     };
   };
+}
+
+let testCapabilityCleanup: (() => void) | null = null;
+let testCapabilitySetup: Promise<void> | null = null;
+
+async function setupTestCapabilities(env: Env) {
+  if (env.WTK_TEST_CAPABILITIES !== "1" || testCapabilityCleanup) return;
+  testCapabilitySetup ??= import("../game/capabilities/test-fixtures").then(({ registerTestSemanticCapabilities }) => {
+    testCapabilityCleanup = registerTestSemanticCapabilities();
+  });
+  await testCapabilitySetup;
 }
 
 interface ExecutionContext {
@@ -28,6 +40,14 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname === "/__test/cleanup-capabilities" && env.WTK_TEST_CAPABILITIES === "1") {
+      testCapabilityCleanup?.();
+      testCapabilityCleanup = null;
+      testCapabilitySetup = null;
+      return new Response("ok");
+    }
+    await setupTestCapabilities(env);
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];

@@ -2,7 +2,6 @@ import type { Card } from "../model";
 import { greenDragonBladeDodgedAttackTrigger } from "./equipment/green-dragon-blade";
 import { rockCleavingAxeDodgedAttackTrigger } from "./equipment/rock-cleaving-axe";
 import { frostSwordDamageAboutToApplyTrigger } from "./equipment/frost-sword";
-import { testSemanticTriggers } from "./test-fixtures";
 
 export type TriggerEvent = "attack_dodged" | "damage_about_to_apply";
 /**
@@ -33,7 +32,7 @@ export type TriggeredEffect = {
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
 };
 
-const triggers: TriggeredEffect[] = [greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, ...testSemanticTriggers];
+const triggers: TriggeredEffect[] = [greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {
