@@ -8,7 +8,7 @@ export type ResponseKind = "Attack" | "Dodge";
 export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null };
 export type SemanticAction = "attack" | "dodge" | "damage" | "recover" | "draw" | "discard" | "negate" | "judgement" | "gain_card" | "lose_card";
 export type ActionRequirement =
-  | { kind: "dodge"; sourceId?: string; targetId?: string; attack?: unknown }
+  | { kind: "dodge"; sourceId?: string; targetId?: string; attack?: { cardId?: string; suit?: string; ignoresArmor?: boolean } }
   | { kind: "attack"; sourceId?: string; actorId?: string; context?: "duel" | "barbarian_invasion" | "green_dragon" }
   | { kind: "negate"; sourceId?: string; targetId?: string };
 export type ResponseSelection = { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null;
@@ -51,7 +51,7 @@ export function registerResponseProvider(provider: ResponseProvider) {
 export function getResponseOptions(context: CapabilityContext, requirement: ActionRequirement) {
   const satisfies = requirement.kind;
   const options = providers.filter((provider) => provider.satisfies === satisfies).flatMap((provider) => {
-    const option = provider.getOption(context);
+    const option = provider.getOption({ ...context, requirement });
     return option ? [{ ...option, activation: provider.activation }] : [];
   });
   // The ordinary physical-card route is the sole immediate/default route.

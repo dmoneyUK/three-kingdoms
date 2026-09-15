@@ -168,7 +168,7 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — begin the next milestone
 
-1. **Start Blue Steel Sword.** Keep the completed semantic response/trigger boundaries and add the card through capability discovery and the shared execution paths.
+1. **Finish Blue Steel Sword.** Its card identity, deck copy, armor-suppression modifier, Dodge-provider interaction, and regressions are in progress; keep the completed semantic response/trigger boundaries.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
 3. **Continue the WTK Standard card roadmap**, starting with Blue Steel Sword.
 

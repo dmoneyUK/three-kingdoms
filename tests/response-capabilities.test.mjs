@@ -175,6 +175,15 @@ test("passive and triggered equipment capabilities are discovered outside the ro
   assert.deepEqual(resolveTriggeredEffect("frost_sword_damage_about_to_apply", frostContext, { cardKeys: ["hand:0", "frost-armor"] }), { status: "resolved", effectId: "frost_sword_damage_about_to_apply", outcome: { kind: "prevent_damage", targetCardIds: ["frost-hand", "frost-armor"] } });
 });
 
+test("Blue Steel Sword suppresses Armor effects and Armor-based Dodge alternatives for its Attack", () => {
+  const blueSteel = card("BlueSteelSword", "blue-steel");
+  const shield = card("NioShield", "nio-shield");
+  const attack = { ...card("Attack", "blue-attack"), suit: "♠" };
+  assert.equal(resolvePassiveAttackModifiers({ targetEquipment: [shield], sourceEquipment: [blueSteel], attack }), null);
+  assert.deepEqual(getResponseOptions({ hand: [], equipment: [card("EightTrigrams", "trigrams")], hero: null }, { kind: "dodge", sourceId: "source", targetId: "target", attack: { cardId: attack.id, suit: attack.suit, ignoresArmor: true } }), []);
+  assert.deepEqual(getResponseOptions({ hand: [], equipment: [card("EightTrigrams", "trigrams")], hero: null }, { kind: "dodge", sourceId: "source", targetId: "target", attack: { cardId: attack.id, suit: attack.suit } }).map((option) => option.providerId), ["eight_trigrams_dodge"]);
+});
+
 test("multiple event triggers are projected without route-level provider selection", () => {
   const unregisterFirst = registerTriggeredEffect({
     id: "test_first_dodged_trigger",

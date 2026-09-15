@@ -166,9 +166,10 @@ function attackDistance(players: PlayerRow[], sourceId: string, targetId: string
 function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "ZhugeCrossbow"; }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
-function isNioShieldImmune(target?: PlayerRow | null, attack?: Card | null) { return Boolean(target && resolvePassiveAttackModifiers({ targetEquipment: equipmentCards(target), attack })?.prevented); }
+function hasBlueSteelSword(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "BlueSteelSword"; }
+function isNioShieldImmune(target?: PlayerRow | null, attack?: Card | null, source?: PlayerRow | null) { return Boolean(target && resolvePassiveAttackModifiers({ targetEquipment: equipmentCards(target), sourceEquipment: equipmentCards(source), attack })?.prevented); }
 function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackOrigin, physicalCards: Card[], resumePhase: string, attackCard?: Card): AttackDeclaration {
-  return { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", resumePhase };
+  return { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, ignoresArmor: hasBlueSteelSword(source), sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", resumePhase };
 }
 function attackPending(declaration: AttackDeclaration, target: PlayerRow): AttackPending {
   const physicalCard = attackPhysicalCard(declaration);
@@ -183,6 +184,7 @@ function attackPending(declaration: AttackDeclaration, target: PlayerRow): Attac
     deadline: nextResponseDeadline(target),
     origin: declaration.origin,
     ...(declaration.resolutionId ? { resolutionId: declaration.resolutionId } : {}),
+    ...(declaration.ignoresArmor ? { ignoresArmor: true } : {}),
     ...(physicalCard ? { physicalCardId: physicalCard.id, physicalSuit: physicalCard.suit } : {}),
   };
 }
@@ -1260,7 +1262,7 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
   const updatedSource = { ...source, hand_json: JSON.stringify(nextSourceHand) } satisfies PlayerRow;
   const declaration = { ...attackDeclaration(source, target, "triggered", [attack], continuation.resumePhase, attack), sequenceStartCardId: continuation.sequenceStartCardId, resolutionId: continuation.resolutionId } satisfies AttackDeclaration;
   discard.push(attack); const followUpPresentation = addCardEventWithId(log, source.name, attack, target.name); log = addLog(followUpPresentation.log, `${source.name} uses ${displayLabel} to play another Attack on ${target.name}.`);
-  if (isNioShieldImmune(target, attackPhysicalCard(declaration))) {
+  if (isNioShieldImmune(target, attackPhysicalCard(declaration), source)) {
     log = addLog(log, `${target.name}'s Nio Shield makes them immune to the black Attack. Action returns to ${source.name}.`);
     await db().batch([
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
@@ -1373,7 +1375,7 @@ async function beginGroupTarget(room: RoomRow, pending: GroupPending, players: P
   }
   if (pending.cardKind === "SkyPiercingHalberdAttack") {
     const attack = pending.heldCards?.find(isAttackCard);
-    if (isNioShieldImmune(actor, attack)) {
+    if (isNioShieldImmune(actor, attack, source)) {
       log = addLog(log, `${actor.name}'s Nio Shield makes them immune to ${source.name}'s black Attack.`);
       await finishGroupStep(room, pending, players, discard, log, writes);
       return;
@@ -1793,7 +1795,7 @@ async function runBots(roomId: string) {
       log = attack ? addCardEvent(log, bot.name, attack, target.name) : addCardGroupEvent(log, bot.name, attackCards, "play", true, target.name);
       if (!attack) log = addLog(log, `${bot.name} discards 2 cards with Serpent Spear to form an Attack on ${target.name}.`);
       let targetHand = changedHands.get(target.id) ?? parse<Card[]>(target.hand_json, []); const dodge = targetHand.find((card) => card.kind === "Dodge");
-      if (isNioShieldImmune(target, attackPhysicalCard(declaration))) {
+      if (isNioShieldImmune(target, attackPhysicalCard(declaration), bot)) {
         log = addLog(log, `${target.name}'s Nio Shield makes them immune to ${bot.name}'s black Attack.`);
       } else if (dodge || hasDodgeResponse(responseContext(target))) {
         if (!isBotPlayer(target)) {
@@ -2880,7 +2882,7 @@ export async function POST(request: Request) {
           return json({ room: await roomState(code, token) });
         }
         const declaration = attackDeclaration(me, target, halberdAttack ? "halberd" : "card", [card], phaseAfterAttack(me), card);
-        if (isNioShieldImmune(target, attackPhysicalCard(declaration))) {
+        if (isNioShieldImmune(target, attackPhysicalCard(declaration), me)) {
           log = addLog(log, `${target.name}'s Nio Shield makes them immune to ${me.name}'s black Attack. Action returns to ${me.name}.`);
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),

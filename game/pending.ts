@@ -4,8 +4,8 @@ import type { TriggerEvent } from "./capabilities/triggers";
 
 /** The one persisted decision in a room, independent of HTTP and D1. */
 export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered";
-export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; sequenceStartCardId: string; resumePhase: string; resolutionId?: string };
-export type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actorId: string; resumePhase?: string; sequenceStartCardId?: string; reason: string; deadline?: number; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; resolutionId?: string; readyAfterEventId?: string };
+export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; sequenceStartCardId: string; resumePhase: string; resolutionId?: string };
+export type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actorId: string; resumePhase?: string; sequenceStartCardId?: string; reason: string; deadline?: number; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; ignoresArmor?: boolean; resolutionId?: string; readyAfterEventId?: string };
 export type GreenDragonPending = { kind: "green_dragon"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };
 export type RockCleavingPending = { kind: "rock_cleaving"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };
 export type FrostSwordPending = { kind: "frost_sword"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };
@@ -90,7 +90,7 @@ function continuationForLegacy(pending: LegacyResponsePending): ResponseContinua
 
 function requirementForLegacyResponse(pending: LegacyResponsePending): ActionRequirement {
   switch (pending.kind) {
-    case "attack": return { kind: "dodge", sourceId: pending.sourceId, targetId: pending.targetId };
+    case "attack": return { kind: "dodge", sourceId: pending.sourceId, targetId: pending.targetId, attack: { cardId: pending.physicalCardId, suit: pending.physicalSuit, ignoresArmor: pending.ignoresArmor } };
     case "group": return { kind: pending.requiredKind === "Attack" ? "attack" : "dodge", sourceId: pending.sourceId, actorId: pending.actorId, context: pending.requiredKind === "Attack" ? "barbarian_invasion" : undefined };
     case "duel": return { kind: "attack", sourceId: pending.sourceId, actorId: pending.actorId, context: "duel" };
     case "negation": return { kind: "negate", sourceId: pending.sourceId, targetId: pending.effectTargetId };
