@@ -47,6 +47,8 @@ Quick Test is a single-controller table: one token controls four human-style sea
 
 Game Messages is a non-modal, responsive top-left panel derived from the public room timeline. It keeps the latest five public textual/card messages in a scrollable list, deduplicated by authoritative event ID, and excludes private draw messages. It uses no extra request or D1 state. Message events are informational history only and are filtered out of the blocking presentation queue. Essential card and card-group events retain their existing centre presentation and settlement animations; `readyAfterEventId` remains the exact event gate for response controls and response timers. Message-only transitions clear that barrier, while transitions that also create a card or essential visual event bind to that event ID. Quick Test and normal multiplayer therefore wait for the card presentation, not for message visibility or queue emptiness.
 
+Equipment cards in the Equipment Zone and delayed cards in each Judgement Zone retain an info button linked to the existing card explanation dialog. The controls are separate from equipment response-cost selection and do not change gameplay state.
+
 Fresh validation for this change: `npm test` passed all 80 tests (including the latest-five, rolling-retention, deduplication, and private-message projection tests); final `npm run lint`, `npm run build`, and `git diff --check` also passed.
 
 Room GETs are read-only. Presence uses a throttled heartbeat. Tests use an isolated Miniflare D1 under `.wrangler/test-state`, not the normal local development database. Human response clocks are armed only after the visible decision becomes available; duplicate timer starts are idempotent.

@@ -87,6 +87,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.doesNotMatch(page, /eventMessage: 3000/);
   assert.match(page, /latestPublicMessages/);
   assert.match(page, /Game Messages/);
+  assert.match(page, /equipment-info-overlay/);
+  assert.match(page, /judgement-info-overlay/);
+  assert.match(page, /setInfoCard\(equipment\)/);
+  assert.match(page, /setInfoCard\(judgement\)/);
   assert.match(page, /event\.type === "message"\) return false/);
   assert.match(page, /event\.type !== "message" && event\.presentation !== false/);
   assert.match(page, /privateDraw: 3000/);
