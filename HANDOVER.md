@@ -61,7 +61,7 @@ Secret roles are rendered only in the local player square. The Negation skip but
 
 Equipment cards in the Equipment Zone and delayed cards in each Judgement Zone retain an info button linked to the existing card explanation dialog. The controls are separate from equipment response-cost selection and do not change gameplay state.
 
-Fresh validation for this change: `npm test` passed all 80 tests (including the latest-five, rolling-retention, deduplication, and private-message projection tests); final `npm run lint`, `npm run build`, and `git diff --check` also passed.
+Fresh validation for this change: `npm test` passed all 80 tests (including the latest-ten, rolling-retention, deduplication, and private-message projection tests); final `npm run lint`, `npm run build`, and `git diff --check` also passed.
 
 Room GETs are read-only. Presence uses a throttled heartbeat. Tests use an isolated Miniflare D1 under `.wrangler/test-state`, not the normal local development database. Human response clocks are armed only after the visible decision becomes available; duplicate timer starts are idempotent.
 
