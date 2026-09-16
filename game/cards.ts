@@ -73,6 +73,7 @@ export const DECK_COUNTS: Partial<Record<CardKind, number>> = {
   RainingArrows: 1,
   BumperHarvest: 2,
   Negation: 3,
+  BorrowedSword: 2,
   Overindulgence: 2,
   Lightning: 2,
   ZhugeCrossbow: 2,

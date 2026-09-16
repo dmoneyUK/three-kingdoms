@@ -14,8 +14,9 @@ export type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "Rai
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
 export type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; botAdvanceAt?: number; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 export type TargetCardPending = { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
+export type BorrowedSwordPending = { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; stage: "choose_target" | "force_attack" };
 export type DeferredStratagem =
-  | { kind: "draw_two"; cardId: string } | { kind: "oath" } | { kind: "harvest"; chooserIds: string[] } | { kind: "harvest_target"; pending: HarvestPending }
+  | { kind: "draw_two"; cardId: string } | { kind: "oath" } | { kind: "harvest"; chooserIds: string[] } | { kind: "harvest_target"; pending: HarvestPending } | { kind: "borrowed_sword"; targetId: string }
   | { kind: "dismantle"; targetId: string } | { kind: "steal"; targetId: string } | { kind: "duel"; pending: DuelPending } | { kind: "group"; pending: GroupPending }
   | { kind: "overindulgence"; targetId: string; cardId: string } | { kind: "lightning"; targetId: string; cardId: string } | { kind: "rations_depleted"; targetId: string; cardId: string } | { kind: "judgement"; targetId: string; cardId: string };
 export type NegationPending = { kind: "negation"; sourceId: string; actorId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; reason: string; heldCards?: Card[]; deadline?: number; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; readyAfterEventId?: string };

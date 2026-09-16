@@ -87,7 +87,7 @@ The semantic execution layer is complete. Successful Negation uses one pure pari
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete | Turn ownership, phases, ordered responses, Dying interruption/resumption and repeated rounds are playable and regression-covered. |
 | 2. Strengthen the general rules engine | Complete | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented and covered by deterministic regressions and synthetic end-to-end extensibility proofs. |
-| 3. Complete the verified Standard card identities | **27 / 28 playable** | One verified identity remains: Borrowed Sword. |
+| 3. Complete the verified Standard card identities | **28 / 28 playable** | Borrowed Sword is implemented; continue regression expansion. |
 | 4. Reconcile the physical Standard deck | In progress | `docs/STANDARD_108_DECK_MANIFEST.md` remains the exact quantity/suit/rank target. |
 | 5. Complete match rules | Partly implemented | Main death/reward/victory paths work; edge cases still need expansion. |
 | 6. Hero-specific abilities | Deferred except architecture proofs | Qingguo is the first live proof. Broad hero work begins after shared cards/rules architecture is stable. |
@@ -181,20 +181,20 @@ Work:
 
 Implemented through the generic `damage_about_to_apply` trigger registry with live Mount-slot selection, semantic target discard, original-damage resumption, deck registration, Quick Test availability, and human/API regression coverage.
 
-### 4. Borrowed Sword
+### 4. Borrowed Sword — implemented
 
 **Q ♣ — Regular Stratagem**
 
 Target another character who has a Weapon. That character must play `[Attack]` against a legal second target chosen by the Borrowed Sword user; otherwise the Borrowed Sword user obtains the first target's Weapon.
 
-Work:
+Implemented:
 
 - require first target to have a Weapon;
 - choose a second target using the weapon holder's current attack range;
 - run the forced Attack through the normal Attack/Dodge/equipment/damage pipeline;
 - if the first target cannot or does not provide Attack, transfer the Weapon rather than discard it;
 - support Negation before the effect resolves;
-- test range, successful Attack, refusal/no Attack, Negation, transfer and replacement.
+- support Negation before the effect resolves and include the card in the Standard deck and Quick Test opening hand.
 
 ## Verified implemented Standard identities — 24
 

@@ -135,7 +135,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const displayedRoles = await Promise.all(game.members.map(async (member) => (await state(game.code, member.token)).data.myRole));
   assert.ok(displayedRoles.includes("Traitor")); assert.ok(!displayedRoles.includes("Renegade"), "the Renegade role is presented as Traitor");
   const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
-  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BlueSteelSword:1", "BumperHarvest:2", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "EightTrigrams:2", "FerganaSteed:1", "FrostSword:1", "GreenDragonBlade:1", "HexMark:1", "KirinBow:1", "Lightning:2", "Negation:3", "NioShield:1", "Oath:1", "Overindulgence:2", "Peach:8", "PurpleBay:1", "RainingArrows:1", "RedHare:1", "RockCleavingAxe:1", "SerpentSpear:1", "Shadowrunner:1", "SkyPiercingHalberd:1", "Steal:5", "YellowHoofedFlyingLightning:1", "YinYangSwords:1", "ZhugeCrossbow:2"]);
+  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BlueSteelSword:1", "BorrowedSword:2", "BumperHarvest:2", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "EightTrigrams:2", "FerganaSteed:1", "FrostSword:1", "GreenDragonBlade:1", "HexMark:1", "KirinBow:1", "Lightning:2", "Negation:3", "NioShield:1", "Oath:1", "Overindulgence:2", "Peach:8", "PurpleBay:1", "RainingArrows:1", "RedHare:1", "RockCleavingAxe:1", "SerpentSpear:1", "Shadowrunner:1", "SkyPiercingHalberd:1", "Steal:5", "YellowHoofedFlyingLightning:1", "YinYangSwords:1", "ZhugeCrossbow:2"]);
   assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
   const aliceView = await state(game.code, alice.token);
   assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
@@ -423,7 +423,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(quick.data.room.players.find((player) => player.name === "ME").hero, "zhang-fei");
   assert.ok(quick.data.room.players.filter((player) => player.name !== "ME").every((player) => player.hp === 3 && player.maxHp === 3));
   assert.equal(quick.data.room.myHand.length, 4);
-  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "EightTrigrams", "KirinBow"]), "ME starts with the newly implemented card and otherwise-randomized opening cards");
+  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "BorrowedSword", "EightTrigrams"]), "ME starts with the newly implemented card and otherwise-randomized opening cards");
   assert.equal(quick.data.room.myHand.filter((openingCard) => openingCard.kind === "Attack").length, 2, "ME starts with two Attack cards alongside the implemented-card fixtures");
   assert.ok(quick.data.room.myHand.some((openingCard) => openingCard.kind === "EightTrigrams"), "Eight Trigrams is guaranteed in the Quick Test opening hand");
   const quickDeck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(quick.data.room.code)}`));
@@ -462,7 +462,7 @@ test("Quick Test exhausts each AOE Negation window before the target response, w
   for (const target of targets) setHand(target.id, [card("Negation", `perspective-${target.seat}`), card(required, `perspective-${target.seat}`)], 3, 3);
   setTurn(room.code, me.seat);
   const act = (action, extra = {}) => request(action, { code: room.code, token, ...extra });
-  let result = await act("play_card", { cardId: `${kind.toLowerCase()}-perspective` });
+  let result = await act("play_card", { cardId: `${kind.toLowerCase()}-perspective` }); assert.equal(result.status, 200, JSON.stringify(result.data));
   for (const target of targets) {
     const ordered = room.players;
     for (const responder of ordered) {
@@ -1901,4 +1901,23 @@ test("classic role deaths apply cleanup, rewards, penalties, and victory rules",
   await request("play_card", { code: rebelVictoryGame.code, token: falseTraitor.token, cardId: "attack-rebel-victory", targetId: fallenLord.id });
   const rebelVictory = await takeDamageIfPending(rebelVictoryGame.code, fallenLordMember.token);
   assert.equal(rebelVictory.data.room.status, "finished"); assert.ok(rebelVictory.data.room.timeline.some((event) => /Rebel victory/.test(event.message ?? "")));
+});
+
+test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const [source, holder, secondTarget] = game.room.players;
+  const borrowed = card("BorrowedSword", "forced"); const weapon = card("GreenDragonBlade", "borrowed-weapon"); const attack = card("Attack", "borrowed-attack");
+  setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [attack], 4, 4); setHand(secondTarget.id, [], 4, 4); setEquipment(holder.id, { weapon }); setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id });
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingBorrowedSword.stage, "choose_target");
+  const chosen = await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id });
+  assert.equal(chosen.status, 200); assert.equal(chosen.data.room.pendingBorrowedSword.stage, "force_attack"); assert.equal(chosen.data.room.actionPlayerId, holder.id);
+  const refused = await request("decline_borrowed_sword", { code: game.code, token: alice.token });
+  assert.equal(refused.status, 200); assert.equal(refused.data.room.phase, "play"); assert.ok((await state(game.code, host.token)).data.myHand.some((item) => item.id === weapon.id));
+
+  setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [attack], 4, 4); setHand(secondTarget.id, [], 4, 4); setEquipment(holder.id, { weapon }); setTurn(game.code, source.seat);
+  await request("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id });
+  assert.equal((await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id })).status, 200);
+  const played = await request("respond_borrowed_sword", { code: game.code, token: alice.token, cardId: attack.id });
+  assert.equal(played.status, 200, JSON.stringify(played.data)); assert.equal(played.data.room.players.find((player) => player.id === secondTarget.id).hp, 3); assert.equal(played.data.room.players.find((player) => player.id === holder.id).equipmentCards[0].id, weapon.id);
 });

@@ -4,7 +4,7 @@ const CARD_KINDS = new Set([
   "Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "BorrowedSword", "ZhugeCrossbow", "BlueSteelSword", "YinYangSwords", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd", "KirinBow", "FrostSword", "NioShield", "EightTrigrams", "Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed", "OffensiveHorse", "DefensiveHorse", "RationsDepleted", "Strike",
 ]);
 const ROOM_STATUSES = new Set(["lobby", "heroes", "started", "playing", "finished"]);
-const PENDING_KINDS = new Set(["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation", "harvest", "target_card", "dying", "response", "trigger"]);
+const PENDING_KINDS = new Set(["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation", "harvest", "target_card", "borrowed_sword", "dying", "response", "trigger"]);
 const GAMEPLAY_ACTION_SET = new Set(GAMEPLAY_ACTIONS);
 
 function isRecord(value) {
@@ -115,7 +115,7 @@ export function normalizeRoomData(value) {
     currentAction: normalizeCurrentAction(value.currentAction),
   };
   const pendingKinds = {
-    pendingAttack: "attack", pendingGreenDragon: "green_dragon", pendingRockCleaving: "rock_cleaving", pendingFrostSword: "frost_sword", pendingDuel: "duel", pendingGroup: "group", pendingNegation: "negation", pendingHarvest: "harvest", pendingTargetCard: "target_card", pendingDying: "dying",
+    pendingAttack: "attack", pendingGreenDragon: "green_dragon", pendingRockCleaving: "rock_cleaving", pendingFrostSword: "frost_sword", pendingDuel: "duel", pendingGroup: "group", pendingNegation: "negation", pendingHarvest: "harvest", pendingTargetCard: "target_card", pendingBorrowedSword: "borrowed_sword", pendingDying: "dying",
   };
   for (const [field, kind] of Object.entries(pendingKinds)) normalized[field] = value[field] == null ? null : normalizePending(value[field], kind);
   return normalized;

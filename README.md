@@ -9,7 +9,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
 - Current stage: **playable four-player alpha — non-blocking Game Messages history and exact card presentation barriers**
 
-The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, and human-controlled Quick Test Attacks, through one imminent-damage transition. The reusable `attack_targeted` event now discovers target-owned semantic decisions before Armor/Dodge resolution, with private opaque hand selection and original-Attack continuation. Yin-Yang Swords and Kirin Bow are implemented through that provider-neutral path; Borrowed Sword remains out of the dealt deck until implemented.
+The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, and human-controlled Quick Test Attacks, through one imminent-damage transition. Borrowed Sword is now dealt in Standard games: after Negation, its user chooses a legal target for the Weapon holder's forced Attack; refusal or no Attack transfers the Weapon, while a played Attack uses the normal Dodge, Armor, damage, and Dying pipeline.
 
 Successful Judgement-based Negation now applies one transitioned parity/depth state before either opening a counter-window or resolving the effect.
 
@@ -110,7 +110,7 @@ The playable alpha includes:
 
 The verified remaining cards and implementation order are maintained in [ROADMAP.md](ROADMAP.md). The current verified remainder is:
 
-1. Borrowed Sword
+No verified Standard card identity remains; physical deck reconciliation and broader match edge cases are the next milestones.
 
 The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence over older roadmap/card lists.
 

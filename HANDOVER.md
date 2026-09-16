@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Completed architecture invariants
 
-The semantic execution architecture milestone is **complete**. Fresh deterministic full tests and the required synthetic end-to-end extensibility proofs are green. Yin-Yang Swords now extends it through the reusable `attack_targeted` event and target-owned decision actor; preserve those boundaries while the remaining Standard cards are implemented.
+The semantic execution architecture milestone is **complete**. Borrowed Sword is implemented through the existing deferred-Stratagem Negation boundary and normal Attack continuation; preserve those boundaries while expanding physical deck and match coverage.
 
 Completed architecture guarantees:
 
@@ -171,15 +171,13 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — begin the next milestone
 
-1. **Continue Borrowed Sword.** Keep the completed semantic response/trigger boundaries and the reusable target-owned `attack_targeted` event.
+1. **Reconcile the physical Standard deck manifest** against runtime quantities and suit/rank assignments.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
-3. **Continue the WTK Standard card roadmap**, with Borrowed Sword as the next remaining identity.
+3. **Expand Borrowed Sword and match edge-case regressions** across human multiplayer and Quick Test.
 
 ## Standard card roadmap status
 
-The verified active roadmap is 28 card identities. **27 / 28 are currently treated as playable.** The remaining verified identity is:
-
-1. Borrowed Sword
+The verified active roadmap is 28 card identities. **28 / 28 are currently treated as playable.**
 
 `docs/STANDARD_108_DECK_MANIFEST.md` remains the physical 108-card target. Before declaring the Standard deck complete, reconcile every physical card, suit/rank assignment, quantity, and the six named mounts with the runtime deck.
 
