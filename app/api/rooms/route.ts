@@ -14,6 +14,8 @@ import { applySuccessfulNegation } from "../../../game/decisions/negation";
 import { normalizeLegacyResponseAction, normalizeLegacyTriggerAction } from "../../../game/compat/legacy-actions";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
 import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../game/match/dying.js";
+import { determineDefeatContinuation } from "../../../game/match/continuation";
+import { determineMatchOutcome } from "../../../game/match/outcome";
 import { asLegacyResponsePending, asLegacyTriggerPending, asResponsePending, asTriggerPending, serializePending, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackTargetedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelPending, type DyingPending, type FrostSwordPending, type GreenDragonPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type RockCleavingPending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
 export const runtime = "edge";
@@ -402,11 +404,9 @@ function commitHeldGroupCards(discard: Card[], pending: GroupPending) {
   return [...discard.filter((card) => !heldIds.has(card.id)), ...held];
 }
 async function finishIfWon(roomId: string) {
-  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const players = rows.results ?? []; const alive = players.filter((player) => player.alive); const lord = players.find((player) => player.role === "Lord");
-  let winner = "";
-  if (!lord?.alive) winner = alive.length === 1 && alive[0].role === "Renegade" ? "Traitor victory" : "Rebel victory";
-  else if (!alive.some((player) => player.role === "Rebel" || player.role === "Renegade")) winner = "Lord and Loyalist victory";
-  if (!winner) return false;
+  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const outcome = determineMatchOutcome(rows.results ?? []);
+  if (!outcome) return false;
+  const winner = outcome === "traitor" ? "Traitor victory" : outcome === "rebel" ? "Rebel victory" : "Lord and Loyalist victory";
   const room = await db().prepare("SELECT log_json, discard_json, pending_json FROM rooms WHERE id = ?").bind(roomId).first<{ log_json: string | null; discard_json: string | null; pending_json: string | null }>();
   const sequence = groupSequenceFromPending(parse<Pending | null>(room?.pending_json ?? null, null));
   const discard = sequence ? commitHeldGroupCards(parse<Card[]>(room?.discard_json ?? null, []), sequence) : parse<Card[]>(room?.discard_json ?? null, []);
@@ -535,6 +535,24 @@ async function continueAfterDying(roomId: string, sourceId: string) {
   await runBots(roomId);
 }
 
+async function continueAfterDefeat(roomId: string, pending: DyingPending) {
+  if (await finishIfWon(roomId)) return;
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+  if (!room) return;
+  const decision = determineDefeatContinuation({ players: rows.results ?? [], turnSeat: room.turn_seat, resumePlayerId: pending.resumePlayerId, hasGroupContinuation: Boolean(pending.resumePending) });
+  if (decision.kind === "finish") { await finishIfWon(roomId); return; }
+  if (decision.kind === "resume_group") { await advanceGroup(roomId); return; }
+  if (decision.kind === "advance_turn") {
+    const log = addLog(parse<string[]>(room.log_json, []), "The defeated turn owner cannot continue; the next living player begins their turn.");
+    await db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'draw', pending_json = NULL, log_json = ? WHERE id = ? AND status = 'playing'").bind(decision.nextSeat, JSON.stringify(log), roomId).run();
+    await runBots(roomId);
+    return;
+  }
+  if (pending.resumePhase?.startsWith("draw")) await runBots(roomId);
+  else await continueAfterDying(roomId, pending.resumePlayerId);
+}
+
 function dyingResumeState(pending: DyingPending, resume?: PlayerRow | null) {
   return pending.resumePending
     ? { phase: "response", pendingJson: JSON.stringify(pending.resumePending) }
@@ -589,16 +607,9 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
     log = addLog(log, `${source.name} defeated Loyalist ${target.name} and discards all cards as the Lord's penalty.`);
   }
   const next = dyingResumeState(pending, resume);
-  let nextTurnSeat: number | null = null;
-  if (!source && target && pending.resumePhase?.startsWith("draw")) {
-    const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-    const afterDefeat = (rows.results ?? []).map((player) => player.id === target.id ? { ...player, alive: 0 } : player);
-    nextTurnSeat = nextAliveSeat(afterDefeat, target.seat);
-  }
-  writes.push(env.DB.prepare("UPDATE rooms SET turn_seat = COALESCE(?, turn_seat), phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(nextTurnSeat, next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+  writes.push(env.DB.prepare("UPDATE rooms SET phase = ?, pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
   await env.DB.batch(writes);
-  if (!source && pending.resumePhase?.startsWith("draw")) { if (!await finishIfWon(room.id)) await runBots(room.id); return; }
-  await continueDyingResolution(room.id, pending);
+  await continueAfterDefeat(room.id, pending);
 }
 
 async function advanceDyingRescue(roomId: string) {
@@ -2013,8 +2024,8 @@ async function roomState(code: string, token?: string) {
   const pending = asLegacyTriggerPending(asLegacyResponsePending(persistedPending)) as Pending | null;
   const responsePending = asResponsePending(persistedPending ?? pending);
   const tokenHash = token ? await hash(token) : "";
-  const turnPlayer = players.find((player) => player.seat === room.turn_seat);
-  const actualActionPlayerId = room.phase === "response" || room.phase === "dying" ? pending?.actorId ?? pending?.targetId ?? turnPlayer?.id ?? null : turnPlayer?.id ?? null;
+  const turnPlayer = room.status === "playing" ? players.find((player) => player.seat === room.turn_seat && player.alive) : undefined;
+  const actualActionPlayerId = room.status !== "playing" ? null : room.phase === "response" || room.phase === "dying" ? pending?.actorId ?? pending?.targetId ?? turnPlayer?.id ?? null : turnPlayer?.id ?? null;
   const sessionPlayers = players.filter((player) => player.token_hash === tokenHash);
   // Quick Test deliberately shares one local controller across all four seats.
   // A regular room still has exactly one player for each session token.
@@ -2058,7 +2069,7 @@ async function roomState(code: string, token?: string) {
     myHeroOptions: room.status === "heroes" && me?.hero_options_json ? JSON.parse(me.hero_options_json) : [],
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
-    timeline: gameTimeline(rawLog), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: me?.id === actualActionPlayerId,
+    timeline: gameTimeline(rawLog), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "playing" && me?.id === actualActionPlayerId,
     pendingAttack: pending?.kind === "attack" ? pending : null,
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or

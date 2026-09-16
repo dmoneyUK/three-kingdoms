@@ -1976,7 +1976,7 @@ test("classic role deaths apply cleanup, rewards, penalties, and victory rules",
   setHand(finalLord.id, [], 1, 5); setHand(finalTraitor.id, [card("Attack", "traitor-victory")], 4, 4); setTurn(traitorVictoryGame.code, finalTraitor.seat);
   await request("play_card", { code: traitorVictoryGame.code, token: traitorWinner.token, cardId: "attack-traitor-victory", targetId: finalLord.id });
   const traitorVictory = await takeDamageIfPending(traitorVictoryGame.code, finalLordMember.token);
-  assert.equal(traitorVictory.data.room.status, "finished"); assert.ok(traitorVictory.data.room.timeline.some((event) => /Traitor victory/.test(event.message ?? "")));
+  assert.equal(traitorVictory.data.room.status, "finished"); assert.equal(traitorVictory.data.room.phase, "finished"); assert.equal(traitorVictory.data.room.pending, null); assert.equal(traitorVictory.data.room.currentAction.actorId, null); assert.equal(traitorVictory.data.room.currentAction.kind, "none"); assert.ok(traitorVictory.data.room.timeline.some((event) => /Traitor victory/.test(event.message ?? "")));
 
   const rebelVictoryGame = await createHumanGame();
   const [fallenLordMember, falseTraitor] = rebelVictoryGame.members; const [fallenLord, attackingTraitor, survivingRebel, fallenLoyalist] = rebelVictoryGame.room.players;

@@ -79,7 +79,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Active milestone: Match-rule correctness / Dying and multi-damage. The semantic execution layer remains complete. Damage preserves actual resulting HP; Dying begins at hp <= 0; each Peach restores 1 HP; Dying ends only after hp >= 1 or rescue is exhausted. The server remains authoritative for negative HP and projects recoveryNeeded to the rescue actor.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 remains active only for any genuinely remaining shared match-rule gaps. The semantic execution layer remains complete.
 
 ## Progress summary
 
@@ -89,7 +89,7 @@ Physical Standard 108-card deck — COMPLETE. Active milestone: Match-rule corre
 | 2. Strengthen the general rules engine | Complete | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented and covered by deterministic regressions and synthetic end-to-end extensibility proofs. |
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
-| 5. Complete match rules | **Active milestone** | Harden match-rule correctness, beginning with Dying and multi-point damage. |
+| 5. Complete match rules | **Active milestone** | Dying/multi-damage and defeat continuation/outcome are complete; audit and close any remaining shared match-rule gaps. |
 | 6. Hero-specific abilities | Deferred except architecture proofs | Qingguo is the first live proof. Broad hero work begins after shared cards/rules architecture is stable. |
 | 7. Product polish | Ongoing | Continue mobile clarity and presentation work; sound, invitations and saved history remain later work. |
 

@@ -93,7 +93,9 @@ The playable alpha includes:
 - Negation
 - Overindulgence
 - Lightning
+- Borrowed Sword
 - Zhuge Crossbow
+- Blue Steel Sword
 - Green Dragon Blade
 - Serpent Spear
 - Rock Cleaving Axe
@@ -106,21 +108,19 @@ The playable alpha includes:
 - Fergana Steed
 - Shadowrunner
 
-### Remaining verified Standard cards
+### Standard card roadmap
 
-The verified remaining cards and implementation order are maintained in [ROADMAP.md](ROADMAP.md). The current verified remainder is:
-
-Physical Standard 108-card deck — COMPLETE. The active milestone is Match-rule correctness / Dying and multi-damage.
+All 28 / 28 verified Standard card identities are implemented and playable. Physical Standard 108-card deck — COMPLETE.
 
 The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence over older roadmap/card lists.
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Equipment and delayed Stratagem presentations now settle directly into their owner's Equipment or Judgement Zone without a duplicate numbered copy. Attack cards, Serpent Spear formations, Green Dragon follow-ups, Lightning, Duel, AOE, and forced damage converge on damage rules that preserve actual resulting HP. Dying begins at hp <= 0; each Peach restores 1 HP; Dying ends only after hp >= 1 or rescue is exhausted. The server projects recoveryNeeded for the rescue actor without moving rule calculation into React. The semantic response/trigger architecture milestone remains complete.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Attack cards, Duel, AOE, Lightning, and forced damage converge on authoritative negative-HP and ordered Dying rules. After an unrescued defeat, outcome is calculated before exactly one legal continuation: finish, resume the interrupted effect, continue the AOE sequence, or advance to the next living turn owner. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 remains active for any further shared-rule gaps.
 
 ## Roadmap
 
-Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture remains complete; Blue Steel Sword, Yin-Yang Swords, Kirin Bow, and Borrowed Sword are implemented and dealt. The next milestone is match-rule correctness / Dying and multi-damage.
+Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture, Dying/multi-damage, and death/continuation/match outcome are complete. Stage 5 remains active for any further shared-rule gap.
 
 Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation now uses the same equipment rack and presentation path. Equipment and Judgement Zone cards retain an info button that opens their existing card explanation dialog. Informational gameplay messages appear only in the foldable Game Messages window, which retains the latest 10 public events in chronological order and does not hold cards, decisions, turns, timers, or later animations. The canonical equipment card event supplies rank, suit, and name; the redundant semantic equipment history event is removed.
 

@@ -175,9 +175,15 @@ Every newly created canonical `ResponsePending` and `TriggerPending` stores `rea
 
 Do not remove them in a big-bang cleanup. First finish equivalent semantic trigger orchestration and exact decision barriers, keep saved-game compatibility covered, then delete compatibility branches one path at a time with regression tests.
 
-## Recommended next work — begin the next milestone
+## Match-rule hardening (2026-09-16)
 
-1. **Complete match-rule correctness:** finish Dying/multi-damage edge cases and verify the full exact-head release gate.
+The pure `determineMatchOutcome()` helper now owns the Standard role winner matrix while the room route retains D1 persistence, held-card commit, and terminal transition. Unrescued Dying defeat now passes through one continuation decision: terminal outcome first, then live Group/AOE continuation, live effect resumption, or the next living turn seat when the interrupted owner died. Finished-room projections have no actionable actor/current action. Source-free Lightning remains source-free, so it cannot create rewards or penalties. Focused pure coverage protects Renegade/Traitor compatibility and continuation ordering; the existing API regressions continue to cover role cleanup, AOE stop/continue, rescue races, and post-finish rejection.
+
+Dying / multi-damage — **COMPLETE**. Death / continuation / match outcome — **COMPLETE**. Stage 5 remains active only for genuinely remaining shared match rules.
+
+## Recommended next work — continue the active milestone
+
+1. **Audit remaining shared match rules:** identify and regression-test any gaps outside the completed Dying, defeat continuation, and outcome paths; do not claim Stage 5 complete until that audit is clear.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
 3. **Keep the completed physical Standard deck stable:** do not reopen its manifest while match-rule correctness work proceeds.
 
