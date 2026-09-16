@@ -7,7 +7,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — Borrowed Sword hardening complete; next milestone is bounded saved-room compatibility/deck reconciliation**
+- Current stage: **playable four-player alpha — Borrowed Sword complete; next milestone is physical Standard 108-card deck reconciliation**
 
 The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, Borrowed Sword, and human-controlled Quick Test Attacks, through the shared target, Dodge, Armor, damage, and Dying pipeline. Borrowed Sword is fully hardened in Standard games: after canonical Negation, its user chooses a live legal target, the Weapon holder receives a private semantic Attack decision with an idempotent human response timer, and refusal/no-provider transfer revalidates the persisted Weapon ID. Worker/D1 regressions cover races, stale targets/actions, physical and Serpent Spear providers, Dodge, and Yin-Yang Swords continuation.
 
@@ -120,7 +120,7 @@ The shared turn and response engine now uses effective horse-adjusted distance c
 
 ## Roadmap
 
-Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture remains complete; Kirin Bow is implemented and Borrowed Sword is the next milestone.
+Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture remains complete; Blue Steel Sword, Yin-Yang Swords, Kirin Bow, and Borrowed Sword are implemented and dealt. The next milestone is physical Standard 108-card deck reconciliation.
 
 Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation now uses the same equipment rack and presentation path. Equipment and Judgement Zone cards retain an info button that opens their existing card explanation dialog. Informational gameplay messages are displayed separately in the Game Messages panel and do not hold cards, decisions, turns, timers, or later animations.
 
