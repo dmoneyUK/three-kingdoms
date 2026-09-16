@@ -40,7 +40,6 @@ test("client keeps the turn, response, presentation, and selection controls", as
   const officialReference = await readFile(new URL("../docs/OFFICIAL_CARD_REFERENCE.md", import.meta.url), "utf8");
   assert.match(page, /player-board/);
   assert.match(page, /game-exit/);
-  assert.match(page, /messagesCollapsed/);
   assert.match(page, /private-role/);
   assert.match(page, /Skip response/);
   assert.doesNotMatch(page, /busy \? "Skipping…" : requiredResponseKind === "Negation"/);
@@ -91,8 +90,8 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.doesNotMatch(page, /: "take_damage";/);
   assert.match(page, /playedCard: 4000/);
   assert.doesNotMatch(page, /eventMessage: 3000/);
-  assert.match(page, /latestPublicMessages/);
-  assert.match(page, /Game Messages/);
+  assert.match(page, /Event history/);
+  assert.doesNotMatch(page, /game-messages|latestPublicMessages|Game Messages/);
   assert.match(page, /equipment-info-overlay/);
   assert.match(page, /judgement-info-overlay/);
   assert.match(page, /setInfoCard\(equipment\)/);

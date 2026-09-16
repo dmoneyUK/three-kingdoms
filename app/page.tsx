@@ -8,7 +8,6 @@ import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
 import { responseOptions } from "../game/responses";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction } from "../game/protocol.js";
-import { latestPublicMessages } from "../game/messages.js";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string };
 type PresentationImportance = "essential" | "informational";
@@ -325,7 +324,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const [triggerChoice, setTriggerChoice] = useState("");
   const [discardSelected, setDiscardSelected] = useState<string[]>([]); const automaticDraw = useRef("");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [messagesCollapsed, setMessagesCollapsed] = useState(false);
   const [infoCard, setInfoCard] = useState<Card | null>(null);
   const automaticResponseTimeout = useRef("");
   const automaticRescueSkip = useRef("");
@@ -415,7 +413,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const timelineKey = room.timeline.map((event) => event.id).join("|");
   const hasUnseenPresentations = room.timeline.some((event) => event.type !== "message" && event.presentation !== false && !presentedEventIds.has(event.id));
   const presentationBusy = Boolean(optimisticPlay || activeEvent || eventQueue.length || resolutionClosing || turnNotice || privateDrawCards.length || hasUnseenPresentations);
-  const gameMessages = useMemo(() => latestPublicMessages(room.timeline, describeEvent), [room.timeline]);
   // A response is one decision, even when it has several providers.  Do not
   // expose (or start timing) one provider before the preceding public effect
   // has finished presenting: every provider and the decline branch open
@@ -475,8 +472,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
     const immediatelyPresented = new Set<string>();
     const visible = fresh.filter((event) => {
       if (event.presentation === false) return false;
-      // Informational text is projected into Game Messages and never enters
-      // the sequential visual presentation barrier.
+      // Informational text is not a blocking visual presentation.
       if (event.type === "message") return false;
       if (event.type === "card" && optimisticallyPresentedCards.current.delete(event.card.id)) { immediatelyPresented.add(event.id); return false; }
       if (event.type === "cards" && event.action === "play") {
@@ -579,7 +575,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   return <main className="game-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button type="button" className="text-button history-button" onClick={() => setHistoryOpen(true)}>Event history</button><button className="text-button" onClick={onLeave}>Exit</button></div></header>
     <section className="action-strip" aria-live="polite"><div className="action-step"><small>TURN OWNER</small><b>{current?.name ?? "—"}</b></div><span className="action-arrow">→</span><div className="action-step"><small>CURRENT PHASE</small><b>{phaseName(room.phase)}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{drawWaitingForPresentation ? "NEXT TO ACT" : "ACTING NOW"}</small><b>{actor?.name ?? "—"}{room.isMyAction ? " · YOU" : ""}</b><em>{drawWaitingForPresentation ? "Your draw waits until earlier events finish" : room.actionReason}</em></div></section>
     <section className={`play-table ${sequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`}>
-      <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       <button type="button" className="game-exit" onClick={onLeave}>Exit</button>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
       {privateDrawCards.length > 0 && !activeEvent && eventQueue.length === 0 && <div className="played-card-stage private-draw-stage" role="status"><Countdown key={privateDrawCards.map((drawn) => drawn.id).join("-")} durationMs={UI_TIMING.privateDraw} label="Cards close in" /><div className="card-action-title"><b>PRIVATE DRAW</b><span>Only you can see these cards</span></div><div className="private-draw-row">{privateDrawCards.map((drawn) => <CardFace card={drawn} key={drawn.id} />)}</div></div>}
