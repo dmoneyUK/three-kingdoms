@@ -168,7 +168,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(publicAttackTimer.data.pendingAttack.deadline, timedAttack.data.room.pendingAttack.deadline, "the table can show the same countdown beside the acting player");
   assert.equal((await request("respond_dodge", { code: game.code, token: bob.token, cardId: "dodge-answer" })).status, 409);
   const dodged = await request("respond_dodge", { code: game.code, token: alice.token, cardId: "dodge-answer", context: { actionRevision: timedAttack.data.room.actionRevision, meId: timedAttack.data.room.meId, phase: timedAttack.data.room.phase, pendingKind: "attack", actorId: timedAttack.data.room.actionPlayerId } });
-  assert.equal(dodged.status, 200); assert.equal(dodged.data.room.phase, "play-struck"); assert.equal(dodged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
+  assert.equal(dodged.status, 200, JSON.stringify(dodged.data)); assert.equal(dodged.data.room.phase, "play-struck"); assert.equal(dodged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
   setHand(hostPlayer.id, [card("Attack", "damage")], 4, 5); setHand(alicePlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
   const damagePrompt = await request("play_card", { code: game.code, token: host.token, cardId: "attack-damage", targetId: alicePlayer.id });
@@ -1912,17 +1912,88 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
   assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingBorrowedSword.stage, "choose_target");
   const chosen = await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id });
   assert.equal(chosen.status, 200); assert.equal(chosen.data.room.pendingBorrowedSword.stage, "force_attack"); assert.equal(chosen.data.room.actionPlayerId, holder.id);
-  const refused = await request("decline_borrowed_sword", { code: game.code, token: alice.token });
-  assert.equal(refused.status, 200); assert.equal(refused.data.room.phase, "play"); assert.ok((await state(game.code, host.token)).data.myHand.some((item) => item.id === weapon.id));
+  const refused = await request("decline_response", { code: game.code, token: alice.token });
+  assert.equal(refused.status, 200, JSON.stringify(refused.data)); assert.equal(refused.data.room.phase, "play"); assert.ok((await state(game.code, host.token)).data.myHand.some((item) => item.id === weapon.id));
 
   setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [attack], 4, 4); setHand(secondTarget.id, [], 4, 4); setEquipment(holder.id, { weapon }); setTurn(game.code, source.seat);
   await request("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id });
   assert.equal((await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id })).status, 200);
-  const played = await request("respond_borrowed_sword", { code: game.code, token: alice.token, cardId: attack.id });
+  const played = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id });
   assert.equal(played.status, 200, JSON.stringify(played.data)); assert.equal(played.data.room.players.find((player) => player.id === secondTarget.id).hp, 3); assert.equal(played.data.room.players.find((player) => player.id === holder.id).equipmentCards[0].id, weapon.id);
 
   const spear = card("SerpentSpear", "borrowed-spear"); setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [card("Peach", "spear-cost-one"), card("Dodge", "spear-cost-two")], 4, 4); setHand(secondTarget.id, [], 4, 4); setEquipment(holder.id, { weapon: spear }); setTurn(game.code, source.seat);
   await request("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id }); await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id });
-  const spearAttack = await request("respond_borrowed_sword", { code: game.code, token: alice.token, providerId: "serpent_spear_attack", cardIds: ["peach-spear-cost-one", "dodge-spear-cost-two"] });
+  const spearAttack = await request("respond", { code: game.code, token: alice.token, providerId: "serpent_spear_attack", cardIds: ["peach-spear-cost-one", "dodge-spear-cost-two"] });
   assert.equal(spearAttack.status, 200, JSON.stringify(spearAttack.data)); assert.equal(spearAttack.data.room.players.find((player) => player.id === secondTarget.id).hp, 3); assert.equal(spearAttack.data.room.players.find((player) => player.id === holder.id).equipmentCards[0].id, spear.id);
+});
+
+let borrowedScenarioCounter = 0;
+async function openBorrowedSwordScenario({ attack = true, weaponKind = "GreenDragonBlade", choose = true } = {}) {
+  const scenarioId = ++borrowedScenarioCounter;
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const [source, holder, target] = game.room.players;
+  const borrowed = card("BorrowedSword", `borrowed-${scenarioId}`);
+  const weapon = card(weaponKind, `weapon-${scenarioId}`);
+  const attackCard = attack ? card("Attack", `attack-${scenarioId}`) : null;
+  setHand(source.id, [borrowed], 4, 5); setHand(holder.id, attackCard ? [attackCard] : [], 4, 4); setHand(target.id, [], 4, 4); setEquipment(holder.id, { weapon }); setTurn(game.code, source.seat);
+  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id })).status, 200);
+  const stage1 = (await state(game.code, host.token)).data;
+  assert.equal(stage1.currentAction.actorId, source.id); assert.deepEqual(stage1.currentAction.legalActions, ["choose_borrowed_sword_target"]);
+  if (choose) assert.equal((await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: target.id })).status, 200);
+  return { game, host, alice, source, holder, target, weapon, attackId: attackCard?.id };
+}
+
+test("Borrowed Sword canonical response ownership and CAS matrix", { timeout: 120_000 }, async () => {
+  {
+    const s = await openBorrowedSwordScenario(); const stage2 = (await state(s.game.code, s.alice.token)).data; const other = (await state(s.game.code, s.host.token)).data;
+    assert.equal(stage2.currentAction.actorId, s.holder.id); assert.ok(stage2.currentAction.options.some((option) => option.providerId === "card")); assert.ok(stage2.currentAction.options[0].selection.eligibleCardIds.length);
+    assert.equal(other.meId, s.source.id); assert.deepEqual(other.currentAction.legalActions, []); assert.equal(other.currentAction.options, undefined);
+    const stale = await request("decline_response", { code: s.game.code, token: s.host.token, context: { actionRevision: other.actionRevision, meId: other.meId, phase: other.phase, pendingKind: "borrowed_sword", actorId: other.actionPlayerId } });
+    assert.equal(stale.status, 409);
+    const attackId = s.attackId;
+    const [a, b] = await Promise.all([request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: attackId }), request("decline_response", { code: s.game.code, token: s.alice.token })]);
+    assert.equal([a.status, b.status].filter((status) => status === 200).length, 1); assert.equal([a.status, b.status].filter((status) => status === 409).length, 1);
+  }
+  {
+    const s = await openBorrowedSwordScenario(); const attackId = s.attackId;
+    const [a, b] = await Promise.all([request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: attackId }), request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: attackId })]);
+    assert.equal([a.status, b.status].filter((status) => status === 200).length, 1); assert.equal([a.status, b.status].filter((status) => status === 409).length, 1); assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(s.holder.id)} AND json_extract(value,'$.id')=${quote(attackId)}`), "0");
+  }
+  {
+    const s = await openBorrowedSwordScenario(); const [a, b] = await Promise.all([request("decline_response", { code: s.game.code, token: s.alice.token }), request("decline_response", { code: s.game.code, token: s.alice.token })]);
+    assert.equal([a.status, b.status].filter((status) => status === 200).length, 1); assert.equal([a.status, b.status].filter((status) => status === 409).length, 1); assert.equal(discardIds(s.game.code).filter((id) => id === s.weapon.id).length, 0); assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(s.source.id)} AND json_extract(value,'$.id')=${quote(s.weapon.id)}`), "1");
+  }
+  {
+    const s = await openBorrowedSwordScenario({ choose: false }); const [a, b] = await Promise.all([request("choose_borrowed_sword_target", { code: s.game.code, token: s.host.token, targetId: s.target.id }), request("choose_borrowed_sword_target", { code: s.game.code, token: s.host.token, targetId: s.target.id })]);
+    assert.equal([a.status, b.status].filter((status) => status === 200).length, 1); assert.equal([a.status, b.status].filter((status) => status === 409).length, 1); assert.equal((await state(s.game.code, s.alice.token)).data.currentAction.actorId, s.holder.id);
+  }
+});
+
+test("Borrowed Sword transfer never follows a stale or replaced Weapon", { timeout: 120_000 }, async () => {
+  for (const replacement of [null, card("BlueSteelSword", "replacement")]) {
+    const s = await openBorrowedSwordScenario(); setEquipment(s.holder.id, replacement ? { weapon: replacement } : {});
+    const declined = await request("decline_response", { code: s.game.code, token: s.alice.token }); assert.equal(declined.status, 200); assert.equal(declined.data.room.phase, "play");
+    assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(s.source.id)} AND json_extract(value,'$.id')=${quote(s.weapon.id)}`), "0");
+    if (replacement) assert.equal(query(`SELECT json_extract(equipment_json,'$.weapon.id') FROM players WHERE id=${quote(s.holder.id)}`), replacement.id);
+  }
+  const noProvider = await openBorrowedSwordScenario({ attack: false, choose: false }); setEquipment(noProvider.holder.id, { weapon: card("BlueSteelSword", "unrelated") });
+  const ended = await request("choose_borrowed_sword_target", { code: noProvider.game.code, token: noProvider.host.token, targetId: noProvider.target.id }); assert.equal(ended.status, 200, JSON.stringify(ended.data)); assert.equal(ended.data.room.phase, "play"); assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(noProvider.source.id)} AND json_extract(value,'$.id')=${quote(noProvider.weapon.id)}`), "0");
+});
+
+test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuations", { timeout: 60_000 }, async () => {
+  const s = await openBorrowedSwordScenario({ weaponKind: "YinYangSwords" });
+  sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(s.holder.id)}`); sql(`UPDATE players SET hero='zhen-ji' WHERE id=${quote(s.target.id)}`);
+  const dodge = card("Dodge", "borrowed-dodge"); const hidden = card("Peach", "borrowed-hidden"); setHand(s.target.id, [hidden, dodge], 4, 4);
+  const attack = await request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: s.attackId }); assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  const targetDecision = (await state(s.game.code, s.game.members[2].token)).data; assert.equal(targetDecision.currentAction.kind, "trigger"); assert.equal(targetDecision.currentAction.actorId, s.target.id); const yin = await request("trigger", { code: s.game.code, token: s.game.members[2].token, providerId: "yin_yang_swords_attack_targeted", choice: "discard", cardKeys: ["hand:0"] }); assert.equal(yin.status, 200, JSON.stringify(yin.data) + ` pending=${query(`SELECT turn_seat||':'||pending_json FROM rooms WHERE code=${quote(s.game.code)}`)}`);
+  const dodgePrompt = await state(s.game.code, s.game.members[2].token); assert.equal(dodgePrompt.data.currentAction.kind, "response"); assert.equal(dodgePrompt.data.currentAction.actorId, s.target.id);
+  const dodged = await request("respond", { code: s.game.code, token: s.game.members[2].token, providerId: "card", cardId: dodge.id }); assert.equal(dodged.status, 200, JSON.stringify(dodged.data)); assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(s.holder.id)} AND json_extract(value,'$.id')=${quote(s.attackId)}`), "0");
+
+  const spearScenario = await openBorrowedSwordScenario({ attack: false, weaponKind: "SerpentSpear", choose: false });
+  const spearCostA = card("Peach", "borrowed-spear-cost-a"); const spearCostB = card("Dodge", "borrowed-spear-cost-b"); const targetDodge = card("Dodge", "borrowed-spear-target-dodge");
+  setHand(spearScenario.holder.id, [spearCostA, spearCostB], 4, 4); setHand(spearScenario.target.id, [targetDodge], 4, 4);
+  assert.equal((await request("choose_borrowed_sword_target", { code: spearScenario.game.code, token: spearScenario.host.token, targetId: spearScenario.target.id })).status, 200);
+  const spear = await request("respond", { code: spearScenario.game.code, token: spearScenario.alice.token, providerId: "serpent_spear_attack", cardIds: [spearCostA.id, spearCostB.id] }); assert.equal(spear.status, 200, JSON.stringify(spear.data));
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(spearScenario.holder.id)} AND (json_extract(value,'$.id')=${quote(spearCostA.id)} OR json_extract(value,'$.id')=${quote(spearCostB.id)})`), "0");
+  const spearDodge = await request("respond", { code: spearScenario.game.code, token: spearScenario.game.members[2].token, providerId: "card", cardId: targetDodge.id }); assert.equal(spearDodge.status, 200, JSON.stringify(spearDodge.data));
 });
