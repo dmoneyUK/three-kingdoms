@@ -413,18 +413,18 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   const roles = [...ROLE_SETS[players.length]].sort(() => Math.random() - 0.5);
   const lordIndex = players.findIndex((player) => player.id === hostPlayerId); const lordAt = roles.indexOf("Lord");
   [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
-  const zhangFei = STANDARD_HEROES.find((hero) => hero.id === "zhang-fei")!;
-  const otherHeroes = STANDARD_HEROES.filter((hero) => hero.id !== zhangFei.id).sort(() => Math.random() - 0.5);
+  const guanYu = STANDARD_HEROES.find((hero) => hero.id === "guan-yu")!;
+  const otherHeroes = STANDARD_HEROES.filter((hero) => hero.id !== guanYu.id).sort(() => Math.random() - 0.5);
   let otherHeroIndex = 0;
   const assigned = players.map((player, index) => {
-    const hero = player.id === hostPlayerId ? zhangFei : otherHeroes[otherHeroIndex++];
+    const hero = player.id === hostPlayerId ? guanYu : otherHeroes[otherHeroIndex++];
     const hp = 3;
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
-  // Keep the newly implemented card available for every manual test, but let
-  // the rest of ME's opening hand come from the shuffled Standard deck.
-  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: ["BorrowedSword", "EightTrigrams", "Attack", "Attack"] });
+  // Keep Guan Yu's first capability available for every manual test, but let
+  // the rest of Player1's opening hand come from the shuffled Standard deck.
+  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: ["BorrowedSword", "EightTrigrams", "Peach", "Attack"] });
   const quickPlayers = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const quickRoom = await db().prepare("SELECT deck_json FROM rooms WHERE id = ?").bind(roomId).first<Pick<RoomRow, "deck_json">>();
   const testPlayers = (quickPlayers.results ?? []).filter((player) => player.id !== hostPlayerId);
@@ -2132,7 +2132,7 @@ export async function POST(request: Request) {
   const db = env.DB;
 
   if (action === "create") {
-    const quickStart = body.quickStart === true; const playerName = quickStart ? "ME" : name;
+    const quickStart = body.quickStart === true; const playerName = quickStart ? "Player1" : name;
     if (playerName.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
     const roomId = crypto.randomUUID(); const playerId = crypto.randomUUID(); const token = newToken(); const tokenHash = await hash(token); const botTest = body.botTest === true; let code = randomCode();
     for (let attempt = 0; attempt < 4; attempt++) { const exists = await db.prepare("SELECT 1 FROM rooms WHERE code = ?").bind(code).first(); if (!exists) break; code = randomCode(); }
@@ -2140,7 +2140,7 @@ export async function POST(request: Request) {
       db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', 8, ?)").bind(roomId, code, playerId, Date.now()),
       db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, playerName, tokenHash, Date.now()),
     ];
-    if (quickStart) for (let index = 1; index <= 3; index++) inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), roomId, `Player ${index}`, botTest ? `bot:${crypto.randomUUID()}` : tokenHash, index, Date.now()));
+    if (quickStart) for (let index = 1; index <= 3; index++) inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), roomId, `Player${index + 1}`, botTest ? `bot:${crypto.randomUUID()}` : tokenHash, index, Date.now()));
     await db.batch(inserts);
     if (quickStart) {
       await resetAudit(roomId);

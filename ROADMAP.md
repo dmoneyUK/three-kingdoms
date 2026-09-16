@@ -90,6 +90,11 @@ revalidation. No universal hero framework was added.
 Next milestone: architecture review of this capability seam before selecting a
 second real Standard hero.
 
+Quick Test now uses the explicit human-style seat names Player1 through
+Player4, with Player1 as the Guan Yu-controlled seat and a guaranteed red
+opening card for Wusheng demonstration. Normal multiplayer keeps its supplied
+player names and uses the same Standard registry.
+
 ## Validation status
 
 Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is now ACTIVE.

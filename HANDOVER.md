@@ -17,6 +17,8 @@ cards, keeps the physical source card ID and suit, supports Play Phase virtual
 Attack use and all existing semantic Attack requirements, and flows through
 the canonical target, Dodge, Armor, damage, Dying, and continuation paths.
 Equipped cards are not eligible because they are not in the acting hand zone.
+Quick Test now names the four human-style seats Player1 through Player4 and
+assigns Guan Yu plus a guaranteed red Wusheng-capable opening card to Player1.
 
 No universal hero framework, Guan-Yu-specific pending type, or central
 Attack/Duel/AOE/Borrowed Sword hero branch was added. The deterministic

@@ -92,7 +92,7 @@ async function readApiJson<T>(response: Response): Promise<T> {
 }
 
 export default function Home() {
-  const name = "ME";
+  const name = "Player1";
   const [code, setCode] = useState("");
   const [room, setRoom] = useState<Room | null>(null);
   const [token, setToken] = useState("");
@@ -220,7 +220,7 @@ export default function Home() {
         </div>
         <div className="entry-card">
           <div className="entry-title"><span>ENTER THE REALM</span><small>4–8 players · One device each</small></div>
-          <div className="test-player-name"><span>YOU ARE PLAYING AS</span><b>ME</b></div>
+          <div className="test-player-name"><span>YOU ARE PLAYING AS</span><b>Player1</b></div>
           {token && code.length === 5 && <button className="rejoin-button" disabled={busy} onClick={() => fetchRoom(code, token)}>{busy ? "Rejoining…" : `Rejoin game ${code}`}</button>}
           <button className="gold-button" disabled={busy} onClick={() => send("create", { quickStart: true })}>{busy ? "Preparing…" : "Start test game"}</button>
           <div className="divider"><span>OR JOIN A FRIEND</span></div>

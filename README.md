@@ -86,7 +86,7 @@ The playable alpha includes:
 - table-based card-resolution presentation;
 - event history and detailed rule-audit trail; and
 - deterministic quick-test setups for card and response-chain development.
-- a single-device Quick Test controller that follows the legal acting seat and shows only that player's hand in the normal bottom area. Perspective changes never trigger a private draw. Quick Test guarantees the newest implemented card in ME's opening hand while randomizing the rest of the opening draw.
+- a single-device Quick Test controller that follows the legal acting seat and shows only that player's hand in the normal bottom area. Perspective changes never trigger a private draw. Quick Test names its human-style seats Player1 through Player4, assigns Guan Yu to Player1, and guarantees a red Wusheng-capable card in Player1's opening hand while randomizing the rest of the opening draw.
 
 ### Implemented Standard cards
 
