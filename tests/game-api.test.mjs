@@ -749,7 +749,7 @@ test("Zhuge Crossbow equips, replaces, enables repeated Attacks, and is used by 
   await request("end_turn", { code: quick.data.room.code, token: quick.data.token });
   const botRound = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
   assert.ok(botRound.players.find((player) => player.id === playerOne.id).equipmentCards.some((equipment) => equipment.kind === "ZhugeCrossbow"));
-  assert.ok(botRound.log.some((entry) => /Player 1 equips Zhuge Crossbow/.test(entry)));
+  assert.equal(botRound.timeline.filter((event) => event.type === "card" && event.action === "equip" && event.card.kind === "ZhugeCrossbow").length, 1, "the canonical equipment card event is the only public equipment event");
 });
 
 test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeout: 30_000 }, async () => {

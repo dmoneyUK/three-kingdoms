@@ -30,21 +30,6 @@
   font-size: 15px;
 }
 
-.active-step-label {
-  position: absolute;
-  left: 50%;
-  top: 29%;
-  z-index: 27;
-  width: min(72%, 440px);
-  padding: 7px 12px;
-  translate: -50% -50%;
-  text-align: center;
-  background: #10130ef2;
-  border: 1px solid #b99754;
-  color: #f0d698;
-  font: 10px/1.35 Arial;
-}
-
 .active-table-reveal {
   --settle-scale: .4;
   animation: sequenceCardToOwner var(--played-card-display) ease-in-out both !important;
@@ -106,13 +91,6 @@
   white-space: nowrap;
 }
 
-.resolution-table-caption {
-  left: 18px;
-  top: 18px;
-  width: min(30vw, 360px);
-  translate: 0 0;
-}
-
 @keyframes sequenceCardsToDiscard {
   0% { left: var(--seat-x); top: var(--seat-y); opacity: 1; transform: scale(1); }
   100% { left: calc(50% + 42px); top: 50%; opacity: 0; transform: scale(.12) rotate(3deg); }
@@ -120,14 +98,11 @@
 
 @media (max-width: 700px) {
   .active-table-reveal { --settle-scale: .463; }
-  .resolution-table-caption { display: none; }
-  .active-step-label { top: 30%; width: min(68%, 320px); font-size: 8px; }
 }
 
 @media (max-width: 480px) {
   .active-table-reveal { --settle-scale: .426; }
   .play-seat > .visible-countdown { min-width: 50px; }
-  .active-step-label { top: 29%; width: 66%; padding: 5px 8px; }
 }
 /* Four equipment slots remain inside a two-column rack at every seat. */
 .player-equipment-zone { width: 118px; }

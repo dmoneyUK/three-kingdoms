@@ -11,5 +11,5 @@ export function latestPublicMessages(timeline, describe) {
     if (!message || typeof event?.id !== "string") continue;
     byId.set(event.id, { id: event.id, message });
   }
-  return [...byId.values()].slice(-5);
+  return [...byId.values()].slice(-10);
 }

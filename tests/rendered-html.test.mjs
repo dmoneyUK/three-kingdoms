@@ -119,8 +119,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /player-played-cards/);
   assert.match(page, /ids\.includes\(item\.id\) \? ids\.filter/);
   assert.match(page, /PRIVATE DRAW/);
-  assert.match(page, /ROLE REVEALED/);
   assert.match(page, /TableResolutionSequence/);
+  assert.doesNotMatch(page, /active-step-label/);
+  assert.doesNotMatch(page, /resolution-table-caption/);
   assert.match(page, /resolutionEvents/);
   assert.match(page, /function pendingTimelineSequence/);
   assert.match(page, /pendingGreenDragon/);
@@ -142,6 +143,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /function coalescePresentationQueue/);
   assert.match(page, /eventImportance\(event\)/);
   assert.match(roomApi, /function presentationMeta/);
+  assert.doesNotMatch(roomApi, /addHistory\(log, `\$\{(?:me|bot)\.name\} equips/);
   assert.match(roomApi, /finalResult/);
   assert.match(page, /const resolutionRevision = useRef\(0\)/);
   assert.match(page, /const closingRevision = resolutionRevision\.current/);
@@ -164,7 +166,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /initialHeldCardIds\.has\(room\.discardTop\.id\) \? null : room\.discardTop/);
   assert.match(page, /player-played-cards/);
   assert.match(page, /active-table-reveal/);
-  assert.match(page, /Moving all played cards to discard/);
+  assert.doesNotMatch(page, /Moving all played cards to discard/);
   assert.doesNotMatch(page, /· card effect/);
   assert.match(page, /sequenceDiscard: 700/);
   assert.match(styles, /@keyframes sequenceCardToOwner/);
@@ -178,10 +180,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /activeCardIds\.has\(card\.id\) \? null/);
   assert.match(page, /resolutionClosing \? "sequence-concluding"/);
   assert.match(styles, /\.play-table\.sequence-active:not\(\.sequence-concluding\) \.play-center/);
-  assert.match(styles, /\.resolution-table-caption \{ display: none; \}/);
+  assert.doesNotMatch(styles, /\.active-step-label/);
   assert.match(styles, /player-played-cards\{--card-radius:[^}]+z-index:21/);
   assert.match(styles, /table-played-card\{width:60px/);
-  assert.match(styles, /\.resolution-table-caption/);
+  assert.doesNotMatch(styles, /\.resolution-table-caption/);
   assert.match(page, /Only you can see these cards/);
   assert.match(page, /cardDefinition/);
   assert.match(cards, /DrawTwo/);
