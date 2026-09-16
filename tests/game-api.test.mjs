@@ -1940,15 +1940,16 @@ async function openBorrowedSwordScenario({ attack = true, weaponKind = "GreenDra
   const stage1 = (await state(game.code, host.token)).data;
   assert.equal(stage1.currentAction.actorId, source.id); assert.deepEqual(stage1.currentAction.legalActions, ["choose_borrowed_sword_target"]);
   if (choose) assert.equal((await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: target.id })).status, 200);
-  return { game, host, alice, source, holder, target, weapon, attackId: attackCard?.id };
+  return { game, host, alice, source, holder, target, weapon, attackId: attackCard?.id, stage1Revision: stage1.actionRevision };
 }
 
 test("Borrowed Sword canonical response ownership and CAS matrix", { timeout: 120_000 }, async () => {
   {
     const s = await openBorrowedSwordScenario(); const stage2 = (await state(s.game.code, s.alice.token)).data; const other = (await state(s.game.code, s.host.token)).data;
     assert.equal(stage2.currentAction.actorId, s.holder.id); assert.ok(stage2.currentAction.options.some((option) => option.providerId === "card")); assert.ok(stage2.currentAction.options[0].selection.eligibleCardIds.length);
+    const armed = await request("start_response_timer", { code: s.game.code, token: s.alice.token }); assert.equal(armed.status, 200); assert.ok(armed.data.room.currentAction.deadline > Date.now()); const rearmed = await request("start_response_timer", { code: s.game.code, token: s.alice.token }); assert.equal(rearmed.data.room.currentAction.deadline, armed.data.room.currentAction.deadline);
     assert.equal(other.meId, s.source.id); assert.deepEqual(other.currentAction.legalActions, []); assert.equal(other.currentAction.options, undefined);
-    const stale = await request("decline_response", { code: s.game.code, token: s.host.token, context: { actionRevision: other.actionRevision, meId: other.meId, phase: other.phase, pendingKind: "borrowed_sword", actorId: other.actionPlayerId } });
+    const stale = await request("decline_response", { code: s.game.code, token: s.host.token, context: { actionRevision: s.stage1Revision, meId: s.source.id, phase: "response", pendingKind: "borrowed_sword", actorId: s.source.id } });
     assert.equal(stale.status, 409);
     const attackId = s.attackId;
     const [a, b] = await Promise.all([request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: attackId }), request("decline_response", { code: s.game.code, token: s.alice.token })]);

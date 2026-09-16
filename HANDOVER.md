@@ -4,6 +4,8 @@
 
 Borrowed Sword now persists Stage 2 as the canonical `ResponsePending` attack requirement. Current execution uses only `respond`/`decline_response`; legacy names are ingress aliases. The Worker/D1 regressions cover actor ownership and private provider projection, duplicate target/response/decline races, stale action revisions, exact Weapon-ID transfer, disappearance/replacement safety, physical Attack and Serpent Spear providers, ordinary Dodge, and Yin-Yang Swords `attack_targeted` continuation. The shared Attack, Dodge, damage, and Dying pipelines remain authoritative. Re-run `npm test`, `npm run lint`, `npm run build`, and `git diff --check` before the next milestone.
 
+Stage 2 human response timing is also covered: `start_response_timer` recognizes the canonical `borrowed_sword_attack` continuation, arms the holder's normal 30-second deadline, and remains idempotent on repeated requests. The stale-revision regression submits the captured Stage-1 revision after the actor changes to the Weapon holder.
+
 Use this file to continue development in a new chat. Start from the latest `main` branch, then read `AGENTS.md`, `README.md`, and `ROADMAP.md` before changing code.
 
 ## Completed architecture invariants

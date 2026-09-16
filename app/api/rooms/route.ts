@@ -2494,11 +2494,14 @@ export async function POST(request: Request) {
   if (action === "start_response_timer") {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
-    const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
+    const rawStored = parsePersistedPending(liveRoom?.pending_json ?? null);
+    const stored = rawStored?.kind === "response" && rawStored.continuation.kind === "borrowed_sword_attack" ? rawStored : parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     const trigger = asTriggerPending(stored);
     const pending = asLegacyTriggerPending(asLegacyResponsePending(stored)) as Pending | null;
-    if (!liveRoom || liveRoom.phase !== "response" || !(trigger ? trigger.actorId === me.id : pending && ["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation"].includes(pending.kind) && pending.actorId === me.id)) return json({ error: "You are not the acting player for this response timer." }, 409);
-    const responsePending = trigger ?? pending as AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | NegationPending;
+    const canonicalResponse = asResponsePending(stored);
+    const acting = trigger ? trigger.actorId === me.id : canonicalResponse ? canonicalResponse.actorId === me.id : pending && ["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation"].includes(pending.kind) && pending.actorId === me.id;
+    if (!liveRoom || liveRoom.phase !== "response" || !acting) return json({ error: "You are not the acting player for this response timer." }, 409);
+    const responsePending = trigger ?? canonicalResponse ?? pending as AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | NegationPending;
     // Idempotent: a refresh or duplicate request must never extend a human
     // decision. Only an unarmed pending response can receive its clock.
     if ((responsePending.deadline ?? 0) <= 0) {
