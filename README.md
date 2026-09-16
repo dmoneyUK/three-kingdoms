@@ -7,7 +7,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; active milestone is Match-rule correctness / Dying and multi-damage**
+- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 hero abilities ACTIVE**
 
 The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, Borrowed Sword, and human-controlled Quick Test Attacks, through the shared target, Dodge, Armor, damage, and Dying pipeline. Borrowed Sword is fully hardened in Standard games: after canonical Negation, its user chooses a live legal target, the Weapon holder receives a private semantic Attack decision with an idempotent human response timer, and refusal/no-provider transfer revalidates the persisted Weapon ID. Worker/D1 regressions cover races, stale targets/actions, physical and Serpent Spear providers, Dodge, and Yin-Yang Swords continuation.
 
@@ -25,7 +25,7 @@ Player squares show a secret-role badge only for the local player. Negation skip
 
 ### Semantic execution status
 
-The semantic response/trigger architecture is complete. All 28 / 28 verified Standard card identities and the exact physical Standard 108-card reconciliation are complete; Match-rule correctness / Dying and multi-damage is the active milestone.
+The semantic response/trigger architecture is complete. All 28 / 28 verified Standard card identities and the exact physical Standard 108-card reconciliation are complete. Match-rule correctness, including delayed Stratagem/Judgement lifecycle, is complete; Stage 6 hero abilities is active.
 
 The official **War of the Three Kingdoms (WTK) Game Card catalogue** is the primary source of truth for card names, product membership, categories and card rule meaning:
 
@@ -116,11 +116,11 @@ The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence ove
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Attack cards, Duel, AOE, Lightning, and forced damage converge on authoritative negative-HP and ordered Dying rules. After an unrescued defeat, outcome is calculated before exactly one legal continuation: finish, resume the interrupted effect, continue the AOE sequence, or advance to the next living turn owner. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 remains active for any further shared-rule gaps.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Attack cards, Duel, AOE, Lightning, and forced damage converge on authoritative negative-HP and ordered Dying rules. After an unrescued defeat, outcome is calculated before exactly one legal continuation: finish, resume the interrupted effect, continue the AOE sequence, or advance to the next living turn owner. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 delayed Stratagem/Judgement lifecycle — COMPLETE. Stage 6 hero abilities — ACTIVE.
 
 ## Roadmap
 
-Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture, Dying/multi-damage, and death/continuation/match outcome are complete. Stage 5 remains active for any further shared-rule gap.
+Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture, Dying/multi-damage, death/continuation/match outcome, and delayed Stratagem/Judgement lifecycle are complete. Stage 5 is complete; Stage 6 hero abilities is active.
 
 Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation now uses the same equipment rack and presentation path. Equipment and Judgement Zone cards retain an info button that opens their existing card explanation dialog. Informational gameplay messages appear only in the foldable Game Messages window, which retains the latest 10 public events in chronological order and does not hold cards, decisions, turns, timers, or later animations. The canonical equipment card event supplies rank, suit, and name; the redundant semantic equipment history event is removed.
 

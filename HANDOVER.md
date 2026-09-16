@@ -1,5 +1,11 @@
 # Three Kingdoms project handover
 
+## Stage 5 complete — delayed Stratagem / Judgement lifecycle (2026-09-16)
+
+Stage 5 is complete and Stage 6 hero abilities is active. Delayed Judgement Zone cards now resolve last-placed-first through one shared selector used by both Judgement-phase Negation discovery and resolution. Lightning and Overindulgence enter their Judgement Zones immediately without a placement-time Negation window; Negation remains available for the delayed effect before its Judgement card is drawn. Lightning's verified Negated-effect exception transfers directly to the next eligible living character's Judgement Zone, or is discarded only when no eligible zone remains. Standard-card Worker/D1 regressions cover ordering, transfer, placement timing, pre-draw Negation, intact neighboring delays, stale/duplicate draws, and conservation through the lifecycle.
+
+The narrow Stage 5 audit found no remaining shared Standard-rule correctness gap in this scope. Do not redesign ResponsePending/TriggerPending, add bot functionality, or begin broad hero abilities in the completed Stage 5 paths.
+
 ## Borrowed Sword hardening (2026-09-16)
 
 Borrowed Sword now persists Stage 2 as the canonical `ResponsePending` attack requirement. Current execution uses only `respond`/`decline_response`; legacy names are ingress aliases. The Worker/D1 regressions cover actor ownership and private provider projection, duplicate target/response/decline races, stale action revisions, exact Weapon-ID transfer, disappearance/replacement safety, physical Attack and Serpent Spear providers, ordinary Dodge, and Yin-Yang Swords `attack_targeted` continuation. The shared Attack, Dodge, damage, and Dying pipelines remain authoritative. Re-run `npm test`, `npm run lint`, `npm run build`, and `git diff --check` before the next milestone.
@@ -179,11 +185,11 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 The pure `determineMatchOutcome()` helper now owns the Standard role winner matrix while the room route retains D1 persistence, held-card commit, and terminal transition. Unrescued Dying defeat now passes through one continuation decision: terminal outcome first, then live Group/AOE continuation, live effect resumption, or the next living turn seat when the interrupted owner died. Finished-room projections have no actionable actor/current action. Source-free Lightning remains source-free, so it cannot create rewards or penalties. Focused pure coverage protects Renegade/Traitor compatibility and continuation ordering; the existing API regressions continue to cover role cleanup, AOE stop/continue, rescue races, and post-finish rejection.
 
-Dying / multi-damage — **COMPLETE**. Death / continuation / match outcome — **COMPLETE**. Stage 5 remains active only for genuinely remaining shared match rules.
+Dying / multi-damage — **COMPLETE**. Death / continuation / match outcome — **COMPLETE**. Stage 5 delayed Stratagem/Judgement lifecycle — **COMPLETE**. Stage 6 hero abilities — **ACTIVE**.
 
-## Recommended next work — continue the active milestone
+## Recommended next work — Stage 6 hero abilities
 
-1. **Audit remaining shared match rules:** identify and regression-test any gaps outside the completed Dying, defeat continuation, and outcome paths; do not claim Stage 5 complete until that audit is clear.
+1. **Implement the next narrowly-scoped hero ability** through semantic provider/capability contracts, with Quick Test, multiplayer privacy, stale safety, and deterministic regressions.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
 3. **Keep the completed physical Standard deck stable:** do not reopen its manifest while match-rule correctness work proceeds.
 

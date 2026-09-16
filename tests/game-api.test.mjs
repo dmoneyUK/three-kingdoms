@@ -666,7 +666,8 @@ test("normal responses follow Negation passes and retain both Attack and Spear c
 });
 
 test("effective distance rejects unreachable targets before consuming Attack and includes both horses", async () => {
-  const game = await createHumanGame(); const [host] = game.members;
+  const game = await createHumanGame();
+  const host = game.members[0];
   const [me, adjacent, opposite] = game.room.players;
   setHand(me.id, [card("Attack", "distance-guard"), card("Steal", "distance-guard")], 3, 3);
   setHand(adjacent.id, [], 3, 3); setEquipment(adjacent.id, { defensiveHorse: card("DefensiveHorse", "distance-guard") });
@@ -1244,11 +1245,10 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
 
   setHand(hostPlayer.id, [card("Overindulgence", "cancelled")], 5, 5); setHand(alicePlayer.id, [card("Negation", "overindulgence")], 4, 4); setTurn(game.code, hostPlayer.seat);
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: "overindulgence-cancelled", targetId: alicePlayer.id });
-  assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.effectTargetId, alicePlayer.id);
-  const cancelled = await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-overindulgence" });
-  assert.equal(cancelled.status, 200); assert.deepEqual(cancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, [], "Negation prevents placement in the Judgement Zone");
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation, null); assert.equal(opened.data.room.phase, "play");
+  assert.deepEqual(opened.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.map((delayed) => delayed.id), ["overindulgence-cancelled"], "placement immediately enters the Judgement Zone");
 
-  setHand(hostPlayer.id, [card("Overindulgence", "placed")], 5, 5); setHand(alicePlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  setHand(hostPlayer.id, [card("Overindulgence", "placed")], 5, 5); setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, []); setTurn(game.code, hostPlayer.seat);
   const placed = await request("play_card", { code: game.code, token: host.token, cardId: "overindulgence-placed", targetId: alicePlayer.id });
   assert.equal(placed.status, 200); assert.equal(placed.data.room.phase, "play"); assert.equal(placed.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards[0].id, "overindulgence-placed");
   setHand(hostPlayer.id, [card("Overindulgence", "duplicate")], 5, 5); setTurn(game.code, hostPlayer.seat);
@@ -1304,16 +1304,17 @@ test("Lightning is placed on self, transfers after a miss, and deals 3 thunder d
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "lightning-duplicate" })).status, 409);
 
   const negatedJudgementLightning = { ...card("Lightning", "judgement-window"), suit: "♦", rank: "Q" };
-  setHand(alicePlayer.id, [card("Negation", "lightning-judgement-window")], 4, 4); setJudgement(alicePlayer.id, [negatedJudgementLightning]); setTurn(game.code, alicePlayer.seat, "draw");
+  setHand(alicePlayer.id, [card("Negation", "lightning-judgement-window")], 4, 4); setJudgement(alicePlayer.id, [{ ...card("Overindulgence", "intact-after-lightning"), suit: "♣", rank: "6" }, negatedJudgementLightning]); setTurn(game.code, alicePlayer.seat, "draw");
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([card("Dodge", "unused-lightning-judge")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
   const judgementNegationWindow = await request("draw", { code: game.code, token: alice.token });
   assert.equal(judgementNegationWindow.status, 200); assert.equal(judgementNegationWindow.data.room.pendingNegation.cardName, "Lightning");
   const latestLightningEvent = judgementNegationWindow.data.room.timeline.filter((event) => event.type === "card" && event.card.id === "lightning-judgement-window").at(-1);
   assert.equal(latestLightningEvent.action, "activate", "a fresh judgement activation anchors the current Negation presentation instead of the original turn's discards");
-  assert.equal((await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-lightning-judgement-window" })).data.room.phase, "draw");
+  const negatedLightning = (await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-lightning-judgement-window" })).data.room;
+  assert.equal(negatedLightning.phase, "draw"); assert.deepEqual(negatedLightning.players.find((player) => player.id === alicePlayer.id).judgementCards.map((delayed) => delayed.id), ["overindulgence-intact-after-lightning"]); assert.deepEqual(negatedLightning.players.find((player) => player.id === bobPlayer.id).judgementCards.map((delayed) => delayed.id), ["lightning-judgement-window"], "Negated Lightning transfers without drawing a Judgement");
 
   const missedLightning = { ...card("Lightning", "miss"), suit: "♠", rank: "K" }; const missJudge = { ...card("Dodge", "miss-judge"), suit: "♥", rank: "7" };
-  setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, [missedLightning]); setTurn(game.code, alicePlayer.seat, "draw");
+  setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, [missedLightning]); setJudgement(bobPlayer.id, []); setTurn(game.code, alicePlayer.seat, "draw");
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([missJudge, card("Attack", "miss-draw-1"), card("Peach", "miss-draw-2")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
   const missed = await request("draw", { code: game.code, token: alice.token });
   assert.equal(missed.status, 200); assert.equal(missed.data.room.phase, "play"); assert.equal(missed.data.drawnCards.length, 2);
@@ -1343,6 +1344,28 @@ test("Lightning is placed on self, transfers after a miss, and deals 3 thunder d
   const rescued = await state(game.code, alice.token);
   assert.equal(rescued.data.players.find((player) => player.id === alicePlayer.id).hp, 1, "three Peaches rescue a target from -2 HP");
   assert.equal(rescued.data.players.find((player) => player.id === alicePlayer.id).alive, true);
+});
+
+test("delayed Standard cards resolve newest first and stale draws cannot replay them", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice"); const bobPlayer = game.room.players.find((player) => player.name === "Bob");
+  assert.ok(hostPlayer && alicePlayer && bobPlayer);
+  for (const player of game.room.players) setHand(player.id, [], 4, 4);
+
+  const olderLightning = { ...card("Lightning", "older"), suit: "♥", rank: "Q" }; const newerOverindulgence = { ...card("Overindulgence", "newer"), suit: "♣", rank: "6" };
+  setJudgement(alicePlayer.id, [olderLightning, newerOverindulgence]); setTurn(game.code, alicePlayer.seat, "draw");
+  setDeck(game.code, [{ ...card("Dodge", "over-judge"), suit: "♠", rank: "7" }, { ...card("Dodge", "lightning-judge"), suit: "♥", rank: "7" }]);
+  const newestFirst = await request("draw", { code: game.code, token: game.members.find((member) => member.name === "Alice").token });
+  assert.equal(newestFirst.status, 200); assert.equal(newestFirst.data.room.phase, "draw-skip-play"); assert.deepEqual(newestFirst.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.map((delayed) => delayed.id), ["lightning-older"]);
+  assert.ok(newestFirst.data.room.log.some((entry) => /Overindulgence/.test(entry)));
+  const staleDraw = await request("draw", { code: game.code, token: game.members.find((member) => member.name === "Alice").token });
+  assert.equal(staleDraw.status, 200); assert.deepEqual(staleDraw.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []); assert.ok(staleDraw.data.room.log.some((entry) => /Lightning misses and transfers to Bob/.test(entry)), "the older Lightning resolves after the newer Overindulgence");
+  assert.equal(staleDraw.data.room.players.find((player) => player.id === bobPlayer.id).judgementCards[0].id, "lightning-older");
+
+  const lightning = { ...card("Lightning", "race"), suit: "♥", rank: "Q" }; setJudgement(alicePlayer.id, [lightning]); setTurn(game.code, alicePlayer.seat, "draw"); setDeck(game.code, [{ ...card("Dodge", "race-judge"), suit: "♥", rank: "7" }, card("Attack", "race-draw-1"), card("Attack", "race-draw-2")]);
+  const alice = game.members.find((member) => member.name === "Alice"); const [first, second] = await Promise.all([request("draw", { code: game.code, token: alice.token }), request("draw", { code: game.code, token: alice.token })]);
+  assert.equal([first.status, second.status].filter((status) => status === 200).length, 1, "duplicate draw submissions resolve one delayed effect");
+  const afterRace = await state(game.code, alice.token); assert.equal(afterRace.data.players.find((player) => player.id === alicePlayer.id).judgementCards.length, 0);
 });
 
 test("Rations Depleted targets at distance 1 and skips only a failed target's Draw Phase", { timeout: 30_000 }, async () => {
@@ -1378,9 +1401,9 @@ test("Rations Depleted targets at distance 1 and skips only a failed target's Dr
   assert.equal(passed.status, 200); assert.equal(passed.data.room.phase, "play"); assert.equal(passed.data.drawnCards.length, 2); assert.ok(passed.data.room.log.some((entry) => /Club result allows the Draw Phase/.test(entry)));
 
   setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, [{ ...card("RationsDepleted", "combined"), suit: "♠", rank: "10" }, { ...card("Overindulgence", "combined"), suit: "♥", rank: "6" }]); setTurn(game.code, alicePlayer.seat, "draw");
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([{ ...card("Dodge", "combined-rations-judge"), suit: "♠", rank: "10" }, { ...card("Dodge", "combined-overindulgence-judge"), suit: "♣", rank: "7" }, card("Attack", "combined-unused-draw")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([{ ...card("Dodge", "combined-rations-judge"), suit: "♠", rank: "10" }, { ...card("Dodge", "combined-overindulgence-judge"), suit: "♠", rank: "7" }, card("Attack", "combined-unused-draw")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
   const firstDelayed = await request("draw", { code: game.code, token: alice.token });
-  assert.equal(firstDelayed.status, 200); assert.equal(firstDelayed.data.room.phase, "draw-skip-draw"); assert.equal(firstDelayed.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.length, 1);
+  assert.equal(firstDelayed.status, 200); assert.equal(firstDelayed.data.room.phase, "draw-skip-play"); assert.equal(firstDelayed.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.length, 1, "the older delayed card remains after the newer card resolves first");
   const combinedSkip = await request("draw", { code: game.code, token: alice.token });
   assert.equal(combinedSkip.status, 200); assert.equal(combinedSkip.data.room.phase, "discard"); assert.equal(combinedSkip.data.drawnCards, undefined); assert.equal(combinedSkip.data.room.myHand.length, 0, "Rations Depleted and Overindulgence preserve both skipped phases across consecutive judgements");
 

@@ -79,7 +79,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 remains active only for any genuinely remaining shared match-rule gaps. The semantic execution layer remains complete.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is now ACTIVE.
 
 ## Progress summary
 
@@ -89,8 +89,8 @@ Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE.
 | 2. Strengthen the general rules engine | Complete | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented and covered by deterministic regressions and synthetic end-to-end extensibility proofs. |
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
-| 5. Complete match rules | **Active milestone** | Dying/multi-damage and defeat continuation/outcome are complete; audit and close any remaining shared match-rule gaps. |
-| 6. Hero-specific abilities | Deferred except architecture proofs | Qingguo is the first live proof. Broad hero work begins after shared cards/rules architecture is stable. |
+| 5. Complete match rules | **Complete** | Dying/multi-damage, defeat continuation/outcome, delayed Stratagem LIFO ordering, placement timing, Judgement-phase Negation, and Lightning transfer semantics are deterministic and regression-covered. |
+| 6. Hero-specific abilities | **ACTIVE** | Qingguo remains the first live proof; begin the next scoped hero ability while preserving the completed semantic architecture. |
 | 7. Product polish | Ongoing | Continue mobile clarity and presentation work; sound, invitations and saved history remain later work. |
 
 ## Stability foundation already complete
@@ -131,7 +131,7 @@ The 28-card identity roadmap below is distinct from that physical manifest; the 
 
 ## Physical Standard 108-card deck reconciliation — complete
 
-The identity layer and physical manifest are complete. The runtime instantiates `docs/STANDARD_108_DECK_MANIFEST.md` as one canonical 108-entry collection with exact suit/rank assignments, quantities, and six named mounts. Stage 5 is now the active correctness milestone.
+The identity layer and physical manifest are complete. The runtime instantiates `docs/STANDARD_108_DECK_MANIFEST.md` as one canonical 108-entry collection with exact suit/rank assignments, quantities, and six named mounts. Stage 5 is complete; Stage 6 hero abilities is active.
 
 ## Verified implemented Standard identities — 28
 
