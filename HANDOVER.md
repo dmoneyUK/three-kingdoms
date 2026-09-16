@@ -185,7 +185,7 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 The verified active roadmap is 28 card identities. **28 / 28 are currently treated as playable.**
 
-`docs/STANDARD_108_DECK_MANIFEST.md` remains the physical 108-card target. Before declaring the Standard deck complete, reconcile every physical card, suit/rank assignment, quantity, and the six named mounts with the runtime deck.
+`docs/STANDARD_108_DECK_MANIFEST.md` remains the physical 108-card target. The resolved runtime manifest and local conservation tests are complete; the release gate is the exact-head CI/deployment result.
 
 Borrowed Sword, Blue Steel Sword, Yin-Yang Swords, and Kirin Bow are implemented and dealt. All 28 / 28 verified identities are complete; the active milestone is the exact physical Standard 108-card reconciliation.
 
