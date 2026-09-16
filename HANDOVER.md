@@ -4,7 +4,7 @@ Use this file to continue development in a new chat. Start from the latest `main
 
 ## Completed architecture invariants
 
-The semantic execution architecture milestone is **complete**. Borrowed Sword is implemented through the existing deferred-Stratagem Negation boundary and normal Attack continuation; preserve those boundaries while expanding physical deck and match coverage.
+The semantic execution architecture milestone is **complete**. Borrowed Sword is implemented through the existing deferred-Stratagem Negation boundary and normal Attack continuation. Its Stage 2 decision now re-discovers semantic Attack providers from live holder state, including Serpent Spear, and transfer verifies the persisted Weapon ID before moving any card.
 
 Completed architecture guarantees:
 
@@ -173,7 +173,7 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 1. **Reconcile the physical Standard deck manifest** against runtime quantities and suit/rank assignments.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
-3. **Expand Borrowed Sword and match edge-case regressions** across human multiplayer and Quick Test.
+3. **Expand Borrowed Sword and match edge-case regressions** across human multiplayer and Quick Test; the forced-Attack path now has physical and Serpent Spear coverage, with broader stale/concurrent matrix coverage still recommended.
 
 ## Standard card roadmap status
 

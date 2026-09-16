@@ -9,7 +9,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
 - Current stage: **playable four-player alpha — non-blocking Game Messages history and exact card presentation barriers**
 
-The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, and human-controlled Quick Test Attacks, through one imminent-damage transition. Borrowed Sword is now dealt in Standard games: after Negation, its user chooses a legal target for the Weapon holder's forced Attack; refusal or no Attack transfers the Weapon, while a played Attack uses the normal Dodge, Armor, damage, and Dying pipeline.
+The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, Borrowed Sword, and human-controlled Quick Test Attacks, through the shared target, Dodge, Armor, damage, and Dying pipeline. Borrowed Sword is fully dealt in Standard games: after Negation, its user chooses a legal target for the Weapon holder's forced Attack; refusal or no Attack transfers the live validated Weapon.
 
 Successful Judgement-based Negation now applies one transitioned parity/depth state before either opening a counter-window or resolving the effect.
 

@@ -15,6 +15,7 @@ export type HarvestChoice = { cardId: string; playerId: string; playerName: stri
 export type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; botAdvanceAt?: number; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 export type TargetCardPending = { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
 export type BorrowedSwordPending = { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; stage: "choose_target" | "force_attack" };
+export type BorrowedSwordAttackContinuation = { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; weaponId: string };
 export type DeferredStratagem =
   | { kind: "draw_two"; cardId: string } | { kind: "oath" } | { kind: "harvest"; chooserIds: string[] } | { kind: "harvest_target"; pending: HarvestPending } | { kind: "borrowed_sword"; targetId: string }
   | { kind: "dismantle"; targetId: string } | { kind: "steal"; targetId: string } | { kind: "duel"; pending: DuelPending } | { kind: "group"; pending: GroupPending }
@@ -25,7 +26,7 @@ export type AttackContinuation = Omit<AttackPending, "kind" | "actorId" | "reaso
 export type GroupContinuation = Omit<GroupPending, "kind" | "actorId" | "reason" | "deadline" | "readyAfterEventId"> & { kind: "group" };
 export type DuelContinuation = Omit<DuelPending, "kind" | "actorId" | "reason" | "deadline" | "readyAfterEventId"> & { kind: "duel" };
 export type NegationContinuation = Omit<NegationPending, "kind" | "actorId" | "reason" | "deadline" | "readyAfterEventId"> & { kind: "negation" };
-export type ResponseContinuation = AttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation;
+export type ResponseContinuation = AttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;
 
 /**
  * The canonical persisted decision for a player who must satisfy a semantic

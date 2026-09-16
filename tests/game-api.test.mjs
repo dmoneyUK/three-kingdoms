@@ -1920,4 +1920,9 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
   assert.equal((await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id })).status, 200);
   const played = await request("respond_borrowed_sword", { code: game.code, token: alice.token, cardId: attack.id });
   assert.equal(played.status, 200, JSON.stringify(played.data)); assert.equal(played.data.room.players.find((player) => player.id === secondTarget.id).hp, 3); assert.equal(played.data.room.players.find((player) => player.id === holder.id).equipmentCards[0].id, weapon.id);
+
+  const spear = card("SerpentSpear", "borrowed-spear"); setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [card("Peach", "spear-cost-one"), card("Dodge", "spear-cost-two")], 4, 4); setHand(secondTarget.id, [], 4, 4); setEquipment(holder.id, { weapon: spear }); setTurn(game.code, source.seat);
+  await request("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id }); await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id });
+  const spearAttack = await request("respond_borrowed_sword", { code: game.code, token: alice.token, providerId: "serpent_spear_attack", cardIds: ["peach-spear-cost-one", "dodge-spear-cost-two"] });
+  assert.equal(spearAttack.status, 200, JSON.stringify(spearAttack.data)); assert.equal(spearAttack.data.room.players.find((player) => player.id === secondTarget.id).hp, 3); assert.equal(spearAttack.data.room.players.find((player) => player.id === holder.id).equipmentCards[0].id, spear.id);
 });
