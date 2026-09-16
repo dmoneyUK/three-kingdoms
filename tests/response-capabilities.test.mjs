@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getResponseOptions, registerResponseProvider, responseOptions, selectResponse } from "../game/responses.ts";
+import { getAttackCardProvider, getResponseOptions, registerResponseProvider, responseOptions, selectResponse } from "../game/responses.ts";
 import { resolveResponseDecision, responseDecisionFor } from "../game/response-decision.ts";
 import { applySuccessfulNegation } from "../game/decisions/negation.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
@@ -10,9 +10,40 @@ import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement
 import { normalizeLegacyResponseAction } from "../game/compat/legacy-actions.ts";
 import { readFile } from "node:fs/promises";
 import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
-import { heroGender } from "../game/heroes.ts";
+import { HEROES, LEGACY_HEROES, STANDARD_HEROES, heroGender } from "../game/heroes.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
+
+test("Standard hero registry is complete, selectable, and shared by Quick Test and normal rooms", async () => {
+  const ids = STANDARD_HEROES.map((hero) => hero.id);
+  assert.equal(STANDARD_HEROES.length, 31);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.deepEqual(STANDARD_HEROES.filter((hero) => hero.id === "yue-jin" || hero.id === "yu-jin" || hero.id === "zhuge-liang" || hero.id === "lady-gan" || hero.id === "gongsun-zan" || hero.id === "pan-feng").map((hero) => hero.id), ["yue-jin", "yu-jin", "zhuge-liang", "lady-gan", "gongsun-zan", "pan-feng"]);
+  for (const excluded of ["yuanshao", "yanliang-wenchou", "pangde"]) assert.equal(ids.includes(excluded), false);
+  assert.deepEqual(LEGACY_HEROES.map((hero) => hero.id), ["yuanshao", "yanliang-wenchou", "pangde"]);
+  assert.equal(HEROES.find((hero) => hero.id === "pangde")?.standardSelectable, false);
+  assert.equal(heroGender("pangde"), "male");
+  const route = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
+  assert.match(route, /import \{ STANDARD_HEROES/);
+  assert.equal((route.match(/STANDARD_HEROES/g) ?? []).length >= 5, true);
+  assert.doesNotMatch(route, /const HEROES\s*=/);
+});
+
+test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack", () => {
+  const redPeach = { ...card("Peach", "red-peach"), suit: "♥" };
+  const redEquipment = { ...card("ZhugeCrossbow", "red-equipment"), suit: "♦" };
+  const blackAttack = card("Attack", "black-attack");
+  const context = { hand: [redPeach, blackAttack], equipment: [redEquipment], hero: "guan-yu" };
+  const options = getResponseOptions(context, { kind: "attack" });
+  assert.deepEqual(options.map((option) => option.providerId), ["card", "guan_yu_red_card_attack"]);
+  assert.deepEqual(options[1].selection?.eligibleCardIds, ["red-peach"]);
+  assert.equal(getAttackCardProvider(context, redPeach.id)?.providerId, "guan_yu_red_card_attack");
+  assert.equal(getAttackCardProvider(context, redEquipment.id), undefined);
+  assert.equal(getResponseOptions({ hand: [redPeach], equipment: [], hero: "zhang-fei" }, { kind: "attack" }).length, 0);
+  const pending = { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", resumePhase: "play", reason: "Attack" };
+  assert.deepEqual(resolveResponseDecision(pending, context, "guan_yu_red_card_attack", { cardId: "red-peach" }), { status: "satisfied", providerId: "guan_yu_red_card_attack", satisfies: "attack", consumeCardIds: ["red-peach"], resolution: "cards" });
+  assert.equal(resolveResponseDecision(pending, { ...context, hand: [blackAttack] }, "guan_yu_red_card_attack", { cardId: "red-peach" }), null);
+});
 
 test("production registries exclude synthetic semantic capabilities", () => {
   const responseOptions = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" });

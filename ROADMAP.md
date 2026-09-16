@@ -77,6 +77,19 @@ Legacy protocol/pending compatibility still exists intentionally:
 
 Remove these one path at a time only after the equivalent semantic decision is fully covered. Keep saved-game compatibility until the replacement path is proven; do not add any new card or hero capability to a legacy action branch.
 
+## Stage 6 Round 1 — runtime Standard roster and Guan Yu
+
+Complete. `game/heroes.ts` is the authoritative 31-general Standard registry;
+normal multiplayer and Quick Test draw from it. The three excluded legacy IDs
+remain readable/projectable but cannot enter new Standard selection. The six
+missing Standard generals are metadata-only. Guan Yu Wusheng is verified from
+the current official Standard card and implemented as a small explicit semantic
+Attack provider, including Play Phase red-card conversion and live physical-card
+revalidation. No universal hero framework was added.
+
+Next milestone: architecture review of this capability seam before selecting a
+second real Standard hero.
+
 ## Validation status
 
 Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is now ACTIVE.

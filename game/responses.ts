@@ -3,6 +3,7 @@ import { physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider
 import { eightTrigramsDodgeProvider } from "./capabilities/equipment/eight-trigrams";
 import { serpentSpearAttackProvider } from "./capabilities/equipment/serpent-spear";
 import { zhenJiBlackCardDodgeProvider } from "./capabilities/heroes/zhen-ji";
+import { guanYuRedCardAttackProvider } from "./capabilities/heroes/guan-yu";
 
 export type ResponseKind = "Attack" | "Dodge";
 export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null };
@@ -37,7 +38,7 @@ export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "ne
 // the currently valid provider to satisfy an abstract requirement.
 const providers: ResponseProvider[] = [
   physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider,
-  eightTrigramsDodgeProvider, serpentSpearAttackProvider, zhenJiBlackCardDodgeProvider,
+  eightTrigramsDodgeProvider, serpentSpearAttackProvider, zhenJiBlackCardDodgeProvider, guanYuRedCardAttackProvider,
 ];
 
 export function registerResponseProvider(provider: ResponseProvider) {
@@ -60,6 +61,12 @@ export function getResponseOptions(context: CapabilityContext, requirement: Acti
     throw new Error(`Response requirement ${satisfies} has more than one implicit provider.`);
   }
   return options;
+}
+
+/** Finds a one-card explicit Attack provider for Play Phase virtual-card use. */
+export function getAttackCardProvider(context: ResponseContext, cardId: string) {
+  return getResponseOptions({ ...context, requirement: { kind: "attack" } }, { kind: "attack" })
+    .find((option) => option.activation === "explicit" && option.selection?.type === "cards" && option.selection.min === 1 && option.selection.max === 1 && option.selection.eligibleCardIds.includes(cardId));
 }
 
 export function resolveResponseProvider(providerId: unknown, context: ResponseExecutionContext) {

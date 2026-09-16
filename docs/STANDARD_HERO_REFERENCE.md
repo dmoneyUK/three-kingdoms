@@ -1,15 +1,16 @@
 # WTK Standard Hero Reference and Roster Reconciliation
 
 > Status: **authoritative roster reference for this project** as reconciled on 2026-09-16.
-> This file records the current WTK **Standard** General roster shown in the official WTK General Card catalogue and compares it with the runtime hero metadata at the reconciliation baseline.
+> This file records the current WTK **Standard** General roster shown in the official WTK General Card catalogue and the implementation confidence boundary for hero rules.
 
 ## Source and verification policy
 
 - **Primary roster source:** official WTK General Card catalogue: <https://wtkgames.com/generalCard/> with the product filter set to **Standard**. The project owner supplied a screenshot of that filtered roster on 2026-09-16.
 - **Product source:** <https://wtkgames.com/product/Standard/>.
-- **Runtime baseline compared:** `main` at `b22e47a9c99386cba817932e91ff47837665f365`, especially `game/heroes.ts`.
+- **Runtime reconciliation baseline:** `main` at `6b7ba951eb2125c511315515327ad1dbbc4790b9`, before this round's changes.
 - The Standard-filtered official catalogue is authoritative for **which generals belong in new Standard games**, even when older Sanguosha/WTK material originally classified a general as SP, Kingdom Wars, or another pack.
-- Skill descriptions below are **implementation-oriented paraphrases**, not quotations. They are intended to preserve the gameplay meaning and identify the engine hook needed by Stage 6.
+- **Roster membership is owner-verified** against the supplied official Standard-filtered WTK General catalogue. Faction, name, gender, and HP are retained only where supported by the official card/source or explicitly treated as implementation metadata pending individual verification.
+- Skill descriptions below are **implementation-oriented paraphrases**, not quotations. They are not authoritative official rules until that specific General card has been checked.
 - **Before implementing a hero**, re-open that hero's current official WTK Standard card/rulebook entry and confirm exact timing, card zones, optional/locked wording, target restrictions, and revised skill text. This is especially important for heroes that have had multiple published revisions.
 - Do not ship official card artwork from the catalogue without permission.
 
@@ -224,10 +225,11 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 4
 - **Runtime roster status:** Present
-- **Skills:**
-  - **Wusheng 武圣:** A red card may be used or played as an Attack, subject to the exact official card-zone wording.
+- **Verified official source:** current Guan Yu card in the WTK Standard-filtered official General Card catalogue, <https://wtkgames.com/generalCard/> (card image identifies Guan Yu as SHU 002).
+- **Verified rule text:** “You may use or play a Red suited card as an [Attack].”
+- **Implementation interpretation:** Wusheng supplies a semantic Attack from one red-suited card in Guan Yu's hand. “Use or play” covers active Play Phase use and every existing semantic Attack requirement; an equipped card is not eligible because it is no longer legally supplied from the hand zone. The physical source card remains the consumed/presented card, with its original suit and ID.
 - **Likely engine shape:** virtual Attack provider/use.
-- **Current implementation:** Metadata only; good Stage 6 provider candidate after exact card wording is verified.
+- **Current implementation:** Implemented as the explicit `guan_yu_red_card_attack` semantic Attack provider, including live hand-card revalidation and Play Phase virtual Attack use. No Guan-Yu-specific pending type or central resolver branch exists.
 
 ### Zhang Fei (张飞)
 
@@ -490,13 +492,13 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 
 | Runtime ID | General | Current runtime faction | Compatibility policy |
 | --- | --- | --- | --- |
-| `yuanshao` | Yuan Shao | Neutral | Legacy-readable only; exclude from new Standard hero selection. |
-| `yanliang-wenchou` | Yan Liang & Wen Chou | Neutral | Legacy-readable only; exclude from new Standard hero selection. |
-| `pangde` | Pang De | Neutral | Legacy-readable only; exclude from new Standard hero selection. |
+| `yuanshao` | Yuan Shao | Qun (legacy Neutral compatibility) | Legacy-readable only; exclude from new Standard hero selection. |
+| `yanliang-wenchou` | Yan Liang & Wen Chou | Qun (legacy Neutral compatibility) | Legacy-readable only; exclude from new Standard hero selection. |
+| `pangde` | Pang De | Qun (legacy Neutral compatibility) | Legacy-readable only; exclude from new Standard hero selection. |
 
 ## Stage 6 engineering requirements derived from this reconciliation
 
-1. **One authoritative hero registry.** `app/api/rooms/route.ts` and `game/heroes.ts` must not maintain independent hero lists. New Standard selection, gender lookup, HP, faction, names and skill metadata should come from one shared source.
+1. **One authoritative hero registry.** `game/heroes.ts` now owns `STANDARD_HEROES`; `app/api/rooms/route.ts` consumes it for both normal and Quick Test selection. `HEROES` retains a bounded legacy-readable compatibility view.
 2. **Separate selectability from readability.** Legacy hero IDs may remain readable for saved rooms while a `standard`/`selectableInStandard` flag controls new-game selection.
 3. **No hero-name branches in central rules for new skills.** Use semantic response providers, trigger providers, passive modifiers, turn/phase hooks or other small capability contracts.
 4. **Gender and faction are domain data.** Never infer them from names, artwork or UI presentation.
@@ -508,7 +510,7 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 The following are deliberately called out because their published wording has changed across editions or because the existing runtime summary is incomplete:
 
 - Zhang Liao — exact Tuxi Draw Phase replacement/reduction wording.
-- Guan Yu — exact zones from which a red card may be converted to Attack.
+- Guan Yu — verified and implemented: one red-suited hand card may be used or played as Attack; equipped cards are not eligible.
 - Zhuge Liang — exact Kongcheng target/effect wording and any card-gain timing rider on the current WTK card.
 - Ma Chao — exact Tieji qualifying Judgement result and resulting Dodge restriction.
 - Huang Yueying — exact Qicai range wording.
@@ -524,9 +526,4 @@ Older English Sanguosha references are useful only as **secondary** rule-history
 
 ## Next repository change
 
-This file documents the reconciliation only. The next functional Stage 6 change should:
-
-- move the shared runtime hero metadata to this verified 31-General Standard roster;
-- exclude the three legacy/non-Standard entries from **new** Standard selection without breaking old rooms;
-- add the six missing Standard generals to metadata/selection; and
-- only then implement one verified Standard hero skill at a time.
+This file now documents the reconciled 31-General runtime roster and the first verified hero capability. The next step is architecture review of Guan Yu before selecting another Standard hero; do not generalise a hero framework until another real skill proves the need.

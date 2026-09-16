@@ -1042,6 +1042,26 @@ test("generic response executes Zhen Ji's black-card Dodge without a physical Do
   assert.ok(discardIds(game.code).includes(blackPeach.id));
 });
 
+test("Guan Yu uses a red hand card as Attack through the normal multiplayer pipeline", async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(hostPlayer && alicePlayer);
+  sql(`UPDATE players SET hero='guan-yu' WHERE id=${quote(hostPlayer.id)}`);
+  const redPeach = { ...card("Peach", "wusheng-red"), suit: "♥" };
+  setHand(hostPlayer.id, [redPeach], 4, 4); setHand(alicePlayer.id, [card("Dodge", "wusheng-dodge")], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const played = await request("play_card", { code: game.code, token: host.token, cardId: redPeach.id, targetId: alicePlayer.id });
+  assert.equal(played.status, 200);
+  const defender = await state(game.code, alice.token); const attacker = await state(game.code, host.token);
+  assert.equal(defender.data.currentAction.kind, "response");
+  assert.ok(defender.data.currentAction.options.some((option) => option.providerId === "card"));
+  assert.equal(attacker.data.currentAction?.options?.length ?? 0, 0, "only the defender receives private response options");
+  const dodge = card("Dodge", "wusheng-dodge");
+  assert.equal((await request("respond", { code: game.code, token: host.token, providerId: "card", cardId: dodge.id })).status, 409);
+  const blocked = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: dodge.id });
+  assert.equal(blocked.status, 200); assert.equal(discardIds(game.code).filter((id) => id === redPeach.id).length, 1);
+  assert.equal((await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: dodge.id })).status, 409, "duplicate response cannot consume either card twice");
+});
+
 test("Something Out of Nothing preserves Play Phase and reveals the stratagem without exposing drawn cards", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const host = game.members[0];

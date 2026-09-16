@@ -1,5 +1,33 @@
 # Three Kingdoms project handover
 
+## Stage 6 Round 1 complete — Standard roster reconciliation and Guan Yu (2026-09-16)
+
+The runtime Standard roster now has one authoritative source in
+`game/heroes.ts`: `STANDARD_HEROES` contains the owner-verified 31-general
+roster using official Wei/Shu/Wu/Qun names. Normal multiplayer and Quick Test
+both use this registry. Yue Jin, Yu Jin, Zhuge Liang, Lady Gan, Gongsun Zan,
+and Pan Feng are metadata-only. Yuan Shao, Yan Liang & Wen Chou, and Pang De
+remain in `LEGACY_HEROES` for saved-room readability and gender projection but
+are excluded from new Standard selection.
+
+The official current Guan Yu Standard card reads, “You may use or play a Red
+suited card as an [Attack].” Wusheng is implemented as the explicit semantic
+`guan_yu_red_card_attack` provider. It discovers/revalidates red-suited hand
+cards, keeps the physical source card ID and suit, supports Play Phase virtual
+Attack use and all existing semantic Attack requirements, and flows through
+the canonical target, Dodge, Armor, damage, Dying, and continuation paths.
+Equipped cards are not eligible because they are not in the acting hand zone.
+
+No universal hero framework, Guan-Yu-specific pending type, or central
+Attack/Duel/AOE/Borrowed Sword hero branch was added. The deterministic
+capability and roster regressions cover selectable membership, exclusions,
+legacy projection, provider eligibility, non-Guan-Yu/black-card rejection,
+stale card revalidation, and semantic execution. Full release validation and
+the exact pushed SHA are recorded in the final task report.
+
+Recommended next work: architecture review of this first virtual Attack seam;
+stop here before selecting another hero.
+
 ## Stage 5 complete — delayed Stratagem / Judgement lifecycle (2026-09-16)
 
 Stage 5 is complete and Stage 6 hero abilities is active. Delayed Judgement Zone cards now resolve last-placed-first through one shared selector used by both Judgement-phase Negation discovery and resolution. Lightning and Overindulgence enter their Judgement Zones immediately without a placement-time Negation window; Negation remains available for the delayed effect before its Judgement card is drawn. Lightning's verified Negated-effect exception transfers directly to the next eligible living character's Judgement Zone, or is discarded only when no eligible zone remains. Standard-card Worker/D1 regressions cover ordering, transfer, placement timing, pre-draw Negation, intact neighboring delays, stale/duplicate draws, and conservation through the lifecycle. The shared resolver emits one cancellation-history entry per delayed effect, and the stale-action regression now submits a captured pre-resolution revision after the first delay has resolved.
