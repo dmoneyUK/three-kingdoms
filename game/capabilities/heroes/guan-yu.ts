@@ -7,9 +7,10 @@ export const guanYuRedCardAttackProvider: ResponseProvider = {
   id: "guan_yu_red_card_attack",
   satisfies: "attack",
   activation: "explicit",
+  playPhaseUse: "attack",
   getOption: (context) => {
     if (context.hero !== "guan-yu") return null;
-    const cards = context.hand.filter((card) => isRed(card.suit));
+    const cards = (context.hand ?? []).filter((card) => isRed(card.suit));
     return cards.length
       ? { provider: "guan_yu", providerId: "guan_yu_red_card_attack", satisfies: "attack", label: "Use Wusheng as Attack", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } }
       : null;

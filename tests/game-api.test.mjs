@@ -1049,6 +1049,9 @@ test("Guan Yu uses a red hand card as Attack through the normal multiplayer pipe
   sql(`UPDATE players SET hero='guan-yu' WHERE id=${quote(hostPlayer.id)}`);
   const redPeach = { ...card("Peach", "wusheng-red"), suit: "♥" };
   setHand(hostPlayer.id, [redPeach], 4, 4); setHand(alicePlayer.id, [card("Dodge", "wusheng-dodge")], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const playView = await state(game.code, host.token);
+  assert.deepEqual(playView.data.currentAction.playPhaseActions, [{ cardId: redPeach.id, canPlayAs: "attack" }], "the acting Guan Yu receives the private Play Phase Attack projection");
+  assert.equal((await state(game.code, alice.token)).data.currentAction.playPhaseActions, undefined, "other seats do not receive Guan Yu's private convertible-card projection");
   const played = await request("play_card", { code: game.code, token: host.token, cardId: redPeach.id, targetId: alicePlayer.id });
   assert.equal(played.status, 200);
   const defender = await state(game.code, alice.token); const attacker = await state(game.code, host.token);

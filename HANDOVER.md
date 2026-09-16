@@ -20,6 +20,14 @@ Equipped cards are not eligible because they are not in the acting hand zone.
 Quick Test now names the four human-style seats Player1 through Player4 and
 assigns Guan Yu plus a guaranteed red Wusheng-capable opening card to Player1.
 
+The Play Phase projects provider-owned `currentAction.playPhaseActions` only to
+the acting seat. The browser consumes those `cardId` / `canPlayAs` mappings for
+Attack target, range, Halberd, one-Attack-per-turn and button state; it does not
+duplicate Wusheng eligibility. `playPhaseUse: "attack"` explicitly separates
+active virtual Attack use from a response-only Attack requirement provider.
+Borrowed Sword preserves its Nio Shield passive point, then uses canonical
+semantic Dodge discovery rather than checking only for a physical Dodge card.
+
 No universal hero framework, Guan-Yu-specific pending type, or central
 Attack/Duel/AOE/Borrowed Sword hero branch was added. The deterministic
 capability and roster regressions cover selectable membership, exclusions,
@@ -28,7 +36,8 @@ stale card revalidation, and semantic execution. Full release validation and
 the exact pushed SHA are recorded in the final task report.
 
 Recommended next work: architecture review of this first virtual Attack seam;
-stop here before selecting another hero.
+stop here before selecting another hero. Play Phase Wusheng, response parity,
+and the browser projection are now included in the completed hardening scope.
 
 ## Stage 5 complete — delayed Stratagem / Judgement lifecycle (2026-09-16)
 

@@ -84,11 +84,16 @@ normal multiplayer and Quick Test draw from it. The three excluded legacy IDs
 remain readable/projectable but cannot enter new Standard selection. The six
 missing Standard generals are metadata-only. Guan Yu Wusheng is verified from
 the current official Standard card and implemented as a small explicit semantic
-Attack provider, including Play Phase red-card conversion and live physical-card
-revalidation. No universal hero framework was added.
+Attack provider, including live physical-card revalidation and Play Phase
+red-card conversion. The acting seat receives a private semantic Play Phase
+projection; the client uses it for Attack targeting, range, Halberd and control
+state. Provider flags keep “Attack requirement provider” separate from “Play
+Phase virtual Attack use”, so response-only providers cannot become active card
+sources. Borrowed Sword now continues through canonical Dodge discovery after
+Nio Shield. No universal hero framework was added.
 
 Next milestone: architecture review of this capability seam before selecting a
-second real Standard hero.
+second real Standard hero. Do not begin hero #2 in this round.
 
 Quick Test now uses the explicit human-style seat names Player1 through
 Player4, with Player1 as the Guan Yu-controlled seat and a guaranteed red

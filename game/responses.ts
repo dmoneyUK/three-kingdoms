@@ -17,6 +17,7 @@ export type CapabilityContext = ResponseContext & { requirement: ActionRequireme
 export type ResponseActivation = "implicit" | "explicit";
 export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; label: string; cards: Card[]; selection: ResponseSelection };
 export type ResponseProviderOption = Omit<ResponseOption, "activation">;
+export type PlayPhaseAction = { cardId: string; canPlayAs: "attack" };
 export type ResponseSelectionInput = { cardId?: unknown; cardIds?: unknown };
 export type JudgementResolution = {
   kind: "judgement";
@@ -32,7 +33,7 @@ export type ResponseExecution =
   | { status: "satisfied"; providerId: string; satisfies: "attack" | "dodge" | "negate"; consumeCardIds?: string[]; resolution?: "cards" }
   | { status: "requires_resolution"; providerId: string; satisfies: "attack" | "dodge" | "negate"; resolution: ResolutionEffect };
 export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation"; selection: { cardId?: string; cardIds?: string[] } };
-export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; getOption: (context: CapabilityContext) => ResponseProviderOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
+export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; playPhaseUse?: "attack"; getOption: (context: CapabilityContext) => ResponseProviderOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
 
 // Providers own their availability and resolver choice. The engine only asks
 // the currently valid provider to satisfy an abstract requirement.
@@ -63,10 +64,22 @@ export function getResponseOptions(context: CapabilityContext, requirement: Acti
   return options;
 }
 
-/** Finds a one-card explicit Attack provider for Play Phase virtual-card use. */
+/** Finds a one-card provider explicitly allowed to initiate a Play Phase Attack. */
 export function getAttackCardProvider(context: ResponseContext, cardId: string) {
-  return getResponseOptions({ ...context, requirement: { kind: "attack" } }, { kind: "attack" })
-    .find((option) => option.activation === "explicit" && option.selection?.type === "cards" && option.selection.min === 1 && option.selection.max === 1 && option.selection.eligibleCardIds.includes(cardId));
+  return providers.filter((provider) => provider.satisfies === "attack" && provider.playPhaseUse === "attack").flatMap((provider) => {
+    const option = provider.getOption({ ...context, requirement: { kind: "attack" } });
+    return option ? [{ ...option, activation: provider.activation }] : [];
+  }).find((option) => option.activation === "explicit" && option.selection?.type === "cards" && option.selection.min === 1 && option.selection.max === 1 && option.selection.eligibleCardIds.includes(cardId));
+}
+
+/** Projects provider-owned Play Phase virtual actions without exposing cards from another view. */
+export function getPlayPhaseActions(context: ResponseContext): PlayPhaseAction[] {
+  const safeContext = { ...context, hand: context.hand ?? [], equipment: context.equipment ?? [] };
+  const actions = providers.filter((provider) => provider.satisfies === "attack" && provider.playPhaseUse === "attack").flatMap((provider) => {
+    const option = provider.getOption({ ...safeContext, requirement: { kind: "attack" } });
+    return option?.selection?.type === "cards" ? option.selection.eligibleCardIds.map((cardId) => ({ cardId, canPlayAs: "attack" as const })) : [];
+  });
+  return actions.filter((action, index) => actions.findIndex((candidate) => candidate.cardId === action.cardId) === index);
 }
 
 export function resolveResponseProvider(providerId: unknown, context: ResponseExecutionContext) {

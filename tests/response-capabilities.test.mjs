@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getAttackCardProvider, getResponseOptions, registerResponseProvider, responseOptions, selectResponse } from "../game/responses.ts";
+import { getAttackCardProvider, getPlayPhaseActions, getResponseOptions, registerResponseProvider, responseOptions, selectResponse } from "../game/responses.ts";
 import { resolveResponseDecision, responseDecisionFor } from "../game/response-decision.ts";
 import { applySuccessfulNegation } from "../game/decisions/negation.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
@@ -43,6 +43,42 @@ test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack",
   const pending = { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", resumePhase: "play", reason: "Attack" };
   assert.deepEqual(resolveResponseDecision(pending, context, "guan_yu_red_card_attack", { cardId: "red-peach" }), { status: "satisfied", providerId: "guan_yu_red_card_attack", satisfies: "attack", consumeCardIds: ["red-peach"], resolution: "cards" });
   assert.equal(resolveResponseDecision(pending, { ...context, hand: [blackAttack] }, "guan_yu_red_card_attack", { cardId: "red-peach" }), null);
+});
+
+test("Play Phase virtual Attack projection is explicit and shares Wusheng eligibility", () => {
+  const redPeach = { ...card("Peach", "play-peach"), suit: "♥" };
+  const redDodge = { ...card("Dodge", "play-dodge"), suit: "♦" };
+  const redNegation = { ...card("Negation", "play-negation"), suit: "♥" };
+  const redEquipment = { ...card("ZhugeCrossbow", "play-equipment"), suit: "♦" };
+  const blackPeach = card("Peach", "play-black");
+  const context = { hand: [redPeach, redDodge, redNegation, redEquipment, blackPeach], equipment: [], hero: "guan-yu" };
+  assert.deepEqual(getPlayPhaseActions(context), [
+    { cardId: redPeach.id, canPlayAs: "attack" },
+    { cardId: redDodge.id, canPlayAs: "attack" },
+    { cardId: redNegation.id, canPlayAs: "attack" },
+    { cardId: redEquipment.id, canPlayAs: "attack" },
+  ]);
+  assert.deepEqual(getPlayPhaseActions({ ...context, hero: "zhen-ji" }), []);
+  assert.deepEqual(getPlayPhaseActions({ ...context, hand: [redPeach], equipment: [redEquipment] }), [{ cardId: redPeach.id, canPlayAs: "attack" }]);
+});
+
+test("response-only Attack providers do not become Play Phase actions", () => {
+  const provider = {
+    id: "response_only_attack",
+    satisfies: "attack",
+    activation: "explicit",
+    getOption: (context) => context.hero === "response-only" ? { provider: "response_only", providerId: "response_only_attack", satisfies: "attack", label: "Response-only Attack", cards: context.hand, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: context.hand.map((item) => item.id) } } : null,
+    resolve: () => ({ status: "satisfied", providerId: "response_only_attack", satisfies: "attack", consumeCardIds: ["response-card"] }),
+  };
+  const unregister = registerResponseProvider(provider);
+  try {
+    const context = { hand: [card("Peach", "response-card")], equipment: [], hero: "response-only" };
+    assert.equal(getResponseOptions(context, { kind: "attack" }).length, 1);
+    assert.deepEqual(getPlayPhaseActions(context), []);
+    assert.equal(getAttackCardProvider(context, "response-card"), undefined);
+  } finally {
+    unregister();
+  }
 });
 
 test("production registries exclude synthetic semantic capabilities", () => {

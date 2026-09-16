@@ -52,6 +52,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /send\("create", \{ quickStart: true \}\)/);
   assert.doesNotMatch(page, /previousTurn/);
   assert.match(page, /Play selected/);
+  assert.match(page, /playPhaseActions/);
+  assert.match(page, /selectedCanPlayAsAttack/);
+  assert.match(page, /canPlayAs === "attack"/);
+  assert.doesNotMatch(page, /hero === "guan-yu"/);
   assert.match(page, /Skip response/);
   assert.match(page, /Play Peach/);
   assert.match(page, /Skip rescue/);

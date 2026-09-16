@@ -33,9 +33,10 @@ test("normalizes the canonical current action without trusting unknown legal act
   const room = normalizeRoomData({
     code: "ACT01", status: "playing", players: [], myHand: [], timeline: [], log: [], myHeroOptions: [],
     pending: { kind: "attack" },
-    currentAction: { version: 1, kind: "attack", actorId: "p1", deadline: 123, reason: "Dodge or take damage", legalActions: ["respond", "respond_dodge", "take_damage", "invent_action"], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["dodge-1", 9] } }, { providerId: 9, satisfies: "dodge", label: "Invalid", selection: null }] },
+    currentAction: { version: 1, kind: "attack", actorId: "p1", deadline: 123, reason: "Dodge or take damage", legalActions: ["respond", "respond_dodge", "take_damage", "invent_action"], playPhaseActions: [{ cardId: "red-peach", canPlayAs: "attack" }, { cardId: "red-peach", canPlayAs: "attack" }, { cardId: "bad", canPlayAs: "dodge" }], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["dodge-1", 9] } }, { providerId: 9, satisfies: "dodge", label: "Invalid", selection: null }] },
   });
   assert.deepEqual(room?.pending, { kind: "attack" });
   assert.deepEqual(room?.currentAction?.legalActions, ["respond", "respond_dodge", "take_damage"]);
   assert.deepEqual(room?.currentAction?.options, [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["dodge-1"] } }]);
+  assert.deepEqual(room?.currentAction?.playPhaseActions, [{ cardId: "red-peach", canPlayAs: "attack" }]);
 });

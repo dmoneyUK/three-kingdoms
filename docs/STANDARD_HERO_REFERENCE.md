@@ -227,9 +227,9 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Runtime roster status:** Present
 - **Verified official source:** current Guan Yu card in the WTK Standard-filtered official General Card catalogue, <https://wtkgames.com/generalCard/> (card image identifies Guan Yu as SHU 002).
 - **Verified rule text:** “You may use or play a Red suited card as an [Attack].”
-- **Implementation interpretation:** Wusheng supplies a semantic Attack from one red-suited card in Guan Yu's hand. “Use or play” covers active Play Phase use and every existing semantic Attack requirement; an equipped card is not eligible because it is no longer legally supplied from the hand zone. The physical source card remains the consumed/presented card, with its original suit and ID.
+- **Implementation interpretation:** Wusheng supplies a semantic Attack from one red-suited card in Guan Yu's hand. “Use or play” covers active Play Phase use and every existing semantic Attack requirement; an equipped card is not eligible because it is no longer legally supplied from the hand zone. The physical source card remains the consumed/presented card, with its original suit and ID. The acting seat receives a private `cardId -> canPlayAs: "attack"` Play Phase projection; the browser does not reimplement eligibility.
 - **Likely engine shape:** virtual Attack provider/use.
-- **Current implementation:** Implemented as the explicit `guan_yu_red_card_attack` semantic Attack provider, including live hand-card revalidation and Play Phase virtual Attack use. No Guan-Yu-specific pending type or central resolver branch exists.
+- **Current implementation:** Implemented as the explicit `guan_yu_red_card_attack` semantic Attack provider, including live hand-card revalidation and Play Phase virtual Attack use. `playPhaseUse: "attack"` is explicit: an Attack requirement provider is not automatically an active Play Phase source. No Guan-Yu-specific pending type or central resolver branch exists. Borrowed Sword uses the same canonical Dodge discovery as ordinary Attacks after Nio Shield.
 
 ### Zhang Fei (张飞)
 
@@ -510,7 +510,7 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 The following are deliberately called out because their published wording has changed across editions or because the existing runtime summary is incomplete:
 
 - Zhang Liao — exact Tuxi Draw Phase replacement/reduction wording.
-- Guan Yu — verified and implemented: one red-suited hand card may be used or played as Attack; equipped cards are not eligible.
+- Guan Yu — verified and implemented: one red-suited hand card may be used or played as Attack; equipped cards are not eligible. Play Phase action projection and shared response parity are included in the hardening scope.
 - Zhuge Liang — exact Kongcheng target/effect wording and any card-gain timing rider on the current WTK card.
 - Ma Chao — exact Tieji qualifying Judgement result and resulting Dodge restriction.
 - Huang Yueying — exact Qicai range wording.

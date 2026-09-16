@@ -72,6 +72,7 @@ function normalizeCurrentAction(value) {
         : null;
     return [{ effectId: option.effectId, label: option.label, selection }];
   }) : [];
+  const playPhaseActions = Array.isArray(value.playPhaseActions) ? value.playPhaseActions.filter(isRecord).flatMap((action) => typeof action.cardId === "string" && action.canPlayAs === "attack" ? [{ cardId: action.cardId, canPlayAs: "attack" }] : []).filter((action, index, all) => all.findIndex((candidate) => candidate.cardId === action.cardId) === index) : [];
   return {
     version: value.version,
     kind: value.kind,
@@ -79,6 +80,7 @@ function normalizeCurrentAction(value) {
     deadline: typeof value.deadline === "number" ? value.deadline : 0,
     reason: typeof value.reason === "string" ? value.reason : "Waiting for the next legal action",
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
+    ...(playPhaseActions.length ? { playPhaseActions } : {}),
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
     ...(value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
     ...(isRecord(value.presentation) ? { presentation: { resolutionId: typeof value.presentation.resolutionId === "string" ? value.presentation.resolutionId : null, readyAfterEventId: typeof value.presentation.readyAfterEventId === "string" ? value.presentation.readyAfterEventId : null } } : {}),
