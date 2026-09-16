@@ -21,6 +21,8 @@ The game table now uses a responsive four-seat player board with no in-game top 
 
 The game surface keeps Exit available independently of the hidden top bar. Game Messages is the foldable event window and can be folded away to free table space; no separate popup history window is used, and the turn-status strip is intentionally omitted from the board.
 
+Recent UX fixes complete three reported flows: a defensive horse can replace an equipped Hex Mark through the normal equipment-slot path; Borrowed Sword now exposes live Weapon holders as selectable targets before opening the forced Attack response; and resolved hero/equipment reactions emit a server-authored Game Messages entry plus a brief on-table “Effect Triggered” notice. These notices are informational and never delay decisions, timers, or card presentation barriers.
+
 Player squares show a secret-role badge only for the local player. Negation skip controls keep a stable label while a request is in flight, avoiding transient status flicker. Equipment and Judgement tiles use a uniform compact card ratio, with taller player squares allowing the zone contents to remain readable.
 
 ## Source of knowledge

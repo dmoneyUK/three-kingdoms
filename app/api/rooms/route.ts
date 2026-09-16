@@ -22,7 +22,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack"; effectNotice?: boolean };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -236,7 +236,10 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}) };
+}
+function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
+  return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
 }
 function addLog(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@event:${JSON.stringify({ id: crypto.randomUUID(), message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
 function addLogWithId(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
@@ -2308,7 +2311,8 @@ export async function POST(request: Request) {
     const remaining = triggerOptionsFor(next, players);
     const resumed = resumeTriggerContinuation(trigger, triggerExecution, remaining.length > 0, nextResponseDeadline(players.find((player) => player.id === trigger.actorId)));
     if (!resumed) return json({ error: "That triggered effect cannot continue this event.", stale: true, room: await roomState(code, token) }, 409);
-    const presentation = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${me.name} resolves an optional reaction. ${remaining.length ? "Another reaction remains available." : "No further reactions remain."}`);
+    const effectNotice = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), me.name, triggerExecution.presentation?.label ?? "an optional effect");
+    const presentation = addLogWithId(effectNotice.log, `${remaining.length ? "Another reaction remains available." : "No further reactions remain."}`);
     if (remaining.length) {
       const reopened = resumed.kind === "reopen" ? resumed.pending : next;
       await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending({ ...reopened, readyAfterEventId: undefined }), JSON.stringify(presentation.log), room.id).run();
@@ -2340,6 +2344,7 @@ export async function POST(request: Request) {
       if (execution?.outcome.kind === "target_discard" && !discardCard) return json({ error: "The selected hand card is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That target decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+      if (execution) log = addTriggeredEffectNotice(log, target.name, triggerExecution.presentation?.label ?? "an optional effect").log;
       if (execution?.outcome.kind === "target_discard") {
         const hand = parse<Card[]>(target.hand_json, []); const card = hand.find((item) => item.id === execution.outcome.targetCardId);
         if (!card || !discardCard) return json({ error: "The selected hand card is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -2358,8 +2363,9 @@ export async function POST(request: Request) {
       const source = players.find((player) => player.id === continuation.sourceId && player.alive);
       const target = players.find((player) => player.id === continuation.targetId && player.alive);
       const discard = parse<Card[]>(liveRoom.discard_json, []);
-      const log = parse<string[]>(liveRoom.log_json, []);
+      let log = parse<string[]>(liveRoom.log_json, []);
       if (!source || !target) return json({ error: "That damage reaction is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (action === "apply_trigger" && triggerExecution) log = addTriggeredEffectNotice(log, me.name, triggerExecution.presentation?.label ?? "an optional effect").log;
       if (action === "apply_trigger" && triggerExecution?.outcome.kind === "target_discard") {
         const mount = equipmentCards(target).find((card) => card.id === triggerExecution.outcome.targetCardId);
         if (!mount) return json({ error: "The selected Mount is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -2389,7 +2395,7 @@ export async function POST(request: Request) {
       const target = players.find((player) => player.id === continuation.targetId && player.alive);
       const hand = parse<Card[]>(source?.hand_json ?? null, []);
       const discard = parse<Card[]>(liveRoom.discard_json, []);
-      const log = parse<string[]>(liveRoom.log_json, []);
+      let log = parse<string[]>(liveRoom.log_json, []);
       if (!source || !target || action === "decline_trigger_effect") {
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
@@ -2402,6 +2408,7 @@ export async function POST(request: Request) {
         if (!attack) return json({ error: "The selected reaction no longer has its required card.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect").log;
         await applyFollowUpAttackOutcome(liveRoom, continuation, source, target, players, attack, hand, discard, log, triggerExecution.presentation?.label);
         return json({ room: await roomState(code, token) });
       }
@@ -2411,6 +2418,7 @@ export async function POST(request: Request) {
         if (materials.length !== triggerExecution.outcome.consumeCardIds.length || materials.length === 0) return json({ error: "The selected reaction no longer has its required costs.", stale: true, room: await roomState(code, token) }, 409);
         const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That trigger decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        log = addTriggeredEffectNotice(log, source.name, triggerExecution.presentation?.label ?? "an optional effect").log;
         await applyForcedDamageOutcome(liveRoom, continuation, source, target, players, materials, hand, discard, log, triggerExecution.outcome.amount, triggerExecution.presentation?.label);
         return json({ room: await roomState(code, token) });
       }
