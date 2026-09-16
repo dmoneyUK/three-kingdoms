@@ -1291,7 +1291,7 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
 });
 
 test("Lightning is placed on self, transfers after a miss, and deals 3 thunder damage on Spade 2-9", { timeout: 30_000 }, async () => {
-  const game = await createHumanGame(); const [host, alice] = game.members;
+  const game = await createHumanGame(); const [host, alice, bob] = game.members;
   const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice"); const bobPlayer = game.room.players.find((player) => player.name === "Bob");
   assert.ok(hostPlayer && alicePlayer && bobPlayer);
 
@@ -1330,12 +1330,19 @@ test("Lightning is placed on self, transfers after a miss, and deals 3 thunder d
   assert.deepEqual(hit.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
   assert.ok(hit.data.room.log.some((entry) => /takes 3 thunder damage/.test(entry)));
 
-  for (const player of game.room.players) setHand(player.id, [], player.id === alicePlayer.id ? 1 : 4, player.id === hostPlayer.id ? 5 : 4);
+  for (const player of game.room.players) setHand(player.id, player.id === bobPlayer.id ? [card("Peach", "lightning-rescue-1"), card("Peach", "lightning-rescue-2"), card("Peach", "lightning-rescue-3")] : [], player.id === alicePlayer.id ? 1 : 4, player.id === hostPlayer.id ? 5 : 4);
   setJudgement(alicePlayer.id, [{ ...card("Lightning", "lethal"), suit: "♦", rank: "Q" }]); setTurn(game.code, alicePlayer.seat, "draw");
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([{ ...card("Attack", "lethal-judge"), suit: "♠", rank: "8" }, card("Attack", "unused-lethal-draw")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
   const lethal = await request("draw", { code: game.code, token: alice.token });
-  assert.equal(lethal.status, 200); assert.equal(lethal.data.room.players.find((player) => player.id === alicePlayer.id).alive, false, "an unrescued Lightning victim is defeated");
-  assert.equal(lethal.data.room.turnSeat, bobPlayer.seat, "source-free Lightning defeat advances to the next living turn owner");
+  assert.equal(lethal.status, 200); assert.equal(lethal.data.room.players.find((player) => player.id === alicePlayer.id).hp, -2, "Lightning preserves true post-damage HP");
+  const rescueView = await state(game.code, bob.token); assert.equal(rescueView.data.pendingDying.recoveryNeeded, 3);
+  for (const id of ["peach-lightning-rescue-1", "peach-lightning-rescue-2", "peach-lightning-rescue-3"]) {
+    const rescued = await request("give_peach", { code: game.code, token: bob.token, cardId: id });
+    assert.equal(rescued.status, 200);
+  }
+  const rescued = await state(game.code, alice.token);
+  assert.equal(rescued.data.players.find((player) => player.id === alicePlayer.id).hp, 1, "three Peaches rescue a target from -2 HP");
+  assert.equal(rescued.data.players.find((player) => player.id === alicePlayer.id).alive, true);
 });
 
 test("Rations Depleted targets at distance 1 and skips only a failed target's Draw Phase", { timeout: 30_000 }, async () => {

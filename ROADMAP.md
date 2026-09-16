@@ -79,7 +79,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human seats and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, and `attack_targeted` now supports target-owned choices with live hand revalidation and original-Attack continuation. Legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Human-seat regressions cover authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety. Synthetic-provider isolation is complete: test fixtures are explicitly registered only in the test Worker and are absent from production registries. Saved-state compatibility remains a bounded input/state adapter. Blue Steel Sword, Yin-Yang Swords, Kirin Bow, and Borrowed Sword are implemented and dealt; all 28 verified identities are playable.
+Physical Standard 108-card deck — COMPLETE. Active milestone: Match-rule correctness / Dying and multi-damage. The semantic execution layer remains complete. Damage preserves actual resulting HP; Dying begins at hp <= 0; each Peach restores 1 HP; Dying ends only after hp >= 1 or rescue is exhausted. The server remains authoritative for negative HP and projects recoveryNeeded to the rescue actor.
 
 ## Progress summary
 

@@ -110,13 +110,13 @@ The playable alpha includes:
 
 The verified remaining cards and implementation order are maintained in [ROADMAP.md](ROADMAP.md). The current verified remainder is:
 
-No verified Standard card identity remains; physical 108-card reconciliation is the active milestone, followed by broader match edge cases.
+Physical Standard 108-card deck — COMPLETE. The active milestone is Match-rule correctness / Dying and multi-damage.
 
 The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence over older roadmap/card lists.
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Equipment and delayed Stratagem presentations now settle directly into their owner's Equipment or Judgement Zone without a duplicate numbered copy. Attack cards, Serpent Spear formations, and Green Dragon follow-ups converge on a shared imminent-damage transition. Quick Test controller races are guarded by an authoritative action revision, and invalid generic response fallbacks are suppressed. Room reads are non-mutating and D1-efficient. Canonical response and trigger decisions persist precise fresh presentation barriers; secondary Judgement resumes through one semantic continuation boundary across Attack, Group, Duel, and Negation. The Worker/D1 suite now covers both an Attack-dodged event and a `damage_about_to_apply` event reopening two inert synthetic `continue_event` providers in order; the damage proof confirms the original Attack damage resumes exactly once after exhaustion. Old saved pending shapes remain isolated in adapters. Human-seat guarantees cover authoritative actor ownership, perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety. Synthetic providers are isolated to the test Worker. The semantic response/trigger architecture milestone is complete; the next milestone is the remaining Standard card and manifest work tracked in `ROADMAP.md`.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Equipment and delayed Stratagem presentations now settle directly into their owner's Equipment or Judgement Zone without a duplicate numbered copy. Attack cards, Serpent Spear formations, Green Dragon follow-ups, Lightning, Duel, AOE, and forced damage converge on damage rules that preserve actual resulting HP. Dying begins at hp <= 0; each Peach restores 1 HP; Dying ends only after hp >= 1 or rescue is exhausted. The server projects recoveryNeeded for the rescue actor without moving rule calculation into React. The semantic response/trigger architecture milestone remains complete.
 
 ## Roadmap
 
