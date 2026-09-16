@@ -174,6 +174,11 @@ test("passive and triggered equipment capabilities are discovered outside the ro
   const frostContext = { event: "damage_about_to_apply", targetId: "target", sourceEquipment: [card("FrostSword", "frost")], targetHand, targetEquipment };
   assert.deepEqual(getTriggeredEffects(frostContext), [{ effectId: "frost_sword_damage_about_to_apply", label: "Use Frost Sword", selection: { type: "target_cards", targetId: "target", min: 1, max: 2, eligibleKeys: ["hand:0", "frost-armor"] } }]);
   assert.deepEqual(resolveTriggeredEffect("frost_sword_damage_about_to_apply", frostContext, { cardKeys: ["hand:0", "frost-armor"] }), { status: "resolved", effectId: "frost_sword_damage_about_to_apply", outcome: { kind: "prevent_damage", targetCardIds: ["frost-hand", "frost-armor"] } });
+
+  const kirinContext = { event: "damage_about_to_apply", targetId: "target", sourceEquipment: [card("KirinBow", "kirin")], targetEquipment: [card("OffensiveHorse", "offensive"), card("NioShield", "armor"), card("DefensiveHorse", "defensive")] };
+  assert.deepEqual(getTriggeredEffects(kirinContext), [{ effectId: "kirin_bow_damage_about_to_apply", label: "Use Kirin Bow", selection: { type: "target_cards", targetId: "target", min: 1, max: 1, eligibleKeys: ["offensive", "defensive"] } }]);
+  assert.deepEqual(resolveTriggeredEffect("kirin_bow_damage_about_to_apply", kirinContext, { cardKeys: ["defensive"] }), { status: "resolved", effectId: "kirin_bow_damage_about_to_apply", outcome: { kind: "target_discard", targetCardId: "defensive" } });
+  assert.equal(getTriggeredEffects({ ...kirinContext, targetEquipment: [card("NioShield", "armor")] }).length, 0);
 });
 
 test("Yin-Yang Swords is a target-owned attack_targeted capability with live legal choices", () => {

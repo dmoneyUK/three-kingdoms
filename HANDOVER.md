@@ -124,6 +124,7 @@ Representative migrated triggers:
 - Green Dragon Blade — `attack_dodged`, select one valid follow-up Attack;
 - Rock Cleaving Axe — `attack_dodged`, discard exactly two current Hand/Equipment cards;
 - Frost Sword — `damage_about_to_apply`, choose one or two target Hand/Equipment cards and replace the damage with discards.
+- Kirin Bow — `damage_about_to_apply`, choose one target Mount in the damaged character's Equipment Zone and discard it before the original damage resumes.
 
 Frost Sword correctly excludes Judgement Zone cards.
 
@@ -154,7 +155,7 @@ Events already present on initial load/reload are treated as presented; optimist
 
 `TriggerPending` is now the persisted wrapper for weapon reactions. It records the semantic event (`attack_dodged` or `damage_about_to_apply`), the acting player, deadline/reason and a bounded continuation. `roomState()` projects the current actor's private trigger option(s), and the client submits `trigger` or `decline_trigger`. The route recomputes the provider from live equipment/hand/target state and rejects a mismatched or stale provider.
 
-Green Dragon Blade, Rock Cleaving Axe and Frost Sword are covered end-to-end through this protocol. Frost now uses the generic `damage_about_to_apply` continuation and semantic `prevent_damage` outcome; older pending shapes and action names remain compatibility adapters for saved rooms and inactive legacy code. Do not add new capabilities to those legacy branches.
+Green Dragon Blade, Rock Cleaving Axe, Frost Sword and Kirin Bow are covered end-to-end through this protocol. Frost now uses the generic `damage_about_to_apply` continuation and semantic `prevent_damage` outcome; Kirin Bow uses the same continuation with a semantic target-card discard outcome. Older pending shapes and action names remain compatibility adapters for saved rooms and inactive legacy code. Do not add new capabilities to those legacy branches.
 
 ### B. Decision presentation barriers are now transition-owned
 
@@ -170,16 +171,15 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — begin the next milestone
 
-1. **Continue Kirin Bow.** Keep the completed semantic response/trigger boundaries and the reusable target-owned `attack_targeted` event.
+1. **Continue Borrowed Sword.** Keep the completed semantic response/trigger boundaries and the reusable target-owned `attack_targeted` event.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
-3. **Continue the WTK Standard card roadmap**, with Kirin Bow before Borrowed Sword.
+3. **Continue the WTK Standard card roadmap**, with Borrowed Sword as the next remaining identity.
 
 ## Standard card roadmap status
 
-The verified active roadmap is 28 card identities. **26 / 28 are currently treated as playable.** The remaining verified identities are:
+The verified active roadmap is 28 card identities. **27 / 28 are currently treated as playable.** The remaining verified identity is:
 
-1. Kirin Bow
-2. Borrowed Sword
+1. Borrowed Sword
 
 `docs/STANDARD_108_DECK_MANIFEST.md` remains the physical 108-card target. Before declaring the Standard deck complete, reconcile every physical card, suit/rank assignment, quantity, and the six named mounts with the runtime deck.
 

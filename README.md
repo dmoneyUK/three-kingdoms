@@ -9,7 +9,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
 - Current stage: **playable four-player alpha — non-blocking Game Messages history and exact card presentation barriers**
 
-The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, and human-controlled Quick Test Attacks, through one imminent-damage transition. The reusable `attack_targeted` event now discovers target-owned semantic decisions before Armor/Dodge resolution, with private opaque hand selection and original-Attack continuation. Yin-Yang Swords is implemented through that provider-neutral path; Kirin Bow and Borrowed Sword remain out of the dealt deck until implemented.
+The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, and human-controlled Quick Test Attacks, through one imminent-damage transition. The reusable `attack_targeted` event now discovers target-owned semantic decisions before Armor/Dodge resolution, with private opaque hand selection and original-Attack continuation. Yin-Yang Swords and Kirin Bow are implemented through that provider-neutral path; Borrowed Sword remains out of the dealt deck until implemented.
 
 Successful Judgement-based Negation now applies one transitioned parity/depth state before either opening a counter-window or resolving the effect.
 
@@ -99,6 +99,7 @@ The playable alpha includes:
 - Rock Cleaving Axe
 - Sky Piercing Halberd
 - Frost Sword
+- Kirin Bow
 - Yin-Yang Swords
 - Nio Shield
 - Eight Trigrams Formation
@@ -109,10 +110,7 @@ The playable alpha includes:
 
 The verified remaining cards and implementation order are maintained in [ROADMAP.md](ROADMAP.md). The current verified remainder is:
 
-1. Blue Steel Sword
-2. Yin-Yang Swords
-3. Kirin Bow
-4. Borrowed Sword
+1. Borrowed Sword
 
 The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence over older roadmap/card lists.
 
@@ -122,7 +120,7 @@ The shared turn and response engine now uses effective horse-adjusted distance c
 
 ## Roadmap
 
-Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture remains complete; Kirin Bow is the next milestone.
+Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Passing is final within that opportunity; playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal Dodge/Attack/Serpent Spear response opens, with a fresh timer. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture remains complete; Kirin Bow is implemented and Borrowed Sword is the next milestone.
 
 Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation now uses the same equipment rack and presentation path. Equipment and Judgement Zone cards retain an info button that opens their existing card explanation dialog. Informational gameplay messages are displayed separately in the Game Messages panel and do not hold cards, decisions, turns, timers, or later animations.
 

@@ -448,7 +448,7 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
   // Keep the newly implemented card available for every manual test, but let
   // the rest of ME's opening hand come from the shuffled Standard deck.
-  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: ["EightTrigrams", "Attack", "Attack", "Attack"] });
+  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: ["KirinBow", "EightTrigrams", "Attack", "Attack"] });
   const quickPlayers = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const quickRoom = await db().prepare("SELECT deck_json FROM rooms WHERE id = ?").bind(roomId).first<Pick<RoomRow, "deck_json">>();
   const testPlayers = (quickPlayers.results ?? []).filter((player) => player.id !== hostPlayerId);
@@ -1079,6 +1079,7 @@ async function advanceCanonicalBotTrigger(roomId: string) {
     const targetCards = [...parse<Card[]>(target.hand_json, []), ...equipmentCards(target)];
     if (execution.outcome.targetCardIds.some((id) => !targetCards.some((card) => card.id === id))) return;
   }
+  if (execution.outcome.kind === "target_discard" && !equipmentCards(target).some((card) => card.id === execution.outcome.targetCardId)) return;
   const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
   if ((claim.meta.changes ?? 0) <= 0) return;
   const discard = parse<Card[]>(room.discard_json, []); const log = addLog(parse<string[]>(room.log_json, []), `${actor.name} resolves ${option.label}.`);
@@ -1088,6 +1089,8 @@ async function advanceCanonicalBotTrigger(roomId: string) {
     await applyForcedDamageOutcome(room, pending.continuation as AttackDodgedTriggerContinuation, source, target, players, materials, sourceHand, discard, log, execution.outcome.amount, option.label);
   } else if (execution.outcome.kind === "prevent_damage") {
     await applyPreventDamageOutcome(room, pending.continuation as DamageAboutToApplyTriggerContinuation, source, target, discard, log, execution.outcome.targetCardIds);
+  } else if (execution.outcome.kind === "target_discard") {
+    await applyKirinBowOutcome(room, pending.continuation as DamageAboutToApplyTriggerContinuation, source, target, players, discard, log, execution.outcome.targetCardId);
   } else {
     const next = continueTriggerEvent(pending, execution, nextResponseDeadline(actor)); const remaining = next ? triggerOptionsFor(next, players) : [];
     if (next && remaining.length) {
@@ -1195,6 +1198,20 @@ async function applyPreventDamageOutcome(room: RoomRow, continuation: DamageAbou
     db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
   ]);
   await continueAfterDying(room.id, source.id);
+  return true;
+}
+
+async function applyKirinBowOutcome(room: RoomRow, continuation: DamageAboutToApplyTriggerContinuation, source: PlayerRow, target: PlayerRow, players: PlayerRow[], discard: Card[], log: string[], targetCardId: string) {
+  const equipment = equipmentZone(target);
+  const mountSlot = (["offensiveHorse", "defensiveHorse"] as const).find((slot) => equipment[slot]?.id === targetCardId);
+  if (!mountSlot || !equipment[mountSlot]) return false;
+  const mount = equipment[mountSlot];
+  delete equipment[mountSlot];
+  discard.push(mount);
+  log = addDiscardEvent(log, target.name, [mount]);
+  log = addLog(log, `${source.name} uses Kirin Bow to discard ${mount.rank}${mount.suit} ${cardDefinition(mount.kind).name} from ${target.name}. The Attack damage continues.`);
+  await db().prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(JSON.stringify(equipment), target.id).run();
+  await resumeCanonicalTriggerContinuation(room, continuation, players, discard, log);
   return true;
 }
 
@@ -2301,6 +2318,14 @@ export async function POST(request: Request) {
       const discard = parse<Card[]>(liveRoom.discard_json, []);
       const log = parse<string[]>(liveRoom.log_json, []);
       if (!source || !target) return json({ error: "That damage reaction is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (action === "apply_trigger" && triggerExecution?.outcome.kind === "target_discard") {
+        const mount = equipmentCards(target).find((card) => card.id === triggerExecution.outcome.targetCardId);
+        if (!mount) return json({ error: "The selected Mount is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+        const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+        if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That damage reaction has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+        await applyKirinBowOutcome(liveRoom, continuation, source, target, players, discard, log, mount.id);
+        return json({ room: await roomState(code, token) });
+      }
       if (action === "apply_trigger" && triggerExecution?.outcome.kind === "prevent_damage") {
         const all = [...parse<Card[]>(target.hand_json, []), ...equipmentCards(target)];
         const selected = triggerExecution.outcome.targetCardIds;

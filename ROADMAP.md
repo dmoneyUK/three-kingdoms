@@ -79,7 +79,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human seats and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, and `attack_targeted` now supports target-owned choices with live hand revalidation and original-Attack continuation. Legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Human-seat regressions cover authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety. Synthetic-provider isolation is complete: test fixtures are explicitly registered only in the test Worker and are absent from production registries. Saved-state compatibility remains a bounded input/state adapter. Yin-Yang Swords is implemented; Kirin Bow and Borrowed Sword remain out of the dealt deck.
+The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human seats and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, and `attack_targeted` now supports target-owned choices with live hand revalidation and original-Attack continuation. Legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Human-seat regressions cover authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety. Synthetic-provider isolation is complete: test fixtures are explicitly registered only in the test Worker and are absent from production registries. Saved-state compatibility remains a bounded input/state adapter. Yin-Yang Swords and Kirin Bow are implemented; Borrowed Sword remains out of the dealt deck.
 
 ## Progress summary
 
@@ -87,7 +87,7 @@ The semantic execution layer is complete. Successful Negation uses one pure pari
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete | Turn ownership, phases, ordered responses, Dying interruption/resumption and repeated rounds are playable and regression-covered. |
 | 2. Strengthen the general rules engine | Complete | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented and covered by deterministic regressions and synthetic end-to-end extensibility proofs. |
-| 3. Complete the verified Standard card identities | **26 / 28 playable** | Two verified identities remain: Kirin Bow and Borrowed Sword. |
+| 3. Complete the verified Standard card identities | **27 / 28 playable** | One verified identity remains: Borrowed Sword. |
 | 4. Reconcile the physical Standard deck | In progress | `docs/STANDARD_108_DECK_MANIFEST.md` remains the exact quantity/suit/rank target. |
 | 5. Complete match rules | Partly implemented | Main death/reward/victory paths work; edge cases still need expansion. |
 | 6. Hero-specific abilities | Deferred except architecture proofs | Qingguo is the first live proof. Broad hero work begins after shared cards/rules architecture is stable. |
@@ -165,7 +165,7 @@ Implemented:
 - test human-seat, same-gender and opposite-gender paths.
 - reusable `attack_targeted` discovery supports target ownership, opaque hand selection, stale-safe resolution, and Halberd target independence.
 
-### 3. Kirin Bow
+### 3. Kirin Bow — implemented
 
 **5 ♦ — Weapon — Attack Range 5**
 
@@ -178,6 +178,8 @@ Work:
 - expose a choice when both Mount slots are eligible;
 - do nothing when no Mount is equipped;
 - verify Frost Sword replacement prevents this trigger because no Attack damage occurred.
+
+Implemented through the generic `damage_about_to_apply` trigger registry with live Mount-slot selection, semantic target discard, original-damage resumption, deck registration, Quick Test availability, and human/API regression coverage.
 
 ### 4. Borrowed Sword
 

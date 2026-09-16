@@ -135,7 +135,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const displayedRoles = await Promise.all(game.members.map(async (member) => (await state(game.code, member.token)).data.myRole));
   assert.ok(displayedRoles.includes("Traitor")); assert.ok(!displayedRoles.includes("Renegade"), "the Renegade role is presented as Traitor");
   const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
-  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BlueSteelSword:1", "BumperHarvest:2", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "EightTrigrams:2", "FerganaSteed:1", "FrostSword:1", "GreenDragonBlade:1", "HexMark:1", "Lightning:2", "Negation:3", "NioShield:1", "Oath:1", "Overindulgence:2", "Peach:8", "PurpleBay:1", "RainingArrows:1", "RedHare:1", "RockCleavingAxe:1", "SerpentSpear:1", "Shadowrunner:1", "SkyPiercingHalberd:1", "Steal:5", "YellowHoofedFlyingLightning:1", "YinYangSwords:1", "ZhugeCrossbow:2"]);
+  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BlueSteelSword:1", "BumperHarvest:2", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "EightTrigrams:2", "FerganaSteed:1", "FrostSword:1", "GreenDragonBlade:1", "HexMark:1", "KirinBow:1", "Lightning:2", "Negation:3", "NioShield:1", "Oath:1", "Overindulgence:2", "Peach:8", "PurpleBay:1", "RainingArrows:1", "RedHare:1", "RockCleavingAxe:1", "SerpentSpear:1", "Shadowrunner:1", "SkyPiercingHalberd:1", "Steal:5", "YellowHoofedFlyingLightning:1", "YinYangSwords:1", "ZhugeCrossbow:2"]);
   assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
   const aliceView = await state(game.code, alice.token);
   assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
@@ -423,8 +423,8 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(quick.data.room.players.find((player) => player.name === "ME").hero, "zhang-fei");
   assert.ok(quick.data.room.players.filter((player) => player.name !== "ME").every((player) => player.hp === 3 && player.maxHp === 3));
   assert.equal(quick.data.room.myHand.length, 4);
-  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "EightTrigrams"]), "ME starts with the newly implemented card and otherwise-randomized opening cards");
-  assert.equal(quick.data.room.myHand.filter((openingCard) => openingCard.kind === "Attack").length, 3, "ME starts with three Attack cards");
+  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "EightTrigrams", "KirinBow"]), "ME starts with the newly implemented card and otherwise-randomized opening cards");
+  assert.equal(quick.data.room.myHand.filter((openingCard) => openingCard.kind === "Attack").length, 2, "ME starts with two Attack cards alongside the implemented-card fixtures");
   assert.ok(quick.data.room.myHand.some((openingCard) => openingCard.kind === "EightTrigrams"), "Eight Trigrams is guaranteed in the Quick Test opening hand");
   const quickDeck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(quick.data.room.code)}`));
   assert.ok(["ZhugeCrossbow", "GreenDragonBlade", "RockCleavingAxe", "SkyPiercingHalberd"].every((kind) => quickDeck.some((deckCard) => deckCard.kind === kind)), "every non-tested weapon remains available in the draw deck");
@@ -952,6 +952,20 @@ test("Frost Sword offers its owner the choice to prevent Attack damage and disca
   setEquipment(me.id, { weapon: card("FrostSword", "quick") }); setHand(me.id, [card("Attack", "quick")], me.hp, me.maxHp); setHand(bot.id, [card("Peach", "one"), card("Peach", "two")], 1, 1); setTurn(quick.data.room.code, me.seat);
   const botTarget = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "attack-quick", targetId: bot.id });
   assert.equal(botTarget.status, 200); assert.equal(botTarget.data.room.pendingFrostSword.actorId, me.id, "an undefended bot target also opens the Frost Sword owner prompt");
+});
+
+test("Kirin Bow discards one damaged target Mount and then applies the Attack damage", async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members; const [hostPlayer, alicePlayer] = game.room.players;
+  setEquipment(hostPlayer.id, { weapon: card("KirinBow", "bow") }); setHand(hostPlayer.id, [card("Attack", "attack")], 4, 4);
+  setEquipment(alicePlayer.id, { offensiveHorse: card("FerganaSteed", "offensive"), defensiveHorse: card("Shadowrunner", "defensive") }); setHand(alicePlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
+  const attack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-attack", targetId: alicePlayer.id });
+  assert.equal(attack.status, 200); const triggerDamage = await takeDamageIfPending(game.code, alice.token); assert.equal(triggerDamage.status, 200); const trigger = await state(game.code, host.token);
+  assert.equal(trigger.status, 200); assert.equal(trigger.data.currentAction.kind, "trigger");
+  assert.deepEqual(trigger.data.currentAction.triggerOptions[0].selection.eligibleKeys, ["ferganasteed-offensive", "shadowrunner-defensive"]);
+  const resolved = await request("trigger", { code: game.code, token: host.token, providerId: "kirin_bow_damage_about_to_apply", cardKeys: ["shadowrunner-defensive"] });
+  assert.equal(resolved.status, 200); const target = resolved.data.room.players.find((player) => player.id === alicePlayer.id);
+  assert.equal(target.hp, 3); assert.deepEqual(target.equipmentCards.map((item) => item.kind), ["FerganaSteed"]); assert.ok(discardIds(game.code).includes("shadowrunner-defensive"));
+
 });
 
 test("Nio Shield occupies the Armor slot and prevents black Attack before Dodge or damage", async () => {

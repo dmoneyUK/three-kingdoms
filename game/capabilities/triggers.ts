@@ -2,6 +2,7 @@ import type { Card } from "../model";
 import { greenDragonBladeDodgedAttackTrigger } from "./equipment/green-dragon-blade";
 import { rockCleavingAxeDodgedAttackTrigger } from "./equipment/rock-cleaving-axe";
 import { frostSwordDamageAboutToApplyTrigger } from "./equipment/frost-sword";
+import { kirinBowDamageAboutToApplyTrigger } from "./equipment/kirin-bow";
 import { yinYangSwordsAttackTargeted } from "./equipment/yin-yang-swords";
 
 export type TriggerEvent = "attack_targeted" | "attack_dodged" | "damage_about_to_apply";
@@ -36,7 +37,7 @@ export type TriggeredEffect = {
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
 };
 
-const triggers: TriggeredEffect[] = [yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {
