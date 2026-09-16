@@ -30,7 +30,7 @@ Successful Judgement-based Negation now uses one transitioned parity/depth state
 
 Group/AOE target advancement now creates a fresh public presentation event and assigns that exact event ID to the next response barrier. Canonical pending projections do not infer missing barriers from history; only legacy persisted pending shapes use that migration fallback.
 
-As of 2026-09-16 the working baseline includes the coherent semantic architecture package and the complete Physical Standard 108-card deck. Damage now preserves actual resulting HP across Attack, Duel, AOE, Lightning, and semantic forced damage. Dying begins at hp <= 0; each Peach restores 1 HP; Dying ends only after hp >= 1 or rescue is exhausted. Partial rescue keeps the same interruption, private rescue projection, zones, role secrecy, rewards, penalties, victory, and continuation unchanged; defeat cleanup remains exactly once. Recommended next work is fresh full validation and production multiplayer smoke testing for this milestone.
+As of 2026-09-16 the working baseline includes the coherent semantic architecture package and the complete Physical Standard 108-card deck. Damage now preserves actual resulting HP across Attack, Duel, AOE, Lightning, and semantic forced damage. Dying begins at hp <= 0; each Peach restores 1 HP; Dying ends only after hp >= 1 or rescue is exhausted. Each Dying event has one fixed action-order rescue pass: a player may use multiple Peaches consecutively, while passing or exhausting the opportunity advances permanently to the next remaining actor. Partial rescue keeps the same interruption, private rescue projection, zones, role secrecy, rewards, penalties, victory, and continuation unchanged; defeat cleanup remains exactly once. Recommended next work is fresh full validation and production multiplayer smoke testing for this milestone.
 
 Repository and service:
 
@@ -177,9 +177,9 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — begin the next milestone
 
-1. **Complete the physical Standard deck reconciliation:** runtime now instantiates the resolved 108-card manifest; retain the source audit and finish CI/deployment verification.
+1. **Complete match-rule correctness:** finish Dying/multi-damage edge cases and verify the full exact-head release gate.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
-3. **Proceed to the next milestone only after this cleanup remains green:** physical Standard 108-card deck reconciliation.
+3. **Keep the completed physical Standard deck stable:** do not reopen its manifest while match-rule correctness work proceeds.
 
 ## Standard card roadmap status
 
@@ -187,7 +187,7 @@ The verified active roadmap is 28 card identities. **28 / 28 are currently treat
 
 `docs/STANDARD_108_DECK_MANIFEST.md` remains the physical 108-card target. The resolved runtime manifest and local conservation tests are complete; the release gate is the exact-head CI/deployment result.
 
-Borrowed Sword, Blue Steel Sword, Yin-Yang Swords, and Kirin Bow are implemented and dealt. All 28 / 28 verified identities are complete; the active milestone is the exact physical Standard 108-card reconciliation.
+Borrowed Sword, Blue Steel Sword, Yin-Yang Swords, and Kirin Bow are implemented and dealt. All 28 / 28 verified identities and the physical Standard 108-card deck are complete; the active milestone is match-rule correctness / Dying and multi-damage.
 
 ## Key gameplay/rules invariants
 

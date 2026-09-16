@@ -1664,6 +1664,78 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.match(persisted, /^play-struck:$/, "the shared rescue pipeline returns to the turn sequence");
 });
 
+test("Dying uses one ordered rescue pass and does not revisit a passed actor", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice, bob, carol] = game.members;
+  const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
+  setHand(hostPlayer.id, [card("Attack", "ordered-rescue"), card("Peach", "host-unused")], 4, 4);
+  setHand(alicePlayer.id, [], -1, 4);
+  sql(`UPDATE players SET role='Rebel' WHERE id=${quote(alicePlayer.id)}`);
+  setHand(bobPlayer.id, [card("Peach", "ordered-bob")], 4, 4);
+  setHand(carolPlayer.id, [card("Peach", "ordered-carol")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+  await request("play_card", { code: game.code, token: host.token, cardId: "attack-ordered-rescue", targetId: alicePlayer.id });
+  await takeDamageIfPending(game.code, alice.token);
+  assert.equal((await state(game.code, host.token)).data.players.find((player) => player.id === alicePlayer.id).hp, -2);
+  await request("skip_rescue", { code: game.code, token: host.token });
+  const bobPrompt = await state(game.code, bob.token);
+  assert.equal(bobPrompt.data.actionPlayerId, bobPlayer.id);
+  const partial = await request("give_peach", { code: game.code, token: bob.token, cardId: "peach-ordered-bob" });
+  assert.equal(partial.data.room.players.find((player) => player.id === alicePlayer.id).hp, -1);
+  const carolPrompt = await state(game.code, carol.token);
+  assert.equal(carolPrompt.data.actionPlayerId, carolPlayer.id, "partial rescue advances to the next actor after Bob finishes his only Peach");
+  const orderedPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(orderedPending.actorId, carolPlayer.id, "Host is not revisited");
+  assert.deepEqual(orderedPending.remainingIds, []);
+  await request("skip_rescue", { code: game.code, token: carol.token });
+  const defeated = await waitForState(game.code, host.token, (room) => !room.players.find((player) => player.id === alicePlayer.id).alive);
+  assert.equal(defeated.players.find((player) => player.id === alicePlayer.id).role, "Rebel");
+});
+
+test("the current Dying actor may give multiple Peaches consecutively", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice, bob] = game.members;
+  const [hostPlayer, alicePlayer, bobPlayer] = game.room.players;
+  setHand(hostPlayer.id, [card("Attack", "consecutive-rescue")], 4, 4);
+  setHand(alicePlayer.id, [], -1, 4);
+  setHand(bobPlayer.id, [card("Peach", "consecutive-1"), card("Peach", "consecutive-2"), card("Peach", "consecutive-3")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+  await request("play_card", { code: game.code, token: host.token, cardId: "attack-consecutive-rescue", targetId: alicePlayer.id });
+  await takeDamageIfPending(game.code, alice.token);
+  for (const [index, id] of ["peach-consecutive-1", "peach-consecutive-2", "peach-consecutive-3"].entries()) {
+    const result = await request("give_peach", { code: game.code, token: bob.token, cardId: id });
+    assert.equal(result.status, 200);
+    const hp = result.data.room.players.find((player) => player.id === alicePlayer.id).hp;
+    assert.equal(hp, [-1, 0, 1][index]);
+    if (index < 2) assert.equal(result.data.room.actionPlayerId, bobPlayer.id, "Bob remains the rescue actor between consecutive Peaches");
+  }
+  assert.equal((await state(game.code, alice.token)).data.pendingDying, null);
+});
+
+test("a Dying actor may stop after a partial Peach without being revisited", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice, bob, carol] = game.members;
+  const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
+  setHand(hostPlayer.id, [card("Attack", "early-stop")], 4, 4);
+  setHand(alicePlayer.id, [], -1, 4);
+  setHand(bobPlayer.id, [card("Peach", "early-stop-1"), card("Peach", "early-stop-2"), card("Peach", "early-stop-3")], 4, 4);
+  setHand(carolPlayer.id, [card("Peach", "early-stop-carol")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+  await request("play_card", { code: game.code, token: host.token, cardId: "attack-early-stop", targetId: alicePlayer.id });
+  await takeDamageIfPending(game.code, alice.token);
+
+  await request("skip_rescue", { code: game.code, token: host.token });
+  const partial = await request("give_peach", { code: game.code, token: bob.token, cardId: "peach-early-stop-1" });
+  assert.equal(partial.data.room.players.find((player) => player.id === alicePlayer.id).hp, -1);
+  assert.equal(partial.data.room.actionPlayerId, bobPlayer.id);
+  const stopped = await request("skip_rescue", { code: game.code, token: bob.token });
+  const carolPrompt = await state(game.code, carol.token);
+  assert.equal(carolPrompt.data.actionPlayerId, carolPlayer.id);
+  assert.equal(stopped.data.room.players.find((player) => player.id === bobPlayer.id).handCount, 2);
+  const stoppedPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(stoppedPending.actorId, carolPlayer.id, "Bob is not revisited after ending his opportunity");
+});
+
 test("stale and concurrent response submissions claim each transition once", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, alice] = game.members;

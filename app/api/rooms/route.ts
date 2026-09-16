@@ -616,7 +616,7 @@ async function advanceDyingRescue(roomId: string) {
       const nextHand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(room.discard_json, []) : [...parse<Card[]>(room.discard_json, []), peach]; let log = parse<string[]>(room.log_json, []);
       const nextHp = applyRecovery(target?.hp ?? 0); log = addCardEvent(log, actor.name, peach, target?.name ?? "the dying player"); log = addLog(log, `${actor.name} gives Peach to ${target?.name ?? "the dying player"}, restoring 1 HP (${nextHp} HP).`);
       if (isDying(nextHp)) {
-        const nextPending = restartDyingRescue(room, resumedPending, players, target ?? actor);
+        const nextPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
         await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), actor.id), db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId), db().prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(log), roomId)]);
         await advanceDyingRescue(roomId); return;
       }
@@ -655,12 +655,6 @@ async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target:
   const pending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: first?.id ?? target.id, remainingIds: order.slice(1).map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, reason: `Decide whether to give Peach to ${target.name}` };
   await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), db().prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
   await advanceDyingRescue(room.id);
-}
-
-function restartDyingRescue(room: RoomRow, pending: DyingPending, players: PlayerRow[], target: PlayerRow) {
-  const order = playersInTurnOrder(players, room.turn_seat ?? target.seat);
-  const first = order[0] ?? target;
-  return { ...pending, actorId: first.id, remainingIds: order.slice(1).map((player) => player.id), deadline: 0, reason: `Decide whether to give Peach to ${target.name}` } satisfies DyingPending;
 }
 
 async function resolveDuelLoss(room: RoomRow, pending: DuelPending, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[]) {
@@ -2934,7 +2928,7 @@ export async function POST(request: Request) {
     if (peach) {
       hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const nextHp = applyRecovery(target?.hp ?? 0); log = addCardEvent(log, me.name, peach, target?.name ?? "the dying player"); log = addLog(log, `${me.name} gives Peach to ${target?.name ?? "the dying player"}, restoring 1 HP (${nextHp} HP).`);
       if (isDying(nextHp)) {
-        const nextPending = restartDyingRescue(liveRoom, resumedPending, players, target ?? me);
+        const nextPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId), db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(log), room.id)]);
         await advanceDyingRescue(room.id);
       } else {
