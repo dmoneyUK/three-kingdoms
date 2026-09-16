@@ -53,6 +53,9 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.doesNotMatch(page, /previousTurn/);
   assert.match(page, /Play selected/);
   assert.match(page, /playPhaseActions/);
+  assert.match(page, /canDeclareAttack/);
+  assert.match(page, /playedAs: "attack"/);
+  assert.match(page, /!event\.playedAs/);
   assert.match(page, /selectedCanPlayAsAttack/);
   assert.match(page, /canPlayAs === "attack"/);
   assert.doesNotMatch(page, /hero === "guan-yu"/);
@@ -87,7 +90,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /\[room\.actionRevision\]/);
   assert.doesNotMatch(page, /responseSelectionMax === 1 \? playResponseCard : playSerpentAttack/);
   assert.doesNotMatch(page, /eight_trigrams_dodge/);
-  assert.match(page, /if \(!me \|\| !canPlay \|\| serpentSelected\.length !== 2\) return/);
+  assert.match(page, /if \(!me \|\| !canPlay \|\| !canDeclareAttack \|\| serpentSelected\.length !== 2\) return/);
   assert.match(page, /const action = "serpent_spear_attack"/);
   assert.match(page, /actionRevision/);
   assert.match(page, /mutationInFlight/);

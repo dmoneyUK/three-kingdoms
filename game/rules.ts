@@ -32,3 +32,7 @@ export function distanceBetween<T extends GamePlayer>(players: T[], sourceId: st
 export function playPhaseAfterAttack(source?: GamePlayer | null, hasUnlimitedAttackEquipment = false) {
   return source?.hero === "zhang-fei" || hasUnlimitedAttackEquipment ? "play" : "play-struck";
 }
+
+export function canDeclareAttack(source?: GamePlayer | null, phase?: string | null, hasUnlimitedAttackEquipment = false) {
+  return Boolean(source?.alive !== false && phase?.startsWith("play") && (phase !== "play-struck" || source?.hero === "zhang-fei" || hasUnlimitedAttackEquipment));
+}

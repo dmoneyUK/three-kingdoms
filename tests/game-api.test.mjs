@@ -445,6 +445,9 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 6);
   const quickMe = quickDraw.data.room.players.find((player) => player.name === "Player1"); const quickPlayerOne = quickDraw.data.room.players.find((player) => player.name === "Player2");
   setHand(quickMe.id, [card("Peach", "guan-yu-1", "♥"), card("Peach", "guan-yu-2", "♦")], quickMe.hp, quickMe.maxHp); setHand(quickPlayerOne.id, [card("Dodge", "guan-yu-1"), card("Dodge", "guan-yu-2")], 1, 1); setTurn(quick.data.room.code, quickMe.seat);
+  const quickPlayView = await state(quick.data.room.code, quick.data.token);
+  assert.deepEqual(quickPlayView.data.currentAction.playPhaseActions.map((action) => action.cardId), ["peach-guan-yu-1", "peach-guan-yu-2"]);
+  assert.equal(quickPlayView.data.meId, quickMe.id);
   const firstQuickAttack = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "peach-guan-yu-1", targetId: quickPlayerOne.id });
   assert.equal(firstQuickAttack.data.room.phase, "response"); assert.equal(firstQuickAttack.data.room.actionPlayerId, quickPlayerOne.id);
   assert.equal((await request("respond_dodge", { code: quick.data.room.code, token: quick.data.token, cardId: "dodge-guan-yu-1" })).data.room.phase, "play-struck");
@@ -733,6 +736,8 @@ test("Zhuge Crossbow equips, replaces, enables repeated Attacks, and is used by 
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-crossbow-one", targetId: alicePlayer.id })).status, 200);
   const firstAttack = await takeDamageIfPending(game.code, alice.token);
   assert.equal(firstAttack.data.room.phase, "play", "Zhuge Crossbow returns its owner to an unrestricted Play Phase");
+  const hostAfterFirstAttack = await state(game.code, host.token);
+  assert.equal(hostAfterFirstAttack.data.currentAction.canDeclareAttack, true, "the server projects repeat-Attack availability while the Crossbow is equipped");
   assert.equal(firstAttack.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3);
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-crossbow-two", targetId: alicePlayer.id })).status, 200);
   const secondAttack = await takeDamageIfPending(game.code, alice.token);
@@ -743,6 +748,14 @@ test("Zhuge Crossbow equips, replaces, enables repeated Attacks, and is used by 
   assert.equal(replaced.status, 200);
   assert.deepEqual(replaced.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards.map((equipment) => equipment.id), ["zhugecrossbow-replacement"]);
   assert.ok(discardIds(game.code).includes("zhugecrossbow-first"), "equipping a new weapon discards the previous weapon");
+
+  setEquipment(hostPlayer.id); setHand(hostPlayer.id, [card("Attack", "crossbow-after-remove")], 4, 5); setTurn(game.code, hostPlayer.seat);
+  const withoutCrossbow = await request("play_card", { code: game.code, token: host.token, cardId: "attack-crossbow-after-remove", targetId: alicePlayer.id });
+  assert.equal(withoutCrossbow.status, 200);
+  const afterRemove = await takeDamageIfPending(game.code, alice.token);
+  assert.equal(afterRemove.data.room.phase, "play-struck");
+  const hostAfterCrossbowRemoval = await state(game.code, host.token);
+  assert.equal(hostAfterCrossbowRemoval.data.currentAction.canDeclareAttack, false, "removing the Crossbow removes repeat-Attack availability");
 
   const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
   setHand(me.id, [], me.hp, me.maxHp); setHand(playerOne.id, [card("ZhugeCrossbow", "bot")], 1, 1); setHand(playerTwo.id, [], 1, 1); setHand(playerThree.id, [], 1, 1); setTurn(quick.data.room.code, me.seat);
@@ -1054,6 +1067,7 @@ test("Guan Yu uses a red hand card as Attack through the normal multiplayer pipe
   assert.equal((await state(game.code, alice.token)).data.currentAction.playPhaseActions, undefined, "other seats do not receive Guan Yu's private convertible-card projection");
   const played = await request("play_card", { code: game.code, token: host.token, cardId: redPeach.id, targetId: alicePlayer.id });
   assert.equal(played.status, 200);
+  assert.equal(played.data.room.timeline.find((event) => event.type === "card" && event.card.id === redPeach.id)?.playedAs, "attack");
   const defender = await state(game.code, alice.token); const attacker = await state(game.code, host.token);
   assert.equal(defender.data.currentAction.kind, "response");
   assert.ok(defender.data.currentAction.options.some((option) => option.providerId === "card"));

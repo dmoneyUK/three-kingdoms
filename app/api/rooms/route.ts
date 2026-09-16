@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { getRequestExecutionContext } from "vinext/shims/request-context";
 import { cardDefinition, isAttackCard, makeDeck } from "../../../game/cards";
 import type { Card, CardKind, EquipmentZone } from "../../../game/model";
-import { distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
+import { canDeclareAttack as canDeclareAttackFor, distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, getAttackCardProvider, getPlayPhaseActions, getResponseOptions, selectResponse, type JudgementResolution, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
@@ -22,7 +22,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -236,7 +236,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}) };
 }
 function addLog(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@event:${JSON.stringify({ id: crypto.randomUUID(), message, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
 function addLogWithId(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) {
@@ -1439,7 +1439,7 @@ async function advanceDuel(roomId: string) {
     if (!semanticSatisfied || attackCards.length !== consumed.length) { await resolveDuelLoss(room, pending, actor, opponent, discard, log); return; }
     const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
     const presentation = attack
-      ? addCardEventWithId(log, actor.name, attack, opponent.name)
+      ? addCardEventWithId(log, actor.name, attack, opponent.name, "play", true, execution?.playedAs ? { playedAs: execution.playedAs } : undefined)
       : attackCards.length ? addCardGroupEventWithId(log, actor.name, attackCards, "play", true, opponent.name)
       : addLogWithId(log, `${actor.name} uses ${option?.label ?? "an Attack provider"} in the Duel.`, undefined);
     log = addLog(presentation.log, attack ? `${actor.name} plays Attack in the Duel. Action passes to ${opponent.name}.` : `${actor.name} uses ${option?.label ?? "an Attack provider"} to form an Attack in the Duel. Action passes to ${opponent.name}.`);
@@ -1582,7 +1582,7 @@ async function advanceGroup(roomId: string) {
     if (!semanticExecution || semanticExecution.status !== "satisfied" || responseCards.length !== (semanticExecution.consumeCardIds ?? []).length) { await resolveGroupDamage(room, pending, actor, source, players, discard, log); return; }
     const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextPending = appendHeldGroupCards(pending, responseCards);
     const response = responseCards.length === 1 ? responseCards[0] : null;
-    log = response ? addCardEvent(log, actor.name, response, actor.name, "play", true, { resolutionId: pending.resolutionId }) : addCardGroupEvent(log, actor.name, responseCards, "play", true, actor.name, undefined, { resolutionId: pending.resolutionId }); log = addLog(log, response ? `${actor.name} plays ${pending.requiredKind} against ${groupCardName(pending.cardKind)}.` : `${actor.name} discards 2 cards with Serpent Spear to form an Attack against ${groupCardName(pending.cardKind)}.`, undefined, { resolutionId: pending.resolutionId });
+    log = response ? addCardEvent(log, actor.name, response, actor.name, "play", true, { resolutionId: pending.resolutionId, ...(semanticExecution.playedAs ? { playedAs: semanticExecution.playedAs } : {}) }) : addCardGroupEvent(log, actor.name, responseCards, "play", true, actor.name, undefined, { resolutionId: pending.resolutionId }); log = addLog(log, response ? `${actor.name} plays ${pending.requiredKind} against ${groupCardName(pending.cardKind)}.` : `${actor.name} discards 2 cards with Serpent Spear to form an Attack against ${groupCardName(pending.cardKind)}.`, undefined, { resolutionId: pending.resolutionId });
     await finishGroupStep(room, nextPending, players, discard, log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
     return;
   }
@@ -2037,6 +2037,7 @@ async function roomState(code: string, token?: string) {
   const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me) : undefined) : null;
+  const canDeclareAttack = me?.id === actualActionPlayerId && canDeclareAttackFor(me, room.phase, hasZhugeCrossbow(me));
   const playPhaseActions = me?.id === actualActionPlayerId && room.phase?.startsWith("play") ? getPlayPhaseActions(responseContext(me)) : [];
   const triggerOptions = me?.id === actualActionPlayerId && triggerPending ? triggerOptionsFor(triggerPending, players) : [];
   const legacyFrostAvailable = triggerPending?.event === "damage_about_to_apply"
@@ -2054,6 +2055,7 @@ async function roomState(code: string, token?: string) {
     // This list is calculated only for the current private view. It is never
     // a table-wide disclosure of another player's hand or legal responses.
     legalActions: me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [],
+    canDeclareAttack,
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
     ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
     ...(triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, declineAction: "decline_trigger" as GameplayAction } : {}),
@@ -2712,7 +2714,7 @@ export async function POST(request: Request) {
     const attack = attackCards.length === 1 ? attackCards[0] : undefined;
     const hand = holderHand.filter((card) => !attackCards.some((played) => played.id === card.id));
     const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...attackCards];
-    const presentation = addCardEventWithId(parse<string[]>(liveRoom.log_json, []), holder.name, attackCards[0], target.name);
+    const presentation = addCardEventWithId(parse<string[]>(liveRoom.log_json, []), holder.name, attackCards[0], target.name, "play", true, responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : undefined);
     const declaration = attackDeclaration(holder, target, attackCards.length === 1 ? "triggered" : "serpent_spear", attackCards, continuation.resumePhase, attack);
     const next = attackPending(declaration, target);
     if (attackTargetedOptions(holder, target).length) {
@@ -2754,7 +2756,7 @@ export async function POST(request: Request) {
       await resolveDuelLoss(liveRoom, pending, me, opponent, discard, log);
     } else {
       const attackCards = selectedAttack ? [selectedAttack] : serpentCards; const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
-      const presentation = selectedAttack ? addCardEventWithId(log, me.name, selectedAttack, opponent.name) : attackCards.length ? addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name) : addLogWithId(log, `${me.name} uses ${responseExecution.providerId} in the Duel.`, undefined);
+      const presentation = selectedAttack ? addCardEventWithId(log, me.name, selectedAttack, opponent.name, "play", true, responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : undefined) : attackCards.length ? addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name) : addLogWithId(log, `${me.name} uses ${responseExecution.providerId} in the Duel.`, undefined);
       log = addLog(presentation.log, selectedAttack ? `${me.name} plays Attack in the Duel. Action passes to ${opponent.name}.` : attackCards.length ? `${me.name} discards cards to form an Attack in the Duel. Action passes to ${opponent.name}.` : `${me.name} forms an Attack in the Duel. Action passes to ${opponent.name}.`);
       const nextPending: DuelPending = attackCards.length
         ? withPresentationBarrier({ ...pending, readyAfterEventId: undefined, actorId: opponent.id, opponentId: me.id, reason: "Respond to Duel: select Attack or take 1 damage", deadline: nextResponseDeadline(opponent) }, log, presentation.eventId)
@@ -2998,7 +3000,7 @@ export async function POST(request: Request) {
       await db.batch([...judgementWrites, db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(judgement.skipPlay ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
     } else if (action === "serpent_spear_attack") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before forming an Attack." }, 409);
-      if (liveRoom.phase === "play-struck" && me.hero !== "zhang-fei" && !hasZhugeCrossbow(me)) return json({ error: "You may use only one Attack per turn." }, 409);
+      if (!canDeclareAttackFor(me, liveRoom.phase, hasZhugeCrossbow(me))) return json({ error: "You may use only one Attack per turn." }, 409);
       const materials = selectedSerpentSpearCards(me, hand, body.cardIds);
       if (materials.length !== 2) return json({ error: "Equip Serpent Spear and select exactly 2 different hand cards." }, 409);
       const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
@@ -3030,7 +3032,8 @@ export async function POST(request: Request) {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before playing a card." }, 409);
       const card = hand.find((item) => item.id === String(body.cardId ?? ""));
       if (!card) return json({ error: "That card is not in your hand." }, 400);
-      const playableAttack = isAttackCard(card) || Boolean(getAttackCardProvider(responseContext(me), card.id));
+      const playedAsAttack = !isAttackCard(card) && Boolean(getAttackCardProvider(responseContext(me), card.id));
+      const playableAttack = isAttackCard(card) || playedAsAttack;
       if (card.kind === "Dodge" && !playableAttack) return json({ error: "Dodge can only be played while answering an Attack." }, 400);
       if (card.kind === "Negation" && !playableAttack) return json({ error: "Negation can only be played while answering a stratagem." }, 400);
       if (card.kind === "Peach" && !playableAttack) {
@@ -3137,7 +3140,7 @@ export async function POST(request: Request) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
         await startNegation(liveRoom, me, rows.results ?? [], card, target.name, target.id, { kind: "duel", pending }, hand, deck, discard, log);
       } else if (playableAttack) {
-        if (liveRoom.phase === "play-struck" && me.hero !== "zhang-fei" && !hasZhugeCrossbow(me)) return json({ error: "You may play only one Attack per turn." }, 409);
+      if (!canDeclareAttackFor(me, liveRoom.phase, hasZhugeCrossbow(me))) return json({ error: "You may play only one Attack per turn." }, 409);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const requestedTargetIds = Array.isArray(body.targetIds) ? body.targetIds.map(String) : [String(body.targetId ?? "")];
         const halberdAttack = hasSkyPiercingHalberd(me) && hand.length === 1;
@@ -3151,7 +3154,7 @@ export async function POST(request: Request) {
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id);
         if (!(halberdAttack && targets.length > 1)) discard.push(card);
-        const attackPresentation = addCardEventWithId(log, me.name, card, targets.map((entry) => entry.name).join(", ")); log = attackPresentation.log;
+        const attackPresentation = addCardEventWithId(log, me.name, card, targets.map((entry) => entry.name).join(", "), "play", true, playedAsAttack ? { playedAs: "attack" } : undefined); log = attackPresentation.log;
         if (halberdAttack && targets.length > 1) {
           const pending: GroupPending = withPresentationBarrier({ kind: "group", cardKind: "SkyPiercingHalberdAttack", sourceId: me.id, actorId: target.id, remainingIds: targets.slice(1).map((entry) => entry.id), requiredKind: "Dodge", resumePhase: phaseAfterAttack(me), reason: `Respond to Sky Piercing Halberd Attack: select Dodge or take 1 damage`, deadline: nextResponseDeadline(target), heldCards: [card] }, log, attackPresentation.eventId);
           log = addLog(log, `${me.name} uses their last hand card as Attack with Sky Piercing Halberd, targeting ${targets.map((entry) => entry.name).join(", ")}. ${target.name} resolves first.`);

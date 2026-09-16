@@ -15,7 +15,7 @@ export type ActionRequirement =
 export type ResponseSelection = { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null;
 export type CapabilityContext = ResponseContext & { requirement: ActionRequirement };
 export type ResponseActivation = "implicit" | "explicit";
-export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; label: string; cards: Card[]; selection: ResponseSelection };
+export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; label: string; cards: Card[]; selection: ResponseSelection; playedAs?: "attack" };
 export type ResponseProviderOption = Omit<ResponseOption, "activation">;
 export type PlayPhaseAction = { cardId: string; canPlayAs: "attack" };
 export type ResponseSelectionInput = { cardId?: unknown; cardIds?: unknown };
@@ -30,8 +30,8 @@ export type JudgementResolution = {
 export type ResolutionEffect = JudgementResolution;
 /** A provider reports the semantic result and costs, never an HTTP action. */
 export type ResponseExecution =
-  | { status: "satisfied"; providerId: string; satisfies: "attack" | "dodge" | "negate"; consumeCardIds?: string[]; resolution?: "cards" }
-  | { status: "requires_resolution"; providerId: string; satisfies: "attack" | "dodge" | "negate"; resolution: ResolutionEffect };
+  | { status: "satisfied"; providerId: string; satisfies: "attack" | "dodge" | "negate"; consumeCardIds?: string[]; resolution?: "cards"; playedAs?: "attack" }
+  | { status: "requires_resolution"; providerId: string; satisfies: "attack" | "dodge" | "negate"; resolution: ResolutionEffect; playedAs?: "attack" };
 export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation"; selection: { cardId?: string; cardIds?: string[] } };
 export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; playPhaseUse?: "attack"; getOption: (context: CapabilityContext) => ResponseProviderOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
 

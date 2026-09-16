@@ -41,7 +41,7 @@ test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack",
   assert.equal(getAttackCardProvider(context, redEquipment.id), undefined);
   assert.equal(getResponseOptions({ hand: [redPeach], equipment: [], hero: "zhang-fei" }, { kind: "attack" }).length, 0);
   const pending = { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", resumePhase: "play", reason: "Attack" };
-  assert.deepEqual(resolveResponseDecision(pending, context, "guan_yu_red_card_attack", { cardId: "red-peach" }), { status: "satisfied", providerId: "guan_yu_red_card_attack", satisfies: "attack", consumeCardIds: ["red-peach"], resolution: "cards" });
+  assert.deepEqual(resolveResponseDecision(pending, context, "guan_yu_red_card_attack", { cardId: "red-peach" }), { status: "satisfied", providerId: "guan_yu_red_card_attack", satisfies: "attack", consumeCardIds: ["red-peach"], resolution: "cards", playedAs: "attack" });
   assert.equal(resolveResponseDecision(pending, { ...context, hand: [blackAttack] }, "guan_yu_red_card_attack", { cardId: "red-peach" }), null);
 });
 

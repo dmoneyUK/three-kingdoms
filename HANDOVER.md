@@ -39,6 +39,21 @@ Recommended next work: architecture review of this first virtual Attack seam;
 stop here before selecting another hero. Play Phase Wusheng, response parity,
 and the browser projection are now included in the completed hardening scope.
 
+### Final closure notes (2026-09-17)
+
+The final presentation/client-parity pass adds `playedAs: "attack"` to virtual
+Attack card events and semantic response outcomes. Physical Card.kind and card
+identity remain unchanged for conservation, colour, history and stale checks;
+the marker drives the user-facing description and prevents equipment-flight or
+Judgement settlement inference from misclassifying the source. Attack-use
+availability is projected as `currentAction.canDeclareAttack` from the shared
+server helper, rather than inferred from `play-struck` in React. Normalization
+preserves canonical `attack_targeted` triggers and `choice` selections without
+provider-specific knowledge. The closure regressions cover Quick Test,
+Wusheng card variants, Halberd, repeat Attack, Duel/AOE/Borrowed Sword,
+Yin-Yang Swords choice submission, semantic Dodge alternatives, privacy,
+stale/double submission and conservation.
+
 ## Stage 5 complete — delayed Stratagem / Judgement lifecycle (2026-09-16)
 
 Stage 5 is complete and Stage 6 hero abilities is active. Delayed Judgement Zone cards now resolve last-placed-first through one shared selector used by both Judgement-phase Negation discovery and resolution. Lightning and Overindulgence enter their Judgement Zones immediately without a placement-time Negation window; Negation remains available for the delayed effect before its Judgement card is drawn. Lightning's verified Negated-effect exception transfers directly to the next eligible living character's Judgement Zone, or is discarded only when no eligible zone remains. Standard-card Worker/D1 regressions cover ordering, transfer, placement timing, pre-draw Negation, intact neighboring delays, stale/duplicate draws, and conservation through the lifecycle. The shared resolver emits one cancellation-history entry per delayed effect, and the stale-action regression now submits a captured pre-resolution revision after the first delay has resolved.

@@ -95,6 +95,12 @@ Nio Shield. No universal hero framework was added.
 Next milestone: architecture review of this capability seam before selecting a
 second real Standard hero. Do not begin hero #2 in this round.
 
+Final closure also makes virtual-Attack presentation explicit with the narrow
+`playedAs: "attack"` marker, preserves canonical `attack_targeted`/`choice`
+normalization, and projects server-owned `currentAction.canDeclareAttack` to
+the acting browser seat. These changes complete the Round 1 browser parity and
+presentation boundary without introducing a hero DSL.
+
 Quick Test now uses the explicit human-style seat names Player1 through
 Player4, with Player1 as the Guan Yu-controlled seat and a guaranteed red
 opening card for Wusheng demonstration. Normal multiplayer keeps its supplied
