@@ -41,6 +41,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /player-board/);
   assert.match(page, /game-exit/);
   assert.match(page, /private-role/);
+  assert.match(page, /messagesCollapsed/);
   assert.match(page, /Skip response/);
   assert.doesNotMatch(page, /busy \? "Skipping…" : requiredResponseKind === "Negation"/);
   assert.doesNotMatch(page, /PUBLIC HISTORY/);
@@ -90,8 +91,10 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.doesNotMatch(page, /: "take_damage";/);
   assert.match(page, /playedCard: 4000/);
   assert.doesNotMatch(page, /eventMessage: 3000/);
-  assert.match(page, /Event history/);
-  assert.doesNotMatch(page, /game-messages|latestPublicMessages|Game Messages/);
+  assert.match(page, /game-messages/);
+  assert.match(page, /latestPublicMessages/);
+  assert.match(page, /Game Messages/);
+  assert.doesNotMatch(page, /historyOpen|history-window|Event history/);
   assert.match(page, /equipment-info-overlay/);
   assert.match(page, /judgement-info-overlay/);
   assert.match(page, /setInfoCard\(equipment\)/);
@@ -204,7 +207,6 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /updatePrivateHand/);
   assert.doesNotMatch(page, /player\.handCards\.map|player-hand-zone/);
   assert.match(page, /privateDrawPresentation\.playerId === room\.meId/);
-  assert.match(page, /Event history/);
   assert.match(page, /card-info-button/);
   assert.match(page, /aria-label={`Explain \${definition\.name}`}/);
   assert.match(page, /setInfoCard\(item\)/);

@@ -51,11 +51,11 @@ Quick Test is a single-controller table: one token controls four human-style sea
 
 ## Latest presentation work
 
-The foldable Event History window is the sole public timeline display. It uses the existing room timeline without an extra request or D1 state; informational message events remain history only and are filtered out of the blocking presentation queue. Essential card and card-group events retain their existing centre presentation and settlement animations; `readyAfterEventId` remains the exact event gate for response controls and response timers. Quick Test and normal multiplayer therefore wait for the card presentation, not for informational history visibility or queue emptiness.
+The foldable Game Messages window is the compact public timeline display. It uses the existing room timeline without an extra request or D1 state; informational message events remain history only and are filtered out of the blocking presentation queue. Essential card and card-group events retain their existing centre presentation and settlement animations; `readyAfterEventId` remains the exact event gate for response controls and response timers. Quick Test and normal multiplayer therefore wait for the card presentation, not for informational history visibility or queue emptiness.
 
 The active game table now presents all four seats in a responsive board, with the in-game top bar removed. Each player square groups hero name, HP, hand count, compact equipment and Judgement cards; active and self seats remain visually identifiable, and distance is intentionally omitted from player cards. Legacy radial seat markup remains hidden for compatibility while the new board owns the visible layout.
 
-The leave-game Exit control now lives on the game surface, so it remains available with the top bar hidden. The standalone Game Messages panel was removed; card-use and other public events are shown through Event History. The redundant turn-status strip was removed to give the player board more room.
+The leave-game Exit control now lives on the game surface, so it remains available with the top bar hidden. The Game Messages panel remains the foldable event window; the separate popup Event History window and its top-bar control were removed. The redundant turn-status strip was removed to give the player board more room.
 
 Secret roles are rendered only in the local player square. The Negation skip button retains its final action label during submission instead of exposing transient “Skipping” text, preventing visible button flicker. Compact equipment and Judgement tiles now share a fixed card aspect ratio, and player squares have additional vertical room for their zones.
 
