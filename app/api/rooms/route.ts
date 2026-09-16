@@ -2206,7 +2206,9 @@ export async function POST(request: Request) {
     const expectedRevision = [room.phase ?? "", actionPlayerIdForController ?? "", room.pending_json ?? ""].join("|");
     const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: asResponsePending(pendingForController) ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null, actorId: actionPlayerIdForController ?? null };
     const submittedPendingKind = submitted?.pendingKind === undefined ? undefined : String(submitted.pendingKind);
-    const acceptsLegacyPendingKind = (expectedContext.pendingKind === "response" || expectedContext.pendingKind === "trigger") && submittedPendingKind === (asLegacyTriggerPending(pendingForController) as { kind?: string } | null)?.kind;
+    const acceptsLegacyPendingKind = pendingForController?.kind !== "response" && pendingForController?.kind !== "trigger"
+      && (expectedContext.pendingKind === "response" || expectedContext.pendingKind === "trigger")
+      && submittedPendingKind === (asLegacyTriggerPending(pendingForController) as { kind?: string } | null)?.kind;
     // Pre-v3 clients identify an otherwise-current response by its legacy
     // continuation kind. Keep their actor/phase checks strict, but do not
     // reject their old revision hash solely because persistence is now the
@@ -2494,11 +2496,10 @@ export async function POST(request: Request) {
   if (action === "start_response_timer") {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
-    const rawStored = parsePersistedPending(liveRoom?.pending_json ?? null);
-    const stored = rawStored?.kind === "response" && rawStored.continuation.kind === "borrowed_sword_attack" ? rawStored : parse<Pending | null>(liveRoom?.pending_json ?? null, null);
-    const trigger = asTriggerPending(stored);
-    const pending = asLegacyTriggerPending(asLegacyResponsePending(stored)) as Pending | null;
-    const canonicalResponse = asResponsePending(stored);
+    const persisted = parsePersistedPending(liveRoom?.pending_json ?? null);
+    const canonicalResponse = asResponsePending(persisted);
+    const trigger = asTriggerPending(persisted);
+    const pending = persisted ? asLegacyTriggerPending(asLegacyResponsePending(persisted)) as Pending : null;
     const acting = trigger ? trigger.actorId === me.id : canonicalResponse ? canonicalResponse.actorId === me.id : pending && ["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation"].includes(pending.kind) && pending.actorId === me.id;
     if (!liveRoom || liveRoom.phase !== "response" || !acting) return json({ error: "You are not the acting player for this response timer." }, 409);
     const responsePending = trigger ?? canonicalResponse ?? pending as AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | NegationPending;

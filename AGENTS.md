@@ -22,4 +22,6 @@ The completed architecture guarantees, covered by deterministic tests and the is
 - synthetic test providers are explicitly registered only in the test Worker and are absent from production registries;
 - compatibility/client/event-ID cleanup remains bounded and must not become a second rules engine.
 
+For `attack_targeted`, preserve the established invariant: discover providers semantically from authoritative live state; allow the established source- or target-owned actor; project private choices only to that actor; exhaust resolved effects deterministically; resume the original Attack exactly once; and do not add provider-specific route or UI actions.
+
 For each implementation round, keep these invariants visible in the task notes, run the full local validation suite, and update `README.md` and `HANDOVER.md` to match the actual state. If a future change regresses an invariant, explicitly say the milestone is incomplete rather than claiming completion.

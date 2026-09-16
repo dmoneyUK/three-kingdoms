@@ -1949,8 +1949,10 @@ test("Borrowed Sword canonical response ownership and CAS matrix", { timeout: 12
     assert.equal(stage2.currentAction.actorId, s.holder.id); assert.ok(stage2.currentAction.options.some((option) => option.providerId === "card")); assert.ok(stage2.currentAction.options[0].selection.eligibleCardIds.length);
     const armed = await request("start_response_timer", { code: s.game.code, token: s.alice.token }); assert.equal(armed.status, 200); assert.ok(armed.data.room.currentAction.deadline > Date.now()); const rearmed = await request("start_response_timer", { code: s.game.code, token: s.alice.token }); assert.equal(rearmed.data.room.currentAction.deadline, armed.data.room.currentAction.deadline);
     assert.equal(other.meId, s.source.id); assert.deepEqual(other.currentAction.legalActions, []); assert.equal(other.currentAction.options, undefined);
-    const stale = await request("decline_response", { code: s.game.code, token: s.host.token, context: { actionRevision: s.stage1Revision, meId: s.source.id, phase: "response", pendingKind: "borrowed_sword", actorId: s.source.id } });
-    assert.equal(stale.status, 409);
+    const stale = await request("decline_response", { code: s.game.code, token: s.alice.token, context: { actionRevision: s.stage1Revision, meId: s.holder.id, phase: "response", pendingKind: "response", actorId: s.holder.id } });
+    assert.equal(stale.status, 409); assert.equal(stale.data.stale, true);
+    const wrongSeat = await request("decline_response", { code: s.game.code, token: s.host.token }); assert.equal(wrongSeat.status, 409);
+    const unchanged = (await state(s.game.code, s.alice.token)).data; assert.equal(unchanged.currentAction.actorId, s.holder.id); assert.equal(unchanged.currentAction.kind, "response"); assert.ok(unchanged.currentAction.options[0].selection.eligibleCardIds.includes(s.attackId)); assert.ok(unchanged.players.find((player) => player.id === s.holder.id).equipmentCards.some((item) => item.id === s.weapon.id));
     const attackId = s.attackId;
     const [a, b] = await Promise.all([request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: attackId }), request("decline_response", { code: s.game.code, token: s.alice.token })]);
     assert.equal([a.status, b.status].filter((status) => status === 200).length, 1); assert.equal([a.status, b.status].filter((status) => status === 409).length, 1);

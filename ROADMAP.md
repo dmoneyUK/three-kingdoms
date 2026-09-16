@@ -79,7 +79,7 @@ Remove these one path at a time only after the equivalent semantic decision is f
 
 ## Validation status
 
-The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human seats and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, and `attack_targeted` now supports target-owned choices with live hand revalidation and original-Attack continuation. Legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Human-seat regressions cover authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety. Synthetic-provider isolation is complete: test fixtures are explicitly registered only in the test Worker and are absent from production registries. Saved-state compatibility remains a bounded input/state adapter. Yin-Yang Swords and Kirin Bow are implemented; Borrowed Sword remains out of the dealt deck.
+The semantic execution layer is complete. Successful Negation uses one pure parity/depth transition across human seats and Judgement paths, with focused regression coverage. Damage reactions enter through one shared imminent-Attack-damage transition, and `attack_targeted` now supports target-owned choices with live hand revalidation and original-Attack continuation. Legacy response requests normalize once at ingress, canonical response/trigger decisions revalidate live providers, and newly-created decisions retain fresh transition-owned event IDs. Human-seat regressions cover authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety. Synthetic-provider isolation is complete: test fixtures are explicitly registered only in the test Worker and are absent from production registries. Saved-state compatibility remains a bounded input/state adapter. Blue Steel Sword, Yin-Yang Swords, Kirin Bow, and Borrowed Sword are implemented and dealt; all 28 verified identities are playable.
 
 ## Progress summary
 
@@ -87,8 +87,8 @@ The semantic execution layer is complete. Successful Negation uses one pure pari
 | --- | --- | --- |
 | 1. Stabilise the turn loop | Mostly complete | Turn ownership, phases, ordered responses, Dying interruption/resumption and repeated rounds are playable and regression-covered. |
 | 2. Strengthen the general rules engine | Complete | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented and covered by deterministic regressions and synthetic end-to-end extensibility proofs. |
-| 3. Complete the verified Standard card identities | **28 / 28 playable** | Borrowed Sword is implemented; continue regression expansion. |
-| 4. Reconcile the physical Standard deck | In progress | `docs/STANDARD_108_DECK_MANIFEST.md` remains the exact quantity/suit/rank target. |
+| 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
+| 4. Reconcile the physical Standard deck | **Next milestone** | Reconcile the exact 108-card quantity/suit/rank manifest and six named mounts. |
 | 5. Complete match rules | Partly implemented | Main death/reward/victory paths work; edge cases still need expansion. |
 | 6. Hero-specific abilities | Deferred except architecture proofs | Qingguo is the first live proof. Broad hero work begins after shared cards/rules architecture is stable. |
 | 7. Product polish | Ongoing | Continue mobile clarity and presentation work; sound, invitations and saved history remain later work. |
@@ -129,74 +129,11 @@ The six named mounts are represented separately in new decks: Shadowrunner, Hex 
 
 The 28-card identity roadmap below is distinct from that physical manifest; the manifest contains individual physical mount cards and quantities that are reconciled separately.
 
-## Remaining verified WTK Standard card identities
+## Physical Standard 108-card deck reconciliation — next milestone
 
-Implementation order is dependency-driven.
+The identity layer is complete. Reconcile `docs/STANDARD_108_DECK_MANIFEST.md` against the runtime deck for all 108 physical cards, exact suit/rank assignments, quantities, and six named mounts.
 
-### 1. Blue Steel Sword
-
-**6 ♠ — Weapon — Attack Range 2**
-
-Passive: the owner's `[Attack]` ignores the target's Armor.
-
-Architecture/rules work:
-
-- add the weapon and range;
-- suppress Armor effects for that Attack without unequipping or hiding the Armor;
-- bypass Nio Shield prevention;
-- prevent Eight Trigrams from being offered for that Attack;
-- keep the Attack otherwise on the shared declaration/response/damage pipeline;
-- add regression tests against both Armor cards and against unarmored targets.
-
-This is the next card after the architecture work above because it is a good proof that passive capabilities can be contextually suppressed without hard-coding Armor identities into the Attack resolver.
-
-### 2. Yin-Yang Swords — implemented
-
-**2 ♠ — Weapon — Attack Range 2**
-
-When `[Attack]` targets a character of the opposite gender, that target chooses to discard one hand card or let the attacker draw one card.
-
-Implemented:
-
-- make hero gender authoritative game state;
-- introduce a target-owned Attack trigger/decision;
-- offer discard-one-hand-card vs attacker-draw;
-- if the target has no hand card, only the draw branch remains;
-- test human-seat, same-gender and opposite-gender paths.
-- reusable `attack_targeted` discovery supports target ownership, opaque hand selection, stale-safe resolution, and Halberd target independence.
-
-### 3. Kirin Bow — implemented
-
-**5 ♦ — Weapon — Attack Range 5**
-
-When `[Attack]` inflicts damage, the attacker may discard one Mount from the damaged character's Equipment Zone.
-
-Work:
-
-- add weapon/range;
-- trigger only after Attack actually inflicts damage;
-- expose a choice when both Mount slots are eligible;
-- do nothing when no Mount is equipped;
-- verify Frost Sword replacement prevents this trigger because no Attack damage occurred.
-
-Implemented through the generic `damage_about_to_apply` trigger registry with live Mount-slot selection, semantic target discard, original-damage resumption, deck registration, Quick Test availability, and human/API regression coverage.
-
-### 4. Borrowed Sword — implemented
-
-**Q ♣ — Regular Stratagem**
-
-Target another character who has a Weapon. That character must play `[Attack]` against a legal second target chosen by the Borrowed Sword user; otherwise the Borrowed Sword user obtains the first target's Weapon.
-
-Implemented:
-
-- require first target to have a Weapon;
-- choose a second target using the weapon holder's current attack range;
-- run the forced Attack through the normal Attack/Dodge/equipment/damage pipeline;
-- if the first target cannot or does not provide Attack, transfer the Weapon rather than discard it;
-- support Negation before the effect resolves;
-- support Negation before the effect resolves and include the card in the Standard deck and Quick Test opening hand.
-
-## Verified implemented Standard identities — 24
+## Verified implemented Standard identities — 28
 
 - Attack
 - Dodge
@@ -222,6 +159,10 @@ Implemented:
 - Eight Trigrams Formation
 - Fergana Steed
 - Shadowrunner
+- Blue Steel Sword
+- Yin-Yang Swords
+- Kirin Bow
+- Borrowed Sword
 
 ## Not on the active Standard roadmap
 
