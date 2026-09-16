@@ -1277,6 +1277,7 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
   assert.equal(judgementWindow.status, 200); assert.equal(judgementWindow.data.room.phase, "response"); assert.equal(judgementWindow.data.room.pendingNegation.cardName, "Overindulgence"); assert.equal(judgementWindow.data.room.actionPlayerId, alicePlayer.id);
   const judgementCancelled = await request("respond_negation", { code: game.code, token: alice.token, cardId: "negation-judgement-window" });
   assert.equal(judgementCancelled.status, 200); assert.equal(judgementCancelled.data.room.phase, "draw"); assert.deepEqual(judgementCancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
+  assert.equal(judgementCancelled.data.room.log.filter((entry) => /Overindulgence's effect on Alice is cancelled by Negation\./.test(entry)).length, 1, "Negated Overindulgence records one cancellation");
   const afterJudgementNegation = await request("draw", { code: game.code, token: alice.token });
   assert.equal(afterJudgementNegation.status, 200); assert.equal(afterJudgementNegation.data.room.phase, "play"); assert.equal(afterJudgementNegation.data.room.timeline.some((event) => event.card?.id === "dodge-unused-judgement"), false, "Negation cancels the delayed effect before a judgement card is drawn");
 
@@ -1355,15 +1356,18 @@ test("delayed Standard cards resolve newest first and stale draws cannot replay 
   const olderLightning = { ...card("Lightning", "older"), suit: "♥", rank: "Q" }; const newerOverindulgence = { ...card("Overindulgence", "newer"), suit: "♣", rank: "6" };
   setJudgement(alicePlayer.id, [olderLightning, newerOverindulgence]); setTurn(game.code, alicePlayer.seat, "draw");
   setDeck(game.code, [{ ...card("Dodge", "over-judge"), suit: "♠", rank: "7" }, { ...card("Dodge", "lightning-judge"), suit: "♥", rank: "7" }]);
-  const newestFirst = await request("draw", { code: game.code, token: game.members.find((member) => member.name === "Alice").token });
+  const alice = game.members.find((member) => member.name === "Alice"); const beforeFirstDraw = await state(game.code, alice.token);
+  const newestFirst = await request("draw", { code: game.code, token: alice.token });
   assert.equal(newestFirst.status, 200); assert.equal(newestFirst.data.room.phase, "draw-skip-play"); assert.deepEqual(newestFirst.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.map((delayed) => delayed.id), ["lightning-older"]);
   assert.ok(newestFirst.data.room.log.some((entry) => /Overindulgence/.test(entry)));
-  const staleDraw = await request("draw", { code: game.code, token: game.members.find((member) => member.name === "Alice").token });
-  assert.equal(staleDraw.status, 200); assert.deepEqual(staleDraw.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []); assert.ok(staleDraw.data.room.log.some((entry) => /Lightning misses and transfers to Bob/.test(entry)), "the older Lightning resolves after the newer Overindulgence");
-  assert.equal(staleDraw.data.room.players.find((player) => player.id === bobPlayer.id).judgementCards[0].id, "lightning-older");
+  const staleDraw = await request("draw", { code: game.code, token: alice.token, context: { actionRevision: beforeFirstDraw.data.actionRevision } });
+  assert.equal(staleDraw.status, 409); assert.equal(staleDraw.data.stale, true); assert.deepEqual(staleDraw.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.map((delayed) => delayed.id), ["lightning-older"], "the stale revision cannot resolve the remaining delayed card");
+  const olderResolved = await request("draw", { code: game.code, token: alice.token });
+  assert.equal(olderResolved.status, 200); assert.deepEqual(olderResolved.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []); assert.ok(olderResolved.data.room.log.some((entry) => /Lightning misses and transfers to Bob/.test(entry)), "the older Lightning resolves after the newer Overindulgence");
+  assert.equal(olderResolved.data.room.players.find((player) => player.id === bobPlayer.id).judgementCards[0].id, "lightning-older");
 
   const lightning = { ...card("Lightning", "race"), suit: "♥", rank: "Q" }; setJudgement(alicePlayer.id, [lightning]); setTurn(game.code, alicePlayer.seat, "draw"); setDeck(game.code, [{ ...card("Dodge", "race-judge"), suit: "♥", rank: "7" }, card("Attack", "race-draw-1"), card("Attack", "race-draw-2")]);
-  const alice = game.members.find((member) => member.name === "Alice"); const [first, second] = await Promise.all([request("draw", { code: game.code, token: alice.token }), request("draw", { code: game.code, token: alice.token })]);
+  const [first, second] = await Promise.all([request("draw", { code: game.code, token: alice.token }), request("draw", { code: game.code, token: alice.token })]);
   assert.equal([first.status, second.status].filter((status) => status === 200).length, 1, "duplicate draw submissions resolve one delayed effect");
   const afterRace = await state(game.code, alice.token); assert.equal(afterRace.data.players.find((player) => player.id === alicePlayer.id).judgementCards.length, 0);
 });

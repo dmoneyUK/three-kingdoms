@@ -37,7 +37,7 @@ For this project, always filter the catalogue to **Standard**. Endless Legends a
 
 The project has moved beyond the initial table prototype. A complete four-player match loop runs in normal human multiplayer rooms and a single-device Quick Test table. Quick Test is one controller playing every human-style seat in turn, with only the acting seat's hand visible at the bottom. Turn ownership, ordered responses, death rewards and victory checks are working. Human card and weapon responses use a 30-second action window. Any bot scheduler or bot response timing remaining in the repository is inactive legacy code, not an active product requirement.
 
-The architecture milestone is complete. Normal Attack cards, Serpent Spear-formed Attacks, Green Dragon Blade follow-ups, and all verified card identities use the established semantic engine; the active work is match-rule correctness, including Dying and multi-point damage.
+The architecture milestone is complete. Normal Attack cards, Serpent Spear-formed Attacks, Green Dragon Blade follow-ups, and all verified card identities use the established semantic engine; Stage 5 match-rule correctness is complete and Stage 6 hero abilities is active.
 
 The Cloudflare deployment workflow now performs a post-deploy smoke test against `/` and the Worker-only `/api/health` endpoint. A successful Wrangler upload is not considered production-ready unless both checks return successfully.
 

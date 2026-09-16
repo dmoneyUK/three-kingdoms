@@ -718,7 +718,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationPending
   const heldCards = pending.heldCards ?? [];
   if (pending.negated) {
     const target = players.find((player) => player.id === pending.effectTargetId);
-    log = addLog(log, `${pending.cardName}'s effect on ${target?.name ?? "its target"} is cancelled by Negation.`);
+    if (pending.effect.kind !== "judgement") log = addLog(log, `${pending.cardName}'s effect on ${target?.name ?? "its target"} is cancelled by Negation.`);
     if (pending.effect.kind === "harvest_target") {
       const harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies HarvestPending;
       const next = nextHarvestPending(harvest, players);
