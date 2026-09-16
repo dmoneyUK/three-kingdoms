@@ -1,4 +1,5 @@
-import type { Card, CardKind, CardSuit } from "./model";
+import type { Card, CardKind } from "./model";
+import { STANDARD_108_DECK, STANDARD_DECK_COUNTS } from "./standard-deck";
 
 export type CardDefinition = {
   kind: CardKind;
@@ -61,38 +62,7 @@ export const CARD_DEFINITIONS: Record<CardKind, CardDefinition> = {
 // WTK Standard only. Expansion definitions may remain above for saved-game
 // compatibility, but only cards listed here enter new games or quick-test hands.
 export const DECK_COUNTS: Partial<Record<CardKind, number>> = {
-  Attack: 30,
-  Dodge: 15,
-  Peach: 8,
-  DrawTwo: 4,
-  Dismantle: 6,
-  Steal: 5,
-  Duel: 3,
-  Oath: 1,
-  BarbarianInvasion: 3,
-  RainingArrows: 1,
-  BumperHarvest: 2,
-  Negation: 3,
-  BorrowedSword: 2,
-  Overindulgence: 2,
-  Lightning: 2,
-  ZhugeCrossbow: 2,
-  BlueSteelSword: 1,
-  YinYangSwords: 1,
-  GreenDragonBlade: 1,
-  SerpentSpear: 1,
-  RockCleavingAxe: 1,
-  SkyPiercingHalberd: 1,
-  KirinBow: 1,
-  FrostSword: 1,
-  NioShield: 1,
-  EightTrigrams: 2,
-  Shadowrunner: 1,
-  HexMark: 1,
-  YellowHoofedFlyingLightning: 1,
-  RedHare: 1,
-  PurpleBay: 1,
-  FerganaSteed: 1,
+  ...STANDARD_DECK_COUNTS,
   // Legacy kinds remain readable in saved rooms but are not dealt into new games.
   OffensiveHorse: 0,
   DefensiveHorse: 0,
@@ -109,10 +79,7 @@ export function isAttackCard(card: Pick<Card, "kind">) {
 }
 
 export function makeDeck(random: () => number = Math.random): Card[] {
-  const suits: CardSuit[] = ["♥", "♦", "♣", "♠"];
-  const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
-  const kinds = DECK_CARD_KINDS.flatMap((kind) => Array<CardKind>(DECK_COUNTS[kind] ?? 0).fill(kind));
-  const deck = kinds.map((kind, index) => ({ id: crypto.randomUUID(), kind, suit: suits[index % suits.length], rank: ranks[index % ranks.length] }));
+  const deck = STANDARD_108_DECK.map((spec) => ({ ...spec, id: crypto.randomUUID() }));
   for (let index = deck.length - 1; index > 0; index--) {
     const swap = Math.floor(random() * (index + 1));
     [deck[index], deck[swap]] = [deck[swap], deck[index]];

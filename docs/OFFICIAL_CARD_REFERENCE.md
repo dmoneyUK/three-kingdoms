@@ -2,7 +2,7 @@
 
 > **Primary source of truth:** https://wtkgames.com/gameCard/
 >
-> This document records the WTK **Standard** card information supplied from the official English catalogue on 9 September 2026. Catalogue index numbers are intentionally omitted. Preserve the official English card names when implementing or auditing the game.
+> This document records the WTK **Standard** card information verified against the official English catalogue and its current card-image API on 16 September 2026. Catalogue index numbers are intentionally omitted. Preserve the official English card names when implementing or auditing the game.
 
 ## Quick index
 
@@ -91,7 +91,7 @@
 
 ## Conditional Stratagem cards
 
-### Lightning — Q ♠
+### Lightning — Q ♥ (EX)
 
 **Type:** Conditional (Stratagem)
 
@@ -119,7 +119,7 @@
 | **Serpent Spear** | Q ♠ | 3 |
 | **Rock Cleaving Axe** | 5 ♦ | 3 |
 | **Sky Piercing Halberd** | Q ♦ | 4 |
-| **Kirin Bow** | 5 ♦ | 5 |
+| **Kirin Bow** | 5 ♥ | 5 |
 
 #### Zhuge Crossbow
 
@@ -171,7 +171,7 @@
 
 | Mount | Suit & rank | Distance modifier |
 | --- | --- | ---: |
-| **Fergana Steed** | K ♣ | -1 |
+| **Fergana Steed** | K ♠ | -1 |
 | **Shadowrunner** | 5 ♠ | +1 |
 
 #### Fergana Steed

@@ -177,7 +177,7 @@ Do not remove them in a big-bang cleanup. First finish equivalent semantic trigg
 
 ## Recommended next work — begin the next milestone
 
-1. **Reconcile the physical Standard deck manifest** against runtime quantities and suit/rank assignments.
+1. **Complete the physical Standard deck reconciliation:** runtime now instantiates the resolved 108-card manifest; retain the source audit and finish CI/deployment verification.
 2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
 3. **Proceed to the next milestone only after this cleanup remains green:** physical Standard 108-card deck reconciliation.
 
@@ -187,7 +187,7 @@ The verified active roadmap is 28 card identities. **28 / 28 are currently treat
 
 `docs/STANDARD_108_DECK_MANIFEST.md` remains the physical 108-card target. Before declaring the Standard deck complete, reconcile every physical card, suit/rank assignment, quantity, and the six named mounts with the runtime deck.
 
-Borrowed Sword, Blue Steel Sword, Yin-Yang Swords, and Kirin Bow are implemented and dealt. The next milestone is physical Standard 108-card deck reconciliation.
+Borrowed Sword, Blue Steel Sword, Yin-Yang Swords, and Kirin Bow are implemented and dealt. All 28 / 28 verified identities are complete; the active milestone is the exact physical Standard 108-card reconciliation.
 
 ## Key gameplay/rules invariants
 

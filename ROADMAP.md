@@ -88,7 +88,7 @@ The semantic execution layer is complete. Successful Negation uses one pure pari
 | 1. Stabilise the turn loop | Mostly complete | Turn ownership, phases, ordered responses, Dying interruption/resumption and repeated rounds are playable and regression-covered. |
 | 2. Strengthen the general rules engine | Complete | Semantic responses, trigger decisions, shared Attack damage execution, canonical Negation/secondary Judgement handling, fresh presentation barriers, and event-specific trigger resumption are implemented and covered by deterministic regressions and synthetic end-to-end extensibility proofs. |
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
-| 4. Reconcile the physical Standard deck | **Next milestone** | Reconcile the exact 108-card quantity/suit/rank manifest and six named mounts. |
+| 4. Reconcile the physical Standard deck | **Active milestone** | Reconcile and validate the exact 108-card quantity/suit/rank manifest and six named mounts; verify CI/deployment. |
 | 5. Complete match rules | Partly implemented | Main death/reward/victory paths work; edge cases still need expansion. |
 | 6. Hero-specific abilities | Deferred except architecture proofs | Qingguo is the first live proof. Broad hero work begins after shared cards/rules architecture is stable. |
 | 7. Product polish | Ongoing | Continue mobile clarity and presentation work; sound, invitations and saved history remain later work. |
@@ -129,9 +129,9 @@ The six named mounts are represented separately in new decks: Shadowrunner, Hex 
 
 The 28-card identity roadmap below is distinct from that physical manifest; the manifest contains individual physical mount cards and quantities that are reconciled separately.
 
-## Physical Standard 108-card deck reconciliation — next milestone
+## Physical Standard 108-card deck reconciliation — active milestone
 
-The identity layer is complete. Reconcile `docs/STANDARD_108_DECK_MANIFEST.md` against the runtime deck for all 108 physical cards, exact suit/rank assignments, quantities, and six named mounts.
+The identity layer is complete. The runtime now instantiates `docs/STANDARD_108_DECK_MANIFEST.md` as one canonical 108-entry collection with exact suit/rank assignments, quantities, and six named mounts. The remaining gate is fresh full validation plus green exact-head CI/deployment.
 
 ## Verified implemented Standard identities — 28
 

@@ -466,8 +466,8 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     return quickDeck.splice(index, 1)[0];
   };
   await db().batch([
-    ...testPlayers.map((player, index) => {
-    const testNegation: Card = { id: `quick-negation-${crypto.randomUUID()}`, kind: "Negation", suit: (["♣", "♠", "♦"] as const)[index % 3], rank: ["Q", "K", "J"][index % 3] };
+    ...testPlayers.map((player) => {
+    const testNegation = takeQuickTestCard("Negation");
     const nextHand = player.seat === 3 ? [testNegation, ...playerThreeAttacks] : player.seat === 1 ? [testNegation, takeQuickTestCard("SerpentSpear"), takeFocusedBotCard(), takeFocusedBotCard()] : [testNegation, takeFocusedBotCard(), takeFocusedBotCard(), takeFocusedBotCard()];
     return db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), player.id);
     }),

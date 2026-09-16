@@ -1,12 +1,13 @@
 export const CARD_KINDS = ["Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "BorrowedSword", "ZhugeCrossbow", "BlueSteelSword", "YinYangSwords", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd", "KirinBow", "FrostSword", "NioShield", "EightTrigrams", "Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed", "OffensiveHorse", "DefensiveHorse", "RationsDepleted", "Strike"] as const;
 export type CardKind = (typeof CARD_KINDS)[number];
 export type CardSuit = "♥" | "♦" | "♣" | "♠";
+export type CardRank = "A" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "J" | "Q" | "K";
 
 export type Card = {
   id: string;
   kind: CardKind;
   suit: CardSuit;
-  rank: string;
+  rank: CardRank;
 };
 
 export type EquipmentZone = {

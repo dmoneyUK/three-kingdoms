@@ -9,7 +9,7 @@ The official English WTK catalogue remains the primary source for player-facing 
 
 For quantities and the complete classic Standard+EX physical deck composition, this manifest also cross-checks published Standard 108-card deck tables. Catalogue index numbers are ignored.
 
-> **Important:** where a secondary classic-deck table disagrees with the supplied official English WTK catalogue on a suit/rank, the discrepancy is recorded rather than silently overwriting the official-English reference. Resolve such conflicts against the physical/current WTK English Standard product before changing game logic.
+> **Resolved 16 September 2026:** current official English Standard catalogue card images are authoritative for the disputed physical values. The complete resolved copy list is implemented in `game/standard-deck.ts` and tested as a 108-card multiset.
 
 ## Deck totals
 
@@ -163,11 +163,17 @@ The EX cards are part of this project's selected **108-card Standard ruleset**.
 - **Purple Bay / Zixing ×1:** K ♦, -1
 - **Dayuan / Fergana identity ×1:** K ♠, -1
 
-## Known source discrepancies to resolve
+## Source-discrepancy resolution record
 
-The supplied official-English WTK catalogue reference currently records **Fergana Steed as K ♣ / -1** and **Kirin Bow as 5 ♦**. The classic 108-card composition sources instead place the Dayuan/Fergana-identity mount at **K ♠ / -1** and Kirin Bow at **5 ♥**. Do **not** silently change the supplied official-English reference on the basis of the secondary table. These are explicit audit items for the current English WTK Standard product.
+| Item | Earlier reference | Classic table | Resolved physical value | Evidence |
+| --- | --- | --- | --- | --- |
+| Kirin Bow | 5 ♦ | 5 ♥ | **5 ♥** | Current official catalogue image for card 172 |
+| Fergana Steed / Dayuan | K ♣ | K ♠ | **K ♠** | Current official catalogue image for card 182 |
+| Lightning | Q ♠ | A ♠ + Q ♥ EX | **A ♠ + Q ♥ EX** | Current official catalogue image for card 107 shows Q ♥ and EX mark; A ♠ is the non-EX copy |
 
-Likewise, the supplied 28-entry reference contains one visible representative copy for several multi-copy cards; it is not itself a complete physical-card manifest. This file is the project's 108-card quantity/manfiest reference, while `OFFICIAL_CARD_REFERENCE.md` remains the terminology/effect reference.
+The current official catalogue API (`https://api.wtkgames.com/api/card?product=1`) confirms the three Standard identities and official IDs; the linked card images expose their physical suit/rank and EX marking. The current catalogue does not list the four additional historical horse identities in English. Their names remain working English mappings, while their physical copies are retained because this selected Standard target explicitly requires all six distinct mounts.
+
+The 28-entry reference contains representative identity entries, not a complete copy list. This file is the complete quantity/suit/rank authority; `OFFICIAL_CARD_REFERENCE.md` remains the terminology/effect reference.
 
 ## Implementation rule
 
