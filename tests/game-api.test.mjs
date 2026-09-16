@@ -423,7 +423,8 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.ok(quick.data.room.players.every((player) => player.handCards.length === 0), "Quick Test exposes only the controlled player's myHand");
   assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
   assert.equal(quick.data.room.players.find((player) => player.name === "Player1").hero, "guan-yu");
-  assert.ok(quick.data.room.players.filter((player) => player.name !== "Player1").every((player) => player.hp === 3 && player.maxHp === 3));
+  assert.equal(quick.data.room.players.find((player) => player.name === "Player1").hp, 5, "Quick Test uses Guan Yu's 4 HP plus the Lord bonus");
+  assert.equal(quick.data.room.players.find((player) => player.name === "Player1").maxHp, 5);
   assert.equal(quick.data.room.myHand.length, 4);
   assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "BorrowedSword", "EightTrigrams", "Peach"]), "Player1 starts with Guan Yu's Wusheng fixture and the focused opening cards");
   assert.equal(quick.data.room.myHand.filter((openingCard) => openingCard.kind === "Attack").length, 1, "Player1 starts with one physical Attack alongside the Wusheng fixture");
@@ -437,7 +438,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(quick.data.room.code)}) AND seat=3`)).map((openingCard) => openingCard.kind), ["Negation", "Attack", "Attack", "Attack"], "Player4 retains three seeded Attack cards");
   assert.ok(JSON.parse(query(`SELECT hand_json FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(quick.data.room.code)}) AND seat=1`)).some((openingCard) => openingCard.kind === "SerpentSpear"), "Player2 starts with Serpent Spear for Quick Test response coverage");
   assert.ok(quick.data.room.players.filter((player) => player.name !== "Player1").every((player) => player.handCount === 4), "focused quick-test cards replace rather than enlarge the other seats' hands");
-  assert.ok(quick.data.room.players.every((player) => player.equipmentCards.length === 0 && player.hp === 3 && player.maxHp === 3), "every test seat starts at 3 HP with empty equipment");
+  assert.ok(quick.data.room.players.every((player) => player.equipmentCards.length === 0 && player.hp === player.maxHp), "every test seat starts at its hero maximum HP with empty equipment");
   assert.equal(quickDeck.filter((item) => ["Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed"].includes(item.kind)).length, 6, "the six distinct Standard mounts remain in the draw pile");
   assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
   assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);

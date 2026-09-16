@@ -421,7 +421,7 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   let otherHeroIndex = 0;
   const assigned = players.map((player, index) => {
     const hero = player.id === hostPlayerId ? guanYu : otherHeroes[otherHeroIndex++];
-    const hp = 3;
+    const hp = hero.hp + (roles[index] === "Lord" ? 1 : 0);
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
