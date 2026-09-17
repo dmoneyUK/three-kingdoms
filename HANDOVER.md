@@ -1,5 +1,20 @@
 # Three Kingdoms project handover
 
+## Step 6A.1 Negation continuation boundary — 2026-09-17
+
+`resolveDeferredStratagem()` now accepts `NegationContinuation`, so deferred
+resolution cannot depend on response actor, reason, deadline, or presentation
+metadata. When a Negation Judgement leaves no responder, the room persists the
+existing canonical `ResponsePending` wrapper with the transitioned continuation
+before resolving the deferred effect; a continuation is never serialized as a
+standalone `NegationPending`. `applySuccessfulNegation()` discards any legacy
+`readyAfterEventId`, keeping presentation metadata solely on `ResponsePending`.
+
+Human Negation and Negation Judgement paths still have zero expansion calls.
+`advanceNegation()` remains the intentional Step 6B compatibility boundary.
+No test declarations were added; the suite remains 74 tracked tests. Stop this
+round here.
+
 ## Step 6A canonical Negation responses — 2026-09-17
 
 Normal human Negation respond/decline and Negation Judgement outcomes now read

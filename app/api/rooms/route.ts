@@ -684,7 +684,7 @@ async function startJudgementNegation(room: RoomRow, target: PlayerRow, players:
   return true;
 }
 
-async function resolveDeferredStratagem(roomId: string, pending: NegationPending): Promise<Card[]> {
+async function resolveDeferredStratagem(roomId: string, pending: NegationContinuation): Promise<Card[]> {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   if (!room) return [];
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
@@ -967,8 +967,9 @@ async function applyNegationResponseOutcome(room: RoomRow, pending: { response: 
     await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
       .bind(serializePending(decision.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(decision.log), room.id).run();
   } else {
+    const resolved: ResponsePending = { ...response, continuation: transitioned };
     await db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(serializePending(transitioned), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(nextLog), room.id).run();
+      .bind(serializePending(resolved), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(nextLog), room.id).run();
     await resolveDeferredStratagem(room.id, transitioned);
   }
 }

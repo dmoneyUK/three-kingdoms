@@ -195,9 +195,10 @@ test("canonical response outcomes preserve semantic continuation without provide
 });
 
 test("successful Negation has one canonical parity/depth transition", () => {
-  const pending = { kind: "negation", sourceId: "source", remainingIds: [], negated: false, cardName: "Dismantle", effectTargetId: "target", resumePhase: "play", effect: { kind: "judgement", targetId: "target", cardId: "delay" }, chainDepth: 0 };
+  const pending = { kind: "negation", sourceId: "source", remainingIds: [], negated: false, cardName: "Dismantle", effectTargetId: "target", resumePhase: "play", effect: { kind: "judgement", targetId: "target", cardId: "delay" }, chainDepth: 0, readyAfterEventId: "old-barrier" };
   const first = applySuccessfulNegation(pending, { id: "first", name: "First" });
   assert.equal(first.negated, true); assert.equal(first.chainDepth, 1); assert.equal(first.latestNegationPlayerId, "first");
+  assert.equal(first.readyAfterEventId, undefined, "continuation transitions do not own presentation metadata");
   const second = applySuccessfulNegation({ ...first, chainDepth: 1 }, { id: "second", name: "Second" });
   assert.equal(second.negated, false); assert.equal(second.chainDepth, 2); assert.equal(second.latestNegationPlayerId, "second");
 });
