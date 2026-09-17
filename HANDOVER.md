@@ -1,5 +1,15 @@
 # Three Kingdoms project handover
 
+## Step 5D remove transient GroupPending compatibility — 2026-09-17
+
+Normal Group/AOE execution now carries `ResponsePending` plus
+`GroupContinuation` through target advancement, response outcomes, held-card
+accounting, damage, and Dying resume. `GroupPending` remains only for initial
+deferred card construction, the Negation-embedded effect boundary, and bounded
+public compatibility projection. `responseContinuationPending()` no longer
+expands Group responses, and Negation response execution was not changed.
+No tests were added; the existing suite remains the validation target.
+
 ## Step 5C canonical Group resume after Dying — 2026-09-17
 
 Dying Group/AOE interruptions now store their resumed decision as canonical
@@ -305,7 +315,9 @@ Trigger discovery is event-centric and returns **0..N** legal providers. `Trigge
 
 Providers now return a discriminated semantic trigger outcome (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) with compiler-enforced payloads. Target-card constraints carry a target player plus opaque `eligibleKeys`; hidden hand IDs are never exposed as card IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect, reopens the same event with the remaining live options, or immediately resumes its continuation when none remains. `attack_dodged` terminal outcomes now use generic `applyFollowUpAttackOutcome()` and `applyForcedDamageOutcome()` domain functions; canonical execution switches on the semantic outcome and not on Green Dragon Blade or Rock Cleaving Axe.
 
-Legacy request-name translation now lives exclusively in `game/compat/legacy-actions.ts`. It translates old response/weapon verbs at the API boundary; canonical engine code should use the semantic response/trigger protocol only. Keep this adapter narrowly compatibility-only and do not add new gameplay logic to it.
+Legacy provider-specific request-name translation is no longer a live module.
+The canonical engine accepts only the semantic response/trigger protocol; do not
+reintroduce the removed compatibility action surface.
 
 ### 5. Decision-specific presentation barrier
 

@@ -7,7 +7,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening, Step 4.3 response-helper cleanup, single-controller bot-surface removal, and Step 5C canonical Group resume after Dying COMPLETE**
+- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening, Step 4.3 response-helper cleanup, single-controller bot-surface removal, and Step 5D Group canonicalization COMPLETE**
 
 Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, and removal of inactive bot gameplay are complete. Quick Test and normal multiplayer now use human-style seats only; one Quick Test controller switches seats through the shared token. The separate Negation cleanup remains. Hero #2 is not implemented in this round.
 
@@ -16,11 +16,11 @@ declarations while retaining the required human multiplayer and capability
 invariants. Pure helper assertions now run in grouped cases, and inactive bot-only
 tests and product paths have been removed. The Worker/D1 runner executes all 74 tests.
 
-Step 5B now makes `advanceGroup()` read canonical `ResponsePending` plus
-`GroupContinuation` directly. Actor ownership comes from the canonical response
-wrapper, while the bounded expanded `GroupPending` shape is retained only for
-the existing downstream Group helpers. Dying resume storage and Negation remain
-unchanged for the next cleanup steps.
+Step 5D now carries canonical `ResponsePending` plus `GroupContinuation` through
+all normal Group/AOE helpers, including held-card accounting and Dying resume.
+`GroupPending` remains only for initial deferred card construction, the
+Negation-embedded effect boundary, and bounded public projection. Negation
+response execution remains unchanged.
 
 The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, Borrowed Sword, and human-controlled Quick Test Attacks, through the shared target, Dodge, Armor, damage, and Dying pipeline. Borrowed Sword is fully hardened in Standard games: after canonical Negation, its user chooses a live legal target, the Weapon holder receives a private semantic Attack decision with an idempotent human response timer, and refusal/no-provider transfer revalidates the persisted Weapon ID. Worker/D1 regressions cover races, stale targets/actions, physical and Serpent Spear providers, Dodge, and Yin-Yang Swords continuation.
 
@@ -95,7 +95,11 @@ The trigger registry now evaluates every provider that can react to a domain eve
 
 Triggered providers also declare a strongly typed semantic outcome instead of asking the route to recognize their identity: follow-up Attack, forced damage, damage prevention, or a non-terminal reaction that keeps the current event open. Attack-dodged and damage-about-to-apply trigger decisions are event-shaped: after a provider resolves, the engine applies its semantic outcome and resumes the effect without constructing a weapon-specific pending decision. Selected provider labels are carried as generic presentation metadata, so history remains player-readable without provider-specific rule branches. Target-card selections now use opaque keys and a target reference, preserving hidden-hand privacy. A non-terminal provider is excluded after it resolves; if no option remains, its continuation resumes immediately rather than leaving an empty response window. The trigger decision module now exposes lifecycle helpers for creation, human choice, continuation reopening and semantic resumption.
 
-The remaining legacy response and trigger names are isolated in `game/compat/legacy-actions.ts`. They are accepted only for saved/older clients, then translated once at the HTTP boundary into canonical `respond`, `decline_response`, `trigger`, or `decline_trigger` commands before gameplay resolution begins. The current browser renders only canonical response/trigger decisions. Canonical target-card triggers—including Frost Sword—use one generic picker: hidden hand cards remain opaque while eligible Equipment cards stay named.
+The semantic response and trigger protocol is the only supported gameplay
+surface; provider-specific legacy action compatibility is removed. The current
+browser renders only canonical response/trigger decisions. Canonical
+target-card triggers—including Frost Sword—use one generic picker: hidden hand
+cards remain opaque while eligible Equipment cards stay named.
 
 Negation response prompts now track the latest Negation in a counter-chain while retaining the original Stratagem as the root effect. Event History records each Negation window opening, pass, counter-window opening and closure, making Quick Test response transitions diagnosable instead of appearing to skip silently.
 

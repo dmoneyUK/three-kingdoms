@@ -80,7 +80,7 @@ export type TriggerPending = {
 export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: ResponsePending; reason: string };
 export type Pending = AttackPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | BorrowedSwordPending | NegationPending | ResponsePending | TriggerPending | DyingPending;
 
-type ResponseContinuationPending = AttackPending | GroupPending | DuelPending | NegationPending;
+type ResponseContinuationPending = AttackPending | DuelPending | NegationPending;
 
 function continuationForResponse(pending: ResponseContinuationPending): ResponseContinuation {
   const continuation = { ...pending } as Partial<ResponseContinuationPending>;
@@ -113,6 +113,10 @@ export function responseContinuationPending(pending: unknown): Pending | unknown
   if (!pending || typeof pending !== "object" || (pending as { kind?: unknown }).kind !== "response") return pending;
   const response = pending as ResponsePending;
   const continuation = response.continuation;
+  // Group execution consumes the canonical response directly. Keep this
+  // compatibility expansion for the still-bounded Attack/Duel/Negation
+  // ingress paths only.
+  if (continuation.kind === "group") return pending;
   return {
     ...continuation,
     actorId: response.actorId,
