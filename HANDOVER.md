@@ -1,5 +1,14 @@
 # Three Kingdoms project handover
 
+## Step 5E final response-builder typing — 2026-09-17
+
+`game/pending.ts` now separates `ResponseBuilderPending` (the four legacy
+builder shapes) from `ResponseContinuationPending` (the remaining
+Attack/Duel/Negation compatibility-expansion shapes). Neither old-shape union
+contains canonical `ResponsePending`. `GroupResponsePending` narrows canonical
+Group continuations for Halberd target triggers and Dying resumes. Runtime
+behavior and tests are unchanged; Negation was not started.
+
 ## Step 5D.1 finish Group canonical cleanup — 2026-09-17
 
 `asResponsePending()` accepts the legacy `GroupPending` only as an initial

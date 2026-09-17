@@ -15,7 +15,7 @@ import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../..
 import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../game/match/dying.js";
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
-import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DuelPending, type DyingPending, type GroupContinuation, type GroupPending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DuelPending, type DyingPending, type GroupContinuation, type GroupPending, type GroupResponsePending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
 export const runtime = "edge";
 
@@ -461,9 +461,9 @@ function duelResponse(pending: ResponsePending | null | undefined) {
   return { response: pending, continuation: pending.continuation as DuelContinuation };
 }
 
-function groupResponse(pending: ResponsePending | null | undefined) {
+function groupResponse(pending: ResponsePending | null | undefined): { response: GroupResponsePending; continuation: GroupContinuation } | null {
   if (!pending || pending.kind !== "response" || pending.continuation.kind !== "group") return null;
-  return { response: pending, continuation: pending.continuation as GroupContinuation };
+  return { response: pending as GroupResponsePending, continuation: pending.continuation };
 }
 
 function playingStateIssue(room: RoomRow, players: PlayerRow[]) {

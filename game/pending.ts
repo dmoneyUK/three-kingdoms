@@ -40,6 +40,7 @@ export type ResponsePending = {
   readyAfterEventId?: string;
   continuation: ResponseContinuation;
 };
+export type GroupResponsePending = Omit<ResponsePending, "continuation"> & { continuation: GroupContinuation };
 /** Effect-resumption data for new canonical trigger decisions. */
 export type AttackDodgedTriggerContinuation = {
   kind: "attack_dodged_event";
@@ -52,7 +53,7 @@ export type AttackDodgedTriggerContinuation = {
 export type AttackTargetedTriggerContinuation = {
   kind: "attack_targeted_event";
   declaration: AttackDeclaration;
-  group?: ResponsePending;
+  group?: GroupResponsePending;
 };
 export type DamageAboutToApplyTriggerContinuation = {
   kind: "damage_about_to_apply_event";
@@ -77,14 +78,14 @@ export type TriggerPending = {
   resolvedEffectIds?: string[];
   continuation: TriggerContinuation;
 };
-export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: ResponsePending; reason: string };
+export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; reason: string };
 export type Pending = AttackPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | BorrowedSwordPending | NegationPending | ResponsePending | TriggerPending | DyingPending;
 
-type ResponseContinuationPending = AttackPending | GroupPending | DuelPending | NegationPending;
-type ResponseBuilderPending = ResponseContinuationPending | ResponsePending;
+export type ResponseBuilderPending = AttackPending | GroupPending | DuelPending | NegationPending;
+export type ResponseContinuationPending = AttackPending | DuelPending | NegationPending;
 
-function continuationForResponse(pending: ResponseContinuationPending): ResponseContinuation {
-  const continuation = { ...pending } as Partial<ResponseContinuationPending>;
+function continuationForResponse(pending: ResponseBuilderPending): ResponseContinuation {
+  const continuation = { ...pending } as Partial<ResponseBuilderPending>;
   delete continuation.actorId;
   delete continuation.reason;
   delete continuation.deadline;
@@ -92,7 +93,7 @@ function continuationForResponse(pending: ResponseContinuationPending): Response
   return continuation as ResponseContinuation;
 }
 
-function requirementForResponse(pending: ResponseContinuationPending): ActionRequirement {
+function requirementForResponse(pending: ResponseBuilderPending): ActionRequirement {
   switch (pending.kind) {
     case "attack": return { kind: "dodge", sourceId: pending.sourceId, targetId: pending.targetId, attack: { cardId: pending.physicalCardId, suit: pending.physicalSuit, ignoresArmor: pending.ignoresArmor } };
     case "group": return { kind: pending.requiredKind === "Attack" ? "attack" : "dodge", sourceId: pending.sourceId, actorId: pending.actorId, context: pending.requiredKind === "Attack" ? "barbarian_invasion" : undefined };
@@ -101,6 +102,8 @@ function requirementForResponse(pending: ResponseContinuationPending): ActionReq
   }
 }
 
+export function asResponsePending(pending: ResponseBuilderPending | ResponsePending | null | undefined): ResponsePending | null;
+export function asResponsePending(pending: Pending | null | undefined): ResponsePending | null;
 export function asResponsePending(pending: Pending | null | undefined): ResponsePending | null {
   if (!pending) return null;
   if (pending.kind === "response") return pending;
