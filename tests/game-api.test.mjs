@@ -171,6 +171,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const persistedAttackResponse = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   const aliceAttackView = await state(game.code, alice.token);
   assert.equal(persistedAttackResponse.kind, "response", "new response decisions persist in their canonical wrapper");
+  assert.equal(aliceAttackView.data.currentAction.kind, "response"); assert.equal(aliceAttackView.data.currentAction.requirement, "dodge"); assert.ok(aliceAttackView.data.currentAction.options.some((option) => option.providerId === "card"));
   assert.ok(persistedAttackResponse.readyAfterEventId, "the response records its public presentation barrier when it is created");
   assert.equal(aliceAttackView.data.currentAction.presentation.readyAfterEventId, persistedAttackResponse.readyAfterEventId, "the acting player receives the persisted response barrier rather than a room-state log inference");
   assert.equal((await request("start_response_timer", { code: game.code, token: bob.token })).status, 409, "only the acting player can start their response timer");
@@ -181,7 +182,7 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
   const publicAttackTimer = await state(game.code, host.token);
   assert.equal(publicAttackTimer.data.pendingAttack.deadline, timedAttack.data.room.pendingAttack.deadline, "the table can show the same countdown beside the acting player");
   assert.equal((await request("respond", { code: game.code, token: bob.token, cardId: "dodge-answer" })).status, 409);
-  const dodged = await request("respond", { code: game.code, token: alice.token, cardId: "dodge-answer", context: { actionRevision: timedAttack.data.room.actionRevision, meId: timedAttack.data.room.meId, phase: timedAttack.data.room.phase, pendingKind: "response", actorId: timedAttack.data.room.actionPlayerId } });
+  const dodged = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-answer", context: { actionRevision: timedAttack.data.room.actionRevision, meId: timedAttack.data.room.meId, phase: timedAttack.data.room.phase, pendingKind: "response", actorId: timedAttack.data.room.actionPlayerId } });
   assert.equal(dodged.status, 200, JSON.stringify(dodged.data)); assert.equal(dodged.data.room.phase, "play-struck"); assert.equal(dodged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
   setHand(hostPlayer.id, [card("Attack", "damage")], 4, 5); setHand(alicePlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
@@ -835,7 +836,8 @@ test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeou
   assert.equal(firstAttack.status, 200); assert.equal(firstAttack.data.room.pendingAttack.targetId, bobPlayer.id, "range 3 permits the opposite target");
   assert.equal(firstAttack.data.room.pendingAttack.origin, "card", "normal Attack uses the shared Attack declaration");
   assert.equal(firstAttack.data.room.pendingAttack.physicalCardId, "attack-dragon-first", "the physical Attack remains available to source-sensitive rules");
-  const dodged = await request("respond", { code: game.code, token: bob.token, cardId: "dodge-dragon" });
+  const dragonDecision = await state(game.code, bob.token); assert.equal(dragonDecision.data.currentAction.kind, "response"); assert.equal(dragonDecision.data.currentAction.requirement, "dodge"); assert.ok(dragonDecision.data.currentAction.options.some((option) => option.providerId === "card"));
+  const dodged = await request("respond", { code: game.code, token: bob.token, providerId: "card", cardId: "dodge-dragon" });
   assert.equal(dodged.status, 200); assert.equal(dodged.data.room.currentAction.kind, "trigger"); assert.equal(dodged.data.room.actionPlayerId, hostPlayer.id);
   const dragonTrigger = await state(game.code, host.token);
   assert.equal(dragonTrigger.data.currentAction.kind, "trigger"); assert.equal(dragonTrigger.data.currentAction.triggerOptions[0].effectId, "green_dragon_blade_attack_dodged");
@@ -884,7 +886,8 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   assert.equal(formed.data.room.pendingAttack.physicalCardId, undefined, "a formed Attack has no single physical Attack card");
   const formedEvent = formed.data.room.timeline.find((event) => event.type === "cards" && event.action === "play" && event.player === "Host");
   assert.deepEqual(formedEvent.cards.map((item) => item.id), ["peach-serpent-one", "dodge-serpent-two"]); assert.equal(formedEvent.target, "Bob");
-  const dodged = await request("respond", { code: game.code, token: bob.token, cardId: "dodge-serpent-answer" });
+  const serpentDecision = await state(game.code, bob.token); assert.equal(serpentDecision.data.currentAction.kind, "response"); assert.equal(serpentDecision.data.currentAction.requirement, "dodge"); assert.ok(serpentDecision.data.currentAction.options.some((option) => option.providerId === "card"));
+  const dodged = await request("respond", { code: game.code, token: bob.token, providerId: "card", cardId: "dodge-serpent-answer" });
   assert.equal(dodged.status, 200); assert.equal(dodged.data.room.phase, "play-struck"); assert.ok(discardIds(game.code).includes("peach-serpent-one"));
 
   setEquipment(alicePlayer.id, { weapon: card("SerpentSpear", "duel") });
