@@ -1,9 +1,12 @@
 # Three Kingdoms project handover
 
-## Step 7B canonical persisted responses only — 2026-09-17
+## Step 7B.1 reject legacy persisted response kinds — 2026-09-17
 
-Persisted response reads now accept only `kind: "response"`; saved top-level
-Attack, Duel, Group, and Negation decisions are no longer silently upgraded.
+Persisted response reads now accept only `kind: "response"`; during the
+Response phase, saved top-level Attack, Duel, Group, and Negation decisions
+now fail the state-safety check instead of being treated as valid decisions.
+Room projection also keeps these unsupported states out of actionable
+`currentAction` and returns no legacy response DTO fallback.
 Room projection derives `pendingAttack`, `pendingDuel`, `pendingGroup`, and
 `pendingNegation` only from `ResponsePending.continuation`, and legacy barrier
 recovery was removed. `asResponsePending()` remains only at in-memory builder

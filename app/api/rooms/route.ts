@@ -481,6 +481,7 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
   if (room.phase === "response" || room.phase === "dying") {
     if (!pending) return `The ${room.phase} phase is missing its pending action.`;
     if (room.phase === "dying" && pending.kind !== "dying") return "The Dying phase contains the wrong pending action.";
+    if (room.phase === "response" && ["attack", "duel", "group", "negation"].includes(pending.kind)) return "The Response phase contains an unsupported legacy response action.";
     if (room.phase === "response" && pending.kind === "dying") return "The Response phase contains a Dying action.";
     const actor = players.find((player) => player.id === pending.actorId && player.alive);
     if (!actor) return "The pending action does not belong to a living player.";
@@ -490,8 +491,7 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
         : canonicalTrigger ? canonicalTrigger.continuation.sourceId
           : pending.kind === "response" ? pending.continuation.sourceId
             : pending.sourceId;
-    const borrowedContinuationAttack = pending.kind === "attack" && (pending.origin === "triggered" || pending.origin === "serpent_spear") && owner.id !== pending.sourceId
-      || pending.kind === "response" && pending.continuation.kind === "attack" && (pending.continuation.origin === "triggered" || pending.continuation.origin === "serpent_spear") && owner.id !== pending.continuation.sourceId;
+    const borrowedContinuationAttack = pending.kind === "response" && pending.continuation.kind === "attack" && (pending.continuation.origin === "triggered" || pending.continuation.origin === "serpent_spear") && owner.id !== pending.continuation.sourceId;
     if (owner.id !== expectedOwnerId && !borrowedContinuationAttack) return "The pending action does not belong to the current turn owner.";
   } else if (room.phase !== "resolving" && pending) {
     return `The ${room.phase ?? "unknown"} phase contains an unexpected pending action.`;
@@ -1534,6 +1534,7 @@ async function roomState(code: string, token?: string) {
   const persistedPending = parsePersistedPending(room.pending_json);
   const triggerPending = persistedPending?.kind === "trigger" ? persistedPending : null;
   const responsePending = persistedPending?.kind === "response" ? persistedPending : null;
+  const legacyResponsePending = room.phase === "response" && persistedPending && ["attack", "duel", "group", "negation"].includes(persistedPending.kind);
   const projectedResponsePending = responsePending ?? (persistedPending?.kind === "dying" ? persistedPending.resumePending : null);
   const pending = persistedPending;
   const responseContinuation = projectedResponsePending?.continuation;
@@ -1577,13 +1578,13 @@ async function roomState(code: string, token?: string) {
     : undefined;
   const currentAction: CurrentAction = {
     version: 3,
-    kind: responsePending ? "response" : triggerPending ? "trigger" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
+    kind: responsePending ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
     actorId: actualActionPlayerId,
     deadline: responseDeadline,
     reason: actionReason,
     // This list is calculated only for the current private view. It is never
     // a table-wide disclosure of another player's hand or legal responses.
-    legalActions: me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [],
+    legalActions: !legacyResponsePending && me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [],
     canDeclareAttack,
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
     ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
