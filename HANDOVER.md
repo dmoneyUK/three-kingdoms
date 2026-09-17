@@ -1,5 +1,21 @@
 # Three Kingdoms project handover
 
+## Final Wusheng and Borrowed Sword cleanup — 2026-09-17
+
+Borrowed Sword `choose_target` is now a dedicated browser decision: it is
+excluded from the generic response discriminator and controls, so Play Dodge
+and Skip response cannot appear while the source player chooses the forced
+Attack target. The target picker is also withheld while `presentationBusy`.
+Wusheng-supplied Play Phase cards no longer use the old card-level “Use as
+Attack” / “Play natively” toggle; Guan Yu enters virtual-Attack mode only
+through the dedicated Hero Skills button, while the existing `play_card` plus
+`playAs: "attack"` contract remains unchanged. The initial Borrowed Sword
+route now uses `borrowedSwordEligibleTargetIds()` before accepting the card and
+rejects an empty target set, while submission-time target validation remains
+unchanged. Existing API coverage was extended without adding test
+declarations; the tracked suite remains at 74 declarations. Recommended next
+work is the next individually verified Standard hero.
+
 ## Wusheng state lifecycle and Borrowed Sword browser flow — 2026-09-17
 
 Wusheng local mode now clears on every `actionRevision` change and whenever

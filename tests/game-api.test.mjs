@@ -1543,6 +1543,7 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
   setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [attack], 4, 4); setHand(secondTarget.id, [], 4, 4); setEquipment(holder.id, { weapon }); setTurn(game.code, source.seat);
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id });
   assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingBorrowedSword.stage, "choose_target");
+  assert.equal(opened.data.room.currentAction.kind, "borrowed_sword"); assert.deepEqual(opened.data.room.currentAction.legalActions, ["choose_borrowed_sword_target"]); assert.equal(opened.data.room.currentAction.options, undefined);
   const chosen = await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id });
   assert.equal(chosen.status, 200); assert.equal(chosen.data.room.pendingBorrowedSword.stage, "force_attack"); assert.equal(chosen.data.room.actionPlayerId, holder.id);
   const refused = await request("decline_response", { code: game.code, token: alice.token });
@@ -1614,6 +1615,13 @@ test("Borrowed Sword transfer never follows a stale or replaced Weapon", { timeo
   }
   const noProvider = await openBorrowedSwordScenario({ attack: false, choose: false }); setEquipment(noProvider.holder.id, { weapon: card("BlueSteelSword", "unrelated") });
   const ended = await request("choose_borrowed_sword_target", { code: noProvider.game.code, token: noProvider.host.token, targetId: noProvider.target.id }); assert.equal(ended.status, 200, JSON.stringify(ended.data)); assert.equal(ended.data.room.phase, "play"); assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(noProvider.source.id)} AND json_extract(value,'$.id')=${quote(noProvider.weapon.id)}`), "0");
+
+  const impossible = await createHumanGame(); const [impossibleHost] = impossible.members; const [impossibleSource, deadNear, impossibleHolder, deadFar] = impossible.room.players;
+  const impossibleBorrowed = card("BorrowedSword", "borrowed-no-target");
+  setHand(impossibleSource.id, [impossibleBorrowed], 4, 5); setHand(impossibleHolder.id, [], 4, 4); setEquipment(impossibleSource.id, { defensiveHorse: card("DefensiveHorse", "borrowed-out-of-range") }); setEquipment(impossibleHolder.id, { weapon: card("ZhugeCrossbow", "borrowed-range-one") });
+  sql(`UPDATE players SET alive=0,hp=0,hand_json='[]',equipment_json='{}' WHERE id IN (${quote(deadNear.id)},${quote(deadFar.id)})`); setTurn(impossible.code, impossibleSource.seat);
+  const rejected = await request("play_card", { code: impossible.code, token: impossibleHost.token, cardId: impossibleBorrowed.id, targetId: impossibleHolder.id });
+  assert.equal(rejected.status, 409); assert.match(rejected.data.error, /no legal target/); assert.equal((await state(impossible.code, impossibleHost.token)).data.pendingBorrowedSword, null);
 });
 
 test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuations", { timeout: 60_000 }, async () => {

@@ -1,6 +1,6 @@
 # Three Kingdoms
 
-Current Stage 6 milestone: Hero skill controls — Wusheng UI is projection-driven for Guan Yu in Play Phase and response windows, with eligible-card highlighting and canonical `play_card`/`respond` submission. Borrowed Sword target selection now consumes server-projected `eligibleTargetIds` and the existing `choose_borrowed_sword_target` action before re-entering the canonical forced-Attack response. The virtual-Attack `playedAs` marker is preserved through room timeline normalization. Next milestone: continue the verified Standard hero-ability roster, starting only after its server projection and human-seat coverage are defined.
+Current Stage 6 milestone: Hero skill controls — Wusheng UI is projection-driven for Guan Yu in Play Phase and response windows, with eligible-card highlighting and canonical `play_card`/`respond` submission. Final Wusheng and Borrowed Sword cleanup is complete: Wusheng virtual-Attack cards enter that mode only through the dedicated hero-skill control, and Borrowed Sword target selection is isolated from generic response controls, hidden behind presentation barriers, and rejected server-side when no forced-Attack target exists. Next milestone: continue the verified Standard hero-ability roster, starting only after its server projection and human-seat coverage are defined.
 
 An English online implementation of WTK Standard, the classic hidden-role Three Kingdoms card game, built for small private groups of friends.
 
@@ -9,7 +9,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening, Step 4.3 response-helper cleanup, single-controller bot-surface removal, Step 5E response-builder typing, Step 6B Negation canonicalization, Step 7B.1 legacy persisted-response rejection, Step 7C direct response construction, and Step 7D response architecture documentation closure COMPLETE**
+- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening and final UI cleanup, Step 4.3 response-helper cleanup, single-controller bot-surface removal, Step 5E response-builder typing, Step 6B Negation canonicalization, Step 7B.1 legacy persisted-response rejection, Step 7C direct response construction, and Step 7D response architecture documentation closure COMPLETE**
 
 Step 7D closes the semantic response architecture cleanup. `ResponsePending` is the sole semantic Attack, Duel,
 Group, and Negation decision shape. Attack, ordinary AOE, Halberd, and Duel
@@ -62,7 +62,7 @@ Raining Arrows is covered through the current semantic response path: each livin
 
 The game surface keeps Exit available independently of the hidden top bar. Game Messages is the foldable event window and can be folded away to free table space; no separate popup history window is used, and the turn-status strip is intentionally omitted from the board.
 
-Recent UX fixes complete three reported flows: a defensive horse can replace an equipped Hex Mark through the normal equipment-slot path; Borrowed Sword now exposes live Weapon holders as selectable targets before opening the forced Attack response; and resolved hero/equipment reactions emit a server-authored Game Messages entry plus a brief on-table “Effect Triggered” notice. These notices are informational and never delay decisions, timers, or card presentation barriers.
+Recent UX fixes complete four reported flows: a defensive horse can replace an equipped Hex Mark through the normal equipment-slot path; Borrowed Sword now exposes live Weapon holders as selectable targets before opening the forced Attack response; its `choose_target` stage no longer exposes Play Dodge or Skip response controls and its picker waits for presentation to finish; and resolved hero/equipment reactions emit a server-authored Game Messages entry plus a brief on-table “Effect Triggered” notice. These notices are informational and never delay decisions, timers, or card presentation barriers. Wusheng-supplied Play Phase cards now enter virtual-Attack mode only through the dedicated Hero Skills control.
 
 Player squares show a secret-role badge only for the local player. Negation skip controls keep a stable label while a request is in flight, avoiding transient status flicker. Equipment and Judgement tiles use a uniform compact card ratio, with taller player squares allowing the zone contents to remain readable.
 
