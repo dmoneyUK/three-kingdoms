@@ -1,5 +1,16 @@
 # Three Kingdoms project handover
 
+## Step 5C canonical Group resume after Dying — 2026-09-17
+
+Dying Group/AOE interruptions now store their resumed decision as canonical
+`ResponsePending` with `continuation.kind: "group"`. Rescue, Peach holding,
+defeat continuation, and final Group discard preserve the existing target
+sequence, held cards, resolution ID, and ordering. Group compatibility shapes
+remain only as transient views for existing sequence helpers and public DTOs;
+they are never persisted after rescue. No tests were added and Negation was not
+changed. The next cleanup is the separate Negation response expansion; stop
+after Step 5C.
+
 ## Step 5B `advanceGroup()` canonicalization — 2026-09-17
 
 `advanceGroup()` now reads canonical `ResponsePending` through
@@ -11,8 +22,8 @@ automatic impossible-response resolution, semantic Attack/Dodge and Judgement
 providers, held cards, and ordered target advancement.
 
 No tests were added; the tracked suite remains 74 tests and is green at 74/74.
-The remaining Step 5B boundary is Dying Group `resumePending` storage. Negation
-was not changed.
+The remaining cleanup boundary is Negation response expansion. Negation was
+not changed.
 
 ## Step 5A Group/AOE response canonicalization — 2026-09-17
 
@@ -24,9 +35,9 @@ deadline come from the canonical response wrapper, while card kind, source,
 remaining targets, requirement, resume phase, held cards, and resolution ID
 come from the continuation.
 
-The existing Group lifecycle remained intentionally bounded during Step 5A:
-DyingPending still stores `resumePending?: GroupPending`. Step 5B subsequently
-migrated `advanceGroup()`; Negation was not touched.
+The existing Group lifecycle remained intentionally bounded during Step 5A;
+Step 5B subsequently migrated `advanceGroup()`, and Step 5C migrated Dying
+Group resume storage. Negation was not touched.
 
 Group expansion references for the two migrated paths went from 2 to 0. The
 tracked test count stayed at 74 before and after this migration, and the full
@@ -82,7 +93,7 @@ reviewing its compatibility boundary.
 
 ## Stage 6 architecture cleanup — canonical protocol only (2026-09-17)
 
-The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module, dead saved-room `advanceFrostSword` / `advanceRockCleaving` / `advanceGreenDragon` adapters, and provider-specific HTTP branches must not return. `TriggerPending` is now the only trigger decision in the persisted `Pending` union; `asTriggerPending()` accepts only `kind: "trigger"`. Attack responses use `ResponsePending` and its `AttackContinuation` directly for human, Judgement, bot, timer, trigger-after-Dodge, damage, stale, and privacy paths. Duel responses now use `ResponsePending` and its `DuelContinuation` directly for human, bot, Judgement, loss, actor-switch, and next-decision paths. `advanceGroup()` now reads `ResponsePending` plus `GroupContinuation` directly, with only downstream helper expansion remaining. Dying Group resume storage and Negation remain the next cleanup steps. Canonical semantic trigger continuations remain unchanged.
+The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module, dead saved-room `advanceFrostSword` / `advanceRockCleaving` / `advanceGreenDragon` adapters, and provider-specific HTTP branches must not return. `TriggerPending` is now the only trigger decision in the persisted `Pending` union; `asTriggerPending()` accepts only `kind: "trigger"`. Attack responses use `ResponsePending` and its `AttackContinuation` directly for human, Judgement, timer, trigger-after-Dodge, damage, stale, and privacy paths. Duel responses use `ResponsePending` and its `DuelContinuation` directly for human, Judgement, loss, actor-switch, and next-decision paths. `advanceGroup()` and Dying Group resume now use canonical `ResponsePending` plus `GroupContinuation`, with expanded Group shapes limited to transient helper and DTO views. The separate Negation response expansion remains. Canonical semantic trigger continuations remain unchanged.
 
 Domain continuation data remains because the canonical engine uses it to resume Attack, Duel, Group, Negation, and trigger effects. Old pending DTO projections remain as bounded response payloads for current normalization/tests, while browser decision controls come from `currentAction`.
 
@@ -292,7 +303,7 @@ Frost Sword correctly excludes Judgement Zone cards.
 
 Trigger discovery is event-centric and returns **0..N** legal providers. `TriggerPending.resolvedEffectIds` prevents the same optional reaction from being offered twice during one event. The route rebuilds capability-neutral live source/target context and validates the submitted provider against the entire remaining option set. The only trigger commands are `trigger` and `decline_trigger`.
 
-Providers now return a discriminated semantic trigger outcome (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) with compiler-enforced payloads. Target-card constraints carry a target player plus opaque `eligibleKeys`; hidden hand IDs are never exposed as card IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect, reopens the same event with the remaining live options, or immediately resumes its continuation when none remains. `attack_dodged` terminal outcomes now use generic `applyFollowUpAttackOutcome()` and `applyForcedDamageOutcome()` domain functions; canonical execution switches on the semantic outcome and not on Green Dragon Blade or Rock Cleaving Axe. Legacy bot schedulers, if retained, are inactive narrow adapters only and are not part of the product contract.
+Providers now return a discriminated semantic trigger outcome (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) with compiler-enforced payloads. Target-card constraints carry a target player plus opaque `eligibleKeys`; hidden hand IDs are never exposed as card IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect, reopens the same event with the remaining live options, or immediately resumes its continuation when none remains. `attack_dodged` terminal outcomes now use generic `applyFollowUpAttackOutcome()` and `applyForcedDamageOutcome()` domain functions; canonical execution switches on the semantic outcome and not on Green Dragon Blade or Rock Cleaving Axe.
 
 Legacy request-name translation now lives exclusively in `game/compat/legacy-actions.ts`. It translates old response/weapon verbs at the API boundary; canonical engine code should use the semantic response/trigger protocol only. Keep this adapter narrowly compatibility-only and do not add new gameplay logic to it.
 

@@ -353,17 +353,23 @@ async function claimTurnAction(roomId: string, seat: number, phase: string) {
 function groupSequenceFromPending(pending: Pending | null) {
   if (pending?.kind === "group") return pending;
   if (pending?.kind === "negation" && pending.effect.kind === "group") return { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies GroupPending;
-  if (pending?.kind === "dying" && pending.resumePending) return pending.resumePending;
+  if (pending?.kind === "response" && pending.continuation.kind === "group") return { ...pending.continuation, actorId: pending.actorId, reason: pending.reason, deadline: pending.deadline, resolutionId: pending.resolutionId, readyAfterEventId: pending.readyAfterEventId } satisfies GroupPending;
+  if (pending?.kind === "dying" && pending.resumePending) return groupSequenceFromPending(pending.resumePending);
   return null;
-}
-function appendHeldGroupCard(pending: GroupPending, card: Card) {
-  return { ...pending, heldCards: [...(pending.heldCards ?? []), card] } satisfies GroupPending;
 }
 function appendHeldGroupCards(pending: GroupPending, cards: Card[]) {
   return { ...pending, heldCards: [...(pending.heldCards ?? []), ...cards] } satisfies GroupPending;
 }
 function appendDyingSequenceCard(pending: DyingPending, card: Card) {
-  return pending.resumePending ? { ...pending, resumePending: appendHeldGroupCard(pending.resumePending, card) } satisfies DyingPending : pending;
+  const group = pending.resumePending && groupResponse(pending.resumePending);
+  if (!group) return pending;
+  return {
+    ...pending,
+    resumePending: {
+      ...group.response,
+      continuation: { ...group.continuation, heldCards: [...(group.continuation.heldCards ?? []), card] },
+    },
+  } satisfies DyingPending;
 }
 function commitHeldGroupCards(discard: Card[], pending: GroupPending) {
   const held = pending.heldCards ?? [];
@@ -522,7 +528,7 @@ async function continueAfterDefeat(roomId: string, pending: DyingPending) {
 
 function dyingResumeState(pending: DyingPending, resume?: PlayerRow | null) {
   return pending.resumePending
-    ? { phase: "response", pendingJson: JSON.stringify(pending.resumePending) }
+    ? { phase: "response", pendingJson: serializePending(pending.resumePending) }
     : { phase: pending.resumePhase ?? phaseAfterAttack(resume), pendingJson: null };
 }
 
@@ -629,7 +635,7 @@ async function expireDyingRescue(roomId: string) {
 
 async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: GroupPending, dyingHp = target.hp ?? 0) {
   const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat); const first = order[0];
-  const pending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: first?.id ?? target.id, remainingIds: order.slice(1).map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, reason: `Decide whether to give Peach to ${target.name}` };
+  const pending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: first?.id ?? target.id, remainingIds: order.slice(1).map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending: resumePending ? asResponsePending(resumePending) ?? undefined : undefined, reason: `Decide whether to give Peach to ${target.name}` };
   await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), db().prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
   await advanceDyingRescue(room.id);
 }
@@ -1570,7 +1576,7 @@ async function roomState(code: string, token?: string) {
     pendingGreenDragon: null,
     pendingRockCleaving: null,
     pendingDuel: pending?.kind === "duel" ? pending : null,
-    pendingGroup: pending?.kind === "group" ? pending : pending?.kind === "dying" ? pending.resumePending ?? null : null,
+    pendingGroup: groupSequenceFromPending(pending),
     // The client normalizer validates pending DTOs by their discriminator.
     // Keep it on these projected public shapes too; otherwise a valid server
     // response is mistaken for an unknown state and its controls disappear.
