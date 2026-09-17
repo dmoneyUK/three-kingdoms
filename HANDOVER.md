@@ -1,5 +1,21 @@
 # Three Kingdoms project handover
 
+## Step 7A response expansion compatibility removal — 2026-09-17
+
+The four remaining canonical-response expansion consumers are migrated. Audit
+recording, playing-state validation, room normalization, and the response timer
+now read `ResponsePending`, `TriggerPending`, and other non-response `Pending`
+records directly. Room normalization derives the existing public
+`pendingAttack`, `pendingDuel`, `pendingGroup`, and `pendingNegation` DTOs from
+the canonical response continuation where applicable; `currentAction` and
+public field shapes are unchanged.
+
+The old response expansion helper and its compatibility type are deleted,
+including the route import. `asResponsePending()`, `ResponseBuilderPending`,
+`continuationForResponse()`, and `requirementForResponse()` remain for initial
+builder-to-canonical conversion. No tests were added; the existing test count
+must remain unchanged or lower. The next milestone is to choose another hero.
+
 ## Step 6B Negation canonicalization — 2026-09-17
 
 Negation runtime now uses only canonical `ResponsePending` plus
@@ -12,8 +28,8 @@ presentation barriers, and deferred effects. A no-responder `startNegation()`
 path creates the continuation in memory and calls `resolveDeferredStratagem()`
 without serializing a Negation decision.
 
-The production route has zero `NegationPending` references and exactly four
-generic `responseContinuationPending()` calls remain for Step 7. No new tests
+The production route had zero `NegationPending` references and exactly four
+generic response expansion calls remained for Step 7. No new tests
 were added; the existing suite remains 74 declarations and all 74 pass through
 the Worker/D1 runner. Build, lint, and final diff checks are the release gate.
 The next milestone is Step 7 generic response-helper cleanup; stop this round
@@ -38,7 +54,7 @@ round here.
 
 Normal human Negation respond/decline and Negation Judgement outcomes now read
 the canonical `ResponsePending` wrapper directly through `negationResponse()`;
-they no longer expand it with `responseContinuationPending()`. `applySuccessfulNegation()`
+they no longer expand it with the old response helper. `applySuccessfulNegation()`
 now operates on `NegationContinuation`, and successful counter-Negation opens
 the next canonical `ResponsePending` directly. Chain depth/parity, latest card
 and player, remaining responder order, held cards, response target, resolution
@@ -52,9 +68,9 @@ cleanup; stop this round here.
 
 ## Step 5E final response-builder typing — 2026-09-17
 
-`game/pending.ts` now separates `ResponseBuilderPending` (the four legacy
-builder shapes) from `ResponseContinuationPending` (the remaining
-Attack/Duel/Negation compatibility-expansion shapes). Neither old-shape union
+`game/pending.ts` then separated `ResponseBuilderPending` (the four legacy
+builder shapes) from the remaining Attack/Duel/Negation compatibility-expansion
+shapes. Neither old-shape union
 contains canonical `ResponsePending`. `GroupResponsePending` narrows canonical
 Group continuations for Halberd target triggers and Dying resumes. Runtime
 behavior and tests are unchanged; Negation was not started.
@@ -62,7 +78,7 @@ behavior and tests are unchanged; Negation was not started.
 ## Step 5D.1 finish Group canonical cleanup — 2026-09-17
 
 `asResponsePending()` accepts the legacy `GroupPending` only as an initial
-builder input, while `responseContinuationPending()` still never expands
+builder input, while the old response helper still never expanded
 Group. Halberd `attack_targeted` continuations now store the complete
 canonical Group response and resume it directly. Canonical Group sequence
 projection returns `GroupContinuation`; actor and deadline metadata remain in
@@ -76,7 +92,7 @@ Normal Group/AOE execution now carries `ResponsePending` plus
 `GroupContinuation` through target advancement, response outcomes, held-card
 accounting, damage, and Dying resume. `GroupPending` remains only for initial
 deferred card construction, the Negation-embedded effect boundary, and bounded
-public compatibility projection. `responseContinuationPending()` no longer
+public compatibility projection. The old response helper no longer
 expands Group responses, and Negation response execution was not changed.
 No tests were added; the existing suite remains the validation target.
 
@@ -110,7 +126,7 @@ not changed.
 Normal Group/AOE response execution now reads `ResponsePending` through the
 new `groupResponse()` accessor and uses `GroupContinuation` for effect-resume
 data. Both the human Group respond/decline branch and the Group Judgement
-outcome no longer call `responseContinuationPending()`; actor, reason, and
+outcome no longer called the old response helper; actor, reason, and
 deadline come from the canonical response wrapper, while card kind, source,
 remaining targets, requirement, resume phase, held cards, and resolution ID
 come from the continuation.
@@ -130,7 +146,7 @@ branch uses its canonical response execution result directly, and the existing
 Game Messages test is now included in the Worker/D1 runner. No new tests were
 added. The suite remains at 74 tracked declarations and now executes all 74.
 
-The remaining `responseContinuationPending()` calls are intentionally limited
+The remaining response expansion calls were intentionally limited
 to the current Group/AOE and Negation compatibility boundaries. Step 5A has
 removed the two normal Group response/Judgement expansions; `advanceGroup()`
 and the Dying Group resume storage remain for Step 5B, and Negation remains
@@ -471,4 +487,4 @@ Do not claim local tests ran unless they actually ran. A GitHub workflow startup
 
 Test cleanup is complete with no production-code changes. The suite now keeps behavioural coverage in the Worker/D1 API and integration paths, including the 108-card physical deck, Dying and match outcomes, private-hand perspective/privacy, canonical `currentAction` safety, real card rules, and semantic response/trigger chains. The duplicate latest-ten Game Messages checks were merged; capability discovery and generic response-decision checks were merged; synthetic capability registry setup/cleanup checks were merged; and source-regex tests for route/page implementation details were removed. The lobby SSR smoke test and focused room-safety rendering tests remain as independent rendering coverage.
 
-The cleanup removed tests that only enforced internal function names, exact source text, or lower-level behavior already proven through stronger API/integration regressions. Attack behavior remains covered through canonical `currentAction` plus `respond`/`decline_response`; no legacy trigger execution or response-alias tests were added. Step 4 Duel canonicalization is complete: Duel uses `ResponsePending` plus `DuelContinuation` directly. Group/AOE and Negation still use `responseContinuationPending()`; the next architecture step is Step 5 Group/AOE.
+The cleanup removed tests that only enforced internal function names, exact source text, or lower-level behavior already proven through stronger API/integration regressions. Attack behavior remains covered through canonical `currentAction` plus `respond`/`decline_response`; no legacy trigger execution or response-alias tests were added. Step 4 Duel canonicalization is complete: Duel uses `ResponsePending` plus `DuelContinuation` directly. Group/AOE and Negation still used the old expansion boundary; the next architecture step was Step 5 Group/AOE.

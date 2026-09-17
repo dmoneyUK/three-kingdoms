@@ -15,7 +15,7 @@ import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../..
 import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../game/match/dying.js";
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
-import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DuelPending, type DyingPending, type GroupContinuation, type GroupPending, type GroupResponsePending, type HarvestPending, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DuelPending, type DyingPending, type GroupContinuation, type GroupPending, type GroupResponsePending, type HarvestPending, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
 export const runtime = "edge";
 
@@ -43,7 +43,7 @@ async function recordAuditAction(room: RoomRow, actor: PlayerRow | null, actorNa
   const scope = await env.DB.prepare("SELECT room_id FROM audit_scope WHERE id = 1").first<{ room_id: string }>();
   if (scope?.room_id !== room.id) return;
   const storedPending = parse<Pending | null>(room.pending_json, null);
-  const pending = asTriggerPending(storedPending) ?? responseContinuationPending(storedPending) as Pending | null;
+  const pending = storedPending;
   const actingPlayer = room.phase === "response" || room.phase === "dying"
     ? pending?.actorId ?? pending?.targetId ?? null
     : (await env.DB.prepare("SELECT id FROM players WHERE room_id = ? AND seat = ?").bind(room.id, room.turn_seat).first<{ id: string }>())?.id ?? null;
@@ -477,7 +477,7 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
   if (!owner) return "The active turn does not belong to a living player.";
   const storedPending = parse<Pending | null>(room.pending_json, null);
   const canonicalTrigger = asTriggerPending(storedPending);
-  const pending = asTriggerPending(storedPending) ?? responseContinuationPending(storedPending) as Pending | null;
+  const pending = storedPending;
   if (room.phase === "response" || room.phase === "dying") {
     if (!pending) return `The ${room.phase} phase is missing its pending action.`;
     if (room.phase === "dying" && pending.kind !== "dying") return "The Dying phase contains the wrong pending action.";
@@ -490,7 +490,8 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
         : canonicalTrigger ? canonicalTrigger.continuation.sourceId
           : pending.kind === "response" ? pending.continuation.sourceId
             : pending.sourceId;
-    const borrowedContinuationAttack = pending.kind === "attack" && (pending.origin === "triggered" || pending.origin === "serpent_spear") && owner.id !== pending.sourceId;
+    const borrowedContinuationAttack = pending.kind === "attack" && (pending.origin === "triggered" || pending.origin === "serpent_spear") && owner.id !== pending.sourceId
+      || pending.kind === "response" && pending.continuation.kind === "attack" && (pending.continuation.origin === "triggered" || pending.continuation.origin === "serpent_spear") && owner.id !== pending.continuation.sourceId;
     if (owner.id !== expectedOwnerId && !borrowedContinuationAttack) return "The pending action does not belong to the current turn owner.";
   } else if (room.phase !== "resolving" && pending) {
     return `The ${room.phase ?? "unknown"} phase contains an unexpected pending action.`;
@@ -1530,9 +1531,22 @@ async function roomState(code: string, token?: string) {
   const players = result.results ?? [];
   const rawLog = parse<string[]>(room.log_json, []);
   const persistedPending = parsePersistedPending(room.pending_json);
-  const triggerPending = asTriggerPending(persistedPending);
-  const pending = triggerPending ?? responseContinuationPending(persistedPending) as Pending | null;
-  const responsePending = asResponsePending(persistedPending);
+  const triggerPending = persistedPending?.kind === "trigger" ? persistedPending : null;
+  const responsePending = persistedPending?.kind === "response" ? persistedPending : null;
+  const pending = persistedPending;
+  const responseContinuation = responsePending?.continuation;
+  const pendingAttack = responseContinuation?.kind === "attack"
+    ? { ...responseContinuation, actorId: responsePending.actorId, reason: responsePending.reason, deadline: responsePending.deadline }
+    : pending?.kind === "attack" ? pending : null;
+  const pendingDuel = responseContinuation?.kind === "duel"
+    ? { ...responseContinuation, actorId: responsePending.actorId, reason: responsePending.reason, deadline: responsePending.deadline }
+    : pending?.kind === "duel" ? pending : null;
+  const pendingGroup = responseContinuation?.kind === "group"
+    ? { ...responseContinuation, actorId: responsePending.actorId, reason: responsePending.reason, deadline: responsePending.deadline }
+    : groupSequenceFromPending(pending);
+  const pendingNegation = responseContinuation?.kind === "negation"
+    ? { kind: "negation" as const, sourceId: responseContinuation.sourceId, actorId: responsePending.actorId, effectTargetId: responseContinuation.effectTargetId, cardName: responseContinuation.cardName, responseTarget: responseContinuation.responseTarget ?? responseContinuation.cardName, latestNegationPlayerId: responseContinuation.latestNegationPlayerId ?? null, latestNegationCardId: responseContinuation.latestNegationCardId ?? null, chainDepth: responseContinuation.chainDepth ?? 0, negated: responseContinuation.negated, deadline: responsePending.deadline ?? 0 }
+    : pending?.kind === "negation" ? { kind: "negation" as const, sourceId: pending.sourceId, actorId: pending.actorId, effectTargetId: pending.effectTargetId, cardName: pending.cardName, responseTarget: pending.responseTarget ?? pending.cardName, latestNegationPlayerId: pending.latestNegationPlayerId ?? null, latestNegationCardId: pending.latestNegationCardId ?? null, chainDepth: pending.chainDepth ?? 0, negated: pending.negated, deadline: pending.deadline ?? 0 } : null;
   const tokenHash = token ? await hash(token) : "";
   const turnPlayer = room.status === "playing" ? players.find((player) => player.seat === room.turn_seat && player.alive) : undefined;
   const actualActionPlayerId = room.status !== "playing" ? null : room.phase === "response" || room.phase === "dying" ? pending?.actorId ?? pending?.targetId ?? turnPlayer?.id ?? null : turnPlayer?.id ?? null;
@@ -1583,7 +1597,7 @@ async function roomState(code: string, token?: string) {
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
     timeline: gameTimeline(rawLog), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "playing" && me?.id === actualActionPlayerId,
-    pendingAttack: pending?.kind === "attack" ? pending : null,
+    pendingAttack,
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or
     // decline_trigger.
@@ -1595,12 +1609,12 @@ async function roomState(code: string, token?: string) {
     } : null,
     pendingGreenDragon: null,
     pendingRockCleaving: null,
-    pendingDuel: pending?.kind === "duel" ? pending : null,
-    pendingGroup: groupSequenceFromPending(pending),
+    pendingDuel,
+    pendingGroup,
     // The client normalizer validates pending DTOs by their discriminator.
     // Keep it on these projected public shapes too; otherwise a valid server
     // response is mistaken for an unknown state and its controls disappear.
-    pendingNegation: pending?.kind === "negation" ? { kind: "negation", sourceId: pending.sourceId, actorId: pending.actorId, effectTargetId: pending.effectTargetId, cardName: pending.cardName, responseTarget: pending.responseTarget ?? pending.cardName, latestNegationPlayerId: pending.latestNegationPlayerId ?? null, latestNegationCardId: pending.latestNegationCardId ?? null, chainDepth: pending.chainDepth ?? 0, negated: pending.negated, deadline: pending.deadline ?? 0 } : null,
+    pendingNegation,
     pendingHarvest: pending?.kind === "harvest" ? { kind: "harvest", sourceId: pending.sourceId, actorId: pending.actorId, revealed: pending.revealed, availableIds: harvestAvailableIds(pending), choices: harvestChoices(pending), previewCardId: pending.previewCardId ?? null, complete: Boolean(pending.completeAt), countdownUntil: pending.completeAt ?? 0 } : null,
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId } : null,
@@ -2000,12 +2014,10 @@ export async function POST(request: Request) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const persisted = parsePersistedPending(liveRoom?.pending_json ?? null);
-    const canonicalResponse = asResponsePending(persisted);
-    const trigger = asTriggerPending(persisted);
-    const pending = persisted ? responseContinuationPending(persisted) as Pending : null;
-    const acting = trigger ? trigger.actorId === me.id : canonicalResponse ? canonicalResponse.actorId === me.id : pending && ["attack", "duel", "group", "negation"].includes(pending.kind) && pending.actorId === me.id;
+    const pending = persisted;
+    const acting = pending?.actorId === me.id;
     if (!liveRoom || liveRoom.phase !== "response" || !acting) return json({ error: "You are not the acting player for this response timer." }, 409);
-    const responsePending = trigger ?? canonicalResponse ?? pending;
+    const responsePending = pending;
     // Idempotent: a refresh or duplicate request must never extend a human
     // decision. Only an unarmed pending response can receive its clock.
     if ((responsePending.deadline ?? 0) <= 0) {

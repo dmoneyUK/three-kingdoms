@@ -9,16 +9,16 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
 - Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening, Step 4.3 response-helper cleanup, single-controller bot-surface removal, Step 5E response-builder typing, and Step 6B Negation canonicalization COMPLETE**
 
-Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, and Step 6B Negation canonicalization are complete. `advanceNegation()` now reads actor state from `ResponsePending` and effect state from `NegationContinuation`; initial and embedded Negation windows persist canonical wrappers, and a no-responder start resolves directly. Exactly four generic `responseContinuationPending()` consumers remain for Step 7. Quick Test and normal multiplayer now use human-style seats only; one Quick Test controller switches seats through the shared token. Hero #2 is not implemented in this round.
+Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, Step 6B Negation canonicalization, and Step 7A response expansion compatibility removal are complete. Audit/state validation, room projections, and response timers now read canonical `ResponsePending` and `TriggerPending` records directly; public pending DTO fields and `currentAction` remain unchanged. Quick Test and normal multiplayer use human-style seats only; one Quick Test controller switches seats through the shared token. Hero #2 is not implemented in this round.
 
 The current deterministic suite has been consolidated to 74 tracked test
 declarations while retaining the required human multiplayer and capability
 invariants. Pure helper assertions now run in grouped cases, and inactive bot-only
 tests and product paths have been removed. The Worker/D1 runner executes all 74 tests.
 
-Step 5E completes the response-builder typing cleanup: `ResponseBuilderPending`
-contains only the four legacy builder shapes, `ResponseContinuationPending`
-contains only the remaining Attack/Duel/Negation compatibility shapes, and
+Step 5E completed the response-builder typing cleanup: `ResponseBuilderPending`
+contained only the four legacy builder shapes and the then-remaining
+Attack/Duel/Negation compatibility shapes, and
 `GroupResponsePending` narrows canonical Group responses for Halberd triggers
 and Dying resumes. Runtime behavior is unchanged and Negation remains untouched.
 
@@ -83,8 +83,7 @@ source: active use is explicitly declared by `playPhaseUse: "attack"`.
 Borrowed Sword now uses canonical semantic Dodge discovery after its Nio
 Shield passive check, so Zhen Ji and Eight Trigrams alternatives are treated
 like ordinary Attack responses.
-The next milestone is Step 7: migrate the four remaining generic
-`responseContinuationPending()` consumers, then choose another hero.
+The next milestone is to choose another hero.
 
 The project has moved beyond the initial table prototype. A complete four-player match loop runs in normal human multiplayer rooms and a single-device Quick Test table. Quick Test is one controller playing every human-style seat in turn, with only the acting seat's hand visible at the bottom. Turn ownership, ordered responses, death rewards and victory checks are working. Human card and weapon responses use a 30-second action window. Bot gameplay is not supported.
 

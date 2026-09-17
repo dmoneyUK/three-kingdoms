@@ -82,7 +82,6 @@ export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: s
 export type Pending = AttackPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | BorrowedSwordPending | NegationPending | ResponsePending | TriggerPending | DyingPending;
 
 export type ResponseBuilderPending = AttackPending | GroupPending | DuelPending | NegationPending;
-export type ResponseContinuationPending = AttackPending | DuelPending | NegationPending;
 
 function continuationForResponse(pending: ResponseBuilderPending): ResponseContinuation {
   const continuation = { ...pending } as Partial<ResponseBuilderPending>;
@@ -110,25 +109,6 @@ export function asResponsePending(pending: Pending | null | undefined): Response
   if (!["attack", "group", "duel", "negation"].includes(pending.kind)) return null;
   const domain = pending as ResponseBuilderPending;
   return { kind: "response", actorId: domain.actorId, requirement: requirementForResponse(domain), reason: domain.reason, deadline: domain.deadline, resolutionId: domain.resolutionId, readyAfterEventId: domain.readyAfterEventId, continuation: continuationForResponse(domain) };
-}
-
-/** Expands a canonical response decision for the domain continuation resolver. */
-export function responseContinuationPending(pending: unknown): Pending | unknown {
-  if (!pending || typeof pending !== "object" || (pending as { kind?: unknown }).kind !== "response") return pending;
-  const response = pending as ResponsePending;
-  const continuation = response.continuation;
-  // Group execution consumes the canonical response directly. Keep this
-  // compatibility expansion for the still-bounded Attack/Duel/Negation
-  // ingress paths only.
-  if (continuation.kind === "group") return pending;
-  return {
-    ...continuation,
-    actorId: response.actorId,
-    reason: response.reason,
-    ...(response.deadline === undefined ? {} : { deadline: response.deadline }),
-    ...(response.resolutionId === undefined ? {} : { resolutionId: response.resolutionId }),
-    ...(response.readyAfterEventId === undefined ? {} : { readyAfterEventId: response.readyAfterEventId }),
-  };
 }
 
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
