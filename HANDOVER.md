@@ -1,5 +1,16 @@
 # Three Kingdoms project handover
 
+## Generic target-card picker eligibility — 2026-09-17
+
+The browser's generic `target_cards` picker now derives hidden Hand indexes
+from `selection.eligibleKeys` and renders the Hand section only when at least
+one eligible `hand:N` key exists. It renders only those eligible positions;
+non-eligible hidden placeholders are omitted. Equipment choices remain
+filtered by the same server-projected keys, so Kirin Bow shows only eligible
+Mounts while Frost Sword retains eligible hidden Hand and Equipment choices.
+No provider-specific React logic, protocol action, or test declaration was
+added. Recommended next work is the next individually verified Standard hero.
+
 ## Centre card presentation timing — 2026-09-17
 
 The shared centre card display duration is now 3 seconds, reduced by 1 second

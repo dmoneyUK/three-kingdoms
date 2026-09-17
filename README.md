@@ -126,8 +126,10 @@ Triggered providers also declare a strongly typed semantic outcome instead of as
 The semantic response and trigger protocol is the only supported gameplay
 surface; provider-specific legacy action compatibility is removed. The current
 browser renders only canonical response/trigger decisions. Canonical
-target-card triggers—including Frost Sword—use one generic picker: hidden hand
-cards remain opaque while eligible Equipment cards stay named.
+target-card triggers—including Frost Sword and Kirin Bow—use one generic
+picker: hidden hand positions and named Equipment cards are rendered only when
+their opaque keys appear in the server's `selection.eligibleKeys`; hidden cards
+remain opaque while eligible Equipment cards stay named.
 
 Negation response prompts now track the latest Negation in a counter-chain while retaining the original Stratagem as the root effect. Event History records each Negation window opening, pass, counter-window opening and closure, making Quick Test response transitions diagnosable instead of appearing to skip silently.
 
