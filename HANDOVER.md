@@ -1,5 +1,17 @@
 # Three Kingdoms project handover
 
+## Step 7B canonical persisted responses only — 2026-09-17
+
+Persisted response reads now accept only `kind: "response"`; saved top-level
+Attack, Duel, Group, and Negation decisions are no longer silently upgraded.
+Room projection derives `pendingAttack`, `pendingDuel`, `pendingGroup`, and
+`pendingNegation` only from `ResponsePending.continuation`, and legacy barrier
+recovery was removed. `asResponsePending()` remains only at in-memory builder
+construction boundaries, and DeferredStratagem builders are unchanged.
+
+No tests were added; the existing test count must remain unchanged or lower.
+The next cleanup is removal of the remaining builder conversions.
+
 ## Step 7A response expansion compatibility removal — 2026-09-17
 
 The four remaining canonical-response expansion consumers are migrated. Audit
@@ -14,7 +26,8 @@ The old response expansion helper and its compatibility type are deleted,
 including the route import. `asResponsePending()`, `ResponseBuilderPending`,
 `continuationForResponse()`, and `requirementForResponse()` remain for initial
 builder-to-canonical conversion. No tests were added; the existing test count
-must remain unchanged or lower. The next milestone is to choose another hero.
+must remain unchanged or lower. The next cleanup is the Step 7B persisted
+response boundary.
 
 ## Step 6B Negation canonicalization — 2026-09-17
 

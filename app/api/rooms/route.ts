@@ -351,7 +351,6 @@ async function claimTurnAction(roomId: string, seat: number, phase: string) {
   return (result.meta.changes ?? 0) > 0;
 }
 function groupSequenceFromPending(pending: Pending | null): GroupContinuation | GroupPending | null {
-  if (pending?.kind === "group") return asResponsePending(pending)?.continuation as GroupContinuation;
   if (pending?.kind === "negation" && pending.effect.kind === "group") return { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies GroupPending;
   if (pending?.kind === "response" && pending.continuation.kind === "group") return pending.continuation;
   if (pending?.kind === "dying" && pending.resumePending) return groupSequenceFromPending(pending.resumePending);
@@ -382,7 +381,8 @@ async function finishIfWon(roomId: string) {
   if (!outcome) return false;
   const winner = outcome === "traitor" ? "Traitor victory" : outcome === "rebel" ? "Rebel victory" : "Lord and Loyalist victory";
   const room = await db().prepare("SELECT log_json, discard_json, pending_json FROM rooms WHERE id = ?").bind(roomId).first<{ log_json: string | null; discard_json: string | null; pending_json: string | null }>();
-  const sequence = groupSequenceFromPending(parse<Pending | null>(room?.pending_json ?? null, null));
+  const stored = parse<Pending | null>(room?.pending_json ?? null, null);
+  const sequence = stored?.kind === "response" || stored?.kind === "dying" ? groupSequenceFromPending(stored) : null;
   const discard = sequence ? commitHeldGroupCards(parse<Card[]>(room?.discard_json ?? null, []), sequence) : parse<Card[]>(room?.discard_json ?? null, []);
   const log = addLog(parse<string[]>(room?.log_json ?? null, []), `${winner}! The match is over.`);
   await db().prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), roomId).run(); return true;
@@ -837,7 +837,8 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
 
 async function advanceNegation(roomId: string) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-  const pending = negationResponse(asResponsePending(parse<Pending | null>(room?.pending_json ?? null)));
+  const stored = parse<Pending | null>(room?.pending_json ?? null);
+  const pending = negationResponse(stored?.kind === "response" ? stored : null);
   if (!room || room.phase !== "response" || !pending) return;
   const actor = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.response.actorId).first<PlayerRow>();
   if (!actor) { await resolveDeferredStratagem(roomId, pending.continuation); return; }
@@ -976,7 +977,7 @@ async function applyNegationResponseOutcome(room: RoomRow, pending: { response: 
 }
 
 async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: PlayerRow, source: PlayerRow | null, players: PlayerRow[], discard: Card[], log: string[], resolution: JudgementResolution) {
-  const response = asResponsePending(pending);
+  const response = pending.kind === "response" ? pending : null;
   const continuation = response?.continuation;
   const judged = await drawResponseJudgement(room, actor, discard, log);
   const result = resolveResponseJudgement(judged.judged, resolution);
@@ -1354,7 +1355,7 @@ async function advanceGroup(roomId: string) {
   for (let guard = 0; guard < 30; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const stored = parse<Pending | null>(room?.pending_json ?? null, null);
-    const groupDecision = groupResponse(asResponsePending(stored));
+    const groupDecision = groupResponse(stored?.kind === "response" ? stored : null);
     if (!room || room.phase !== "response" || !groupDecision) return;
     const { response: responsePending, continuation } = groupDecision;
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
@@ -1502,7 +1503,7 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
     : [];
   if (room.phase === "response") {
     if (!pending || pending.actorId !== actor.id) return [];
-    const response = asResponsePending(pending);
+    const response = pending?.kind === "response" ? pending : null;
     if (response) {
       const options = responseDecisionFor(response, responseContext(actor))?.options ?? [];
       return ["decline_response", ...(options.length ? ["respond"] : [])];
@@ -1533,20 +1534,21 @@ async function roomState(code: string, token?: string) {
   const persistedPending = parsePersistedPending(room.pending_json);
   const triggerPending = persistedPending?.kind === "trigger" ? persistedPending : null;
   const responsePending = persistedPending?.kind === "response" ? persistedPending : null;
+  const projectedResponsePending = responsePending ?? (persistedPending?.kind === "dying" ? persistedPending.resumePending : null);
   const pending = persistedPending;
-  const responseContinuation = responsePending?.continuation;
+  const responseContinuation = projectedResponsePending?.continuation;
   const pendingAttack = responseContinuation?.kind === "attack"
-    ? { ...responseContinuation, actorId: responsePending.actorId, reason: responsePending.reason, deadline: responsePending.deadline }
-    : pending?.kind === "attack" ? pending : null;
+    ? { ...responseContinuation, actorId: projectedResponsePending.actorId, reason: projectedResponsePending.reason, deadline: projectedResponsePending.deadline }
+    : null;
   const pendingDuel = responseContinuation?.kind === "duel"
-    ? { ...responseContinuation, actorId: responsePending.actorId, reason: responsePending.reason, deadline: responsePending.deadline }
-    : pending?.kind === "duel" ? pending : null;
+    ? { ...responseContinuation, actorId: projectedResponsePending.actorId, reason: projectedResponsePending.reason, deadline: projectedResponsePending.deadline }
+    : null;
   const pendingGroup = responseContinuation?.kind === "group"
-    ? { ...responseContinuation, actorId: responsePending.actorId, reason: responsePending.reason, deadline: responsePending.deadline }
-    : groupSequenceFromPending(pending);
+    ? { ...responseContinuation, actorId: projectedResponsePending.actorId, reason: projectedResponsePending.reason, deadline: projectedResponsePending.deadline }
+    : null;
   const pendingNegation = responseContinuation?.kind === "negation"
-    ? { kind: "negation" as const, sourceId: responseContinuation.sourceId, actorId: responsePending.actorId, effectTargetId: responseContinuation.effectTargetId, cardName: responseContinuation.cardName, responseTarget: responseContinuation.responseTarget ?? responseContinuation.cardName, latestNegationPlayerId: responseContinuation.latestNegationPlayerId ?? null, latestNegationCardId: responseContinuation.latestNegationCardId ?? null, chainDepth: responseContinuation.chainDepth ?? 0, negated: responseContinuation.negated, deadline: responsePending.deadline ?? 0 }
-    : pending?.kind === "negation" ? { kind: "negation" as const, sourceId: pending.sourceId, actorId: pending.actorId, effectTargetId: pending.effectTargetId, cardName: pending.cardName, responseTarget: pending.responseTarget ?? pending.cardName, latestNegationPlayerId: pending.latestNegationPlayerId ?? null, latestNegationCardId: pending.latestNegationCardId ?? null, chainDepth: pending.chainDepth ?? 0, negated: pending.negated, deadline: pending.deadline ?? 0 } : null;
+    ? { kind: "negation" as const, sourceId: responseContinuation.sourceId, actorId: projectedResponsePending.actorId, effectTargetId: responseContinuation.effectTargetId, cardName: responseContinuation.cardName, responseTarget: responseContinuation.responseTarget ?? responseContinuation.cardName, latestNegationPlayerId: responseContinuation.latestNegationPlayerId ?? null, latestNegationCardId: responseContinuation.latestNegationCardId ?? null, chainDepth: responseContinuation.chainDepth ?? 0, negated: responseContinuation.negated, deadline: projectedResponsePending.deadline ?? 0 }
+    : null;
   const tokenHash = token ? await hash(token) : "";
   const turnPlayer = room.status === "playing" ? players.find((player) => player.seat === room.turn_seat && player.alive) : undefined;
   const actualActionPlayerId = room.status !== "playing" ? null : room.phase === "response" || room.phase === "dying" ? pending?.actorId ?? pending?.targetId ?? turnPlayer?.id ?? null : turnPlayer?.id ?? null;
@@ -1570,9 +1572,8 @@ async function roomState(code: string, token?: string) {
   const triggerOptions = me?.id === actualActionPlayerId && triggerPending ? triggerOptionsFor(triggerPending, players) : [];
   const legacyFrostAvailable = triggerPending?.event === "damage_about_to_apply"
     && triggerOptionsFor(triggerPending, players).some((option) => option.effectId === "frost_sword_damage_about_to_apply");
-  const legacyPendingNeedsBarrierRecovery = Boolean(persistedPending && persistedPending.kind !== "response" && persistedPending.kind !== "trigger");
   const presentation = room.phase === "response" && pending
-    ? { resolutionId: responsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: responsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? (legacyPendingNeedsBarrierRecovery ? latestDecisionPresentationEventId(rawLog, responsePending?.resolutionId) ?? latestDecisionPresentationEventId(rawLog) : null) }
+    ? { resolutionId: responsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: responsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? null }
     : undefined;
   const currentAction: CurrentAction = {
     version: 3,
@@ -1737,14 +1738,14 @@ export async function POST(request: Request) {
     me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
     const submitted = body.context && typeof body.context === "object" ? body.context as { actionRevision?: unknown; meId?: unknown; phase?: unknown; pendingKind?: unknown; actorId?: unknown } : null;
     const expectedRevision = [room.phase ?? "", actionPlayerIdForController ?? "", room.pending_json ?? ""].join("|");
-    const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: asResponsePending(pendingForController) ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null, actorId: actionPlayerIdForController ?? null };
+    const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: pendingForController?.kind === "response" ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null, actorId: actionPlayerIdForController ?? null };
     const submittedPendingKind = submitted?.pendingKind === undefined ? undefined : String(submitted.pendingKind);
     const contextMismatch = submitted && (submitted.actionRevision !== undefined && String(submitted.actionRevision) !== expectedRevision || submitted.meId !== undefined && String(submitted.meId) !== String(expectedContext.meId) || submitted.phase !== undefined && String(submitted.phase) !== String(expectedContext.phase) || submittedPendingKind !== undefined && submittedPendingKind !== String(expectedContext.pendingKind) || submitted.actorId !== undefined && String(submitted.actorId) !== String(expectedContext.actorId));
     if (contextMismatch) {
       return json({ error: "That action is stale. The table has advanced to the next actor.", stale: true, room: await roomState(code, token) }, 409);
     }
     if (action === "decline_response") {
-      const response = pendingForController?.kind === "response" ? pendingForController : asResponsePending(pendingForController);
+      const response = pendingForController?.kind === "response" ? pendingForController : null;
       if (!response) return json({ error: "There is no response decision to decline.", stale: true, room: await roomState(code, token) }, 409);
       const declined = applyResponseDeclined(response);
       canonicalResponseDeclined = true;
@@ -1755,7 +1756,7 @@ export async function POST(request: Request) {
       if (responseExecution?.status === "requires_resolution") {
         action = "resolve_response_secondary";
       }
-      const responsePending = asResponsePending(pendingForController);
+      const responsePending = pendingForController?.kind === "response" ? pendingForController : null;
       const canonicalResponse = responsePending && responseExecution ? applyResponseSatisfied(responsePending, responseExecution) : null;
       if (!responseExecution || responseExecution.status === "satisfied" && !canonicalResponse) return json({ error: "That response provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       canonicalResponseKind = responsePending?.continuation.kind ?? null;
@@ -1928,7 +1929,7 @@ export async function POST(request: Request) {
     }
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
-    const pending = asResponsePending(stored);
+    const pending = stored?.kind === "response" ? stored : null;
     if (!liveRoom || liveRoom.phase !== "response" || !pending || !["attack", "group", "duel", "negation"].includes(pending.continuation.kind) || pending.actorId !== me.id) {
       return json({ error: "You are not the acting player for this Judgement response." }, 409);
     }
@@ -2029,7 +2030,7 @@ export async function POST(request: Request) {
 
   if (canonicalResponseKind === "negation" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const negation = negationResponse(asResponsePending(stored));
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const negation = negationResponse(stored?.kind === "response" ? stored : null);
     if (!liveRoom || liveRoom.phase !== "response" || !negation || negation.response.actorId !== me.id) return json({ error: "You are not the acting player for this Negation response." }, 409);
     const { response, continuation } = negation;
     let hand = parse<Card[]>(me.hand_json, []); const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "negation";
@@ -2172,7 +2173,7 @@ export async function POST(request: Request) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const stored = parsePersistedPending(liveRoom?.pending_json ?? null);
-    const response = asResponsePending(stored);
+    const response = stored?.kind === "response" ? stored : null;
     const continuation = response?.continuation.kind === "borrowed_sword_attack" ? response.continuation as BorrowedSwordAttackContinuation : null;
     if (!liveRoom || liveRoom.phase !== "response" || !response || !continuation || response.actorId !== me.id) return json({ error: "You are not the current Borrowed Sword Attack player." }, 409);
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
@@ -2240,7 +2241,7 @@ export async function POST(request: Request) {
 
   if (canonicalResponseKind === "duel" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = duelResponse(asResponsePending(stored));
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = duelResponse(stored?.kind === "response" ? stored : null);
     if (!liveRoom || liveRoom.phase !== "response" || !pending || pending.response.actorId !== me.id) return json({ error: "You are not the acting player for this Duel response." }, 409);
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
     const opponent = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.opponentId).first<PlayerRow>();
@@ -2272,7 +2273,7 @@ export async function POST(request: Request) {
 
   if (canonicalResponseKind === "group" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const group = groupResponse(asResponsePending(stored));
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const group = groupResponse(stored?.kind === "response" ? stored : null);
     if (!liveRoom || liveRoom.phase !== "response" || !group || group.response.actorId !== me.id) return json({ error: "You are not the acting player for this global card response." }, 409);
     const { response, continuation } = group;
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
@@ -2303,7 +2304,7 @@ export async function POST(request: Request) {
 
   if (canonicalResponseKind === "attack" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const response = asResponsePending(stored); const attack = attackResponse(response);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const response = stored?.kind === "response" ? stored : null; const attack = attackResponse(response);
     if (!liveRoom || liveRoom.phase !== "response" || !attack || response?.actorId !== me.id) return json({ error: "You are not the acting player for this Attack response." }, 409);
     const { continuation } = attack;
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(continuation.sourceId).first<PlayerRow>();

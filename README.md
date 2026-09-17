@@ -83,7 +83,11 @@ source: active use is explicitly declared by `playPhaseUse: "attack"`.
 Borrowed Sword now uses canonical semantic Dodge discovery after its Nio
 Shield passive check, so Zhen Ji and Eight Trigrams alternatives are treated
 like ordinary Attack responses.
-The next milestone is to choose another hero.
+Step 7B now treats persisted response decisions as canonical-only:
+`pending_json` readers accept `kind: "response"` exclusively, and room
+projection derives response DTOs only from `ResponsePending.continuation`.
+Legacy persisted response-family states are unsupported; the next cleanup is
+removal of the remaining in-memory builder conversions.
 
 The project has moved beyond the initial table prototype. A complete four-player match loop runs in normal human multiplayer rooms and a single-device Quick Test table. Quick Test is one controller playing every human-style seat in turn, with only the acting seat's hand visible at the bottom. Turn ownership, ordered responses, death rewards and victory checks are working. Human card and weapon responses use a 30-second action window. Bot gameplay is not supported.
 

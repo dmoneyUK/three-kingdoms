@@ -1,4 +1,4 @@
-import { asResponsePending, type Pending } from "./pending";
+import type { Pending } from "./pending";
 import { getResponseOptions, resolveResponseProvider, type ResponseActivation, type ResponseContext, type ResponseSelectionInput } from "./responses";
 
 export type ResponseDecision = {
@@ -19,7 +19,7 @@ export type ResponseDecision = {
  * how the current actor can satisfy it right now.
  */
 export function responseDecisionFor(pending: Pending | null, context: ResponseContext | undefined): ResponseDecision | null {
-  const response = asResponsePending(pending);
+  const response = pending?.kind === "response" ? pending : null;
   if (!response || !context) return null;
   const { requirement } = response;
   return { requirement: requirement.kind, options: getResponseOptions({ ...context, requirement }, requirement).map(({ providerId, satisfies, activation, label, selection }) => ({ providerId, satisfies, activation, label, selection })), declineAction: "decline_response" };
@@ -27,7 +27,7 @@ export function responseDecisionFor(pending: Pending | null, context: ResponseCo
 
 /** Resolves a selected provider after recomputing it from live server state. */
 export function resolveResponseDecision(pending: Pending | null, context: ResponseContext | undefined, providerId: unknown, selection: ResponseSelectionInput) {
-  const response = asResponsePending(pending);
+  const response = pending?.kind === "response" ? pending : null;
   if (!response || !context) return null;
   const cardId = typeof selection.cardId === "string" ? selection.cardId : undefined;
   const cardIds = Array.isArray(selection.cardIds) && selection.cardIds.every((id) => typeof id === "string") ? selection.cardIds : undefined;
