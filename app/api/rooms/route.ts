@@ -187,7 +187,6 @@ function selectedSerpentSpearCards(player: PlayerRow | null | undefined, hand: C
   return ids.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
 }
 function botSerpentSpearCards(player: PlayerRow | null | undefined, hand: Card[]) { return hasSerpentSpear(player) && hand.length >= 2 ? hand.slice(0, 2) : []; }
-function rockCleavingCards(player: PlayerRow | null | undefined, hand: Card[]) { return [...hand, ...equipmentCards(player)]; }
 function phaseAfterAttack(player?: PlayerRow | null) { return playPhaseAfterAttack(player, hasZhugeCrossbow(player)); }
 function latestResolutionId(log: string[]) {
   for (let index = log.length - 1; index >= 0; index--) {
@@ -1190,24 +1189,6 @@ async function applyForcedDamageOutcome(room: RoomRow, continuation: AttackDodge
   await continueAfterDying(room.id, source.id);
 }
 
-async function resolveFrostSword(room: RoomRow, pending: FrostSwordPending, source: PlayerRow, target: PlayerRow, discard: Card[], log: string[], targetCardIds: string[]) {
-  const hand = parse<Card[]>(target.hand_json, []); const equipment = equipmentZone(target);
-  const all = [...hand, ...equipmentCards(target)];
-  const discarded = targetCardIds.map((id) => all.find((card) => card.id === id)).filter((card, index, cards): card is Card => Boolean(card) && cards.findIndex((item) => item?.id === card.id) === index);
-  if (!discarded.length) return;
-  const ids = new Set(discarded.map((card) => card.id));
-  const nextHand = hand.filter((card) => !ids.has(card.id));
-  const nextEquipment = Object.fromEntries(Object.entries(equipment).filter(([, card]) => !card || !ids.has(card.id))) as EquipmentZone;
-  discard.push(...discarded);
-  log = addDiscardEvent(log, target.name, discarded);
-  log = addLog(log, `${source.name} prevents the Attack damage with Frost Sword and discards ${discarded.length} card${discarded.length === 1 ? "" : "s"} from ${target.name}. Action returns to ${source.name}.`);
-  await db().batch([
-    db().prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), JSON.stringify(nextEquipment), target.id),
-    db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
-  ]);
-  await continueAfterDying(room.id, source.id);
-}
-
 async function applyPreventDamageOutcome(room: RoomRow, continuation: DamageAboutToApplyTriggerContinuation, source: PlayerRow, target: PlayerRow, discard: Card[], log: string[], targetCardIds: string[]) {
   const hand = parse<Card[]>(target.hand_json, []);
   const equipment = equipmentZone(target);
@@ -1296,57 +1277,6 @@ async function resumeCanonicalTriggerContinuation(room: RoomRow, continuation: A
   });
 }
 
-// Retained only to advance an already-persisted legacy bot decision during the
-// saved-room compatibility window. New decisions use event continuations.
-// Legacy saved-room adapter; new rooms use advanceCanonicalBotTrigger.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function advanceFrostSword(roomId: string) {
-  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const stored = parse<Pending | null>(room?.pending_json ?? null, null); const trigger = asTriggerPending(stored);
-  const pending = triggerContinuationPending(stored) as FrostSwordPending | null;
-  if (!room || room.phase !== "response" || trigger?.continuation.kind !== "frost_sword" || pending?.kind !== "frost_sword") return;
-  const source = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>(); const target = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.targetId).first<PlayerRow>();
-  if (!source || !target || !isBotPlayer(source)) return;
-  const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
-  if ((claim.meta.changes ?? 0) <= 0) return;
-  const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
-  const context = source && target ? damageTriggerContext(source, target) : null;
-  const option = context ? getTriggeredEffects(context).find((candidate) => candidate.effectId === (pending.triggerId ?? "frost_sword_damage_about_to_apply")) : null;
-  const execution = context && option && option.selection?.type === "target_cards" ? resolveTriggeredEffect(pending.triggerId ?? "frost_sword_damage_about_to_apply", context, { cardKeys: option.selection.eligibleKeys.slice(0, 2) }) : null;
-  if (source.alive && target.alive && execution?.outcome.kind === "prevent_damage" && execution.outcome.targetCardIds.length) return resolveFrostSword(room, pending, source, target, discard, log, execution.outcome.targetCardIds);
-  const hp = applyDamage(target.hp ?? 1, 1); log = addLog(log, `${source.name} does not use Frost Sword. ${target.name} takes 1 damage.`);
-  if (isDying(hp)) {
-    const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-    return startDyingRescue(room, source, { ...target, hp }, rows.results ?? [], parse<Card[]>(room.deck_json, []), discard, log, [], source, pending.resumePhase, undefined, hp);
-  }
-  await db().batch([db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id), db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id)]);
-  await continueAfterDying(room.id, source.id);
-}
-
-// Legacy saved-room adapter; new rooms use advanceCanonicalBotTrigger.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function advanceRockCleaving(roomId: string) {
-  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-  const stored = parse<Pending | null>(room?.pending_json ?? null, null); const trigger = asTriggerPending(stored);
-  const pending = triggerContinuationPending(stored) as RockCleavingPending | null;
-  if (!room || room.phase !== "response" || trigger?.continuation.kind !== "rock_cleaving" || pending?.kind !== "rock_cleaving") return;
-  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const players = rows.results ?? [];
-  const source = players.find((player) => player.id === pending.sourceId && player.alive); const target = players.find((player) => player.id === pending.targetId && player.alive);
-  const hand = parse<Card[]>(source?.hand_json ?? null, []); const cards = rockCleavingCards(source, hand);
-  const option = source ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceCards: cards }).find((candidate) => candidate.effectId === (pending.triggerId ?? "rock_cleaving_axe_attack_dodged")) : null;
-  const execution = source && option ? resolveTriggeredEffect(pending.triggerId ?? "rock_cleaving_axe_attack_dodged", { event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceCards: cards }, { cardIds: option.selection?.eligibleCardIds.slice(0, 2) }) : null;
-  const materials = execution?.outcome.kind === "force_damage" ? execution.outcome.consumeCardIds.map((id) => cards.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) : [];
-  if (source && target && materials.length === 2 && !isBotPlayer(source)) return;
-  const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
-  if ((claim.meta.changes ?? 0) <= 0) return;
-  if (!source || !target || materials.length !== 2 || !execution) {
-    const log = addLog(parse<string[]>(room.log_json, []), `${source?.name ?? "The attacker"} does not use Rock Cleaving Axe.`);
-    await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), roomId).run();
-    if (source) await continueAfterDying(roomId, source.id);
-    return;
-  }
-  await applyForcedDamageOutcome(room, pending, source, target, players, materials, hand, parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
-}
-
 /** Applies the semantic follow-up-Attack outcome after an Attack has been dodged. */
 async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDodgedTriggerContinuation, source: PlayerRow, target: PlayerRow, players: PlayerRow[], attack: Card, sourceHand: Card[], discard: Card[], log: string[], presentationLabel = "optional reaction") {
   const displayLabel = presentationLabel.replace(/^Use\s+/, "");
@@ -1388,32 +1318,6 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
     return;
   }
   await resolveAttackDamageAboutToApply({ room, source: updatedSource, target, players, sourceHand: nextSourceHand, discard, log, resumePhase: continuation.resumePhase, sequenceStartCardId: continuation.sequenceStartCardId, label: `${displayLabel} follow-up` });
-}
-
-// Legacy saved-room adapter; new rooms use advanceCanonicalBotTrigger.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function advanceGreenDragon(roomId: string) {
-  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-  const stored = parse<Pending | null>(room?.pending_json ?? null, null); const trigger = asTriggerPending(stored);
-  const pending = triggerContinuationPending(stored) as GreenDragonPending | null;
-  if (!room || room.phase !== "response" || trigger?.continuation.kind !== "green_dragon" || pending?.kind !== "green_dragon") return;
-  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const players = rows.results ?? [];
-  const source = players.find((player) => player.id === pending.sourceId && player.alive); const target = players.find((player) => player.id === pending.targetId && player.alive);
-  const hand = parse<Card[]>(source?.hand_json ?? null, []);
-  const option = source ? getTriggeredEffects({ event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: hand }).find((candidate) => candidate.effectId === (pending.triggerId ?? "green_dragon_blade_attack_dodged")) : null;
-  const attackId = option?.selection?.eligibleCardIds[0];
-  const execution = source && attackId ? resolveTriggeredEffect(pending.triggerId ?? "green_dragon_blade_attack_dodged", { event: "attack_dodged", sourceEquipment: equipmentCards(source), sourceHand: hand }, { cardId: attackId }) : null;
-  const attack = execution?.outcome.kind === "follow_up_attack" ? hand.find((card) => card.id === execution.outcome.attackCardId) ?? null : null;
-  if (source && target && attack && !isBotPlayer(source)) return;
-  const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
-  if ((claim.meta.changes ?? 0) <= 0) return;
-  if (!source || !target || !attack || !execution) {
-    const log = addLog(parse<string[]>(room.log_json, []), `${source?.name ?? "The attacker"} does not continue with Green Dragon Blade.`);
-    await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), roomId).run();
-    if (source) await continueAfterDying(roomId, source.id);
-    return;
-  }
-  await applyFollowUpAttackOutcome(room, pending, source, target, players, attack, hand, parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
 }
 
 async function advanceDuel(roomId: string) {
@@ -2768,94 +2672,6 @@ export async function POST(request: Request) {
       await finishGroupStep(liveRoom, nextPending, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
     }
     return json({ room: await roomState(code, token) });
-  }
-
-  if (["apply_trigger", "decline_trigger_effect"].includes(action)) {
-    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const trigger = asTriggerPending(stored); const pending = triggerContinuationPending(stored) as GreenDragonPending | null;
-    if (trigger?.continuation.kind !== "green_dragon" || pending?.kind !== "green_dragon") {
-      // A different generic trigger continuation may handle this canonical action below.
-    } else {
-    if (!liveRoom || liveRoom.phase !== "response" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this triggered response." }, 409);
-    const hand = parse<Card[]>(me.hand_json, []);
-    const execution = action === "apply_trigger" ? triggerExecution : null;
-    const attack = execution?.consumeCardIds?.length === 1 ? hand.find((card) => card.id === execution.consumeCardIds?.[0]) ?? null : null;
-    if (action === "apply_trigger" && (!execution || !attack)) return json({ error: "Select a valid triggered Attack first." }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Green Dragon Blade decision has already moved on." }, 409);
-    if (!attack) {
-      const log = addLog(parse<string[]>(liveRoom.log_json, []), `${me.name} does not continue with Green Dragon Blade.`);
-      await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id).run();
-      await continueAfterDying(room.id, me.id);
-    } else {
-      const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
-      const target = players.find((player) => player.id === pending.targetId && player.alive);
-      if (!target || !execution) {
-        const log = addLog(parse<string[]>(liveRoom.log_json, []), "The Green Dragon Blade follow-up no longer has a valid target or equipped weapon.");
-        await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id).run();
-      } else await applyFollowUpAttackOutcome(liveRoom, pending, me, target, players, attack, hand, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []));
-    }
-      return json({ room: await roomState(code, token) });
-    }
-  }
-
-  if (["apply_trigger", "decline_trigger_effect"].includes(action)) {
-    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const trigger = asTriggerPending(stored); const pending = triggerContinuationPending(stored) as RockCleavingPending | null;
-    if (trigger?.continuation.kind !== "rock_cleaving" || pending?.kind !== "rock_cleaving") {
-      // Continue to the next event continuation.
-    } else {
-    if (!liveRoom || liveRoom.phase !== "response" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this triggered response." }, 409);
-    const hand = parse<Card[]>(me.hand_json, []); const cards = rockCleavingCards(me, hand);
-    const execution = action === "apply_trigger" ? triggerExecution : null;
-    const materials = execution?.consumeCardIds?.map((id) => cards.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
-    if (action === "apply_trigger" && (!execution || materials.length !== 2)) return json({ error: "Select 2 different cards allowed by this triggered effect first." }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Rock Cleaving Axe decision has already moved on." }, 409);
-    if (!materials.length) {
-      const log = addLog(parse<string[]>(liveRoom.log_json, []), `${me.name} does not use Rock Cleaving Axe.`);
-      await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id).run();
-      await continueAfterDying(room.id, me.id);
-    } else {
-      const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
-      const target = players.find((player) => player.id === pending.targetId && player.alive);
-      if (!target || !execution) {
-        const log = addLog(parse<string[]>(liveRoom.log_json, []), "The Rock Cleaving Axe response no longer has a valid target or equipped weapon.");
-        await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id).run();
-      } else await applyForcedDamageOutcome(liveRoom, pending, me, target, players, materials, hand, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []));
-    }
-    return json({ room: await roomState(code, token) });
-    }
-  }
-
-  if (["apply_trigger", "decline_trigger_effect"].includes(action)) {
-    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const trigger = asTriggerPending(stored); const pending = triggerContinuationPending(stored) as FrostSwordPending | null;
-    if (trigger?.continuation.kind !== "frost_sword" || pending?.kind !== "frost_sword") {
-      // This was not a recognized trigger continuation.
-    } else {
-    if (!liveRoom || liveRoom.phase !== "response" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this triggered decision." }, 409);
-    const target = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.targetId).first<PlayerRow>();
-    const execution = action === "apply_trigger" ? triggerExecution : null;
-    if (action === "apply_trigger" && (!execution || execution.outcome.kind !== "prevent_damage" || !execution.outcome.targetCardIds.length)) return json({ error: "Choose one or two different cards allowed by this triggered effect first." }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Frost Sword decision has already moved on." }, 409);
-    let log = parse<string[]>(liveRoom.log_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []);
-    if (action === "apply_trigger" && target?.alive && execution?.outcome.kind === "prevent_damage" && execution.outcome.targetCardIds.length) {
-      await resolveFrostSword(liveRoom, pending, me, target, discard, log, execution.outcome.targetCardIds);
-    } else {
-      log = addLog(log, `${me.name} does not use Frost Sword. ${target?.name ?? "The target"} takes 1 damage.`);
-      const hp = applyDamage(target?.hp ?? 1, 1);
-      if (target && isDying(hp)) {
-        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-        await startDyingRescue(liveRoom, me, { ...target, hp }, rows.results ?? [], parse<Card[]>(liveRoom.deck_json, []), discard, log, [], me, pending.resumePhase, undefined, hp);
-      } else if (target) {
-        await db.batch([db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id), db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id)]);
-        await continueAfterDying(room.id, me.id);
-      }
-    }
-    return json({ room: await roomState(code, token) });
-    }
   }
 
   if (["apply_trigger", "decline_trigger_effect"].includes(action)) {
