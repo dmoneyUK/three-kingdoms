@@ -45,6 +45,8 @@ and the browser projection are now included in the completed hardening scope.
 
 Quick Test now derives assigned seats' HP from their selected hero definitions and applies the Lord +1 maximum-HP rule. Guan Yu is a 4-HP hero, so the seeded Player1/Lord test seat correctly starts at 5/5 HP instead of the old hardcoded 3/3.
 
+Raining Arrows was rechecked through the canonical browser response action: the acting target can consume a Dodge, while declining applies 1 damage and advances the global sequence to the next living target. A dedicated API regression covers both outcomes.
+
 Borrowed Sword target selection now reaches the existing canonical `choose_borrowed_sword_target` route: the browser marks opponents with Weapons as selectable, so the card is not optimistically rolled back because no target was submitted. Defensive-horse replacement remains slot-based, allowing Yellow-Hoofed Flying-Lightning to replace Hex Mark and preserving the replaced card in the discard path. Triggered equipment/hero-capability outcomes now append an informational `effectNotice` timeline message containing the resolved provider label; Game Messages retains it and the board briefly shows the same notice. The message is outside the sequential presentation queue and cannot block a response, timer, turn, or exact `readyAfterEventId` barrier.
 
 The final presentation/client-parity pass adds `playedAs: "attack"` to virtual

@@ -720,6 +720,31 @@ test("no-Dodge auto resolution keeps Frost Sword and shield checks and skips emp
   assert.equal(response.status, 200); assert.equal(response.data.room.pendingGroup, null);
 });
 
+test("canonical Raining Arrows responses either consume Dodge or apply damage", async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
+  for (const player of game.room.players) { setHand(player.id, [], 4, 4); setEquipment(player.id); }
+  setHand(hostPlayer.id, [card("RainingArrows", "canonical-arrows")], 4, 4);
+  setHand(alicePlayer.id, [card("Dodge", "canonical-dodge")], 4, 4);
+  setHand(bobPlayer.id, [card("Dodge", "canonical-bob-dodge")], 4, 4);
+  setHand(carolPlayer.id, [card("Dodge", "canonical-carol-dodge")], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: "rainingarrows-canonical-arrows" });
+  assert.equal(opened.status, 200);
+  const aliceDecision = await state(game.code, alice.token);
+  assert.equal(aliceDecision.data.currentAction.requirement, "dodge");
+  const dodged = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-canonical-dodge" });
+  assert.equal(dodged.status, 200, JSON.stringify(dodged.data)); assert.equal(dodged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
+  assert.equal(dodged.data.room.currentAction.actorId, bobPlayer.id);
+
+  const damaged = await request("decline_response", { code: game.code, token: game.members[2].token });
+  assert.equal(damaged.status, 200); assert.equal(damaged.data.room.players.find((player) => player.id === bobPlayer.id).hp, 3);
+  const finished = await request("decline_response", { code: game.code, token: game.members[3].token });
+  assert.equal(finished.status, 200); assert.equal(finished.data.room.players.find((player) => player.id === carolPlayer.id).hp, 3);
+  assert.equal(finished.data.room.pendingGroup, null); assert.equal(finished.data.room.phase, "play");
+});
+
 test("Zhuge Crossbow equips, replaces, enables repeated Attacks, and is used by bots", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, alice] = game.members; const [hostPlayer, alicePlayer] = game.room.players;
