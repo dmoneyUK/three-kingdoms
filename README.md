@@ -7,7 +7,16 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening, Step 4.3 response-helper cleanup, single-controller bot-surface removal, Step 5E response-builder typing, Step 6B Negation canonicalization, and Step 7B.1 legacy persisted-response rejection COMPLETE**
+- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening, Step 4.3 response-helper cleanup, single-controller bot-surface removal, Step 5E response-builder typing, Step 6B Negation canonicalization, Step 7B.1 legacy persisted-response rejection, and Step 7C direct response construction COMPLETE**
+
+Step 7C is complete. `ResponsePending` is the sole semantic Attack, Duel,
+Group, and Negation decision shape. Attack, ordinary AOE, Halberd, and Duel
+creation now return canonical responses directly; DeferredStratagem stores
+canonical Duel and Group responses; continuations are explicit domain types;
+and `serializePending()` performs serialization only. No response-family
+conversion helpers or legacy response decision types remain. The next
+milestone is the next roadmap item; no new card or architecture work is
+claimed in this round.
 
 Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, Step 6B Negation canonicalization, Step 7A response expansion compatibility removal, and Step 7B.1 rejection of legacy persisted Attack/Duel/Group/Negation response states are complete. Audit/state validation, room projections, and response timers now read canonical `ResponsePending` and `TriggerPending` records directly; old response-family states never become actionable `currentAction` values or legacy response DTOs. Quick Test and normal multiplayer use human-style seats only; one Quick Test controller switches seats through the shared token. Hero #2 is not implemented in this round.
 
@@ -16,22 +25,24 @@ declarations while retaining the required human multiplayer and capability
 invariants. Pure helper assertions now run in grouped cases, and inactive bot-only
 tests and product paths have been removed. The Worker/D1 runner executes all 74 tests.
 
-Step 5E completed the response-builder typing cleanup: `ResponseBuilderPending`
+Step 5E completed the response-builder typing cleanup: the former
+response-builder compatibility union
 contained only the four legacy builder shapes and the then-remaining
 Attack/Duel/Negation compatibility shapes, and
 `GroupResponsePending` narrows canonical Group responses for Halberd triggers
 and Dying resumes. Runtime behavior is unchanged and Negation remains untouched.
 
-Step 5D.1 completes the Group canonical cleanup: `GroupPending` is accepted by
-`asResponsePending()` only for initial builders, Halberd `attack_targeted`
+Step 5D.1 completed the Group canonical cleanup: the former transitional Group
+response shape was accepted only for initial builders, while Halberd `attack_targeted`
 continuations store the complete canonical Group response, and canonical Group
 sequence projection returns `GroupContinuation`. Actor and deadline metadata
 remain in `currentAction`; the Negation-embedded Group boundary is unchanged.
 
 Step 5D carries canonical `ResponsePending` plus `GroupContinuation` through
 all normal Group/AOE helpers, including held-card accounting and Dying resume.
-`GroupPending` remains only for initial deferred card construction, the
-Negation-embedded effect boundary, and bounded public projection. Negation
+The former transitional Group response shape is no longer used for initial
+deferred card construction, the Negation-embedded effect boundary, or bounded
+public projection. Negation
 response execution remains unchanged.
 
 The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, Borrowed Sword, and human-controlled Quick Test Attacks, through the shared target, Dodge, Armor, damage, and Dying pipeline. Borrowed Sword is fully hardened in Standard games: after canonical Negation, its user chooses a live legal target, the Weapon holder receives a private semantic Attack decision with an idempotent human response timer, and refusal/no-provider transfer revalidates the persisted Weapon ID. Worker/D1 regressions cover races, stale targets/actions, physical and Serpent Spear providers, Dodge, and Yin-Yang Swords continuation.

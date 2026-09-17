@@ -1,5 +1,15 @@
 # Three Kingdoms project handover
 
+## Step 7C remove response builder conversion — 2026-09-17
+
+`ResponsePending` is now the sole semantic Attack, Duel, Group, and Negation
+decision shape. Attack, normal AOE, Halberd, and Duel creation build canonical
+responses directly; DeferredStratagem stores canonical Duel and Group
+responses; and explicit continuation types contain only effect-resumption
+data. `serializePending()` now performs JSON serialization only. No tests were
+added; the existing Worker/D1 suite remains 74 declarations and all 74 pass.
+The next work is the next roadmap item.
+
 ## Step 7B.1 reject legacy persisted response kinds — 2026-09-17
 
 Persisted response reads now accept only `kind: "response"`; during the
@@ -9,8 +19,8 @@ Room projection also keeps these unsupported states out of actionable
 `currentAction` and returns no legacy response DTO fallback.
 Room projection derives `pendingAttack`, `pendingDuel`, `pendingGroup`, and
 `pendingNegation` only from `ResponsePending.continuation`, and legacy barrier
-recovery was removed. `asResponsePending()` remains only at in-memory builder
-construction boundaries, and DeferredStratagem builders are unchanged.
+recovery was removed. Response construction is canonical at every in-memory
+builder boundary, and DeferredStratagem builders store canonical responses.
 
 No tests were added; the existing test count must remain unchanged or lower.
 The next cleanup is removal of the remaining builder conversions.
@@ -25,12 +35,11 @@ records directly. Room normalization derives the existing public
 the canonical response continuation where applicable; `currentAction` and
 public field shapes are unchanged.
 
-The old response expansion helper and its compatibility type are deleted,
-including the route import. `asResponsePending()`, `ResponseBuilderPending`,
-`continuationForResponse()`, and `requirementForResponse()` remain for initial
-builder-to-canonical conversion. No tests were added; the existing test count
-must remain unchanged or lower. The next cleanup is the Step 7B persisted
-response boundary.
+The old response expansion helper and compatibility types are deleted,
+including the route import. The remaining builder conversion boundary was
+removed by Step 7C. No tests were added; the existing test count must remain
+unchanged or lower. The next cleanup is the Step 7B persisted response
+boundary.
 
 ## Step 6B Negation canonicalization — 2026-09-17
 
@@ -44,7 +53,7 @@ presentation barriers, and deferred effects. A no-responder `startNegation()`
 path creates the continuation in memory and calls `resolveDeferredStratagem()`
 without serializing a Negation decision.
 
-The production route had zero `NegationPending` references and exactly four
+The production route had zero legacy Negation response-shape references and exactly four
 generic response expansion calls remained for Step 7. No new tests
 were added; the existing suite remains 74 declarations and all 74 pass through
 the Worker/D1 runner. Build, lint, and final diff checks are the release gate.
@@ -58,7 +67,7 @@ resolution cannot depend on response actor, reason, deadline, or presentation
 metadata. When a Negation Judgement leaves no responder, the room persists the
 existing canonical `ResponsePending` wrapper with the transitioned continuation
 before resolving the deferred effect; a continuation is never serialized as a
-standalone `NegationPending`. `applySuccessfulNegation()` discards any legacy
+standalone legacy Negation response shape. `applySuccessfulNegation()` discards any legacy
 `readyAfterEventId`, keeping presentation metadata solely on `ResponsePending`.
 
 Human Negation and Negation Judgement paths still have zero expansion calls.
@@ -84,7 +93,7 @@ cleanup; stop this round here.
 
 ## Step 5E final response-builder typing — 2026-09-17
 
-`game/pending.ts` then separated `ResponseBuilderPending` (the four legacy
+`game/pending.ts` then separated a response-builder compatibility union (the four legacy
 builder shapes) from the remaining Attack/Duel/Negation compatibility-expansion
 shapes. Neither old-shape union
 contains canonical `ResponsePending`. `GroupResponsePending` narrows canonical
@@ -93,22 +102,22 @@ behavior and tests are unchanged; Negation was not started.
 
 ## Step 5D.1 finish Group canonical cleanup — 2026-09-17
 
-`asResponsePending()` accepts the legacy `GroupPending` only as an initial
-builder input, while the old response helper still never expanded
-Group. Halberd `attack_targeted` continuations now store the complete
-canonical Group response and resume it directly. Canonical Group sequence
+The former transitional Group response shape was accepted only as an initial
+builder input, while the old response helper still never expanded Group.
+Halberd `attack_targeted` continuations now store the complete canonical Group response and resume it directly. Canonical Group sequence
 projection returns `GroupContinuation`; actor and deadline metadata remain in
 `currentAction`. The Negation-embedded Group effect boundary is unchanged.
 No new test declaration was added; existing Group assertions now verify
 `currentAction` for actor and timing.
 
-## Step 5D remove transient GroupPending compatibility — 2026-09-17
+## Step 5D remove transient legacy Group response shape compatibility — 2026-09-17
 
 Normal Group/AOE execution now carries `ResponsePending` plus
 `GroupContinuation` through target advancement, response outcomes, held-card
-accounting, damage, and Dying resume. `GroupPending` remains only for initial
-deferred card construction, the Negation-embedded effect boundary, and bounded
-public compatibility projection. The old response helper no longer
+accounting, damage, and Dying resume. The former transitional Group response
+shape is no longer used for initial deferred card construction, the
+Negation-embedded effect boundary, or bounded public compatibility projection.
+The old response helper no longer
 expands Group responses, and Negation response execution was not changed.
 No tests were added; the existing suite remains the validation target.
 
@@ -126,10 +135,10 @@ after Step 5C.
 ## Step 5B `advanceGroup()` canonicalization — 2026-09-17
 
 `advanceGroup()` now reads canonical `ResponsePending` through
-`groupResponse(asResponsePending(stored))`. Actor ownership comes from
+`groupResponse(stored)`. Actor ownership comes from
 `response.actorId`, and Group effect state comes from `GroupContinuation`.
 The existing downstream helpers still receive a temporary expanded
-`GroupPending` compatibility shape, preserving skip-dead-target handling,
+`legacy Group response shape` compatibility shape, preserving skip-dead-target handling,
 automatic impossible-response resolution, semantic Attack/Dodge and Judgement
 providers, held cards, and ordered target advancement.
 
@@ -362,7 +371,10 @@ type ResponsePending = {
 };
 ```
 
-The continuation remains domain-shaped (`AttackPending`, `GroupPending`, `DuelPending`, or `NegationPending`) because the canonical engine needs effect-resumption data. `serializePending()` writes only the canonical wrapper; old persisted response decisions are unsupported.
+The continuation remains domain-shaped (Attack, Group, Duel, or Negation)
+because the canonical engine needs effect-resumption data. `serializePending()`
+writes only the canonical wrapper; old persisted response decisions are
+unsupported.
 
 `currentAction` v3 is the private authoritative action view. For semantic responses it exposes the requirement, canonical `respond` / `decline_response`, provider options, deadline, actor, and presentation barrier. The browser must not infer legal response options from hero/equipment state.
 
