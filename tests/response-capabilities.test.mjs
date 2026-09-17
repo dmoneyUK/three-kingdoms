@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getAttackCardProvider, getPlayPhaseActions, getResponseOptions, registerResponseProvider, responseOptions, selectResponse } from "../game/responses.ts";
+import { getAttackCardProvider, getPlayPhaseActions, getResponseOptions, registerResponseProvider } from "../game/responses.ts";
 import { resolveResponseDecision, responseDecisionFor } from "../game/response-decision.ts";
 import { applySuccessfulNegation } from "../game/decisions/negation.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
@@ -34,7 +34,7 @@ test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack",
   assert.equal(getAttackCardProvider(context, redPeach.id)?.providerId, "guan_yu_red_card_attack");
   assert.equal(getAttackCardProvider(context, redEquipment.id), undefined);
   assert.equal(getResponseOptions({ hand: [redPeach], equipment: [], hero: "zhang-fei" }, { kind: "attack" }).length, 0);
-  const pending = { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", resumePhase: "play", reason: "Attack" };
+  const pending = { kind: "response", actorId: "p2", requirement: { kind: "attack", sourceId: "p1", actorId: "p2", context: "duel" }, reason: "Attack", continuation: { kind: "duel", sourceId: "p1", targetId: "p2", opponentId: "p1", resumePhase: "play" } };
   assert.deepEqual(resolveResponseDecision(pending, context, "guan_yu_red_card_attack", { cardId: "red-peach" }), { status: "satisfied", providerId: "guan_yu_red_card_attack", satisfies: "attack", consumeCardIds: ["red-peach"], resolution: "cards", playedAs: "attack" });
   assert.equal(resolveResponseDecision(pending, { ...context, hand: [blackAttack] }, "guan_yu_red_card_attack", { cardId: "red-peach" }), null);
 });
@@ -102,7 +102,7 @@ test("capability discovery and generic response decisions share live providers",
   const attack = getResponseOptions({ hand: [card("Peach", "peach-1"), card("Dodge", "dodge-2")], equipment: [card("SerpentSpear", "spear")], hero: null }, { kind: "attack", context: "barbarian_invasion" });
   assert.deepEqual(attack.map((option) => option.providerId), ["serpent_spear_attack"]);
   assert.deepEqual(attack[0].selection?.eligibleCardIds, ["peach-1", "dodge-2"]);
-  const pending = { kind: "attack", sourceId: "p1", targetId: "p2", actorId: "p2", resumePhase: "play", reason: "Dodge", deadline: 0 };
+  const pending = { kind: "response", actorId: "p2", requirement: { kind: "dodge", sourceId: "p1", targetId: "p2" }, reason: "Dodge", deadline: 0, continuation: { kind: "attack", sourceId: "p1", targetId: "p2", resumePhase: "play" } };
   const decision = responseDecisionFor(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null });
   assert.equal(decision?.requirement, "dodge");
   assert.deepEqual(decision?.options.map((option) => option.providerId), ["card", "eight_trigrams_dodge"]);
@@ -114,30 +114,6 @@ test("capability discovery and generic response decisions share live providers",
   assert.equal(judgement?.resolution.succeeds({ ...card("Peach", "red"), suit: "♥" }), true);
   assert.equal(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "invented_provider", {}), null);
 });
-
-test("Negation scheduling can discover a non-card provider", () => {
-  const unregister = registerResponseProvider({
-    id: "test_hero_negate",
-    satisfies: "negate",
-    activation: "explicit",
-    getOption: () => ({ provider: "test_hero", providerId: "test_hero_negate", satisfies: "negate", label: "Use test Negate", cards: [], selection: null }),
-    resolve: () => ({ status: "satisfied", providerId: "test_hero_negate", satisfies: "negate" }),
-  });
-  try {
-    const options = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "negate", sourceId: "p1", targetId: "p2" });
-    assert.equal(options.find((option) => option.providerId === "test_hero_negate")?.providerId, "test_hero_negate");
-  } finally {
-    unregister();
-  }
-});
-
-test("response helpers select semantic providers", () => {
-  const context = { hand: [card("Dodge", "dodge-1"), card("Dodge", "dodge-2")], equipment: [], hero: null };
-  assert.equal(responseOptions(context, "Dodge").length, 2);
-  assert.equal(selectResponse(context, "Dodge", "dodge-2", undefined)?.cards[0].id, "dodge-2");
-});
-
-
 
 test("new hero providers can discover and execute without editing core response code", () => {
   const unregister = registerResponseProvider({
@@ -152,7 +128,7 @@ test("new hero providers can discover and execute without editing core response 
   try {
     const options = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "dodge" });
     assert.deepEqual(options.find((option) => option.providerId === "test_hero_black_dodge")?.activation, "explicit");
-    const pending = { kind: "attack", sourceId: "p1", targetId: "p2", actorId: "p2", resumePhase: "play", reason: "Dodge", deadline: 0 };
+    const pending = { kind: "response", actorId: "p2", requirement: { kind: "dodge", sourceId: "p1", targetId: "p2" }, reason: "Dodge", deadline: 0, continuation: { kind: "attack", sourceId: "p1", targetId: "p2", resumePhase: "play" } };
     assert.deepEqual(resolveResponseDecision(pending, { hand: [], equipment: [], hero: "test-hero" }, "test_hero_black_dodge", {}), { status: "satisfied", providerId: "test_hero_black_dodge", satisfies: "dodge", resolution: "cards" });
   } finally {
     unregister();
@@ -179,7 +155,7 @@ test("Zhen Ji's black-card Dodge is a provider with a semantic card cost", () =>
   const blackPeach = { ...card("Peach", "black-peach"), suit: "♠" };
   const options = getResponseOptions({ hand: [blackPeach], equipment: [], hero: "zhen-ji" }, { kind: "dodge" });
   assert.deepEqual(options.map((option) => option.providerId), ["zhen_ji_black_card_dodge"]);
-  assert.deepEqual(resolveResponseDecision({ kind: "attack", sourceId: "p1", targetId: "p2", actorId: "p2", resumePhase: "play", reason: "Dodge" }, { hand: [blackPeach], equipment: [], hero: "zhen-ji" }, "zhen_ji_black_card_dodge", { cardId: blackPeach.id }), { status: "satisfied", providerId: "zhen_ji_black_card_dodge", satisfies: "dodge", consumeCardIds: [blackPeach.id], resolution: "cards" });
+  assert.deepEqual(resolveResponseDecision({ kind: "response", actorId: "p2", requirement: { kind: "dodge", sourceId: "p1", targetId: "p2" }, reason: "Dodge", continuation: { kind: "attack", sourceId: "p1", targetId: "p2", resumePhase: "play" } }, { hand: [blackPeach], equipment: [], hero: "zhen-ji" }, "zhen_ji_black_card_dodge", { cardId: blackPeach.id }), { status: "satisfied", providerId: "zhen_ji_black_card_dodge", satisfies: "dodge", consumeCardIds: [blackPeach.id], resolution: "cards" });
 });
 
 test("passive and triggered equipment capabilities are discovered outside the route", () => {

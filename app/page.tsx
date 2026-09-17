@@ -5,7 +5,7 @@ import { Component, FormEvent, ReactNode, useCallback, useEffect, useLayoutEffec
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card } from "../game/model";
 import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
-import { responseOptions } from "../game/responses";
+import { getResponseOptions } from "../game/responses";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction } from "../game/protocol.js";
 import { latestPublicMessages } from "../game/messages.js";
@@ -411,7 +411,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const responseCardAllowed = (item: Card) => selectedResponseProvider?.selection?.type === "cards" ? selectedResponseProvider.selection.eligibleCardIds.includes(item.id) : triggerCardOption?.selection?.type === "cards" && triggerCardOption.selection.eligibleCardIds.includes(item.id) || (!semanticResponseOptions.length && Boolean(requiredResponseKind) && ((requiredResponseKind === "Negation" ? item.kind === "Negation" : requiredResponseKind === "Attack" ? isAttackCard(item) : item.kind === "Dodge")));
   const responsePlayAction = triggerResponse && selectedTriggerOption && (triggerSelectionComplete || !triggerSelection) ? "trigger" as GameplayAction : genericResponse && selectedResponseProvider ? "respond" as GameplayAction : null;
   const responseDamageAction = canUseAction(room.currentAction, "decline_response") ? "decline_response" as GameplayAction : canUseAction(room.currentAction, "decline_trigger") ? "decline_trigger" as GameplayAction : null;
-  const hasSerpentSpear = responseOptions({ hand: room.myHand, equipment: me?.equipmentCards ?? [], hero: me?.hero }, "Attack").some((option) => option.provider === "serpent_spear");
+  const hasSerpentSpear = getResponseOptions({ hand: room.myHand, equipment: me?.equipmentCards ?? [], hero: me?.hero }, { kind: "attack" }).some((option) => option.providerId === "serpent_spear_attack");
   const playPhaseAttackCardIds = new Set(room.currentAction?.actorId === room.meId ? (room.currentAction.playPhaseActions ?? []).filter((action) => action.canPlayAs === "attack").map((action) => action.cardId) : []);
   const selectedCanPlayAsAttack = Boolean(card && (isAttackCard(card) || playAsAttack && playPhaseAttackCardIds.has(card.id)));
   const canDeclareAttack = Boolean(room.currentAction?.canDeclareAttack);

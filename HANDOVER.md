@@ -1,5 +1,21 @@
 # Three Kingdoms project handover
 
+## Step 4.2 response-capability legacy-test cleanup — 2026-09-17
+
+Removed the pre-canonical helper-selection regression and the redundant generic
+Negation provider-extension regression. Current response-decision tests now use
+`ResponsePending` for Attack, Duel, and Qingguo/other Dodge provider resolution.
+`canRespondWithAttack` and `canRespondWithDodge` query `getResponseOptions()`
+directly, and the browser's Serpent Spear availability check uses the canonical
+provider projection. `responseOptions`, `selectResponse`, and `ResponseKind`
+remain only because the bounded Group/AOE compatibility adapter still calls
+`selectResponse`; Group/AOE and Negation migration were intentionally untouched.
+The response-capabilities file is 24 tests before this cleanup and 22 after.
+
+Recommended next work: proceed to the planned Group/AOE cleanup only after
+reviewing its compatibility boundary; do not claim the remaining legacy helper
+removal until that adapter is migrated.
+
 ## Stage 6 architecture cleanup — canonical protocol only (2026-09-17)
 
 The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module, dead saved-room `advanceFrostSword` / `advanceRockCleaving` / `advanceGreenDragon` adapters, and provider-specific HTTP branches must not return. `TriggerPending` is now the only trigger decision in the persisted `Pending` union; `asTriggerPending()` accepts only `kind: "trigger"`. Attack responses use `ResponsePending` and its `AttackContinuation` directly for human, Judgement, bot, timer, trigger-after-Dodge, damage, stale, and privacy paths. Duel responses now use `ResponsePending` and its `DuelContinuation` directly for human, bot, Judgement, loss, actor-switch, and next-decision paths. Group/AOE and Negation still use `responseContinuationPending()` by design and remain the next cleanup steps. Canonical semantic trigger continuations remain unchanged.

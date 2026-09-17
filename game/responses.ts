@@ -94,8 +94,8 @@ export function responseOptions(context: ResponseContext, kind: ResponseKind) {
     ? option.cards.map((card) => ({ ...option, cards: [card], selection: { type: "cards" as const, min: 1, max: 1, eligibleCardIds: [card.id] } }))
     : [option]);
 }
-export function canRespondWithAttack(context: ResponseContext) { return responseOptions(context, "Attack").length > 0; }
-export function canRespondWithDodge(context: ResponseContext) { return responseOptions(context, "Dodge").length > 0; }
+export function canRespondWithAttack(context: ResponseContext) { return getResponseOptions({ ...context, requirement: { kind: "attack" } }, { kind: "attack" }).length > 0; }
+export function canRespondWithDodge(context: ResponseContext) { return getResponseOptions({ ...context, requirement: { kind: "dodge" } }, { kind: "dodge" }).length > 0; }
 export function selectResponse(context: ResponseContext, kind: ResponseKind, cardId: unknown, cardIds: unknown): ResponseOption | undefined {
   const options = responseOptions(context, kind);
   if (cardId) return options.find((option) => option.provider === "card" && option.cards.some((card) => card.id === cardId));
