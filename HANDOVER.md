@@ -1,5 +1,12 @@
 # Three Kingdoms project handover
 
+## Centre card presentation timing — 2026-09-17
+
+The shared centre card display duration is now 3 seconds, reduced by 1 second
+from 4 seconds. This applies to both optimistic local card plays and incoming
+essential card/card-group presentations; response barriers and server timing
+contracts are unchanged.
+
 ## Kirin Bow damage-trigger presentation barrier — 2026-09-17
 
 The shared `resolveAttackDamageAboutToApply()` path no longer binds a damage
