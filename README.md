@@ -16,10 +16,11 @@ declarations while retaining the required human multiplayer and capability
 invariants. Pure helper assertions now run in grouped cases, and inactive bot-only
 tests and product paths have been removed. The Worker/D1 runner executes all 74 tests.
 
-Step 5A moved the human Group respond/decline branch and Group Judgement
-outcome to `ResponsePending` plus `GroupContinuation`. `advanceGroup()` remains
-on the bounded GroupPending compatibility path, and Dying resume storage is
-unchanged for Step 5B.
+Step 5B now makes `advanceGroup()` read canonical `ResponsePending` plus
+`GroupContinuation` directly. Actor ownership comes from the canonical response
+wrapper, while the bounded expanded `GroupPending` shape is retained only for
+the existing downstream Group helpers. Dying resume storage and Negation remain
+unchanged for the next cleanup steps.
 
 The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, Borrowed Sword, and human-controlled Quick Test Attacks, through the shared target, Dodge, Armor, damage, and Dying pipeline. Borrowed Sword is fully hardened in Standard games: after canonical Negation, its user chooses a live legal target, the Weapon holder receives a private semantic Attack decision with an idempotent human response timer, and refusal/no-provider transfer revalidates the persisted Weapon ID. Worker/D1 regressions cover races, stale targets/actions, physical and Serpent Spear providers, Dodge, and Yin-Yang Swords continuation.
 
@@ -53,7 +54,7 @@ For this project, always filter the catalogue to **Standard**. Endless Legends a
 
 ## Current Stage
 
-Stage 6 Round 1 is complete. Step 3.5 test cleanup is complete, with behavioural coverage retained in the API/integration suite and brittle source-regex checks removed. Step 4 Duel canonicalization is complete: Duel uses `ResponsePending` plus `DuelContinuation` directly. The next architecture step is Step 5 Group/AOE; Group/AOE and Negation still use `responseContinuationPending()`. New Standard games use the single 31-general
+Stage 6 Round 1 is complete. Step 3.5 test cleanup is complete, with behavioural coverage retained in the API/integration suite and brittle source-regex checks removed. Step 4 Duel canonicalization is complete: Duel uses `ResponsePending` plus `DuelContinuation` directly. Step 5A Group/AOE response canonicalization and Step 5B `advanceGroup()` canonicalization are complete. The remaining architecture cleanup is the bounded Dying Group resume path and then Negation. New Standard games use the single 31-general
 `STANDARD_HEROES` registry (Wei, Shu, Wu, Qun), including Yue Jin, Yu Jin,
 Zhuge Liang, Lady Gan, Gongsun Zan, and Pan Feng. Yuan Shao, Yan Liang & Wen
 Chou, and Pang De remain readable only through bounded legacy metadata.
@@ -70,7 +71,9 @@ source: active use is explicitly declared by `playPhaseUse: "attack"`.
 Borrowed Sword now uses canonical semantic Dodge discovery after its Nio
 Shield passive check, so Zhen Ji and Eight Trigrams alternatives are treated
 like ordinary Attack responses.
-The next milestone is architecture review before choosing another hero.
+The next milestone is to migrate the bounded Dying Group resume path, then
+review the remaining Negation compatibility boundary before choosing another
+hero.
 
 The project has moved beyond the initial table prototype. A complete four-player match loop runs in normal human multiplayer rooms and a single-device Quick Test table. Quick Test is one controller playing every human-style seat in turn, with only the acting seat's hand visible at the bottom. Turn ownership, ordered responses, death rewards and victory checks are working. Human card and weapon responses use a 30-second action window. Bot gameplay is not supported.
 
@@ -153,7 +156,7 @@ The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence ove
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Attack cards, Duel, AOE, Lightning, and forced damage converge on authoritative negative-HP and ordered Dying rules. After an unrescued defeat, outcome is calculated before exactly one legal continuation: finish, resume the interrupted effect, continue the AOE sequence, or advance to the next living turn owner. The dead saved-room trigger adapters and provider-specific Green Dragon Blade, Rock Cleaving Axe, and Frost Sword continuation branches have now been removed; `TriggerPending` is now the only trigger decision in the persisted `Pending` model, Attack responses now resolve directly from canonical `ResponsePending` plus `AttackContinuation`, and Duel responses now resolve directly from `ResponsePending` plus `DuelContinuation`. Group/AOE and Negation response expansion remain intentionally unchanged for the next cleanup steps. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 delayed Stratagem/Judgement lifecycle — COMPLETE. Stage 6 hero abilities — ACTIVE.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, auto-resolves impossible Dodge responses, and keeps Quick Test at three HP with named mounts in the deck. Attack cards, Duel, AOE, Lightning, and forced damage converge on authoritative negative-HP and ordered Dying rules. After an unrescued defeat, outcome is calculated before exactly one legal continuation: finish, resume the interrupted effect, continue the AOE sequence, or advance to the next living turn owner. The dead saved-room trigger adapters and provider-specific Green Dragon Blade, Rock Cleaving Axe, and Frost Sword continuation branches have now been removed; `TriggerPending` is now the only trigger decision in the persisted `Pending` model, Attack responses now resolve directly from canonical `ResponsePending` plus `AttackContinuation`, Duel responses now resolve directly from `ResponsePending` plus `DuelContinuation`, and `advanceGroup()` now reads canonical `ResponsePending` plus `GroupContinuation`. Dying Group resume storage and Negation response expansion remain intentionally unchanged for the next cleanup steps. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 delayed Stratagem/Judgement lifecycle — COMPLETE. Stage 6 hero abilities — ACTIVE.
 
 ## Roadmap
 

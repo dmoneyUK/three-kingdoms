@@ -1323,10 +1323,20 @@ async function advanceGroup(roomId: string) {
   for (let guard = 0; guard < 30; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const stored = parse<Pending | null>(room?.pending_json ?? null, null);
-    const pending = responseContinuationPending(stored) as GroupPending | null;
-    if (!room || room.phase !== "response" || pending?.kind !== "group") return;
+    const groupDecision = groupResponse(asResponsePending(stored));
+    if (!room || room.phase !== "response" || !groupDecision) return;
+    const { response: responsePending, continuation } = groupDecision;
+    // Downstream Group helpers still use the legacy expanded shape for now.
+    const pending = {
+      ...continuation,
+      actorId: responsePending.actorId,
+      reason: responsePending.reason,
+      ...(responsePending.deadline === undefined ? {} : { deadline: responsePending.deadline }),
+      ...(responsePending.resolutionId === undefined ? {} : { resolutionId: responsePending.resolutionId }),
+      ...(responsePending.readyAfterEventId === undefined ? {} : { readyAfterEventId: responsePending.readyAfterEventId }),
+    } satisfies GroupPending;
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
-    const players = rows.results ?? []; const actor = players.find((player) => player.id === pending.actorId && player.alive); const source = players.find((player) => player.id === pending.sourceId && player.alive);
+    const players = rows.results ?? []; const actor = players.find((player) => player.id === responsePending.actorId && player.alive); const source = players.find((player) => player.id === continuation.sourceId && player.alive);
     if (!source) return;
     if (!actor) {
       const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
@@ -1335,19 +1345,19 @@ async function advanceGroup(roomId: string) {
       return;
     }
     const context = responseContext(actor);
-    const canRespond = pending.requiredKind === "Attack" ? canRespondWithAttack(context) : hasDodgeResponse(context);
+    const canRespond = continuation.requiredKind === "Attack" ? canRespondWithAttack(context) : hasDodgeResponse(context);
     if (canRespond) return;
     let hand = parse<Card[]>(actor.hand_json, []); const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
-    const decision = responseDecisionFor(asResponsePending(pending), context);
+    const decision = responseDecisionFor(responsePending, context);
     const option = decision?.options[0];
     const selection = option?.selection?.type === "cards" ? option.selection.max === 1 ? { cardId: option.selection.eligibleCardIds[0] } : { cardIds: option.selection.eligibleCardIds.slice(0, option.selection.max) } : {};
-    const semanticExecution = option ? resolveResponseDecision(pending, context, option.providerId, selection) : null;
+    const semanticExecution = option ? resolveResponseDecision(responsePending, context, option.providerId, selection) : null;
     const responseCards = semanticExecution?.status === "satisfied" ? (semanticExecution.consumeCardIds ?? []).map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) : [];
     const claim = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(roomId, room.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) continue;
     const secondaryExecution = semanticExecution;
     if (secondaryExecution?.status === "requires_resolution" && secondaryExecution.resolution.kind === "judgement") {
-      await applyResponseOutcome(room, pending, actor, source, players, discard, log, secondaryExecution.resolution);
+      await applyResponseOutcome(room, responsePending, actor, source, players, discard, log, secondaryExecution.resolution);
       return;
     }
     if (!semanticExecution || semanticExecution.status !== "satisfied" || responseCards.length !== (semanticExecution.consumeCardIds ?? []).length) { await resolveGroupDamage(room, pending, actor, source, players, discard, log); return; }

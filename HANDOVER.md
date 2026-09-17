@@ -1,5 +1,19 @@
 # Three Kingdoms project handover
 
+## Step 5B `advanceGroup()` canonicalization — 2026-09-17
+
+`advanceGroup()` now reads canonical `ResponsePending` through
+`groupResponse(asResponsePending(stored))`. Actor ownership comes from
+`response.actorId`, and Group effect state comes from `GroupContinuation`.
+The existing downstream helpers still receive a temporary expanded
+`GroupPending` compatibility shape, preserving skip-dead-target handling,
+automatic impossible-response resolution, semantic Attack/Dodge and Judgement
+providers, held cards, and ordered target advancement.
+
+No tests were added; the tracked suite remains 74 tests and is green at 74/74.
+The remaining Step 5B boundary is Dying Group `resumePending` storage. Negation
+was not changed.
+
 ## Step 5A Group/AOE response canonicalization — 2026-09-17
 
 Normal Group/AOE response execution now reads `ResponsePending` through the
@@ -10,15 +24,13 @@ deadline come from the canonical response wrapper, while card kind, source,
 remaining targets, requirement, resume phase, held cards, and resolution ID
 come from the continuation.
 
-The existing Group lifecycle remains intentionally bounded: `advanceGroup()`
-still expands through `responseContinuationPending()`, and `DyingPending`
-still stores `resumePending?: GroupPending`. Those are Step 5B boundaries and
-were not changed here. Negation was not touched.
+The existing Group lifecycle remained intentionally bounded during Step 5A:
+DyingPending still stores `resumePending?: GroupPending`. Step 5B subsequently
+migrated `advanceGroup()`; Negation was not touched.
 
-Group expansion references for the two migrated paths went from 2 to 0; one
-Group expansion reference remains in `advanceGroup()`. The tracked test count
-stayed at 74 before and after this migration, and the full Worker/D1 suite is
-green at 74/74.
+Group expansion references for the two migrated paths went from 2 to 0. The
+tracked test count stayed at 74 before and after this migration, and the full
+Worker/D1 suite is green at 74/74.
 
 ## Step 4.3 response helper cleanup — 2026-09-17
 
@@ -70,7 +82,7 @@ reviewing its compatibility boundary.
 
 ## Stage 6 architecture cleanup — canonical protocol only (2026-09-17)
 
-The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module, dead saved-room `advanceFrostSword` / `advanceRockCleaving` / `advanceGreenDragon` adapters, and provider-specific HTTP branches must not return. `TriggerPending` is now the only trigger decision in the persisted `Pending` union; `asTriggerPending()` accepts only `kind: "trigger"`. Attack responses use `ResponsePending` and its `AttackContinuation` directly for human, Judgement, bot, timer, trigger-after-Dodge, damage, stale, and privacy paths. Duel responses now use `ResponsePending` and its `DuelContinuation` directly for human, bot, Judgement, loss, actor-switch, and next-decision paths. Group/AOE and Negation still use `responseContinuationPending()` by design and remain the next cleanup steps. Canonical semantic trigger continuations remain unchanged.
+The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module, dead saved-room `advanceFrostSword` / `advanceRockCleaving` / `advanceGreenDragon` adapters, and provider-specific HTTP branches must not return. `TriggerPending` is now the only trigger decision in the persisted `Pending` union; `asTriggerPending()` accepts only `kind: "trigger"`. Attack responses use `ResponsePending` and its `AttackContinuation` directly for human, Judgement, bot, timer, trigger-after-Dodge, damage, stale, and privacy paths. Duel responses now use `ResponsePending` and its `DuelContinuation` directly for human, bot, Judgement, loss, actor-switch, and next-decision paths. `advanceGroup()` now reads `ResponsePending` plus `GroupContinuation` directly, with only downstream helper expansion remaining. Dying Group resume storage and Negation remain the next cleanup steps. Canonical semantic trigger continuations remain unchanged.
 
 Domain continuation data remains because the canonical engine uses it to resume Attack, Duel, Group, Negation, and trigger effects. Old pending DTO projections remain as bounded response payloads for current normalization/tests, while browser decision controls come from `currentAction`.
 
