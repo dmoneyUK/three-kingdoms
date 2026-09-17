@@ -78,11 +78,16 @@ export function isAttackCard(card: Pick<Card, "kind">) {
   return card.kind === "Attack" || card.kind === "Strike";
 }
 
+export function shuffle<T>(items: readonly T[], random: () => number = Math.random): T[] {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index--) {
+    const swap = Math.floor(random() * (index + 1));
+    [shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
+  }
+  return shuffled;
+}
+
 export function makeDeck(random: () => number = Math.random): Card[] {
   const deck = STANDARD_108_DECK.map((spec) => ({ ...spec, id: crypto.randomUUID() }));
-  for (let index = deck.length - 1; index > 0; index--) {
-    const swap = Math.floor(random() * (index + 1));
-    [deck[index], deck[swap]] = [deck[swap], deck[index]];
-  }
-  return deck;
+  return shuffle(deck, random);
 }

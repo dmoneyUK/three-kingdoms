@@ -1,5 +1,17 @@
 # Three Kingdoms project handover
 
+## Quick Test shuffled opening hands — 2026-09-17
+
+Quick Test now deals every opening hand from one proper Fisher-Yates-shuffled
+Standard deck. Player1 receives Frost Sword, Red Hare, Peach and Attack so
+Guan Yu's Wusheng capability remains available; Player2 receives Kirin Bow and
+Nio Shield; Player3 receives Blue Steel Sword; all unspecified slots, including
+Player4's hand, are filled from the remaining shuffled deck. The allocator is
+generic and uses physical card identity, so the seeded cards cannot also remain
+in the deck or another hand. The existing Quick Test API regression now checks
+the opening-hand contract. Recommended next work is the next individually
+verified Standard hero.
+
 ## Yin-Yang Swords mandatory choice — 2026-09-17
 
 Generic trigger options now support optional `allowDecline` semantics, defaulting

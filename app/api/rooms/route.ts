@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getRequestExecutionContext } from "vinext/shims/request-context";
-import { cardDefinition, isAttackCard, makeDeck } from "../../../game/cards";
+import { cardDefinition, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import type { Card, CardKind, EquipmentZone } from "../../../game/model";
 import { canDeclareAttack as canDeclareAttackFor, distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, getAttackCardProvider, getPlayPhaseActions, getResponseOptions, type JudgementResolution, type ResponseExecution } from "../../../game/responses";
@@ -36,7 +36,6 @@ const ROOM_IDLE_TIMEOUT_MS = 5 * 60_000;
 // Human decisions do not begin their clock until the client has finished the
 // public presentation and explicitly arms it.
 const nextResponseDeadline = (_actor?: PlayerRow | null, startHumanClock = false) => startHumanClock ? Date.now() + HUMAN_RESPONSE_TIMEOUT_MS : 0;
-const QUICK_TEST_EQUIPMENT_KINDS: CardKind[] = ["FrostSword", "NioShield", "EightTrigrams"];
 const GAMEPLAY_ACTION_SET = new Set<string>(GAMEPLAY_ACTIONS);
 
 async function recordAuditAction(room: RoomRow, actor: PlayerRow | null, actorName: string, action: string) {
@@ -387,20 +386,18 @@ async function finishIfWon(roomId: string) {
   await db().prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), roomId).run(); return true;
 }
 
-async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpeningCards?: { playerId: string; kinds: CardKind[] }) {
+async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpeningCards: { playerId: string; kinds: CardKind[] }[] = []) {
   const deck = makeDeck();
-  const openingHands = players.map((player) => ({ player, cards: deck.splice(0, 4) }));
-  if (guaranteedOpeningCards) {
-    const opening = openingHands.find(({ player }) => player.id === guaranteedOpeningCards.playerId);
-    deck.push(...openingHands.flatMap(({ cards }) => cards));
-    openingHands.forEach((entry) => { entry.cards = []; });
-    for (const kind of guaranteedOpeningCards.kinds) {
-      if (!opening) continue;
+  const openingHands = players.map((player) => ({ player, cards: [] as Card[] }));
+  for (const guarantee of guaranteedOpeningCards) {
+    const opening = openingHands.find(({ player }) => player.id === guarantee.playerId);
+    if (!opening) continue;
+    for (const kind of guarantee.kinds) {
       const deckIndex = deck.findIndex((card) => card.kind === kind);
       if (deckIndex >= 0) opening.cards.push(...deck.splice(deckIndex, 1));
     }
-    for (const entry of openingHands) if (entry !== opening) entry.cards.push(...deck.splice(0, 4));
   }
+  for (const entry of openingHands) entry.cards = shuffle([...entry.cards, ...deck.splice(0, Math.max(0, 4 - entry.cards.length))]);
   const updates = openingHands.map(({ player, cards }) => db().prepare("UPDATE players SET hand_json = ?, judgement_json = '[]', equipment_json = '{}', alive = 1 WHERE id = ?").bind(JSON.stringify(cards), player.id));
   const lord = players.find((player) => player.role === "Lord") ?? players[0];
   await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify([`${lord.name} begins the match.`]), roomId)]);
@@ -408,11 +405,11 @@ async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpenin
 async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   const result = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const players = result.results ?? [];
-  const roles = [...ROLE_SETS[players.length]].sort(() => Math.random() - 0.5);
+  const roles = shuffle(ROLE_SETS[players.length]);
   const lordIndex = players.findIndex((player) => player.id === hostPlayerId); const lordAt = roles.indexOf("Lord");
   [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
   const guanYu = STANDARD_HEROES.find((hero) => hero.id === "guan-yu")!;
-  const otherHeroes = STANDARD_HEROES.filter((hero) => hero.id !== guanYu.id).sort(() => Math.random() - 0.5);
+  const otherHeroes = shuffle(STANDARD_HEROES.filter((hero) => hero.id !== guanYu.id));
   let otherHeroIndex = 0;
   const assigned = players.map((player, index) => {
     const hero = player.id === hostPlayerId ? guanYu : otherHeroes[otherHeroIndex++];
@@ -420,32 +417,12 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
-  // Keep Guan Yu's first capability available for every manual test, but let
-  // the rest of Player1's opening hand come from the shuffled Standard deck.
-  await beginMatch(roomId, assigned, { playerId: hostPlayerId, kinds: ["BorrowedSword", "EightTrigrams", "Peach", "Attack"] });
-  const quickPlayers = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
-  const quickRoom = await db().prepare("SELECT deck_json FROM rooms WHERE id = ?").bind(roomId).first<Pick<RoomRow, "deck_json">>();
-  const testPlayers = (quickPlayers.results ?? []).filter((player) => player.id !== hostPlayerId);
-  const quickDeck = [...parse<Card[]>(quickRoom?.deck_json ?? null, []), ...testPlayers.flatMap((player) => parse<Card[]>(player.hand_json, []))];
-  const playerThreeAttacks: Card[] = [];
-  while (playerThreeAttacks.length < 3) { const index = quickDeck.findIndex((card) => isAttackCard(card)); if (index < 0) break; playerThreeAttacks.push(...quickDeck.splice(index, 1)); }
-  const takeFocusedTestCard = () => {
-    const index = quickDeck.findIndex((card) => { const slot = cardDefinition(card.kind).equipmentSlot; return !slot || QUICK_TEST_EQUIPMENT_KINDS.includes(card.kind); });
-    if (index < 0) throw new Error("Quick-test deck did not contain enough focused-test cards for manual seats.");
-    return quickDeck.splice(index, 1)[0];
-  };
-  const takeQuickTestCard = (kind: CardKind) => {
-    const index = quickDeck.findIndex((card) => card.kind === kind);
-    if (index < 0) throw new Error(`Quick-test deck did not contain ${kind}.`);
-    return quickDeck.splice(index, 1)[0];
-  };
-  await db().batch([
-    ...testPlayers.map((player) => {
-    const testNegation = takeQuickTestCard("Negation");
-    const nextHand = player.seat === 3 ? [testNegation, ...playerThreeAttacks] : player.seat === 1 ? [testNegation, takeQuickTestCard("SerpentSpear"), takeFocusedTestCard(), takeFocusedTestCard()] : [testNegation, takeFocusedTestCard(), takeFocusedTestCard(), takeFocusedTestCard()];
-    return db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), player.id);
-    }),
-    db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(quickDeck), roomId),
+  // Keep Guan Yu's red Wusheng capability available while seeding the
+  // requested Standard equipment for the first three human-style seats.
+  await beginMatch(roomId, assigned, [
+    { playerId: assigned[0].id, kinds: ["FrostSword", "RedHare", "Peach", "Attack"] },
+    { playerId: assigned[1].id, kinds: ["KirinBow", "NioShield"] },
+    { playerId: assigned[2].id, kinds: ["BlueSteelSword"] },
   ]);
 }
 function db() { return env.DB; }
@@ -1995,11 +1972,11 @@ export async function POST(request: Request) {
     if (players.length < 4) return json({ error: "Classic mode needs at least 4 players." }, 409);
     await resetAudit(room.id);
     await recordAuditAction(room, me, name, action);
-    const roles = [...ROLE_SETS[players.length]].sort(() => Math.random() - 0.5);
+    const roles = shuffle(ROLE_SETS[players.length]);
     const lordIndex = players.findIndex((player) => player.id === room.host_player_id); const lordAt = roles.indexOf("Lord");
     [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
     const rulers = STANDARD_HEROES.filter((hero) => ["cao-cao", "liu-bei", "sun-quan"].includes(hero.id));
-    const shuffledHeroes = STANDARD_HEROES.filter((hero) => !rulers.some((ruler) => ruler.id === hero.id)).sort(() => Math.random() - 0.5);
+    const shuffledHeroes = shuffle(STANDARD_HEROES.filter((hero) => !rulers.some((ruler) => ruler.id === hero.id)));
     let heroCursor = 0;
     await db.batch([
       ...players.map((player, index) => {

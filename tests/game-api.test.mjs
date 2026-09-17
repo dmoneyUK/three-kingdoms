@@ -707,6 +707,13 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
 test("Quick Test follows the live actor for Something Out of Nothing and rejects stale actions", { timeout: 30_000 }, async () => {
   const quick = await request("create", { quickStart: true }); const { token, room } = quick.data;
   const [me, playerOne, playerTwo, playerThree] = room.players;
+  const openingHandKinds = (player) => JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`)).map((held) => held.kind);
+  assert.ok(openingHandKinds(me).includes("FrostSword"), "Player1 starts with Frost Sword");
+  assert.ok(openingHandKinds(me).some((kind) => ["Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed"].includes(kind)), "Player1 starts with a horse");
+  assert.ok(openingHandKinds(playerOne).includes("KirinBow"), "Player2 starts with Kirin Bow");
+  assert.ok(openingHandKinds(playerOne).includes("NioShield"), "Player2 starts with Nio Shield");
+  assert.ok(openingHandKinds(playerTwo).includes("BlueSteelSword"), "Player3 starts with Blue Steel Sword");
+  assert.equal(openingHandKinds(playerThree).length, 4, "Player4 receives a full random opening hand");
   setHand(me.id, [], 3, 3); setHand(playerOne.id, [card("DrawTwo", "quick-live")], 3, 3); setHand(playerTwo.id, [card("Negation", "quick-live")], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, playerOne.seat, "play");
   const before = await state(room.code, token);
   const played = await request("play_card", { code: room.code, token, cardId: "drawtwo-quick-live" });
