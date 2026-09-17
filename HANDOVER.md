@@ -1,5 +1,21 @@
 # Three Kingdoms project handover
 
+## Centred generic target-card picker — 2026-09-17
+
+The inline trigger `target_cards` controls have been replaced by one shared
+picker inside `.play-table`. It is centred over a roughly 72% dimmed table so
+the player seats remain visible behind it, uses a dark gold-bordered panel, and
+keeps 104x146 card faces readable on desktop and mobile. Hidden Hand positions
+render as large `?` cards; eligible Equipment renders through the existing card
+face; selection is limited to the server's opaque `selection.eligibleKeys` and
+shows a checked gold selection plus the `selected / max` count. The picker
+derives its title and generic subtitle from the projected effect label, target,
+eligible cards, and min/max values, with no Kirin Bow or Frost Sword checks in
+React. Skip reaction and `Use <effect label>` are now inside the picker, and
+the footer renders no `target_cards` controls. The existing server protocol and
+trigger outcomes are unchanged. Recommended next work is the next individually
+verified Standard hero.
+
 ## Quick Test shuffled opening hands — 2026-09-17
 
 Quick Test now deals every opening hand from one proper Fisher-Yates-shuffled

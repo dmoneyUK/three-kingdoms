@@ -78,6 +78,200 @@
   animation: none !important;
 }
 
+/* Target-card reactions are table decisions, so keep the same readable card
+   scale for equipment and hidden hand positions while leaving the seats
+   visible behind the dimmed table. */
+.target-card-picker-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #050704b8;
+  pointer-events: auto;
+}
+
+.target-card-picker-panel {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100% - 32px);
+  overflow: hidden;
+  padding: 22px 24px 20px;
+  background: #151812;
+  border: 2px solid #d5ae5a;
+  box-shadow: 0 22px 60px #000d;
+  color: #f0d28c;
+  text-align: center;
+}
+
+.target-card-picker-panel > header strong,
+.target-card-picker-panel > header span {
+  display: block;
+}
+
+.target-card-picker-panel > header strong {
+  font: 700 17px Arial, sans-serif;
+  letter-spacing: .16em;
+}
+
+.target-card-picker-panel > header span {
+  margin-top: 7px;
+  color: #d0c8b4;
+  font: 11px Arial, sans-serif;
+}
+
+.target-card-picker-card-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 20px 4px 12px;
+}
+
+.target-card-picker-card {
+  position: relative;
+  flex: 0 0 104px;
+  width: 104px;
+  height: 146px;
+  padding: 0;
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.target-card-picker-card:not(:disabled):hover,
+.target-card-picker-card:not(:disabled):focus-visible {
+  translate: 0 -5px;
+}
+
+.target-card-picker-card:focus-visible {
+  outline: 2px solid #f5d783;
+  outline-offset: 3px;
+}
+
+.target-card-picker-card.selected {
+  border: 4px solid #d5ae5a;
+  box-shadow: 0 0 0 2px #151812, 0 0 0 5px #d5ae5a66, 0 12px 24px #000b;
+}
+
+.target-card-picker-card .played-card {
+  width: 100%;
+  height: 100%;
+  border-radius: 5px;
+  animation: none;
+  box-shadow: 0 8px 18px #000b;
+}
+
+.target-card-picker-card .played-card > i {
+  left: 8px;
+  top: 7px;
+  font-size: 15px;
+}
+
+.target-card-picker-card .played-card > i small {
+  font-size: 13px;
+}
+
+.target-card-picker-card .played-card > b {
+  font-size: 23px;
+}
+
+.target-card-picker-card .played-card > strong {
+  margin-top: 8px;
+  font-size: 8px;
+}
+
+.target-card-picker-card.hidden {
+  border-color: #9b804d;
+  background: repeating-linear-gradient(45deg, #242b21, #242b21 7px, #171b15 7px, #171b15 14px);
+  box-shadow: 0 8px 18px #000b;
+}
+
+.target-card-picker-card.hidden > span:first-child {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: #d5ae5a;
+  font: 700 52px Georgia, serif;
+}
+
+.target-card-picker-check {
+  position: absolute;
+  right: -10px;
+  top: -12px;
+  z-index: 2;
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 2px solid #151812;
+  border-radius: 50%;
+  background: #d5ae5a;
+  color: #17150f;
+  font: 700 17px Arial, sans-serif;
+}
+
+.target-card-picker-count {
+  color: #d8c28c;
+  font: 10px Arial, sans-serif;
+  letter-spacing: .08em;
+}
+
+.target-card-picker-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.target-card-picker-actions button {
+  min-width: 150px;
+  min-height: 42px;
+  padding: 10px 16px;
+  font: 10px Arial, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.target-card-picker-panel > .error {
+  margin: 12px 0 0;
+}
+
+@media (max-width: 520px) {
+  .target-card-picker-overlay {
+    padding: 18px;
+  }
+
+  .target-card-picker-panel {
+    width: calc(100vw - 36px);
+    max-height: calc(100% - 36px);
+    padding: 17px 14px 15px;
+  }
+
+  .target-card-picker-panel > header strong {
+    font-size: 15px;
+  }
+
+  .target-card-picker-card-row {
+    justify-content: flex-start;
+    gap: 10px;
+    padding-top: 16px;
+  }
+
+  .target-card-picker-actions {
+    flex-direction: column-reverse;
+    gap: 7px;
+    margin-top: 14px;
+  }
+
+  .target-card-picker-actions button {
+    width: 100%;
+  }
+}
+
 .table-resolution-layer .player-played-cards {
   left: var(--seat-x);
   top: var(--seat-y);
