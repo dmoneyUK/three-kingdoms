@@ -2,6 +2,19 @@
 
 ## Step 4.2 response-capability legacy-test cleanup — 2026-09-17
 
+The inactive bot surface is now removed. Quick Test seats use the shared human
+controller token, hero selection remains explicit for every seat, and the API,
+client, trigger helpers, pending schema, and CSS no longer expose bot behavior.
+There are no existing rooms or saved games requiring bot-token compatibility.
+Bot-only API flows and appended bot scenarios were deleted while retaining the
+listed equipment, hero, response, trigger, Dying, privacy, stale-safety, and
+human multiplayer invariants.
+
+This pass reduced the suite from 82 executed tests after the prior consolidation
+to 73 executed tests (74 tracked declarations). The deleted tests covered bot
+turn scheduling, autonomous responses, bot Negation/Harvest/Duel behavior, and
+duplicate bot variants of human capability tests.
+
 Removed the pre-canonical helper-selection regression and the redundant generic
 Negation provider-extension regression. Current response-decision tests now use
 `ResponsePending` for Attack, Duel, and Qingguo/other Dodge provider resolution.
@@ -14,13 +27,10 @@ The response-capabilities file is 24 tests before this cleanup and 22 after.
 
 The follow-on test consolidation groups the pure Dying, private-hand,
 Game Messages, room-safety, and render assertions without dropping their
-coverage, and removes redundant response-capability cases plus the bot-only
-trigger selector unit case. The tracked test declarations are now 96 before
-the consolidation and 83 after. Human multiplayer, required equipment and
-hero capability proofs, canonical provider resolution, and trigger continuation
-regressions remain. The broader API bot-flow tests remain as historical
-coverage until a separate decision removes inactive bot support from the test
-harness.
+coverage, and removes redundant response-capability cases plus inactive bot
+coverage. The tracked test declarations are now 74. Human multiplayer,
+required equipment and hero capability proofs, canonical provider resolution,
+and trigger continuation regressions remain.
 
 Recommended next work: proceed to the planned Group/AOE cleanup only after
 reviewing its compatibility boundary; do not claim the remaining legacy helper

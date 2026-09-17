@@ -208,19 +208,6 @@ test("successful Negation never repairs or infers chain depth from stale fields"
   assert.equal(transitioned.chainDepth, 1); assert.equal(transitioned.negated, false);
 });
 
-test("human, bot, and Judgement Negation continuations share the same semantic fields", () => {
-  const pending = { kind: "negation", sourceId: "source", actorId: "actor", remainingIds: ["next"], negated: false, cardName: "Dismantle", effectTargetId: "target", resumePhase: "play", effect: { kind: "judgement", targetId: "target", cardId: "delay" }, reason: "respond", chainDepth: 0 };
-  const actor = { id: "actor", name: "Actor" };
-  const negationCard = card("Negation", "negation-card");
-  const human = applySuccessfulNegation(pending, actor, [negationCard]);
-  const bot = applySuccessfulNegation(pending, actor, [negationCard]);
-  const judgement = applySuccessfulNegation(pending, actor);
-  const semantic = (state) => ({ negated: state.negated, latestNegationPlayerId: state.latestNegationPlayerId, chainDepth: state.chainDepth, responseTarget: state.responseTarget });
-  assert.deepEqual(semantic(human), { negated: true, latestNegationPlayerId: "actor", chainDepth: 1, responseTarget: "Actor's Negation" });
-  assert.deepEqual(semantic(bot), semantic(human));
-  assert.deepEqual(semantic(judgement), semantic(human));
-});
-
 test("successful Judgement Negation carries transitioned state across both responder outcomes", () => {
 
   const pending = { kind: "negation", sourceId: "source", actorId: "actor", remainingIds: [], negated: false, cardName: "Overindulgence", effectTargetId: "target", resumePhase: "draw", effect: { kind: "judgement", targetId: "target", cardId: "delayed" }, reason: "respond", chainDepth: 0 };

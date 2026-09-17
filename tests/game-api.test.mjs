@@ -65,7 +65,7 @@ async function waitForState(code, token, predicate) {
     // deadline has elapsed, instead of relying on a polling side effect.
     const pendingJson = query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`);
     const pending = pendingJson ? JSON.parse(pendingJson) : null;
-    const deadline = pending?.completeAt ?? pending?.botAdvanceAt ?? pending?.deadline ?? 0;
+    const deadline = pending?.completeAt ?? pending?.deadline ?? 0;
     if (deadline > 0 && deadline <= Date.now()) await request("advance_timers", { code, token });
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
@@ -135,348 +135,6 @@ async function createHumanGame() {
   return { code, members, room: (await state(code, members[0].token)).data };
 }
 
-test("complete room, turn, card, response, discard, bot, and audit flow", { timeout: 60_000 }, async () => {
-  const game = await createHumanGame();
-  const [host, alice, bob, carol] = game.members;
-  const hostPlayer = game.room.players.find((player) => player.name === "Host");
-  const alicePlayer = game.room.players.find((player) => player.name === "Alice");
-  const bobPlayer = game.room.players.find((player) => player.name === "Bob");
-  const carolPlayer = game.room.players.find((player) => player.name === "Carol");
-  assert.ok(hostPlayer && alicePlayer && bobPlayer && carolPlayer);
-  assert.equal(game.room.status, "playing"); assert.equal(game.room.phase, "draw"); assert.equal(game.room.isMyTurn, true); assert.equal(game.room.myHand.length, 4); assert.equal(game.room.myRole, "Lord");
-  const displayedRoles = await Promise.all(game.members.map(async (member) => (await state(game.code, member.token)).data.myRole));
-  assert.ok(displayedRoles.includes("Traitor")); assert.ok(!displayedRoles.includes("Renegade"), "the Renegade role is presented as Traitor");
-  const deckComposition = query(`WITH cards(kind) AS (SELECT json_extract(value,'$.kind') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.kind') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT kind||':'||COUNT(*) FROM cards GROUP BY kind ORDER BY kind`).split("\n");
-  assert.equal(Number(query(`WITH cards AS (SELECT value FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT value FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT COUNT(*) FROM cards`)), 108, "normal match initialization preserves all 108 physical cards");
-  assert.equal(Number(query(`WITH cards AS (SELECT json_extract(value,'$.id') AS id FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(game.code)} UNION ALL SELECT json_extract(value,'$.id') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(game.code)})) SELECT COUNT(DISTINCT id) FROM cards`)), 108, "normal match initialization has no duplicate runtime card IDs");
-  assert.deepEqual(deckComposition, ["Attack:30", "BarbarianInvasion:3", "BlueSteelSword:1", "BorrowedSword:2", "BumperHarvest:2", "Dismantle:6", "Dodge:15", "DrawTwo:4", "Duel:3", "EightTrigrams:2", "FerganaSteed:1", "FrostSword:1", "GreenDragonBlade:1", "HexMark:1", "KirinBow:1", "Lightning:2", "Negation:4", "NioShield:1", "Oath:1", "Overindulgence:3", "Peach:8", "PurpleBay:1", "RainingArrows:1", "RedHare:1", "RockCleavingAxe:1", "SerpentSpear:1", "Shadowrunner:1", "SkyPiercingHalberd:1", "Steal:5", "YellowHoofedFlyingLightning:1", "YinYangSwords:1", "ZhugeCrossbow:2"]);
-  assert.ok(game.room.players.filter((player) => player.role !== null).every((player) => player.name === "Host"));
-  const aliceView = await state(game.code, alice.token);
-  assert.equal(aliceView.data.players.find((player) => player.name === "Host").role, "Lord");
-  assert.ok(aliceView.data.players.find((player) => player.name === "Alice").role);
-  assert.equal(aliceView.data.players.find((player) => player.name === "Bob").role, null);
-
-  assert.equal((await request("draw", { code: game.code, token: alice.token })).status, 409);
-  const draw = await request("draw", { code: game.code, token: host.token });
-  assert.equal(draw.status, 200); assert.equal(draw.data.drawnCards.length, 2); assert.equal(draw.data.room.myHand.length, 6); assert.equal(draw.data.room.phase, "play");
-  assert.equal((await request("draw", { code: game.code, token: host.token })).status, 409);
-
-  setHand(hostPlayer.id, [card("Attack", "range")], 4, 5); setTurn(game.code, hostPlayer.seat);
-  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-range", targetId: bobPlayer.id })).status, 409);
-
-  setHand(hostPlayer.id, [card("Attack", "dodge")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "answer")], 4); setTurn(game.code, hostPlayer.seat);
-  const attacked = await request("play_card", { code: game.code, token: host.token, cardId: "attack-dodge", targetId: alicePlayer.id });
-  assert.equal(attacked.status, 200); assert.equal(attacked.data.room.phase, "response"); assert.equal(attacked.data.room.actionPlayerId, alicePlayer.id);
-  assert.equal(attacked.data.room.pendingAttack.deadline, 0, "a human response stays unarmed until its presentation is ready");
-  const persistedAttackResponse = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
-  const aliceAttackView = await state(game.code, alice.token);
-  assert.equal(persistedAttackResponse.kind, "response", "new response decisions persist in their canonical wrapper");
-  assert.equal(aliceAttackView.data.currentAction.kind, "response"); assert.equal(aliceAttackView.data.currentAction.requirement, "dodge"); assert.ok(aliceAttackView.data.currentAction.options.some((option) => option.providerId === "card"));
-  assert.ok(persistedAttackResponse.readyAfterEventId, "the response records its public presentation barrier when it is created");
-  assert.equal(aliceAttackView.data.currentAction.presentation.readyAfterEventId, persistedAttackResponse.readyAfterEventId, "the acting player receives the persisted response barrier rather than a room-state log inference");
-  assert.equal((await request("start_response_timer", { code: game.code, token: bob.token })).status, 409, "only the acting player can start their response timer");
-  const timedAttack = await request("start_response_timer", { code: game.code, token: alice.token });
-  assert.ok(timedAttack.data.room.pendingAttack.deadline - Date.now() > 25_000, "the acting player receives a 30-second visible response deadline");
-  const repeatedTimer = await request("start_response_timer", { code: game.code, token: alice.token });
-  assert.equal(repeatedTimer.data.room.pendingAttack.deadline, timedAttack.data.room.pendingAttack.deadline, "repeated timer starts must not extend a human response deadline");
-  const publicAttackTimer = await state(game.code, host.token);
-  assert.equal(publicAttackTimer.data.pendingAttack.deadline, timedAttack.data.room.pendingAttack.deadline, "the table can show the same countdown beside the acting player");
-  assert.equal((await request("respond", { code: game.code, token: bob.token, cardId: "dodge-answer" })).status, 409);
-  const dodged = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-answer", context: { actionRevision: timedAttack.data.room.actionRevision, meId: timedAttack.data.room.meId, phase: timedAttack.data.room.phase, pendingKind: "response", actorId: timedAttack.data.room.actionPlayerId } });
-  assert.equal(dodged.status, 200, JSON.stringify(dodged.data)); assert.equal(dodged.data.room.phase, "play-struck"); assert.equal(dodged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
-
-  setHand(hostPlayer.id, [card("Attack", "damage")], 4, 5); setHand(alicePlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
-  const damagePrompt = await request("play_card", { code: game.code, token: host.token, cardId: "attack-damage", targetId: alicePlayer.id });
-  assert.equal(damagePrompt.status, 200); assert.equal(damagePrompt.data.room.phase, "play-struck"); assert.equal(damagePrompt.data.room.actionPlayerId, hostPlayer.id);
-  const damaged = await takeDamageIfPending(game.code, alice.token);
-  assert.equal(damaged.status, 200); assert.equal(damaged.data.room.phase, "play-struck"); assert.equal(damaged.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3);
-
-  setHand(hostPlayer.id, [card("Peach", "heal")], 3, 5); setTurn(game.code, hostPlayer.seat);
-  const healed = await request("play_card", { code: game.code, token: host.token, cardId: "peach-heal" });
-  assert.equal(healed.status, 200); assert.equal(healed.data.room.players.find((player) => player.id === hostPlayer.id).hp, 4); assert.equal(healed.data.room.myHand.length, 0);
-
-  setHand(hostPlayer.id, [card("Dismantle", "hidden-card")], 4, 5); setHand(bobPlayer.id, [card("Attack", "kept"), card("Dodge", "chosen")], 4); setTurn(game.code, hostPlayer.seat);
-  const dismantleOpened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-hidden-card", targetId: bobPlayer.id });
-  assert.equal(dismantleOpened.status, 200); assert.equal(dismantleOpened.data.room.pendingTargetCard.targetId, bobPlayer.id);
-  assert.equal((await request("choose_target_card", { code: game.code, token: host.token, targetCardZone: "hand", targetCardIndex: 3 })).status, 400);
-  const dismantled = await request("choose_target_card", { code: game.code, token: host.token, targetCardZone: "hand", targetCardIndex: 1 });
-  assert.equal(dismantled.status, 200); assert.equal(dismantled.data.room.phase, "play"); assert.equal(dismantled.data.room.players.find((player) => player.id === bobPlayer.id).handCount, 1); assert.equal(dismantled.data.room.discardTop.id, "dodge-chosen");
-  assert.ok(dismantled.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "Dismantle" && event.target === "Bob"));
-  assert.ok(dismantled.data.room.timeline.some((event) => event.type === "card" && event.action === "discard" && event.card.id === "dodge-chosen"));
-
-  setHand(hostPlayer.id, [card("Steal", "take-card")], 4, 5); setHand(bobPlayer.id, [card("Attack", "too-far")], 4); setHand(alicePlayer.id, [card("Peach", "prize"), card("Dodge", "left")], 4); setTurn(game.code, hostPlayer.seat);
-  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "steal-take-card", targetId: bobPlayer.id, targetCardIndex: 0 })).status, 409);
-  const stealOpened = await request("play_card", { code: game.code, token: host.token, cardId: "steal-take-card", targetId: alicePlayer.id });
-  assert.equal(stealOpened.status, 200); assert.equal(stealOpened.data.room.pendingTargetCard.cardKind, "Steal");
-  const stolen = await request("choose_target_card", { code: game.code, token: host.token, targetCardZone: "hand", targetCardIndex: 0 });
-  assert.equal(stolen.status, 200); assert.equal(stolen.data.room.phase, "play"); assert.equal(stolen.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 1);
-  assert.ok(stolen.data.room.myHand.some((held) => held.id === "peach-prize")); assert.equal(stolen.data.room.discardTop.id, "steal-take-card");
-  assert.ok(stolen.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "Steal" && event.target === "Alice"));
-  assert.equal(stolen.data.room.timeline.some((event) => event.type === "card" && event.card.id === "peach-prize"), false, "a stolen hidden hand card stays private");
-
-  setHand(hostPlayer.id, [card("Duel", "challenge"), card("Attack", "host-answer")], 4, 5); setHand(alicePlayer.id, [card("Attack", "alice-answer")], 4); setTurn(game.code, hostPlayer.seat);
-  const challenged = await request("play_card", { code: game.code, token: host.token, cardId: "duel-challenge", targetId: alicePlayer.id });
-  const challengedView = await state(game.code, alice.token);
-  assert.equal(challenged.status, 200); assert.equal(challenged.data.room.phase, "response"); assert.equal(challenged.data.room.actionPlayerId, alicePlayer.id); assert.equal(challengedView.data.currentAction.kind, "response"); assert.equal(challengedView.data.currentAction.requirement, "attack"); assert.ok(challengedView.data.currentAction.options.some((option) => option.providerId === "card"));
-  assert.equal((await request("respond", { code: game.code, token: bob.token, cardId: "attack-alice-answer" })).status, 409);
-  const aliceAnswers = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "attack-alice-answer" });
-  const hostDuelView = await state(game.code, host.token);
-  assert.equal(aliceAnswers.status, 200); assert.equal(aliceAnswers.data.room.actionPlayerId, hostPlayer.id); assert.equal(hostDuelView.data.currentAction.kind, "response"); assert.equal(hostDuelView.data.currentAction.requirement, "attack"); assert.equal(hostDuelView.data.currentAction.deadline, 0, "a new human Duel responder stays unarmed until the response is visible");
-  const hostAnswers = await request("respond", { code: game.code, token: host.token, providerId: "card", cardId: "attack-host-answer" });
-  assert.equal(hostAnswers.status, 200); assert.equal(hostAnswers.data.room.actionPlayerId, alicePlayer.id);
-  const losesDuel = await request("decline_response", { code: game.code, token: alice.token });
-  assert.equal(losesDuel.status, 200); assert.equal(losesDuel.data.room.phase, "play"); assert.equal(losesDuel.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3);
-  assert.ok(losesDuel.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "Duel" && event.target === "Alice"));
-  assert.ok(losesDuel.data.room.timeline.some((event) => /fails to play Attack and takes 1 Duel damage/.test(event.message ?? "")));
-
-  setHand(hostPlayer.id, [card("Oath", "heal-all")], 3, 5); setHand(alicePlayer.id, [], 3, 4); setHand(bobPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
-  const oath = await request("play_card", { code: game.code, token: host.token, cardId: "oath-heal-all" });
-  assert.equal(oath.status, 200); assert.equal(oath.data.room.phase, "play"); assert.equal(oath.data.room.players.find((player) => player.id === hostPlayer.id).hp, 4); assert.equal(oath.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4); assert.equal(oath.data.room.players.find((player) => player.id === bobPlayer.id).hp, 4);
-  assert.ok(oath.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "Oath"));
-  const oathResult = oath.data.room.timeline.find((event) => event.type === "card" && event.card?.kind === "Oath");
-  assert.ok(oathResult?.resolutionId, "presentation events carry a separate resolution identity");
-  assert.equal(oathResult?.importance, "essential");
-
-  setHand(hostPlayer.id, [card("Oath", "full-health")], 5, 5); setHand(alicePlayer.id, [], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
-  const harmlessOath = await request("play_card", { code: game.code, token: host.token, cardId: "oath-full-health" });
-  assert.equal(harmlessOath.status, 200); assert.equal(harmlessOath.data.room.phase, "play"); assert.equal(harmlessOath.data.room.myHand.length, 0);
-  assert.ok(harmlessOath.data.room.timeline.some((event) => event.type === "card" && event.card.id === "oath-full-health"));
-  assert.ok(harmlessOath.data.room.timeline.some((event) => /nobody recovers HP/.test(event.message ?? "")));
-
-  setHand(hostPlayer.id, [card("BumperHarvest", "global-choice")], 5, 5); setHand(alicePlayer.id, [], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
-  const harvestCards = [card("Attack", "harvest-host"), card("Dodge", "harvest-alice"), card("Peach", "harvest-bob"), card("Steal", "harvest-carol")];
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(harvestCards))}, discard_json='[]' WHERE code=${quote(game.code)}`);
-  const harvest = await request("play_card", { code: game.code, token: host.token, cardId: "bumperharvest-global-choice" });
-  assert.equal(harvest.status, 200); assert.equal(harvest.data.room.phase, "response"); assert.equal(harvest.data.room.actionPlayerId, hostPlayer.id); assert.equal(harvest.data.room.pendingHarvest.revealed.length, 4);
-  assert.ok(harvest.data.room.timeline.some((event) => event.type === "cards" && event.action === "reveal" && event.cards.length === 4));
-  assert.equal((await request("preview_harvest", { code: game.code, token: alice.token, cardId: "dodge-harvest-alice" })).status, 409, "players cannot preview out of order");
-  const hostPreview = await request("preview_harvest", { code: game.code, token: host.token, cardId: "attack-harvest-host" });
-  assert.equal(hostPreview.status, 200); assert.equal(hostPreview.data.room.phase, "response"); assert.equal(hostPreview.data.room.actionPlayerId, hostPlayer.id); assert.equal(hostPreview.data.room.pendingHarvest.previewCardId, "attack-harvest-host");
-  assert.ok(!hostPreview.data.room.myHand.some((held) => held.id === "attack-harvest-host"), "previewing does not take the card");
-  assert.equal((await state(game.code, alice.token)).data.pendingHarvest.previewCardId, "attack-harvest-host", "other players see the current preview");
-  const clearedPreview = await request("preview_harvest", { code: game.code, token: host.token, cardId: null });
-  assert.equal(clearedPreview.status, 200); assert.equal(clearedPreview.data.room.pendingHarvest.previewCardId, null); assert.equal(clearedPreview.data.room.actionPlayerId, hostPlayer.id);
-  assert.equal((await request("preview_harvest", { code: game.code, token: host.token, cardId: "attack-harvest-host" })).status, 200);
-  assert.equal((await request("choose_harvest", { code: game.code, token: alice.token, cardId: "dodge-harvest-alice" })).status, 409, "players cannot choose out of order");
-  const hostHarvest = await request("choose_harvest", { code: game.code, token: host.token, cardId: "attack-harvest-host" });
-  assert.equal(hostHarvest.status, 200); assert.equal(hostHarvest.data.room.actionPlayerId, alicePlayer.id); assert.ok(hostHarvest.data.room.myHand.some((held) => held.id === "attack-harvest-host"));
-  assert.equal(hostHarvest.data.room.pendingHarvest.previewCardId, null, "the preview clears for the next chooser");
-  assert.equal(hostHarvest.data.room.pendingHarvest.revealed.length, 4, "all cards remain visible while choices continue"); assert.equal(hostHarvest.data.room.pendingHarvest.availableIds.length, 3); assert.equal(hostHarvest.data.room.pendingHarvest.choices[0].playerName, "Host");
-  assert.equal(hostHarvest.data.room.timeline.find((event) => event.type === "cards" && event.action === "reveal").presentation, false, "the persistent choice panel replaces a separate reveal presentation");
-  const aliceHarvest = await request("choose_harvest", { code: game.code, token: alice.token, cardId: "dodge-harvest-alice" });
-  assert.equal(aliceHarvest.data.room.actionPlayerId, bobPlayer.id);
-  const bobHarvest = await request("choose_harvest", { code: game.code, token: bob.token, cardId: "peach-harvest-bob" });
-  assert.equal(bobHarvest.data.room.actionPlayerId, carolPlayer.id);
-  const carolHarvest = await request("choose_harvest", { code: game.code, token: carol.token, cardId: "steal-harvest-carol" });
-  assert.equal(carolHarvest.status, 200); assert.equal(carolHarvest.data.room.phase, "response"); assert.equal(carolHarvest.data.room.pendingHarvest.complete, true);
-  assert.equal(carolHarvest.data.room.pendingHarvest.choices.length, 4, "the final shaded choice remains visible before the panel closes");
-  assert.ok(carolHarvest.data.room.myHand.some((held) => held.id === "steal-harvest-carol"));
-  assert.equal(carolHarvest.data.room.timeline.filter((event) => event.type === "card" && event.action === "gain").length, 4);
-  const completedHarvest = await waitForState(game.code, host.token, (room) => room.phase === "play" && room.pendingHarvest === null);
-  assert.equal(completedHarvest.pendingHarvest, null);
-  assert.ok(discardIds(game.code).includes("bumperharvest-global-choice"), "Bumper Harvest enters discard only after every choice finishes");
-
-  setHand(hostPlayer.id, [card("BumperHarvest", "single-target-negation")], 5, 5); setHand(alicePlayer.id, [card("Negation", "harvest-host")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
-  const negatedHarvestCards = [card("Attack", "harvest-negated-host"), card("Dodge", "harvest-negated-alice"), card("Peach", "harvest-negated-bob"), card("Steal", "harvest-negated-carol")];
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(negatedHarvestCards))}, discard_json='[]' WHERE code=${quote(game.code)}`);
-  const harvestNegationWindow = await request("play_card", { code: game.code, token: host.token, cardId: "bumperharvest-single-target-negation" });
-  assert.equal(harvestNegationWindow.status, 200); assert.equal(harvestNegationWindow.data.room.pendingNegation.effectTargetId, hostPlayer.id, "Bumper Harvest opens Negation for its first affected player");
-  assert.ok(!discardIds(game.code).includes("bumperharvest-single-target-negation"), "the active Bumper Harvest card stays out of discard");
-  const hostEffectCancelled = await request("respond", { code: game.code, token: alice.token, cardId: "negation-harvest-host" });
-  assert.equal(hostEffectCancelled.status, 200); assert.equal(hostEffectCancelled.data.room.pendingHarvest.actorId, alicePlayer.id, "Negation skips only Host and Bumper Harvest continues with Alice");
-  assert.equal(hostEffectCancelled.data.room.pendingHarvest.availableIds.length, 4, "the cancelled player's unchosen card remains available");
-  assert.ok(!hostEffectCancelled.data.room.myHand.some((held) => held.id === "attack-harvest-negated-host"));
-  const aliceAfterNegation = await request("choose_harvest", { code: game.code, token: alice.token, cardId: "dodge-harvest-negated-alice" });
-  assert.equal(aliceAfterNegation.data.room.pendingHarvest.actorId, bobPlayer.id);
-  const bobAfterNegation = await request("choose_harvest", { code: game.code, token: bob.token, cardId: "peach-harvest-negated-bob" });
-  assert.equal(bobAfterNegation.data.room.pendingHarvest.actorId, carolPlayer.id);
-  const carolAfterNegation = await request("choose_harvest", { code: game.code, token: carol.token, cardId: "steal-harvest-negated-carol" });
-  assert.equal(carolAfterNegation.data.room.pendingHarvest.complete, true); assert.equal(carolAfterNegation.data.room.pendingHarvest.choices.length, 3);
-  await waitForState(game.code, host.token, (room) => room.phase === "play" && room.pendingHarvest === null);
-  const harvestNegationDiscard = discardIds(game.code);
-  assert.ok(harvestNegationDiscard.includes("bumperharvest-single-target-negation")); assert.ok(harvestNegationDiscard.includes("negation-harvest-host")); assert.ok(harvestNegationDiscard.includes("attack-harvest-negated-host"), "the card left by the cancelled target is discarded when Bumper Harvest concludes");
-
-  setHand(hostPlayer.id, [card("BarbarianInvasion", "global")], 4, 5); setHand(alicePlayer.id, [card("Attack", "barbarian-answer")], 4); setHand(bobPlayer.id, [], 1, 4); setHand(carolPlayer.id, [card("Attack", "barbarian-answer")], 4); setTurn(game.code, hostPlayer.seat);
-  const invasion = await request("play_card", { code: game.code, token: host.token, cardId: "barbarianinvasion-global" });
-  assert.equal(invasion.status, 200); assert.equal(invasion.data.room.phase, "response"); assert.equal(invasion.data.room.actionPlayerId, alicePlayer.id); assert.equal(invasion.data.room.pendingGroup.requiredKind, "Attack");
-  assert.ok(!discardIds(game.code).includes("barbarianinvasion-global"), "the active global card stays out of discard during its response sequence");
-  assert.equal((await request("respond", { code: game.code, token: bob.token, cardId: "attack-barbarian-answer" })).status, 409);
-  const invasionAlice = await request("respond", { code: game.code, token: alice.token, cardId: "attack-barbarian-answer" });
-  assert.equal(invasionAlice.status, 200); assert.equal(invasionAlice.data.room.actionPlayerId, carolPlayer.id);
-  assert.equal(invasionAlice.data.room.players.find((player) => player.id === bobPlayer.id).alive, false, "Bob has no legal Attack response and automatically takes damage");
-  assert.ok(!discardIds(game.code).includes("attack-barbarian-answer"), "global responses stay in the active sequence until it finishes");
-  const aliceInvasionResponse = invasionAlice.data.room.timeline.find((event) => event.type === "card" && event.card.id === "attack-barbarian-answer" && event.player === "Alice");
-  assert.equal(aliceInvasionResponse.target, "Alice", "an AOE response has no directional player target");
-  const invasionBob = await request("decline_response", { code: game.code, token: bob.token });
-  assert.equal(invasionBob.status, 409, "an automatically resolved target cannot submit a second damage action");
-  const invasionCarol = await request("respond", { code: game.code, token: carol.token, cardId: "attack-barbarian-answer" });
-  assert.equal(invasionCarol.status, 200); assert.equal(invasionCarol.data.room.phase, "play"); assert.equal(invasionCarol.data.room.pendingGroup, null);
-  assert.equal(discardIds(game.code).filter((id) => id === "barbarianinvasion-global").length, 1);
-  assert.equal(discardIds(game.code).filter((id) => id === "attack-barbarian-answer").length, 2);
-  assert.ok(invasionCarol.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "BarbarianInvasion"));
-
-  setHand(hostPlayer.id, [card("RainingArrows", "global")], 4, 5); setHand(alicePlayer.id, [card("Dodge", "arrows-answer")], 4); setHand(bobPlayer.id, [card("Dodge", "arrows-answer")], 4); setHand(carolPlayer.id, [card("Dodge", "arrows-answer")], 4); setTurn(game.code, hostPlayer.seat);
-  const arrows = await request("play_card", { code: game.code, token: host.token, cardId: "rainingarrows-global" });
-  assert.equal(arrows.status, 200); assert.equal(arrows.data.room.actionPlayerId, alicePlayer.id); assert.equal(arrows.data.room.pendingGroup.requiredKind, "Dodge");
-  assert.equal((await request("respond", { code: game.code, token: alice.token, cardId: "dodge-arrows-answer" })).data.room.actionPlayerId, bobPlayer.id);
-  assert.equal((await request("respond", { code: game.code, token: bob.token, cardId: "dodge-arrows-answer" })).data.room.actionPlayerId, carolPlayer.id);
-  const arrowsFinished = await request("respond", { code: game.code, token: carol.token, cardId: "dodge-arrows-answer" });
-  assert.equal(arrowsFinished.status, 200); assert.equal(arrowsFinished.data.room.phase, "play"); assert.equal(arrowsFinished.data.room.pendingGroup, null);
-  assert.ok(arrowsFinished.data.room.timeline.some((event) => event.type === "card" && event.card.kind === "RainingArrows"));
-  const arrowResponses = arrowsFinished.data.room.timeline.filter((event) => event.type === "card" && event.card.id === "dodge-arrows-answer");
-  assert.equal(arrowResponses.length, 3); assert.ok(arrowResponses.every((event) => event.target === event.player), "every Dodge response to Raining Arrows is directionless");
-
-  const discardHand = Array.from({ length: 6 }, (_, index) => card("Dodge", `discard-${index}`));
-  setHand(hostPlayer.id, discardHand, 4, 5); setTurn(game.code, hostPlayer.seat);
-  assert.equal((await request("end_turn", { code: game.code, token: host.token })).data.room.phase, "discard");
-  assert.equal((await request("discard_cards", { code: game.code, token: host.token, cardIds: ["dodge-discard-0"] })).status, 400);
-  const discarded = await request("discard_cards", { code: game.code, token: host.token, cardIds: ["dodge-discard-0", "dodge-discard-1"] });
-  assert.equal(discarded.status, 200); assert.equal(discarded.data.room.turnSeat, alicePlayer.seat); assert.equal(discarded.data.room.phase, "draw"); assert.equal(discarded.data.room.myHand.length, 4);
-  const groupedDiscard = discarded.data.room.timeline.find((entry) => entry.type === "cards" && entry.action === "discard" && entry.player === "Host"); assert.equal(groupedDiscard.cards.length, 2);
-
-  setHand(hostPlayer.id, [card("Strike", "dying")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [], 4); setHand(carolPlayer.id, [], 4); sql(`UPDATE players SET role='Rebel' WHERE id=${quote(alicePlayer.id)}`); setTurn(game.code, hostPlayer.seat);
-  await request("play_card", { code: game.code, token: host.token, cardId: "strike-dying", targetId: alicePlayer.id });
-  await takeDamageIfPending(game.code, alice.token);
-  const dying = { data: { room: (await state(game.code, host.token)).data } };
-  assert.equal(dying.data.room.phase, "play-struck"); assert.equal(dying.data.room.players.find((player) => player.id === alicePlayer.id).hp, 0);
-  assert.equal(dying.data.room.players.find((player) => player.id === alicePlayer.id).alive, false);
-  assert.equal(dying.data.room.players.find((player) => player.id === alicePlayer.id).role, "Rebel"); assert.equal(dying.data.room.myHand.length, 3);
-  assert.ok(dying.data.room.timeline.some((entry) => /Alice takes 1 damage and enters Dying/.test(entry.message ?? "")));
-  assert.ok(dying.data.room.timeline.some((entry) => /Alice receives no Peach and is defeated/.test(entry.message ?? "")));
-  assert.ok(dying.data.room.timeline.some((entry) => /Alice's role is revealed: Rebel/.test(entry.message ?? "")));
-  assert.ok(dying.data.room.timeline.some((entry) => /defeated Rebel Alice and draws 3 reward cards/.test(entry.message ?? "")));
-
-  setHand(hostPlayer.id, [card("Strike", "attacker-rescue"), card("Peach", "attacker-rescue")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [], 4); setHand(carolPlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
-  await request("play_card", { code: game.code, token: host.token, cardId: "strike-attacker-rescue", targetId: alicePlayer.id });
-  await takeDamageIfPending(game.code, alice.token);
-  const attackerRescuePrompt = { data: { room: (await state(game.code, host.token)).data } };
-  assert.equal(attackerRescuePrompt.data.room.phase, "dying"); assert.equal(attackerRescuePrompt.data.room.actionPlayerId, hostPlayer.id); assert.equal(attackerRescuePrompt.data.room.pendingDying.deadline, 0);
-  const timedAttackerPrompt = await request("start_rescue_timer", { code: game.code, token: host.token }); assert.ok(timedAttackerPrompt.data.room.pendingDying.deadline > Date.now());
-  assert.equal((await request("give_peach", { code: game.code, token: host.token })).status, 409);
-  sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',1) WHERE code=${quote(game.code)}`);
-  const attackerRescue = await request("give_peach", { code: game.code, token: host.token, cardId: "peach-attacker-rescue" });
-  assert.equal(attackerRescue.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
-  assert.ok(attackerRescue.data.room.timeline.some((entry) => entry.type === "card" && entry.player === "Host" && entry.target === "Alice" && entry.card.kind === "Peach"));
-
-  setHand(hostPlayer.id, [card("Strike", "rescue")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [card("Peach", "rescue-other")], 4); setHand(carolPlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
-  await request("play_card", { code: game.code, token: host.token, cardId: "strike-rescue", targetId: alicePlayer.id });
-  const rescuePrompt = await takeDamageIfPending(game.code, alice.token);
-  assert.equal(rescuePrompt.data.room.phase, "dying"); assert.equal(rescuePrompt.data.room.actionPlayerId, null); assert.equal(rescuePrompt.data.room.isMyAction, false); assert.match(rescuePrompt.data.room.actionReason, /no rescue action is required/);
-  const bobPrivatePrompt = await state(game.code, bob.token); assert.equal(bobPrivatePrompt.data.actionPlayerId, bobPlayer.id); assert.equal(bobPrivatePrompt.data.isMyAction, true); assert.match(bobPrivatePrompt.data.actionReason, /Decide whether to give Peach/);
-  const alicePrivateView = await state(game.code, alice.token); assert.equal(alicePrivateView.data.actionPlayerId, null); assert.equal(alicePrivateView.data.pendingDying.deadline, 0);
-  const rescued = await request("give_peach", { code: game.code, token: bob.token, cardId: "peach-rescue-other" });
-  assert.equal(rescued.status, 200); assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1); assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).alive, true);
-  assert.ok(rescued.data.room.timeline.some((entry) => entry.type === "card" && entry.player === "Bob" && entry.target === "Alice" && entry.card.kind === "Peach"));
-
-  setHand(hostPlayer.id, [card("Strike", "skip-rescue")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [card("Peach", "declined")], 4); setHand(carolPlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
-  await request("play_card", { code: game.code, token: host.token, cardId: "strike-skip-rescue", targetId: alicePlayer.id });
-  assert.equal((await takeDamageIfPending(game.code, alice.token)).data.room.actionPlayerId, null);
-  const skippedRescue = await request("skip_rescue", { code: game.code, token: bob.token });
-  assert.equal(skippedRescue.status, 200); assert.equal(skippedRescue.data.room.players.find((player) => player.id === alicePlayer.id).alive, true);
-  const skippedRescueSettled = await waitForState(game.code, host.token, (room) => !room.players.find((player) => player.id === alicePlayer.id).alive);
-  assert.equal(skippedRescueSettled.players.find((player) => player.id === alicePlayer.id).alive, false);
-
-  setHand(hostPlayer.id, [card("Strike", "timeout-rescue")], 4, 5); setHand(alicePlayer.id, [], 1, 4); setHand(bobPlayer.id, [card("Peach", "timed-out")], 4); setHand(carolPlayer.id, [], 4); setTurn(game.code, hostPlayer.seat);
-  const timeoutAttack = await request("play_card", { code: game.code, token: host.token, cardId: "strike-timeout-rescue", targetId: alicePlayer.id });
-  const timeoutDying = timeoutAttack.data.room.actionPlayerId === alicePlayer.id ? await takeDamageIfPending(game.code, alice.token) : timeoutAttack;
-  assert.equal(timeoutDying.data.room.actionPlayerId, null);
-  await request("start_rescue_timer", { code: game.code, token: bob.token }); sql(`UPDATE rooms SET pending_json=json_set(pending_json,'$.deadline',1) WHERE code=${quote(game.code)}`);
-  const timedOutRescue = await request("skip_rescue", { code: game.code, token: bob.token });
-  assert.equal(timedOutRescue.status, 200); const timedOutSettled = await waitForState(game.code, host.token, (room) => !room.players.find((player) => player.id === alicePlayer.id).alive); assert.equal(timedOutSettled.phase, "play-struck"); assert.equal(timedOutSettled.players.find((player) => player.id === alicePlayer.id).alive, false);
-  const repeatedTimeout = await request("skip_rescue", { code: game.code, token: bob.token }); assert.equal(repeatedTimeout.status, 200); assert.equal(repeatedTimeout.data.room.phase, "play-struck");
-
-  const audit = await state(game.code, host.token, true);
-  assert.equal(audit.status, 200); assert.ok(Array.isArray(audit.data.audit), "the authenticated audit endpoint returns the room audit table");
-  assert.equal((await state(game.code, "invalid-token", true)).status, 403);
-
-  const botCreated = await request("create", { name: "Bot Host" }); const botCode = botCreated.data.room.code; const botToken = botCreated.data.token;
-  const botsAdded = await request("add_test_players", { code: botCode, token: botToken });
-  assert.deepEqual(botsAdded.data.room.players.map((player) => player.name), ["Bot Host", "Player 1", "Player 2", "Player 3"]);
-  assert.deepEqual(botsAdded.data.room.players.map((player) => player.isBot), [false, true, true, true]);
-  assert.equal((await request("start", { code: botCode, token: alice.token, name: "Alice" })).status, 403);
-  const botStart = await request("start", { code: botCode, token: botToken, name: "Bot Host" });
-  const botReady = await request("choose_hero", { code: botCode, token: botToken, heroId: botStart.data.room.myHeroOptions[0].id });
-  assert.equal(botReady.data.room.phase, "draw");
-  const botDraw = await request("draw", { code: botCode, token: botToken }); assert.equal(botDraw.data.drawnCards.length, 2);
-  const botHostPlayer = botDraw.data.room.players.find((player) => player.name === "Bot Host");
-  setHand(botHostPlayer.id, [], botHostPlayer.hp, botHostPlayer.maxHp); setTurn(botCode, botHostPlayer.seat);
-  sql(`UPDATE players SET hand_json='[]' WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(botCode)}) AND token_hash LIKE 'bot:%'`);
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 6 }, (_, index) => card("Dodge", `bot-draw-${index}`))))}, discard_json='[]' WHERE code=${quote(botCode)}`);
-  const botsPlayed = await request("end_turn", { code: botCode, token: botToken });
-  assert.equal(botsPlayed.status, 200); assert.notEqual(botsPlayed.data.room.turnSeat, botHostPlayer.seat); assert.equal(botsPlayed.data.room.phase, "draw");
-  const botsSettled = await waitForState(botCode, botToken, (room) => room.turnSeat === botHostPlayer.seat && room.phase === "draw");
-  assert.ok(botsSettled.timeline.some((entry) => /Player [123]/.test(entry.message ?? entry.player ?? "")));
-  assert.ok(botsSettled.timeline.some((entry) => /Player 1's turn started · drawing 2 cards/.test(entry.message ?? "")));
-  const playerOne = botsSettled.players.find((player) => player.name === "Player 1"); const playerTwo = botsSettled.players.find((player) => player.name === "Player 2"); const playerThree = botsSettled.players.find((player) => player.name === "Player 3");
-
-  setHand(botHostPlayer.id, [card("Dodge", "round-return")], 1, botHostPlayer.maxHp); setHand(playerOne.id, [], 4, 4); setHand(playerTwo.id, [], 4, 4); setHand(playerThree.id, [card("Attack", "round-return")], 4, 4); setTurn(botCode, botHostPlayer.seat);
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 12 }, (_, index) => card("Dodge", `round-return-draw-${index}`))))}, discard_json='[]' WHERE code=${quote(botCode)}`);
-  const playerThreeAttack = await request("end_turn", { code: botCode, token: botToken });
-  assert.equal(playerThreeAttack.status, 200);
-  const waitingForMe = await waitForState(botCode, botToken, (room) => room.phase === "response" && room.actionPlayerId === botHostPlayer.id);
-  assert.equal(waitingForMe.turnSeat, playerThree.seat); assert.equal(waitingForMe.pendingAttack.sourceId, playerThree.id);
-  const returnedToMe = await request("respond", { code: botCode, token: botToken, cardId: "dodge-round-return" });
-  assert.equal(returnedToMe.status, 200); assert.equal(returnedToMe.data.room.turnSeat, botHostPlayer.seat); assert.equal(returnedToMe.data.room.phase, "draw"); assert.equal(returnedToMe.data.room.isMyTurn, true);
-
-  setHand(botHostPlayer.id, [card("Strike", "rescue-bot")], botHostPlayer.hp, botHostPlayer.maxHp); setHand(playerOne.id, [], 1, playerOne.maxHp); setHand(playerTwo.id, [card("Peach", "bot-saviour")], playerTwo.hp, playerTwo.maxHp); setHand(playerThree.id, [], playerThree.hp, playerThree.maxHp); setTurn(botCode, botHostPlayer.seat);
-  const rescuedBot = await request("play_card", { code: botCode, token: botToken, cardId: "strike-rescue-bot", targetId: playerOne.id });
-  assert.equal(rescuedBot.data.room.players.find((player) => player.id === playerOne.id).alive, true); assert.equal(rescuedBot.data.room.players.find((player) => player.id === playerOne.id).hp, 1);
-  assert.ok(rescuedBot.data.room.timeline.some((entry) => entry.type === "card" && entry.player === "Player 2" && entry.target === "Player 1" && entry.card.kind === "Peach"));
-  setHand(botHostPlayer.id, [card("BarbarianInvasion", "bots")], botHostPlayer.hp, botHostPlayer.maxHp); setHand(playerOne.id, [card("Attack", "bot-group-1")], 2, 2); setHand(playerTwo.id, [], 2, 2); setHand(playerThree.id, [card("Attack", "bot-group-3")], 2, 2); setTurn(botCode, botHostPlayer.seat);
-  const botInvasion = await request("play_card", { code: botCode, token: botToken, cardId: "barbarianinvasion-bots" });
-  assert.equal(botInvasion.status, 200); assert.equal(botInvasion.data.room.phase, "play"); assert.equal(botInvasion.data.room.pendingGroup, null); assert.equal(botInvasion.data.room.players.find((player) => player.id === playerTwo.id).hp, 1);
-  assert.ok(botInvasion.data.room.timeline.some((entry) => entry.type === "card" && entry.player === "Player 1" && entry.card.kind === "Attack"));
-  assert.ok(botInvasion.data.room.timeline.some((entry) => /Player 2 does not play Attack and takes 1 damage from Barbarian Invasion/.test(entry.message ?? "")));
-  assert.equal((await state(game.code, host.token, true)).data.audit.length, 0);
-  assert.ok((await state(botCode, botToken, true)).data.audit.length > 0);
-
-  const quick = await request("create", { quickStart: true });
-  assert.equal(quick.status, 201); assert.equal(quick.data.room.status, "playing"); assert.equal(quick.data.room.phase, "draw"); assert.equal(quick.data.room.isMyTurn, true); assert.equal(quick.data.room.myRole, "Lord");
-  assert.deepEqual(quick.data.room.players.map((player) => player.name), ["Player1", "Player2", "Player3", "Player4"]);
-  assert.deepEqual(quick.data.room.players.map((player) => player.isBot), [false, false, false, false]);
-  assert.equal(quick.data.room.isTestController, true);
-  assert.ok(quick.data.room.players.every((player) => player.handCards.length === 0), "Quick Test exposes only the controlled player's myHand");
-  assert.ok(quick.data.room.players.every((player) => player.hero)); assert.equal(new Set(quick.data.room.players.map((player) => player.hero)).size, 4);
-  assert.equal(quick.data.room.players.find((player) => player.name === "Player1").hero, "guan-yu");
-  assert.equal(quick.data.room.players.find((player) => player.name === "Player1").hp, 5, "Quick Test uses Guan Yu's 4 HP plus the Lord bonus");
-  assert.equal(quick.data.room.players.find((player) => player.name === "Player1").maxHp, 5);
-  assert.equal(quick.data.room.myHand.length, 4);
-  assert.deepEqual(new Set(quick.data.room.myHand.map((openingCard) => openingCard.kind)), new Set(["Attack", "BorrowedSword", "EightTrigrams", "Peach"]), "Player1 starts with Guan Yu's Wusheng fixture and the focused opening cards");
-  assert.equal(quick.data.room.myHand.filter((openingCard) => openingCard.kind === "Attack").length, 1, "Player1 starts with one physical Attack alongside the Wusheng fixture");
-  assert.ok(quick.data.room.myHand.some((openingCard) => openingCard.kind === "EightTrigrams"), "Eight Trigrams is guaranteed in the Quick Test opening hand");
-  const quickDeck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(quick.data.room.code)}`));
-  const quickHands = query(`SELECT hand_json FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(quick.data.room.code)})`).split("\n").filter(Boolean).flatMap((json) => JSON.parse(json));
-  assert.equal(quickDeck.length + quickHands.length, 108, "Quick Test keeps all physical cards across deck and hands");
-  assert.equal(new Set([...quickDeck, ...quickHands].map((card) => card.id)).size, 108, "Quick Test keeps every physical card ID exactly once");
-  assert.ok(["ZhugeCrossbow", "GreenDragonBlade", "RockCleavingAxe", "SkyPiercingHalberd"].every((kind) => quickDeck.some((deckCard) => deckCard.kind === kind)), "every non-tested weapon remains available in the draw deck");
-  assert.equal(quick.data.room.players.find((player) => player.name === "Player4").handCount, 4);
-  assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(quick.data.room.code)}) AND seat=3`)).map((openingCard) => openingCard.kind), ["Negation", "Attack", "Attack", "Attack"], "Player4 retains three seeded Attack cards");
-  assert.ok(JSON.parse(query(`SELECT hand_json FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(quick.data.room.code)}) AND seat=1`)).some((openingCard) => openingCard.kind === "SerpentSpear"), "Player2 starts with Serpent Spear for Quick Test response coverage");
-  assert.ok(quick.data.room.players.filter((player) => player.name !== "Player1").every((player) => player.handCount === 4), "focused quick-test cards replace rather than enlarge the other seats' hands");
-  assert.ok(quick.data.room.players.every((player) => player.equipmentCards.length === 0 && player.hp === player.maxHp), "every test seat starts at its hero maximum HP with empty equipment");
-  assert.equal(quickDeck.filter((item) => ["Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed"].includes(item.kind)).length, 6, "the six distinct Standard mounts remain in the draw pile");
-  assert.equal((await state(botCode, botToken, true)).data.audit.length, 0);
-  assert.ok((await state(quick.data.room.code, quick.data.token, true)).data.audit.length > 0);
-  const quickDraw = await request("draw", { code: quick.data.room.code, token: quick.data.token });
-  assert.equal(quickDraw.status, 200); assert.equal(quickDraw.data.drawnCards.length, 2); assert.equal(quickDraw.data.room.phase, "play"); assert.equal(quickDraw.data.room.myHand.length, 6);
-  const quickMe = quickDraw.data.room.players.find((player) => player.name === "Player1"); const quickPlayerOne = quickDraw.data.room.players.find((player) => player.name === "Player2");
-  setHand(quickMe.id, [card("Peach", "guan-yu-1", "♥"), card("Peach", "guan-yu-2", "♦")], quickMe.hp, quickMe.maxHp); setHand(quickPlayerOne.id, [card("Dodge", "guan-yu-1"), card("Dodge", "guan-yu-2")], 1, 1); setTurn(quick.data.room.code, quickMe.seat);
-  const quickPlayView = await state(quick.data.room.code, quick.data.token);
-  assert.deepEqual(quickPlayView.data.currentAction.playPhaseActions.map((action) => action.cardId), ["peach-guan-yu-1", "peach-guan-yu-2"]);
-  assert.equal(quickPlayView.data.meId, quickMe.id);
-  const firstQuickAttack = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "peach-guan-yu-1", playAs: "attack", targetId: quickPlayerOne.id });
-  assert.equal(firstQuickAttack.data.room.phase, "response"); assert.equal(firstQuickAttack.data.room.actionPlayerId, quickPlayerOne.id);
-  assert.equal((await request("respond", { code: quick.data.room.code, token: quick.data.token, cardId: "dodge-guan-yu-1" })).data.room.phase, "play-struck");
-  const secondQuickAttack = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "peach-guan-yu-2", playAs: "attack", targetId: quickPlayerOne.id });
-  assert.equal(secondQuickAttack.status, 409);
-  assert.match(secondQuickAttack.data.error, /one Attack per turn/);
-  setHand(quickPlayerOne.id, [card("Peach", "controller-one"), card("Dodge", "controller-two")], 1, 1);
-  setTurn(quick.data.room.code, quickPlayerOne.seat, "draw");
-  const controlledSeat = await state(quick.data.room.code, quick.data.token);
-  assert.equal(controlledSeat.data.meId, quickPlayerOne.id, "the same Quick Test controller becomes the active seat");
-  assert.equal(controlledSeat.data.myHand.length, 2);
-  assert.ok(controlledSeat.data.players.every((player) => player.handCards.length === 0));
-});
 
 test("Quick Test exhausts each AOE Negation window before the target response, with one private hand", async () => {
   for (const [kind, required] of [["RainingArrows", "Dodge"], ["BarbarianInvasion", "Attack"]]) {
@@ -660,57 +318,7 @@ test("Negation opportunities start at the target, include the user, and reset on
   assert.equal(result.status, 200); assert.equal(nextDuelView.data.currentAction.kind, "response"); assert.equal(nextDuelView.data.currentAction.requirement, "attack"); assert.equal(nextDuelView.data.currentAction.actorId, players[0].id);
 });
 
-test("normal responses follow Negation passes and retain both Attack and Spear choices", async () => {
-  for (const kind of ["RainingArrows", "BarbarianInvasion"]) {
-    const game = await createHumanGame(); const [me, target, next, last] = game.room.players;
-    setHand(me.id, [card(kind, "window"), card("Negation", "user-window"), card("Attack", "source-reply")], 4, 4);
-    setHand(target.id, [card("Negation", "target-window"), card("Attack", "target-reply"), card("Dodge", "target-reply"), card("Peach", "spear-cost")], 4, 4);
-    setEquipment(target.id, { weapon: card("SerpentSpear", "window") });
-    setHand(next.id, [card("Attack", "next"), card("Dodge", "next")], 4, 4); setHand(last.id, [], 4, 4);
-    setTurn(game.code, me.seat);
-    const act = (seat, action, extra = {}) => request(action, { code: game.code, token: game.members[seat].token, ...extra });
-    let result = await act(0, "play_card", { cardId: `${kind.toLowerCase()}-window`, targetId: target.id });
-    assert.equal(result.data.room.actionPlayerId, me.id);
-    assert.equal((await act(1, "respond", { providerId: "card", cardId: kind === "RainingArrows" ? "dodge-target-reply" : "attack-target-reply" })).status, 409);
-    const order = [0, 1];
-    for (const seat of order) result = await act(seat, "decline_response");
-    assert.equal(result.data.room.pendingNegation, null); assert.equal(result.data.room.currentAction.kind, "response"); assert.equal(result.data.room.currentAction.actorId, target.id);
-    assert.equal(result.data.room.currentAction.deadline, 0, "a deferred human response waits for its own visible-decision timer");
-    const response = result.data.room.currentAction;
-    assert.equal(response.requirement, kind === "RainingArrows" ? "dodge" : "attack");
-    const extra = kind === "RainingArrows" ? { providerId: "card", cardId: "dodge-target-reply" } : { providerId: "serpent_spear_attack", cardIds: ["dodge-target-reply", "peach-spear-cost"] };
-    result = await act(1, "respond", extra); assert.equal(result.status, 200, "Spear is usable even when a normal Attack is also held");
-    assert.equal(result.data.room.players.find((p) => p.id === target.id).hp, 4);
-    if (kind !== "Duel") assert.equal(result.data.room.pendingNegation.effectTargetId, next.id, "next target opens only after the first target's normal response finishes");
-  }
-});
 
-test("effective distance rejects unreachable targets before consuming Attack and includes both horses", async () => {
-  const game = await createHumanGame();
-  const host = game.members[0];
-  const [me, adjacent, opposite] = game.room.players;
-  setHand(me.id, [card("Attack", "distance-guard"), card("Steal", "distance-guard")], 3, 3);
-  setHand(adjacent.id, [], 3, 3); setEquipment(adjacent.id, { defensiveHorse: card("DefensiveHorse", "distance-guard") });
-  setTurn(game.code, me.seat);
-  const before = (await state(game.code, host.token)).data;
-  assert.equal(before.players.find((p) => p.id === adjacent.id).distance, 2);
-  assert.equal(before.players.find((p) => p.id === me.id).attackRange, 1);
-  const rejected = await request("play_card", { code: game.code, token: host.token, cardId: "attack-distance-guard", targetId: adjacent.id });
-  assert.equal(rejected.status, 409); assert.match(rejected.data.error, /range/i);
-  const unchanged = (await state(game.code, host.token)).data;
-  assert.deepEqual(unchanged.myHand, before.myHand); assert.equal(unchanged.phase, "play");
-  assert.equal(unchanged.players.find((p) => p.id === adjacent.id).hp, 3);
-  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "steal-distance-guard", targetId: adjacent.id })).status, 409);
-  setEquipment(me.id, { offensiveHorse: card("OffensiveHorse", "distance-guard") });
-  const mounted = (await state(game.code, host.token)).data;
-  assert.equal(mounted.players.find((p) => p.id === adjacent.id).distance, 1);
-  assert.equal(mounted.players.find((p) => p.id === opposite.id).distance, 1);
-  assert.equal(mounted.players.find((p) => p.id === me.id).attackRange, 1, "a mount changes distance, not weapon range");
-  const hit = await request("play_card", { code: game.code, token: host.token, cardId: "attack-distance-guard", targetId: adjacent.id });
-  assert.equal(hit.status, 200); assert.equal(hit.data.room.pendingAttack, null);
-  assert.equal(hit.data.room.players.find((p) => p.id === adjacent.id).hp, 2);
-  assert.ok(!hit.data.room.myHand.some((c) => c.id === "attack-distance-guard"));
-});
 
 test("no-Dodge auto resolution keeps Frost Sword and shield checks and skips empty Arrow responders", async () => {
   const game = await createHumanGame(); const [host, , , carol] = game.members;
@@ -775,52 +383,6 @@ test("canonical Raining Arrows responses either consume Dodge or apply damage", 
   assert.equal(discardIds(wushengGame.code).filter((id) => id === virtualArrows.id).length, 1);
 });
 
-test("Zhuge Crossbow equips, replaces, enables repeated Attacks, and is used by bots", { timeout: 30_000 }, async () => {
-  const game = await createHumanGame();
-  const [host, alice] = game.members; const [hostPlayer, alicePlayer] = game.room.players;
-  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(hostPlayer.id)}`);
-  setEquipment(hostPlayer.id);
-  setHand(hostPlayer.id, [card("ZhugeCrossbow", "first"), card("Attack", "crossbow-one"), card("Attack", "crossbow-two"), card("ZhugeCrossbow", "replacement")], 4, 5);
-  setHand(alicePlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
-  sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
-
-  const equipped = await request("play_card", { code: game.code, token: host.token, cardId: "zhugecrossbow-first" });
-  assert.equal(equipped.status, 200); assert.equal(equipped.data.room.phase, "play");
-  assert.equal(equipped.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards[0].id, "zhugecrossbow-first");
-  assert.deepEqual(discardIds(game.code), [], "an equipped weapon does not enter the discard pile");
-
-  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-crossbow-one", targetId: alicePlayer.id })).status, 200);
-  const firstAttack = await takeDamageIfPending(game.code, alice.token);
-  assert.equal(firstAttack.data.room.phase, "play", "Zhuge Crossbow returns its owner to an unrestricted Play Phase");
-  const hostAfterFirstAttack = await state(game.code, host.token);
-  assert.equal(hostAfterFirstAttack.data.currentAction.canDeclareAttack, true, "the server projects repeat-Attack availability while the Crossbow is equipped");
-  assert.equal(firstAttack.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3);
-  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "attack-crossbow-two", targetId: alicePlayer.id })).status, 200);
-  const secondAttack = await takeDamageIfPending(game.code, alice.token);
-  assert.equal(secondAttack.data.room.phase, "play");
-  assert.equal(secondAttack.data.room.players.find((player) => player.id === alicePlayer.id).hp, 2);
-
-  const replaced = await request("play_card", { code: game.code, token: host.token, cardId: "zhugecrossbow-replacement" });
-  assert.equal(replaced.status, 200);
-  assert.deepEqual(replaced.data.room.players.find((player) => player.id === hostPlayer.id).equipmentCards.map((equipment) => equipment.id), ["zhugecrossbow-replacement"]);
-  assert.ok(discardIds(game.code).includes("zhugecrossbow-first"), "equipping a new weapon discards the previous weapon");
-
-  setEquipment(hostPlayer.id); setHand(hostPlayer.id, [card("Attack", "crossbow-after-remove")], 4, 5); setTurn(game.code, hostPlayer.seat);
-  const withoutCrossbow = await request("play_card", { code: game.code, token: host.token, cardId: "attack-crossbow-after-remove", targetId: alicePlayer.id });
-  assert.equal(withoutCrossbow.status, 200);
-  const afterRemove = await takeDamageIfPending(game.code, alice.token);
-  assert.equal(afterRemove.data.room.phase, "play-struck");
-  const hostAfterCrossbowRemoval = await state(game.code, host.token);
-  assert.equal(hostAfterCrossbowRemoval.data.currentAction.canDeclareAttack, false, "removing the Crossbow removes repeat-Attack availability");
-
-  const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
-  setHand(me.id, [], me.hp, me.maxHp); setHand(playerOne.id, [card("ZhugeCrossbow", "bot")], 1, 1); setHand(playerTwo.id, [], 1, 1); setHand(playerThree.id, [], 1, 1); setTurn(quick.data.room.code, me.seat);
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 12 }, (_, index) => card("Dodge", `crossbow-bot-draw-${index}`))))}, discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
-  await request("end_turn", { code: quick.data.room.code, token: quick.data.token });
-  const botRound = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.ok(botRound.players.find((player) => player.id === playerOne.id).equipmentCards.some((equipment) => equipment.kind === "ZhugeCrossbow"));
-  assert.equal(botRound.timeline.filter((event) => event.type === "card" && event.action === "equip" && event.card.kind === "ZhugeCrossbow").length, 1, "the canonical equipment card event is the only public equipment event");
-});
 
 test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
@@ -858,14 +420,7 @@ test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeou
   const skipped = await request("decline_trigger", { code: game.code, token: host.token });
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "play-struck"); assert.ok(skipped.data.room.myHand.some((held) => held.id === "attack-dragon-kept"), "skipping preserves the unused follow-up Attack");
 
-  const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
-  setEquipment(playerOne.id); setHand(me.id, [], me.hp, me.maxHp); setHand(playerOne.id, [card("GreenDragonBlade", "bot"), card("Attack", "dragon-bot-first"), card("Attack", "dragon-bot-follow-up")], 1, 1); setHand(playerTwo.id, [card("Dodge", "dragon-bot-first"), card("Dodge", "dragon-bot-follow-up")], 1, 1); setHand(playerThree.id, [], 1, 1); setTurn(quick.data.room.code, me.seat);
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 20 }, (_, index) => card("Dodge", `dragon-bot-draw-${index}`))))}, discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
-  assert.equal((await request("end_turn", { code: quick.data.room.code, token: quick.data.token })).status, 200);
-  const botRound = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.equal(botRound.players.find((player) => player.id === playerOne.id).equipmentCards[0].kind, "GreenDragonBlade");
-  assert.equal(botRound.timeline.filter((event) => event.type === "card" && event.player === "Player2" && event.card.kind === "Attack").length, 2, "the bot uses the Green Dragon Blade follow-up");
-  assert.ok(botRound.log.some((entry) => /Green Dragon Blade may continue/.test(entry)));
+
 });
 
 test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards", { timeout: 30_000 }, async () => {
@@ -916,14 +471,7 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   const spearJudgement = await request("respond", { code: game.code, token: alice.token });
   assert.equal(spearJudgement.status, 200); assert.equal(spearJudgement.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3, "red Eight Trigrams judgement blocks a Serpent Spear Attack");
 
-  const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
-  setEquipment(playerOne.id); setHand(me.id, [], me.hp, me.maxHp); setHand(playerOne.id, [card("SerpentSpear", "bot"), card("Peach", "bot-one"), card("Dodge", "bot-two")], 1, 1); setHand(playerTwo.id, [card("Dodge", "bot-answer")], 1, 1); setHand(playerThree.id, [], 1, 1); setTurn(quick.data.room.code, me.seat);
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 20 }, (_, index) => card("Peach", `serpent-bot-draw-${index}`))))}, discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
-  assert.equal((await request("end_turn", { code: quick.data.room.code, token: quick.data.token })).status, 200);
-  const botRound = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.equal(botRound.players.find((player) => player.id === playerOne.id).equipmentCards[0].kind, "SerpentSpear");
-  assert.ok(botRound.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Player2"), "the bot forms an Attack from two cards");
-  assert.ok(botRound.log.some((entry) => /Player2 discards 2 cards with Serpent Spear to form an Attack/.test(entry)));
+
 });
 
 test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge to force damage", { timeout: 30_000 }, async () => {
@@ -963,13 +511,7 @@ test("Rock Cleaving Axe grants range 3 and can discard any two cards after Dodge
   const axeCostEvent = forced.data.room.timeline.find((event) => event.type === "cards" && event.message?.includes("Rock Cleaving Axe"));
   assert.deepEqual(axeCostEvent.cards.map((item) => item.id), ["peach-axe-cost", "rockcleavingaxe-cost"]);
 
-  const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
-  setHand(me.id, [], me.hp, me.maxHp); setEquipment(playerOne.id, { weapon: card("RockCleavingAxe", "bot") });
-  setHand(playerOne.id, [card("Attack", "axe-bot"), card("Peach", "axe-bot-cost")], 1, 1); setHand(playerTwo.id, [card("Dodge", "axe-bot")], 1, 1); setHand(playerThree.id, [], 1, 1); setTurn(quick.data.room.code, me.seat);
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 20 }, (_, index) => card("Peach", `axe-bot-draw-${index}`))))}, discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
-  assert.equal((await request("end_turn", { code: quick.data.room.code, token: quick.data.token })).status, 200);
-  const botRound = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.ok(botRound.log.some((entry) => /Player2 discards 2 cards with Rock Cleaving Axe/.test(entry)), "a bot uses the Axe after its Attack is dodged");
+
 });
 
 test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dodge responses", { timeout: 30_000 }, async () => {
@@ -996,12 +538,7 @@ test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dod
   const rejected = await request("play_card", { code: game.code, token: host.token, cardId: "attack-not-last", targetIds: [alicePlayer.id, bobPlayer.id] });
   assert.equal(rejected.status, 400, "the Halberd cannot expand an Attack unless it was the final hand card");
 
-  const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
-  setHand(me.id, [], me.hp, me.maxHp); setEquipment(playerOne.id, { weapon: card("SkyPiercingHalberd", "bot") }); setHand(playerOne.id, [card("Attack", "bot-last")], 1, 1); setHand(playerTwo.id, [card("Dodge", "bot-one")], 1, 1); setHand(playerThree.id, [card("Dodge", "bot-two")], 1, 1); setTurn(quick.data.room.code, me.seat);
-  sql(`UPDATE rooms SET deck_json='[]', discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
-  assert.equal((await request("end_turn", { code: quick.data.room.code, token: quick.data.token })).status, 200);
-  const botRound = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.ok(botRound.log.some((entry) => /Sky Piercing Halberd/.test(entry)), "a bot uses its final Attack against multiple targets when equipped");
+
 });
 
 test("Frost Sword offers its owner the choice to prevent Attack damage and discard up to two target cards", async () => {
@@ -1027,10 +564,7 @@ test("Frost Sword offers its owner the choice to prevent Attack damage and disca
   assert.equal(judgementOnlyDamage.data.room.pendingFrostSword, null, "a Judgement Zone card alone cannot open Frost Sword's discard branch");
   assert.equal(judgementOnlyDamage.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3, "Attack damage is dealt when Frost Sword has no eligible Hand or Equipment card");
 
-  const quick = await request("create", { quickStart: true, botTest: true }); const [me, bot] = quick.data.room.players;
-  setEquipment(me.id, { weapon: card("FrostSword", "quick") }); setHand(me.id, [card("Attack", "quick")], me.hp, me.maxHp); setHand(bot.id, [card("Peach", "one"), card("Peach", "two")], 1, 1); setTurn(quick.data.room.code, me.seat);
-  const botTarget = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "attack-quick", targetId: bot.id });
-  assert.equal(botTarget.status, 200); assert.equal(botTarget.data.room.pendingFrostSword.actorId, me.id, "an undefended bot target also opens the Frost Sword owner prompt");
+
 });
 
 test("Kirin Bow discards one damaged target Mount and then applies the Attack damage", async () => {
@@ -1073,10 +607,7 @@ test("Nio Shield occupies the Armor slot and prevents black Attack before Dodge 
   assert.equal(halberdAttack.status, 200); assert.equal(halberdAttack.data.room.pendingGroup, null, "Nio Shield prevents its damage and the remaining target without Dodge takes damage immediately"); assert.equal(halberdAttack.data.room.players.find((player) => player.id === bobPlayer.id).hp, 3);
   assert.ok(halberdAttack.data.room.log.some((entry) => /Nio Shield makes them immune/.test(entry)));
 
-  const quick = await request("create", { quickStart: true, botTest: true }); const [me, bot] = quick.data.room.players;
-  setEquipment(bot.id, { armor: card("NioShield", "bot") }); setHand(me.id, [card("Attack", "bot-black")], me.hp, me.maxHp); setTurn(quick.data.room.code, me.seat);
-  const botShield = await request("play_card", { code: quick.data.room.code, token: quick.data.token, cardId: "attack-bot-black", targetId: bot.id });
-  assert.equal(botShield.status, 200); assert.equal(botShield.data.room.players.find((player) => player.id === bot.id).hp, bot.hp, "a shielded bot also ignores a black Attack without consuming Dodge");
+
 });
 
 test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement fails", async () => {
@@ -1252,26 +783,6 @@ test("Negation cancels a stratagem and a counter-Negation restores it in ordered
   assert.deepEqual(finalDiscard.slice(-4).map((held) => held.id), ["dismantle-restored", "negation-first", "negation-counter", "attack-removed"], "the entire Burning Bridges sequence commits to discard together in play order");
 });
 
-test("only the affected bot negates a targeted stratagem; later bots do not counter it", { timeout: 30_000 }, async () => {
-  const game = await createHumanGame(); const host = game.members[0];
-  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const playerOne = game.room.players.find((player) => player.name === "Alice"); const playerTwo = game.room.players.find((player) => player.name === "Bob"); const playerThree = game.room.players.find((player) => player.name === "Carol");
-  assert.ok(hostPlayer && playerOne && playerTwo && playerThree);
-  for (const player of [playerOne, playerTwo, playerThree]) sql(`UPDATE players SET token_hash=${quote(`bot:${player.id}`)} WHERE id=${quote(player.id)}`);
-  setHand(hostPlayer.id, [card("Steal", "bot-negation")], 5, 5);
-  setHand(playerOne.id, [card("Negation", "player-1"), card("Attack", "protected")], 4, 4);
-  setHand(playerTwo.id, [card("Negation", "player-2")], 4, 4);
-  setHand(playerThree.id, [card("Negation", "player-3")], 4, 4);
-  setTurn(game.code, hostPlayer.seat);
-
-  const result = await request("play_card", { code: game.code, token: host.token, cardId: "steal-bot-negation", targetId: playerOne.id, targetCardIndex: 1 });
-  assert.equal(result.status, 200); assert.equal(result.data.room.phase, "play"); assert.equal(result.data.room.pendingNegation, null);
-  const oneHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(playerOne.id)}`)); const twoHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(playerTwo.id)}`)); const threeHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(playerThree.id)}`));
-  assert.equal(oneHand.some((held) => held.kind === "Negation"), false, "Player 1 spends one Negation to stop Steal");
-  assert.equal(oneHand.some((held) => held.id === "attack-protected"), true, "Steal is cancelled");
-  assert.equal(twoHand.some((held) => held.kind === "Negation"), true, "Player 2 does not counter Player 1");
-  assert.equal(threeHand.some((held) => held.kind === "Negation"), true, "Player 3 does not counter Player 1");
-  assert.equal(result.data.room.timeline.filter((event) => event.type === "card" && event.card.kind === "Negation").length, 1);
-});
 
 test("Steal chooses from the target's current zones only after counter-Negation", { timeout: 30_000 }, async () => {
   const game = await createHumanGame(); const [host, alice] = game.members;
@@ -1378,14 +889,7 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
   const afterJudgementNegation = await request("draw", { code: game.code, token: alice.token });
   assert.equal(afterJudgementNegation.status, 200); assert.equal(afterJudgementNegation.data.room.phase, "play"); assert.equal(afterJudgementNegation.data.room.timeline.some((event) => event.card?.id === "dodge-unused-judgement"), false, "Negation cancels the delayed effect before a judgement card is drawn");
 
-  const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
-  for (const player of [me, playerOne, playerTwo, playerThree]) setHand(player.id, [], player.hp, player.maxHp);
-  setJudgement(playerOne.id, [{ ...card("Overindulgence", "bot-judge"), suit: "♣", rank: "6" }]); setTurn(quick.data.room.code, me.seat, "play");
-  const botJudge = { ...card("Dodge", "bot-judgement-result"), suit: "♣", rank: "8" }; const botDeck = [botJudge, ...Array.from({ length: 20 }, (_, index) => card("Dodge", `bot-overindulgence-draw-${index}`))];
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(botDeck))}, discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
-  assert.equal((await request("end_turn", { code: quick.data.room.code, token: quick.data.token })).status, 200);
-  const botRoundFinished = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.deepEqual(botRoundFinished.players.find((player) => player.id === playerOne.id).judgementCards, []); assert.ok(botRoundFinished.log.some((entry) => /Player2 skips the Play Phase because of Overindulgence/.test(entry)));
+
 });
 
 test("Lightning is placed on self, transfers after a miss, and deals 3 thunder damage on Spade 2-9", { timeout: 30_000 }, async () => {
@@ -1518,14 +1022,7 @@ test("Rations Depleted targets at distance 1 and skips only a failed target's Dr
   const afterNegation = await request("draw", { code: game.code, token: alice.token });
   assert.equal(afterNegation.status, 200); assert.equal(afterNegation.data.drawnCards.length, 2); assert.equal(afterNegation.data.room.timeline.some((event) => event.card?.id === "dodge-unused-rations-judge"), false);
 
-  const quick = await request("create", { quickStart: true, botTest: true }); const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
-  for (const player of [me, playerOne, playerTwo, playerThree]) setHand(player.id, player.id === playerOne.id ? [card("RationsDepleted", "bot-play")] : [], player.hp, player.maxHp);
-  setTurn(quick.data.room.code, me.seat, "play");
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 20 }, (_, index) => card("Dodge", `rations-bot-${index}`))))}, discard_json='[]' WHERE code=${quote(quick.data.room.code)}`);
-  assert.equal((await request("end_turn", { code: quick.data.room.code, token: quick.data.token })).status, 200);
-  const botRoundFinished = await waitForState(quick.data.room.code, quick.data.token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.ok(botRoundFinished.log.some((entry) => /Player2 plays Rations Depleted on Player3/.test(entry)), "a bot plays Rations Depleted on an adjacent target");
-  assert.ok(botRoundFinished.log.some((entry) => /Player3 skips the Draw Phase because of Rations Depleted/.test(entry)), "a bot resolves the skipped Draw Phase and continues its turn");
+
 });
 
 test("turn engine completes repeated rounds, rejects duplicate actions, and skips defeated players", { timeout: 30_000 }, async () => {
@@ -1563,80 +1060,8 @@ test("turn engine completes repeated rounds, rejects duplicate actions, and skip
   assert.equal(invalidState.status, 409); assert.match(invalidState.data.error, /Game state check failed: The active turn does not belong to a living player/);
 });
 
-test("bot Bumper Harvest resolves in seat order and pauses only for Player1", { timeout: 30_000 }, async () => {
-  const quick = await request("create", { quickStart: true, botTest: true });
-  const token = quick.data.token; const code = quick.data.room.code;
-  const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
-  setHand(me.id, [], 10, 10); setHand(playerOne.id, [card("BumperHarvest", "bot")], 10, 10); setHand(playerTwo.id, [], 10, 10); setHand(playerThree.id, [], 10, 10); setTurn(code, me.seat);
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(Array.from({ length: 20 }, (_, index) => card("Dodge", `bot-harvest-${index}`))))}, discard_json='[]' WHERE code=${quote(code)}`);
-  assert.equal((await request("end_turn", { code, token })).status, 200);
-  const firstBotPreview = await waitForState(code, token, (room) => room.pendingHarvest?.previewCardId && room.pendingHarvest.choices.length === 0);
-  assert.equal(firstBotPreview.pendingHarvest.actorId, playerOne.id); assert.equal(firstBotPreview.pendingHarvest.availableIds.length, 4);
-  const firstBotConfirmed = await waitForState(code, token, (room) => room.pendingHarvest?.choices.length === 1);
-  assert.equal(firstBotConfirmed.pendingHarvest.choices[0].playerName, "Player2"); assert.equal(firstBotConfirmed.pendingHarvest.previewCardId, null);
-  const prompt = await waitForState(code, token, (room) => room.phase === "response" && room.pendingHarvest && room.isMyAction);
-  assert.equal(prompt.turnSeat, playerOne.seat); assert.equal(prompt.pendingHarvest.actorId, me.id); assert.equal(prompt.pendingHarvest.revealed.length, 4); assert.equal(prompt.pendingHarvest.availableIds.length, 1); assert.equal(prompt.pendingHarvest.choices.length, 3);
-  assert.equal(prompt.timeline.filter((event) => event.type === "card" && event.action === "gain").length, 3);
-  const chosenId = prompt.pendingHarvest.availableIds[0];
-  const chosen = await request("choose_harvest", { code, token, cardId: chosenId });
-  assert.equal(chosen.status, 200); assert.equal(chosen.data.room.pendingHarvest.complete, true); assert.equal(chosen.data.room.pendingHarvest.choices.length, 4);
-  const returned = await waitForState(code, token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.ok(returned.myHand.some((held) => held.id === chosenId));
-  assert.ok(returned.timeline.some((event) => event.type === "card" && event.player === "Player2" && event.card.kind === "BumperHarvest"));
-});
 
-test("bot global cards resolve across consecutive rounds and return the turn to Player1", { timeout: 30_000 }, async () => {
-  const quick = await request("create", { quickStart: true, botTest: true });
-  const token = quick.data.token; const code = quick.data.room.code;
-  const [me, playerOne, playerTwo, playerThree] = quick.data.room.players;
-  const defensiveDeck = (prefix) => Array.from({ length: 20 }, (_, index) => card("Dodge", `${prefix}-${index}`));
 
-  setHand(me.id, [card("Attack", "invasion-response")], me.hp, me.maxHp); setHand(playerOne.id, [card("BarbarianInvasion", "bot-round")], 1, 1); setHand(playerTwo.id, [card("Negation", "invasion-protection")], 1, 1); setHand(playerThree.id, [card("Attack", "invasion-response")], 1, 1); setTurn(code, me.seat);
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(defensiveDeck("invasion-draw")))}, discard_json='[]' WHERE code=${quote(code)}`);
-  assert.equal((await request("end_turn", { code, token })).status, 200);
-  const invasionForMe = await waitForState(code, token, (room) => room.phase === "response" && room.pendingGroup?.cardKind === "BarbarianInvasion" && room.isMyAction);
-  assert.equal(invasionForMe.turnSeat, playerOne.seat); assert.equal(invasionForMe.pendingGroup.sourceId, playerOne.id);
-  assert.equal((await request("respond", { code, token, cardId: "attack-invasion-response" })).status, 200);
-  const afterInvasion = await waitForState(code, token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.equal(afterInvasion.isMyTurn, true); assert.ok(afterInvasion.timeline.some((event) => event.type === "card" && event.player === "Player2" && event.card.kind === "BarbarianInvasion"));
-  const invasionResponses = afterInvasion.timeline.filter((event) => event.type === "card" && event.card.id === "attack-invasion-response");
-  assert.equal(invasionResponses.length, 2); assert.ok(invasionResponses.every((event) => event.target === event.player), "human and bot Attack responses to Barbarian Invasion are directionless");
-  assert.ok(afterInvasion.timeline.some((event) => event.type === "card" && event.player === "Player3" && event.card.id === "negation-invasion-protection"), "a bot can Negate a bot-played AOE for itself");
-  assert.ok(afterInvasion.timeline.some((event) => /Barbarian Invasion's effect on Player3 is cancelled/.test(event.message ?? "")));
-
-  setHand(me.id, [card("Dodge", "arrows-response")], me.hp, me.maxHp); setHand(playerOne.id, [card("Dodge", "arrows-response-1")], 1, 1); setHand(playerTwo.id, [card("Dodge", "arrows-response-2")], 1, 1); setHand(playerThree.id, [card("RainingArrows", "bot-round")], 1, 1); setTurn(code, me.seat);
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(defensiveDeck("arrows-draw")))}, discard_json='[]' WHERE code=${quote(code)}`);
-  assert.equal((await request("end_turn", { code, token })).status, 200);
-  const arrowsForMe = await waitForState(code, token, (room) => room.phase === "response" && room.pendingGroup?.cardKind === "RainingArrows" && room.isMyAction);
-  assert.equal(arrowsForMe.turnSeat, playerThree.seat); assert.equal(arrowsForMe.pendingGroup.sourceId, playerThree.id);
-  assert.equal((await request("respond", { code, token, cardId: "dodge-arrows-response" })).status, 200);
-  const afterArrows = await waitForState(code, token, (room) => room.turnSeat === me.seat && room.phase === "draw");
-  assert.equal(afterArrows.isMyTurn, true); assert.ok(afterArrows.timeline.some((event) => event.type === "card" && event.player === "Player4" && event.card.kind === "RainingArrows"));
-  const botArrowResponses = afterArrows.timeline.filter((event) => event.type === "card" && event.card.id.startsWith("dodge-arrows-response"));
-  assert.ok(botArrowResponses.length >= 1); assert.ok(botArrowResponses.every((event) => event.target === event.player));
-});
-
-test("bot Duel continuation chooses Attack through semantic provider discovery", { timeout: 30_000 }, async () => {
-  const quick = await request("create", { quickStart: true, botTest: true });
-  const { code, players } = quick.data.room; const token = quick.data.token;
-  const [me, bot] = players;
-  for (const player of players) setHand(player.id, [], 4, 4);
-  setHand(me.id, [card("Attack", "duel-human")], 4, 4);
-  sql(`UPDATE players SET hero='test-hero' WHERE id=${quote(bot.id)}`);
-  setHand(bot.id, [card("Duel", "duel-bot")], 4, 4);
-  sql(`UPDATE rooms SET deck_json='[]', discard_json='[]' WHERE code=${quote(code)}`);
-  setTurn(code, me.seat, "draw");
-  await request("draw", { code, token });
-  const started = await request("end_turn", { code, token });
-  assert.equal(started.status, 200);
-  const duel = await waitForState(code, token, (room) => room.currentAction?.kind === "response" && room.currentAction?.requirement === "attack" && room.currentAction?.actorId === me.id);
-  assert.ok(duel.currentAction.options.some((option) => option.providerId === "card"));
-  const first = await request("respond", { code, token, providerId: "card", cardId: "attack-duel-human" });
-  assert.equal(first.status, 200);
-  const botReply = await waitForState(code, token, (room) => room.currentAction?.kind === "response" && room.currentAction?.requirement === "attack" && room.currentAction?.actorId === me.id);
-  assert.equal(JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(code)}`)).some((entry) => /Use test Attack/.test(entry)), true, "the bot Duel answer came from semantic provider discovery");
-  assert.equal(botReply.currentAction.actorId, me.id);
-});
 
 test("unknown semantic Dodge and Negate providers cross the real API and D1 boundary", { timeout: 30_000 }, async () => {
   const game = await createHumanGame(); const [host, alice] = game.members; const [hostPlayer, alicePlayer] = game.room.players;

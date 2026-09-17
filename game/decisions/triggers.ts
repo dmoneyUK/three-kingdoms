@@ -1,4 +1,4 @@
-import type { TriggerExecution, TriggerOption } from "../capabilities/triggers";
+import type { TriggerExecution } from "../capabilities/triggers";
 import type { TriggerPending } from "../pending";
 
 export type TriggerResume =
@@ -49,20 +49,4 @@ export function resumeTriggerContinuation(
   const next = continueTriggerEvent(pending, execution, deadline);
   if (!next) return null;
   return remaining ? { kind: "reopen", pending: next } : { kind: "resume", continuation: next.continuation };
-}
-
-/** Deterministic bot policy: choose the first legal option; target-card costs use the first keys. */
-export function chooseBotTrigger(options: readonly TriggerOption[]) {
-  const option = options[0];
-  if (!option) return null;
-  if (!option.selection) return { providerId: option.effectId };
-  if (option.selection.type === "cards") {
-    const ids = option.selection.eligibleCardIds.slice(0, option.selection.max);
-    return ids.length === 1 ? { providerId: option.effectId, cardId: ids[0] } : { providerId: option.effectId, cardIds: ids };
-  }
-  if (option.selection.type === "choice") {
-    const choice = option.selection.choices[0]?.id;
-    return choice === "discard" && option.selection.eligibleHandKeys.length ? { providerId: option.effectId, choice, cardKeys: [option.selection.eligibleHandKeys[0]] } : { providerId: option.effectId, choice };
-  }
-  return { providerId: option.effectId, cardKeys: option.selection.eligibleKeys.slice(0, option.selection.max) };
 }
