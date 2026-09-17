@@ -1,5 +1,24 @@
 # Three Kingdoms project handover
 
+## Step 6B Negation canonicalization — 2026-09-17
+
+Negation runtime now uses only canonical `ResponsePending` plus
+`NegationContinuation`. `advanceNegation()` reads actor ownership from the
+response wrapper and passes only continuation state to deferred resolution.
+Initial `startNegation()`, Group/AOE Negation, and Bumper Harvest Negation
+windows now persist canonical wrappers, preserving responder order, parity and
+depth, held cards, effect target, response target, resolution identity,
+presentation barriers, and deferred effects. A no-responder `startNegation()`
+path creates the continuation in memory and calls `resolveDeferredStratagem()`
+without serializing a Negation decision.
+
+The production route has zero `NegationPending` references and exactly four
+generic `responseContinuationPending()` calls remain for Step 7. No new tests
+were added; the existing suite remains 74 declarations and all 74 pass through
+the Worker/D1 runner. Build, lint, and final diff checks are the release gate.
+The next milestone is Step 7 generic response-helper cleanup; stop this round
+here.
+
 ## Step 6A.1 Negation continuation boundary — 2026-09-17
 
 `resolveDeferredStratagem()` now accepts `NegationContinuation`, so deferred
