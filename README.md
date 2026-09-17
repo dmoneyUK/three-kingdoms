@@ -9,12 +9,17 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
 - Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening, Step 4.3 response-helper cleanup, and single-controller bot-surface removal COMPLETE**
 
-Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, and removal of inactive bot gameplay are complete. Quick Test and normal multiplayer now use human-style seats only; one Quick Test controller switches seats through the shared token. The next architecture step is Step 5 Group/AOE; Group/AOE and Negation still use `responseContinuationPending()`. Hero #2 is not implemented in this round.
+Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, and removal of inactive bot gameplay are complete. Quick Test and normal multiplayer now use human-style seats only; one Quick Test controller switches seats through the shared token. Step 5B remains: migrate Dying Group resume storage, followed by the separate Negation cleanup. Hero #2 is not implemented in this round.
 
 The current deterministic suite has been consolidated to 74 tracked test
 declarations while retaining the required human multiplayer and capability
 invariants. Pure helper assertions now run in grouped cases, and inactive bot-only
 tests and product paths have been removed. The Worker/D1 runner executes all 74 tests.
+
+Step 5A moved the human Group respond/decline branch and Group Judgement
+outcome to `ResponsePending` plus `GroupContinuation`. `advanceGroup()` remains
+on the bounded GroupPending compatibility path, and Dying resume storage is
+unchanged for Step 5B.
 
 The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, Borrowed Sword, and human-controlled Quick Test Attacks, through the shared target, Dodge, Armor, damage, and Dying pipeline. Borrowed Sword is fully hardened in Standard games: after canonical Negation, its user chooses a live legal target, the Weapon holder receives a private semantic Attack decision with an idempotent human response timer, and refusal/no-provider transfer revalidates the persisted Weapon ID. Worker/D1 regressions cover races, stale targets/actions, physical and Serpent Spear providers, Dodge, and Yin-Yang Swords continuation.
 

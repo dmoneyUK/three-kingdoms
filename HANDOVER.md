@@ -1,5 +1,25 @@
 # Three Kingdoms project handover
 
+## Step 5A Group/AOE response canonicalization — 2026-09-17
+
+Normal Group/AOE response execution now reads `ResponsePending` through the
+new `groupResponse()` accessor and uses `GroupContinuation` for effect-resume
+data. Both the human Group respond/decline branch and the Group Judgement
+outcome no longer call `responseContinuationPending()`; actor, reason, and
+deadline come from the canonical response wrapper, while card kind, source,
+remaining targets, requirement, resume phase, held cards, and resolution ID
+come from the continuation.
+
+The existing Group lifecycle remains intentionally bounded: `advanceGroup()`
+still expands through `responseContinuationPending()`, and `DyingPending`
+still stores `resumePending?: GroupPending`. Those are Step 5B boundaries and
+were not changed here. Negation was not touched.
+
+Group expansion references for the two migrated paths went from 2 to 0; one
+Group expansion reference remains in `advanceGroup()`. The tracked test count
+stayed at 74 before and after this migration, and the full Worker/D1 suite is
+green at 74/74.
+
 ## Step 4.3 response helper cleanup — 2026-09-17
 
 The dead pre-canonical response helper layer is removed. The Group response
@@ -8,9 +28,10 @@ Game Messages test is now included in the Worker/D1 runner. No new tests were
 added. The suite remains at 74 tracked declarations and now executes all 74.
 
 The remaining `responseContinuationPending()` calls are intentionally limited
-to the current Group/AOE and Negation compatibility boundary; GroupPending,
-Negation migration, and that continuation helper were not changed in this
-step.
+to the current Group/AOE and Negation compatibility boundaries. Step 5A has
+removed the two normal Group response/Judgement expansions; `advanceGroup()`
+and the Dying Group resume storage remain for Step 5B, and Negation remains
+unchanged.
 
 ## Step 4.2 response-capability legacy-test cleanup — 2026-09-17
 

@@ -15,7 +15,7 @@ import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../..
 import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../game/match/dying.js";
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
-import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DuelPending, type DyingPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DuelPending, type DyingPending, type GroupContinuation, type GroupPending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
 export const runtime = "edge";
 
@@ -455,6 +455,11 @@ function duelResponse(pending: ResponsePending | null | undefined) {
   return { response: pending, continuation: pending.continuation as DuelContinuation };
 }
 
+function groupResponse(pending: ResponsePending | null | undefined) {
+  if (!pending || pending.kind !== "response" || pending.continuation.kind !== "group") return null;
+  return { response: pending, continuation: pending.continuation as GroupContinuation };
+}
+
 function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
   if (room.status !== "playing") return null;
   const owner = players.find((player) => player.seat === room.turn_seat && player.alive);
@@ -884,7 +889,15 @@ async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePendi
   if (source) await continueAfterDying(room.id, source.id);
 }
 
-async function applyGroupResponseOutcome(room: RoomRow, pending: GroupPending, actor: PlayerRow, source: PlayerRow, players: PlayerRow[], judged: ResponseJudgementOutcome) {
+async function applyGroupResponseOutcome(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, actor: PlayerRow, source: PlayerRow, players: PlayerRow[], judged: ResponseJudgementOutcome) {
+  const pending: GroupPending = {
+    kind: "group",
+    ...continuation,
+    actorId: response.actorId,
+    reason: response.reason,
+    deadline: response.deadline,
+    readyAfterEventId: response.readyAfterEventId,
+  };
   const resolution = judged.result.rule;
   const judgedResult = judged.result;
   await db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id).run();
@@ -956,7 +969,8 @@ async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: Play
   const outcome = { ...judged, result };
   const attack = attackResponse(response);
   if (attack) return applyAttackResponseOutcome(room, attack.response, attack.continuation, actor, source, outcome);
-  if (continuation?.kind === "group" && source) return applyGroupResponseOutcome(room, responseContinuationPending(response) as GroupPending, actor, source, players, outcome);
+  const group = groupResponse(response);
+  if (group && source) return applyGroupResponseOutcome(room, group.response, group.continuation, actor, source, players, outcome);
   if (continuation?.kind === "duel") {
     const opponent = players.find((player) => player.id === continuation.opponentId) ?? null;
     const duel = duelResponse(response);
@@ -2209,25 +2223,26 @@ export async function POST(request: Request) {
 
   if (canonicalResponseKind === "group" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = responseContinuationPending(stored) as GroupPending | null;
-    if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "group" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this global card response." }, 409);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const group = groupResponse(asResponsePending(stored));
+    if (!liveRoom || liveRoom.phase !== "response" || !group || group.response.actorId !== me.id) return json({ error: "You are not the acting player for this global card response." }, 409);
+    const { response, continuation } = group;
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
-    const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
+    const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(continuation.sourceId).first<PlayerRow>();
     if (!source) return json({ error: "The card source is no longer available." }, 409);
     const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "group";
     const groupExecution = responseExecution;
     const groupCards = groupExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
     const selectedResponse = groupExecution && groupCards.length === 1 ? groupCards[0] : null;
     const serpentCards = groupExecution && groupCards.length > 1 ? groupCards : [];
-    if (canonicalRespond && (!groupExecution || groupExecution.status !== "satisfied" || groupCards.length !== (groupExecution.consumeCardIds ?? []).length)) return json({ error: `Select a valid ${pending.requiredKind} response and pay its required costs.` }, 409);
+    if (canonicalRespond && (!groupExecution || groupExecution.status !== "satisfied" || groupCards.length !== (groupExecution.consumeCardIds ?? []).length)) return json({ error: `Select a valid ${continuation.requiredKind} response and pay its required costs.` }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved." }, 409);
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
     if (!canonicalRespond || !groupExecution) {
-      await resolveGroupDamage(liveRoom, pending, me, source, players, discard, log);
+      await resolveGroupDamage(liveRoom, { kind: "group", ...continuation, actorId: response.actorId, reason: response.reason, deadline: response.deadline, readyAfterEventId: response.readyAfterEventId }, me, source, players, discard, log);
     } else {
-      const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextPending = appendHeldGroupCards(pending, responseCards);
-      log = selectedResponse ? addCardEvent(log, me.name, selectedResponse) : responseCards.length ? addCardGroupEvent(log, me.name, responseCards, "play") : addLog(log, `${me.name} uses ${groupExecution.providerId} against ${groupCardName(pending.cardKind)}.`); log = addLog(log, selectedResponse ? `${me.name} plays ${pending.requiredKind} against ${groupCardName(pending.cardKind)}.` : responseCards.length ? `${me.name} discards cards with Serpent Spear to form an Attack against ${groupCardName(pending.cardKind)}.` : `${me.name} satisfies the ${pending.requiredKind} requirement against ${groupCardName(pending.cardKind)}.`);
+      const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextPending = appendHeldGroupCards({ kind: "group", ...continuation, actorId: response.actorId, reason: response.reason, deadline: response.deadline, readyAfterEventId: response.readyAfterEventId }, responseCards);
+      log = selectedResponse ? addCardEvent(log, me.name, selectedResponse) : responseCards.length ? addCardGroupEvent(log, me.name, responseCards, "play") : addLog(log, `${me.name} uses ${groupExecution.providerId} against ${groupCardName(continuation.cardKind)}.`); log = addLog(log, selectedResponse ? `${me.name} plays ${continuation.requiredKind} against ${groupCardName(continuation.cardKind)}.` : responseCards.length ? `${me.name} discards cards with Serpent Spear to form an Attack against ${groupCardName(continuation.cardKind)}.` : `${me.name} satisfies the ${continuation.requiredKind} requirement against ${groupCardName(continuation.cardKind)}.`);
       await finishGroupStep(liveRoom, nextPending, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
     }
     return json({ room: await roomState(code, token) });
