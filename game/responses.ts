@@ -5,7 +5,6 @@ import { serpentSpearAttackProvider } from "./capabilities/equipment/serpent-spe
 import { zhenJiBlackCardDodgeProvider } from "./capabilities/heroes/zhen-ji";
 import { guanYuRedCardAttackProvider } from "./capabilities/heroes/guan-yu";
 
-export type ResponseKind = "Attack" | "Dodge";
 export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null };
 export type SemanticAction = "attack" | "dodge" | "damage" | "recover" | "draw" | "discard" | "negate" | "judgement" | "gain_card" | "lose_card";
 export type ActionRequirement =
@@ -89,17 +88,5 @@ export function resolveResponseProvider(providerId: unknown, context: ResponseEx
   return provider.resolve(context);
 }
 
-export function responseOptions(context: ResponseContext, kind: ResponseKind) {
-  return getResponseOptions({ ...context, requirement: { kind: kind === "Attack" ? "attack" : "dodge" } }, { kind: kind === "Attack" ? "attack" : "dodge" }).flatMap((option) => option.provider === "card"
-    ? option.cards.map((card) => ({ ...option, cards: [card], selection: { type: "cards" as const, min: 1, max: 1, eligibleCardIds: [card.id] } }))
-    : [option]);
-}
 export function canRespondWithAttack(context: ResponseContext) { return getResponseOptions({ ...context, requirement: { kind: "attack" } }, { kind: "attack" }).length > 0; }
 export function canRespondWithDodge(context: ResponseContext) { return getResponseOptions({ ...context, requirement: { kind: "dodge" } }, { kind: "dodge" }).length > 0; }
-export function selectResponse(context: ResponseContext, kind: ResponseKind, cardId: unknown, cardIds: unknown): ResponseOption | undefined {
-  const options = responseOptions(context, kind);
-  if (cardId) return options.find((option) => option.provider === "card" && option.cards.some((card) => card.id === cardId));
-  if (!Array.isArray(cardIds) || cardIds.length !== 2 || new Set(cardIds).size !== 2) return;
-  const cards = cardIds.map((id) => context.hand.find((card) => card.id === id));
-  if (options.some((option) => option.provider === "serpent_spear") && cards.every((card): card is Card => Boolean(card))) return { provider: "serpent_spear", cards };
-}

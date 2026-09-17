@@ -46,9 +46,9 @@ test("Play Phase virtual Attack projection is explicit and shares Wusheng eligib
 });
 
 test("synthetic capability registration is isolated and cleans up", () => {
-  const responseOptions = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" });
+  const options = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" });
   const triggerOptions = getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("Test", "test-trigger-a")] });
-  assert.deepEqual(responseOptions, []);
+  assert.deepEqual(options, []);
   assert.deepEqual(triggerOptions, []);
   assert.equal(testSemanticResponseProviders.length, 3);
   assert.equal(testSemanticTriggers.length, 4);

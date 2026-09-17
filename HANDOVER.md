@@ -1,5 +1,17 @@
 # Three Kingdoms project handover
 
+## Step 4.3 response helper cleanup — 2026-09-17
+
+The dead pre-canonical response helper layer is removed. The Group response
+branch uses its canonical response execution result directly, and the existing
+Game Messages test is now included in the Worker/D1 runner. No new tests were
+added. The suite remains at 74 tracked declarations and now executes all 74.
+
+The remaining `responseContinuationPending()` calls are intentionally limited
+to the current Group/AOE and Negation compatibility boundary; GroupPending,
+Negation migration, and that continuation helper were not changed in this
+step.
+
 ## Step 4.2 response-capability legacy-test cleanup — 2026-09-17
 
 The inactive bot surface is now removed. Quick Test seats use the shared human
@@ -20,9 +32,9 @@ Negation provider-extension regression. Current response-decision tests now use
 `ResponsePending` for Attack, Duel, and Qingguo/other Dodge provider resolution.
 `canRespondWithAttack` and `canRespondWithDodge` query `getResponseOptions()`
 directly, and the browser's Serpent Spear availability check uses the canonical
-provider projection. `responseOptions`, `selectResponse`, and `ResponseKind`
-remain only because the bounded Group/AOE compatibility adapter still calls
-`selectResponse`; Group/AOE and Negation migration were intentionally untouched.
+provider projection. The bounded Group/AOE compatibility adapter now uses the
+canonical response execution result directly; Group/AOE and Negation migration
+were intentionally untouched.
 The response-capabilities file is 24 tests before this cleanup and 22 after.
 
 The follow-on test consolidation groups the pure Dying, private-hand,
@@ -33,8 +45,7 @@ required equipment and hero capability proofs, canonical provider resolution,
 and trigger continuation regressions remain.
 
 Recommended next work: proceed to the planned Group/AOE cleanup only after
-reviewing its compatibility boundary; do not claim the remaining legacy helper
-removal until that adapter is migrated.
+reviewing its compatibility boundary.
 
 ## Stage 6 architecture cleanup — canonical protocol only (2026-09-17)
 

@@ -2215,8 +2215,7 @@ export async function POST(request: Request) {
     const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
     if (!source) return json({ error: "The card source is no longer available." }, 409);
     const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "group";
-    const legacyOption = !responseExecution && canonicalRespond ? selectResponse(responseContext(me), pending.requiredKind, body.cardId, body.cardIds) : undefined;
-    const groupExecution = responseExecution ?? (legacyOption ? resolveResponseDecision(pending, responseContext(me), legacyOption.providerId, { cardId: legacyOption.cards[0]?.id, cardIds: legacyOption.cards.map((card) => card.id) }) : null);
+    const groupExecution = responseExecution;
     const groupCards = groupExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
     const selectedResponse = groupExecution && groupCards.length === 1 ? groupCards[0] : null;
     const serpentCards = groupExecution && groupCards.length > 1 ? groupCards : [];
