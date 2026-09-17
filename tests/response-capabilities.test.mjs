@@ -110,7 +110,7 @@ test("passive and triggered equipment capabilities are discovered outside the ro
 
 test("Yin-Yang Swords is a target-owned attack_targeted capability with live legal choices", () => {
   const context = { event: "attack_targeted", sourceEquipment: [card("YinYangSwords", "yy")], sourceGender: heroGender("zhang-fei"), targetGender: heroGender("zhen-ji"), targetId: "target", targetHand: [card("Peach", "hidden")], targetEquipment: [] };
-  assert.deepEqual(getTriggeredEffects(context), [{ effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", selection: { type: "choice", choices: [{ id: "discard", label: "Discard 1 hand card" }, { id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: ["hand:0"] } }]);
+  assert.deepEqual(getTriggeredEffects(context), [{ effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, selection: { type: "choice", choices: [{ id: "discard", label: "Discard 1 hand card" }, { id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: ["hand:0"] } }]);
   assert.deepEqual(resolveTriggeredEffect("yin_yang_swords_attack_targeted", context, { choice: "discard", cardKeys: ["hand:0"] })?.outcome, { kind: "target_discard", targetCardId: "hidden" });
   assert.deepEqual(getTriggeredEffects({ ...context, targetHand: [] })[0].selection, { type: "choice", choices: [{ id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: [] });
   assert.equal(getTriggeredEffects({ ...context, sourceGender: "female" }).length, 0);

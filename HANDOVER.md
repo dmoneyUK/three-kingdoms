@@ -1,5 +1,18 @@
 # Three Kingdoms project handover
 
+## Yin-Yang Swords mandatory choice — 2026-09-17
+
+Generic trigger options now support optional `allowDecline` semantics, defaulting
+to allowed. Yin-Yang Swords sets `allowDecline: false`, and the server projects
+that flag through `currentAction.triggerOptions`, removes `decline_trigger` and
+`declineAction` from the target's legal decision, and rejects a direct
+`decline_trigger` request. The browser hides Skip reaction from the generic
+trigger UI and does not auto-submit a decline when the decision is mandatory.
+The existing Yin-Yang Swords regression covers attacker draw, selected-card
+discard, no-hand draw-only projection, and decline rejection. No new protocol
+verb, provider-specific route, or test declaration was added. Recommended next
+work is the next individually verified Standard hero.
+
 ## Generic target-card picker eligibility — 2026-09-17
 
 The browser's generic `target_cards` picker now derives hidden Hand indexes

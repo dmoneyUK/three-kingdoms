@@ -6,7 +6,7 @@ import { canDeclareAttack as canDeclareAttackFor, distanceBetween, nextAliveSeat
 import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, getAttackCardProvider, getPlayPhaseActions, getResponseOptions, type JudgementResolution, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
-import { getTriggeredEffects, resolveTriggeredEffect } from "../../../game/capabilities/triggers";
+import { getTriggeredEffects, resolveTriggeredEffect, triggerAllowsDecline } from "../../../game/capabilities/triggers";
 import { STANDARD_HEROES, heroGender, type HeroDefinition } from "../../../game/heroes";
 import { continueTriggerEvent, resumeTriggerContinuation } from "../../../game/decisions/triggers";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../../../game/decisions/responses";
@@ -1517,7 +1517,10 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
       return ["decline_response", ...(options.length ? ["respond"] : [])];
     }
     const trigger = asTriggerPending(pending);
-    if (trigger) return ["decline_trigger", ...(triggerOptionsFor(trigger, players).length ? ["trigger"] : [])];
+    if (trigger) {
+      const options = triggerOptionsFor(trigger, players);
+      return [...(options.length === 0 || options.some(triggerAllowsDecline) ? ["decline_trigger"] : []), ...(options.length ? ["trigger"] : [])] as GameplayAction[];
+    }
     switch (pending.kind) {
       case "borrowed_sword": return pending.stage === "choose_target" ? ["choose_borrowed_sword_target"] : [];
       case "harvest": return ["preview_harvest", "choose_harvest"];
@@ -1584,6 +1587,7 @@ async function roomState(code: string, token?: string) {
   const presentation = room.phase === "response" && pending
     ? { resolutionId: responsePending?.resolutionId ?? triggerPending?.resolutionId ?? latestResolutionId(rawLog), readyAfterEventId: responsePending?.readyAfterEventId ?? triggerPending?.readyAfterEventId ?? null }
     : undefined;
+  const legalActions = !legacyResponsePending && me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [];
   const currentAction: CurrentAction = {
     version: 3,
     kind: responsePending ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
@@ -1592,11 +1596,11 @@ async function roomState(code: string, token?: string) {
     reason: actionReason,
     // This list is calculated only for the current private view. It is never
     // a table-wide disclosure of another player's hand or legal responses.
-    legalActions: !legacyResponsePending && me?.id === actualActionPlayerId ? legalActionsFor(room, me, pending, players) : [],
+    legalActions,
     canDeclareAttack,
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
     ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
-    ...(triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, declineAction: "decline_trigger" as GameplayAction } : {}),
+    ...(triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, ...(legalActions.includes("decline_trigger") ? { declineAction: "decline_trigger" as GameplayAction } : {}) } : {}),
     ...(presentation ? { presentation } : {}),
   };
   return {
@@ -1781,6 +1785,9 @@ export async function POST(request: Request) {
       const context = triggerContextFor(trigger, allRoomPlayers);
       const triggerId = String(body.providerId ?? "");
       const available = context ? getTriggeredEffects(context, trigger.resolvedEffectIds) : [];
+      if (action === "decline_trigger" && available.length > 0 && !available.some(triggerAllowsDecline)) {
+        return json({ error: "This trigger decision must be resolved; it cannot be skipped." }, 409);
+      }
       if (action === "trigger" && !available.some((option) => option.effectId === triggerId)) {
         return json({ error: "That trigger provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       }
@@ -1844,7 +1851,7 @@ export async function POST(request: Request) {
       if (!source || !target) return json({ error: "That Attack target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const execution = triggerExecution;
       if (action === "apply_trigger" && (!execution || (execution.outcome.kind !== "target_discard" && execution.outcome.kind !== "attacker_draw"))) return json({ error: "That target decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      let discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
+      let discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); let continuationPlayers = players;
       let discardCard: Card | null = null;
       if (execution?.outcome.kind === "target_discard") discardCard = parse<Card[]>(target.hand_json, []).find((item) => item.id === execution.outcome.targetCardId) ?? null;
       if (execution?.outcome.kind === "target_discard" && !discardCard) return json({ error: "The selected hand card is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -1855,12 +1862,16 @@ export async function POST(request: Request) {
         const hand = parse<Card[]>(target.hand_json, []); const card = hand.find((item) => item.id === execution.outcome.targetCardId);
         if (!card || !discardCard) return json({ error: "The selected hand card is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         discard.push(card); log = addLog(log, `${target.name} discards a hand card.`);
-        await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand.filter((item) => item.id !== card.id)), target.id).run();
+        const nextTargetHand = hand.filter((item) => item.id !== card.id);
+        continuationPlayers = players.map((player) => player.id === target.id ? { ...player, hand_json: JSON.stringify(nextTargetHand) } : player);
+        await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextTargetHand), target.id).run();
       } else if (execution?.outcome.kind === "attacker_draw") {
         const drawn = drawCards(parse<Card[]>(liveRoom.deck_json, []), discard, 1, log); discard = drawn.discard; log = addLog(drawn.log, `${target.name} allows ${source.name} to draw a card.`);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify([...parse<Card[]>(source.hand_json, []), ...drawn.drawn]), source.id), db.prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(drawn.deck), room.id)]);
+        const nextSourceHand = [...parse<Card[]>(source.hand_json, []), ...drawn.drawn];
+        continuationPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextSourceHand) } : player);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id), db.prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(drawn.deck), room.id)]);
       }
-      await resumeCanonicalTriggerContinuation(liveRoom, continuation, players, discard, log);
+      await resumeCanonicalTriggerContinuation(liveRoom, continuation, continuationPlayers, discard, log);
       return json({ room: await roomState(code, token) });
     }
     if (liveRoom && trigger && continuation?.kind === "damage_about_to_apply_event" && trigger.actorId === me.id) {

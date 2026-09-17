@@ -1631,6 +1631,33 @@ test("Borrowed Sword transfer never follows a stale or replaced Weapon", { timeo
 });
 
 test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuations", { timeout: 60_000 }, async () => {
+  {
+    const s = await openBorrowedSwordScenario({ weaponKind: "YinYangSwords" });
+    sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(s.holder.id)}`); sql(`UPDATE players SET hero='zhen-ji' WHERE id=${quote(s.target.id)}`);
+    setHand(s.target.id, [], 4, 4);
+    const attack = await request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: s.attackId }); assert.equal(attack.status, 200, JSON.stringify(attack.data));
+    const targetDecision = (await state(s.game.code, s.game.members[2].token)).data;
+    assert.deepEqual(targetDecision.currentAction.legalActions, ["trigger"]);
+    assert.equal(targetDecision.currentAction.declineAction, undefined);
+    assert.deepEqual(targetDecision.currentAction.triggerOptions[0], { effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, selection: { type: "choice", choices: [{ id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: [] } });
+    assert.equal((await request("decline_trigger", { code: s.game.code, token: s.game.members[2].token })).status, 409);
+    setDeck(s.game.code, [card("Peach", "yin-draw")]);
+    const drawn = await request("trigger", { code: s.game.code, token: s.game.members[2].token, providerId: "yin_yang_swords_attack_targeted", choice: "draw" }); assert.equal(drawn.status, 200, JSON.stringify(drawn.data));
+    assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(s.holder.id)}`)).length, 1, "the attacker draws one card");
+    assert.equal(drawn.data.room.phase, "play");
+  }
+  {
+    const s = await openBorrowedSwordScenario({ weaponKind: "YinYangSwords" });
+    sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(s.holder.id)}`); sql(`UPDATE players SET hero='zhen-ji' WHERE id=${quote(s.target.id)}`);
+    const discarded = card("Peach", "yin-discard"); setHand(s.target.id, [discarded], 4, 4);
+    const attack = await request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: s.attackId }); assert.equal(attack.status, 200, JSON.stringify(attack.data));
+    const targetDecision = (await state(s.game.code, s.game.members[2].token)).data;
+    assert.deepEqual(targetDecision.currentAction.legalActions, ["trigger"]); assert.equal(targetDecision.currentAction.declineAction, undefined);
+    const declined = await request("decline_trigger", { code: s.game.code, token: s.game.members[2].token }); assert.equal(declined.status, 409);
+    const chosen = await request("trigger", { code: s.game.code, token: s.game.members[2].token, providerId: "yin_yang_swords_attack_targeted", choice: "discard", cardKeys: ["hand:0"] }); assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+    assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(s.target.id)}`)).some((item) => item.id === discarded.id), false, "the target loses the selected hand card");
+    assert.equal(chosen.data.room.phase, "play");
+  }
   const s = await openBorrowedSwordScenario({ weaponKind: "YinYangSwords" });
   sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(s.holder.id)}`); sql(`UPDATE players SET hero='zhen-ji' WHERE id=${quote(s.target.id)}`);
   const dodge = card("Dodge", "borrowed-dodge"); const hidden = card("Peach", "borrowed-hidden"); setHand(s.target.id, [hidden, dodge], 4, 4);

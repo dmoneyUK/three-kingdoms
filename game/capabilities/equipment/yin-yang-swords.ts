@@ -9,7 +9,7 @@ export const yinYangSwordsAttackTargeted = {
     if (!context.sourceGender || !context.targetGender || context.sourceGender === context.targetGender) return null;
     const choices = [{ id: "draw", label: "Allow attacker to draw 1 card" }];
     if ((context.targetHand?.length ?? 0) > 0) choices.unshift({ id: "discard", label: "Discard 1 hand card" });
-    return { effectId: id, label: "Yin-Yang Swords", selection: { type: "choice", choices, eligibleHandKeys: (context.targetHand ?? []).map((_, index) => `hand:${index}`) } };
+    return { effectId: id, label: "Yin-Yang Swords", allowDecline: false, selection: { type: "choice", choices, eligibleHandKeys: (context.targetHand ?? []).map((_, index) => `hand:${index}`) } };
   },
   resolve(context: TriggerContext, selection: { choice?: unknown; cardKeys?: unknown }): TriggerExecution | null {
     const option = yinYangSwordsAttackTargeted.getOption(context); const choice = String(selection.choice ?? "");

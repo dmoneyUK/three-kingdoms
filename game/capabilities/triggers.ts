@@ -16,7 +16,10 @@ export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[] }
   | { type: "target_cards"; targetId: string; min: number; max: number; eligibleKeys: string[] }
   | { type: "choice"; choices: { id: string; label: string }[]; eligibleHandKeys: string[] };
-export type TriggerOption = { effectId: string; label: string; selection: TriggerSelectionConstraint | null };
+export type TriggerOption = { effectId: string; label: string; selection: TriggerSelectionConstraint | null; allowDecline?: boolean };
+export function triggerAllowsDecline(option: Pick<TriggerOption, "allowDecline">) {
+  return option.allowDecline !== false;
+}
 /**
  * Providers describe the semantic consequence of accepting their option. The
  * decision engine may branch on this small domain vocabulary, never on a
