@@ -7,7 +7,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening, Step 4.3 response-helper cleanup, single-controller bot-surface removal, and Step 5D Group canonicalization COMPLETE**
+- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening, Step 4.3 response-helper cleanup, single-controller bot-surface removal, and Step 5D.1 Group canonical cleanup COMPLETE**
 
 Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, and removal of inactive bot gameplay are complete. Quick Test and normal multiplayer now use human-style seats only; one Quick Test controller switches seats through the shared token. The separate Negation cleanup remains. Hero #2 is not implemented in this round.
 
@@ -16,7 +16,13 @@ declarations while retaining the required human multiplayer and capability
 invariants. Pure helper assertions now run in grouped cases, and inactive bot-only
 tests and product paths have been removed. The Worker/D1 runner executes all 74 tests.
 
-Step 5D now carries canonical `ResponsePending` plus `GroupContinuation` through
+Step 5D.1 completes the Group canonical cleanup: `GroupPending` is accepted by
+`asResponsePending()` only for initial builders, Halberd `attack_targeted`
+continuations store the complete canonical Group response, and canonical Group
+sequence projection returns `GroupContinuation`. Actor and deadline metadata
+remain in `currentAction`; the Negation-embedded Group boundary is unchanged.
+
+Step 5D carries canonical `ResponsePending` plus `GroupContinuation` through
 all normal Group/AOE helpers, including held-card accounting and Dying resume.
 `GroupPending` remains only for initial deferred card construction, the
 Negation-embedded effect boundary, and bounded public projection. Negation

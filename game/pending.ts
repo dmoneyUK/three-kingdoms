@@ -52,7 +52,7 @@ export type AttackDodgedTriggerContinuation = {
 export type AttackTargetedTriggerContinuation = {
   kind: "attack_targeted_event";
   declaration: AttackDeclaration;
-  group?: GroupPending;
+  group?: ResponsePending;
 };
 export type DamageAboutToApplyTriggerContinuation = {
   kind: "damage_about_to_apply_event";
@@ -80,7 +80,8 @@ export type TriggerPending = {
 export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: ResponsePending; reason: string };
 export type Pending = AttackPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | BorrowedSwordPending | NegationPending | ResponsePending | TriggerPending | DyingPending;
 
-type ResponseContinuationPending = AttackPending | DuelPending | NegationPending;
+type ResponseContinuationPending = AttackPending | GroupPending | DuelPending | NegationPending;
+type ResponseBuilderPending = ResponseContinuationPending | ResponsePending;
 
 function continuationForResponse(pending: ResponseContinuationPending): ResponseContinuation {
   const continuation = { ...pending } as Partial<ResponseContinuationPending>;
@@ -104,7 +105,7 @@ export function asResponsePending(pending: Pending | null | undefined): Response
   if (!pending) return null;
   if (pending.kind === "response") return pending;
   if (!["attack", "group", "duel", "negation"].includes(pending.kind)) return null;
-  const domain = pending as ResponseContinuationPending;
+  const domain = pending as ResponseBuilderPending;
   return { kind: "response", actorId: domain.actorId, requirement: requirementForResponse(domain), reason: domain.reason, deadline: domain.deadline, resolutionId: domain.resolutionId, readyAfterEventId: domain.readyAfterEventId, continuation: continuationForResponse(domain) };
 }
 

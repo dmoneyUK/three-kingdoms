@@ -1,5 +1,16 @@
 # Three Kingdoms project handover
 
+## Step 5D.1 finish Group canonical cleanup — 2026-09-17
+
+`asResponsePending()` accepts the legacy `GroupPending` only as an initial
+builder input, while `responseContinuationPending()` still never expands
+Group. Halberd `attack_targeted` continuations now store the complete
+canonical Group response and resume it directly. Canonical Group sequence
+projection returns `GroupContinuation`; actor and deadline metadata remain in
+`currentAction`. The Negation-embedded Group effect boundary is unchanged.
+No new test declaration was added; existing Group assertions now verify
+`currentAction` for actor and timing.
+
 ## Step 5D remove transient GroupPending compatibility — 2026-09-17
 
 Normal Group/AOE execution now carries `ResponsePending` plus

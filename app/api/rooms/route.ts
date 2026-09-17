@@ -350,10 +350,10 @@ async function claimTurnAction(roomId: string, seat: number, phase: string) {
   const result = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase = ?").bind(roomId, seat, phase).run();
   return (result.meta.changes ?? 0) > 0;
 }
-function groupSequenceFromPending(pending: Pending | null) {
-  if (pending?.kind === "group") return pending;
+function groupSequenceFromPending(pending: Pending | null): GroupContinuation | GroupPending | null {
+  if (pending?.kind === "group") return asResponsePending(pending)?.continuation as GroupContinuation;
   if (pending?.kind === "negation" && pending.effect.kind === "group") return { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies GroupPending;
-  if (pending?.kind === "response" && pending.continuation.kind === "group") return { ...pending.continuation, actorId: pending.actorId, reason: pending.reason, deadline: pending.deadline, resolutionId: pending.resolutionId, readyAfterEventId: pending.readyAfterEventId } satisfies GroupPending;
+  if (pending?.kind === "response" && pending.continuation.kind === "group") return pending.continuation;
   if (pending?.kind === "dying" && pending.resumePending) return groupSequenceFromPending(pending.resumePending);
   return null;
 }
@@ -1134,7 +1134,7 @@ async function resumeCanonicalTriggerContinuation(room: RoomRow, continuation: A
     if (!source || !target) return;
     let nextLog = addLog(log, `${source.name}'s Attack target decision is complete. The Attack continues.`);
     if (continuation.group) {
-      const group = groupResponse(asResponsePending(continuation.group));
+      const group = groupResponse(continuation.group);
       if (group) await beginGroupTarget(room, group.response, group.continuation, players, discard, nextLog);
       return;
     }
@@ -1258,7 +1258,7 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
     if (targeted.length) {
       const declaration = attackDeclaration(source, actor, "halberd", continuation.heldCards ?? [], continuation.resumePhase, attack);
       const presentation = addLogWithId(log, `${source.name}'s Yin-Yang Swords affects ${actor.name}. ${actor.name} chooses how to resolve it.`);
-      const targetedPending: TriggerPending = withPresentationBarrier({ kind: "trigger", event: "attack_targeted", actorId: actor.id, reason: `${actor.name} must choose how to resolve Yin-Yang Swords`, deadline: nextResponseDeadline(actor), continuation: { kind: "attack_targeted_event", declaration, group: { kind: "group", ...continuation } } }, presentation.log, presentation.eventId);
+      const targetedPending: TriggerPending = withPresentationBarrier({ kind: "trigger", event: "attack_targeted", actorId: actor.id, reason: `${actor.name} must choose how to resolve Yin-Yang Swords`, deadline: nextResponseDeadline(actor), continuation: { kind: "attack_targeted_event", declaration, group: response } }, presentation.log, presentation.eventId);
       writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(targetedPending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
       await db().batch(writes); return;
     }
