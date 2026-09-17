@@ -216,11 +216,13 @@ test("complete room, turn, card, response, discard, bot, and audit flow", { time
 
   setHand(hostPlayer.id, [card("Duel", "challenge"), card("Attack", "host-answer")], 4, 5); setHand(alicePlayer.id, [card("Attack", "alice-answer")], 4); setTurn(game.code, hostPlayer.seat);
   const challenged = await request("play_card", { code: game.code, token: host.token, cardId: "duel-challenge", targetId: alicePlayer.id });
-  assert.equal(challenged.status, 200); assert.equal(challenged.data.room.phase, "response"); assert.equal(challenged.data.room.actionPlayerId, alicePlayer.id); assert.equal(challenged.data.room.pendingDuel.opponentId, hostPlayer.id);
+  const challengedView = await state(game.code, alice.token);
+  assert.equal(challenged.status, 200); assert.equal(challenged.data.room.phase, "response"); assert.equal(challenged.data.room.actionPlayerId, alicePlayer.id); assert.equal(challengedView.data.currentAction.kind, "response"); assert.equal(challengedView.data.currentAction.requirement, "attack"); assert.ok(challengedView.data.currentAction.options.some((option) => option.providerId === "card"));
   assert.equal((await request("respond", { code: game.code, token: bob.token, cardId: "attack-alice-answer" })).status, 409);
-  const aliceAnswers = await request("respond", { code: game.code, token: alice.token, cardId: "attack-alice-answer" });
-  assert.equal(aliceAnswers.status, 200); assert.equal(aliceAnswers.data.room.actionPlayerId, hostPlayer.id); assert.equal(aliceAnswers.data.room.pendingDuel.deadline, 0, "a new human Duel responder stays unarmed until the response is visible");
-  const hostAnswers = await request("respond", { code: game.code, token: host.token, cardId: "attack-host-answer" });
+  const aliceAnswers = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "attack-alice-answer" });
+  const hostDuelView = await state(game.code, host.token);
+  assert.equal(aliceAnswers.status, 200); assert.equal(aliceAnswers.data.room.actionPlayerId, hostPlayer.id); assert.equal(hostDuelView.data.currentAction.kind, "response"); assert.equal(hostDuelView.data.currentAction.requirement, "attack"); assert.equal(hostDuelView.data.currentAction.deadline, 0, "a new human Duel responder stays unarmed until the response is visible");
+  const hostAnswers = await request("respond", { code: game.code, token: host.token, providerId: "card", cardId: "attack-host-answer" });
   assert.equal(hostAnswers.status, 200); assert.equal(hostAnswers.data.room.actionPlayerId, alicePlayer.id);
   const losesDuel = await request("decline_response", { code: game.code, token: alice.token });
   assert.equal(losesDuel.status, 200); assert.equal(losesDuel.data.room.phase, "play"); assert.equal(losesDuel.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3);
@@ -646,19 +648,20 @@ test("Negation opportunities start at the target, include the user, and reset on
   let result = await act(0, "play_card", { cardId: "duel-ordered", targetId: players[2].id });
   for (const seat of [0, 1, 2, 3]) {
     assert.equal(result.data.room.actionPlayerId, players[seat].id);
-    assert.equal(result.data.room.pendingDuel, null, "normal responses remain closed");
+    assert.equal(result.data.room.currentAction.kind, "response");
     result = await act(seat, "decline_response");
   }
   assert.equal(result.data.room.pendingNegation, null);
-  assert.equal(result.data.room.pendingDuel.actorId, players[2].id);
-  assert.equal(result.data.room.pendingDuel.deadline, 0, "the deferred human Duel response is unarmed until displayed");
-  assert.equal((await act(2, "respond", { cardId: "negation-2-two" })).status, 409, "closed window cannot be reopened");
-  result = await act(2, "respond", { cardId: "attack-2-reply" });
-  assert.equal(result.status, 200); assert.equal(result.data.room.pendingDuel.actorId, players[0].id);
+  const duelTargetView = await state(game.code, game.members[2].token);
+  assert.equal(duelTargetView.data.currentAction.kind, "response"); assert.equal(duelTargetView.data.currentAction.requirement, "attack"); assert.equal(duelTargetView.data.currentAction.actorId, players[2].id);
+  assert.equal((await act(2, "respond", { providerId: "card", cardId: "negation-2-two" })).status, 409, "closed window cannot be reopened");
+  result = await act(2, "respond", { providerId: "card", cardId: "attack-2-reply" });
+  const nextDuelView = await state(game.code, game.members[0].token);
+  assert.equal(result.status, 200); assert.equal(nextDuelView.data.currentAction.kind, "response"); assert.equal(nextDuelView.data.currentAction.requirement, "attack"); assert.equal(nextDuelView.data.currentAction.actorId, players[0].id);
 });
 
 test("normal responses follow Negation passes and retain both Attack and Spear choices", async () => {
-  for (const kind of ["RainingArrows", "BarbarianInvasion", "Duel"]) {
+  for (const kind of ["RainingArrows", "BarbarianInvasion"]) {
     const game = await createHumanGame(); const [me, target, next, last] = game.room.players;
     setHand(me.id, [card(kind, "window"), card("Negation", "user-window"), card("Attack", "source-reply")], 4, 4);
     setHand(target.id, [card("Negation", "target-window"), card("Attack", "target-reply"), card("Dodge", "target-reply"), card("Peach", "spear-cost")], 4, 4);
@@ -668,15 +671,15 @@ test("normal responses follow Negation passes and retain both Attack and Spear c
     const act = (seat, action, extra = {}) => request(action, { code: game.code, token: game.members[seat].token, ...extra });
     let result = await act(0, "play_card", { cardId: `${kind.toLowerCase()}-window`, targetId: target.id });
     assert.equal(result.data.room.actionPlayerId, me.id);
-    const action = kind === "Duel" ? "respond" : "respond";
-    assert.equal((await act(1, action, { cardId: kind === "RainingArrows" ? "dodge-target-reply" : "attack-target-reply" })).status, 409);
+    assert.equal((await act(1, "respond", { providerId: "card", cardId: kind === "RainingArrows" ? "dodge-target-reply" : "attack-target-reply" })).status, 409);
     const order = [0, 1];
     for (const seat of order) result = await act(seat, "decline_response");
-    const response = kind === "Duel" ? result.data.room.pendingDuel : result.data.room.pendingGroup;
-    assert.equal(result.data.room.pendingNegation, null); assert.equal(response.actorId, target.id);
-    assert.equal(response.deadline, 0, "a deferred human response waits for its own visible-decision timer");
-    const extra = kind === "RainingArrows" ? { cardId: "dodge-target-reply" } : { cardIds: ["dodge-target-reply", "peach-spear-cost"] };
-    result = await act(1, action, extra); assert.equal(result.status, 200, "Spear is usable even when a normal Attack is also held");
+    assert.equal(result.data.room.pendingNegation, null); assert.equal(result.data.room.currentAction.kind, "response"); assert.equal(result.data.room.currentAction.actorId, target.id);
+    assert.equal(result.data.room.currentAction.deadline, 0, "a deferred human response waits for its own visible-decision timer");
+    const response = result.data.room.currentAction;
+    assert.equal(response.requirement, kind === "RainingArrows" ? "dodge" : "attack");
+    const extra = kind === "RainingArrows" ? { providerId: "card", cardId: "dodge-target-reply" } : { providerId: "serpent_spear_attack", cardIds: ["dodge-target-reply", "peach-spear-cost"] };
+    result = await act(1, "respond", extra); assert.equal(result.status, 200, "Spear is usable even when a normal Attack is also held");
     assert.equal(result.data.room.players.find((p) => p.id === target.id).hp, 4);
     if (kind !== "Duel") assert.equal(result.data.room.pendingNegation.effectTargetId, next.id, "next target opens only after the first target's normal response finishes");
   }
@@ -893,8 +896,10 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   setEquipment(alicePlayer.id, { weapon: card("SerpentSpear", "duel") });
   setHand(hostPlayer.id, [card("Duel", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "duel-one"), card("Dodge", "duel-two")], 4, 4); setTurn(game.code, hostPlayer.seat);
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "duel-serpent", targetId: alicePlayer.id })).status, 200);
-  const duelAnswer = await request("respond", { code: game.code, token: alice.token, cardIds: ["peach-duel-one", "dodge-duel-two"] });
-  assert.equal(duelAnswer.status, 200); assert.equal(duelAnswer.data.room.pendingDuel.actorId, hostPlayer.id); assert.ok(duelAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
+  const duelView = await state(game.code, alice.token); assert.equal(duelView.data.currentAction.kind, "response"); assert.equal(duelView.data.currentAction.requirement, "attack"); assert.ok(duelView.data.currentAction.options.some((option) => option.providerId === "serpent_spear_attack"));
+  const duelAnswer = await request("respond", { code: game.code, token: alice.token, providerId: "serpent_spear_attack", cardIds: ["peach-duel-one", "dodge-duel-two"] });
+  const hostAfterDuel = await state(game.code, host.token);
+  assert.equal(duelAnswer.status, 200); assert.equal(hostAfterDuel.data.currentAction.kind, "response"); assert.equal(hostAfterDuel.data.currentAction.requirement, "attack"); assert.equal(hostAfterDuel.data.currentAction.actorId, hostPlayer.id); assert.ok(duelAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
 
   setEquipment(alicePlayer.id, { weapon: card("SerpentSpear", "invasion") });
   setHand(hostPlayer.id, [card("BarbarianInvasion", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "invasion-one"), card("Dodge", "invasion-two")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat);
@@ -1624,13 +1629,13 @@ test("bot Duel continuation chooses Attack through semantic provider discovery",
   await request("draw", { code, token });
   const started = await request("end_turn", { code, token });
   assert.equal(started.status, 200);
-  const duel = await waitForState(code, token, (room) => room.pendingDuel?.actorId === me.id);
-  assert.equal(duel.pendingDuel.sourceId, bot.id);
-  const first = await request("respond", { code, token, cardId: "attack-duel-human" });
+  const duel = await waitForState(code, token, (room) => room.currentAction?.kind === "response" && room.currentAction?.requirement === "attack" && room.currentAction?.actorId === me.id);
+  assert.ok(duel.currentAction.options.some((option) => option.providerId === "card"));
+  const first = await request("respond", { code, token, providerId: "card", cardId: "attack-duel-human" });
   assert.equal(first.status, 200);
-  const botReply = await waitForState(code, token, (room) => room.pendingDuel?.actorId === me.id && room.pendingDuel?.opponentId === bot.id && room.pendingDuel?.sourceId === bot.id);
+  const botReply = await waitForState(code, token, (room) => room.currentAction?.kind === "response" && room.currentAction?.requirement === "attack" && room.currentAction?.actorId === me.id);
   assert.equal(JSON.parse(query(`SELECT log_json FROM rooms WHERE code=${quote(code)}`)).some((entry) => /Use test Attack/.test(entry)), true, "the bot Duel answer came from semantic provider discovery");
-  assert.equal(botReply.pendingDuel.actorId, me.id);
+  assert.equal(botReply.currentAction.actorId, me.id);
 });
 
 test("unknown semantic Dodge and Negate providers cross the real API and D1 boundary", { timeout: 30_000 }, async () => {

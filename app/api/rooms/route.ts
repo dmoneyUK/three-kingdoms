@@ -15,7 +15,7 @@ import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../..
 import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../game/match/dying.js";
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
-import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackTargetedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelPending, type DyingPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackTargetedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DuelPending, type DyingPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
 export const runtime = "edge";
 
@@ -458,6 +458,11 @@ function attackResponse(pending: ResponsePending | null | undefined) {
   return { response: pending, continuation: pending.continuation as AttackContinuation };
 }
 
+function duelResponse(pending: ResponsePending | null | undefined) {
+  if (!pending || pending.kind !== "response" || pending.continuation.kind !== "duel") return null;
+  return { response: pending, continuation: pending.continuation as DuelContinuation };
+}
+
 function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
   if (room.status !== "playing") return null;
   const owner = players.find((player) => player.seat === room.turn_seat && player.alive);
@@ -649,20 +654,20 @@ async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target:
   await advanceDyingRescue(room.id);
 }
 
-async function resolveDuelLoss(room: RoomRow, pending: DuelPending, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[]) {
-  const resume = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
+async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePending; continuation: DuelContinuation }, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[]) {
+  const resume = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.sourceId).first<PlayerRow>();
   if (!resume) return;
   const hp = applyDamage(loser.hp ?? 1, 1);
   if (isDying(hp)) {
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     log = addLog(log, `${loser.name} fails to play Attack, takes 1 Duel damage from ${opponent.name}, and enters Dying. Peach rescue begins in turn order.`);
-    await startDyingRescue(room, opponent, { ...loser, hp }, rows.results ?? [], parse<Card[]>(room.deck_json, []), discard, log, [], resume, pending.resumePhase, undefined, hp);
+    await startDyingRescue(room, opponent, { ...loser, hp }, rows.results ?? [], parse<Card[]>(room.deck_json, []), discard, log, [], resume, pending.continuation.resumePhase, undefined, hp);
     return;
   }
   log = addLog(log, `${loser.name} fails to play Attack and takes 1 Duel damage from ${opponent.name}. Action returns to ${resume.name}.`);
   await db().batch([
     db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, loser.id),
-    db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
+    db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.continuation.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
   ]);
   await continueAfterDying(room.id, resume.id);
 }
@@ -960,14 +965,26 @@ async function applyGroupResponseOutcome(room: RoomRow, pending: GroupPending, a
   await resolveGroupDamage(nextRoom, pending, actor, source, players, judged.discard, nextLog);
 }
 
-async function applyDuelResponseOutcome(room: RoomRow, pending: DuelPending, actor: PlayerRow, opponent: PlayerRow, judged: ResponseJudgementOutcome) {
+function nextDuelResponse(response: ResponsePending, continuation: DuelContinuation, actorId: string, opponentId: string, deadline?: number) {
+  return {
+    kind: "response" as const,
+    actorId,
+    requirement: { kind: "attack" as const, sourceId: continuation.sourceId, actorId, context: "duel" as const },
+    reason: "Respond to Duel: select Attack or take 1 damage",
+    deadline,
+    resolutionId: response.resolutionId,
+    continuation: { ...continuation, opponentId },
+  } satisfies ResponsePending;
+}
+
+async function applyDuelResponseOutcome(room: RoomRow, pending: { response: ResponsePending; continuation: DuelContinuation }, actor: PlayerRow, opponent: PlayerRow, judged: ResponseJudgementOutcome) {
   const resolution = judged.result.rule;
   const judgedResult = judged.result;
   const nextRoom = { ...room, deck_json: JSON.stringify(judged.deck) };
   const text = `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}.`;
   if (judgedResult.status === "satisfied") {
     const nextLog = addLog(judged.log, `${text} ${resolution.successText} Action passes to ${opponent.name}.`);
-    const decision = freshDecision({ ...pending, actorId: opponent.id, opponentId: actor.id, reason: "Respond to Duel: select Attack or take 1 damage", deadline: nextResponseDeadline(opponent) } satisfies DuelPending, nextLog, `Duel response passes to ${opponent.name}.`);
+    const decision = freshDecision(nextDuelResponse(pending.response, pending.continuation, opponent.id, actor.id, nextResponseDeadline(opponent)), nextLog, `Duel response passes to ${opponent.name}.`);
     await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
       .bind(serializePending(decision.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(decision.log), room.id).run();
     await advanceDuel(room.id);
@@ -1009,7 +1026,8 @@ async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: Play
   if (continuation?.kind === "group" && source) return applyGroupResponseOutcome(room, responseContinuationPending(response) as GroupPending, actor, source, players, outcome);
   if (continuation?.kind === "duel") {
     const opponent = players.find((player) => player.id === continuation.opponentId) ?? null;
-    if (opponent) return applyDuelResponseOutcome(room, responseContinuationPending(response) as DuelPending, actor, opponent, outcome);
+    const duel = duelResponse(response);
+    if (opponent && duel) return applyDuelResponseOutcome(room, duel, actor, opponent, outcome);
   }
   if (continuation?.kind === "negation") return applyNegationResponseOutcome(room, responseContinuationPending(response) as NegationPending, actor, players, outcome);
   throw new Error("Response Judgement continuation is no longer valid");
@@ -1330,18 +1348,18 @@ async function advanceDuel(roomId: string) {
   for (let guard = 0; guard < 30; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const stored = parse<Pending | null>(room?.pending_json ?? null, null);
-    const pending = responseContinuationPending(stored) as DuelPending | null;
-    if (!room || room.phase !== "response" || pending?.kind !== "duel") return;
-    const actor = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.actorId).first<PlayerRow>();
-    const opponent = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.opponentId).first<PlayerRow>();
+    const pending = duelResponse(asResponsePending(stored));
+    if (!room || room.phase !== "response" || !pending) return;
+    const actor = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.response.actorId).first<PlayerRow>();
+    const opponent = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.opponentId).first<PlayerRow>();
     if (!actor || !opponent || !isBotPlayer(actor)) return;
     let hand = parse<Card[]>(actor.hand_json, []); const discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
-    const response = responseDecisionFor(pending, responseContext(actor));
+    const response = responseDecisionFor(pending.response, responseContext(actor));
     const option = response?.options[0];
     const selection = option?.selection?.type === "cards"
       ? option.selection.max === 1 ? { cardId: option.selection.eligibleCardIds[0] } : { cardIds: option.selection.eligibleCardIds.slice(0, option.selection.max) }
       : {};
-    const execution = option ? resolveResponseDecision(pending, responseContext(actor), option.providerId, selection) : null;
+    const execution = option ? resolveResponseDecision(pending.response, responseContext(actor), option.providerId, selection) : null;
     const semanticSatisfied = execution?.status === "satisfied";
     const consumed = semanticSatisfied ? (execution.consumeCardIds ?? []) : [];
     const attackCards = consumed.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
@@ -1357,7 +1375,7 @@ async function advanceDuel(roomId: string) {
     log = addLog(presentation.log, attack ? `${actor.name} plays Attack in the Duel. Action passes to ${opponent.name}.` : `${actor.name} uses ${option?.label ?? "an Attack provider"} to form an Attack in the Duel. Action passes to ${opponent.name}.`);
     // A newly declared Duel attack is a new decision, so its visual barrier
     // must follow the card just presented rather than the previous exchange.
-    const nextPending: DuelPending = withPresentationBarrier({ ...pending, readyAfterEventId: undefined, actorId: opponent.id, opponentId: actor.id, reason: `Respond to Duel: select Attack or take 1 damage`, deadline: nextResponseDeadline(opponent) }, log, presentation.eventId);
+    const nextPending = withPresentationBarrier(nextDuelResponse(pending.response, pending.continuation, opponent.id, actor.id, nextResponseDeadline(opponent)), log, presentation.eventId);
     await db().batch([
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id),
       db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(log), roomId),
@@ -2624,10 +2642,10 @@ export async function POST(request: Request) {
 
   if (canonicalResponseKind === "duel" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = responseContinuationPending(stored) as DuelPending | null;
-    if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "duel" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Duel response." }, 409);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = duelResponse(asResponsePending(stored));
+    if (!liveRoom || liveRoom.phase !== "response" || !pending || pending.response.actorId !== me.id) return json({ error: "You are not the acting player for this Duel response." }, 409);
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
-    const opponent = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.opponentId).first<PlayerRow>();
+    const opponent = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.opponentId).first<PlayerRow>();
     if (!opponent) return json({ error: "The other duelist is no longer available." }, 409);
     const semanticCards = responseExecution?.consumeCardIds?.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)) ?? [];
     const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "duel";
@@ -2642,9 +2660,9 @@ export async function POST(request: Request) {
       const attackCards = selectedAttack ? [selectedAttack] : serpentCards; const attackIds = new Set(attackCards.map((card) => card.id)); hand = hand.filter((card) => !attackIds.has(card.id)); discard.push(...attackCards);
       const presentation = selectedAttack ? addCardEventWithId(log, me.name, selectedAttack, opponent.name, "play", true, responseExecution.playedAs ? { playedAs: responseExecution.playedAs } : undefined) : attackCards.length ? addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name) : addLogWithId(log, `${me.name} uses ${responseExecution.providerId} in the Duel.`, undefined);
       log = addLog(presentation.log, selectedAttack ? `${me.name} plays Attack in the Duel. Action passes to ${opponent.name}.` : attackCards.length ? `${me.name} discards cards to form an Attack in the Duel. Action passes to ${opponent.name}.` : `${me.name} forms an Attack in the Duel. Action passes to ${opponent.name}.`);
-      const nextPending: DuelPending = attackCards.length
-        ? withPresentationBarrier({ ...pending, readyAfterEventId: undefined, actorId: opponent.id, opponentId: me.id, reason: "Respond to Duel: select Attack or take 1 damage", deadline: nextResponseDeadline(opponent) }, log, presentation.eventId)
-        : { ...pending, readyAfterEventId: undefined, actorId: opponent.id, opponentId: me.id, reason: "Respond to Duel: select Attack or take 1 damage", deadline: nextResponseDeadline(opponent) };
+      const nextPending = attackCards.length
+        ? withPresentationBarrier(nextDuelResponse(pending.response, pending.continuation, opponent.id, me.id, nextResponseDeadline(opponent)), log, presentation.eventId)
+        : nextDuelResponse(pending.response, pending.continuation, opponent.id, me.id, nextResponseDeadline(opponent));
       await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
         db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(log), room.id),
