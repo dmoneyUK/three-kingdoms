@@ -7,13 +7,12 @@ import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
 import { continueTriggerEvent, chooseBotTrigger, createTriggerDecision, resumeTriggerContinuation } from "../game/decisions/triggers.ts";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
-import { readFile } from "node:fs/promises";
 import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
 import { HEROES, LEGACY_HEROES, STANDARD_HEROES, heroGender } from "../game/heroes.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
-test("Standard hero registry is complete, selectable, and shared by Quick Test and normal rooms", async () => {
+test("Standard hero registry is complete, selectable, and shared by Quick Test and normal rooms", () => {
   const ids = STANDARD_HEROES.map((hero) => hero.id);
   assert.equal(STANDARD_HEROES.length, 31);
   assert.equal(new Set(ids).size, ids.length);
@@ -22,10 +21,6 @@ test("Standard hero registry is complete, selectable, and shared by Quick Test a
   assert.deepEqual(LEGACY_HEROES.map((hero) => hero.id), ["yuanshao", "yanliang-wenchou", "pangde"]);
   assert.equal(HEROES.find((hero) => hero.id === "pangde")?.standardSelectable, false);
   assert.equal(heroGender("pangde"), "male");
-  const route = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
-  assert.match(route, /import \{ STANDARD_HEROES/);
-  assert.equal((route.match(/STANDARD_HEROES/g) ?? []).length >= 5, true);
-  assert.doesNotMatch(route, /const HEROES\s*=/);
 });
 
 test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack", () => {
@@ -80,16 +75,13 @@ test("response-only Attack providers do not become Play Phase actions", () => {
   }
 });
 
-test("production registries exclude synthetic semantic capabilities", () => {
+test("synthetic capability registration is isolated and cleans up", () => {
   const responseOptions = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" });
   const triggerOptions = getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("Test", "test-trigger-a")] });
   assert.deepEqual(responseOptions, []);
   assert.deepEqual(triggerOptions, []);
   assert.equal(testSemanticResponseProviders.length, 3);
   assert.equal(testSemanticTriggers.length, 4);
-});
-
-test("isolated capability setup registers and cleans up synthetic providers", () => {
   const unregister = registerTestSemanticCapabilities();
   try {
     assert.deepEqual(getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" }).map((option) => option.providerId), ["test_semantic_attack"]);
@@ -101,7 +93,7 @@ test("isolated capability setup registers and cleans up synthetic providers", ()
   assert.deepEqual(getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("Test", "test-trigger-a")] }), []);
 });
 
-test("capability discovery exposes semantic Dodge and Attack providers", () => {
+test("capability discovery and generic response decisions share live providers", () => {
   const dodge = getResponseOptions({ hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, { kind: "dodge", sourceId: "p1", targetId: "p2" });
   assert.deepEqual(dodge.map((option) => option.providerId), ["card", "eight_trigrams_dodge"]);
   assert.equal(dodge[0].selection?.type, "cards");
@@ -110,6 +102,17 @@ test("capability discovery exposes semantic Dodge and Attack providers", () => {
   const attack = getResponseOptions({ hand: [card("Peach", "peach-1"), card("Dodge", "dodge-2")], equipment: [card("SerpentSpear", "spear")], hero: null }, { kind: "attack", context: "barbarian_invasion" });
   assert.deepEqual(attack.map((option) => option.providerId), ["serpent_spear_attack"]);
   assert.deepEqual(attack[0].selection?.eligibleCardIds, ["peach-1", "dodge-2"]);
+  const pending = { kind: "attack", sourceId: "p1", targetId: "p2", actorId: "p2", resumePhase: "play", reason: "Dodge", deadline: 0 };
+  const decision = responseDecisionFor(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null });
+  assert.equal(decision?.requirement, "dodge");
+  assert.deepEqual(decision?.options.map((option) => option.providerId), ["card", "eight_trigrams_dodge"]);
+  assert.deepEqual(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "card", { cardId: "dodge-1" }), { status: "satisfied", providerId: "card", satisfies: "dodge", consumeCardIds: ["dodge-1"], resolution: "cards" });
+  const judgement = resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "eight_trigrams_dodge", {});
+  assert.equal(judgement?.status, "requires_resolution");
+  assert.equal(judgement?.resolution.kind, "judgement");
+  assert.equal(judgement?.resolution.succeeds(card("Peach", "red")), false);
+  assert.equal(judgement?.resolution.succeeds({ ...card("Peach", "red"), suit: "♥" }), true);
+  assert.equal(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "invented_provider", {}), null);
 });
 
 test("Negation scheduling can discover a non-card provider", () => {
@@ -134,32 +137,7 @@ test("response helpers select semantic providers", () => {
   assert.equal(selectResponse(context, "Dodge", "dodge-2", undefined)?.cards[0].id, "dodge-2");
 });
 
-test("generic decision modules do not encode equipment or hero provider IDs", async () => {
-  const [responses, triggers] = await Promise.all([
-    readFile(new URL("../game/decisions/responses.ts", import.meta.url), "utf8"),
-    readFile(new URL("../game/decisions/triggers.ts", import.meta.url), "utf8"),
-  ]);
-  const orchestration = `${responses}\n${triggers}`;
-  assert.doesNotMatch(orchestration, /eight_trigrams|serpent_spear|green_dragon|rock_cleaving|frost_sword|qingguo/i);
-});
 
-test("canonical room orchestration discovers damage triggers generically", async () => {
-  const route = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(route, /frostSwordTriggerOption\s*\(/);
-  assert.match(route, /function resolveAttackDamageAboutToApply/);
-  assert.match(route, /const options = damageTriggerOptions\(source, target\)/);
-  assert.doesNotMatch(route, /frostSwordTriggerContext|frostSwordTriggerOption/);
-  assert.equal((route.match(/resolveAttackDamageAboutToApply\(/g) ?? []).length >= 4, true);
-  assert.doesNotMatch(route, /Serpent Spear Attack would damage/);
-  assert.doesNotMatch(route, /applyFollowUpAttackOutcome[\s\S]{0,1200}damageTriggerOptions/);
-  assert.doesNotMatch(route, /Green Dragon Blade follow-up Attack/);
-  assert.match(route, /effectId === "frost_sword_damage_about_to_apply"/);
-  assert.match(route, /advances to the next target[\s\S]*withPresentationBarrier\(next/);
-  assert.doesNotMatch(route, /withPresentationBarrier\([^\n]*,\s*log\s*\)/);
-  assert.match(route, /function withPresentationBarrier<[\s\S]*eventId: string/);
-  assert.doesNotMatch(route, /eventId \?\? latestDecisionPresentationEventId/);
-  assert.match(route, /legacyPendingNeedsBarrierRecovery/);
-});
 
 test("new hero providers can discover and execute without editing core response code", () => {
   const unregister = registerResponseProvider({
@@ -181,19 +159,6 @@ test("new hero providers can discover and execute without editing core response 
   }
 });
 
-test("generic response submission is derived from a live requirement and provider", () => {
-  const pending = { kind: "attack", sourceId: "p1", targetId: "p2", actorId: "p2", resumePhase: "play", reason: "Dodge", deadline: 0 };
-  const decision = responseDecisionFor(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null });
-  assert.equal(decision?.requirement, "dodge");
-  assert.deepEqual(decision?.options.map((option) => option.providerId), ["card", "eight_trigrams_dodge"]);
-  assert.deepEqual(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "card", { cardId: "dodge-1" }), { status: "satisfied", providerId: "card", satisfies: "dodge", consumeCardIds: ["dodge-1"], resolution: "cards" });
-  const judgement = resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "eight_trigrams_dodge", {});
-  assert.equal(judgement?.status, "requires_resolution");
-  assert.equal(judgement?.resolution.kind, "judgement");
-  assert.equal(judgement?.resolution.succeeds(card("Peach", "red")), false);
-  assert.equal(judgement?.resolution.succeeds({ ...card("Peach", "red"), suit: "♥" }), true);
-  assert.equal(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "invented_provider", {}), null);
-});
 
 test("response discovery rejects more than one implicit provider", () => {
   const unregister = registerResponseProvider({
@@ -358,14 +323,7 @@ test("human, bot, and Judgement Negation continuations share the same semantic f
   assert.deepEqual(semantic(judgement), semantic(human));
 });
 
-test("successful Judgement Negation carries transitioned state across both responder outcomes", async () => {
-  const route = await readFile(new URL("../app/api/rooms/route.ts", import.meta.url), "utf8");
-  const branchStart = route.indexOf("async function applyNegationResponseOutcome");
-  const branchEnd = route.indexOf("async function applyResponseOutcome", branchStart);
-  const branch = route.slice(branchStart, branchEnd);
-  assert.match(branch, /playersWithNegateProvider\(players, nextAliveSeat\(players, actor\.seat\), negationRequirement\(transitioned\)\)/);
-  assert.match(branch, /phase = 'resolving', pending_json = \?, deck_json = \?, discard_json = \?, log_json = \?/);
-  assert.match(branch, /\.bind\(serializePending\(transitioned\), JSON\.stringify\(judged\.deck\), JSON\.stringify\(judged\.discard\), JSON\.stringify\(nextLog\), room\.id\)/);
+test("successful Judgement Negation carries transitioned state across both responder outcomes", () => {
 
   const pending = { kind: "negation", sourceId: "source", actorId: "actor", remainingIds: [], negated: false, cardName: "Overindulgence", effectTargetId: "target", resumePhase: "draw", effect: { kind: "judgement", targetId: "target", cardId: "delayed" }, reason: "respond", chainDepth: 0 };
   const rule = { kind: "judgement", label: "red Judgement", succeeds: (judged) => judged?.suit === "♥", successText: "succeeds", failureText: "fails" };

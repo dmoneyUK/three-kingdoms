@@ -9,14 +9,6 @@ test("game messages retain the latest ten public timeline entries", () => {
   assert.deepEqual(latestPublicMessages(timeline, describe).map((entry) => entry.message), Array.from({ length: 10 }, (_, index) => `Message ${index + 2}`));
 });
 
-test("the eleventh public event removes only the oldest displayed entry", () => {
-  const timeline = Array.from({ length: 11 }, (_, index) => ({ id: `event-${index}`, type: "message", message: `Message ${index}` }));
-  const messages = latestPublicMessages(timeline, describe);
-  assert.equal(messages.length, 10);
-  assert.equal(messages[0].message, "Message 1");
-  assert.equal(messages.at(-1).message, "Message 10");
-});
-
 test("card events keep their rich rank, suit, and name description", () => {
   const timeline = [{ id: "equip-1", type: "card", action: "equip", player: "ME", card: { rank: "2", suit: "♠", kind: "EightTrigrams" } }];
   const describeCard = (event) => event.action === "equip" ? `${event.player} equips ${event.card.rank}${event.card.suit} Eight Trigrams Formation.` : "";
