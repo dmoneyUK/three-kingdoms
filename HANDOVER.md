@@ -2,7 +2,7 @@
 
 ## Stage 6 architecture cleanup — canonical protocol only (2026-09-17)
 
-The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module, dead saved-room `advanceFrostSword` / `advanceRockCleaving` / `advanceGreenDragon` adapters, and provider-specific HTTP branches must not return. Canonical semantic trigger continuations remain unchanged, and the legacy Pending types remain intentionally untouched in this cleanup.
+The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module, dead saved-room `advanceFrostSword` / `advanceRockCleaving` / `advanceGreenDragon` adapters, and provider-specific HTTP branches must not return. `TriggerPending` is now the only trigger decision in the persisted `Pending` union; `asTriggerPending()` accepts only `kind: "trigger"`, while `ResponsePending` remains unchanged for the next cleanup step. Canonical semantic trigger continuations remain unchanged.
 
 Domain continuation data remains because the canonical engine uses it to resume Attack, Duel, Group, Negation, and trigger effects. Old pending DTO projections remain as bounded response payloads for current normalization/tests, while browser decision controls come from `currentAction`.
 

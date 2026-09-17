@@ -15,7 +15,7 @@ import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../..
 import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../game/match/dying.js";
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
-import { responseContinuationPending, triggerContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackTargetedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelPending, type DyingPending, type FrostSwordPending, type GreenDragonPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type RockCleavingPending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackTargetedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelPending, type DyingPending, type GroupPending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
 export const runtime = "edge";
 
@@ -48,7 +48,7 @@ async function recordAuditAction(room: RoomRow, actor: PlayerRow | null, actorNa
   const scope = await env.DB.prepare("SELECT room_id FROM audit_scope WHERE id = 1").first<{ room_id: string }>();
   if (scope?.room_id !== room.id) return;
   const storedPending = parse<Pending | null>(room.pending_json, null);
-  const pending = triggerContinuationPending(responseContinuationPending(storedPending)) as Pending | null;
+  const pending = asTriggerPending(storedPending) ?? responseContinuationPending(storedPending) as Pending | null;
   const actingPlayer = room.phase === "response" || room.phase === "dying"
     ? pending?.actorId ?? pending?.targetId ?? null
     : (await env.DB.prepare("SELECT id FROM players WHERE room_id = ? AND seat = ?").bind(room.id, room.turn_seat).first<{ id: string }>())?.id ?? null;
@@ -459,7 +459,7 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
   if (!owner) return "The active turn does not belong to a living player.";
   const storedPending = parse<Pending | null>(room.pending_json, null);
   const canonicalTrigger = asTriggerPending(storedPending);
-  const pending = triggerContinuationPending(responseContinuationPending(storedPending)) as Pending | null;
+  const pending = asTriggerPending(storedPending) ?? responseContinuationPending(storedPending) as Pending | null;
   if (room.phase === "response" || room.phase === "dying") {
     if (!pending) return `The ${room.phase} phase is missing its pending action.`;
     if (room.phase === "dying" && pending.kind !== "dying") return "The Dying phase contains the wrong pending action.";
@@ -467,9 +467,9 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
     const actor = players.find((player) => player.id === pending.actorId && player.alive);
     if (!actor) return "The pending action does not belong to a living player.";
     const expectedOwnerId = pending.kind === "dying" ? pending.resumePlayerId
-      : pending.kind === "attack_targeted_event" || canonicalTrigger?.continuation.kind === "attack_targeted_event" ? owner.id
+      : canonicalTrigger?.continuation.kind === "attack_targeted_event" ? owner.id
         : canonicalTrigger?.continuation.kind === "damage_about_to_apply_event" ? canonicalTrigger.continuation.sourceId
-          : pending.sourceId;
+          : canonicalTrigger ? canonicalTrigger.continuation.sourceId : pending.sourceId;
     const borrowedContinuationAttack = pending.kind === "attack" && (pending.origin === "triggered" || pending.origin === "serpent_spear") && owner.id !== pending.sourceId;
     if (owner.id !== expectedOwnerId && !borrowedContinuationAttack) return "The pending action does not belong to the current turn owner.";
   } else if (room.phase !== "resolving" && pending) {
@@ -1916,8 +1916,8 @@ async function roomState(code: string, token?: string) {
   const rawLog = parse<string[]>(room.log_json, []);
   const persistedPending = parsePersistedPending(room.pending_json);
   const triggerPending = asTriggerPending(persistedPending);
-  const pending = triggerContinuationPending(responseContinuationPending(persistedPending)) as Pending | null;
-  const responsePending = asResponsePending(persistedPending ?? pending);
+  const pending = triggerPending ?? responseContinuationPending(persistedPending) as Pending | null;
+  const responsePending = asResponsePending(persistedPending);
   const tokenHash = token ? await hash(token) : "";
   const turnPlayer = room.status === "playing" ? players.find((player) => player.seat === room.turn_seat && player.alive) : undefined;
   const actualActionPlayerId = room.status !== "playing" ? null : room.phase === "response" || room.phase === "dying" ? pending?.actorId ?? pending?.targetId ?? turnPlayer?.id ?? null : turnPlayer?.id ?? null;
@@ -1973,14 +1973,14 @@ async function roomState(code: string, token?: string) {
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or
     // decline_trigger.
-    pendingFrostSword: pending?.kind === "frost_sword" ? pending : legacyFrostAvailable ? {
+    pendingFrostSword: legacyFrostAvailable ? {
       kind: "frost_sword", sourceId: triggerPending.continuation.sourceId, targetId: triggerPending.continuation.targetId,
       actorId: triggerPending.actorId, resumePhase: triggerPending.continuation.resumePhase,
       sequenceStartCardId: triggerPending.continuation.sequenceStartCardId, reason: triggerPending.reason,
       deadline: triggerPending.deadline ?? 0, triggerId: "frost_sword_damage_about_to_apply",
     } : null,
-    pendingGreenDragon: pending?.kind === "green_dragon" ? pending : null,
-    pendingRockCleaving: pending?.kind === "rock_cleaving" ? pending : null,
+    pendingGreenDragon: null,
+    pendingRockCleaving: null,
     pendingDuel: pending?.kind === "duel" ? pending : null,
     pendingGroup: pending?.kind === "group" ? pending : pending?.kind === "dying" ? pending.resumePending ?? null : null,
     // The client normalizer validates pending DTOs by their discriminator.
@@ -2392,10 +2392,10 @@ export async function POST(request: Request) {
     const persisted = parsePersistedPending(liveRoom?.pending_json ?? null);
     const canonicalResponse = asResponsePending(persisted);
     const trigger = asTriggerPending(persisted);
-    const pending = persisted ? triggerContinuationPending(responseContinuationPending(persisted)) as Pending : null;
-    const acting = trigger ? trigger.actorId === me.id : canonicalResponse ? canonicalResponse.actorId === me.id : pending && ["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation"].includes(pending.kind) && pending.actorId === me.id;
+    const pending = persisted ? responseContinuationPending(persisted) as Pending : null;
+    const acting = trigger ? trigger.actorId === me.id : canonicalResponse ? canonicalResponse.actorId === me.id : pending && ["attack", "duel", "group", "negation"].includes(pending.kind) && pending.actorId === me.id;
     if (!liveRoom || liveRoom.phase !== "response" || !acting) return json({ error: "You are not the acting player for this response timer." }, 409);
-    const responsePending = trigger ?? canonicalResponse ?? pending as AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | NegationPending;
+    const responsePending = trigger ?? canonicalResponse ?? pending;
     // Idempotent: a refresh or duplicate request must never extend a human
     // decision. Only an unarmed pending response can receive its clock.
     if ((responsePending.deadline ?? 0) <= 0) {

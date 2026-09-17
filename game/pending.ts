@@ -6,9 +6,6 @@ import type { TriggerEvent } from "./capabilities/triggers";
 export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered";
 export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; sequenceStartCardId: string; resumePhase: string; resolutionId?: string };
 export type AttackPending = { kind: "attack"; sourceId: string; targetId: string; actorId: string; resumePhase?: string; sequenceStartCardId?: string; reason: string; deadline?: number; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; ignoresArmor?: boolean; resolutionId?: string; readyAfterEventId?: string };
-export type GreenDragonPending = { kind: "green_dragon"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };
-export type RockCleavingPending = { kind: "rock_cleaving"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };
-export type FrostSwordPending = { kind: "frost_sword"; sourceId: string; targetId: string; actorId: string; resumePhase: string; sequenceStartCardId: string; reason: string; deadline?: number; triggerId?: string; readyAfterEventId?: string };
 export type DuelPending = { kind: "duel"; sourceId: string; targetId: string; actorId: string; opponentId: string; resumePhase: string; reason: string; deadline?: number; readyAfterEventId?: string };
 export type GroupPending = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; actorId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; reason: string; deadline?: number; heldCards?: Card[]; resolutionId?: string; readyAfterEventId?: string };
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
@@ -81,7 +78,7 @@ export type TriggerPending = {
   continuation: TriggerContinuation;
 };
 export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
-export type Pending = AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | BorrowedSwordPending | NegationPending | ResponsePending | TriggerPending | DyingPending;
+export type Pending = AttackPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | BorrowedSwordPending | NegationPending | ResponsePending | TriggerPending | DyingPending;
 
 type ResponseContinuationPending = AttackPending | GroupPending | DuelPending | NegationPending;
 
@@ -127,25 +124,7 @@ export function responseContinuationPending(pending: unknown): Pending | unknown
 }
 
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
-  if (!pending) return null;
-  if (pending.kind === "trigger") return pending;
-  if (!["green_dragon", "rock_cleaving", "frost_sword"].includes(pending.kind)) return null;
-  const domain = pending as GreenDragonPending | RockCleavingPending | FrostSwordPending;
-  return { kind: "trigger", actorId: domain.actorId, event: domain.kind === "frost_sword" ? "damage_about_to_apply" : "attack_dodged", reason: domain.reason, deadline: domain.deadline, readyAfterEventId: domain.readyAfterEventId, continuation: domain };
-}
-
-/** Expands a canonical trigger decision for the domain continuation resolver. */
-export function triggerContinuationPending(pending: unknown): Pending | unknown {
-  if (!pending || typeof pending !== "object" || (pending as { kind?: unknown }).kind !== "trigger") return pending;
-  const trigger = pending as TriggerPending;
-  return {
-    ...trigger.continuation,
-    actorId: trigger.actorId,
-    reason: trigger.reason,
-    ...(trigger.deadline === undefined ? {} : { deadline: trigger.deadline }),
-    ...(trigger.resolutionId === undefined ? {} : { resolutionId: trigger.resolutionId }),
-    ...(trigger.readyAfterEventId === undefined ? {} : { readyAfterEventId: trigger.readyAfterEventId }),
-  };
+  return pending?.kind === "trigger" ? pending : null;
 }
 
 /** Serializes all new semantic response decisions in their canonical form. */
