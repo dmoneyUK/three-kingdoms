@@ -20,7 +20,7 @@ The completed architecture guarantees, covered by deterministic tests and the is
 - exhausted damage reactions apply the original damage exactly once and enter Dying/rescue when required;
 - required end-to-end regressions cover Negation ordering/parity, Judgement success/failure, trigger exhaustion, and human-seat guarantees across ordinary responses and trigger chains: authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, and stale/double-submission safety;
 - synthetic test providers are explicitly registered only in the test Worker and are absent from production registries;
-- compatibility/client/event-ID cleanup remains bounded and must not become a second rules engine.
+- the semantic protocol is the only supported gameplay protocol; currentAction is the authoritative client decision contract and future cards/heroes must not add concrete provider-specific HTTP actions.
 
 For `attack_targeted`, preserve the established invariant: discover providers semantically from authoritative live state; allow the established source- or target-owned actor; project private choices only to that actor; exhaust resolved effects deterministically; resume the original Attack exactly once; and do not add provider-specific route or UI actions.
 

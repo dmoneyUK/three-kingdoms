@@ -2,6 +2,8 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+Stage 6 cleanup is canonical-only: response/trigger commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported; and `currentAction` is authoritative. Future cards/heroes must not add provider-specific HTTP actions. Wusheng requires explicit `playAs: "attack"`, with native card play as the default. Hero #2 is not part of this round.
+
 ## Current architecture milestone — semantic decisions and capabilities
 
 The response refactor has reached its intended core shape:
@@ -71,8 +73,6 @@ Canonical damage-trigger decisions accept the exact presentation event ID from e
 
 Legacy protocol/pending compatibility still exists intentionally:
 
-- provider-specific response actions such as `respond_dodge`, `respond_group`, `respond_negation`, `respond_eight_trigrams`;
-- weapon-specific trigger actions such as `respond_green_dragon`, `respond_rock_cleaving`, `use_frost_sword` and their pass actions;
 - legacy-shaped `ResponseContinuation` variants.
 
 Remove these one path at a time only after the equivalent semantic decision is fully covered. Keep saved-game compatibility until the replacement path is proven; do not add any new card or hero capability to a legacy action branch.

@@ -1,5 +1,13 @@
 # Three Kingdoms project handover
 
+## Stage 6 architecture cleanup — canonical protocol only (2026-09-17)
+
+The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module and provider-specific HTTP branches must not return.
+
+Domain continuation data remains because the canonical engine uses it to resume Attack, Duel, Group, Negation, and trigger effects. Old pending DTO projections remain as bounded response payloads for current normalization/tests, while browser decision controls come from `currentAction`.
+
+Guan Yu Wusheng separates eligibility from intent. Native card behavior is the default; `playAs: "attack"` is required for an explicit red-card virtual Attack and is validated against live authoritative state. The physical card ID is conserved and only virtual use receives `playedAs: "attack"`. Hero #2 is outside this round.
+
 ## Stage 6 Round 1 complete — Standard roster reconciliation and Guan Yu (2026-09-16)
 
 The runtime Standard roster now has one authoritative source in
@@ -151,7 +159,7 @@ type ResponsePending = {
 };
 ```
 
-The continuation is still legacy-shaped (`AttackPending`, `GroupPending`, `DuelPending`, or `NegationPending`) so existing resolvers and saved games can migrate incrementally. `serializePending()` writes the canonical wrapper; `asLegacyResponsePending()` is a bounded compatibility adapter. Do not create a second rules engine just to remove that adapter.
+The continuation remains domain-shaped (`AttackPending`, `GroupPending`, `DuelPending`, or `NegationPending`) because the canonical engine needs effect-resumption data. `serializePending()` writes only the canonical wrapper; old persisted response decisions are unsupported.
 
 `currentAction` v3 is the private authoritative action view. For semantic responses it exposes the requirement, canonical `respond` / `decline_response`, provider options, deadline, actor, and presentation barrier. The browser must not infer legal response options from hero/equipment state.
 
@@ -202,7 +210,7 @@ Representative migrated triggers:
 
 Frost Sword correctly excludes Judgement Zone cards.
 
-Trigger discovery is now event-centric and returns **0..N** legal providers. `TriggerPending.resolvedEffectIds` prevents the same optional reaction from being offered twice during one event. The route rebuilds capability-neutral live source/target context and validates the submitted provider against the entire remaining option set. Old `respond_green_dragon`, `respond_rock_cleaving`, and Frost Sword action names are translated only at the HTTP boundary; new clients use `trigger` / `decline_trigger`.
+Trigger discovery is event-centric and returns **0..N** legal providers. `TriggerPending.resolvedEffectIds` prevents the same optional reaction from being offered twice during one event. The route rebuilds capability-neutral live source/target context and validates the submitted provider against the entire remaining option set. The only trigger commands are `trigger` and `decline_trigger`.
 
 Providers now return a discriminated semantic trigger outcome (`follow_up_attack`, `force_damage`, `prevent_damage`, or `continue_event`) with compiler-enforced payloads. Target-card constraints carry a target player plus opaque `eligibleKeys`; hidden hand IDs are never exposed as card IDs. `game/decisions/triggers.ts` owns the non-terminal `continue_event` transition: it records the resolved effect, reopens the same event with the remaining live options, or immediately resumes its continuation when none remains. `attack_dodged` terminal outcomes now use generic `applyFollowUpAttackOutcome()` and `applyForcedDamageOutcome()` domain functions; canonical execution switches on the semantic outcome and not on Green Dragon Blade or Rock Cleaving Axe. Legacy bot schedulers, if retained, are inactive narrow adapters only and are not part of the product contract.
 
@@ -239,7 +247,7 @@ Every newly created canonical `ResponsePending` and `TriggerPending` stores `rea
 
 ### C. Legacy protocol branches remain deliberately
 
-`GAMEPLAY_ACTIONS` still contains compatibility response/trigger verbs such as `respond_dodge`, `respond_group`, `respond_negation`, `respond_eight_trigrams`, and the weapon-specific trigger actions. Legacy response continuation shapes also remain.
+The semantic protocol is the only supported gameplay protocol. Old clients and old persisted in-progress legacy response/trigger decisions are unsupported. `currentAction` is the authoritative client decision contract; provider-specific HTTP actions must not be added for future cards or heroes.
 
 Do not remove them in a big-bang cleanup. First finish equivalent semantic trigger orchestration and exact decision barriers, keep saved-game compatibility covered, then delete compatibility branches one path at a time with regression tests.
 

@@ -7,7 +7,6 @@ import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
 import { continueTriggerEvent, chooseBotTrigger, createTriggerDecision, resumeTriggerContinuation } from "../game/decisions/triggers.ts";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
-import { normalizeLegacyResponseAction } from "../game/compat/legacy-actions.ts";
 import { readFile } from "node:fs/promises";
 import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
 import { HEROES, LEGACY_HEROES, STANDARD_HEROES, heroGender } from "../game/heroes.ts";
@@ -129,17 +128,10 @@ test("Negation scheduling can discover a non-card provider", () => {
   }
 });
 
-test("legacy response helpers remain compatible while using semantic providers", () => {
+test("response helpers select semantic providers", () => {
   const context = { hand: [card("Dodge", "dodge-1"), card("Dodge", "dodge-2")], equipment: [], hero: null };
   assert.equal(responseOptions(context, "Dodge").length, 2);
   assert.equal(selectResponse(context, "Dodge", "dodge-2", undefined)?.cards[0].id, "dodge-2");
-});
-
-test("legacy response requests normalize once to semantic providers", () => {
-  assert.deepEqual(normalizeLegacyResponseAction("respond_dodge"), { action: "respond", providerId: "card" });
-  assert.deepEqual(normalizeLegacyResponseAction("respond_negation"), { action: "respond", providerId: "negation_card" });
-  assert.deepEqual(normalizeLegacyResponseAction("respond_group", ["a", "b"]), { action: "respond", providerId: "serpent_spear_attack" });
-  assert.deepEqual(normalizeLegacyResponseAction("pass_negation"), { action: "decline_response" });
 });
 
 test("generic decision modules do not encode equipment or hero provider IDs", async () => {

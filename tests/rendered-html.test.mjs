@@ -95,7 +95,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(page, /actionRevision/);
   assert.match(page, /mutationInFlight/);
   assert.match(page, /invalidResponseState/);
-  assert.doesNotMatch(page, /: "take_damage";/);
+  assert.doesNotMatch(page, /: "decline_response";/);
   assert.match(page, /playedCard: 4000/);
   assert.doesNotMatch(page, /eventMessage: 3000/);
   assert.match(page, /game-messages/);
@@ -279,7 +279,7 @@ test("client keeps the turn, response, presentation, and selection controls", as
   assert.match(roomApi, /hasSkyPiercingHalberd/);
   assert.doesNotMatch(roomApi, /frostSwordTriggerOption/);
   assert.match(roomApi, /damageTriggerOptions/);
-  assert.match(roomApi, /respond_rock_cleaving/);
+  assert.match(roomApi, /trigger/);
   assert.match(roomApi, /serpent_spear_attack/);
   assert.match(roomApi, /attackRangeFor/);
   assert.match(roomApi, /"equip"/);

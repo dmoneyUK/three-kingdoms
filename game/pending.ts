@@ -64,8 +64,7 @@ export type DamageAboutToApplyTriggerContinuation = {
   resumePhase: string;
   sequenceStartCardId: string;
 };
-/** Legacy shapes remain readable for already-saved games only. */
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | GreenDragonPending | RockCleavingPending | FrostSwordPending;
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {
@@ -84,9 +83,9 @@ export type TriggerPending = {
 export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupPending; reason: string };
 export type Pending = AttackPending | GreenDragonPending | RockCleavingPending | FrostSwordPending | DuelPending | GroupPending | HarvestPending | TargetCardPending | BorrowedSwordPending | NegationPending | ResponsePending | TriggerPending | DyingPending;
 
-type LegacyResponsePending = AttackPending | GroupPending | DuelPending | NegationPending;
+type ResponseContinuationPending = AttackPending | GroupPending | DuelPending | NegationPending;
 
-function continuationForLegacy(pending: LegacyResponsePending): ResponseContinuation {
+function continuationForResponse(pending: ResponseContinuationPending): ResponseContinuation {
   const continuation = { ...pending } as Partial<LegacyResponsePending>;
   delete continuation.actorId;
   delete continuation.reason;
@@ -95,7 +94,7 @@ function continuationForLegacy(pending: LegacyResponsePending): ResponseContinua
   return continuation as ResponseContinuation;
 }
 
-function requirementForLegacyResponse(pending: LegacyResponsePending): ActionRequirement {
+function requirementForResponse(pending: ResponseContinuationPending): ActionRequirement {
   switch (pending.kind) {
     case "attack": return { kind: "dodge", sourceId: pending.sourceId, targetId: pending.targetId, attack: { cardId: pending.physicalCardId, suit: pending.physicalSuit, ignoresArmor: pending.ignoresArmor } };
     case "group": return { kind: pending.requiredKind === "Attack" ? "attack" : "dodge", sourceId: pending.sourceId, actorId: pending.actorId, context: pending.requiredKind === "Attack" ? "barbarian_invasion" : undefined };
@@ -104,26 +103,16 @@ function requirementForLegacyResponse(pending: LegacyResponsePending): ActionReq
   }
 }
 
-/** Converts legacy saved state into the canonical decision shape. */
 export function asResponsePending(pending: Pending | null | undefined): ResponsePending | null {
   if (!pending) return null;
   if (pending.kind === "response") return pending;
   if (!["attack", "group", "duel", "negation"].includes(pending.kind)) return null;
-  const legacy = pending as LegacyResponsePending;
-  return {
-    kind: "response",
-    actorId: legacy.actorId,
-    requirement: requirementForLegacyResponse(legacy),
-    reason: legacy.reason,
-    deadline: legacy.deadline,
-    resolutionId: legacy.resolutionId,
-    readyAfterEventId: legacy.readyAfterEventId,
-    continuation: continuationForLegacy(legacy),
-  };
+  const domain = pending as ResponseContinuationPending;
+  return { kind: "response", actorId: domain.actorId, requirement: requirementForResponse(domain), reason: domain.reason, deadline: domain.deadline, resolutionId: domain.resolutionId, readyAfterEventId: domain.readyAfterEventId, continuation: continuationForResponse(domain) };
 }
 
-/** Lets compatibility resolvers consume a canonical persisted decision. */
-export function asLegacyResponsePending(pending: unknown): Pending | unknown {
+/** Expands a canonical response decision for the domain continuation resolver. */
+export function responseContinuationPending(pending: unknown): Pending | unknown {
   if (!pending || typeof pending !== "object" || (pending as { kind?: unknown }).kind !== "response") return pending;
   const response = pending as ResponsePending;
   const continuation = response.continuation;
@@ -137,30 +126,16 @@ export function asLegacyResponsePending(pending: unknown): Pending | unknown {
   };
 }
 
-type LegacyTriggerPending = GreenDragonPending | RockCleavingPending | FrostSwordPending;
-function triggerEventFor(pending: LegacyTriggerPending): TriggerEvent {
-  return pending.kind === "frost_sword" ? "damage_about_to_apply" : "attack_dodged";
-}
-
-/** Converts legacy weapon-specific trigger state into one semantic trigger decision. */
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
   if (!pending) return null;
   if (pending.kind === "trigger") return pending;
   if (!["green_dragon", "rock_cleaving", "frost_sword"].includes(pending.kind)) return null;
-  const continuation = pending as LegacyTriggerPending;
-  return {
-    kind: "trigger",
-    actorId: continuation.actorId,
-    event: triggerEventFor(continuation),
-    reason: continuation.reason,
-    deadline: continuation.deadline,
-    readyAfterEventId: continuation.readyAfterEventId,
-    continuation,
-  };
+  const domain = pending as GreenDragonPending | RockCleavingPending | FrostSwordPending;
+  return { kind: "trigger", actorId: domain.actorId, event: domain.kind === "frost_sword" ? "damage_about_to_apply" : "attack_dodged", reason: domain.reason, deadline: domain.deadline, readyAfterEventId: domain.readyAfterEventId, continuation: domain };
 }
 
-/** Lets existing effect resolvers read a trigger continuation during migration. */
-export function asLegacyTriggerPending(pending: unknown): Pending | unknown {
+/** Expands a canonical trigger decision for the domain continuation resolver. */
+export function triggerContinuationPending(pending: unknown): Pending | unknown {
   if (!pending || typeof pending !== "object" || (pending as { kind?: unknown }).kind !== "trigger") return pending;
   const trigger = pending as TriggerPending;
   return {

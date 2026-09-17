@@ -60,16 +60,16 @@ The official catalogue uses **Qun**. The current runtime uses `Neutral` for the 
 | Wei | `xu-chu` | Xu Chu | 许褚 | Male | 4 | Luoyi 裸衣 | Present |
 | Wei | `guo-jia` | Guo Jia | 郭嘉 | Male | 3 | Tiandu 天妒<br>Yiji 遗计 | Present |
 | Wei | `zhen-ji` | Zhen Ji | 甄姬 | Female | 3 | Qingguo 倾国<br>Luoshen 洛神 | Present |
-| Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Xiaoguo 骁果 | **Missing** |
-| Wei | `yu-jin` | Yu Jin | 于禁 | Male | 4 | Yizhong 毅重 | **Missing** |
+| Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Xiaoguo 骁果 | **Present / metadata-only** |
+| Wei | `yu-jin` | Yu Jin | 于禁 | Male | 4 | Yizhong 毅重 | **Present / metadata-only** |
 | Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Rende 仁德<br>Jijiang 激将 | Present |
 | Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | Wusheng 武圣 | Present |
 | Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Paoxiao 咆哮 | Present |
-| Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Guanxing 观星<br>Kongcheng 空城 | **Missing** |
+| Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Guanxing 观星<br>Kongcheng 空城 | **Present / metadata-only** |
 | Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Longdan 龙胆 | Present |
 | Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Mashu 马术<br>Tieji 铁骑 | Present |
 | Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Jizhi 集智<br>Qicai 奇才 | Present |
-| Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Shushen 淑慎<br>Shenzhi 神智 | **Missing** |
+| Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Shushen 淑慎<br>Shenzhi 神智 | **Present / metadata-only** |
 | Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Zhiheng 制衡<br>Jiuyuan 救援 | Present |
 | Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Qixi 奇袭 | Present |
 | Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Keji 克己 | Present |
@@ -82,8 +82,8 @@ The official catalogue uses **Qun**. The current runtime uses `Neutral` for the 
 | Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Wushuang 无双 | Present |
 | Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lijian 离间<br>Biyue 闭月 | Present |
 | Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Shiyong 恃勇 | Present |
-| Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Yicong 义从 | **Missing** |
-| Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Kuangfu 狂斧 | **Missing** |
+| Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Yicong 义从 | **Present / metadata-only** |
+| Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Kuangfu 狂斧 | **Present / metadata-only** |
 
 ## Detailed hero data
 
