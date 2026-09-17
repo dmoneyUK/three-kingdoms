@@ -1,5 +1,19 @@
 # Three Kingdoms project handover
 
+## Frost Sword picker eligibility source of truth — 2026-09-17
+
+The centred generic `target_cards` picker no longer reconstructs hidden Hand
+choices from `target.handCount`. It now sorts and renders every `hand:N` key
+provided by authoritative `selection.eligibleKeys`, keeping `handCount` as
+presentation information only. Equipment remains limited to cards in the
+target's Equipment Zone whose IDs appear as eligible non-hand keys, so Kirin
+Bow still shows only eligible Mounts and Frost Sword shows its eligible hidden
+Hand cards plus eligible Equipment. Existing stale-key filtering and min/max
+enforcement remain unchanged. Existing render coverage now proves that four
+server-projected Hand keys render even when the presentation count is zero;
+the full Worker/D1 suite remains 74 / 74. Recommended next work is the next
+individually verified Standard hero.
+
 ## Centred generic target-card picker — 2026-09-17
 
 The inline trigger `target_cards` controls have been replaced by one shared

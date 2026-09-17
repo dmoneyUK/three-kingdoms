@@ -42,10 +42,6 @@ function timelineSequenceFrom(room: Room, startId: string) {
 }
 
 function eventCards(event: GameEvent) { return event.type === "card" ? [event.card] : event.type === "cards" ? event.cards : []; }
-function eligibleHiddenHandIndexes(handCount: number, eligibleKeys: string[]) {
-  const eligible = new Set(eligibleKeys);
-  return Array.from({ length: Math.max(0, handCount) }, (_, index) => index).filter((index) => eligible.has(`hand:${index}`));
-}
 function movesDirectlyToDiscard(event: GameEvent) {
   return event.type === "cards" ? event.action === "discard" : event.type === "card" ? event.action === "discard" || event.action === "reveal" : false;
 }
@@ -671,12 +667,14 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
 type TargetCardSelection = Extract<NonNullable<TriggerOptionView["selection"]>, { type: "target_cards" }>;
 
 function TargetCardPicker({ option, selection, target, selectedKeys, disabled, busy, canDecline, error, onToggle, onUse, onDecline }: { option: TriggerOptionView; selection: TargetCardSelection; target: Player; selectedKeys: string[]; disabled: boolean; busy: boolean; canDecline: boolean; error: string; onToggle: (key: string) => void; onUse: (keys: string[]) => void; onDecline: () => void }) {
-  const eligible = new Set(selection.eligibleKeys);
   const validSelectedKeys = selectedKeys.filter((key) => selection.eligibleKeys.includes(key));
-  const handIndexes = eligibleHiddenHandIndexes(target.handCount, selection.eligibleKeys);
-  const equipment = target.equipmentCards.filter((item) => eligible.has(item.id));
+  const handKeys = selection.eligibleKeys
+    .filter((key) => /^hand:\d+$/.test(key))
+    .sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)));
+  const eligibleEquipmentKeys = new Set(selection.eligibleKeys.filter((key) => !/^hand:\d+$/.test(key)));
+  const equipment = target.equipmentCards.filter((item) => eligibleEquipmentKeys.has(item.id));
   const items = [
-    ...handIndexes.map((index) => ({ key: `hand:${index}`, label: `Hidden hand card ${index + 1}`, hidden: true, card: null })),
+    ...handKeys.map((key) => ({ key, label: `Hidden hand card ${Number(key.slice(5)) + 1}`, hidden: true, card: null })),
     ...equipment.map((item) => ({ key: item.id, label: cardDefinition(item.kind).name, hidden: false, card: item })),
   ];
   const effectLabel = option.label.replace(/^Use\s+/i, "");
