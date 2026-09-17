@@ -1,10 +1,10 @@
 import type { Card } from "../model";
-import type { NegationPending } from "../pending";
+import type { NegationContinuation } from "../pending";
 
 type NegationActor = { id: string; name: string };
 
 /** Applies one successful semantic Negation and nothing else. */
-export function applySuccessfulNegation(pending: NegationPending, actor: NegationActor, consumedCards: Card[] = []): NegationPending {
+export function applySuccessfulNegation(pending: NegationContinuation, actor: NegationActor, consumedCards: Card[] = []): NegationContinuation {
   return {
     ...pending,
     readyAfterEventId: undefined,

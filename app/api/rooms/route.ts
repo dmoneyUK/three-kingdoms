@@ -15,7 +15,7 @@ import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../..
 import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../game/match/dying.js";
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
-import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DuelPending, type DyingPending, type GroupContinuation, type GroupPending, type GroupResponsePending, type HarvestPending, type NegationPending, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { responseContinuationPending, asResponsePending, asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackPending, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DuelPending, type DyingPending, type GroupContinuation, type GroupPending, type GroupResponsePending, type HarvestPending, type NegationContinuation, type NegationPending, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
 export const runtime = "edge";
 
@@ -466,6 +466,11 @@ function groupResponse(pending: ResponsePending | null | undefined): { response:
   return { response: pending as GroupResponsePending, continuation: pending.continuation };
 }
 
+function negationResponse(pending: ResponsePending | null | undefined): { response: ResponsePending; continuation: NegationContinuation } | null {
+  if (!pending || pending.kind !== "response" || pending.continuation.kind !== "negation") return null;
+  return { response: pending, continuation: pending.continuation };
+}
+
 function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
   if (room.status !== "playing") return null;
   const owner = players.find((player) => player.seat === room.turn_seat && player.alive);
@@ -664,7 +669,7 @@ function playersWithNegateProvider(players: PlayerRow[], startSeat: number, requ
   return playersInTurnOrder(players, startSeat).filter((player) => getResponseOptions({ hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), hero: player.hero, requirement }, requirement).length > 0);
 }
 
-function negationRequirement(pending: NegationPending, targetId = pending.effectTargetId) {
+function negationRequirement(pending: NegationContinuation, targetId = pending.effectTargetId) {
   return { kind: "negate" as const, sourceId: pending.latestNegationPlayerId ?? pending.sourceId, targetId };
 }
 async function startJudgementNegation(room: RoomRow, target: PlayerRow, players: PlayerRow[], delayed: Card, deck: Card[], discard: Card[], log: string[]) {
@@ -672,7 +677,8 @@ async function startJudgementNegation(room: RoomRow, target: PlayerRow, players:
   if (!holders.length) return false;
   const presentation = addCardEventWithId(log, target.name, delayed, target.name, "activate");
   log = presentation.log;
-  const pending: NegationPending = withPresentationBarrier({ kind: "negation", sourceId: target.id, actorId: holders[0].id, remainingIds: holders.slice(1).map((player) => player.id), negated: false, cardName: cardDefinition(delayed.kind).name, effectTargetId: target.id, resumePhase: room.phase?.startsWith("draw") ? room.phase : "draw", effect: { kind: "judgement", targetId: target.id, cardId: delayed.id }, responseTarget: `${cardDefinition(delayed.kind).name}'s effect on ${target.name}`, chainDepth: 0, reason: `Play Negation to cancel ${cardDefinition(delayed.kind).name}'s effect on ${target.name}, or pass`, deadline: nextResponseDeadline(holders[0]) }, presentation.eventId);
+  const continuation: NegationContinuation = { kind: "negation", sourceId: target.id, remainingIds: holders.slice(1).map((player) => player.id), negated: false, cardName: cardDefinition(delayed.kind).name, effectTargetId: target.id, resumePhase: room.phase?.startsWith("draw") ? room.phase : "draw", effect: { kind: "judgement", targetId: target.id, cardId: delayed.id }, responseTarget: `${cardDefinition(delayed.kind).name}'s effect on ${target.name}`, chainDepth: 0 };
+  const pending: ResponsePending = withPresentationBarrier({ kind: "response", actorId: holders[0].id, requirement: negationRequirement(continuation), reason: `Play Negation to cancel ${cardDefinition(delayed.kind).name}'s effect on ${target.name}, or pass`, deadline: nextResponseDeadline(holders[0]), continuation }, presentation.log, presentation.eventId);
   await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id).run();
   await advanceNegation(room.id);
   return true;
@@ -852,9 +858,10 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
     return resolveDeferredStratagem(room.id, pending);
   }
   const readyAfterEventId = latestDecisionPresentationEventId(log, base.resolutionId);
-  const pending: NegationPending = readyAfterEventId
-    ? withPresentationBarrier({ kind: "negation", ...base, actorId: holders[0].id, remainingIds: holders.slice(1).map((player) => player.id), reason: `Play Negation to cancel ${cardDefinition(card.kind).name}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(holders[0]) }, log, readyAfterEventId)
-    : { kind: "negation", ...base, actorId: holders[0].id, remainingIds: holders.slice(1).map((player) => player.id), reason: `Play Negation to cancel ${cardDefinition(card.kind).name}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(holders[0]) };
+  const continuation: NegationContinuation = { kind: "negation", sourceId: base.sourceId, remainingIds: holders.slice(1).map((player) => player.id), negated: base.negated, cardName: base.cardName, effectTargetId: base.effectTargetId, resumePhase: base.resumePhase, effect: base.effect, responseTarget: base.responseTarget, chainDepth: base.chainDepth, resolutionId: base.resolutionId, ...(base.heldCards ? { heldCards: base.heldCards } : {}) };
+  const pending: ResponsePending = readyAfterEventId
+    ? withPresentationBarrier({ kind: "response", actorId: holders[0].id, requirement: negationRequirement(continuation), reason: `Play Negation to cancel ${cardDefinition(card.kind).name}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(holders[0]), resolutionId: base.resolutionId, continuation }, log, readyAfterEventId)
+    : { kind: "response", actorId: holders[0].id, requirement: negationRequirement(continuation), reason: `Play Negation to cancel ${cardDefinition(card.kind).name}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(holders[0]), resolutionId: base.resolutionId, continuation };
   await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id), db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(sequenceDiscard), JSON.stringify(log), room.id)]);
   await advanceNegation(room.id);
   return [];
@@ -943,18 +950,19 @@ async function applyDuelResponseOutcome(room: RoomRow, pending: { response: Resp
   }
 }
 
-async function applyNegationResponseOutcome(room: RoomRow, pending: NegationPending, actor: PlayerRow, players: PlayerRow[], judged: ResponseJudgementOutcome) {
+async function applyNegationResponseOutcome(room: RoomRow, pending: { response: ResponsePending; continuation: NegationContinuation }, actor: PlayerRow, players: PlayerRow[], judged: ResponseJudgementOutcome) {
+  const { response, continuation } = pending;
   const resolution = judged.result.rule;
   const judgedResult = judged.result;
   const nextLog = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}. ${judgedResult.status === "satisfied" ? resolution.successText : resolution.failureText}`);
   const success = judgedResult.status === "satisfied";
-  const transitioned = success ? applySuccessfulNegation(pending, actor) : pending;
+  const transitioned = success ? applySuccessfulNegation(continuation, actor) : continuation;
   const nextIds = success
     ? playersWithNegateProvider(players, nextAliveSeat(players, actor.seat), negationRequirement(transitioned)).map((player) => player.id)
-    : pending.remainingIds;
+    : continuation.remainingIds;
   const nextActorId = nextIds[0];
   if (nextActorId) {
-    const next: NegationPending = { ...transitioned, actorId: nextActorId, remainingIds: nextIds.slice(1), deadline: nextResponseDeadline(players.find((player) => player.id === nextActorId)), reason: success ? `Play Negation on ${actor.name}'s Negation, or pass` : pending.reason };
+    const next: ResponsePending = { kind: "response", actorId: nextActorId, requirement: negationRequirement(transitioned), reason: success ? `Play Negation on ${actor.name}'s Negation, or pass` : response.reason, deadline: nextResponseDeadline(players.find((player) => player.id === nextActorId)), resolutionId: response.resolutionId, continuation: { ...transitioned, remainingIds: nextIds.slice(1) } };
     const decision = freshDecision(next, nextLog, `Negation response passes to ${players.find((player) => player.id === nextActorId)?.name ?? "the next player"}.`);
     await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
       .bind(serializePending(decision.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(decision.log), room.id).run();
@@ -980,7 +988,8 @@ async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: Play
     const duel = duelResponse(response);
     if (opponent && duel) return applyDuelResponseOutcome(room, duel, actor, opponent, outcome);
   }
-  if (continuation?.kind === "negation") return applyNegationResponseOutcome(room, responseContinuationPending(response) as NegationPending, actor, players, outcome);
+  const negation = negationResponse(response);
+  if (negation) return applyNegationResponseOutcome(room, negation, actor, players, outcome);
   throw new Error("Response Judgement continuation is no longer valid");
 }
 
@@ -1996,8 +2005,9 @@ export async function POST(request: Request) {
 
   if (canonicalResponseKind === "negation" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
-    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = responseContinuationPending(stored) as NegationPending | null;
-    if (!liveRoom || liveRoom.phase !== "response" || pending?.kind !== "negation" || pending.actorId !== me.id) return json({ error: "You are not the acting player for this Negation response." }, 409);
+    const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const negation = negationResponse(asResponsePending(stored));
+    if (!liveRoom || liveRoom.phase !== "response" || !negation || negation.response.actorId !== me.id) return json({ error: "You are not the acting player for this Negation response." }, 409);
+    const { response, continuation } = negation;
     let hand = parse<Card[]>(me.hand_json, []); const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "negation";
     const consumedIds = canonicalRespond ? (responseExecution?.consumeCardIds ?? []) : [];
     const consumedCards = consumedIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
@@ -2008,27 +2018,27 @@ export async function POST(request: Request) {
       if (consumedCards.length === 1) log = addCardEvent(log, me.name, consumedCards[0], me.name);
       else if (consumedCards.length > 1) log = addCardGroupEvent(log, me.name, consumedCards, "play", true, me.name);
       const negationAction = responseExecution?.providerId === "negation_card" ? "plays Negation" : `uses ${responseExecution?.providerId ?? "a Negation provider"}`;
-      log = addLog(log, `${me.name} ${negationAction} ${pending.negated ? "to restore" : "to cancel"} ${pending.cardName}'s effect.`);
+      log = addLog(log, `${me.name} ${negationAction} ${continuation.negated ? "to restore" : "to cancel"} ${continuation.cardName}'s effect.`);
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const updatedPlayers = (rows.results ?? []).map((player) => player.id === me.id ? { ...player, hand_json: JSON.stringify(hand) } : player);
-      const transitioned = applySuccessfulNegation(pending, me, consumedCards);
+      const transitioned = applySuccessfulNegation(continuation, me, consumedCards);
       const holders = playersWithNegateProvider(updatedPlayers, nextAliveSeat(updatedPlayers, me.seat), negationRequirement(transitioned));
-      const nextActor = holders[0] ?? me; const next: NegationPending = { ...transitioned, actorId: nextActor.id, remainingIds: holders.slice(1).map((player) => player.id), reason: `Play Negation on ${me.name}'s Negation, or pass`, deadline: nextResponseDeadline(nextActor) };
-      const presentation = addLogWithId(log, `New Negation window opens for ${next.responseTarget}.`);
+      const nextActor = holders[0] ?? me; const next: ResponsePending = { kind: "response", actorId: nextActor.id, requirement: negationRequirement(transitioned), reason: `Play Negation on ${me.name}'s Negation, or pass`, deadline: nextResponseDeadline(nextActor), resolutionId: response.resolutionId, continuation: { ...transitioned, remainingIds: holders.slice(1).map((player) => player.id) } };
+      const presentation = addLogWithId(log, `New Negation window opens for ${transitioned.responseTarget}.`);
       log = presentation.log;
-      if (!pending.heldCards) discard.push(...consumedCards);
-      const readyAfterEventId = latestDecisionPresentationEventId(log, pending.resolutionId);
+      if (!continuation.heldCards) discard.push(...consumedCards);
+      const readyAfterEventId = latestDecisionPresentationEventId(log, response.resolutionId);
       await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(holders.length ? "response" : "resolving", serializePending(readyAfterEventId ? withPresentationBarrier(next, log, readyAfterEventId) : next), JSON.stringify(discard), JSON.stringify(log), room.id)]);
-      if (holders.length) await advanceNegation(room.id); else await resolveDeferredStratagem(room.id, next);
-    } else if (pending.remainingIds[0]) {
-      const presentation = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${me.name} passes the Negation opportunity for ${pending.responseTarget ?? pending.cardName}.`);
+      if (holders.length) await advanceNegation(room.id); else await resolveDeferredStratagem(room.id, next.continuation);
+    } else if (continuation.remainingIds[0]) {
+      const presentation = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${me.name} passes the Negation opportunity for ${continuation.responseTarget ?? continuation.cardName}.`);
       const log = presentation.log;
-      const nextActor = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.remainingIds[0]).first<PlayerRow>(); const next: NegationPending = { ...pending, actorId: pending.remainingIds[0], remainingIds: pending.remainingIds.slice(1), deadline: nextResponseDeadline(nextActor) };
-      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending({ ...next, readyAfterEventId: undefined }), JSON.stringify(log), room.id).run(); await advanceNegation(room.id);
+      const nextActorId = continuation.remainingIds[0]; const nextActor = await db.prepare("SELECT * FROM players WHERE id = ?").bind(nextActorId).first<PlayerRow>(); const next: ResponsePending = { ...response, actorId: nextActorId, deadline: nextResponseDeadline(nextActor), readyAfterEventId: undefined, continuation: { ...continuation, remainingIds: continuation.remainingIds.slice(1) } };
+      await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(next), JSON.stringify(log), room.id).run(); await advanceNegation(room.id);
     } else {
-      let log = addLog(parse<string[]>(liveRoom.log_json, []), `${me.name} passes the Negation opportunity for ${pending.responseTarget ?? pending.cardName}.`);
-      log = addLog(log, `Negation window closes for ${pending.responseTarget ?? pending.cardName}; resolving the effect.`);
+      let log = addLog(parse<string[]>(liveRoom.log_json, []), `${me.name} passes the Negation opportunity for ${continuation.responseTarget ?? continuation.cardName}.`);
+      log = addLog(log, `Negation window closes for ${continuation.responseTarget ?? continuation.cardName}; resolving the effect.`);
       await db.prepare("UPDATE rooms SET phase = 'resolving', log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id).run();
-      await resolveDeferredStratagem(room.id, pending);
+      await resolveDeferredStratagem(room.id, continuation);
     }
     return json({ room: await roomState(code, token) });
   }

@@ -1,5 +1,21 @@
 # Three Kingdoms project handover
 
+## Step 6A canonical Negation responses — 2026-09-17
+
+Normal human Negation respond/decline and Negation Judgement outcomes now read
+the canonical `ResponsePending` wrapper directly through `negationResponse()`;
+they no longer expand it with `responseContinuationPending()`. `applySuccessfulNegation()`
+now operates on `NegationContinuation`, and successful counter-Negation opens
+the next canonical `ResponsePending` directly. Chain depth/parity, latest card
+and player, remaining responder order, held cards, response target, resolution
+identity, presentation barrier, and deferred Stratagem state are preserved.
+
+`advanceNegation()` and `resolveDeferredStratagem()` remain the deliberate
+Step 6B compatibility boundary. No new test declarations were added; existing
+Negation unit and Worker/D1 coverage is the validation target. The tracked
+suite remains 74 declarations. The next milestone is Step 6B compatibility
+cleanup; stop this round here.
+
 ## Step 5E final response-builder typing — 2026-09-17
 
 `game/pending.ts` now separates `ResponseBuilderPending` (the four legacy
