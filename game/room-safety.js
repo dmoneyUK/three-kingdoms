@@ -25,6 +25,7 @@ function normalizePresentationMeta(entry) {
   if (typeof entry.resolutionId === "string" && entry.resolutionId.length > 0) metadata.resolutionId = entry.resolutionId;
   if (entry.importance === "essential" || entry.importance === "informational") metadata.importance = entry.importance;
   if (entry.finalResult === true) metadata.finalResult = true;
+  if (entry.playedAs === "attack") metadata.playedAs = "attack";
   return metadata;
 }
 

@@ -1,5 +1,18 @@
 # Three Kingdoms project handover
 
+## Hero skill button UI and Wusheng timeline normalization — 2026-09-17
+
+Guan Yu now has a visible Hero Skills area with a Wusheng control. The browser
+enters local Play Phase or response selection mode from the server's existing
+`playPhaseActions` and `currentAction.options` projections, highlights only the
+projected eligible cards, and submits the existing `play_card` with
+`playAs: "attack"` or canonical `respond` request. No hero-specific protocol
+verb or server branch was added; Borrowed Sword remains a separate card
+decision. The room safety normalizer now explicitly preserves
+`playedAs: "attack"` on virtual-Attack timeline events. Future triggered hero
+skills remain server-projection work; passive or locked skills should remain
+status text. Next work is the next individually verified Standard hero.
+
 ## Step 7D close response architecture documentation — 2026-09-17
 
 The semantic response architecture cleanup is complete. `ResponsePending` is

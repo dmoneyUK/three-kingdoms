@@ -14,6 +14,11 @@ test("drops null and incomplete timeline entries without throwing", () => {
   assert.deepEqual(timeline.map((event) => event.type), ["message"]);
 });
 
+test("preserves the normalized virtual-Attack timeline marker", () => {
+  const timeline = normalizeTimeline([{ type: "card", id: "w1", player: "ME", target: "P2", action: "play", playedAs: "attack", card: { id: "red-peach", kind: "Peach", suit: "♥", rank: "A" } }]);
+  assert.equal(timeline[0].playedAs, "attack");
+});
+
 test("handles missing collections and rejects malformed items while preserving valid data", () => {
   const empty = normalizeRoomData({ code: "SAFE1", status: "lobby", players: [], myHand: [], timeline: [] });
   assert.deepEqual(empty.players, []); assert.deepEqual(empty.myHand, []); assert.deepEqual(empty.timeline, []);
