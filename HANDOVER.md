@@ -12,7 +12,11 @@ shows a checked gold selection plus the `selected / max` count. The picker
 derives its title and generic subtitle from the projected effect label, target,
 eligible cards, and min/max values, with no Kirin Bow or Frost Sword checks in
 React. Skip reaction and `Use <effect label>` are now inside the picker, and
-the footer renders no `target_cards` controls. The existing server protocol and
+the footer renders no `target_cards` controls. Trigger selection state now also
+resets with every `actionRevision`; stale selected keys are filtered before
+rendering, counting, max/min validation, and submission, so an old key cannot
+block a current eligible card. The subtitle remains generic: `Choose 1
+eligible card` or `Choose 1–2 eligible cards`. The existing server protocol and
 trigger outcomes are unchanged. Recommended next work is the next individually
 verified Standard hero.
 
