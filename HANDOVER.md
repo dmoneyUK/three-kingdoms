@@ -1,5 +1,20 @@
 # Three Kingdoms project handover
 
+## Wusheng state lifecycle and Borrowed Sword browser flow — 2026-09-17
+
+Wusheng local mode now clears on every `actionRevision` change and whenever
+its server-projected capability disappears. Its dedicated button requires the
+response presentation barrier for response use and the existing Play Phase
+projection plus a clear presentation for play use; Guan Yu's Wusheng response
+provider is omitted from the generic explicit-provider list. Borrowed Sword
+room projection now includes server-computed `eligibleTargetIds` during
+`choose_target`. The browser shows a dedicated prompt, highlights only those
+projected targets, and submits the existing
+`choose_borrowed_sword_target` action. The resulting holder perspective,
+canonical Attack response, exact-Weapon refusal transfer, and normal Dodge
+pipeline remain server-owned. No protocol verbs or tests were added; the
+tracked suite remains at 74 declarations.
+
 ## Hero skill button UI and Wusheng timeline normalization — 2026-09-17
 
 Guan Yu now has a visible Hero Skills area with a Wusheng control. The browser

@@ -1,6 +1,6 @@
 # Three Kingdoms
 
-Current Stage 6 milestone: Hero skill controls — Wusheng UI is projection-driven for Guan Yu in Play Phase and response windows, with eligible-card highlighting and canonical `play_card`/`respond` submission. The virtual-Attack `playedAs` marker is preserved through room timeline normalization. Next milestone: continue the verified Standard hero-ability roster, starting only after its server projection and human-seat coverage are defined.
+Current Stage 6 milestone: Hero skill controls — Wusheng UI is projection-driven for Guan Yu in Play Phase and response windows, with eligible-card highlighting and canonical `play_card`/`respond` submission. Borrowed Sword target selection now consumes server-projected `eligibleTargetIds` and the existing `choose_borrowed_sword_target` action before re-entering the canonical forced-Attack response. The virtual-Attack `playedAs` marker is preserved through room timeline normalization. Next milestone: continue the verified Standard hero-ability roster, starting only after its server projection and human-seat coverage are defined.
 
 An English online implementation of WTK Standard, the classic hidden-role Three Kingdoms card game, built for small private groups of friends.
 

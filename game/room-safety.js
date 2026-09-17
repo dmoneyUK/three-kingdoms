@@ -48,6 +48,7 @@ function normalizePending(value, kind) {
     pending.availableIds = Array.isArray(pending.availableIds) ? pending.availableIds.filter((id) => typeof id === "string") : [];
     pending.choices = Array.isArray(pending.choices) ? pending.choices.filter(isRecord).filter((choice) => typeof choice.cardId === "string" && typeof choice.playerId === "string" && typeof choice.playerName === "string") : [];
   }
+  if (kind === "borrowed_sword") pending.eligibleTargetIds = Array.isArray(pending.eligibleTargetIds) ? pending.eligibleTargetIds.filter((id) => typeof id === "string") : [];
   if (kind === "dying" && typeof pending.recoveryNeeded !== "number") pending.recoveryNeeded = 1;
   return pending;
 }

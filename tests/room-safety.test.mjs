@@ -3,20 +3,16 @@ import assert from "node:assert/strict";
 import { normalizeRoomData, normalizeTimeline } from "../game/room-safety.js";
 
 test("normalizes valid room data and timeline events", () => {
-  const room = normalizeRoomData({ code: "SAFE1", status: "playing", players: [{ id: "p1", name: "ME" }, null], myHand: [{ id: "c1", kind: "Attack", suit: "♠", rank: "A" }], timeline: [{ type: "message", id: "m1", message: "Ready" }] });
+  const room = normalizeRoomData({ code: "SAFE1", status: "playing", players: [{ id: "p1", name: "ME" }, null], myHand: [{ id: "c1", kind: "Attack", suit: "♠", rank: "A" }], timeline: [{ type: "message", id: "m1", message: "Ready" }, { type: "card", id: "w1", player: "ME", target: "P2", action: "play", playedAs: "attack", card: { id: "red-peach", kind: "Peach", suit: "♥", rank: "A" } }] });
   assert.equal(room.players.length, 1);
   assert.equal(room.myHand[0].id, "c1");
   assert.equal(room.timeline[0].type, "message");
+  assert.equal(room.timeline[1].playedAs, "attack");
 });
 
 test("drops null and incomplete timeline entries without throwing", () => {
   const timeline = normalizeTimeline([null, undefined, { type: "card", card: null }, { type: "cards", cards: [null] }, { type: "message", message: "Safe" }]);
   assert.deepEqual(timeline.map((event) => event.type), ["message"]);
-});
-
-test("preserves the normalized virtual-Attack timeline marker", () => {
-  const timeline = normalizeTimeline([{ type: "card", id: "w1", player: "ME", target: "P2", action: "play", playedAs: "attack", card: { id: "red-peach", kind: "Peach", suit: "♥", rank: "A" } }]);
-  assert.equal(timeline[0].playedAs, "attack");
 });
 
 test("handles missing collections and rejects malformed items while preserving valid data", () => {
