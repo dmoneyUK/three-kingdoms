@@ -11,6 +11,12 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 
 Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, and Step 4.2 response-capability legacy-test cleanup are complete. The next architecture step is Step 5 Group/AOE; Group/AOE and Negation still use `responseContinuationPending()`. Hero #2 is not implemented in this round.
 
+The current deterministic suite has been consolidated to 83 tracked test
+declarations while retaining the required human multiplayer and capability
+invariants. Pure helper assertions now run in grouped cases; inactive bot-only
+unit coverage was removed, while broader API bot-flow coverage remains bounded
+legacy coverage pending a separate product decision.
+
 The latest architecture pass routes every Attack origin, including physical, Serpent Spear, triggered follow-up, Borrowed Sword, and human-controlled Quick Test Attacks, through the shared target, Dodge, Armor, damage, and Dying pipeline. Borrowed Sword is fully hardened in Standard games: after canonical Negation, its user chooses a live legal target, the Weapon holder receives a private semantic Attack decision with an idempotent human response timer, and refusal/no-provider transfer revalidates the persisted Weapon ID. Worker/D1 regressions cover races, stale targets/actions, physical and Serpent Spear providers, Dodge, and Yin-Yang Swords continuation.
 
 Virtual Wusheng Attacks retain the physical source card while carrying the narrow presentation marker `playedAs: "attack"`. This keeps red Equipment and delayed cards in the ordinary played/consumed path, and makes Game Messages and history describe “used as Attack” rather than their physical card effect. Canonical `attack_targeted` and `choice` trigger selections survive room normalization. The server-owned `currentAction.canDeclareAttack` projection is shared with validation for physical, Wusheng and Serpent Spear Attacks.

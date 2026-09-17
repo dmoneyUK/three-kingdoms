@@ -12,6 +12,16 @@ remain only because the bounded Group/AOE compatibility adapter still calls
 `selectResponse`; Group/AOE and Negation migration were intentionally untouched.
 The response-capabilities file is 24 tests before this cleanup and 22 after.
 
+The follow-on test consolidation groups the pure Dying, private-hand,
+Game Messages, room-safety, and render assertions without dropping their
+coverage, and removes redundant response-capability cases plus the bot-only
+trigger selector unit case. The tracked test declarations are now 96 before
+the consolidation and 83 after. Human multiplayer, required equipment and
+hero capability proofs, canonical provider resolution, and trigger continuation
+regressions remain. The broader API bot-flow tests remain as historical
+coverage until a separate decision removes inactive bot support from the test
+harness.
+
 Recommended next work: proceed to the planned Group/AOE cleanup only after
 reviewing its compatibility boundary; do not claim the remaining legacy helper
 removal until that adapter is migrated.

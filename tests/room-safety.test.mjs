@@ -14,14 +14,9 @@ test("drops null and incomplete timeline entries without throwing", () => {
   assert.deepEqual(timeline.map((event) => event.type), ["message"]);
 });
 
-test("handles missing optional collections and empty arrays", () => {
-  const room = normalizeRoomData({ code: "SAFE1", status: "lobby", players: [], myHand: [], timeline: [] });
-  assert.deepEqual(room.players, []);
-  assert.deepEqual(room.myHand, []);
-  assert.deepEqual(room.timeline, []);
-});
-
-test("rejects a malformed room payload while preserving valid room items", () => {
+test("handles missing collections and rejects malformed items while preserving valid data", () => {
+  const empty = normalizeRoomData({ code: "SAFE1", status: "lobby", players: [], myHand: [], timeline: [] });
+  assert.deepEqual(empty.players, []); assert.deepEqual(empty.myHand, []); assert.deepEqual(empty.timeline, []);
   assert.equal(normalizeRoomData(null), null);
   const room = normalizeRoomData({ code: "SAFE1", status: "playing", players: [null, { id: "p1", name: "ME" }], myHand: [null], timeline: [{ type: "message", message: "ok" }, { type: "card" }] });
   assert.deepEqual(room.players.map((player) => player.id), ["p1"]);

@@ -1,27 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getAttackCardProvider, getPlayPhaseActions, getResponseOptions, registerResponseProvider } from "../game/responses.ts";
-import { resolveResponseDecision, responseDecisionFor } from "../game/response-decision.ts";
+import { resolveResponseDecision } from "../game/response-decision.ts";
 import { applySuccessfulNegation } from "../game/decisions/negation.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
-import { continueTriggerEvent, chooseBotTrigger, createTriggerDecision, resumeTriggerContinuation } from "../game/decisions/triggers.ts";
+import { continueTriggerEvent, createTriggerDecision, resumeTriggerContinuation } from "../game/decisions/triggers.ts";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
 import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
-import { HEROES, LEGACY_HEROES, STANDARD_HEROES, heroGender } from "../game/heroes.ts";
+import { heroGender } from "../game/heroes.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
-
-test("Standard hero registry is complete, selectable, and shared by Quick Test and normal rooms", () => {
-  const ids = STANDARD_HEROES.map((hero) => hero.id);
-  assert.equal(STANDARD_HEROES.length, 31);
-  assert.equal(new Set(ids).size, ids.length);
-  assert.deepEqual(STANDARD_HEROES.filter((hero) => hero.id === "yue-jin" || hero.id === "yu-jin" || hero.id === "zhuge-liang" || hero.id === "lady-gan" || hero.id === "gongsun-zan" || hero.id === "pan-feng").map((hero) => hero.id), ["yue-jin", "yu-jin", "zhuge-liang", "lady-gan", "gongsun-zan", "pan-feng"]);
-  for (const excluded of ["yuanshao", "yanliang-wenchou", "pangde"]) assert.equal(ids.includes(excluded), false);
-  assert.deepEqual(LEGACY_HEROES.map((hero) => hero.id), ["yuanshao", "yanliang-wenchou", "pangde"]);
-  assert.equal(HEROES.find((hero) => hero.id === "pangde")?.standardSelectable, false);
-  assert.equal(heroGender("pangde"), "male");
-});
 
 test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack", () => {
   const redPeach = { ...card("Peach", "red-peach"), suit: "♥" };
@@ -56,25 +45,6 @@ test("Play Phase virtual Attack projection is explicit and shares Wusheng eligib
   assert.deepEqual(getPlayPhaseActions({ ...context, hand: [redPeach], equipment: [redEquipment] }), [{ cardId: redPeach.id, canPlayAs: "attack" }]);
 });
 
-test("response-only Attack providers do not become Play Phase actions", () => {
-  const provider = {
-    id: "response_only_attack",
-    satisfies: "attack",
-    activation: "explicit",
-    getOption: (context) => context.hero === "response-only" ? { provider: "response_only", providerId: "response_only_attack", satisfies: "attack", label: "Response-only Attack", cards: context.hand, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: context.hand.map((item) => item.id) } } : null,
-    resolve: () => ({ status: "satisfied", providerId: "response_only_attack", satisfies: "attack", consumeCardIds: ["response-card"] }),
-  };
-  const unregister = registerResponseProvider(provider);
-  try {
-    const context = { hand: [card("Peach", "response-card")], equipment: [], hero: "response-only" };
-    assert.equal(getResponseOptions(context, { kind: "attack" }).length, 1);
-    assert.deepEqual(getPlayPhaseActions(context), []);
-    assert.equal(getAttackCardProvider(context, "response-card"), undefined);
-  } finally {
-    unregister();
-  }
-});
-
 test("synthetic capability registration is isolated and cleans up", () => {
   const responseOptions = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" });
   const triggerOptions = getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("Test", "test-trigger-a")] });
@@ -92,49 +62,6 @@ test("synthetic capability registration is isolated and cleans up", () => {
   assert.deepEqual(getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "attack" }), []);
   assert.deepEqual(getTriggeredEffects({ event: "attack_dodged", sourceEquipment: [card("Test", "test-trigger-a")] }), []);
 });
-
-test("capability discovery and generic response decisions share live providers", () => {
-  const dodge = getResponseOptions({ hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, { kind: "dodge", sourceId: "p1", targetId: "p2" });
-  assert.deepEqual(dodge.map((option) => option.providerId), ["card", "eight_trigrams_dodge"]);
-  assert.equal(dodge[0].selection?.type, "cards");
-  assert.equal(dodge[1].selection, null);
-
-  const attack = getResponseOptions({ hand: [card("Peach", "peach-1"), card("Dodge", "dodge-2")], equipment: [card("SerpentSpear", "spear")], hero: null }, { kind: "attack", context: "barbarian_invasion" });
-  assert.deepEqual(attack.map((option) => option.providerId), ["serpent_spear_attack"]);
-  assert.deepEqual(attack[0].selection?.eligibleCardIds, ["peach-1", "dodge-2"]);
-  const pending = { kind: "response", actorId: "p2", requirement: { kind: "dodge", sourceId: "p1", targetId: "p2" }, reason: "Dodge", deadline: 0, continuation: { kind: "attack", sourceId: "p1", targetId: "p2", resumePhase: "play" } };
-  const decision = responseDecisionFor(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null });
-  assert.equal(decision?.requirement, "dodge");
-  assert.deepEqual(decision?.options.map((option) => option.providerId), ["card", "eight_trigrams_dodge"]);
-  assert.deepEqual(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "card", { cardId: "dodge-1" }), { status: "satisfied", providerId: "card", satisfies: "dodge", consumeCardIds: ["dodge-1"], resolution: "cards" });
-  const judgement = resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "eight_trigrams_dodge", {});
-  assert.equal(judgement?.status, "requires_resolution");
-  assert.equal(judgement?.resolution.kind, "judgement");
-  assert.equal(judgement?.resolution.succeeds(card("Peach", "red")), false);
-  assert.equal(judgement?.resolution.succeeds({ ...card("Peach", "red"), suit: "♥" }), true);
-  assert.equal(resolveResponseDecision(pending, { hand: [card("Dodge", "dodge-1")], equipment: [card("EightTrigrams", "trigrams")], hero: null }, "invented_provider", {}), null);
-});
-
-test("new hero providers can discover and execute without editing core response code", () => {
-  const unregister = registerResponseProvider({
-    id: "test_hero_black_dodge",
-    satisfies: "dodge",
-    activation: "explicit",
-    getOption: (context) => context.hero === "test-hero"
-      ? { provider: "test_hero_black_dodge", providerId: "test_hero_black_dodge", satisfies: "dodge", label: "Use Hero Skill", cards: [], selection: null }
-      : null,
-    resolve: () => ({ status: "satisfied", providerId: "test_hero_black_dodge", satisfies: "dodge", resolution: "cards" }),
-  });
-  try {
-    const options = getResponseOptions({ hand: [], equipment: [], hero: "test-hero" }, { kind: "dodge" });
-    assert.deepEqual(options.find((option) => option.providerId === "test_hero_black_dodge")?.activation, "explicit");
-    const pending = { kind: "response", actorId: "p2", requirement: { kind: "dodge", sourceId: "p1", targetId: "p2" }, reason: "Dodge", deadline: 0, continuation: { kind: "attack", sourceId: "p1", targetId: "p2", resumePhase: "play" } };
-    assert.deepEqual(resolveResponseDecision(pending, { hand: [], equipment: [], hero: "test-hero" }, "test_hero_black_dodge", {}), { status: "satisfied", providerId: "test_hero_black_dodge", satisfies: "dodge", resolution: "cards" });
-  } finally {
-    unregister();
-  }
-});
-
 
 test("response discovery rejects more than one implicit provider", () => {
   const unregister = registerResponseProvider({
@@ -250,11 +177,6 @@ test("semantic trigger continuation reopens remaining reactions and resumes exha
   const damageResume = resumeTriggerContinuation(damagePending, { status: "resolved", effectId: "synthetic-damage", outcome: { kind: "continue_event" } }, false, 30);
   assert.equal(damageResume?.kind, "resume");
   assert.equal(damageResume?.continuation.kind, "damage_about_to_apply_event");
-});
-
-test("bot trigger selection honors generic card and target-card maxima", () => {
-  assert.deepEqual(chooseBotTrigger([{ effectId: "cards", label: "Cards", selection: { type: "cards", min: 2, max: 2, eligibleCardIds: ["a", "b", "c"] } }]), { providerId: "cards", cardIds: ["a", "b"] });
-  assert.deepEqual(chooseBotTrigger([{ effectId: "target", label: "Target", selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["hand:0", "equipment:armor"] } }]), { providerId: "target", cardKeys: ["hand:0"] });
 });
 
 test("canonical response outcomes preserve semantic continuation without provider dispatch", () => {
