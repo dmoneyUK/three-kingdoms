@@ -83,7 +83,7 @@ export type Pending = AttackPending | DuelPending | GroupPending | HarvestPendin
 type ResponseContinuationPending = AttackPending | GroupPending | DuelPending | NegationPending;
 
 function continuationForResponse(pending: ResponseContinuationPending): ResponseContinuation {
-  const continuation = { ...pending } as Partial<LegacyResponsePending>;
+  const continuation = { ...pending } as Partial<ResponseContinuationPending>;
   delete continuation.actorId;
   delete continuation.reason;
   delete continuation.deadline;
