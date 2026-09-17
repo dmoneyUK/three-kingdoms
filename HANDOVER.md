@@ -1,5 +1,17 @@
 # Three Kingdoms project handover
 
+## Step 7D close response architecture documentation — 2026-09-17
+
+The semantic response architecture cleanup is complete. `ResponsePending` is
+the only persisted semantic response decision and `TriggerPending` is the only
+persisted semantic trigger decision. Old saved Attack, Duel, Group, and Negation
+response states are unsupported; legacy-shaped `ResponseContinuation`
+compatibility, response expansion, and builder-conversion compatibility are
+removed. `serializePending()` only serializes, and `DeferredStratagem` stores
+canonical Duel and Group responses. The next Stage 6 milestone is selecting and
+implementing the next scoped Standard hero. No tests or production-code changes
+were made for this documentation closure.
+
 ## Step 7C remove response builder conversion — 2026-09-17
 
 `ResponsePending` is now the sole semantic Attack, Duel, Group, and Negation
@@ -214,9 +226,9 @@ reviewing its compatibility boundary.
 
 ## Stage 6 architecture cleanup — canonical protocol only (2026-09-17)
 
-The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module, dead saved-room `advanceFrostSword` / `advanceRockCleaving` / `advanceGreenDragon` adapters, and provider-specific HTTP branches must not return. `TriggerPending` is now the only trigger decision in the persisted `Pending` union; `asTriggerPending()` accepts only `kind: "trigger"`. Attack responses use `ResponsePending` and its `AttackContinuation` directly for human, Judgement, timer, trigger-after-Dodge, damage, stale, and privacy paths. Duel responses use `ResponsePending` and its `DuelContinuation` directly for human, Judgement, loss, actor-switch, and next-decision paths. `advanceGroup()` and Dying Group resume now use canonical `ResponsePending` plus `GroupContinuation`, with expanded Group shapes limited to transient helper and DTO views. The separate Negation response expansion remains. Canonical semantic trigger continuations remain unchanged.
+The semantic gameplay protocol is now the only supported protocol. Response and trigger requests use only `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported. `currentAction` is the authoritative client decision contract. The deleted compatibility action module, dead saved-room `advanceFrostSword` / `advanceRockCleaving` / `advanceGreenDragon` adapters, and provider-specific HTTP branches must not return. `TriggerPending` is now the only trigger decision in the persisted `Pending` union; `asTriggerPending()` accepts only `kind: "trigger"`. Attack responses use `ResponsePending` and its `AttackContinuation` directly for human, Judgement, timer, trigger-after-Dodge, damage, stale, and privacy paths. Duel responses use `ResponsePending` and its `DuelContinuation` directly for human, Judgement, loss, actor-switch, and next-decision paths. `advanceGroup()` and Dying Group resume now use canonical `ResponsePending` plus `GroupContinuation`, and Negation uses canonical `ResponsePending` plus `NegationContinuation`. Old Attack/Duel/Group/Negation saved response states, response expansion, and builder-conversion compatibility are unsupported. Canonical semantic trigger continuations remain unchanged.
 
-Domain continuation data remains because the canonical engine uses it to resume Attack, Duel, Group, Negation, and trigger effects. Old pending DTO projections remain as bounded response payloads for current normalization/tests, while browser decision controls come from `currentAction`.
+Domain continuation data remains because the canonical engine uses it to resume Attack, Duel, Group, Negation, and trigger effects. `serializePending()` only serializes the canonical pending value; `DeferredStratagem` stores canonical Duel and Group responses, while browser decision controls come from `currentAction`.
 
 Guan Yu Wusheng separates eligibility from intent. Native card behavior is the default; `playAs: "attack"` is required for an explicit red-card virtual Attack and is validated against live authoritative state. The physical card ID is conserved and only virtual use receives `playedAs: "attack"`. Hero #2 is outside this round.
 
@@ -255,9 +267,9 @@ legacy projection, provider eligibility, non-Guan-Yu/black-card rejection,
 stale card revalidation, and semantic execution. Full release validation and
 the exact pushed SHA are recorded in the final task report.
 
-Recommended next work: architecture review of this first virtual Attack seam;
-stop here before selecting another hero. Play Phase Wusheng, response parity,
-and the browser projection are now included in the completed hardening scope.
+The architecture review is complete. Play Phase Wusheng, response parity, and
+the browser projection are included in the completed hardening scope. The next
+milestone is selecting and implementing the next scoped Standard hero.
 
 ### Final closure notes (2026-09-17)
 
@@ -310,7 +322,7 @@ Completed architecture guarantees:
 6. End-to-end regressions prove Negation order/parity, Judgement success/failure, damage/Attack trigger exhaustion, and human-seat guarantees across ordinary responses and trigger chains: authoritative actor ownership, correct perspective switching, private hand/provider projection, wrong-seat rejection, stable resolution identity, stale/double-submission safety, and no room left in `resolving`.
 7. Synthetic providers are isolated to explicit test-Worker registration and are absent from production registries.
 
-All seven guarantees are green. The final compatibility isolation, canonical-client, direct-event-ID, and synthetic-provider isolation round is complete for this milestone; keep the remaining saved-room adapters bounded while card work resumes.
+All seven guarantees are green. The final compatibility isolation, canonical-client, direct-event-ID, and synthetic-provider isolation round is complete for this milestone; the canonical response/trigger protocol is now the only supported architecture while card work resumes.
 
 ## Current baseline
 
@@ -448,25 +460,25 @@ The client records completed event IDs and opens all response providers, decline
 
 Events already present on initial load/reload are treated as presented; optimistically displayed cards are marked complete when their authoritative event arrives.
 
-## Important architecture boundaries still remaining
+## Completed architecture boundaries
 
-### A. Canonical trigger decisions are now the public protocol; continuations remain compatible
+### A. Canonical trigger decisions are the public protocol
 
 `TriggerPending` is now the persisted wrapper for weapon reactions. It records the semantic event (`attack_dodged` or `damage_about_to_apply`), the acting player, deadline/reason and a bounded continuation. `roomState()` projects the current actor's private trigger option(s), and the client submits `trigger` or `decline_trigger`. The route recomputes the provider from live equipment/hand/target state and rejects a mismatched or stale provider.
 
-Green Dragon Blade, Rock Cleaving Axe, Frost Sword and Kirin Bow are covered end-to-end through this protocol. Frost now uses the generic `damage_about_to_apply` continuation and semantic `prevent_damage` outcome; Kirin Bow uses the same continuation with a semantic target-card discard outcome. Older pending shapes and action names remain compatibility adapters for saved rooms and inactive legacy code. Do not add new capabilities to those legacy branches.
+Green Dragon Blade, Rock Cleaving Axe, Frost Sword and Kirin Bow are covered end-to-end through this protocol. Frost now uses the generic `damage_about_to_apply` continuation and semantic `prevent_damage` outcome; Kirin Bow uses the same continuation with a semantic target-card discard outcome. Older pending shapes and action names are unsupported and are not part of the canonical engine.
 
 ### B. Decision presentation barriers are now transition-owned
 
 Every newly created canonical `ResponsePending` and `TriggerPending` stores `readyAfterEventId` at the transition that creates it. This includes normal and Serpent Spear Attacks, Duel exchanges, AOE/halberd targets, initial and counter-Negation windows, delayed-card Judgement Negation, and the representative weapon triggers.
 
-`roomState()` consumes the persisted value first. Its log scan is now a **saved-room fallback only** for pre-migration pending JSON that lacks a barrier. Keep that fallback until stale persisted rooms have aged out or are deliberately migrated; never use it for new decision creators.
+`roomState()` consumes the persisted value directly. Decision creators own the exact barrier; log scanning is not part of the semantic response/trigger contract.
 
-### C. Legacy protocol branches remain deliberately
+### C. Legacy protocol branches are unsupported
 
 The semantic protocol is the only supported gameplay protocol. Old clients and old persisted in-progress legacy response/trigger decisions are unsupported. `currentAction` is the authoritative client decision contract; provider-specific HTTP actions must not be added for future cards or heroes.
 
-Do not remove them in a big-bang cleanup. First finish equivalent semantic trigger orchestration and exact decision barriers, keep saved-game compatibility covered, then delete compatibility branches one path at a time with regression tests.
+The cleanup is complete. Do not reintroduce legacy protocol branches, saved-game response compatibility, response expansion, or provider-specific HTTP actions.
 
 ## Match-rule hardening (2026-09-16)
 
@@ -477,7 +489,7 @@ Dying / multi-damage — **COMPLETE**. Death / continuation / match outcome — 
 ## Recommended next work — Stage 6 hero abilities
 
 1. **Implement the next narrowly-scoped hero ability** through semantic provider/capability contracts, with Quick Test, multiplayer privacy, stale safety, and deterministic regressions.
-2. **Keep compatibility isolated.** Old verbs and pending shapes remain readable only through saved-client/state adapters; do not add new branches to the canonical engine.
+2. **Keep the canonical protocol isolated.** Do not add legacy verbs, pending shapes, response expansion, or provider-specific HTTP actions to the canonical engine.
 3. **Keep the completed physical Standard deck stable:** do not reopen its manifest while match-rule correctness work proceeds.
 
 ## Standard card roadmap status

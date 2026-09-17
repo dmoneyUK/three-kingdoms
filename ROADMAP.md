@@ -2,14 +2,19 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
-Stage 6 cleanup is canonical-only: response/trigger commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported; and `currentAction` is authoritative. Future cards/heroes must not add provider-specific HTTP actions. Wusheng requires explicit `playAs: "attack"`, with native card play as the default. Hero #2 is not part of this round.
+Stage 6 cleanup is canonical-only: response/trigger commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported; and `currentAction` is authoritative. Future cards/heroes must not add provider-specific HTTP actions. Wusheng requires explicit `playAs: "attack"`, with native card play as the default.
 
 ## Current architecture milestone — semantic decisions and capabilities
 
 The response refactor has reached its intended core shape:
 
 - `ResponsePending` is the canonical persisted response-decision wrapper;
+- `TriggerPending` is the only persisted semantic trigger-decision wrapper;
 - Attack, Duel, AOE and Negation expose semantic requirements (`attack`, `dodge`, `negate`);
+- old saved Attack, Duel, Group and Negation response states are unsupported;
+- response expansion and builder-conversion compatibility are removed;
+- `serializePending()` only serializes the canonical pending value;
+- `DeferredStratagem` stores canonical Duel and Group responses;
 - `currentAction` v3 privately projects the acting player's canonical `respond` / `decline_response`, provider options, deadline and presentation barrier;
 - ordinary physical response cards are the single possible **implicit** provider;
 - equipment/hero alternatives are **explicit** providers;
@@ -21,11 +26,11 @@ The response refactor has reached its intended core shape:
 - response interaction waits on a decision-specific `readyAfterEventId` instead of the entire presentation queue.
 - `attack_targeted` is a reusable capability event. Its persisted semantic decision may be target-owned, so Quick Test and multiplayer project private choices to the established target actor.
 
-This response architecture is complete and should now be treated as the foundation, not redesigned again. Saved-room compatibility and end-to-end synthetic provider proofs are covered by the green final validation batch.
+This response architecture cleanup is COMPLETE and should now be treated as the foundation, not redesigned again. The semantic response/trigger protocol and canonical persisted decision shapes are the supported architecture.
 
 ## Architecture status — semantic responses, triggers, and presentation barriers
 
-Trigger providers and the public trigger protocol are generic. The small continuation executors for Green Dragon Blade, Rock Cleaving Axe and Frost Sword remain route-specific only as a saved-room-safe compatibility layer; no new capability should add another provider-specific client action.
+Trigger providers and the public trigger protocol are generic. Green Dragon Blade, Rock Cleaving Axe, Frost Sword and Kirin Bow use the persisted `TriggerPending` decision; no new capability should add another provider-specific client action.
 
 The canonical trigger decision is now implemented alongside `ResponsePending`:
 
@@ -67,15 +72,11 @@ This remains deliberately bounded; do **not** build a universal effects DSL.
 
 The browser now waits for one concrete `currentAction.presentation.readyAfterEventId`, which fixes the earlier global-presentation gate and keeps all legal choices/timer atomic.
 
-Canonical damage-trigger decisions accept the exact presentation event ID from event creation, as do all newly-created response/trigger decisions. `roomState()` retains log scanning only for old saved rooms as a bounded migration fallback.
+Canonical damage-trigger decisions accept the exact presentation event ID from event creation, as do all newly-created response/trigger decisions.
 
-## Compatibility cleanup — incremental and saved-room safe
+## Semantic response architecture cleanup — COMPLETE
 
-Legacy protocol/pending compatibility still exists intentionally:
-
-- legacy-shaped `ResponseContinuation` variants.
-
-Remove these one path at a time only after the equivalent semantic decision is fully covered. Keep saved-game compatibility until the replacement path is proven; do not add any new card or hero capability to a legacy action branch.
+Only `ResponsePending` and `TriggerPending` are persisted for semantic response and trigger decisions. Old Attack/Duel/Group/Negation saved response states, legacy-shaped `ResponseContinuation` compatibility, response expansion, and builder-conversion compatibility are unsupported and removed. `serializePending()` performs serialization only, and `DeferredStratagem` stores canonical Duel/Group responses.
 
 ## Stage 6 Round 1 — runtime Standard roster and Guan Yu
 
@@ -92,8 +93,8 @@ Phase virtual Attack use”, so response-only providers cannot become active car
 sources. Borrowed Sword now continues through canonical Dodge discovery after
 Nio Shield. No universal hero framework was added.
 
-Next milestone: architecture review of this capability seam before selecting a
-second real Standard hero. Do not begin hero #2 in this round.
+Next milestone: select and implement the next scoped Standard hero through the
+completed semantic provider/capability architecture.
 
 Final closure also makes virtual-Attack presentation explicit with the narrow
 `playedAs: "attack"` marker, preserves canonical `attack_targeted`/`choice`
@@ -108,7 +109,7 @@ player names and uses the same Standard registry.
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is now ACTIVE.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is now ACTIVE; the next milestone is the next scoped Standard hero.
 
 ## Progress summary
 
@@ -119,7 +120,7 @@ Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE.
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
 | 5. Complete match rules | **Complete** | Dying/multi-damage, defeat continuation/outcome, delayed Stratagem LIFO ordering, placement timing, Judgement-phase Negation, and Lightning transfer semantics are deterministic and regression-covered. |
-| 6. Hero-specific abilities | **ACTIVE** | Qingguo remains the first live proof; begin the next scoped hero ability while preserving the completed semantic architecture. |
+| 6. Hero-specific abilities | **ACTIVE** | Guan Yu Round 1 is complete; select and implement the next scoped Standard hero while preserving the completed semantic architecture. |
 | 7. Product polish | Ongoing | Continue mobile clarity and presentation work; sound, invitations and saved history remain later work. |
 
 ## Stability foundation already complete
