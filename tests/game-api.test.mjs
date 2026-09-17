@@ -575,6 +575,12 @@ test("Kirin Bow discards one damaged target Mount and then applies the Attack da
   assert.equal(attack.status, 200); const triggerDamage = await takeDamageIfPending(game.code, alice.token); assert.equal(triggerDamage.status, 200); const trigger = await state(game.code, host.token);
   assert.equal(trigger.status, 200); assert.equal(trigger.data.currentAction.kind, "trigger");
   assert.deepEqual(trigger.data.currentAction.triggerOptions[0].selection.eligibleKeys, ["ferganasteed-offensive", "shadowrunner-defensive"]);
+  const readyAfterEventId = trigger.data.currentAction.presentation?.readyAfterEventId;
+  const barrier = readyAfterEventId ? trigger.data.timeline.find((event) => event.id === readyAfterEventId) : null;
+  assert.ok(!readyAfterEventId || barrier?.importance === "essential" && (barrier.type === "card" && barrier.card.kind === "Attack" || barrier.type === "cards" && barrier.cards.some((card) => card.kind === "Attack")), "Kirin Bow trigger barrier is the Attack card presentation or absent");
+  const informationalDamageMessage = trigger.data.timeline.find((event) => event.type === "message" && /would damage/.test(event.message));
+  assert.ok(informationalDamageMessage, "the informational damage message is present");
+  assert.notEqual(readyAfterEventId, informationalDamageMessage?.id, "the informational damage message never blocks the Kirin Bow trigger");
   const resolved = await request("trigger", { code: game.code, token: host.token, providerId: "kirin_bow_damage_about_to_apply", cardKeys: ["shadowrunner-defensive"] });
   assert.equal(resolved.status, 200); const target = resolved.data.room.players.find((player) => player.id === alicePlayer.id);
   assert.equal(target.hp, 3); assert.deepEqual(target.equipmentCards.map((item) => item.kind), ["FerganaSteed"]); assert.ok(discardIds(game.code).includes("shadowrunner-defensive"));

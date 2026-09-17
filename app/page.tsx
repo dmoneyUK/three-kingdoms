@@ -438,7 +438,11 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   // has finished presenting: every provider and the decline branch open
   // together once the decision is visible.
   const responseReadyAfterEventId = room.currentAction?.presentation?.readyAfterEventId ?? null;
-  const responsePresentationReady = !responseReadyAfterEventId || presentedEventIds.has(responseReadyAfterEventId);
+  const responseBarrierEvent = responseReadyAfterEventId ? room.timeline.find((event) => event.id === responseReadyAfterEventId) : null;
+  const responsePresentationReady = !responseReadyAfterEventId
+    || responseBarrierEvent?.type === "message"
+    || responseBarrierEvent?.importance === "informational"
+    || presentedEventIds.has(responseReadyAfterEventId);
   const responseDecisionReady = (canRespond || triggerResponse) && responsePresentationReady;
   const wushengButtonDisabled = busy || wushengMode === null && (!canUseWushengInPlay && !(responseDecisionReady && canUseWushengInResponse) || canUseWushengInPlay && presentationBusy);
   const responseControlsDisabled = busy || !responseDecisionReady;

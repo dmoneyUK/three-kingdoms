@@ -84,15 +84,16 @@ function damageTriggerContext(source: PlayerRow, target: PlayerRow) {
 function damageTriggerOptions(source?: PlayerRow | null, target?: PlayerRow | null) {
   return source && target ? getTriggeredEffects(damageTriggerContext(source, target)) : [];
 }
-function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase: string, sequenceStartCardId: string, readyAfterEventId: string): TriggerPending {
-  return withPresentationBarrier({
+function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase: string, sequenceStartCardId: string, readyAfterEventId?: string): TriggerPending {
+  const pending: TriggerPending = {
     kind: "trigger",
     event: "damage_about_to_apply",
     actorId: source.id,
     reason: `Choose an optional reaction before ${target.name} takes damage, or skip`,
     deadline: nextResponseDeadline(source),
     continuation: { kind: "damage_about_to_apply_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId },
-  }, [], readyAfterEventId);
+  };
+  return readyAfterEventId ? withPresentationBarrier(pending, [], readyAfterEventId) : pending;
 }
 function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
   const continuation = pending.continuation;
@@ -191,7 +192,6 @@ function latestResolutionId(log: string[]) {
 }
 /** The client opens a decision after this specific public event, not after an unrelated queue drains. */
 function latestDecisionPresentationEventId(log: string[], resolutionId?: string | null) {
-  let fallback: string | null = null;
   for (let index = log.length - 1; index >= 0; index--) {
     const marker = log[index].match(/^@(event|card|cards|history):(.*)$/);
     if (!marker) continue;
@@ -199,11 +199,10 @@ function latestDecisionPresentationEventId(log: string[], resolutionId?: string 
       const event = JSON.parse(marker[2]) as { id?: unknown; presentation?: unknown; resolutionId?: unknown; importance?: unknown };
       if (typeof event.id !== "string" || event.presentation === false) continue;
       if (resolutionId && event.resolutionId !== resolutionId) continue;
-      fallback ??= event.id;
-      if (event.importance === "essential" || marker[1] === "card" || marker[1] === "cards") return event.id;
+      if (marker[1] === "card" || marker[1] === "cards" || marker[1] === "event" && event.importance === "essential") return event.id;
     } catch { /* Ignore malformed legacy entries. */ }
   }
-  return fallback;
+  return null;
 }
 /** Capture the exact event barrier at the transition that creates a decision.
  * New decisions must pass the event id returned by addLogWithId/addCardEventWithId.
@@ -1033,7 +1032,8 @@ async function resolveAttackDamageAboutToApply({ room, source, target, players, 
   const options = damageTriggerOptions(source, target);
   if (!skipTriggers && options.length) {
     const presentation = addLogWithId(log, `${source.name}'s ${label} would damage ${target.name}. Optional reactions may prevent that damage.`);
-    const pending = damageTriggerPending(source, target, resumePhase, sequenceStartCardId, presentation.eventId);
+    const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, latestResolutionId(presentation.log));
+    const pending = damageTriggerPending(source, target, resumePhase, sequenceStartCardId, readyAfterEventId ?? undefined);
     await db().batch([
       ...writes,
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id),

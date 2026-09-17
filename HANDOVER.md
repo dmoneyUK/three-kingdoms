@@ -1,5 +1,24 @@
 # Three Kingdoms project handover
 
+## Kirin Bow damage-trigger presentation barrier — 2026-09-17
+
+The shared `resolveAttackDamageAboutToApply()` path no longer binds a damage
+trigger to its informational “would damage” message. It now asks
+`latestDecisionPresentationEventId()` for the latest essential card/cards
+presentation in the current Attack resolution, and leaves
+`readyAfterEventId` absent when no qualifying presentation exists.
+`latestDecisionPresentationEventId()` no longer falls back to informational
+events. The browser defensively treats a legacy message/informational barrier
+as already ready while continuing to wait for card/cards presentations.
+
+The existing Kirin Bow API regression now verifies the trigger kind, both
+Mount IDs, the essential Attack-or-absent barrier, and rejection of the
+informational damage message as a barrier. The existing Frost Sword regression
+passes through the same shared damage trigger path. No provider-specific
+workaround, protocol action, or test declaration was added; the Worker/D1
+suite remains 74 declarations and passes 74/74. Recommended next work is the
+next individually verified Standard hero.
+
 ## Final Wusheng and Borrowed Sword cleanup — 2026-09-17
 
 Borrowed Sword `choose_target` is now a dedicated browser decision: it is

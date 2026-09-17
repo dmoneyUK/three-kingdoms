@@ -72,7 +72,7 @@ This remains deliberately bounded; do **not** build a universal effects DSL.
 
 The browser now waits for one concrete `currentAction.presentation.readyAfterEventId`, which fixes the earlier global-presentation gate and keeps all legal choices/timer atomic.
 
-Canonical damage-trigger decisions accept the exact presentation event ID from event creation, as do all newly-created response/trigger decisions.
+Canonical damage-trigger decisions bind the latest essential card/cards presentation belonging to the current Attack resolution when one exists; informational damage messages never provide their barrier, and the browser treats legacy informational barriers as already ready. Other newly-created response/trigger decisions continue to capture their exact presentation event ID at creation.
 
 ## Semantic response architecture cleanup — COMPLETE
 
