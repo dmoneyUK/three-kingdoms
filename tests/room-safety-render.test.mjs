@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GameRoom } from "../app/page.tsx";
+import { GameRoom, MandatoryChoiceDialog } from "../app/page.tsx";
 import { normalizeRoomData } from "../game/room-safety.js";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
@@ -48,6 +48,44 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(pickerHtml, /class="target-card-picker-card hidden(?:\s|[^"]*")/, "hidden hand buttons do not use Tailwind's standalone hidden class");
   assert.match(pickerHtml, /aria-label="Nio Shield/);
   assert.doesNotMatch(pickerHtml, /aria-label="not-eligible"/);
+
+  const choicePayload = {
+    code: "SAFE-CHOICE", status: "playing", maxPlayers: 4, isHost: false, isTestController: true, meId: "p2", myRole: "Rebel", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "ATTACKER", seat: 0, hero: "zhang-fei", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "TARGET", seat: 1, hero: "zhen-ji", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 2, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [card("target-hand-0"), card("target-hand-1")], turnSeat: 0, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p2", actionReason: "Choose how to resolve Yin-Yang Swords", isMyAction: true,
+    pending: { kind: "trigger" }, currentAction: { version: 3, kind: "trigger", actorId: "p2", deadline: 0, reason: "Choose how to resolve Yin-Yang Swords", legalActions: ["trigger"], triggerEvent: "attack_targeted", triggerOptions: [{ effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, selection: { type: "choice", choices: [{ id: "discard", label: "Discard 1 hand card" }, { id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: ["hand:0", "hand:1"] } }] },
+    pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
+  };
+  const choiceRoom = normalizeRoomData(choicePayload);
+  const choiceHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: choiceRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(choiceHtml, /class="target-card-picker-panel choice-trigger-panel/);
+  assert.match(choiceHtml, /YIN-YANG SWORDS/);
+  assert.match(choiceHtml, /Discard 1 hand card/);
+  assert.match(choiceHtml, /Keep hand — attacker draws 1 card/);
+  assert.doesNotMatch(choiceHtml, /aria-label="Hidden hand card \d+"/, "hand cards stay hidden until discard is chosen");
+  assert.doesNotMatch(choiceHtml, />Yin-Yang Swords<\/button>/, "mandatory choices open without a trigger activation button");
+  assert.doesNotMatch(choiceHtml, /Skip reaction/, "mandatory Yin-Yang choice has no Skip reaction");
+
+  const discardChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, {
+    option: choicePayload.currentAction.triggerOptions[0], selection: choicePayload.currentAction.triggerOptions[0].selection, selectedChoice: "discard", selectedKeys: [], disabled: false, busy: false, error: "",
+    onChoice: () => {}, onToggle: () => {}, onConfirm: () => {},
+  }));
+  assert.equal((discardChoiceHtml.match(/aria-label="Hidden hand card \d+"/g) ?? []).length, 2, "mandatory discard choice uses readable concealed hand cards");
+
+  const noHandRoom = normalizeRoomData({
+    ...choicePayload,
+    code: "SAFE-CHOICE-NO-HAND",
+    players: choicePayload.players.map((player) => player.id === "p2" ? { ...player, handCount: 0 } : player),
+    myHand: [],
+    currentAction: { ...choicePayload.currentAction, triggerOptions: [{ ...choicePayload.currentAction.triggerOptions[0], selection: { type: "choice", choices: [{ id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: [] } }] },
+  });
+  const noHandHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: noHandRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(noHandHtml, /Keep hand — attacker draws 1 card/);
+  assert.doesNotMatch(noHandHtml, /Discard 1 hand card/);
+  assert.doesNotMatch(noHandHtml, /Hidden hand card/);
 });
 
 test("a normalized Negation response retains its legal controls", () => {

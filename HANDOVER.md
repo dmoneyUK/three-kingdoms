@@ -1,5 +1,20 @@
 # Three Kingdoms project handover
 
+## Yin-Yang Swords choice UI — 2026-09-18
+
+Mandatory semantic trigger choices now open directly when their projected
+decision is ready instead of rendering a provider activation button. The
+centred table dialog shows the projected choices, uses the player-facing
+“Keep hand — attacker draws 1 card” wording, and has no Skip reaction. The
+discard branch shows exactly the server-projected `eligibleHandKeys` as
+readable concealed card backs, accepts exactly one `hand:N` key, and confirms
+through the existing `trigger` action with `providerId`, `choice`, and optional
+`cardKeys`. A no-hand projection therefore renders only the attacker-draw
+choice. Existing render coverage was extended without adding a test
+declaration; the server capability and protocol are unchanged. Full
+validation remains required before commit and push. Recommended next work is
+the next individually verified Standard hero.
+
 ## Passive equipment effect notices — 2026-09-18
 
 Passive Attack prevention now uses a shared server presentation helper. When

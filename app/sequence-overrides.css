@@ -240,6 +240,50 @@
   margin: 12px 0 0;
 }
 
+.choice-trigger-panel {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.choice-trigger-options {
+  display: grid;
+  gap: 10px;
+  margin: 22px auto 4px;
+  max-width: 420px;
+}
+
+.choice-trigger-options button {
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid #806b43;
+  background: #22251e;
+  color: #eee0bd;
+  font: 11px Arial, sans-serif;
+  cursor: pointer;
+}
+
+.choice-trigger-options button:hover,
+.choice-trigger-options button:focus-visible,
+.choice-trigger-options button.selected {
+  border-color: #e1bc68;
+  background: #806429;
+  color: #fff2c4;
+  box-shadow: 0 0 0 2px #d8b86133;
+}
+
+.choice-trigger-card-row {
+  padding-top: 18px;
+}
+
+.choice-trigger-card-row .target-card-picker-card {
+  flex-basis: 88px;
+  width: 88px;
+  height: 124px;
+}
+
+.choice-trigger-card-row .target-card-picker-card.concealed-card > span:first-child {
+  font-size: 44px;
+}
+
 @media (max-width: 520px) {
   .target-card-picker-overlay {
     padding: 18px;
