@@ -1,5 +1,18 @@
 # Three Kingdoms project handover
 
+## Borrowed Sword Attack ownership — 2026-09-18
+
+Borrowed Sword now records the forced Attack as `origin: "borrowed_sword"`
+while keeping the Weapon holder as the authoritative Attack source. A separate
+`resumePlayerId` carries the original turn owner through Attack response,
+`attack_targeted`, Dodge, `attack_dodged`, `damage_about_to_apply`, weapon
+follow-ups, and Dying, so an out-of-turn holder reaction is accepted without
+turning the Borrowed Sword user into the damage source and control returns to
+the original turn owner after resolution. The existing Borrowed Sword API
+coverage now verifies those persisted identities and the damage/Dying path;
+the suite remains 74 declarations and passes 74/74. Recommended next work is
+the next individually verified Standard hero.
+
 ## Frost Sword concealed-card CSS fix — 2026-09-18
 
 The generic target-card picker now uses `concealed-card` for hidden Hand

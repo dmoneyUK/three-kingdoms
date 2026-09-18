@@ -1649,6 +1649,8 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
     sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(s.holder.id)}`); sql(`UPDATE players SET hero='zhen-ji' WHERE id=${quote(s.target.id)}`);
     setHand(s.target.id, [], 4, 4);
     const attack = await request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: s.attackId }); assert.equal(attack.status, 200, JSON.stringify(attack.data));
+    const targetedPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(s.game.code)}`));
+    assert.equal(targetedPending.continuation.declaration.origin, "borrowed_sword"); assert.equal(targetedPending.continuation.declaration.sourceId, s.holder.id); assert.equal(targetedPending.continuation.declaration.resumePlayerId, s.source.id);
     const targetDecision = (await state(s.game.code, s.game.members[2].token)).data;
     assert.deepEqual(targetDecision.currentAction.legalActions, ["trigger"]);
     assert.equal(targetDecision.currentAction.declineAction, undefined);
@@ -1676,6 +1678,7 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
   const dodge = card("Dodge", "borrowed-dodge"); const hidden = card("Peach", "borrowed-hidden"); setHand(s.target.id, [hidden, dodge], 4, 4);
   const attack = await request("respond", { code: s.game.code, token: s.alice.token, providerId: "card", cardId: s.attackId }); assert.equal(attack.status, 200, JSON.stringify(attack.data));
   const targetDecision = (await state(s.game.code, s.game.members[2].token)).data; assert.equal(targetDecision.currentAction.kind, "trigger"); assert.equal(targetDecision.currentAction.actorId, s.target.id); const yin = await request("trigger", { code: s.game.code, token: s.game.members[2].token, providerId: "yin_yang_swords_attack_targeted", choice: "discard", cardKeys: ["hand:0"] }); assert.equal(yin.status, 200, JSON.stringify(yin.data) + ` pending=${query(`SELECT turn_seat||':'||pending_json FROM rooms WHERE code=${quote(s.game.code)}`)}`);
+  const dodgePending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(s.game.code)}`)); assert.equal(dodgePending.continuation.origin, "borrowed_sword"); assert.equal(dodgePending.continuation.sourceId, s.holder.id); assert.equal(dodgePending.continuation.resumePlayerId, s.source.id);
   const dodgePrompt = await state(s.game.code, s.game.members[2].token); assert.equal(dodgePrompt.data.currentAction.kind, "response"); assert.equal(dodgePrompt.data.currentAction.actorId, s.target.id);
   const dodged = await request("respond", { code: s.game.code, token: s.game.members[2].token, providerId: "card", cardId: dodge.id }); assert.equal(dodged.status, 200, JSON.stringify(dodged.data)); assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(s.holder.id)} AND json_extract(value,'$.id')=${quote(s.attackId)}`), "0");
 
@@ -1686,4 +1689,13 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
   const spear = await request("respond", { code: spearScenario.game.code, token: spearScenario.alice.token, providerId: "serpent_spear_attack", cardIds: [spearCostA.id, spearCostB.id] }); assert.equal(spear.status, 200, JSON.stringify(spear.data));
   assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(spearScenario.holder.id)} AND (json_extract(value,'$.id')=${quote(spearCostA.id)} OR json_extract(value,'$.id')=${quote(spearCostB.id)})`), "0");
   const spearDodge = await request("respond", { code: spearScenario.game.code, token: spearScenario.game.members[2].token, providerId: "card", cardId: targetDodge.id }); assert.equal(spearDodge.status, 200, JSON.stringify(spearDodge.data));
+
+  const frostScenario = await openBorrowedSwordScenario({ weaponKind: "FrostSword" });
+  const frostTargetCard = card("Peach", "borrowed-frost-target"); const rescuePeach = card("Peach", "borrowed-frost-rescue");
+  sql(`UPDATE players SET hero='zhang-fei' WHERE id=${quote(frostScenario.target.id)}`);
+  setHand(frostScenario.source.id, [rescuePeach], 4, 5); setHand(frostScenario.target.id, [frostTargetCard], 1, 4);
+  const frostAttack = await request("respond", { code: frostScenario.game.code, token: frostScenario.alice.token, providerId: "card", cardId: frostScenario.attackId }); assert.equal(frostAttack.status, 200, JSON.stringify(frostAttack.data));
+  const damagePending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(frostScenario.game.code)}`)); assert.equal(damagePending.continuation.origin, "borrowed_sword"); assert.equal(damagePending.continuation.sourceId, frostScenario.holder.id); assert.equal(damagePending.continuation.resumePlayerId, frostScenario.source.id);
+  const frostDeclined = await request("decline_trigger", { code: frostScenario.game.code, token: frostScenario.alice.token }); assert.equal(frostDeclined.status, 200, JSON.stringify(frostDeclined.data));
+  const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(frostScenario.game.code)}`)); assert.equal(dyingPending.kind, "dying"); assert.equal(dyingPending.origin, "borrowed_sword"); assert.equal(dyingPending.resumePlayerId, frostScenario.source.id); assert.equal(frostDeclined.data.room.pendingDying.origin, "borrowed_sword");
 });

@@ -3,19 +3,19 @@ import type { ActionRequirement } from "./responses";
 import type { TriggerEvent } from "./capabilities/triggers";
 
 /** The one persisted decision in a room, independent of HTTP and D1. */
-export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered";
-export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; sequenceStartCardId: string; resumePhase: string; resolutionId?: string };
+export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered" | "borrowed_sword";
+export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; sequenceStartCardId: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string };
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
 export type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 export type TargetCardPending = { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
 export type BorrowedSwordPending = { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; stage: "choose_target" | "force_attack" };
-export type BorrowedSwordAttackContinuation = { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; weaponId: string };
+export type BorrowedSwordAttackContinuation = { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; resumePlayerId: string; weaponId: string; origin: "borrowed_sword" };
 export type DeferredStratagem =
   | { kind: "draw_two"; cardId: string } | { kind: "oath" } | { kind: "harvest"; chooserIds: string[] } | { kind: "harvest_target"; pending: HarvestPending } | { kind: "borrowed_sword"; targetId: string }
   | { kind: "dismantle"; targetId: string } | { kind: "steal"; targetId: string } | { kind: "duel"; pending: ResponsePending } | { kind: "group"; pending: GroupResponsePending }
   | { kind: "overindulgence"; targetId: string; cardId: string } | { kind: "lightning"; targetId: string; cardId: string } | { kind: "rations_depleted"; targetId: string; cardId: string } | { kind: "judgement"; targetId: string; cardId: string };
 /** Only effect-resumption data belongs in a canonical response continuation. */
-export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; ignoresArmor?: boolean; resolutionId?: string };
+export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; ignoresArmor?: boolean; resolutionId?: string };
 export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; resolutionId?: string };
 export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string };
 export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string };
@@ -43,7 +43,9 @@ export type AttackDodgedTriggerContinuation = {
   sourceId: string;
   targetId: string;
   resumePhase: string;
+  resumePlayerId?: string;
   sequenceStartCardId: string;
+  origin?: AttackOrigin;
   resolutionId?: string;
 };
 export type AttackTargetedTriggerContinuation = {
@@ -56,7 +58,9 @@ export type DamageAboutToApplyTriggerContinuation = {
   sourceId: string;
   targetId: string;
   resumePhase: string;
+  resumePlayerId?: string;
   sequenceStartCardId: string;
+  origin?: AttackOrigin;
 };
 export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation;
 
@@ -74,7 +78,7 @@ export type TriggerPending = {
   resolvedEffectIds?: string[];
   continuation: TriggerContinuation;
 };
-export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; reason: string };
+export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; origin?: AttackOrigin; reason: string };
 export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | ResponsePending | TriggerPending | DyingPending;
 
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
