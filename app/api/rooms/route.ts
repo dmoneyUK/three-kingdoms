@@ -394,7 +394,7 @@ async function finishIfWon(roomId: string) {
   await db().prepare("UPDATE rooms SET status = 'finished', phase = 'finished', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), roomId).run(); return true;
 }
 
-async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpeningCards: { playerId: string; kinds: CardKind[] }[] = []) {
+async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpeningCards: { playerId: string; kinds: CardKind[] }[] = [], randomizedOpeningKinds: CardKind[] = []) {
   const deck = makeDeck();
   const openingHands = players.map((player) => ({ player, cards: [] as Card[] }));
   for (const guarantee of guaranteedOpeningCards) {
@@ -404,6 +404,13 @@ async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpenin
       const deckIndex = deck.findIndex((card) => card.kind === kind);
       if (deckIndex >= 0) opening.cards.push(...deck.splice(deckIndex, 1));
     }
+  }
+  const randomizedTargets = shuffle(openingHands.filter(({ cards }) => cards.length < 4));
+  for (const kind of randomizedOpeningKinds) {
+    const opening = randomizedTargets.shift();
+    if (!opening) break;
+    const deckIndex = deck.findIndex((card) => card.kind === kind);
+    if (deckIndex >= 0) opening.cards.push(...deck.splice(deckIndex, 1));
   }
   for (const entry of openingHands) entry.cards = shuffle([...entry.cards, ...deck.splice(0, Math.max(0, 4 - entry.cards.length))]);
   const updates = openingHands.map(({ player, cards }) => db().prepare("UPDATE players SET hand_json = ?, judgement_json = '[]', equipment_json = '{}', alive = 1 WHERE id = ?").bind(JSON.stringify(cards), player.id));
@@ -426,12 +433,13 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
   // Keep Guan Yu's red Wusheng capability available while seeding the
-  // requested Standard equipment for the first three human-style seats.
+  // requested Standard equipment for the first three human-style seats;
+  // Yin-Yang Swords and Borrowed Sword are placed in random open seats.
   await beginMatch(roomId, assigned, [
     { playerId: assigned[0].id, kinds: ["FrostSword", "RedHare", "Peach", "Attack"] },
     { playerId: assigned[1].id, kinds: ["KirinBow", "NioShield"] },
     { playerId: assigned[2].id, kinds: ["BlueSteelSword"] },
-  ]);
+  ], ["YinYangSwords", "BorrowedSword"]);
 }
 function db() { return env.DB; }
 

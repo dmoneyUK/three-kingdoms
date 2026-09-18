@@ -1,5 +1,17 @@
 # Three Kingdoms project handover
 
+## Random Quick Test Yin-Yang and Borrowed Sword opening cards — 2026-09-18
+
+Quick Test now removes one physical Yin-Yang Swords card and one physical
+Borrowed Sword card from the shuffled Standard deck and deals them to two
+distinct randomly selected seats that still have opening-hand capacity. The
+existing fixed Player1–Player3 seeds remain unchanged, every seat still
+receives exactly four opening cards, and the cards cannot remain duplicated in
+the deck. The existing Quick Test API regression now verifies both random-card
+holders, distinct seats, and four-card hands. Normal multiplayer openings are
+unchanged. Recommended next work is the next individually verified Standard
+hero.
+
 ## Centre card presentation timing — 2026-09-18
 
 The shared centre card and card-group presentation now lasts 2 seconds, reduced

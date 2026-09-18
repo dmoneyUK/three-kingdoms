@@ -719,6 +719,13 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   assert.ok(openingHandKinds(playerOne).includes("KirinBow"), "Player2 starts with Kirin Bow");
   assert.ok(openingHandKinds(playerOne).includes("NioShield"), "Player2 starts with Nio Shield");
   assert.ok(openingHandKinds(playerTwo).includes("BlueSteelSword"), "Player3 starts with Blue Steel Sword");
+  const openingPlayers = [me, playerOne, playerTwo, playerThree];
+  const yinYangHolders = openingPlayers.filter((player) => openingHandKinds(player).includes("YinYangSwords"));
+  const borrowedSwordHolders = openingPlayers.filter((player) => openingHandKinds(player).includes("BorrowedSword"));
+  assert.equal(yinYangHolders.length, 1, "exactly one random seat starts with Yin-Yang Swords");
+  assert.equal(borrowedSwordHolders.length, 1, "exactly one random seat starts with Borrowed Sword");
+  assert.notEqual(yinYangHolders[0].id, borrowedSwordHolders[0].id, "the randomized sword cards start in distinct seats");
+  assert.ok(openingPlayers.every((player) => openingHandKinds(player).length === 4), "every Quick Test seat receives four opening cards");
   assert.equal(openingHandKinds(playerThree).length, 4, "Player4 receives a full random opening hand");
   setHand(me.id, [], 3, 3); setHand(playerOne.id, [card("DrawTwo", "quick-live")], 3, 3); setHand(playerTwo.id, [card("Negation", "quick-live")], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, playerOne.seat, "play");
   const before = await state(room.code, token);
