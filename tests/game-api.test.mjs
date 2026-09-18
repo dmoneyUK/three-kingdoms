@@ -3,6 +3,7 @@ import { readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { normalizeRoomData } from "../game/room-safety.js";
 
 const baseUrl = process.env.GAME_TEST_URL ?? "http://localhost:3137";
 const d1Directory = new URL("../.wrangler/test-state/v3/d1/miniflare-D1DatabaseObject/", import.meta.url);
@@ -546,17 +547,22 @@ test("Frost Sword offers its owner the choice to prevent Attack damage and disca
   setHand(hostPlayer.id, [card("FrostSword", "equip")], 4, 4); setTurn(game.code, hostPlayer.seat);
   const equipped = await request("play_card", { code: game.code, token: host.token, cardId: "frostsword-equip" });
   assert.equal(equipped.status, 200); assert.equal(equipped.data.room.players.find((player) => player.id === hostPlayer.id).attackRange, 2);
-  setHand(hostPlayer.id, [card("Attack", "attack")], 4, 4); setHand(alicePlayer.id, [card("Peach", "one"), card("Dodge", "two"), card("Peach", "three")], 4, 4); setTurn(game.code, hostPlayer.seat);
+  setHand(hostPlayer.id, [card("Attack", "attack")], 4, 4); setHand(alicePlayer.id, [card("Peach", "one"), card("Dodge", "two"), card("Peach", "three"), card("Attack", "four")], 4, 4); setEquipment(alicePlayer.id, { offensiveHorse: card("FerganaSteed", "frost-mount") }); setTurn(game.code, hostPlayer.seat);
   const attack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-attack", targetId: alicePlayer.id });
   assert.equal(attack.status, 200);
   const damage = await takeDamageIfPending(game.code, alice.token);
   assert.equal(damage.status, 200); assert.equal(damage.data.room.pendingFrostSword.actorId, hostPlayer.id);
   const frostTrigger = await state(game.code, host.token);
   assert.equal(frostTrigger.data.currentAction.kind, "trigger"); assert.equal(frostTrigger.data.currentAction.triggerOptions[0].effectId, "frost_sword_damage_about_to_apply");
+  const frostSelection = frostTrigger.data.currentAction.triggerOptions.find((option) => option.effectId === "frost_sword_damage_about_to_apply")?.selection;
+  const expectedFrostKeys = ["hand:0", "hand:1", "hand:2", "hand:3", "ferganasteed-frost-mount"];
+  assert.deepEqual(frostSelection?.eligibleKeys, expectedFrostKeys, "Frost Sword projects every target Hand position");
+  const normalizedFrostTrigger = normalizeRoomData(frostTrigger.data);
+  assert.deepEqual(normalizedFrostTrigger?.currentAction?.triggerOptions?.find((option) => option.effectId === "frost_sword_damage_about_to_apply")?.selection?.eligibleKeys, expectedFrostKeys, "room normalization preserves Frost Sword eligibility");
   const frost = await request("trigger", { code: game.code, token: host.token, providerId: "frost_sword_damage_about_to_apply", cardKeys: ["hand:0", "hand:1"] });
-  assert.equal(frost.status, 200); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Frost Sword prevents the Attack damage"); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 1, "Frost Sword discards two target cards");
+  assert.equal(frost.status, 200); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "Frost Sword prevents the Attack damage"); assert.equal(frost.data.room.players.find((player) => player.id === alicePlayer.id).handCount, 2, "Frost Sword discards two target cards");
 
-  setHand(hostPlayer.id, [card("Attack", "judgement-only")], 4, 4); setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, [card("Lightning", "protected-zone")]); setTurn(game.code, hostPlayer.seat);
+  setHand(hostPlayer.id, [card("Attack", "judgement-only")], 4, 4); setHand(alicePlayer.id, [], 4, 4); setEquipment(alicePlayer.id); setJudgement(alicePlayer.id, [card("Lightning", "protected-zone")]); setTurn(game.code, hostPlayer.seat);
   const judgementOnlyAttack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-judgement-only", targetId: alicePlayer.id });
   assert.equal(judgementOnlyAttack.status, 200);
   const judgementOnlyDamage = await takeDamageIfPending(game.code, alice.token);

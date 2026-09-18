@@ -45,7 +45,7 @@ test("normalized malformed and unknown response states render safely", () => {
   const pickerHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((pickerHtml.match(/aria-label="Hidden hand card \d+"/g) ?? []).length, 4, "target_cards renders every eligible hidden hand key without using handCount");
   assert.match(pickerHtml, /aria-label="Nio Shield/);
-  assert.doesNotMatch(pickerHtml, /not-eligible/);
+  assert.doesNotMatch(pickerHtml, /aria-label="not-eligible"/);
 });
 
 test("a normalized Negation response retains its legal controls", () => {

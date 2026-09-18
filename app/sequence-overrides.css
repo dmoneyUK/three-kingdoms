@@ -120,6 +120,15 @@
   font: 11px Arial, sans-serif;
 }
 
+.target-card-picker-debug {
+  display: block;
+  margin: 10px auto 0;
+  color: #b9ad8c;
+  font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
 .target-card-picker-card-row {
   display: flex;
   justify-content: center;
