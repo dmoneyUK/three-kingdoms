@@ -1,5 +1,19 @@
 # Three Kingdoms project handover
 
+## Passive equipment effect notices — 2026-09-18
+
+Passive Attack prevention now uses a shared server presentation helper. When
+Nio Shield blocks a black Attack, the authoritative timeline receives a public
+informational message such as “Nio Shield blocks Host's black Attack. No damage
+is dealt.” with `effectNotice: true`; the same path covers normal, Halberd,
+Borrowed Sword, Yin-Yang continuation, and weapon follow-up Attacks. The room
+normalizer now preserves `effectNotice`, so each viewer gets the brief on-table
+“EFFECT TRIGGERED” notice as well as the foldable Game Messages entry. These
+messages never become presentation barriers and do not delay decisions, timers,
+or card animations. The existing Nio Shield API regression now verifies the
+notice for normal and Halberd black Attacks; the full suite remains 74 / 74.
+Recommended next work is the next individually verified Standard hero.
+
 ## Borrowed Sword Attack ownership — 2026-09-18
 
 Borrowed Sword now records the forced Attack as `origin: "borrowed_sword"`

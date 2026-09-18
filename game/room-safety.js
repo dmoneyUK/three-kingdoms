@@ -26,6 +26,7 @@ function normalizePresentationMeta(entry) {
   if (entry.importance === "essential" || entry.importance === "informational") metadata.importance = entry.importance;
   if (entry.finalResult === true) metadata.finalResult = true;
   if (entry.playedAs === "attack") metadata.playedAs = "attack";
+  if (entry.effectNotice === true) metadata.effectNotice = true;
   return metadata;
 }
 

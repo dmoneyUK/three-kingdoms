@@ -145,7 +145,15 @@ function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(play
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
 function hasBlueSteelSword(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "BlueSteelSword"; }
-function isNioShieldImmune(target?: PlayerRow | null, attack?: Card | null, source?: PlayerRow | null) { return Boolean(target && resolvePassiveAttackModifiers({ targetEquipment: equipmentCards(target), sourceEquipment: equipmentCards(source), attack })?.prevented); }
+function passiveAttackPrevention(target?: PlayerRow | null, attack?: Card | null, source?: PlayerRow | null) {
+  return target ? resolvePassiveAttackModifiers({ targetEquipment: equipmentCards(target), sourceEquipment: equipmentCards(source), attack }) : null;
+}
+function addPassiveAttackPreventionNotice(log: string[], source: PlayerRow, target: PlayerRow, attack?: Card | null) {
+  const prevention = passiveAttackPrevention(target, attack, source);
+  if (!prevention?.prevented) return null;
+  const attackLabel = attack && (attack.suit === "♠" || attack.suit === "♣") ? "black Attack" : "Attack";
+  return { log: addLogWithId(log, `${target.name}'s ${prevention.reason} blocks ${source.name}'s ${attackLabel}. No damage is dealt.`, undefined, { effectNotice: true }).log };
+}
 function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackOrigin, physicalCards: Card[], resumePhase: string, attackCard?: Card): AttackDeclaration {
   return { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, ignoresArmor: hasBlueSteelSword(source), sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", resumePhase, resumePlayerId: source.id };
 }
@@ -1141,8 +1149,9 @@ async function resumeCanonicalTriggerContinuation(room: RoomRow, continuation: A
       if (group) await beginGroupTarget(room, group.response, group.continuation, players, discard, nextLog);
       return;
     }
-    if (isNioShieldImmune(target, attackPhysicalCard(declaration), source)) {
-      nextLog = addLog(nextLog, `${target.name}'s Nio Shield makes them immune to the black Attack. Action returns to ${source.name}.`);
+    const prevention = addPassiveAttackPreventionNotice(nextLog, source, target, attackPhysicalCard(declaration));
+    if (prevention) {
+      nextLog = prevention.log;
       await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(declaration.resumePhase, JSON.stringify(discard), JSON.stringify(nextLog), room.id).run();
       await continueAfterDying(room.id, declaration.resumePlayerId ?? source.id); return;
     }
@@ -1198,8 +1207,9 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
     await beginAttackTargeted(room, declaration, source, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id)]);
     return;
   }
-  if (isNioShieldImmune(target, attackPhysicalCard(declaration), source)) {
-    log = addLog(log, `${target.name}'s Nio Shield makes them immune to the black Attack. Action returns to ${source.name}.`);
+  const prevention = addPassiveAttackPreventionNotice(log, source, target, attackPhysicalCard(declaration));
+  if (prevention) {
+    log = prevention.log;
     await db().batch([
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
       db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
@@ -1268,8 +1278,9 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
       writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(targetedPending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id));
       await db().batch(writes); return;
     }
-    if (isNioShieldImmune(actor, attack, source)) {
-      log = addLog(log, `${actor.name}'s Nio Shield makes them immune to ${source.name}'s black Attack.`);
+    const prevention = addPassiveAttackPreventionNotice(log, source, actor, attack);
+    if (prevention) {
+      log = prevention.log;
       await finishGroupStep(room, response, continuation, players, discard, log, writes);
       return;
     }
@@ -2228,11 +2239,11 @@ export async function POST(request: Request) {
       await beginAttackTargeted(liveRoom, declaration, { ...holder, hand_json: JSON.stringify(hand) }, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), holder.id)]);
       return json({ room: await roomState(code, token) });
     }
-    if (isNioShieldImmune(target, attack, holder)) {
-      const immuneLog = addLog(presentation.log, `${target.name}'s Nio Shield makes them immune to the black Attack. Action returns to ${holder.name}.`);
+    const prevention = addPassiveAttackPreventionNotice(presentation.log, holder, target, attack);
+    if (prevention) {
       await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), holder.id),
-        db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(immuneLog), room.id),
+        db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(prevention.log), room.id),
       ]);
         await continueAfterDying(room.id, continuation.resumePlayerId);
     } else if (hasDodgeResponse(responseContext(target))) {
@@ -2594,8 +2605,9 @@ export async function POST(request: Request) {
           await beginAttackTargeted(liveRoom, declaration, me, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
           return json({ room: await roomState(code, token) });
         }
-        if (isNioShieldImmune(target, attackPhysicalCard(declaration), me)) {
-          log = addLog(log, `${target.name}'s Nio Shield makes them immune to ${me.name}'s black Attack. Action returns to ${me.name}.`);
+        const prevention = addPassiveAttackPreventionNotice(log, me, target, attackPhysicalCard(declaration));
+        if (prevention) {
+          log = prevention.log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
             db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(me), JSON.stringify(discard), JSON.stringify(log), room.id),
