@@ -109,7 +109,7 @@ player names and uses the same Standard registry.
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is now ACTIVE; the next milestone is the next scoped Standard hero.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is now ACTIVE; the next milestone is Zhao Yun — Longdan.
 
 ## Progress summary
 

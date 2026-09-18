@@ -1,5 +1,18 @@
 # Three Kingdoms project handover
 
+## Yin-Yang Swords mandatory timeout fallback — 2026-09-18
+
+Yin-Yang Swords now projects the optional `timeoutChoiceId: "draw"` metadata
+through the generic TriggerOption, `currentAction.triggerOptions`, and room
+normalization. When its mandatory trigger reaches the existing response
+deadline, the browser first uses a legal `decline_trigger` if one exists;
+otherwise it submits the existing `trigger` action with the provider ID and
+the projected timeout choice. This defaults Yin-Yang to attacker draw without
+discarding a random hidden card. Manual draw/discard behavior, the centred
+choice dialog, and the no-Skip contract remain unchanged. Existing Yin-Yang
+capability, API, normalization, and render coverage was extended without a
+new test declaration; the next milestone is Zhao Yun — Longdan.
+
 ## Random Quick Test Yin-Yang and Borrowed Sword opening cards — 2026-09-18
 
 Quick Test now removes one physical Yin-Yang Swords card and one physical

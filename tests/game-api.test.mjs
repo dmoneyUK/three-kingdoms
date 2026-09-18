@@ -1661,7 +1661,7 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
     const targetDecision = (await state(s.game.code, s.game.members[2].token)).data;
     assert.deepEqual(targetDecision.currentAction.legalActions, ["trigger"]);
     assert.equal(targetDecision.currentAction.declineAction, undefined);
-    assert.deepEqual(targetDecision.currentAction.triggerOptions[0], { effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, selection: { type: "choice", choices: [{ id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: [] } });
+    assert.deepEqual(targetDecision.currentAction.triggerOptions[0], { effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, timeoutChoiceId: "draw", selection: { type: "choice", choices: [{ id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: [] } });
     assert.equal((await request("decline_trigger", { code: s.game.code, token: s.game.members[2].token })).status, 409);
     setDeck(s.game.code, [card("Peach", "yin-draw")]);
     const drawn = await request("trigger", { code: s.game.code, token: s.game.members[2].token, providerId: "yin_yang_swords_attack_targeted", choice: "draw" }); assert.equal(drawn.status, 200, JSON.stringify(drawn.data));

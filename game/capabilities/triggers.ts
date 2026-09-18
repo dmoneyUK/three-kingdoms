@@ -16,7 +16,7 @@ export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[] }
   | { type: "target_cards"; targetId: string; min: number; max: number; eligibleKeys: string[] }
   | { type: "choice"; choices: { id: string; label: string }[]; eligibleHandKeys: string[] };
-export type TriggerOption = { effectId: string; label: string; selection: TriggerSelectionConstraint | null; allowDecline?: boolean };
+export type TriggerOption = { effectId: string; label: string; selection: TriggerSelectionConstraint | null; allowDecline?: boolean; timeoutChoiceId?: string };
 export function triggerAllowsDecline(option: Pick<TriggerOption, "allowDecline">) {
   return option.allowDecline !== false;
 }
