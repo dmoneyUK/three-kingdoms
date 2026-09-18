@@ -409,7 +409,7 @@ test("canonical Raining Arrows responses either consume Dodge or apply damage", 
 });
 
 
-test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeout: 30_000 }, async () => {
+test("Green Dragon Blade and Attack-use-limit rules preserve normal Attack flow", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, , bob] = game.members; const [hostPlayer, alicePlayer, bobPlayer, carolPlayer] = game.room.players;
   sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(hostPlayer.id)}`);
@@ -444,6 +444,31 @@ test("Green Dragon Blade grants range 3 and chains Attack after Dodge", { timeou
   assert.equal((await request("respond", { code: game.code, token: bob.token, cardId: "dodge-dragon-skip" })).data.room.currentAction.actorId, hostPlayer.id);
   const skipped = await request("decline_trigger", { code: game.code, token: host.token });
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "play-struck"); assert.ok(skipped.data.room.myHand.some((held) => held.id === "attack-dragon-kept"), "skipping preserves the unused follow-up Attack");
+
+  async function attackLimitScenario(hero, equipment, attackCount, expectedAfterAttack) {
+    const limitGame = await createHumanGame();
+    const [limitHost] = limitGame.members;
+    const [limitSource, limitTarget] = limitGame.room.players;
+    sql(`UPDATE players SET hero=${quote(hero)} WHERE id=${quote(limitSource.id)}`);
+    setEquipment(limitSource.id, equipment);
+    setEquipment(limitTarget.id, {});
+    const attacks = Array.from({ length: attackCount }, (_, index) => card("Attack", `limit-${hero}-${index}`));
+    setHand(limitSource.id, attacks, 4, 4); setHand(limitTarget.id, [], 4, 4); setTurn(limitGame.code, limitSource.seat);
+    for (let index = 0; index < attacks.length; index++) {
+      const result = await request("play_card", { code: limitGame.code, token: limitHost.token, cardId: attacks[index].id, targetId: limitTarget.id });
+      assert.equal(result.status, 200, JSON.stringify(result.data));
+      assert.equal(result.data.room.phase, expectedAfterAttack, `${hero} Attack ${index + 1} returns to the expected Play state`);
+      if (index < attacks.length - 1 && expectedAfterAttack === "play-struck") {
+        const rejected = await request("play_card", { code: limitGame.code, token: limitHost.token, cardId: attacks[index + 1].id, targetId: limitTarget.id });
+        assert.equal(rejected.status, 409, `${hero} cannot declare a second normal Attack`);
+        break;
+      }
+    }
+  }
+
+  await attackLimitScenario("cao-cao", {}, 2, "play-struck");
+  await attackLimitScenario("zhang-fei", {}, 3, "play");
+  await attackLimitScenario("cao-cao", { weapon: card("ZhugeCrossbow", "limit-crossbow") }, 2, "play");
 
 
 });

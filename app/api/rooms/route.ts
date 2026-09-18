@@ -141,7 +141,6 @@ function borrowedSwordEligibleTargetIds(players: PlayerRow[], holderId: string) 
   if (!holder) return [];
   return players.filter((player) => player.alive && player.id !== holder.id && attackDistance(players, holder.id, player.id) <= attackRangeFor(holder)).map((player) => player.id);
 }
-function hasZhugeCrossbow(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "ZhugeCrossbow"; }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
 function hasBlueSteelSword(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "BlueSteelSword"; }
@@ -187,7 +186,8 @@ function selectedSerpentSpearCards(player: PlayerRow | null | undefined, hand: C
   const ids = value.map(String); if (ids.length !== 2 || new Set(ids).size !== 2) return [];
   return ids.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
 }
-function phaseAfterAttack(player?: PlayerRow | null) { return playPhaseAfterAttack(player, hasZhugeCrossbow(player)); }
+function attackUseLimitContext(player?: PlayerRow | null) { return { hero: player?.hero, equipment: equipmentCards(player) }; }
+function phaseAfterAttack(player?: PlayerRow | null) { return playPhaseAfterAttack(attackUseLimitContext(player)); }
 function latestResolutionId(log: string[]) {
   for (let index = log.length - 1; index >= 0; index--) {
     const entry = log[index];
@@ -1588,7 +1588,7 @@ async function roomState(code: string, token?: string) {
   const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me) : undefined) : null;
-  const canDeclareAttack = me?.id === actualActionPlayerId && canDeclareAttackFor(me, room.phase, hasZhugeCrossbow(me));
+  const canDeclareAttack = me?.id === actualActionPlayerId && canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, room.phase);
   const playPhaseActions = me?.id === actualActionPlayerId && room.phase?.startsWith("play") ? getPlayPhaseActions(responseContext(me)) : [];
   const triggerOptions = me?.id === actualActionPlayerId && triggerPending ? triggerOptionsFor(triggerPending, players) : [];
   const legacyFrostAvailable = triggerPending?.event === "damage_about_to_apply"
@@ -2443,7 +2443,7 @@ export async function POST(request: Request) {
       await db.batch([...judgementWrites, db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(judgement.skipPlay ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
     } else if (action === "serpent_spear_attack") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before forming an Attack." }, 409);
-      if (!canDeclareAttackFor(me, liveRoom.phase, hasZhugeCrossbow(me))) return json({ error: "You may use only one Attack per turn." }, 409);
+      if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may use only one Attack per turn." }, 409);
       const materials = selectedSerpentSpearCards(me, hand, body.cardIds);
       if (materials.length !== 2) return json({ error: "Equip Serpent Spear and select exactly 2 different hand cards." }, 409);
       const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
@@ -2587,7 +2587,7 @@ export async function POST(request: Request) {
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
         await startNegation(liveRoom, me, rows.results ?? [], card, target.name, target.id, { kind: "duel", pending }, hand, deck, discard, log);
       } else if (playableAttack) {
-      if (!canDeclareAttackFor(me, liveRoom.phase, hasZhugeCrossbow(me))) return json({ error: "You may play only one Attack per turn." }, 409);
+      if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may play only one Attack per turn." }, 409);
         const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
         const requestedTargetIds = Array.isArray(body.targetIds) ? body.targetIds.map(String) : [String(body.targetId ?? "")];
         const halberdAttack = hasSkyPiercingHalberd(me) && hand.length === 1;

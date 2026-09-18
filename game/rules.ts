@@ -1,4 +1,5 @@
 import type { GamePlayer } from "./model";
+import { canUseUnlimitedAttacks, type AttackUseLimitContext } from "./capabilities/attack-use-limit";
 
 function livingPlayers<T extends GamePlayer>(players: T[]) {
   return players.filter((player) => Boolean(player.alive)).sort((a, b) => a.seat - b.seat);
@@ -29,10 +30,10 @@ export function distanceBetween<T extends GamePlayer>(players: T[], sourceId: st
   return Math.min(clockwise, alive.length - clockwise);
 }
 
-export function playPhaseAfterAttack(source?: GamePlayer | null, hasUnlimitedAttackEquipment = false) {
-  return source?.hero === "zhang-fei" || hasUnlimitedAttackEquipment ? "play" : "play-struck";
+export function playPhaseAfterAttack(source?: AttackUseLimitContext | null) {
+  return source && canUseUnlimitedAttacks(source) ? "play" : "play-struck";
 }
 
-export function canDeclareAttack(source?: GamePlayer | null, phase?: string | null, hasUnlimitedAttackEquipment = false) {
-  return Boolean(source?.alive !== false && phase?.startsWith("play") && (phase !== "play-struck" || source?.hero === "zhang-fei" || hasUnlimitedAttackEquipment));
+export function canDeclareAttack(source?: (GamePlayer & AttackUseLimitContext) | null, phase?: string | null) {
+  return Boolean(source?.alive !== false && phase?.startsWith("play") && (phase !== "play-struck" || canUseUnlimitedAttacks(source)));
 }

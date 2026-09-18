@@ -1,5 +1,27 @@
 # Three Kingdoms project handover
 
+## Zhang Fei — Paoxiao — 2026-09-18
+
+Paoxiao now uses the small shared Attack-use-limit capability rather than a
+direct Zhang Fei branch in `game/rules.ts`. The capability context is
+`{ hero, equipment }` and has two providers: Zhang Fei / Paoxiao and Zhuge
+Crossbow. `playPhaseAfterAttack()` and `canDeclareAttack()` consume the
+capability result, so ordinary heroes become `play-struck`, while Zhang Fei
+and Crossbow users remain in Play Phase and may use repeated Attacks. The
+providers are OR-composed, so Zhang Fei with Crossbow has one boolean result;
+removing Crossbow from another hero restores the normal limit.
+
+Paoxiao is locked/passive: it has no Hero Skills button, response provider,
+HTTP action, or trigger decision. Borrowed Sword forced Attacks continue to
+resume from the original turn owner's stored phase, so they do not consume or
+alter the Weapon holder's normal Play Phase Attack limit. Normal Attack range,
+horses, weapons, Dodge, weapon triggers, damage, Dying, and Borrowed Sword
+continuations remain on the existing semantic paths. Existing capability and
+API test declarations now cover ordinary second-Attack rejection, Zhang Fei
+second/third Attacks, Crossbow repetition, Crossbow removal, and the combined
+provider result. Full validation passes 74 / 74. The next milestone is the
+next individually verified Standard hero.
+
 ## Zhao Yun — Longdan — 2026-09-18
 
 Zhao Yun's Longdan is implemented through two registered semantic response

@@ -4,11 +4,13 @@ import { getAttackCardProvider, getPlayPhaseActions, getResponseOptions, registe
 import { resolveResponseDecision } from "../game/response-decision.ts";
 import { applySuccessfulNegation } from "../game/decisions/negation.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
+import { canUseUnlimitedAttacks } from "../game/capabilities/attack-use-limit.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
 import { continueTriggerEvent, createTriggerDecision, resumeTriggerContinuation } from "../game/decisions/triggers.ts";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
 import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
 import { heroGender } from "../game/heroes.ts";
+import { canDeclareAttack, playPhaseAfterAttack } from "../game/rules.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
@@ -111,6 +113,21 @@ test("Zhen Ji's black-card Dodge is a provider with a semantic card cost", () =>
 });
 
 test("passive and triggered equipment capabilities are discovered outside the route", () => {
+  const ordinary = { id: "ordinary", seat: 0, alive: true, hero: "cao-cao", equipment: [] };
+  const crossbow = { ...ordinary, equipment: [card("ZhugeCrossbow", "limit-crossbow")] };
+  const zhangFei = { ...ordinary, hero: "zhang-fei" };
+  assert.equal(canUseUnlimitedAttacks({ hero: ordinary.hero, equipment: ordinary.equipment }), false);
+  assert.equal(canUseUnlimitedAttacks({ hero: zhangFei.hero, equipment: zhangFei.equipment }), true);
+  assert.equal(canUseUnlimitedAttacks({ hero: ordinary.hero, equipment: crossbow.equipment }), true);
+  assert.equal(canUseUnlimitedAttacks({ hero: zhangFei.hero, equipment: crossbow.equipment }), true);
+  assert.equal(playPhaseAfterAttack({ hero: ordinary.hero, equipment: ordinary.equipment }), "play-struck");
+  assert.equal(playPhaseAfterAttack({ hero: zhangFei.hero, equipment: zhangFei.equipment }), "play");
+  assert.equal(playPhaseAfterAttack({ hero: ordinary.hero, equipment: crossbow.equipment }), "play");
+  assert.equal(canDeclareAttack(ordinary, "play-struck"), false);
+  assert.equal(canDeclareAttack(zhangFei, "play-struck"), true);
+  assert.equal(canDeclareAttack(crossbow, "play-struck"), true);
+  assert.equal(canDeclareAttack({ ...crossbow, equipment: [] }, "play-struck"), false, "removing Crossbow restores the normal limit");
+
   assert.deepEqual(resolvePassiveAttackModifiers({ targetEquipment: [card("NioShield", "shield")], attack: { ...card("Attack", "black-attack"), suit: "♠" } }), { prevented: true, reason: "Nio Shield" });
   assert.equal(resolvePassiveAttackModifiers({ targetEquipment: [card("NioShield", "shield")], attack: { ...card("Attack", "red-attack"), suit: "♥" } }), null);
   const sourceHand = [card("Attack", "follow-up")];
