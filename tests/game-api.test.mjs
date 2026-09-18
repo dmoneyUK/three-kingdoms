@@ -382,6 +382,30 @@ test("canonical Raining Arrows responses either consume Dodge or apply damage", 
   assert.equal(virtual.data.room.timeline.find((event) => event.type === "card" && event.card.id === virtualArrows.id)?.playedAs, "attack");
   assert.equal(virtual.data.room.players.find((player) => player.id === wushengAlicePlayer.id).hp, 4);
   assert.equal(discardIds(wushengGame.code).filter((id) => id === virtualArrows.id).length, 1);
+
+  const longdanPlayGame = await createHumanGame(); const [longdanHost] = longdanPlayGame.members;
+  const [longdanHostPlayer, longdanTargetPlayer] = longdanPlayGame.room.players;
+  sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(longdanHostPlayer.id)}`);
+  const longdanPlayDodge = card("Dodge", "longdan-play-phase-dodge");
+  const longdanPlayAttack = card("Attack", "longdan-native-attack");
+  setHand(longdanHostPlayer.id, [longdanPlayDodge, longdanPlayAttack], 4, 4); setHand(longdanTargetPlayer.id, [], 4, 4); setTurn(longdanPlayGame.code, longdanHostPlayer.seat);
+  const longdanPlay = await request("play_card", { code: longdanPlayGame.code, token: longdanHost.token, cardId: longdanPlayDodge.id, playAs: "attack", targetId: longdanTargetPlayer.id });
+  assert.equal(longdanPlay.status, 200, JSON.stringify(longdanPlay.data));
+  assert.equal(longdanPlay.data.room.timeline.find((event) => event.type === "card" && event.card.id === longdanPlayDodge.id)?.playedAs, "attack");
+  assert.equal(discardIds(longdanPlayGame.code).filter((id) => id === longdanPlayDodge.id).length, 1);
+
+  const longdanResponseGame = await createHumanGame(); const [responseHost, responseAlice] = longdanResponseGame.members;
+  const [responseHostPlayer, responseAlicePlayer, responseBobPlayer, responseCarolPlayer] = longdanResponseGame.room.players;
+  sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(responseAlicePlayer.id)}`);
+  const responseArrows = card("RainingArrows", "longdan-response-arrows"); const responseAttack = card("Attack", "longdan-attack-as-dodge");
+  setHand(responseHostPlayer.id, [responseArrows], 4, 4); setHand(responseAlicePlayer.id, [responseAttack], 4, 4); setHand(responseBobPlayer.id, [], 4, 4); setHand(responseCarolPlayer.id, [], 4, 4); setTurn(longdanResponseGame.code, responseHostPlayer.seat);
+  assert.equal((await request("play_card", { code: longdanResponseGame.code, token: responseHost.token, cardId: responseArrows.id })).status, 200);
+  const longdanResponseDecision = await state(longdanResponseGame.code, responseAlice.token);
+  assert.equal(longdanResponseDecision.data.currentAction.options.find((option) => option.providerId === "zhao_yun_attack_as_dodge")?.playedAs, "dodge");
+  const longdanDodged = await request("respond", { code: longdanResponseGame.code, token: responseAlice.token, providerId: "zhao_yun_attack_as_dodge", cardId: responseAttack.id });
+  assert.equal(longdanDodged.status, 200, JSON.stringify(longdanDodged.data));
+  assert.equal(longdanDodged.data.room.timeline.find((event) => event.type === "card" && event.card.id === responseAttack.id)?.playedAs, "dodge");
+  assert.equal(longdanDodged.data.room.players.find((player) => player.id === responseAlicePlayer.id).hp, 4);
 });
 
 
@@ -1672,6 +1696,9 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
     setDeck(s.game.code, [card("Peach", "yin-draw")]);
     const drawn = await request("trigger", { code: s.game.code, token: s.game.members[2].token, providerId: "yin_yang_swords_attack_targeted", choice: "draw" }); assert.equal(drawn.status, 200, JSON.stringify(drawn.data));
     assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(s.holder.id)}`)).length, 1, "the attacker draws one card");
+    const holderView = (await state(s.game.code, s.alice.token)).data;
+    assert.equal(holderView.timeline.find((event) => event.type === "card" && event.action === "draw")?.card.id, "peach-yin-draw", "the attacker receives a private draw presentation card");
+    assert.equal((await state(s.game.code, s.game.members[2].token)).data.timeline.some((event) => event.type === "card" && event.action === "draw"), false, "the private drawn card is not exposed to the target");
     assert.equal(drawn.data.room.phase, "play");
   }
   {
@@ -1711,4 +1738,15 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
   const damagePending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(frostScenario.game.code)}`)); assert.equal(damagePending.continuation.origin, "borrowed_sword"); assert.equal(damagePending.continuation.sourceId, frostScenario.holder.id); assert.equal(damagePending.continuation.resumePlayerId, frostScenario.source.id);
   const frostDeclined = await request("decline_trigger", { code: frostScenario.game.code, token: frostScenario.alice.token }); assert.equal(frostDeclined.status, 200, JSON.stringify(frostDeclined.data));
   const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(frostScenario.game.code)}`)); assert.equal(dyingPending.kind, "dying"); assert.equal(dyingPending.origin, "borrowed_sword"); assert.equal(dyingPending.resumePlayerId, frostScenario.source.id); assert.equal(frostDeclined.data.room.pendingDying.origin, "borrowed_sword");
+
+  const longdanScenario = await openBorrowedSwordScenario({ attack: false, choose: false });
+  sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(longdanScenario.holder.id)}`);
+  const longdanBorrowedDodge = card("Dodge", "borrowed-longdan-dodge");
+  setHand(longdanScenario.holder.id, [longdanBorrowedDodge], 4, 4); setHand(longdanScenario.target.id, [], 4, 4);
+  assert.equal((await request("choose_borrowed_sword_target", { code: longdanScenario.game.code, token: longdanScenario.host.token, targetId: longdanScenario.target.id })).status, 200);
+  const borrowedDecision = await state(longdanScenario.game.code, longdanScenario.alice.token);
+  assert.equal(borrowedDecision.data.currentAction.options.find((option) => option.providerId === "zhao_yun_dodge_as_attack")?.playedAs, "attack");
+  const borrowedLongdan = await request("respond", { code: longdanScenario.game.code, token: longdanScenario.alice.token, providerId: "zhao_yun_dodge_as_attack", cardId: longdanBorrowedDodge.id });
+  assert.equal(borrowedLongdan.status, 200, JSON.stringify(borrowedLongdan.data));
+  assert.equal(borrowedLongdan.data.room.timeline.find((event) => event.type === "card" && event.card.id === longdanBorrowedDodge.id)?.playedAs, "attack");
 });

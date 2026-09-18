@@ -25,7 +25,7 @@ function normalizePresentationMeta(entry) {
   if (typeof entry.resolutionId === "string" && entry.resolutionId.length > 0) metadata.resolutionId = entry.resolutionId;
   if (entry.importance === "essential" || entry.importance === "informational") metadata.importance = entry.importance;
   if (entry.finalResult === true) metadata.finalResult = true;
-  if (entry.playedAs === "attack") metadata.playedAs = "attack";
+  if (entry.playedAs === "attack" || entry.playedAs === "dodge") metadata.playedAs = entry.playedAs;
   if (entry.effectNotice === true) metadata.effectNotice = true;
   return metadata;
 }
@@ -64,7 +64,7 @@ function normalizeCurrentAction(value) {
       : null;
     const activation = option.activation === "explicit" ? "explicit" : option.activation === "implicit" || value.version === 1 ? "implicit" : null;
     if (!activation) return [];
-    return [{ providerId: option.providerId, satisfies: option.satisfies, activation, label: option.label, selection, ...(option.playedAs === "attack" ? { playedAs: "attack" } : {}) }];
+    return [{ providerId: option.providerId, satisfies: option.satisfies, activation, label: option.label, selection, ...(option.playedAs === "attack" || option.playedAs === "dodge" ? { playedAs: option.playedAs } : {}) }];
   }) : [];
   const triggerOptions = Array.isArray(value.triggerOptions) ? value.triggerOptions.filter(isRecord).flatMap((option) => {
     if (typeof option.effectId !== "string" || typeof option.label !== "string") return [];

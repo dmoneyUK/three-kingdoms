@@ -9,6 +9,7 @@ export type ResponseDecision = {
     activation: ResponseActivation;
     label: string;
     selection: { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null;
+    playedAs?: "attack" | "dodge";
   }[];
   declineAction: "decline_response";
 };
@@ -22,7 +23,7 @@ export function responseDecisionFor(pending: Pending | null, context: ResponseCo
   const response = pending?.kind === "response" ? pending : null;
   if (!response || !context) return null;
   const { requirement } = response;
-  return { requirement: requirement.kind, options: getResponseOptions({ ...context, requirement }, requirement).map(({ providerId, satisfies, activation, label, selection }) => ({ providerId, satisfies, activation, label, selection })), declineAction: "decline_response" };
+  return { requirement: requirement.kind, options: getResponseOptions({ ...context, requirement }, requirement).map(({ providerId, satisfies, activation, label, selection, playedAs }) => ({ providerId, satisfies, activation, label, selection, ...(playedAs ? { playedAs } : {}) })), declineAction: "decline_response" };
 }
 
 /** Resolves a selected provider after recomputing it from live server state. */

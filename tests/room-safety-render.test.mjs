@@ -34,6 +34,26 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(waitingHtml, /Skip · take 1 damage/);
   assert.match(waitingHtml, /Waiting for the latest response state/);
 
+  const longdanPlayRoom = normalizeRoomData({
+    code: "SAFE-LONGDAN-PLAY", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [{ id: "p1", name: "ME", seat: 0, hero: "zhao-yun", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 2, equipmentCards: [card("weapon", "BlueSteelSword")], judgementCards: [], attackRange: 2, distance: null, isHost: true, role: "Lord" }],
+    myHand: [card("longdan-dodge", "Dodge"), card("longdan-attack", "Attack")], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "longdan-dodge", canPlayAs: "attack" }] },
+  });
+  const longdanPlayHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: longdanPlayRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(longdanPlayHtml, />LONGDAN<\/button>/);
+  assert.match(longdanPlayHtml, /class="game-card dodge black-suit/);
+
+  const longdanResponseRoom = normalizeRoomData({
+    code: "SAFE-LONGDAN-RESPONSE", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [{ id: "p1", name: "ME", seat: 0, hero: "zhao-yun", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" }],
+    myHand: [card("longdan-response-attack", "Attack")], turnSeat: null, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Dodge or take damage", isMyAction: true,
+    pending: { kind: "response" }, currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Dodge or take damage", legalActions: ["respond", "decline_response"], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: null }, { providerId: "zhao_yun_attack_as_dodge", satisfies: "dodge", activation: "explicit", label: "Use Longdan as Dodge", playedAs: "dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["longdan-response-attack"] } }] },
+  });
+  const longdanResponseHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: longdanResponseRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(longdanResponseHtml, />LONGDAN<\/button>/);
+  assert.doesNotMatch(longdanResponseHtml, /Use Longdan as Dodge/);
+
   const pickerRoom = normalizeRoomData({
     code: "SAFE-PICKER", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
     players: [

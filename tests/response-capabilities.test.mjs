@@ -26,6 +26,24 @@ test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack",
   const pending = { kind: "response", actorId: "p2", requirement: { kind: "attack", sourceId: "p1", actorId: "p2", context: "duel" }, reason: "Attack", continuation: { kind: "duel", sourceId: "p1", targetId: "p2", opponentId: "p1", resumePhase: "play" } };
   assert.deepEqual(resolveResponseDecision(pending, context, "guan_yu_red_card_attack", { cardId: "red-peach" }), { status: "satisfied", providerId: "guan_yu_red_card_attack", satisfies: "attack", consumeCardIds: ["red-peach"], resolution: "cards", playedAs: "attack" });
   assert.equal(resolveResponseDecision(pending, { ...context, hand: [blackAttack] }, "guan_yu_red_card_attack", { cardId: "red-peach" }), null);
+
+  const longdanDodge = card("Dodge", "longdan-dodge");
+  const longdanAttack = card("Attack", "longdan-attack");
+  const longdanEquipment = card("BlueSteelSword", "longdan-equipment");
+  const longdanContext = { hand: [longdanDodge, longdanAttack], equipment: [longdanEquipment], hero: "zhao-yun" };
+  assert.deepEqual(getResponseOptions(longdanContext, { kind: "attack" }).map((option) => ({ providerId: option.providerId, eligible: option.selection?.eligibleCardIds, playedAs: option.playedAs })), [
+    { providerId: "card", eligible: [longdanAttack.id], playedAs: undefined },
+    { providerId: "zhao_yun_dodge_as_attack", eligible: [longdanDodge.id], playedAs: "attack" },
+  ]);
+  assert.deepEqual(getResponseOptions({ ...longdanContext, hand: [longdanAttack] }, { kind: "dodge" }).map((option) => ({ providerId: option.providerId, eligible: option.selection?.eligibleCardIds, playedAs: option.playedAs })), [
+    { providerId: "zhao_yun_attack_as_dodge", eligible: [longdanAttack.id], playedAs: "dodge" },
+  ]);
+  assert.deepEqual(getResponseOptions({ ...longdanContext, hand: [longdanDodge] }, { kind: "dodge" }).map((option) => ({ providerId: option.providerId, activation: option.activation, playedAs: option.playedAs })), [
+    { providerId: "card", activation: "implicit", playedAs: undefined },
+  ]);
+  assert.equal(getAttackCardProvider(longdanContext, longdanDodge.id)?.providerId, "zhao_yun_dodge_as_attack");
+  assert.equal(getAttackCardProvider({ ...longdanContext, hand: [], equipment: [longdanDodge] }, longdanDodge.id), undefined);
+  assert.deepEqual(resolveResponseDecision({ kind: "response", actorId: "p2", requirement: { kind: "dodge", sourceId: "p1", targetId: "p2" }, reason: "Dodge", continuation: { kind: "attack", sourceId: "p1", targetId: "p2", resumePhase: "play" } }, { ...longdanContext, hand: [longdanAttack] }, "zhao_yun_attack_as_dodge", { cardId: longdanAttack.id }), { status: "satisfied", providerId: "zhao_yun_attack_as_dodge", satisfies: "dodge", consumeCardIds: [longdanAttack.id], resolution: "cards", playedAs: "dodge" });
 });
 
 test("Play Phase virtual Attack projection is explicit and shares Wusheng eligibility", () => {
@@ -43,6 +61,13 @@ test("Play Phase virtual Attack projection is explicit and shares Wusheng eligib
   ]);
   assert.deepEqual(getPlayPhaseActions({ ...context, hero: "zhen-ji" }), []);
   assert.deepEqual(getPlayPhaseActions({ ...context, hand: [redPeach], equipment: [redEquipment] }), [{ cardId: redPeach.id, canPlayAs: "attack" }]);
+
+  const longdanDodge = card("Dodge", "longdan-play-dodge");
+  const longdanAttack = card("Attack", "longdan-play-attack");
+  const longdanWeapon = card("BlueSteelSword", "longdan-play-weapon");
+  const longdanContext = { hand: [longdanDodge, longdanAttack], equipment: [longdanWeapon], hero: "zhao-yun" };
+  assert.deepEqual(getPlayPhaseActions(longdanContext), [{ cardId: longdanDodge.id, canPlayAs: "attack" }]);
+  assert.equal(getAttackCardProvider(longdanContext, longdanWeapon.id), undefined, "equipped cards cannot be Longdan costs");
 });
 
 test("synthetic capability registration is isolated and cleans up", () => {

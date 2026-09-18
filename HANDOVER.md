@@ -1,5 +1,33 @@
 # Three Kingdoms project handover
 
+## Zhao Yun — Longdan — 2026-09-18
+
+Zhao Yun's Longdan is implemented through two registered semantic response
+providers: a hand Dodge can satisfy Attack as `zhao_yun_dodge_as_attack`, and a
+physical hand Attack can satisfy Dodge as `zhao_yun_attack_as_dodge`. Both
+providers reject equipped-card costs, preserve canonical `respond` semantics,
+and carry the narrow `playedAs: "attack" | "dodge"` presentation marker through
+response options, execution, room normalization, timeline events, and the
+client GameEvent type. The Play Phase projection exposes only eligible hand
+Dodge cards through `playPhaseActions`; the dedicated LONGDAN Hero Skills
+control enters that mode and submits the existing `play_card` with
+`playAs: "attack"`. Response Longdan choices use the existing `respond` plus
+`providerId`, while native physical cards remain the implicit default and the
+dedicated control suppresses duplicate generic Longdan buttons. Longdan mode
+clears on every `actionRevision` and when its projected capability disappears.
+Existing capability, room-safety/render, and API declarations now cover both
+directions, native-card fallback, marker preservation, and Borrowed Sword's
+forced Attack requirement. Full validation passes 74 / 74. The next milestone
+is the next individually verified Standard hero.
+
+## Yin-Yang attacker draw presentation — 2026-09-18
+
+The Yin-Yang Swords attacker-draw outcome now writes a privacy-filtered draw
+card event. The attacker receives the actual card in the existing private
+centre-card presentation, while other seats receive no card details. API
+coverage verifies both the attacker view and the target privacy boundary. The
+next milestone is the next individually verified Standard hero.
+
 ## Hand-card suit colours — 2026-09-18
 
 Hand cards now receive explicit suit-colour classes during rendering. Hearts

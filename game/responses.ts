@@ -4,6 +4,7 @@ import { eightTrigramsDodgeProvider } from "./capabilities/equipment/eight-trigr
 import { serpentSpearAttackProvider } from "./capabilities/equipment/serpent-spear";
 import { zhenJiBlackCardDodgeProvider } from "./capabilities/heroes/zhen-ji";
 import { guanYuRedCardAttackProvider } from "./capabilities/heroes/guan-yu";
+import { zhaoYunAttackAsDodgeProvider, zhaoYunDodgeAsAttackProvider } from "./capabilities/heroes/zhao-yun";
 
 export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null };
 export type SemanticAction = "attack" | "dodge" | "damage" | "recover" | "draw" | "discard" | "negate" | "judgement" | "gain_card" | "lose_card";
@@ -14,7 +15,7 @@ export type ActionRequirement =
 export type ResponseSelection = { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null;
 export type CapabilityContext = ResponseContext & { requirement: ActionRequirement };
 export type ResponseActivation = "implicit" | "explicit";
-export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; label: string; cards: Card[]; selection: ResponseSelection; playedAs?: "attack" };
+export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; label: string; cards: Card[]; selection: ResponseSelection; playedAs?: "attack" | "dodge" };
 export type ResponseProviderOption = Omit<ResponseOption, "activation">;
 export type PlayPhaseAction = { cardId: string; canPlayAs: "attack" };
 export type ResponseSelectionInput = { cardId?: unknown; cardIds?: unknown };
@@ -29,8 +30,8 @@ export type JudgementResolution = {
 export type ResolutionEffect = JudgementResolution;
 /** A provider reports the semantic result and costs, never an HTTP action. */
 export type ResponseExecution =
-  | { status: "satisfied"; providerId: string; satisfies: "attack" | "dodge" | "negate"; consumeCardIds?: string[]; resolution?: "cards"; playedAs?: "attack" }
-  | { status: "requires_resolution"; providerId: string; satisfies: "attack" | "dodge" | "negate"; resolution: ResolutionEffect; playedAs?: "attack" };
+  | { status: "satisfied"; providerId: string; satisfies: "attack" | "dodge" | "negate"; consumeCardIds?: string[]; resolution?: "cards"; playedAs?: "attack" | "dodge" }
+  | { status: "requires_resolution"; providerId: string; satisfies: "attack" | "dodge" | "negate"; resolution: ResolutionEffect; playedAs?: "attack" | "dodge" };
 export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation"; selection: { cardId?: string; cardIds?: string[] } };
 export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; playPhaseUse?: "attack"; getOption: (context: CapabilityContext) => ResponseProviderOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
 
@@ -39,6 +40,7 @@ export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "ne
 const providers: ResponseProvider[] = [
   physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider,
   eightTrigramsDodgeProvider, serpentSpearAttackProvider, zhenJiBlackCardDodgeProvider, guanYuRedCardAttackProvider,
+  zhaoYunDodgeAsAttackProvider, zhaoYunAttackAsDodgeProvider,
 ];
 
 export function registerResponseProvider(provider: ResponseProvider) {

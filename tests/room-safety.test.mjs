@@ -8,6 +8,9 @@ test("normalizes valid room data and timeline events", () => {
   assert.equal(room.myHand[0].id, "c1");
   assert.equal(room.timeline[0].type, "message");
   assert.equal(room.timeline[1].playedAs, "attack");
+  const longdan = normalizeRoomData({ code: "SAFE2", status: "playing", players: [], myHand: [], timeline: [{ type: "card", id: "d1", player: "ME", target: "P2", action: "play", playedAs: "dodge", card: { id: "attack-card", kind: "Attack", suit: "♠", rank: "A" } }], currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Dodge", legalActions: ["respond"], requirement: "dodge", options: [{ providerId: "zhao_yun_attack_as_dodge", satisfies: "dodge", activation: "explicit", label: "Use Longdan as Dodge", playedAs: "dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["attack-card"] } }] } });
+  assert.equal(longdan.timeline[0].playedAs, "dodge");
+  assert.equal(longdan.currentAction.options[0].playedAs, "dodge");
 });
 
 test("drops null and incomplete timeline entries without throwing", () => {
