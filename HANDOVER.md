@@ -20,6 +20,12 @@ directions, native-card fallback, marker preservation, and Borrowed Sword's
 forced Attack requirement. Full validation passes 74 / 74. The next milestone
 is the next individually verified Standard hero.
 
+Quick Test now assigns Zhao Yun to Player3 and seeds that opening hand with
+Blue Steel Sword, Dodge, and Attack, so both Longdan directions are available
+immediately from the single-controller test table. Player1 remains Guan Yu
+with the Wusheng opening hand; the existing random Yin-Yang Swords and
+Borrowed Sword allocation still uses the remaining seats with opening capacity.
+
 ## Yin-Yang attacker draw presentation — 2026-09-18
 
 The Yin-Yang Swords attacker-draw outcome now writes a privacy-filtered draw

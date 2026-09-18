@@ -426,21 +426,23 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   const lordIndex = players.findIndex((player) => player.id === hostPlayerId); const lordAt = roles.indexOf("Lord");
   [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
   const guanYu = STANDARD_HEROES.find((hero) => hero.id === "guan-yu")!;
-  const otherHeroes = shuffle(STANDARD_HEROES.filter((hero) => hero.id !== guanYu.id));
+  const zhaoYun = STANDARD_HEROES.find((hero) => hero.id === "zhao-yun")!;
+  const otherHeroes = shuffle(STANDARD_HEROES.filter((hero) => hero.id !== guanYu.id && hero.id !== zhaoYun.id));
   let otherHeroIndex = 0;
   const assigned = players.map((player, index) => {
-    const hero = player.id === hostPlayerId ? guanYu : otherHeroes[otherHeroIndex++];
+    const hero = player.id === hostPlayerId ? guanYu : player.seat === 2 ? zhaoYun : otherHeroes[otherHeroIndex++];
     const hp = hero.hp + (roles[index] === "Lord" ? 1 : 0);
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
-  // Keep Guan Yu's red Wusheng capability available while seeding the
-  // requested Standard equipment for the first three human-style seats;
-  // Yin-Yang Swords and Borrowed Sword are placed in random open seats.
+  // Keep Guan Yu's red Wusheng and Zhao Yun's Longdan capabilities available
+  // while seeding the requested Standard equipment for the first three
+  // human-style seats; Yin-Yang Swords and Borrowed Sword are placed in
+  // random open seats.
   await beginMatch(roomId, assigned, [
     { playerId: assigned[0].id, kinds: ["FrostSword", "RedHare", "Peach", "Attack"] },
     { playerId: assigned[1].id, kinds: ["KirinBow", "NioShield"] },
-    { playerId: assigned[2].id, kinds: ["BlueSteelSword"] },
+    { playerId: assigned[2].id, kinds: ["BlueSteelSword", "Dodge", "Attack"] },
   ], ["YinYangSwords", "BorrowedSword", "BorrowedSword"]);
 }
 function db() { return env.DB; }

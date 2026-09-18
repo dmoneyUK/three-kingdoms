@@ -738,11 +738,15 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   const quick = await request("create", { quickStart: true }); const { token, room } = quick.data;
   const [me, playerOne, playerTwo, playerThree] = room.players;
   const openingHandKinds = (player) => JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`)).map((held) => held.kind);
+  assert.equal(me.hero, "guan-yu", "Player1 is Guan Yu for Wusheng coverage");
+  assert.equal(playerTwo.hero, "zhao-yun", "Player3 is Zhao Yun for Longdan coverage");
   assert.ok(openingHandKinds(me).includes("FrostSword"), "Player1 starts with Frost Sword");
   assert.ok(openingHandKinds(me).some((kind) => ["Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed"].includes(kind)), "Player1 starts with a horse");
   assert.ok(openingHandKinds(playerOne).includes("KirinBow"), "Player2 starts with Kirin Bow");
   assert.ok(openingHandKinds(playerOne).includes("NioShield"), "Player2 starts with Nio Shield");
   assert.ok(openingHandKinds(playerTwo).includes("BlueSteelSword"), "Player3 starts with Blue Steel Sword");
+  assert.ok(openingHandKinds(playerTwo).includes("Dodge"), "Player3 starts with a Dodge for Longdan");
+  assert.ok(openingHandKinds(playerTwo).includes("Attack"), "Player3 starts with an Attack for Longdan");
   const openingPlayers = [me, playerOne, playerTwo, playerThree];
   const yinYangHolders = openingPlayers.filter((player) => openingHandKinds(player).includes("YinYangSwords"));
   const borrowedSwordHolders = openingPlayers.filter((player) => openingHandKinds(player).includes("BorrowedSword"));
