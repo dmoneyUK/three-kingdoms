@@ -723,8 +723,14 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   const yinYangHolders = openingPlayers.filter((player) => openingHandKinds(player).includes("YinYangSwords"));
   const borrowedSwordHolders = openingPlayers.filter((player) => openingHandKinds(player).includes("BorrowedSword"));
   assert.equal(yinYangHolders.length, 1, "exactly one random seat starts with Yin-Yang Swords");
-  assert.equal(borrowedSwordHolders.length, 1, "exactly one random seat starts with Borrowed Sword");
-  assert.notEqual(yinYangHolders[0].id, borrowedSwordHolders[0].id, "the randomized sword cards start in distinct seats");
+  assert.equal(borrowedSwordHolders.length, 2, "both Borrowed Sword cards start in random seats");
+  assert.equal(new Set([yinYangHolders[0].id, ...borrowedSwordHolders.map((player) => player.id)]).size, 3, "all randomized sword cards start in distinct seats");
+  const openingSwordKinds = openingPlayers.flatMap(openingHandKinds);
+  assert.equal(openingSwordKinds.filter((kind) => kind === "YinYangSwords").length, 1, "the single Yin-Yang Swords card is dealt");
+  assert.equal(openingSwordKinds.filter((kind) => kind === "BorrowedSword").length, 2, "both Borrowed Sword cards are dealt");
+  const remainingDeckKinds = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(room.code)}`)).map((held) => held.kind);
+  assert.equal(remainingDeckKinds.filter((kind) => kind === "YinYangSwords").length, 0, "Yin-Yang Swords is not left in the opening deck");
+  assert.equal(remainingDeckKinds.filter((kind) => kind === "BorrowedSword").length, 0, "Borrowed Sword cards are not left in the opening deck");
   assert.ok(openingPlayers.every((player) => openingHandKinds(player).length === 4), "every Quick Test seat receives four opening cards");
   assert.equal(openingHandKinds(playerThree).length, 4, "Player4 receives a full random opening hand");
   setHand(me.id, [], 3, 3); setHand(playerOne.id, [card("DrawTwo", "quick-live")], 3, 3); setHand(playerTwo.id, [card("Negation", "quick-live")], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, playerOne.seat, "play");

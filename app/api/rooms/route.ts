@@ -439,7 +439,7 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
     { playerId: assigned[0].id, kinds: ["FrostSword", "RedHare", "Peach", "Attack"] },
     { playerId: assigned[1].id, kinds: ["KirinBow", "NioShield"] },
     { playerId: assigned[2].id, kinds: ["BlueSteelSword"] },
-  ], ["YinYangSwords", "BorrowedSword"]);
+  ], ["YinYangSwords", "BorrowedSword", "BorrowedSword"]);
 }
 function db() { return env.DB; }
 
