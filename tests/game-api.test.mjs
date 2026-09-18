@@ -125,7 +125,7 @@ async function createHumanGame() {
   const members = [{ name: "Host", token: created.data.token }];
   for (const name of ["Alice", "Bob", "Carol"]) { const joined = await request("join", { code, name }); assert.equal(joined.status, 201); members.push({ name, token: joined.data.token }); }
   assert.equal((await request("start", { code, token: members[0].token, name: "Host" })).status, 200);
-  for (const member of members) { const before = await state(code, member.token); assert.equal((await request("choose_hero", { code, token: member.token, heroId: before.data.myHeroOptions[0].id })).status, 200); }
+  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => option.id !== "zhen-ji") ?? before.data.myHeroOptions[0]; assert.equal((await request("choose_hero", { code, token: member.token, heroId: hero.id })).status, 200); }
   const started = (await state(code, members[0].token)).data; const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(code)}`) || "[]");
   for (const player of started.players) {
     const hand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`) || "[]");
@@ -929,6 +929,92 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
     assert.ok(finished.data.room.log.some((entry) => new RegExp(`${kind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows"}'s effect on Alice is cancelled`).test(entry)));
     assert.deepEqual(discardIds(game.code), [`${kind.toLowerCase()}-per-target`, `negation-${kind}-alice`, `${requiredKind.toLowerCase()}-${kind}-bob`, `${requiredKind.toLowerCase()}-${kind}-carol`], "the complete AOE sequence enters discard once, in play order");
   }
+});
+
+test("Luoshen repeats real Judgements before delayed-card Judgements and preserves card destinations", { timeout: 30_000 }, async () => {
+  async function beginZhenTurn(deck, judgement = []) {
+    const created = await request("create", { quickStart: true });
+    const { token, room } = created.data;
+    const code = room.code;
+    const zhen = room.players.find((player) => player.hero === "zhen-ji");
+    assert.ok(zhen, "Quick Test exposes Zhen Ji in the unused deterministic seat");
+    const previous = room.players.find((player) => player.seat === (zhen.seat + 3) % room.players.length);
+    assert.ok(previous);
+    for (const player of room.players) setHand(player.id, [], player.hp ?? 3, player.maxHp ?? 3);
+    setHand(zhen.id, [], 3, 3);
+    setJudgement(zhen.id, judgement);
+    setDeck(code, deck);
+    setTurn(code, previous.seat);
+    const ended = await request("end_turn", { code, token });
+    assert.equal(ended.status, 200, JSON.stringify(ended.data));
+    return { code, token, zhen, room: ended.data.room };
+  }
+
+  const sevenSpades = { ...card("Attack", "luoshen-seven"), suit: "♠", rank: "7" };
+  const fourClubs = { ...card("Dodge", "luoshen-four"), suit: "♣", rank: "4" };
+  const queenHearts = { ...card("Peach", "luoshen-queen"), suit: "♥", rank: "Q" };
+  const jackClubs = { ...card("Duel", "overindulgence-next"), suit: "♣", rank: "J" };
+  const drawOne = card("Attack", "draw-one", "♠");
+  const drawTwo = card("Dodge", "draw-two", "♥");
+  const overindulgence = card("Overindulgence", "zhen-zone", "♠");
+  const sequence = await beginZhenTurn([sevenSpades, fourClubs, queenHearts, jackClubs, drawOne, drawTwo], [overindulgence]);
+  assert.equal(sequence.room.phase, "response");
+  assert.equal(sequence.room.currentAction.kind, "trigger");
+  assert.equal(sequence.room.currentAction.triggerEvent, "turn_start");
+  assert.deepEqual(sequence.room.currentAction.triggerOptions.map((option) => option.label), ["Luoshen"]);
+
+  const first = await request("trigger", { code: sequence.code, token: sequence.token, providerId: "zhen_ji_luoshen" });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  assert.equal(first.data.room.phase, "response");
+  assert.deepEqual(first.data.room.myHand.map((held) => held.id), [sevenSpades.id]);
+  assert.equal(first.data.room.currentAction.triggerEvent, "turn_start");
+  assert.equal(first.data.room.deckCount, 5);
+
+  const second = await request("trigger", { code: sequence.code, token: sequence.token, providerId: "zhen_ji_luoshen" });
+  assert.equal(second.status, 200, JSON.stringify(second.data));
+  assert.deepEqual(second.data.room.myHand.map((held) => held.id), [sevenSpades.id, fourClubs.id]);
+  assert.equal(second.data.room.currentAction.triggerEvent, "turn_start");
+  assert.equal(second.data.room.deckCount, 4);
+
+  const third = await request("trigger", { code: sequence.code, token: sequence.token, providerId: "zhen_ji_luoshen" });
+  assert.equal(third.status, 200, JSON.stringify(third.data));
+  assert.equal(third.data.room.phase, "draw");
+  assert.equal(third.data.room.pending, null);
+  assert.deepEqual(third.data.room.myHand.map((held) => held.id), [sevenSpades.id, fourClubs.id]);
+  assert.deepEqual(discardIds(sequence.code), [queenHearts.id]);
+  assert.ok(third.data.room.players.find((player) => player.id === sequence.zhen.id).judgementCards.some((held) => held.id === overindulgence.id));
+  assert.equal(third.data.room.currentAction.kind, "turn");
+  assert.equal(third.data.room.currentAction.triggerEvent, undefined, "Luoshen is not offered again merely because the phase starts with draw");
+
+  const delayed = await request("draw", { code: sequence.code, token: sequence.token });
+  assert.equal(delayed.status, 200, JSON.stringify(delayed.data));
+  assert.equal(delayed.data.room.phase, "discard", "the next card is a new Overindulgence Judgement and skips Play");
+  assert.equal(discardIds(sequence.code).filter((id) => id === jackClubs.id).length, 1, "the delayed Judgement consumes the next card exactly once");
+  assert.equal(discardIds(sequence.code).filter((id) => id === queenHearts.id).length, 1, "the red Luoshen card is discarded exactly once");
+  assert.equal(discardIds(sequence.code).filter((id) => id === overindulgence.id).length, 1, "the delayed card is discarded exactly once");
+  assert.equal(discardIds(sequence.code).filter((id) => id === sevenSpades.id).length, 0);
+  assert.equal(discardIds(sequence.code).filter((id) => id === fourClubs.id).length, 0);
+
+  const declinedImmediately = await beginZhenTurn([queenHearts], [overindulgence]);
+  const declined = await request("decline_trigger", { code: declinedImmediately.code, token: declinedImmediately.token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  assert.equal(declined.data.room.phase, "draw");
+  assert.equal(declined.data.room.pending, null);
+  assert.equal((await state(declinedImmediately.code, declinedImmediately.token)).data.currentAction.triggerEvent, undefined);
+
+  const blackThenDecline = await beginZhenTurn([sevenSpades, queenHearts], [overindulgence]);
+  const accepted = await request("trigger", { code: blackThenDecline.code, token: blackThenDecline.token, providerId: "zhen_ji_luoshen" });
+  assert.deepEqual(accepted.data.room.myHand.map((held) => held.id), [sevenSpades.id]);
+  const stopped = await request("decline_trigger", { code: blackThenDecline.code, token: blackThenDecline.token });
+  assert.equal(stopped.status, 200, JSON.stringify(stopped.data));
+  assert.equal(stopped.data.room.phase, "draw");
+  assert.deepEqual(stopped.data.room.myHand.map((held) => held.id), [sevenSpades.id]);
+
+  const redFirst = await beginZhenTurn([queenHearts, sevenSpades]);
+  const red = await request("trigger", { code: redFirst.code, token: redFirst.token, providerId: "zhen_ji_luoshen" });
+  assert.equal(red.status, 200, JSON.stringify(red.data));
+  assert.equal(red.data.room.phase, "draw");
+  assert.deepEqual(discardIds(redFirst.code), [queenHearts.id]);
 });
 
 test("Overindulgence uses the Judgement Zone and skips only a failed target's Play Phase", { timeout: 30_000 }, async () => {

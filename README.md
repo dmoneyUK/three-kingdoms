@@ -2,6 +2,13 @@
 
 Hand cards now use standard suit colours: Hearts and Diamonds are red, while Spades and Clubs remain black.
 
+Zhen Ji's Luoshen is now a real repeated Judgement at the canonical beginning
+of her turn. Black final results enter her hand and reopen a fresh optional
+Luoshen trigger; the first red result is discarded and only then does the
+existing Judgement Zone and Draw Phase processing begin. Luoshen and delayed
+cards consume separate Judgement cards, use the shared Judgement mechanism,
+and Qingguo remains unchanged.
+
 Zhang Fei's Paoxiao is now a locked passive capability. The shared Attack-use-limit capability discovers Paoxiao and Zhuge Crossbow from `{ hero, equipment }`, so normal Attacks, Serpent Spear Attacks, and the projected `canDeclareAttack`/resume phase all share one authoritative unlimited-Attack result. Borrowed Sword forced Attacks remain outside the Play Phase limit. Existing Attack range, horse, weapon trigger, Dodge, damage, Dying, and Borrowed Sword behavior is unchanged.
 
 When Yin-Yang Swords lets the attacker draw, the drawn card now appears in the attacker's normal private centre-card presentation and remains hidden from the other seats.
@@ -11,7 +18,7 @@ Borrowed Sword cards are dealt to three distinct random seats with capacity;
 they are removed from the opening deck and all four seats still receive four
 cards.
 
-Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng and Zhao Yun's Longdan remain projection-driven semantic controls, and Zhang Fei's Paoxiao now uses the shared passive Attack-use-limit capability alongside Zhuge Crossbow. Paoxiao is locked/passive with no Hero Skills button, response provider, HTTP action, or trigger decision. The capability result is consumed by both Play Phase declaration validation and post-Attack phase selection; ordinary heroes still become `play-struck`, while Zhang Fei and Crossbow users remain in Play Phase. Borrowed Sword forced Attacks preserve their original turn-owner resume phase and do not consume the holder's normal Play Phase Attack limit. The existing semantic response/trigger engine, presentation barriers, privacy boundaries, and Quick Test human-seat flow remain unchanged. Next milestone: the next individually verified Standard hero.
+Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, and Zhen Ji's Luoshen are implemented through the semantic capability architecture. Luoshen uses the canonical `turn_start` trigger and shared Judgement pipeline before delayed-card Judgements; each black result creates a fresh optional decision, while a red result ends the sequence and continues normal turn processing. Paoxiao remains locked/passive with no Hero Skills button, response provider, HTTP action, or trigger decision. Borrowed Sword forced Attacks preserve their original turn-owner resume phase and do not consume the holder's normal Play Phase Attack limit. The existing semantic response/trigger engine, presentation barriers, privacy boundaries, and Quick Test human-seat flow remain unchanged. Next milestone: the next individually verified Standard hero.
 
 An English online implementation of WTK Standard, the classic hidden-role Three Kingdoms card game, built for small private groups of friends.
 

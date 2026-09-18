@@ -1,5 +1,31 @@
 # Three Kingdoms project handover
 
+## Zhen Ji — Luoshen — 2026-09-18
+
+Luoshen is implemented as the first canonical `turn_start` capability. The
+new `zhen_ji_luoshen` provider is available only for Zhen Ji, exposes the
+optional `Luoshen` trigger option, and uses the existing `trigger` /
+`decline_trigger` protocol. A canonical beginning-of-turn transition now
+offers turn-start capabilities once when the turn actually begins; it is not
+re-created merely because the room remains in a draw-prefixed phase.
+
+Luoshen uses the shared Judgement mechanism in `game/decisions/judgement.ts`.
+The final Judgement card is obtained on black and stays out of discard, then a
+fresh turn-start decision is persisted. A red final card is discarded once and
+the room enters the existing Draw path, where delayed cards such as
+Overindulgence perform a new independent Judgement. The normal central reveal
+event and exact presentation barrier are retained, and turn ownership,
+stale-action protection, deck reshuffling, and privacy remain server-authored.
+
+Quick Test keeps Guan Yu in Player1 and Zhao Yun in Player3, and now assigns
+Zhen Ji deterministically to the unused Player4 seat. The API regression covers
+the 7♠ / 4♣ / Q♥ / J♣ sequence, immediate decline, black-then-decline,
+red-first termination, no draw-phase re-offer, and exact card conservation.
+Qingguo was not modified. Full validation is 75 / 75. The shared Judgement
+helper exposes a final-card replacement boundary for future Judgement-changing
+skills; Guicai itself remains outside this round. The next milestone is the
+next individually verified Standard hero.
+
 ## Zhang Fei — Paoxiao — 2026-09-18
 
 Paoxiao now uses the small shared Attack-use-limit capability rather than a

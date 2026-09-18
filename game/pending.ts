@@ -62,7 +62,11 @@ export type DamageAboutToApplyTriggerContinuation = {
   sequenceStartCardId: string;
   origin?: AttackOrigin;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation;
+export type TurnStartTriggerContinuation = {
+  kind: "turn_start_event";
+  playerId: string;
+};
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | TurnStartTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

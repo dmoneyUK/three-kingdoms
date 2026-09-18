@@ -1,5 +1,6 @@
 import type { Card } from "../model";
-import type { ResponseExecution, JudgementResolution } from "../responses";
+import type { ResponseExecution } from "../responses";
+import { resolveJudgement, type JudgementResolution } from "./judgement";
 import type { ResponsePending } from "../pending";
 
 export type ResponseApplication = {
@@ -15,7 +16,8 @@ export type ResponseJudgementResult = {
 
 /** Performs only the secondary response judgement; continuation consequences stay outside this operation. */
 export function resolveResponseJudgement(card: Card | undefined, rule: JudgementResolution): ResponseJudgementResult {
-  return { status: rule.succeeds(card) ? "satisfied" : "unsatisfied", ...(card ? { card } : {}), rule };
+  const result = resolveJudgement(card, rule);
+  return { status: result.status, ...(result.finalCard ? { card: result.finalCard } : {}), rule };
 }
 
 /**

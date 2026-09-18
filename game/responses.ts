@@ -1,4 +1,5 @@
 import type { Card } from "./model";
+import type { JudgementResolution } from "./decisions/judgement";
 import { physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider } from "./capabilities/cards";
 import { eightTrigramsDodgeProvider } from "./capabilities/equipment/eight-trigrams";
 import { serpentSpearAttackProvider } from "./capabilities/equipment/serpent-spear";
@@ -19,14 +20,7 @@ export type ResponseOption = { provider: string; providerId: string; satisfies: 
 export type ResponseProviderOption = Omit<ResponseOption, "activation">;
 export type PlayPhaseAction = { cardId: string; canPlayAs: "attack" };
 export type ResponseSelectionInput = { cardId?: unknown; cardIds?: unknown };
-export type JudgementResolution = {
-  kind: "judgement";
-  /** The provider owns how its revealed card is interpreted. */
-  succeeds: (card: Card | undefined) => boolean;
-  label: string;
-  successText: string;
-  failureText: string;
-};
+export type { JudgementResolution } from "./decisions/judgement";
 export type ResolutionEffect = JudgementResolution;
 /** A provider reports the semantic result and costs, never an HTTP action. */
 export type ResponseExecution =
