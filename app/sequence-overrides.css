@@ -120,15 +120,6 @@
   font: 11px Arial, sans-serif;
 }
 
-.target-card-picker-debug {
-  display: block;
-  margin: 10px auto 0;
-  color: #b9ad8c;
-  font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-  overflow-wrap: anywhere;
-  text-align: left;
-}
-
 .target-card-picker-card-row {
   display: flex;
   justify-content: center;
@@ -192,13 +183,13 @@
   font-size: 8px;
 }
 
-.target-card-picker-card.hidden {
+.target-card-picker-card.concealed-card {
   border-color: #9b804d;
   background: repeating-linear-gradient(45deg, #242b21, #242b21 7px, #171b15 7px, #171b15 14px);
   box-shadow: 0 8px 18px #000b;
 }
 
-.target-card-picker-card.hidden > span:first-child {
+.target-card-picker-card.concealed-card > span:first-child {
   display: grid;
   width: 100%;
   height: 100%;

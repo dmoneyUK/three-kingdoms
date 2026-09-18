@@ -1,19 +1,17 @@
 # Three Kingdoms project handover
 
-## Live Frost Sword projection diagnostic — 2026-09-18
+## Frost Sword concealed-card CSS fix — 2026-09-18
 
-Quick Test target-card pickers temporarily render the complete projected
-`eligibleKeys`, target `handCount`, target Equipment IDs, and the room
-`buildRevision` inside the picker. The API `roomState()` marker is
-`7a2e8478`; the diagnostic is gated to Quick Test and does not alter the
-Frost Sword capability or target-card protocol. The existing Frost Sword API
-regression now uses a four-card target plus an eligible Mount, asserts the
-exact `hand:0` through `hand:3` keys plus that equipment ID, and verifies the
-same keys survive `normalizeRoomData()`. No new test declaration or protocol
-action was added. Validation is 74 / 74 tests, with build, lint, and diff check
-clean. Remove this temporary diagnostic only after the live frontend/API
-revision and projection values have been compared. Recommended next work is
-the next individually verified Standard hero after the diagnostic is closed.
+The generic target-card picker now uses `concealed-card` for hidden Hand
+buttons instead of the global `hidden` class, which Tailwind defines as
+`display: none`. The semantic `item.hidden` property and authoritative
+`eligibleKeys` projection are unchanged. Existing render coverage now checks
+the four hidden Hand buttons' labels and picker-specific class and rejects the
+standalone Tailwind class. The existing Frost Sword API projection assertions
+still verify four `hand:N` keys, the eligible equipment ID, and preservation
+through `normalizeRoomData()`. Temporary Quick Test diagnostics were removed.
+Recommended next work is the next
+individually verified Standard hero.
 
 ## Frost Sword picker eligibility source of truth — 2026-09-17
 
