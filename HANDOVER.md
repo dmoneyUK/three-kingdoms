@@ -1,5 +1,15 @@
 # Three Kingdoms project handover
 
+## Centre card presentation timing — 2026-09-18
+
+The shared centre card and card-group presentation now lasts 2 seconds, reduced
+by one second from the previous 3-second duration. React's optimistic/incoming
+presentation timeout and the shared `--played-card-display` CSS animation are
+now synchronized at 2 seconds, so the centre display and card flight settle
+together. Response barriers, decision timers, informational messages, and
+private-draw timing are unchanged. The next work remains the next individually
+verified Standard hero.
+
 ## Yin-Yang Swords choice UI — 2026-09-18
 
 Mandatory semantic trigger choices now open directly when their projected

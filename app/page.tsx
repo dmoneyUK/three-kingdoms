@@ -73,7 +73,7 @@ const UI_TIMING = {
   presenceHeartbeat: 60000,
   inactivityCheck: 60000,
   turnDrawStart: 100,
-  playedCard: 3000,
+  playedCard: 2000,
   privateDraw: 3000,
   effectNotice: 2400,
   sequenceDiscard: 700,
