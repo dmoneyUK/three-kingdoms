@@ -1,5 +1,12 @@
 # Three Kingdoms project handover
 
+## Hand-card suit colours — 2026-09-18
+
+Hand cards now receive explicit suit-colour classes during rendering. Hearts
+and Diamonds show their rank and suit in red; Spades and Clubs remain black.
+The render safety regression now covers a red Heart in a player's hand. The
+next milestone is Zhao Yun — Longdan.
+
 ## Yin-Yang Swords mandatory timeout fallback — 2026-09-18
 
 Yin-Yang Swords now projects the optional `timeoutChoiceId: "draw"` metadata

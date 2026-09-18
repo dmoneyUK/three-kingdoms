@@ -1,5 +1,7 @@
 # Three Kingdoms
 
+Hand cards now use standard suit colours: Hearts and Diamonds are red, while Spades and Clubs remain black.
+
 Quick Test opening-deal clarification: the one Yin-Yang Swords card and both
 Borrowed Sword cards are dealt to three distinct random seats with capacity;
 they are removed from the opening deck and all four seats still receive four

@@ -11,7 +11,7 @@ test("normalized malformed and unknown response states render safely", () => {
   const room = normalizeRoomData({
     code: "SAFE1", status: "playing", maxPlayers: 4, isHost: true, isTestController: false, meId: "p1", myRole: "Lord", myHeroOptions: null,
     players: [{ id: "p1", name: "ME", seat: 0, hero: "zhang-fei", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: null, judgementCards: [null, card("judgement")], attackRange: 1, distance: null, isHost: true, role: "Lord" }, null],
-    myHand: [card("hand"), null], turnSeat: 0, phase: "play", deckCount: 40, discardTop: null, log: null,
+    myHand: [card("hand"), { ...card("red-hand"), suit: "♥" }], turnSeat: 0, phase: "play", deckCount: 40, discardTop: null, log: null,
     timeline: [null, { type: "card", card: null }, { type: "message", message: "Safe" }],
     pendingAttack: null, pendingGreenDragon: { kind: "green_dragon", sourceId: "p1" }, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null,
     pendingGroup: null, pendingNegation: null, pendingHarvest: { kind: "harvest", revealed: [null, card("revealed")], choices: null }, pendingTargetCard: null, pendingDying: null,
@@ -20,6 +20,8 @@ test("normalized malformed and unknown response states render safely", () => {
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(html, /game-exit/);
   assert.match(html, /Attack/);
+  assert.match(html, /class="game-card attack black-suit/);
+  assert.match(html, /class="game-card attack red-suit/);
   assert.doesNotMatch(html, /Cannot read properties of null/);
   const waitingRoom = normalizeRoomData({
     code: "SAFE2", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
