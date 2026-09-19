@@ -21,7 +21,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(html, /game-exit/);
   assert.match(html, /class="player-hero-card"/);
   assert.match(html, /aria-label="Explain Sima Yi"/);
-  assert.match(html, />Guicai<\/em>/);
+  assert.doesNotMatch(html, />Guicai<\/em>/);
   const heroInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "simayi", name: "Sima Yi", faction: "Wei", hp: 3, skill: "Guicai", ability: "When a Judgement card is revealed, you may replace it with one card from your hand." }, onClose: () => {} }));
   assert.match(heroInfoHtml, />Guicai<\/strong>/);
   assert.match(heroInfoHtml, /When a Judgement card is revealed/);

@@ -2,10 +2,10 @@
 
 ## Player hero-card information dialog — 2026-09-19
 
-In-game player hero cards now have an accessible info icon. The card shows the
-hero's concise skill name, while the private hero-information dialog shows the
-general's faction, HP, skill name, and authoritative ability explanation; the
-Sima Yi card therefore shows Guicai and its Judgement-replacement explanation.
+In-game player hero cards now have an accessible info icon. The public card
+stays concise, while the private hero-information dialog shows the general's
+faction, HP, skill name, and authoritative ability explanation; the Sima Yi
+dialog therefore shows Guicai and its Judgement-replacement explanation.
 The icon is a sibling control rather than a nested target button, so it does
 not alter targeting. Escape and backdrop/close actions dismiss the dialog.
 Render coverage verifies the player-card icon, Guicai label, and explanation.
