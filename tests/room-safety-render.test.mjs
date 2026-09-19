@@ -58,6 +58,22 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(longdanResponseHtml, />LONGDAN<\/button>/);
   assert.doesNotMatch(longdanResponseHtml, /Use Longdan as Dodge/);
 
+  const luoshenPayload = {
+    code: "SAFE-LUOSHEN-BUSY", status: "playing", maxPlayers: 4, isHost: false, isTestController: true, meId: "p1", myRole: "Rebel", myHeroOptions: [],
+    players: [{ id: "p1", name: "Zhen Ji", seat: 0, hero: "zhen-ji", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: false, role: "Rebel" }],
+    myHand: [], turnSeat: 0, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Choose whether to use Luoshen", isMyAction: true,
+    pending: { kind: "trigger" }, currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Choose whether to use Luoshen", legalActions: ["trigger", "decline_trigger"], triggerEvent: "turn_start", triggerOptions: [{ effectId: "zhen_ji_luoshen", label: "Luoshen", selection: null }], declineAction: "decline_trigger" },
+    pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
+  };
+  const luoshenRoom = normalizeRoomData(luoshenPayload);
+  const luoshenReadyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(luoshenReadyHtml, />Luoshen<\/button>/);
+  assert.match(luoshenReadyHtml, />Skip reaction<\/button>/);
+  const luoshenBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Luoshen<\/button>/);
+  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Skip reaction<\/button>/);
+  assert.doesNotMatch(luoshenBusyHtml, /Resolving…|Skipping…/);
+
   const pickerRoom = normalizeRoomData({
     code: "SAFE-PICKER", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
     players: [
@@ -74,6 +90,10 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(pickerHtml, /class="target-card-picker-card hidden(?:\s|[^"]*")/, "hidden hand buttons do not use Tailwind's standalone hidden class");
   assert.match(pickerHtml, /aria-label="Nio Shield/);
   assert.doesNotMatch(pickerHtml, /aria-label="not-eligible"/);
+  const pickerBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Skip reaction<\/button>/);
+  assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Use Frost Sword<\/button>/);
+  assert.doesNotMatch(pickerBusyHtml, /Resolving…|Skipping…/);
 
   const choicePayload = {
     code: "SAFE-CHOICE", status: "playing", maxPlayers: 4, isHost: false, isTestController: true, meId: "p2", myRole: "Rebel", myHeroOptions: [],
@@ -94,9 +114,12 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(choiceHtml, /aria-label="Hidden hand card \d+"/, "hand cards stay hidden until discard is chosen");
   assert.doesNotMatch(choiceHtml, />Yin-Yang Swords<\/button>/, "mandatory choices open without a trigger activation button");
   assert.doesNotMatch(choiceHtml, /Skip reaction/, "mandatory Yin-Yang choice has no Skip reaction");
+  const choiceBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: choiceRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(choiceBusyHtml, /<button[^>]*disabled=""[^>]*>Confirm choice<\/button>/);
+  assert.doesNotMatch(choiceBusyHtml, /Resolving…|Skipping…/);
 
   const discardChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, {
-    option: choicePayload.currentAction.triggerOptions[0], selection: choicePayload.currentAction.triggerOptions[0].selection, selectedChoice: "discard", selectedKeys: [], disabled: false, busy: false, error: "",
+    option: choicePayload.currentAction.triggerOptions[0], selection: choicePayload.currentAction.triggerOptions[0].selection, selectedChoice: "discard", selectedKeys: [], disabled: false, error: "",
     onChoice: () => {}, onToggle: () => {}, onConfirm: () => {},
   }));
   assert.equal((discardChoiceHtml.match(/aria-label="Hidden hand card \d+"/g) ?? []).length, 2, "mandatory discard choice uses readable concealed hand cards");

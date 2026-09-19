@@ -5,6 +5,11 @@ card suit across centre, reveal, Harvest, equipment, Judgement, and settled
 table surfaces. Gameplay and rules are unchanged; the render regression covers
 all four suits through a real `GameRoom` CardFace consumer.
 
+Semantic trigger controls now retain their player-facing action labels while a
+request is in flight. Busy state disables the controls without replacing
+Luoshen, Skip reaction, or trigger-dialog labels with transient Resolving /
+Skipping text.
+
 Hand cards now use standard suit colours: Hearts and Diamonds are red, while Spades and Clubs remain black.
 
 Zhen Ji's Luoshen is now a real repeated Judgement at the canonical beginning
@@ -30,7 +35,7 @@ Borrowed Sword cards are dealt to three distinct random seats with capacity;
 they are removed from the opening deck and all four seats still receive four
 cards.
 
-Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, and Sima Yi's Guicai are implemented through the semantic capability architecture. Luoshen and Guicai use the canonical shared Judgement pipeline; Guicai pauses after the reveal, accepts exactly one Sima Yi hand card through the generic trigger protocol, and makes it the final card for every downstream rule. Qingguo remains unchanged, Paoxiao remains locked/passive, and Fankui is not implemented. Borrowed Sword forced Attacks preserve their original turn-owner resume phase and do not consume the holder's normal Play Phase Attack limit. The existing semantic response/trigger engine, presentation barriers, privacy boundaries, and Quick Test human-seat flow remain unchanged. Next milestone: the next individually verified Standard hero.
+Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, and Sima Yi's Guicai are implemented through the semantic capability architecture. Luoshen and Guicai use the canonical shared Judgement pipeline; Guicai pauses after the reveal, accepts exactly one Sima Yi hand card through the generic trigger protocol, and makes it the final card for every downstream rule. Semantic trigger labels remain stable during submission, while busy state still disables duplicate interaction. Qingguo remains unchanged, Paoxiao remains locked/passive, and Fankui is not implemented. Borrowed Sword forced Attacks preserve their original turn-owner resume phase and do not consume the holder's normal Play Phase Attack limit. The existing semantic response/trigger engine, presentation barriers, privacy boundaries, and Quick Test human-seat flow remain unchanged. Next milestone: the next individually verified Standard hero.
 
 An English online implementation of WTK Standard, the classic hidden-role Three Kingdoms card game, built for small private groups of friends.
 

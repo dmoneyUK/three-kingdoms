@@ -1,5 +1,17 @@
 # Three Kingdoms project handover
 
+## Semantic trigger label stability — 2026-09-19
+
+Semantic trigger controls now retain their player-facing action labels while a
+request is in flight. Busy state disables the controls without replacing
+Luoshen, Skip reaction, or trigger-dialog labels with transient Resolving /
+Skipping text. The generic inline controls, target-card picker, and mandatory
+choice dialog use stable wording; the server `resolving` phase, TriggerPending,
+actionRevision, stale-action handling, presentation barriers, and request
+deduplication are unchanged. Render coverage verifies Luoshen and both dialog
+families in ready and busy states. The next milestone remains the next
+individually verified Standard hero.
+
 ## Played-card suit colours — 2026-09-19
 
 The shared `CardFace` now includes the existing physical-suit class used by
