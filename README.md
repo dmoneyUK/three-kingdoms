@@ -1,5 +1,8 @@
 # Three Kingdoms
 
+In-game player cards now show hero names at a larger, more readable size while
+remaining responsive on smaller screens.
+
 Shared played-card faces now colour only their rank and suit from the physical
 card suit across centre, reveal, Harvest, equipment, Judgement, and settled
 table surfaces. Gameplay and rules are unchanged; the render regression covers

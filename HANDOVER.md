@@ -1,5 +1,12 @@
 # Three Kingdoms project handover
 
+## Hero name presentation — 2026-09-20
+
+Hero names on the in-game player cards are now displayed larger and with
+stronger visual emphasis, while retaining compact responsive sizes on mobile.
+The hero-selection screen, hero information dialog, gameplay semantics, and
+currentAction contract are unchanged.
+
 ## Xiahou Dun — Stauchness / Ganglie — 2026-09-20
 
 The official Standard Xiahou Dun card was re-opened before implementation. The
