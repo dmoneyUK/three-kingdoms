@@ -73,7 +73,7 @@ function normalizeCurrentAction(value) {
       : isRecord(option.selection) && option.selection.type === "target_cards" && typeof option.selection.targetId === "string" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleKeys)
         ? { type: "target_cards", targetId: option.selection.targetId, min: option.selection.min, max: option.selection.max, eligibleKeys: option.selection.eligibleKeys.filter((id) => typeof id === "string") }
         : isRecord(option.selection) && option.selection.type === "choice" && Array.isArray(option.selection.choices) && Array.isArray(option.selection.eligibleHandKeys)
-          ? { type: "choice", choices: option.selection.choices.filter(isRecord).filter((choice) => typeof choice.id === "string" && typeof choice.label === "string").map((choice) => ({ id: choice.id, label: choice.label })), eligibleHandKeys: option.selection.eligibleHandKeys.filter((id) => typeof id === "string") }
+          ? { type: "choice", choices: option.selection.choices.filter(isRecord).filter((choice) => typeof choice.id === "string" && typeof choice.label === "string").map((choice) => ({ id: choice.id, label: choice.label })), eligibleHandKeys: option.selection.eligibleHandKeys.filter((id) => typeof id === "string"), ...(isRecord(option.selection.cardCountByChoice) ? { cardCountByChoice: Object.fromEntries(Object.entries(option.selection.cardCountByChoice).filter(([id, count]) => typeof id === "string" && Number.isInteger(count) && count >= 0)) } : {}) }
         : null;
     return [{ effectId: option.effectId, label: option.label, ...(option.allowDecline === false ? { allowDecline: false } : {}), ...(typeof option.timeoutChoiceId === "string" ? { timeoutChoiceId: option.timeoutChoiceId } : {}), selection }];
   }) : [];
@@ -88,7 +88,7 @@ function normalizeCurrentAction(value) {
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
-    ...(value.triggerEvent === "turn_start" || value.triggerEvent === "judgement_revealed" || value.triggerEvent === "attack_targeted" || value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
+    ...(value.triggerEvent === "turn_start" || value.triggerEvent === "judgement_revealed" || value.triggerEvent === "attack_targeted" || value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" || value.triggerEvent === "damage_suffered" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
     ...(isRecord(value.presentation) ? { presentation: { resolutionId: typeof value.presentation.resolutionId === "string" ? value.presentation.resolutionId : null, readyAfterEventId: typeof value.presentation.readyAfterEventId === "string" ? value.presentation.readyAfterEventId : null } } : {}),
   };
 }

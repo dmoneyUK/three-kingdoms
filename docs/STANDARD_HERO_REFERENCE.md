@@ -5,7 +5,7 @@
 
 ## Source and verification policy
 
-- **Primary roster source:** official WTK General Card catalogue: <https://wtkgames.com/generalCard/> with the product filter set to **Standard**. The project owner supplied a screenshot of that filtered roster on 2026-09-16.
+- **Primary roster source:** official WTK General Card catalogue: <https://wtkgames.com/generalCard/> with the product filter set to **Standard**. The project owner supplied a screenshot of that filtered roster on 2026-09-16. Individual card text is re-opened from the official Standard catalogue/API before implementation.
 - **Product source:** <https://wtkgames.com/product/Standard/>.
 - **Runtime reconciliation baseline:** `main` at `6b7ba951eb2125c511315515327ad1dbbc4790b9`, before this round's changes.
 - The Standard-filtered official catalogue is authoritative for **which generals belong in new Standard games**, even when older Sanguosha/WTK material originally classified a general as SP, Kingdom Wars, or another pack.
@@ -125,9 +125,11 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Max HP:** 4
 - **Runtime roster status:** Present
 - **Skills:**
-  - **Ganglie 刚烈:** After Xiahou Dun suffers damage from another character, he may make a Judgement. If the result is not a Heart, the source must either discard two hand cards or take 1 damage from Xiahou Dun.
-- **Likely engine shape:** damage-resolved trigger + Judgement + forced choice.
-- **Current implementation:** Metadata only.
+  - **Stauchness / Ganglie 刚烈:** The current official Standard card says: “After you take damage, you may enter Judgement phase, if the Judgement card does not belong to [heart], the source of damage must choose between: ① discard 2 hand cards; ② take 1 damage from you.” The project keeps the established `Ganglie` identity for the Chinese skill/runtime while recording the current printed English name as **Stauchness**.
+- **Verified timing boundary:** The official Standard rulebook places Judgement phase before the normal turn phases and says that a character whose HP is reduced to 0 enters the immediate defeat/Dying process. The implementation therefore offers this post-damage reaction only after normal damage has been applied and Xiahou Dun remains available; lethal damage enters the existing Dying flow first. The source choice's 1 damage uses the normal damage/Dying primitives.
+- **Likely engine shape:** reusable post-damage `damage_suffered` trigger + shared Judgement continuation + generic mandatory source choice.
+- **Current implementation:** Implemented as the reusable `damage_suffered` semantic trigger provider, using the shared Judgement continuation, Sima Yi's normal Guicai replacement window, a generic mandatory source choice, ordinary discard/damage primitives, and the existing Dying flow. No Xiahou-specific protocol action or client rule branch was added.
+- **Sources:** official Standard product/card catalogue <https://www.wtkgames.com/product/Standard/>; official Standard rulebook linked by the product entry.
 
 ### Zhang Liao (张辽)
 

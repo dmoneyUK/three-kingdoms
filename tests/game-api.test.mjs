@@ -136,6 +136,27 @@ async function createHumanGame() {
   return { code, members, room: (await state(code, members[0].token)).data };
 }
 
+async function openGanglieAttack({ judge, sourceCards = [card("Attack", "ganglie-attack")], sourceHp = 4 } = {}) {
+  const game = await createHumanGame();
+  const sourceMember = game.members[0];
+  const targetMember = game.members[1];
+  const source = game.room.players.find((player) => player.name === "Host");
+  const target = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(source && target);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(target.id)}`);
+  setHand(source.id, sourceCards, sourceHp, 4);
+  setHand(target.id, [], 3, 3);
+  setTurn(game.code, source.seat);
+  setDeck(game.code, [judge]);
+  const attack = await request("play_card", { code: game.code, token: sourceMember.token, cardId: sourceCards[0].id, targetId: target.id });
+  assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  assert.equal(attack.data.room.currentAction.kind, "trigger", JSON.stringify(attack.data.room));
+  assert.equal(attack.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(attack.data.room.currentAction.actorId, target.id);
+  return { ...game, sourceMember, targetMember, source, target, actionPresentation: attack.data.room.currentAction.presentation };
+}
+
 
 test("Quick Test exhausts each AOE Negation window before the target response, with one private hand", async () => {
   for (const [kind, required] of [["RainingArrows", "Dodge"], ["BarbarianInvasion", "Attack"]]) {
@@ -1278,6 +1299,156 @@ test("Rations Depleted targets at distance 1 and skips only a failed target's Dr
 
 });
 
+test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through the generic source choice", { timeout: 30_000 }, async () => {
+  const declined = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-decline-judge"), suit: "♠", rank: "7" } });
+  assert.ok(declined.actionPresentation?.readyAfterEventId, "the damage trigger waits for its essential presentation barrier");
+  const skipped = await request("decline_trigger", { code: declined.code, token: declined.targetMember.token });
+  assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
+  assert.equal(skipped.data.room.phase, "play-struck");
+  assert.equal(skipped.data.room.players.find((player) => player.id === declined.target.id).hp, 2);
+  assert.equal(discardIds(declined.code).includes("dodge-ganglie-decline-judge"), false, "declining does not invent a Judgement card");
+
+  const resolved = await openGanglieAttack({
+    judge: { ...card("Dodge", "ganglie-spade-judge"), suit: "♠", rank: "7" },
+    sourceCards: [card("Attack", "ganglie-discard-attack"), card("Dodge", "ganglie-cost-a"), card("Peach", "ganglie-cost-b")],
+  });
+  const accepted = await request("trigger", { code: resolved.code, token: resolved.targetMember.token, providerId: "xiahou_dun_ganglie" });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const sourceView = (await state(resolved.code, resolved.sourceMember.token)).data;
+  assert.equal(sourceView.currentAction.kind, "trigger");
+  assert.equal(sourceView.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(sourceView.currentAction.actorId, resolved.source.id);
+  assert.ok(sourceView.currentAction.presentation?.readyAfterEventId, "the mandatory source choice retains its presentation barrier");
+  const choice = sourceView.currentAction.triggerOptions.find((option) => option.effectId === "xiahou_dun_ganglie");
+  assert.deepEqual(choice.selection.choices.map((entry) => entry.id), ["discard_two", "take_damage"]);
+  assert.equal(choice.selection.cardCountByChoice.discard_two, 2);
+  assert.deepEqual(choice.selection.eligibleHandKeys, ["hand:0", "hand:1"]);
+  const targetView = (await state(resolved.code, resolved.targetMember.token)).data;
+  assert.deepEqual(targetView.currentAction.triggerOptions, [], "the mandatory source choice is not projected to Xiahou Dun");
+  const discarded = await request("trigger", { code: resolved.code, token: resolved.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "discard_two", cardKeys: ["hand:0", "hand:1"] });
+  assert.equal(discarded.status, 200, JSON.stringify(discarded.data));
+  assert.equal(discarded.data.room.phase, "play-struck");
+  assert.equal(discarded.data.room.players.find((player) => player.id === resolved.target.id).hp, 2);
+  assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(resolved.source.id)}`)).length, 0);
+  for (const id of ["dodge-ganglie-spade-judge", "dodge-ganglie-cost-a", "peach-ganglie-cost-b"]) assert.ok(discardIds(resolved.code).includes(id), `${id} is conserved in discard`);
+  assert.equal(discarded.data.room.log.filter((entry) => /takes 1 damage\./.test(entry)).length, 1);
+});
+
+test("Stauchness uses the final Guicai card, limits discard choices, and resumes when its source disappears", { timeout: 30_000 }, async () => {
+  const game = await openGanglieAttack({
+    judge: { ...card("Dodge", "ganglie-heart-judge"), suit: "♥", rank: "2" },
+    sourceCards: [card("Attack", "ganglie-heart-attack"), card("Peach", "ganglie-heart-extra")],
+  });
+  const accepted = await request("trigger", { code: game.code, token: game.targetMember.token, providerId: "xiahou_dun_ganglie" });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  assert.equal(accepted.data.room.phase, "play-struck");
+  assert.ok(accepted.data.room.log.some((entry) => /Heart result means Stauchness has no effect/.test(entry)));
+  assert.ok(discardIds(game.code).includes("dodge-ganglie-heart-judge"));
+
+  const guicai = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-guicai-original"), suit: "♠", rank: "9" } });
+  const sima = guicai.room.players.find((player) => player.name === "Bob");
+  const simaMember = guicai.members.find((member) => member.name === "Bob");
+  assert.ok(sima && simaMember);
+  sql(`UPDATE players SET hero='simayi' WHERE id=${quote(sima.id)}`);
+  const replacement = { ...card("Dodge", "ganglie-guicai-replacement"), suit: "♥", rank: "Q" };
+  setHand(sima.id, [replacement], 3, 3);
+  const acceptedForGuicai = await request("trigger", { code: guicai.code, token: guicai.targetMember.token, providerId: "xiahou_dun_ganglie" });
+  assert.equal(acceptedForGuicai.status, 200, JSON.stringify(acceptedForGuicai.data));
+  const guicaiView = (await state(guicai.code, simaMember.token)).data;
+  assert.equal(guicaiView.currentAction.triggerEvent, "judgement_revealed");
+  assert.deepEqual(guicaiView.currentAction.triggerOptions.map((option) => option.effectId), ["sima_yi_guicai"]);
+  const replaced = await request("trigger", { code: guicai.code, token: simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
+  assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
+  assert.equal(replaced.data.room.phase, "play-struck");
+  assert.ok(discardIds(guicai.code).includes("dodge-ganglie-guicai-original"));
+  assert.ok(discardIds(guicai.code).includes("dodge-ganglie-guicai-replacement"));
+
+  const guicaiToNonHeart = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-guicai-heart-original"), suit: "♥", rank: "2" } });
+  const sima2 = guicaiToNonHeart.room.players.find((player) => player.name === "Bob");
+  const simaMember2 = guicaiToNonHeart.members.find((member) => member.name === "Bob");
+  assert.ok(sima2 && simaMember2);
+  sql(`UPDATE players SET hero='simayi' WHERE id=${quote(sima2.id)}`);
+  const replacementBlack = { ...card("Dodge", "ganglie-guicai-black-replacement"), suit: "♠", rank: "7" };
+  setHand(sima2.id, [replacementBlack], 3, 3);
+  const acceptedForReverseGuicai = await request("trigger", { code: guicaiToNonHeart.code, token: guicaiToNonHeart.targetMember.token, providerId: "xiahou_dun_ganglie" });
+  assert.equal(acceptedForReverseGuicai.status, 200, JSON.stringify(acceptedForReverseGuicai.data));
+  const reverseWindow = await state(guicaiToNonHeart.code, simaMember2.token);
+  assert.equal(reverseWindow.data.currentAction.triggerEvent, "judgement_revealed");
+  const reverseReplaced = await request("trigger", { code: guicaiToNonHeart.code, token: simaMember2.token, providerId: "sima_yi_guicai", cardId: replacementBlack.id });
+  assert.equal(reverseReplaced.status, 200, JSON.stringify(reverseReplaced.data));
+  assert.equal(reverseReplaced.data.room.currentAction.actorId, guicaiToNonHeart.source.id);
+  const reverseChoice = await request("trigger", { code: guicaiToNonHeart.code, token: guicaiToNonHeart.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "take_damage" });
+  assert.equal(reverseChoice.status, 200, JSON.stringify(reverseChoice.data));
+  assert.equal(reverseChoice.data.room.players.find((player) => player.id === guicaiToNonHeart.source.id).hp, 3);
+  assert.ok(discardIds(guicaiToNonHeart.code).includes("dodge-ganglie-guicai-heart-original"));
+  assert.ok(discardIds(guicaiToNonHeart.code).includes("dodge-ganglie-guicai-black-replacement"));
+
+  const sourceGone = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-source-gone"), suit: "♠", rank: "4" } });
+  sql(`UPDATE players SET alive=0, hp=0, hand_json='[]' WHERE id=${quote(sourceGone.source.id)}`);
+  sql(`UPDATE rooms SET turn_seat=${sourceGone.target.seat} WHERE code=${quote(sourceGone.code)}`);
+  const resumed = await request("decline_trigger", { code: sourceGone.code, token: sourceGone.targetMember.token });
+  assert.equal(resumed.status, 200, JSON.stringify(resumed.data));
+  assert.equal(resumed.data.room.phase, "play-struck");
+  assert.equal(resumed.data.room.pending, null);
+});
+
+test("Quick Test projects Stauchness privately through the generic currentAction", { timeout: 30_000 }, async () => {
+  const quick = await request("create", { quickStart: true });
+  const { token, room } = quick.data;
+  const [source, target, ...others] = room.players;
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(target.id)}`);
+  setHand(source.id, [card("Attack", "quick-ganglie-attack"), card("Dodge", "quick-ganglie-cost-a"), card("Peach", "quick-ganglie-cost-b")], 4, 4);
+  setHand(target.id, [], 3, 3);
+  for (const player of others) setHand(player.id, [], 3, 3);
+  setTurn(room.code, source.seat);
+  setDeck(room.code, [{ ...card("Dodge", "quick-ganglie-judge"), suit: "♠", rank: "7" }]);
+  const started = await request("play_card", { code: room.code, token, cardId: "attack-quick-ganglie-attack", targetId: target.id });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  assert.equal(started.data.room.currentAction.actorId, target.id);
+  const accepted = await request("trigger", { code: room.code, token, providerId: "xiahou_dun_ganglie" });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  assert.equal(accepted.data.room.currentAction.actorId, source.id);
+  assert.equal(accepted.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.ok(accepted.data.room.currentAction.presentation?.readyAfterEventId);
+  assert.deepEqual(accepted.data.room.currentAction.triggerOptions[0].selection.eligibleHandKeys, ["hand:0", "hand:1"]);
+  assert.deepEqual(accepted.data.room.players.map((player) => player.handCards), [[], [], [], []], "Quick Test never projects other hands");
+  assert.deepEqual(accepted.data.room.myHand.map((held) => held.id), ["dodge-quick-ganglie-cost-a", "peach-quick-ganglie-cost-b"]);
+});
+
+test("Stauchness take-damage choice enters the normal Dying flow and stale concurrent acceptance has one winner", { timeout: 30_000 }, async () => {
+  const dying = await openGanglieAttack({ judge: { ...card("Dodge", "ganglie-dying-judge"), suit: "♣", rank: "5" }, sourceHp: 1, sourceCards: [card("Attack", "ganglie-dying-attack"), card("Peach", "ganglie-dying-extra")] });
+  const accepted = await request("trigger", { code: dying.code, token: dying.targetMember.token, providerId: "xiahou_dun_ganglie" });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const sourceView = (await state(dying.code, dying.sourceMember.token)).data;
+  const option = sourceView.currentAction.triggerOptions.find((entry) => entry.effectId === "xiahou_dun_ganglie");
+  assert.deepEqual(option.selection.choices.map((entry) => entry.id), ["take_damage"], "one hand card cannot satisfy discard 2");
+  assert.deepEqual(option.selection.eligibleHandKeys, ["hand:0"]);
+  const damaged = await request("trigger", { code: dying.code, token: dying.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "take_damage" });
+  assert.equal(damaged.status, 200, JSON.stringify(damaged.data));
+  assert.equal(damaged.data.room.phase, "dying");
+  assert.equal(damaged.data.room.pendingDying.targetId, dying.source.id);
+  assert.equal(damaged.data.room.players.find((player) => player.id === dying.source.id).hp, 0);
+  assert.ok(damaged.data.room.log.some((entry) => /takes 1 damage from Alice for Stauchness and enters Dying/.test(entry)));
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const race = await openGanglieAttack({ judge: { ...card("Dodge", `ganglie-race-${attempt}`), suit: "♥", rank: "2" } });
+    const [first, second] = await Promise.all([
+      request("trigger", { code: race.code, token: race.targetMember.token, providerId: "xiahou_dun_ganglie" }),
+      request("trigger", { code: race.code, token: race.targetMember.token, providerId: "xiahou_dun_ganglie" }),
+    ]);
+    const results = [first, second];
+    assert.equal(results.filter((result) => result.status === 200).length, 1);
+    const loser = results.find((result) => result.status === 409);
+    assert.ok(loser && loser.data.stale === true && loser.data.room);
+    assert.equal(loser.data.room.phase, "play-struck");
+    assert.equal(loser.data.room.pending, null);
+    assert.equal(loser.data.room.players.every((player) => player.handCards.length === 0), true);
+    assert.equal(discardIds(race.code).filter((id) => id === `dodge-ganglie-race-${attempt}`).length, 1);
+    assert.equal((await state(race.code, race.sourceMember.token)).data.players.find((player) => player.id === race.target.id).hp, 2);
+  }
+});
+
 test("turn engine completes repeated rounds, rejects duplicate actions, and skips defeated players", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const membersBySeat = game.room.players.map((player) => ({ player, member: game.members.find((member) => member.name === player.name) })).sort((a, b) => a.player.seat - b.player.seat);
@@ -1386,6 +1557,7 @@ test("damage_about_to_apply trigger exhaustion resumes original Attack damage on
   const hostPlayer = game.room.players.find((player) => player.name === "Host");
   const alicePlayer = game.room.players.find((player) => player.name === "Alice");
   assert.ok(hostPlayer && alicePlayer);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(alicePlayer.id)}`);
 
   setEquipment(hostPlayer.id, {
     armor: card("NioShield", "test-trigger-a-equipped"),

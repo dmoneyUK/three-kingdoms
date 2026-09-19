@@ -63,6 +63,19 @@ export type DamageAboutToApplyTriggerContinuation = {
   sequenceStartCardId: string;
   origin?: AttackOrigin;
 };
+export type DamageSufferedTriggerContinuation = {
+  kind: "damage_suffered_event";
+  sourceId: string;
+  targetId: string;
+  amount: number;
+  resumePhase: string;
+  resumePlayerId?: string;
+  sequenceStartCardId: string;
+  origin?: AttackOrigin;
+  stage: "reaction" | "source_choice";
+  judgementCard?: Card;
+  resolutionId?: string;
+};
 export type TurnStartTriggerContinuation = {
   kind: "turn_start_event";
   playerId: string;
@@ -75,19 +88,20 @@ export type JudgementResponseResume = {
   resolutionId?: string;
   continuation: ResponseContinuation;
 };
+export type DamageSufferedJudgementResume = { kind: "damage_suffered"; continuation: DamageSufferedTriggerContinuation };
 export type JudgementContinuation = {
   targetId: string;
   purpose: JudgementPurpose;
   revealedCard: Card;
   revealedEventId?: string;
-  resume: { kind: "luoshen"; playerId: string } | { kind: "delayed"; targetId: string; delayedCard: Card; remainingDelayedCards: Card[]; resumePhase: string } | JudgementResponseResume;
+  resume: { kind: "luoshen"; playerId: string } | { kind: "delayed"; targetId: string; delayedCard: Card; remainingDelayedCards: Card[]; resumePhase: string } | JudgementResponseResume | DamageSufferedJudgementResume;
   resolutionId?: string;
 };
 export type JudgementRevealedTriggerContinuation = {
   kind: "judgement_revealed_event";
   judgement: JudgementContinuation;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | TurnStartTriggerContinuation | JudgementRevealedTriggerContinuation;
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | JudgementRevealedTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

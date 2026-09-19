@@ -1,5 +1,41 @@
 # Three Kingdoms project handover
 
+## Xiahou Dun — Stauchness / Ganglie — 2026-09-20
+
+The official Standard Xiahou Dun card was re-opened before implementation. The
+current printed English skill name is **Stauchness**; the runtime keeps the
+established `Ganglie` identity for the Chinese skill. The verified wording is:
+after Xiahou Dun takes damage, he may enter Judgement phase; if the Judgement
+card is not a Heart, the damage source must choose to discard exactly two hand
+cards or take 1 damage from Xiahou Dun. The official Standard rulebook's
+0-HP defeat rule establishes the timing boundary used here: lethal damage
+enters the existing Dying flow before the optional post-damage reaction.
+The correction and source links are recorded in
+`docs/STANDARD_HERO_REFERENCE.md`.
+
+Ganglie is implemented as the first reusable `damage_suffered` semantic trigger
+provider. The damage transition applies nonlethal damage, persists the generic
+post-damage continuation, and offers Xiahou Dun an optional `TriggerPending`.
+Acceptance starts a real shared Judgement; `judgement_revealed` therefore gives
+Sima Yi's Guicai its normal replacement window. The final card, not merely the
+original reveal, determines the result. A qualifying final card opens a
+mandatory source-owned generic choice with server-projected `cardCountByChoice`
+metadata; the discard-two and damage consequences use ordinary discard, damage,
+and Dying primitives. If the source is no longer available, the continuation
+resumes safely without a bespoke action.
+
+No Xiahou-specific HTTP action, public `pendingGanglie` DTO, client hero-rule
+branch, or new protocol action was added. The UI reads `currentAction` and the
+existing generic trigger/choice components. API coverage now includes decline,
+Heart/non-Heart results, Guicai replacement in both directions, insufficient
+discard cards, source disappearance, source-choice privacy, Dying caused by
+the consequence, card conservation, presentation barriers, and four repeated
+concurrent acceptance races. The full Worker/D1 suite passes **79 / 79**.
+The exact-head response-race commit and its rerun Cloudflare deployment/smoke
+checks are green. The next work remains the next individually verified
+Standard hero; Cao Cao, Fankui, a general active-skill framework, compatibility
+projection removal, and route/page refactors are outside this round.
+
 ## Canonical response race stale contract — 2026-09-20
 
 The exact-head CI blocker was traced to the canonical response execution race:
@@ -18,10 +54,11 @@ hand isolation. A clean local Worker/D1 run passed all 75 tests. The first
 post-change rerun also exposed the known persisted `.wrangler/test-state`
 contamination in an unrelated Quick Test assertion; moving that state aside and
 rerunning from a clean isolated database restored 75/75. Exact-head CI and the
-Cloudflare deployment/smoke checks remain required before hero work begins.
+Cloudflare deployment/smoke checks were completed before this hero work and are
+green for the response-race commit.
 
-Recommended next work is Xiahou Dun / Ganglie only after that release gate is
-green. Preserve `ResponsePending`, `TriggerPending`, provider-owned semantic
+Recommended next work is the next individually verified Standard hero. Preserve
+`ResponsePending`, `TriggerPending`, provider-owned semantic
 capabilities, `currentAction`, presentation barriers, and the shared Judgement
 pipeline.
 

@@ -6,18 +6,19 @@ import { kirinBowDamageAboutToApplyTrigger } from "./equipment/kirin-bow";
 import { yinYangSwordsAttackTargeted } from "./equipment/yin-yang-swords";
 import { zhenJiLuoshenTrigger } from "./heroes/zhen-ji-luoshen";
 import { simaYiGuicaiTrigger } from "./heroes/sima-yi-guicai";
+import { xiahouDunGanglieTrigger } from "./heroes/xiahou-dun-ganglie";
 
-export type TriggerEvent = "turn_start" | "judgement_revealed" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply";
+export type TriggerEvent = "turn_start" | "judgement_revealed" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered";
 /**
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
  */
-export type TriggerContext = { event: TriggerEvent; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" };
+export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie" };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown; choice?: unknown };
 export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[] }
   | { type: "target_cards"; targetId: string; min: number; max: number; eligibleKeys: string[] }
-  | { type: "choice"; choices: { id: string; label: string }[]; eligibleHandKeys: string[] };
+  | { type: "choice"; choices: { id: string; label: string }[]; eligibleHandKeys: string[]; cardCountByChoice?: Record<string, number> };
 export type TriggerOption = { effectId: string; label: string; selection: TriggerSelectionConstraint | null; allowDecline?: boolean; timeoutChoiceId?: string };
 export function triggerAllowsDecline(option: Pick<TriggerOption, "allowDecline">) {
   return option.allowDecline !== false;
@@ -32,6 +33,8 @@ export type TriggerExecution =
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "force_damage"; amount: number; consumeCardIds: string[] } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "prevent_damage"; targetCardIds: string[] } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "target_discard"; targetCardId: string } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "discard_cards"; targetId: string; targetCardIds: string[] } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "damage_player"; targetId: string; amount: number } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "attacker_draw" } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement" } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement_replacement"; cardId: string } }
@@ -44,7 +47,7 @@ export type TriggeredEffect = {
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
 };
 
-const triggers: TriggeredEffect[] = [zhenJiLuoshenTrigger, simaYiGuicaiTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [zhenJiLuoshenTrigger, simaYiGuicaiTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {
