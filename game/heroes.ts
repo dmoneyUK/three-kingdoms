@@ -7,7 +7,7 @@ export type HeroDefinition = { id: string; name: string; faction: string; hp: nu
 const standard = (id: string, name: string, faction: string, hp: number, ability: string, gender: Gender): HeroDefinition => ({ id, name, faction, hp, ability, gender, standardSelectable: true });
 export const STANDARD_HEROES: readonly HeroDefinition[] = [
   standard("cao-cao","Cao Cao","Wei",4,"After taking damage, you may gain the card that caused it.","male"),
-  standard("simayi","Sima Yi","Wei",3,"After taking damage, you may take one card from the source.","male"),
+  standard("simayi","Sima Yi","Wei",3,"When a Judgement card is revealed, you may replace it with one card from your hand.","male"),
   standard("xiahou-dun","Xiahou Dun","Wei",4,"After taking damage, judge: on red, the source discards or loses HP.","male"),
   standard("zhang-liao","Zhang Liao","Wei",4,"During draw, you may take cards from up to two players instead.","male"),
   standard("xu-chu","Xu Chu","Wei",4,"Draw one fewer card to make your Attack and Duel damage stronger.","male"),

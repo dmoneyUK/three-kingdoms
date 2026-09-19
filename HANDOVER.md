@@ -1,13 +1,15 @@
 # Three Kingdoms project handover
 
-## Hero-selection information dialog — 2026-09-19
+## Player hero-card information dialog — 2026-09-19
 
-Hero-selection cards now have an accessible info icon that opens a private
-hero-information dialog with the general's faction, HP, and authoritative
-ability text. The icon is a sibling control rather than a nested button, so it
-does not alter hero selection. Escape and backdrop/close actions dismiss the
-dialog. Render coverage verifies the icon and dialog content. The next
-milestone remains the next individually verified Standard hero.
+In-game player hero cards now have an accessible info icon. The card shows the
+hero's concise skill name, while the private hero-information dialog shows the
+general's faction, HP, skill name, and authoritative ability explanation; the
+Sima Yi card therefore shows Guicai and its Judgement-replacement explanation.
+The icon is a sibling control rather than a nested target button, so it does
+not alter targeting. Escape and backdrop/close actions dismiss the dialog.
+Render coverage verifies the player-card icon, Guicai label, and explanation.
+The next milestone remains the next individually verified Standard hero.
 
 ## Semantic trigger label stability — 2026-09-19
 
