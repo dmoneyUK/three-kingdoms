@@ -14,7 +14,7 @@ export const eightTrigramsDodgeProvider: ResponseProvider = {
     satisfies: "dodge",
     resolution: {
       kind: "judgement",
-      succeeds: (card) => card?.suit === "♥" || card?.suit === "♦",
+      purpose: "eight_trigrams",
       label: "Eight Trigrams Formation",
       successText: "The red result counts as Dodge.",
       failureText: "The result does not satisfy Dodge.",

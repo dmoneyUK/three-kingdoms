@@ -115,7 +115,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
   - **Fankui 反馈:** After Sima Yi suffers damage, he may obtain one card from the damage source.
   - **Guicai 鬼才:** Before a Judgement result takes effect, Sima Yi may play a hand card to replace the Judgement card.
 - **Likely engine shape:** damage-resolved trigger; Judgement replacement.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Guicai is implemented through the canonical `judgement_revealed` trigger and persisted Judgement continuation. Fankui is not implemented.
 
 ### Xiahou Dun (夏侯惇)
 
@@ -177,7 +177,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
   - **Qingguo 倾国:** A black hand card may be used or played as Dodge.
   - **Luoshen 洛神:** At the beginning of her turn, Zhen Ji may repeatedly make Judgements. Black results are obtained and allow the sequence to continue; the sequence stops when a non-black result ends it.
 - **Likely engine shape:** semantic Dodge provider; start-of-turn repeated Judgement.
-- **Current implementation:** Qingguo is the existing live hero capability proof. Luoshen is not implemented.
+- **Current implementation:** Qingguo and Luoshen are implemented. Luoshen uses the canonical repeated Judgement flow; Qingguo behavior is unchanged by the Guicai work.
 
 ### Yue Jin (乐进)
 

@@ -1,5 +1,6 @@
 import type { Card } from "./model";
 import type { ActionRequirement } from "./responses";
+import type { JudgementPurpose } from "./decisions/judgement";
 import type { TriggerEvent } from "./capabilities/triggers";
 
 /** The one persisted decision in a room, independent of HTTP and D1. */
@@ -66,7 +67,27 @@ export type TurnStartTriggerContinuation = {
   kind: "turn_start_event";
   playerId: string;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | TurnStartTriggerContinuation;
+export type JudgementResponseResume = {
+  kind: "response";
+  actorId: string;
+  requirement: ActionRequirement;
+  reason: string;
+  resolutionId?: string;
+  continuation: ResponseContinuation;
+};
+export type JudgementContinuation = {
+  targetId: string;
+  purpose: JudgementPurpose;
+  revealedCard: Card;
+  revealedEventId?: string;
+  resume: { kind: "luoshen"; playerId: string } | { kind: "delayed"; targetId: string; delayedCard: Card; remainingDelayedCards: Card[]; resumePhase: string } | JudgementResponseResume;
+  resolutionId?: string;
+};
+export type JudgementRevealedTriggerContinuation = {
+  kind: "judgement_revealed_event";
+  judgement: JudgementContinuation;
+};
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | TurnStartTriggerContinuation | JudgementRevealedTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

@@ -9,6 +9,13 @@ existing Judgement Zone and Draw Phase processing begin. Luoshen and delayed
 cards consume separate Judgement cards, use the shared Judgement mechanism,
 and Qingguo remains unchanged.
 
+Sima Yi's Guicai now opens the canonical `judgement_revealed` trigger before
+every supported Judgement result. It can replace the revealed card with one
+card from Sima Yi's hand through the existing `trigger` / `decline_trigger`
+protocol; the replacement becomes the final Judgement card and all downstream
+Luoshen, Overindulgence, Rations Depleted, Lightning, and Eight Trigrams rules
+use that final card. Fankui is not implemented.
+
 Zhang Fei's Paoxiao is now a locked passive capability. The shared Attack-use-limit capability discovers Paoxiao and Zhuge Crossbow from `{ hero, equipment }`, so normal Attacks, Serpent Spear Attacks, and the projected `canDeclareAttack`/resume phase all share one authoritative unlimited-Attack result. Borrowed Sword forced Attacks remain outside the Play Phase limit. Existing Attack range, horse, weapon trigger, Dodge, damage, Dying, and Borrowed Sword behavior is unchanged.
 
 When Yin-Yang Swords lets the attacker draw, the drawn card now appears in the attacker's normal private centre-card presentation and remains hidden from the other seats.
@@ -18,7 +25,7 @@ Borrowed Sword cards are dealt to three distinct random seats with capacity;
 they are removed from the opening deck and all four seats still receive four
 cards.
 
-Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, and Zhen Ji's Luoshen are implemented through the semantic capability architecture. Luoshen uses the canonical `turn_start` trigger and shared Judgement pipeline before delayed-card Judgements; each black result creates a fresh optional decision, while a red result ends the sequence and continues normal turn processing. Paoxiao remains locked/passive with no Hero Skills button, response provider, HTTP action, or trigger decision. Borrowed Sword forced Attacks preserve their original turn-owner resume phase and do not consume the holder's normal Play Phase Attack limit. The existing semantic response/trigger engine, presentation barriers, privacy boundaries, and Quick Test human-seat flow remain unchanged. Next milestone: the next individually verified Standard hero.
+Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, and Sima Yi's Guicai are implemented through the semantic capability architecture. Luoshen and Guicai use the canonical shared Judgement pipeline; Guicai pauses after the reveal, accepts exactly one Sima Yi hand card through the generic trigger protocol, and makes it the final card for every downstream rule. Qingguo remains unchanged, Paoxiao remains locked/passive, and Fankui is not implemented. Borrowed Sword forced Attacks preserve their original turn-owner resume phase and do not consume the holder's normal Play Phase Attack limit. The existing semantic response/trigger engine, presentation barriers, privacy boundaries, and Quick Test human-seat flow remain unchanged. Next milestone: the next individually verified Standard hero.
 
 An English online implementation of WTK Standard, the classic hidden-role Three Kingdoms card game, built for small private groups of friends.
 
@@ -27,7 +34,7 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Development handover: [HANDOVER.md](HANDOVER.md)
 - Roadmap: [ROADMAP.md](ROADMAP.md)
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
-- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening and final UI cleanup, Step 4.3 response-helper cleanup, single-controller bot-surface removal, Step 5E response-builder typing, Step 6B Negation canonicalization, Step 7B.1 legacy persisted-response rejection, Step 7C direct response construction, and Step 7D response architecture documentation closure COMPLETE**
+- Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening and final UI cleanup, Step 4.3 response-helper cleanup, single-controller bot-surface removal, Step 5E response-builder typing, Step 6B Negation canonicalization, Step 7B.1 legacy persisted-response rejection, Step 7C direct response construction, Step 7D response architecture documentation closure, and Sima Yi Guicai Judgement continuation COMPLETE**
 
 Step 7D closes the semantic response architecture cleanup. `ResponsePending` is the sole semantic Attack, Duel,
 Group, and Negation decision shape. Attack, ordinary AOE, Halberd, and Duel
@@ -41,10 +48,10 @@ milestone is the next individually verified Standard hero.
 
 Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, Step 6B Negation canonicalization, Step 7A response expansion compatibility removal, Step 7B.1 rejection of legacy persisted Attack/Duel/Group/Negation response states, Step 7C direct response construction, and Step 7D documentation closure are complete. Audit/state validation, room projections, and response timers now read canonical `ResponsePending` and `TriggerPending` records directly; old response-family states never become actionable `currentAction` values or legacy response DTOs. Quick Test and normal multiplayer use human-style seats only; one Quick Test controller switches seats through the shared token. The next milestone is the next individually verified Standard hero.
 
-The current deterministic suite has been consolidated to 74 tracked test
+The current deterministic suite has been consolidated to 75 tracked test
 declarations while retaining the required human multiplayer and capability
 invariants. Pure helper assertions now run in grouped cases, and inactive bot-only
-tests and product paths have been removed. The Worker/D1 runner executes all 74 tests.
+tests and product paths have been removed. The Worker/D1 runner executes all 75 tests.
 
 Step 5E completed the response-builder typing cleanup: the former
 response-builder compatibility union

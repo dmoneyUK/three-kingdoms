@@ -254,7 +254,7 @@ test("successful Negation never repairs or infers chain depth from stale fields"
 test("successful Judgement Negation carries transitioned state across both responder outcomes", () => {
 
   const pending = { kind: "negation", sourceId: "source", remainingIds: [], negated: false, cardName: "Overindulgence", effectTargetId: "target", resumePhase: "draw", effect: { kind: "judgement", targetId: "target", cardId: "delayed" }, chainDepth: 0 };
-  const rule = { kind: "judgement", label: "red Judgement", succeeds: (judged) => judged?.suit === "♥", successText: "succeeds", failureText: "fails" };
+  const rule = { kind: "judgement", purpose: "overindulgence", label: "red Judgement", successText: "succeeds", failureText: "fails" };
   const judged = resolveResponseJudgement({ ...card("Dodge", "red-judgement"), suit: "♥" }, rule);
   assert.equal(judged.status, "satisfied");
   const transitioned = applySuccessfulNegation(pending, { id: "actor", name: "Actor" });
@@ -267,7 +267,7 @@ test("successful Judgement Negation carries transitioned state across both respo
 });
 
 test("secondary Judgement produces one semantic outcome for every response continuation", () => {
-  const rule = { kind: "judgement", label: "red Judgement", succeeds: (judged) => judged?.suit === "♥", successText: "succeeds", failureText: "fails" };
+  const rule = { kind: "judgement", purpose: "overindulgence", label: "red Judgement", successText: "succeeds", failureText: "fails" };
   const continuations = ["attack", "group", "duel", "negation"];
   for (const kind of continuations) {
     const pending = { kind: "response", actorId: "p2", requirement: { kind: "dodge", sourceId: "p1", targetId: "p2" }, reason: "response", continuation: { kind } };

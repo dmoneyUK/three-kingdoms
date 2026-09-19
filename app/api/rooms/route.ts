@@ -15,8 +15,8 @@ import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../..
 import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../game/match/dying.js";
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
-import { drawJudgementCard, resolveJudgement, type JudgementResolution } from "../../../game/decisions/judgement";
-import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type GroupContinuation, type GroupResponsePending, type HarvestPending, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
+import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 
 export const runtime = "edge";
 
@@ -100,6 +100,11 @@ function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
   if (continuation.kind === "turn_start_event") {
     const player = players.find((candidate) => candidate.id === continuation.playerId);
     return player ? { event: pending.event, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), playerId: player.id, hero: player.hero } : null;
+  }
+  if (continuation.kind === "judgement_revealed_event") {
+    const actor = players.find((player) => player.id === pending.actorId && player.alive);
+    const judgement = continuation.judgement;
+    return actor ? { event: pending.event, sourceEquipment: equipmentCards(actor), sourceHand: parse<Card[]>(actor.hand_json, []), playerId: actor.id, hero: actor.hero, targetId: judgement.targetId, judgementCard: judgement.revealedCard, judgementPurpose: judgement.purpose } : null;
   }
   if (continuation.kind === "attack_targeted_event") {
     const source = players.find((player) => player.id === continuation.declaration.sourceId) ?? null;
@@ -284,47 +289,183 @@ function takeNextDelayedCard(cards: Card[]) {
   const delayed = cards.at(-1);
   return delayed ? { delayed, remaining: cards.slice(0, -1) } : null;
 }
-function resolveTurnJudgement(player: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[]) {
-  const delayedCards = parse<Card[]>(player.judgement_json, []);
-  const selected = takeNextDelayedCard(delayedCards);
-  const delayed = selected?.delayed;
-  const remaining = selected?.remaining ?? [];
-  let skipPlay = false;
-  let skipDraw = false;
-  let damage = 0;
-  let transferTarget: PlayerRow | null = null;
-  if (delayed) {
-    const draw = drawJudgementCard(deck, discard); deck = draw.deck; discard = draw.discard;
-    if (draw.reshuffled) log = addLog(log, "The discard pile is shuffled into a new draw deck.");
-    const judged = draw.card;
-    if (judged) {
-      log = addCardEvent(log, player.name, judged, player.name, "reveal");
-      if (delayed.kind === "Overindulgence") {
-        skipPlay = judged.suit !== "♥";
-        log = addLog(log, `${player.name} judges ${judged.rank}${judged.suit} for Overindulgence. ${judged.suit === "♥" ? "The Heart result allows the Play Phase." : "The result is not a Heart, so the Play Phase is skipped."}`);
-        discard.push(delayed);
-      } else if (delayed.kind === "RationsDepleted") {
-        skipDraw = judged.suit !== "♣";
-        log = addLog(log, `${player.name} judges ${judged.rank}${judged.suit} for Rations Depleted. ${judged.suit === "♣" ? "The Club result allows the Draw Phase." : "The result is not a Club, so the Draw Phase is skipped."}`);
-        discard.push(delayed);
-      } else if (delayed.kind === "Lightning") {
-        const numericRank = Number(judged.rank);
-        const hit = judged.suit === "♠" && numericRank >= 2 && numericRank <= 9;
-        if (hit) {
-          damage = 3; discard.push(delayed);
-          log = addLog(log, `${player.name} judges ${judged.rank}${judged.suit} for Lightning and takes 3 thunder damage.`);
-        } else {
-          transferTarget = playersInTurnOrder(players, player.seat).slice(1).find((candidate) => !parse<Card[]>(candidate.judgement_json, []).some((card) => card.kind === "Lightning")) ?? null;
-          if (transferTarget) log = addLog(log, `${player.name} judges ${judged.rank}${judged.suit} for Lightning. Lightning misses and transfers to ${transferTarget.name}'s Judgement Zone.`);
-          else { discard.push(delayed); log = addLog(log, `${player.name} judges ${judged.rank}${judged.suit} for Lightning. No eligible Judgement Zone remains, so Lightning is discarded.`); }
-        }
-      } else {
-        discard.push(delayed);
-      }
-      discard.push(judged);
-    } else log = addLog(log, `${player.name} has no card available for judgement.`);
+function judgementPurposeForDelayed(card: Card): JudgementPurpose | null {
+  if (card.kind === "Overindulgence") return "overindulgence";
+  if (card.kind === "RationsDepleted") return "rations_depleted";
+  if (card.kind === "Lightning") return "lightning";
+  return null;
+}
+
+function judgementTriggerContext(player: PlayerRow, judgement: JudgementContinuation) {
+  return {
+    event: "judgement_revealed" as const,
+    sourceEquipment: equipmentCards(player),
+    sourceHand: parse<Card[]>(player.hand_json, []),
+    playerId: player.id,
+    hero: player.hero,
+    targetId: judgement.targetId,
+    judgementCard: judgement.revealedCard,
+    judgementPurpose: judgement.purpose,
+  };
+}
+
+function judgementReplacementActor(players: PlayerRow[], judgement: JudgementContinuation) {
+  return playersInTurnOrder(players, players.find((player) => player.id === judgement.targetId)?.seat ?? 0)
+    .find((player) => player.alive && getTriggeredEffects(judgementTriggerContext(player, judgement)).length > 0) ?? null;
+}
+function judgementActorName(player: PlayerRow) { return player.hero === "simayi" ? "Sima Yi" : player.name; }
+
+async function beginJudgementResolution(room: RoomRow, target: PlayerRow, players: PlayerRow[], judgement: JudgementContinuation, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
+  const actor = judgementReplacementActor(players, judgement);
+  if (actor) {
+    const presentation = addLogWithId(log, `${actor.name} may use Guicai to replace the Judgement card.`);
+    const pending: TriggerPending = withPresentationBarrier({
+      kind: "trigger",
+      event: "judgement_revealed",
+      actorId: actor.id,
+      reason: `${actor.name} may replace the Judgement card with Guicai, or decline`,
+      deadline: nextResponseDeadline(actor),
+      resolutionId: judgement.resolutionId,
+      continuation: { kind: "judgement_revealed_event", judgement },
+    }, presentation.log, judgement.revealedEventId ?? latestDecisionPresentationEventId(presentation.log, judgement.resolutionId) ?? crypto.randomUUID());
+    await db().batch([
+      ...writes,
+      db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+        .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log), room.id),
+    ]);
+    return [];
   }
-  return { deck, discard, log, skipPlay, skipDraw, damage, transferTarget, transferredCard: transferTarget ? delayed : null, remaining, resolved: Boolean(delayed) };
+  return (await resolveJudgementContinuation(room, judgement, judgement.revealedCard, players, deck, discard, log, writes)) ?? [];
+}
+
+function discardJudgementCards(discard: Card[], revealed: Card, finalCard: Card, keepFinal: boolean) {
+  if (revealed.id !== finalCard.id) discard.push(revealed);
+  if (!keepFinal) discard.push(finalCard);
+}
+
+/** Applies a final Judgement card and resumes its exact domain continuation. */
+async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementContinuation, finalCard: Card, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], finalEventId = judgement.revealedEventId) {
+  const target = players.find((player) => player.id === judgement.targetId);
+  if (!target) return [];
+  const rule = judgementResolutionFor(judgement.purpose);
+  const result = resolveJudgement(judgement.revealedCard, rule, finalCard);
+  const keepFinal = judgement.purpose === "luoshen" && result.status === "satisfied";
+  discardJudgementCards(discard, judgement.revealedCard, finalCard, keepFinal);
+  if (judgement.purpose === "luoshen") {
+    if (result.status === "satisfied") {
+      const hand = [...parse<Card[]>(target.hand_json, []), finalCard];
+      let nextLog = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} with Luoshen and obtains it.`, undefined, judgement.resolutionId);
+      nextLog = addLog(nextLog, `${target.name} may use Luoshen again.`);
+      const pending: TriggerPending = withPresentationBarrier({
+        kind: "trigger",
+        event: "turn_start",
+        actorId: target.id,
+        reason: `${target.name} may use Luoshen again, or decline`,
+        deadline: nextResponseDeadline(target),
+        continuation: { kind: "turn_start_event", playerId: target.id },
+      }, nextLog, finalEventId ?? latestDecisionPresentationEventId(nextLog, judgement.resolutionId) ?? crypto.randomUUID());
+      await db().batch([
+        ...writes,
+        db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id),
+        db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+          .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextLog), room.id),
+      ]);
+      return [];
+    }
+    const nextLog = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} with Luoshen. Luoshen ends.`, undefined, judgement.resolutionId);
+    await db().batch([
+      ...writes,
+      db().prepare("UPDATE rooms SET phase = 'draw', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+        .bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextLog), room.id),
+    ]);
+    return [];
+  }
+
+  const delayedResume = judgement.resume.kind === "delayed" ? judgement.resume : null;
+  if (delayedResume) {
+    let skipPlay = drawPhaseFlags(delayedResume.resumePhase).skipPlay;
+    let skipDraw = drawPhaseFlags(delayedResume.resumePhase).skipDraw;
+    const delayed = delayedResume.delayedCard;
+    if (judgement.purpose === "overindulgence") skipPlay ||= result.status !== "satisfied";
+    if (judgement.purpose === "rations_depleted") skipDraw ||= result.status !== "satisfied";
+    if (judgement.purpose === "lightning") {
+      if (result.status === "satisfied") {
+        const nextLog = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning. Lightning strikes for 3 thunder damage.`, undefined, judgement.resolutionId);
+        discard.push(delayed);
+        const hp = applyDamage(target.hp ?? 1, 3);
+        if (isDying(hp)) {
+          await startDyingRescue(room, null, { ...target, hp }, players, deck, discard, addLog(nextLog, `${target.name} enters Dying from Lightning. Peach rescue begins in turn order.`), writes, target, drawPhaseFor(skipPlay, skipDraw), undefined, hp);
+          return [];
+        }
+        if (judgement.revealedCard.id !== finalCard.id) {
+          // The original reveal was already discarded above; this branch only
+          // documents the final damage transition before committing HP.
+        }
+        writes.push(db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id));
+      } else {
+        const transferTarget = playersInTurnOrder(players, target.seat).slice(1).find((candidate) => !parse<Card[]>(candidate.judgement_json, []).some((card) => card.kind === "Lightning")) ?? null;
+        if (transferTarget) {
+          writes.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify([...parse<Card[]>(transferTarget.judgement_json, []), delayed]), transferTarget.id));
+          log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning. Lightning misses and transfers to ${transferTarget.name}'s Judgement Zone.`, undefined, judgement.resolutionId);
+        } else {
+          discard.push(delayed);
+          log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning. No eligible Judgement Zone remains, so Lightning is discarded.`, undefined, judgement.resolutionId);
+        }
+      }
+    } else {
+      discard.push(delayed);
+      log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for ${rule.label}. ${result.status === "satisfied" ? rule.successText : rule.failureText}`, undefined, judgement.resolutionId);
+    }
+    if (judgement.purpose === "lightning" && result.status === "satisfied") log = addFinalResult(log, `${target.name} judges ${finalCard.rank}${finalCard.suit} for Lightning and takes 3 thunder damage.`, undefined, judgement.resolutionId);
+    const nextPhase = drawPhaseFor(skipPlay, skipDraw);
+    if (delayedResume.remainingDelayedCards.length) {
+      await db().batch([...writes, db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(nextPhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+      return [];
+    }
+    let drawnCards: Card[] = [];
+    if (skipDraw) log = addLog(log, `${target.name} skips the Draw Phase because of Rations Depleted.`);
+    else {
+      const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; drawnCards = draw.drawn; log = addHistory(draw.log, `${target.name} draws ${draw.drawn.length === 2 ? "two cards" : `${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`}.`, target.id);
+      const hand = [...parse<Card[]>(target.hand_json, []), ...draw.drawn];
+      writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id));
+    }
+    await db().batch([...writes, db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(skipPlay ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+    return drawnCards;
+  }
+
+  const responseResume = judgement.resume.kind === "response" ? judgement.resume : null;
+  if (!responseResume) return [];
+  const response: ResponsePending = { kind: "response", actorId: responseResume.actorId, requirement: responseResume.requirement, reason: responseResume.reason, ...(responseResume.resolutionId ? { resolutionId: responseResume.resolutionId } : {}), continuation: responseResume.continuation };
+  const judged = { deck, discard, judged: finalCard, log, result: resolveResponseJudgement(finalCard, rule) };
+  const sourceId = "sourceId" in response.continuation ? response.continuation.sourceId : "";
+  const source = players.find((player) => player.id === sourceId) ?? null;
+  const actor = players.find((player) => player.id === response.actorId);
+  if (!actor) return [];
+  const nextRoom = { ...room, deck_json: JSON.stringify(deck) };
+  const attack = attackResponse(response);
+  if (attack) return applyAttackResponseOutcome(nextRoom, response, attack.continuation, actor, source, judged);
+  const group = groupResponse(response);
+  if (group && source) return applyGroupResponseOutcome(nextRoom, response, group.continuation, actor, source, players, judged);
+  if (response.continuation.kind === "duel") {
+    const opponent = players.find((player) => player.id === response.continuation.opponentId) ?? null;
+    if (opponent) return applyDuelResponseOutcome(nextRoom, { response, continuation: response.continuation }, actor, opponent, judged);
+  }
+  const negation = negationResponse(response);
+  if (negation) return applyNegationResponseOutcome(nextRoom, negation, actor, players, judged);
+}
+
+async function beginDelayedJudgement(room: RoomRow, target: PlayerRow, players: PlayerRow[], delayed: Card, remaining: Card[], deck: Card[], discard: Card[], log: string[], resumePhase: string, writes: D1PreparedStatement[] = []) {
+  const draw = drawJudgementCard(deck, discard); deck = draw.deck; discard = draw.discard;
+  if (draw.reshuffled) log = addLog(log, "The discard pile is shuffled into a new draw deck.");
+  if (!draw.card) {
+    discard.push(delayed);
+    log = addLog(log, `${target.name} has no card available for judgement.`);
+    await db().batch([...writes, db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+    return [];
+  }
+  const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal");
+  const judgement: JudgementContinuation = { targetId: target.id, purpose: judgementPurposeForDelayed(delayed) ?? "overindulgence", revealedCard: draw.card, revealedEventId: presentation.eventId, resume: { kind: "delayed", targetId: target.id, delayedCard: delayed, remainingDelayedCards: remaining, resumePhase } };
+  return beginJudgementResolution(room, target, players, judgement, deck, discard, presentation.log, writes);
 }
 function messageEvent(entry: string, index: number) {
   if (!entry.startsWith("@event:")) return { type: "message" as const, id: `legacy-${index}-${entry}`, message: entry };
@@ -463,12 +604,13 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   const lordIndex = players.findIndex((player) => player.id === hostPlayerId); const lordAt = roles.indexOf("Lord");
   [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
   const guanYu = STANDARD_HEROES.find((hero) => hero.id === "guan-yu")!;
+  const simaYi = STANDARD_HEROES.find((hero) => hero.id === "simayi")!;
   const zhaoYun = STANDARD_HEROES.find((hero) => hero.id === "zhao-yun")!;
   const zhenJi = STANDARD_HEROES.find((hero) => hero.id === "zhen-ji")!;
-  const otherHeroes = shuffle(STANDARD_HEROES.filter((hero) => ![guanYu.id, zhaoYun.id, zhenJi.id].includes(hero.id)));
+  const otherHeroes = shuffle(STANDARD_HEROES.filter((hero) => ![guanYu.id, simaYi.id, zhaoYun.id, zhenJi.id].includes(hero.id)));
   let otherHeroIndex = 0;
   const assigned = players.map((player, index) => {
-    const hero = player.id === hostPlayerId ? guanYu : player.seat === 2 ? zhaoYun : player.seat === 3 ? zhenJi : otherHeroes[otherHeroIndex++];
+    const hero = player.id === hostPlayerId ? guanYu : player.seat === 1 ? simaYi : player.seat === 2 ? zhaoYun : player.seat === 3 ? zhenJi : otherHeroes[otherHeroIndex++];
     const hp = hero.hp + (roles[index] === "Lord" ? 1 : 0);
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
@@ -527,8 +669,10 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
     if (room.phase === "response" && pending.kind === "dying") return "The Response phase contains a Dying action.";
     const actor = players.find((player) => player.id === pending.actorId && player.alive);
     if (!actor) return "The pending action does not belong to a living player.";
+    const judgementResume = canonicalTrigger?.continuation.kind === "judgement_revealed_event" ? canonicalTrigger.continuation.judgement.resume : null;
     const expectedOwnerId = pending.kind === "dying" ? pending.resumePlayerId
       : canonicalTrigger?.continuation.kind === "turn_start_event" ? canonicalTrigger.continuation.playerId
+        : canonicalTrigger?.continuation.kind === "judgement_revealed_event" ? judgementResume?.kind === "response" ? judgementResume.continuation.sourceId : canonicalTrigger.continuation.judgement.targetId
         : canonicalTrigger?.continuation.kind === "attack_targeted_event" ? owner.id
         : canonicalTrigger?.continuation.kind === "damage_about_to_apply_event" ? canonicalTrigger.continuation.sourceId
         : canonicalTrigger ? canonicalTrigger.continuation.sourceId
@@ -836,25 +980,10 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
   } else if (pending.effect.kind === "judgement") {
     const target = players.find((player) => player.id === pending.effect.targetId && player.alive);
     if (!target) return [];
-    const judgement = resolveTurnJudgement(target, players, deck, discard, log); deck = judgement.deck; discard = judgement.discard; log = judgement.log;
-    const writes = [db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(judgement.remaining), target.id)];
-    if (judgement.transferTarget && judgement.transferredCard) {
-      const transferred = [...parse<Card[]>(judgement.transferTarget.judgement_json, []), judgement.transferredCard];
-      writes.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(transferred), judgement.transferTarget.id));
-    }
-    const priorFlags = drawPhaseFlags(pending.resumePhase);
-    const nextPhase = drawPhaseFor(judgement.skipPlay || priorFlags.skipPlay, judgement.skipDraw || priorFlags.skipDraw);
-    if (judgement.damage > 0) {
-      const hp = applyDamage(target.hp ?? 1, judgement.damage);
-      if (isDying(hp)) {
-        log = addLog(log, `${target.name} enters Dying from Lightning. Peach rescue begins in turn order.`);
-        await startDyingRescue(room, null, { ...target, hp }, players, deck, discard, log, writes, target, nextPhase, undefined, hp);
-        return [];
-      }
-      writes.push(db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id));
-    }
-    writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(nextPhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId));
-    await db().batch(writes);
+    const delayedCards = parse<Card[]>(target.judgement_json, []);
+    const selected = takeNextDelayedCard(delayedCards);
+    if (!selected) return [];
+    await beginDelayedJudgement(room, target, players, selected.delayed, selected.remaining, deck, discard, log, pending.resumePhase, [db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(selected.remaining), target.id)]);
     return [];
   } else if (pending.effect.kind === "duel") {
     await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending({ ...pending.effect.pending, deadline: nextResponseDeadline(players.find((player) => player.id === pending.effect.pending.actorId)) }), JSON.stringify(log), roomId).run();
@@ -914,26 +1043,7 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
   return [];
 }
 
-async function drawResponseJudgement(room: RoomRow, actor: PlayerRow, discard: Card[], log: string[]) {
-  const draw = drawJudgementCard(parse<Card[]>(room.deck_json, []), discard);
-  if (draw.reshuffled) log = addLog(log, "The discard pile is shuffled into a new draw deck.");
-  const judged = draw.card;
-  if (judged) {
-    log = addCardEvent(log, actor.name, judged, actor.name, "reveal");
-    discard = [...draw.discard, judged];
-  } else discard = draw.discard;
-  return { deck: draw.deck, discard, judged, log };
-}
-
-const luoshenJudgement: JudgementResolution = {
-  kind: "judgement",
-  succeeds: (card) => card?.suit === "♠" || card?.suit === "♣",
-  label: "Luoshen",
-  successText: "The black result is obtained and Luoshen may be used again.",
-  failureText: "The result is red, so Luoshen ends.",
-};
-
-/** Resolves one Luoshen Judgement, then either opens a fresh Luoshen trigger or starts Draw. */
+/** Reveals one Luoshen card and gives Guicai its canonical pre-result window. */
 async function resolveTurnStartLuoshen(room: RoomRow, player: PlayerRow) {
   let deck = parse<Card[]>(room.deck_json, []);
   let discard = parse<Card[]>(room.discard_json, []);
@@ -951,45 +1061,16 @@ async function resolveTurnStartLuoshen(room: RoomRow, player: PlayerRow) {
 
   const revealed = draw.card;
   const presentation = addCardEventWithId(log, player.name, revealed, player.name, "reveal");
-  const result = resolveJudgement(revealed, luoshenJudgement);
-  const finalCard = result.finalCard;
-  if (!finalCard) {
-    await db().prepare("UPDATE rooms SET phase = 'draw', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log), room.id).run();
-    return;
-  }
-
-  if (result.status === "satisfied") {
-    const hand = [...parse<Card[]>(player.hand_json, []), finalCard];
-    let nextLog = addLog(presentation.log, `${player.name} judges ${finalCard.rank}${finalCard.suit} with Luoshen and obtains it.`);
-    nextLog = addLog(nextLog, `${player.name} may use Luoshen again.`);
-    const pending: TriggerPending = withPresentationBarrier({
-      kind: "trigger",
-      event: "turn_start",
-      actorId: player.id,
-      reason: `${player.name} may use Luoshen again, or decline`,
-      deadline: nextResponseDeadline(player),
-      continuation: { kind: "turn_start_event", playerId: player.id },
-    }, nextLog, presentation.eventId);
-    await db().batch([
-      db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), player.id),
-      db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-        .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextLog), room.id),
-    ]);
-    return;
-  }
-
-  discard.push(finalCard);
-  const nextLog = addLog(presentation.log, `${player.name} judges ${finalCard.rank}${finalCard.suit} with Luoshen. Luoshen ends.`);
-  await db().prepare("UPDATE rooms SET phase = 'draw', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-    .bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextLog), room.id).run();
+  const judgement: JudgementContinuation = { targetId: player.id, purpose: "luoshen", revealedCard: revealed, revealedEventId: presentation.eventId, resume: { kind: "luoshen", playerId: player.id } };
+  const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+  await beginJudgementResolution(room, player, rows.results ?? [], judgement, deck, discard, presentation.log);
 }
 
 /**
  * A provider asks for Judgement; the response continuation decides what is
  * resumed.  This deliberately has no equipment or hero identity knowledge.
  */
-type ResponseJudgementOutcome = Awaited<ReturnType<typeof drawResponseJudgement>> & { result: ReturnType<typeof resolveResponseJudgement> };
+type ResponseJudgementOutcome = { deck: Card[]; discard: Card[]; judged?: Card; log: string[]; result: ReturnType<typeof resolveResponseJudgement> };
 
 async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePending, continuation: AttackContinuation, actor: PlayerRow, source: PlayerRow | null, judged: ResponseJudgementOutcome) {
   const nextRoom = { ...room, deck_json: JSON.stringify(judged.deck) };
@@ -1086,21 +1167,34 @@ async function applyNegationResponseOutcome(room: RoomRow, pending: { response: 
 async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: PlayerRow, source: PlayerRow | null, players: PlayerRow[], discard: Card[], log: string[], resolution: JudgementResolution) {
   const response = pending.kind === "response" ? pending : null;
   const continuation = response?.continuation;
-  const judged = await drawResponseJudgement(room, actor, discard, log);
-  const result = resolveResponseJudgement(judged.judged, resolution);
-  const outcome = { ...judged, result };
-  const attack = attackResponse(response);
-  if (attack) return applyAttackResponseOutcome(room, attack.response, attack.continuation, actor, source, outcome);
-  const group = groupResponse(response);
-  if (group && source) return applyGroupResponseOutcome(room, group.response, group.continuation, actor, source, players, outcome);
-  if (continuation?.kind === "duel") {
-    const opponent = players.find((player) => player.id === continuation.opponentId) ?? null;
-    const duel = duelResponse(response);
-    if (opponent && duel) return applyDuelResponseOutcome(room, duel, actor, opponent, outcome);
+  if (!response || !continuation) throw new Error("Response Judgement continuation is no longer valid");
+  const draw = drawJudgementCard(parse<Card[]>(room.deck_json, []), discard);
+  if (draw.reshuffled) log = addLog(log, "The discard pile is shuffled into a new draw deck.");
+  if (!draw.card) {
+    const outcome: ResponseJudgementOutcome = { deck: draw.deck, discard: draw.discard, log, result: resolveResponseJudgement(undefined, resolution) };
+    const attack = attackResponse(response);
+    if (attack) return applyAttackResponseOutcome(room, attack.response, attack.continuation, actor, source, outcome);
+    const group = groupResponse(response);
+    if (group && source) return applyGroupResponseOutcome(room, group.response, group.continuation, actor, source, players, outcome);
+    if (continuation.kind === "duel") {
+      const opponent = players.find((player) => player.id === continuation.opponentId) ?? null;
+      const duel = duelResponse(response);
+      if (opponent && duel) return applyDuelResponseOutcome(room, duel, actor, opponent, outcome);
+    }
+    const negation = negationResponse(response);
+    if (negation) return applyNegationResponseOutcome(room, negation, actor, players, outcome);
+    throw new Error("Response Judgement continuation is no longer valid");
   }
-  const negation = negationResponse(response);
-  if (negation) return applyNegationResponseOutcome(room, negation, actor, players, outcome);
-  throw new Error("Response Judgement continuation is no longer valid");
+  const presentation = addCardEventWithId(log, actor.name, draw.card, actor.name, "reveal");
+  const judgement: JudgementContinuation = {
+    targetId: actor.id,
+    purpose: resolution.purpose,
+    revealedCard: draw.card,
+    revealedEventId: presentation.eventId,
+    resolutionId: response.resolutionId,
+    resume: { kind: "response", actorId: response.actorId, requirement: response.requirement, reason: response.reason, ...(response.resolutionId ? { resolutionId: response.resolutionId } : {}), continuation },
+  };
+  await beginJudgementResolution(room, actor, players, judgement, draw.deck, draw.discard, presentation.log);
 }
 
 type AttackDamageTransition = {
@@ -1955,6 +2049,34 @@ export async function POST(request: Request) {
     const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     const trigger = asTriggerPending(stored);
     const continuation = trigger?.continuation;
+    if (liveRoom && trigger && continuation?.kind === "judgement_revealed_event" && trigger.actorId === me.id) {
+      const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+      const players = rows.results ?? [];
+      const actor = players.find((player) => player.id === me.id && player.alive);
+      const target = players.find((player) => player.id === continuation.judgement.targetId && player.alive);
+      if (!actor || !target) return json({ error: "That Judgement is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      const execution = triggerExecution;
+      if (action === "apply_trigger" && execution?.outcome.kind !== "judgement_replacement") return json({ error: "That Guicai decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      const replacementId = execution?.outcome.kind === "judgement_replacement" ? execution.outcome.cardId : "";
+      const hand = parse<Card[]>(actor.hand_json, []);
+      const replacement = replacementId ? hand.find((card) => card.id === replacementId) ?? null : null;
+      if (action === "apply_trigger" && !replacement) return json({ error: "The selected Guicai card is no longer in Sima Yi's hand.", stale: true, room: await roomState(code, token) }, 409);
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Judgement decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+      const discard = parse<Card[]>(liveRoom.discard_json, []);
+      if (replacement) {
+        const nextHand = hand.filter((card) => card.id !== replacement.id);
+        const replacementPresentation = addCardEventWithId(parse<string[]>(liveRoom.log_json, []), actor.name, replacement, target.name, "reveal");
+        const log = addLog(replacementPresentation.log, `${judgementActorName(actor)} replaces the Judgement card with ${replacement.rank}${replacement.suit} using Guicai.`);
+        const updatedPlayers = players.map((player) => player.id === actor.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
+        await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), actor.id).run();
+        await resolveJudgementContinuation(liveRoom, continuation.judgement, replacement, updatedPlayers, parse<Card[]>(liveRoom.deck_json, []), discard, log, [], replacementPresentation.eventId);
+      } else {
+        const log = addLog(parse<string[]>(liveRoom.log_json, []), `${judgementActorName(actor)} declines Guicai; the revealed Judgement card remains final.`);
+        await resolveJudgementContinuation(liveRoom, continuation.judgement, continuation.judgement.revealedCard, players, parse<Card[]>(liveRoom.deck_json, []), discard, log);
+      }
+      return json({ room: await roomState(code, token) });
+    }
     if (liveRoom && trigger && continuation?.kind === "turn_start_event" && trigger.actorId === me.id) {
       if (action === "apply_trigger" && triggerExecution?.outcome.kind !== "judgement") {
         return json({ error: "That turn-start effect is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -2536,29 +2658,13 @@ export async function POST(request: Request) {
         if (await startJudgementNegation(liveRoom, me, rows.results ?? [], delayed, deck, discard, log)) return json({ room: await roomState(code, token) });
       }
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
-      const judgement = resolveTurnJudgement(me, players, deck, discard, log); const priorFlags = drawPhaseFlags(liveRoom.phase); deck = judgement.deck; discard = judgement.discard; log = judgement.log; judgement.skipPlay ||= priorFlags.skipPlay; judgement.skipDraw ||= priorFlags.skipDraw;
-      const judgementWrites: D1PreparedStatement[] = [db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(judgement.remaining), me.id)];
-      if (judgement.transferTarget && judgement.transferredCard) {
-        const transferred = [...parse<Card[]>(judgement.transferTarget.judgement_json, []), judgement.transferredCard];
-        judgementWrites.push(db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(transferred), judgement.transferTarget.id));
+      const selectedDelayed = takeNextDelayedCard(parse<Card[]>(me.judgement_json, []));
+      if (selectedDelayed) {
+        const delayedDrawn = await beginDelayedJudgement(liveRoom, me, players, selectedDelayed.delayed, selectedDelayed.remaining, deck, discard, log, liveRoom.phase ?? "draw", [db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(selectedDelayed.remaining), me.id)]);
+        return json({ room: await roomState(code, token), ...(delayedDrawn?.length ? { drawnCards: delayedDrawn } : {}) });
       }
-      if (judgement.damage > 0) {
-        const hp = applyDamage(me.hp ?? 1, judgement.damage);
-        if (isDying(hp)) {
-          log = addLog(log, `${me.name} enters Dying from Lightning. Peach rescue begins in turn order.`);
-          await startDyingRescue(liveRoom, null, { ...me, hp }, players, deck, discard, log, judgementWrites, me, drawPhaseFor(judgement.skipPlay, judgement.skipDraw), undefined, hp);
-          return json({ room: await roomState(code, token) });
-        }
-        judgementWrites.push(db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, me.id));
-      }
-      if (judgement.remaining.length) {
-        judgementWrites.push(db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(drawPhaseFor(judgement.skipPlay, judgement.skipDraw), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
-        await db.batch(judgementWrites);
-        return json({ room: await roomState(code, token) });
-      }
-      if (judgement.skipDraw) log = addLog(log, `${me.name} skips the Draw Phase because of Rations Depleted.`);
-      else { const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${me.name} draws ${draw.drawn.length === 2 ? "two cards" : `${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`}.`, me.id); hand.push(...draw.drawn); drawnCards = draw.drawn; }
-      await db.batch([...judgementWrites, db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(judgement.skipPlay ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+      const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${me.name} draws ${draw.drawn.length === 2 ? "two cards" : `${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`}.`, me.id); hand.push(...draw.drawn); drawnCards = draw.drawn;
+      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase?.includes("skip-play") ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
     } else if (action === "serpent_spear_attack") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before forming an Attack." }, 409);
       if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may use only one Attack per turn." }, 409);

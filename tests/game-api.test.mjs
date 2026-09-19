@@ -125,7 +125,7 @@ async function createHumanGame() {
   const members = [{ name: "Host", token: created.data.token }];
   for (const name of ["Alice", "Bob", "Carol"]) { const joined = await request("join", { code, name }); assert.equal(joined.status, 201); members.push({ name, token: joined.data.token }); }
   assert.equal((await request("start", { code, token: members[0].token, name: "Host" })).status, 200);
-  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => option.id !== "zhen-ji") ?? before.data.myHeroOptions[0]; assert.equal((await request("choose_hero", { code, token: member.token, heroId: hero.id })).status, 200); }
+  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => option.id !== "zhen-ji" && option.id !== "simayi") ?? before.data.myHeroOptions[0]; assert.equal((await request("choose_hero", { code, token: member.token, heroId: hero.id })).status, 200); }
   const started = (await state(code, members[0].token)).data; const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(code)}`) || "[]");
   for (const player of started.players) {
     const hand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`) || "[]");
@@ -688,6 +688,24 @@ test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement 
   assert.equal(blackAttack.status, 200); const blackResult = await request("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge" });
   assert.equal(blackResult.status, 200); assert.equal(blackResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3); assert.ok(blackResult.data.room.log.some((entry) => /Eight Trigrams Formation/.test(entry)));
 
+  const simaMember = game.members.find((member) => member.name === "Bob"); const simaPlayer = game.room.players.find((player) => player.name === "Bob");
+  assert.ok(simaMember && simaPlayer);
+  sql(`UPDATE players SET hero='simayi' WHERE id=${quote(simaPlayer.id)}`);
+  const originalBlack = { ...card("Peach", "trigrams-guicai-original"), suit: "♣", rank: "8" };
+  const replacementRed = { ...card("Peach", "trigrams-guicai-replacement"), suit: "♥", rank: "Q" };
+  setHand(simaPlayer.id, [replacementRed], 4, 4); setHand(hostPlayer.id, [card("Attack", "trigrams-guicai-attack")], 4, 4); setHand(alicePlayer.id, [], 4, 4); setTurn(game.code, hostPlayer.seat, "play");
+  setDeck(game.code, [originalBlack]);
+  const guicaiAttack = await request("play_card", { code: game.code, token: host.token, cardId: "attack-trigrams-guicai-attack", targetId: alicePlayer.id });
+  assert.equal(guicaiAttack.status, 200);
+  const guicaiJudgement = await request("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge" });
+  assert.equal(guicaiJudgement.status, 200, JSON.stringify(guicaiJudgement.data));
+  assert.equal(guicaiJudgement.data.room.currentAction.triggerEvent, "judgement_revealed");
+  assert.equal(guicaiJudgement.data.room.actionPlayerId, simaPlayer.id);
+  const guicaiDodge = await request("trigger", { code: game.code, token: simaMember.token, providerId: "sima_yi_guicai", cardId: replacementRed.id });
+  assert.equal(guicaiDodge.status, 200, JSON.stringify(guicaiDodge.data));
+  assert.equal(guicaiDodge.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "a red Guicai replacement changes Eight Trigrams to a Dodge");
+  assert.ok(discardIds(game.code).includes(originalBlack.id)); assert.ok(discardIds(game.code).includes(replacementRed.id));
+
 });
 
 test("generic response executes Zhen Ji's black-card Dodge without a physical Dodge", async () => {
@@ -764,7 +782,9 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   const [me, playerOne, playerTwo, playerThree] = room.players;
   const openingHandKinds = (player) => JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`)).map((held) => held.kind);
   assert.equal(me.hero, "guan-yu", "Player1 is Guan Yu for Wusheng coverage");
+  assert.equal(playerOne.hero, "simayi", "Player2 is Sima Yi for Guicai coverage");
   assert.equal(playerTwo.hero, "zhao-yun", "Player3 is Zhao Yun for Longdan coverage");
+  assert.equal(playerThree.hero, "zhen-ji", "Player4 is Zhen Ji for Luoshen coverage");
   assert.ok(openingHandKinds(me).includes("FrostSword"), "Player1 starts with Frost Sword");
   assert.ok(openingHandKinds(me).some((kind) => ["Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed"].includes(kind)), "Player1 starts with a horse");
   assert.ok(openingHandKinds(playerOne).includes("KirinBow"), "Player2 starts with Kirin Bow");
@@ -932,7 +952,7 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
 });
 
 test("Luoshen repeats real Judgements before delayed-card Judgements and preserves card destinations", { timeout: 30_000 }, async () => {
-  async function beginZhenTurn(deck, judgement = []) {
+  async function beginZhenTurn(deck, judgement = [], simaHand = []) {
     const created = await request("create", { quickStart: true });
     const { token, room } = created.data;
     const code = room.code;
@@ -941,13 +961,16 @@ test("Luoshen repeats real Judgements before delayed-card Judgements and preserv
     const previous = room.players.find((player) => player.seat === (zhen.seat + 3) % room.players.length);
     assert.ok(previous);
     for (const player of room.players) setHand(player.id, [], player.hp ?? 3, player.maxHp ?? 3);
+    const sima = room.players.find((player) => player.hero === "simayi");
+    assert.ok(sima, "Quick Test exposes Sima Yi in Player2 for Guicai coverage");
+    setHand(sima.id, simaHand, 3, 3);
     setHand(zhen.id, [], 3, 3);
     setJudgement(zhen.id, judgement);
     setDeck(code, deck);
     setTurn(code, previous.seat);
     const ended = await request("end_turn", { code, token });
     assert.equal(ended.status, 200, JSON.stringify(ended.data));
-    return { code, token, zhen, room: ended.data.room };
+    return { code, token, zhen, sima, room: ended.data.room };
   }
 
   const sevenSpades = { ...card("Attack", "luoshen-seven"), suit: "♠", rank: "7" };
@@ -1015,12 +1038,52 @@ test("Luoshen repeats real Judgements before delayed-card Judgements and preserv
   assert.equal(red.status, 200, JSON.stringify(red.data));
   assert.equal(red.data.room.phase, "draw");
   assert.deepEqual(discardIds(redFirst.code), [queenHearts.id]);
+
+  const replacementBlack = { ...card("Attack", "guicai-black"), suit: "♠", rank: "7" };
+  const originalRed = { ...card("Peach", "guicai-original-red"), suit: "♥", rank: "Q" };
+  const redToBlack = await beginZhenTurn([originalRed], [], [replacementBlack]);
+  const redStart = await request("trigger", { code: redToBlack.code, token: redToBlack.token, providerId: "zhen_ji_luoshen" });
+  assert.equal(redStart.data.room.currentAction.triggerEvent, "judgement_revealed");
+  assert.equal(redStart.data.room.actionPlayerId, redToBlack.sima.id, "Guicai moves perspective to Sima Yi");
+  assert.deepEqual(redStart.data.room.currentAction.triggerOptions[0].selection.eligibleCardIds, [replacementBlack.id]);
+  const redReplaced = await request("trigger", { code: redToBlack.code, token: redToBlack.token, providerId: "sima_yi_guicai", cardId: replacementBlack.id });
+  assert.equal(redReplaced.status, 200, JSON.stringify(redReplaced.data));
+  assert.equal(redReplaced.data.room.currentAction.triggerEvent, "turn_start", "black final Luoshen result continues the sequence");
+  assert.deepEqual(redReplaced.data.room.myHand.map((held) => held.id), [replacementBlack.id]);
+  assert.equal(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(redToBlack.sima.id)}`), "0", "Guicai consumes the replacement from Sima Yi's hand");
+  assert.ok(discardIds(redToBlack.code).includes(originalRed.id), "the original red reveal is discarded");
+  assert.ok(redReplaced.data.room.log.some((entry) => entry.includes("Sima Yi replaces the Judgement card with 7♠ using Guicai.")));
+  assert.equal((await request("decline_trigger", { code: redToBlack.code, token: redToBlack.token })).data.room.phase, "draw");
+
+  const replacementRed = { ...card("Peach", "guicai-red"), suit: "♥", rank: "Q" };
+  const originalBlack = { ...card("Attack", "guicai-original-black"), suit: "♠", rank: "7" };
+  const blackToRed = await beginZhenTurn([originalBlack], [], [replacementRed]);
+  await request("trigger", { code: blackToRed.code, token: blackToRed.token, providerId: "zhen_ji_luoshen" });
+  const blackRevealed = await state(blackToRed.code, blackToRed.token);
+  assert.equal(blackRevealed.data.currentAction.triggerEvent, "judgement_revealed");
+  const blackReplaced = await request("trigger", { code: blackToRed.code, token: blackToRed.token, providerId: "sima_yi_guicai", cardId: replacementRed.id });
+  assert.equal(blackReplaced.status, 200, JSON.stringify(blackReplaced.data));
+  assert.equal(blackReplaced.data.room.phase, "draw", "red final Luoshen result ends the sequence");
+  assert.deepEqual(blackReplaced.data.room.players.find((player) => player.id === blackToRed.zhen.id).handCards, []);
+  assert.ok(discardIds(blackToRed.code).includes(originalBlack.id));
+  assert.ok(discardIds(blackToRed.code).includes(replacementRed.id));
+
+  const declinedOriginal = { ...card("Attack", "guicai-declined-original"), suit: "♣", rank: "8" };
+  const declinedReplacement = { ...card("Peach", "guicai-declined-replacement"), suit: "♥", rank: "Q" };
+  const declinedGuicai = await beginZhenTurn([declinedOriginal], [], [declinedReplacement]);
+  await request("trigger", { code: declinedGuicai.code, token: declinedGuicai.token, providerId: "zhen_ji_luoshen" });
+  const declinedReplacementWindow = await request("decline_trigger", { code: declinedGuicai.code, token: declinedGuicai.token });
+  assert.equal(declinedReplacementWindow.status, 200, JSON.stringify(declinedReplacementWindow.data));
+  assert.deepEqual(declinedReplacementWindow.data.room.myHand.map((held) => held.id), [declinedOriginal.id], "declining Guicai keeps the revealed card final");
+  assert.equal(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(declinedGuicai.sima.id)}`), "1");
+  assert.equal(discardIds(declinedGuicai.code).includes(declinedOriginal.id), false);
+  assert.equal((await request("decline_trigger", { code: declinedGuicai.code, token: declinedGuicai.token })).data.room.phase, "draw");
 });
 
 test("Overindulgence uses the Judgement Zone and skips only a failed target's Play Phase", { timeout: 30_000 }, async () => {
-  const game = await createHumanGame(); const [host, alice] = game.members;
+  const game = await createHumanGame(); const [host, alice] = game.members; const bob = game.members.find((member) => member.name === "Bob");
   const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice"); const bobPlayer = game.room.players.find((player) => player.name === "Bob");
-  assert.ok(hostPlayer && alicePlayer && bobPlayer);
+  assert.ok(hostPlayer && alicePlayer && bobPlayer && bob);
 
   setHand(hostPlayer.id, [card("Overindulgence", "cancelled")], 5, 5); setHand(alicePlayer.id, [card("Negation", "overindulgence")], 4, 4); setTurn(game.code, hostPlayer.seat);
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: "overindulgence-cancelled", targetId: alicePlayer.id });
@@ -1040,7 +1103,26 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
   assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "discard"); assert.equal(skipped.data.drawnCards.length, 2); assert.deepEqual(skipped.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
   assert.ok(skipped.data.room.timeline.some((event) => event.type === "card" && event.action === "reveal" && event.card.id === "dodge-failed-judge"));
   assert.ok(skipped.data.room.log.some((entry) => /not a Heart, so the Play Phase is skipped/.test(entry)));
-  const ended = await request("discard_cards", { code: game.code, token: alice.token, cardIds: [] });
+
+  const overOriginal = { ...card("Dodge", "guicai-over-original"), suit: "♣", rank: "8" };
+  const overReplacement = { ...card("Peach", "guicai-over-replacement"), suit: "♥", rank: "Q" };
+  sql(`UPDATE players SET hero='simayi' WHERE id=${quote(bobPlayer.id)}`);
+  setHand(bobPlayer.id, [overReplacement], 4, 4); setEquipment(bobPlayer.id, { armor: card("EightTrigrams", "guicai-equipment") });
+  setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, [card("Overindulgence", "guicai-overindulgence")]); setTurn(game.code, alicePlayer.seat, "draw");
+  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([overOriginal, card("Attack", "guicai-over-draw-1"), card("Dodge", "guicai-over-draw-2")] ))}, discard_json='[]' WHERE code=${quote(game.code)}`);
+  const overWindow = await request("draw", { code: game.code, token: alice.token });
+  assert.equal(overWindow.status, 200, JSON.stringify(overWindow.data));
+  assert.equal(overWindow.data.room.currentAction.triggerEvent, "judgement_revealed");
+  assert.equal(overWindow.data.room.actionPlayerId, bobPlayer.id);
+  const overView = await state(game.code, bob.token);
+  assert.deepEqual(overView.data.currentAction.triggerOptions[0].selection.eligibleCardIds, [overReplacement.id], "Guicai exposes only Sima Yi's hand cards, never equipment");
+  const overReplaced = await request("trigger", { code: game.code, token: bob.token, providerId: "sima_yi_guicai", cardId: overReplacement.id });
+  assert.equal(overReplaced.status, 200, JSON.stringify(overReplaced.data));
+  assert.equal(overReplaced.data.room.phase, "play", "a Heart replacement changes Overindulgence to a successful result");
+  assert.ok(overReplaced.data.room.log.some((entry) => /judges Q♥ for Overindulgence.*Heart result allows the Play Phase/.test(entry)));
+  assert.ok(discardIds(game.code).includes(overOriginal.id)); assert.ok(discardIds(game.code).includes(overReplacement.id));
+
+  const ended = await request("end_turn", { code: game.code, token: alice.token });
   assert.equal(ended.status, 200); assert.equal(ended.data.room.turnSeat, bobPlayer.seat);
 
   const heartDelayed = { ...card("Overindulgence", "heart"), suit: "♣", rank: "6" }; const heartJudge = { ...card("Dodge", "heart-judge"), suit: "♥", rank: "9" };

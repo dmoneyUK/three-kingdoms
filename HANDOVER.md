@@ -1,5 +1,26 @@
 # Three Kingdoms project handover
 
+## Sima Yi — Guicai — 2026-09-19
+
+Guicai is implemented through the generic `judgement_revealed` trigger. Every
+supported Judgement now reveals its card, persists a serializable purpose and
+continuation, offers Sima Yi exactly one hand-card replacement decision, and
+then evaluates the selected final card. The original reveal is discarded when
+replaced; the replacement leaves Sima Yi's hand and remains the real final
+Judgement card for Luoshen, Overindulgence, Rations Depleted, Lightning, and
+Eight Trigrams. Declining preserves the revealed card as final. The existing
+`trigger` / `decline_trigger` protocol is used, with no Guicai-specific action,
+and the public log names Sima Yi's replacement while keeping the original
+reveal visible.
+
+Quick Test now assigns Guan Yu to Player1, Sima Yi to Player2, Zhao Yun to
+Player3, and Zhen Ji to Player4. Existing Luoshen, Overindulgence, and Eight
+Trigrams API declarations cover red-to-black and black-to-red replacement,
+decline, hand-only selection, final-card evaluation, and exact card
+conservation. Qingguo and Luoshen behavior remain unchanged. Fankui is not
+implemented and is the explicit boundary of this round. Full validation is
+75 / 75. The next milestone is the next individually verified Standard hero.
+
 ## Zhen Ji — Luoshen — 2026-09-18
 
 Luoshen is implemented as the first canonical `turn_start` capability. The
