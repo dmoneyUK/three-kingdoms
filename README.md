@@ -1,5 +1,10 @@
 # Three Kingdoms
 
+Shared played-card faces now colour only their rank and suit from the physical
+card suit across centre, reveal, Harvest, equipment, Judgement, and settled
+table surfaces. Gameplay and rules are unchanged; the render regression covers
+all four suits through a real `GameRoom` CardFace consumer.
+
 Hand cards now use standard suit colours: Hearts and Diamonds are red, while Spades and Clubs remain black.
 
 Zhen Ji's Luoshen is now a real repeated Judgement at the canonical beginning

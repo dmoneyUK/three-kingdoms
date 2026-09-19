@@ -811,7 +811,7 @@ function TableResolutionSequence({ events, activeEvent, players, myTableIndex, c
 
 function CardFace({ card }: { card: Card }) {
   const definition = cardDefinition(card.kind);
-  return <div className={`played-card ${card.kind.toLowerCase()}`}><i>{card.rank}<small>{card.suit}</small></i><b className="card-name-mark">{definition.name}</b><strong>{definition.category} card</strong></div>;
+  return <div className={`played-card ${card.kind.toLowerCase()} ${suitColorClass(card.suit)}`}><i>{card.rank}<small>{card.suit}</small></i><b className="card-name-mark">{definition.name}</b><strong>{definition.category} card</strong></div>;
 }
 
 function describeEvent(event: GameEvent) {

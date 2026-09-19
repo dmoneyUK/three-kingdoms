@@ -1,5 +1,18 @@
 # Three Kingdoms project handover
 
+## Played-card suit colours — 2026-09-19
+
+The shared `CardFace` now includes the existing physical-suit class used by
+hand cards. A late CSS override makes the rank/suit corner red for Hearts and
+Diamonds and dark for Spades and Clubs, after all card-kind rules, while card
+names and categories retain their existing kind styling. This covers centre
+plays and reveals, private draw cards, Judgement, Bumper Harvest, equipment,
+and settled table cards because they share `CardFace`. The render safety
+regression now exercises all four suits through the real `GameRoom` Judgement
+surface. No gameplay, rules, or state handling changed. Full validation is
+required before commit and push. The next milestone remains the next
+individually verified Standard hero.
+
 ## Sima Yi — Guicai — 2026-09-19
 
 Guicai is implemented through the generic `judgement_revealed` trigger. Every
