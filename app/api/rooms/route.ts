@@ -2199,9 +2199,10 @@ export async function POST(request: Request) {
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     const pending = stored?.kind === "response" ? stored : null;
-    if (!liveRoom || liveRoom.phase !== "response" || !pending || !["attack", "group", "duel", "negation"].includes(pending.continuation.kind) || pending.actorId !== me.id) {
-      return json({ error: "You are not the acting player for this Judgement response." }, 409);
+    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !pending || !["attack", "group", "duel", "negation"].includes(pending.continuation.kind)) {
+      return json({ error: "That Judgement response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
     }
+    if (pending.actorId !== me.id) return json({ error: "You are not the acting player for this Judgement response." }, 409);
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const players = rows.results ?? [];
     const sourceId = "sourceId" in pending.continuation ? pending.continuation.sourceId : "";
@@ -2211,7 +2212,7 @@ export async function POST(request: Request) {
       return json({ error: "The response continuation is no longer valid.", stale: true, room: await roomState(code, token) }, 409);
     }
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already been resolved." }, 409);
+    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
     await applyResponseOutcome(liveRoom, pending, me, source, players, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []), responseExecution.resolution);
     return json({ room: await roomState(code, token) });
   }
@@ -2300,13 +2301,14 @@ export async function POST(request: Request) {
   if (canonicalResponseKind === "negation" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const negation = negationResponse(stored?.kind === "response" ? stored : null);
-    if (!liveRoom || liveRoom.phase !== "response" || !negation || negation.response.actorId !== me.id) return json({ error: "You are not the acting player for this Negation response." }, 409);
+    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !negation) return json({ error: "That Negation response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (negation.response.actorId !== me.id) return json({ error: "You are not the acting player for this Negation response." }, 409);
     const { response, continuation } = negation;
     let hand = parse<Card[]>(me.hand_json, []); const canonicalRespond = canonicalResponseSatisfied && canonicalResponseKind === "negation";
     const consumedIds = canonicalRespond ? (responseExecution?.consumeCardIds ?? []) : [];
     const consumedCards = consumedIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
     if (canonicalRespond && (!responseExecution || responseExecution.status !== "satisfied" || consumedCards.length !== consumedIds.length)) return json({ error: "That Negation provider is no longer available." }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Negation decision has already moved on." }, 409);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Negation decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
     if (canonicalRespond) {
       hand = hand.filter((card) => !consumedIds.includes(card.id)); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
       if (consumedCards.length === 1) log = addCardEvent(log, me.name, consumedCards[0], me.name);
@@ -2444,13 +2446,14 @@ export async function POST(request: Request) {
     const stored = parsePersistedPending(liveRoom?.pending_json ?? null);
     const response = stored?.kind === "response" ? stored : null;
     const continuation = response?.continuation.kind === "borrowed_sword_attack" ? response.continuation as BorrowedSwordAttackContinuation : null;
-    if (!liveRoom || liveRoom.phase !== "response" || !response || !continuation || response.actorId !== me.id) return json({ error: "You are not the current Borrowed Sword Attack player." }, 409);
+    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !response || !continuation) return json({ error: "That Borrowed Sword response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (response.actorId !== me.id) return json({ error: "You are not the current Borrowed Sword Attack player." }, 409);
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const players = rows.results ?? [];
     const source = players.find((player) => player.id === continuation.sourceId && player.alive);
     const holder = players.find((player) => player.id === continuation.holderId && player.alive);
     const target = players.find((player) => player.id === continuation.targetId && player.alive);
-    if (!source || !holder || !target || target.id === holder.id || attackDistance(players, holder.id, target.id) > attackRangeFor(holder)) return json({ error: "Borrowed Sword's Attack target is no longer legal.", stale: true }, 409);
+    if (!source || !holder || !target || target.id === holder.id || attackDistance(players, holder.id, target.id) > attackRangeFor(holder)) return json({ error: "Borrowed Sword's Attack target is no longer legal.", stale: true, room: await roomState(code, token) }, 409);
     const transferOrEnd = async () => {
       const currentHolder = await db.prepare("SELECT * FROM players WHERE id = ?").bind(holder.id).first<PlayerRow>();
       const currentSource = await db.prepare("SELECT * FROM players WHERE id = ?").bind(source.id).first<PlayerRow>();
@@ -2511,7 +2514,8 @@ export async function POST(request: Request) {
   if (canonicalResponseKind === "duel" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const pending = duelResponse(stored?.kind === "response" ? stored : null);
-    if (!liveRoom || liveRoom.phase !== "response" || !pending || pending.response.actorId !== me.id) return json({ error: "You are not the acting player for this Duel response." }, 409);
+    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !pending) return json({ error: "That Duel response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (pending.response.actorId !== me.id) return json({ error: "You are not the acting player for this Duel response." }, 409);
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
     const opponent = await db.prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.opponentId).first<PlayerRow>();
     if (!opponent) return json({ error: "The other duelist is no longer available." }, 409);
@@ -2521,7 +2525,7 @@ export async function POST(request: Request) {
     const serpentCards = canonicalRespond && !selectedAttack && responseExecution && semanticCards.length === 2 ? semanticCards : [];
     if (canonicalRespond && responseExecution && semanticCards.length !== (selectedAttack ? 1 : serpentCards.length)) return json({ error: "The selected Attack provider requested unavailable costs." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Duel response has already been resolved." }, 409);
+    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Duel response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
     if (!canonicalRespond || !responseExecution) {
       await resolveDuelLoss(liveRoom, pending, me, opponent, discard, log);
     } else {
@@ -2543,7 +2547,8 @@ export async function POST(request: Request) {
   if (canonicalResponseKind === "group" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const group = groupResponse(stored?.kind === "response" ? stored : null);
-    if (!liveRoom || liveRoom.phase !== "response" || !group || group.response.actorId !== me.id) return json({ error: "You are not the acting player for this global card response." }, 409);
+    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !group) return json({ error: "That global card response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (group.response.actorId !== me.id) return json({ error: "You are not the acting player for this global card response." }, 409);
     const { response, continuation } = group;
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []);
     const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(continuation.sourceId).first<PlayerRow>();
@@ -2555,7 +2560,7 @@ export async function POST(request: Request) {
     const serpentCards = groupExecution && groupCards.length > 1 ? groupCards : [];
     if (canonicalRespond && (!groupExecution || groupExecution.status !== "satisfied" || groupCards.length !== (groupExecution.consumeCardIds ?? []).length)) return json({ error: `Select a valid ${continuation.requiredKind} response and pay its required costs.` }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
-    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved." }, 409);
+    if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That global card response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
     if (!canonicalRespond || !groupExecution) {
       await resolveGroupDamage(liveRoom, response, continuation, me, source, players, discard, log);
@@ -2574,14 +2579,15 @@ export async function POST(request: Request) {
   if (canonicalResponseKind === "attack" && (canonicalResponseSatisfied || canonicalResponseDeclined)) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>(); const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null); const response = stored?.kind === "response" ? stored : null; const attack = attackResponse(response);
-    if (!liveRoom || liveRoom.phase !== "response" || !attack || response?.actorId !== me.id) return json({ error: "You are not the acting player for this Attack response." }, 409);
+    if (!liveRoom || liveRoom.phase !== "response" || liveRoom.pending_json !== room.pending_json || !attack) return json({ error: "That Attack response is stale; the decision has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+    if (response?.actorId !== me.id) return json({ error: "You are not the acting player for this Attack response." }, 409);
     const { continuation } = attack;
     let hand = parse<Card[]>(me.hand_json, []); const discard = parse<Card[]>(liveRoom.discard_json, []); let log = parse<string[]>(liveRoom.log_json, []); const source = await db.prepare("SELECT * FROM players WHERE id = ?").bind(continuation.sourceId).first<PlayerRow>();
     const canonicalDodge = canonicalResponseSatisfied && canonicalResponseKind === "attack";
     const dodgeIds = canonicalDodge ? (responseExecution?.consumeCardIds ?? []) : [];
     const dodgeCards = dodgeIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
     if (canonicalDodge && dodgeCards.length !== dodgeIds.length) return json({ error: "That Dodge provider is no longer available." }, 409);
-    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved." }, 409);
+    const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Attack response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
     if (canonicalDodge) {
       const dodgeIdsSet = new Set(dodgeIds);
       hand = hand.filter((card) => !dodgeIdsSet.has(card.id)); discard.push(...dodgeCards);

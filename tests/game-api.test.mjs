@@ -1578,7 +1578,12 @@ test("stale and concurrent response submissions claim each transition once", { t
     request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: "dodge-stale-response", context }),
   ]);
   assert.equal(results.filter((result) => result.status === 200).length, 1, "exactly one duplicate response claims the Attack");
-  assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, "the losing duplicate is reported stale");
+  const losers = results.filter((result) => result.status === 409);
+  assert.equal(losers.length, 1, "exactly one duplicate loses the Attack claim");
+  assert.equal(losers[0].data.stale, true, "the losing duplicate is reported stale");
+  assert.ok(losers[0].data.room, "the stale response includes a fresh room projection");
+  assert.deepEqual(losers[0].data.room.myHand, [], "the losing response does not leak another private hand");
+  assert.ok(losers[0].data.room.players.every((player) => player.handCards.length === 0), "the stale response keeps all other hands private");
 
   const finished = await state(game.code, host.token);
   assert.equal(finished.data.players.find((player) => player.id === alicePlayer.id).hp, 4);

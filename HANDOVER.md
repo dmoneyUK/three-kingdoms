@@ -1,5 +1,30 @@
 # Three Kingdoms project handover
 
+## Canonical response race stale contract — 2026-09-20
+
+The exact-head CI blocker was traced to the canonical response execution race:
+two identical submissions can pass the submitted context/action revision before
+either reaches the atomic `phase = 'response' -> phase = 'resolving'` claim.
+The compare-and-set claim remains the single-winner boundary. Attack, Duel,
+Group, Negation, Borrowed Sword forced-Attack, and secondary Judgement paths now
+distinguish an advanced live decision from a same-state wrong-seat validation
+error. An advanced or claim-losing submission returns HTTP 409 with
+`stale: true` and a fresh private room projection; ordinary validation errors do
+not receive the stale contract.
+
+The API regression now checks exactly one successful response, exactly one stale
+loser, one consumed card/effect/log result, no `resolving` stall, and private
+hand isolation. A clean local Worker/D1 run passed all 75 tests. The first
+post-change rerun also exposed the known persisted `.wrangler/test-state`
+contamination in an unrelated Quick Test assertion; moving that state aside and
+rerunning from a clean isolated database restored 75/75. Exact-head CI and the
+Cloudflare deployment/smoke checks remain required before hero work begins.
+
+Recommended next work is Xiahou Dun / Ganglie only after that release gate is
+green. Preserve `ResponsePending`, `TriggerPending`, provider-owned semantic
+capabilities, `currentAction`, presentation barriers, and the shared Judgement
+pipeline.
+
 ## Player hero-card information dialog — 2026-09-19
 
 In-game player hero cards now have an accessible info icon. The public card
