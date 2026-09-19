@@ -2,12 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GameRoom, MandatoryChoiceDialog } from "../app/page.tsx";
+import { GameRoom, HeroInfoDialog, HeroSelection, MandatoryChoiceDialog } from "../app/page.tsx";
 import { normalizeRoomData } from "../game/room-safety.js";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 
 test("normalized malformed and unknown response states render safely", () => {
+  const heroSelectionRoom = normalizeRoomData({
+    code: "SAFE-HERO-INFO", status: "heroes", maxPlayers: 4, isHost: true, isTestController: false, meId: "p1", myRole: "Lord",
+    myHeroOptions: [{ id: "guan-yu", name: "Guan Yu", faction: "Shu", hp: 4, ability: "Use red cards as Attack." }],
+    players: [{ id: "p1", name: "ME", seat: 0, hero: null, hp: null, maxHp: null, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" }],
+    myHand: [], turnSeat: null, phase: null, deckCount: 0, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: null, actionReason: "Choose a hero", isMyAction: false,
+    pending: null, currentAction: null, pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
+  });
+  const heroSelectionHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: heroSelectionRoom, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
+  assert.match(heroSelectionHtml, /class="hero-info-button"/);
+  assert.match(heroSelectionHtml, /aria-label="Show information for Guan Yu"/);
+  assert.match(heroSelectionHtml, /Open info to read this general/);
+  const heroInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: heroSelectionRoom.myHeroOptions[0], onClose: () => {} }));
+  assert.match(heroInfoHtml, /HERO INFORMATION/);
+  assert.match(heroInfoHtml, /Use red cards as Attack\./);
+
   const room = normalizeRoomData({
     code: "SAFE1", status: "playing", maxPlayers: 4, isHost: true, isTestController: false, meId: "p1", myRole: "Lord", myHeroOptions: null,
     players: [{ id: "p1", name: "ME", seat: 0, hero: "zhang-fei", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: null, judgementCards: [null, { ...card("played-heart", "Dodge"), suit: "♥", rank: "2" }, { ...card("played-diamond", "Peach"), suit: "♦", rank: "3" }, { ...card("played-spade", "Dodge"), suit: "♠", rank: "4" }, { ...card("played-club", "Peach"), suit: "♣", rank: "5" }], attackRange: 1, distance: null, isHost: true, role: "Lord" }, null],

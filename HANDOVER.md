@@ -1,5 +1,14 @@
 # Three Kingdoms project handover
 
+## Hero-selection information dialog — 2026-09-19
+
+Hero-selection cards now have an accessible info icon that opens a private
+hero-information dialog with the general's faction, HP, and authoritative
+ability text. The icon is a sibling control rather than a nested button, so it
+does not alter hero selection. Escape and backdrop/close actions dismiss the
+dialog. Render coverage verifies the icon and dialog content. The next
+milestone remains the next individually verified Standard hero.
+
 ## Semantic trigger label stability — 2026-09-19
 
 Semantic trigger controls now retain their player-facing action labels while a
