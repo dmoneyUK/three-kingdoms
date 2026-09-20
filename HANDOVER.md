@@ -20,6 +20,23 @@ added; the full suite is now 93 tests.
 Known boundary: the remaining Standard heroes in the registry are still
 metadata-only and remain the next scoped work.
 
+## Yin-Yang Swords card artwork — 2026-09-20
+
+The supplied dual-blade artwork is now stored at
+`public/yin-yang-swords-card.jpg` and applied to the shared
+`.game-card.yinyangswords` and `.played-card.yinyangswords` presentation
+classes. Hand cards, centre reveals, private draws, target-card previews,
+Judgement/equipment-sized faces, and settled table cards share the same
+Yin-Yang Swords visual. A red/blue contrast gradient preserves the physical
+rank/suit, weapon name, and equipment category labels while the existing
+suit-colour corner rules remain authoritative.
+
+No gameplay protocol, card identity, or non-Yin-Yang card presentation changed.
+The artwork is intentionally scoped to the normal Standard Yin-Yang Swords
+identity; its target-owned `attack_targeted` trigger and continuation semantics
+remain unchanged. Recommended next work remains the next individually verified
+Standard hero capability.
+
 ## Zhuge Crossbow card artwork — 2026-09-20
 
 The supplied crossbow artwork is now stored at
