@@ -20,6 +20,23 @@ added; the full suite is now 93 tests.
 Known boundary: the remaining Standard heroes in the registry are still
 metadata-only and remain the next scoped work.
 
+## Eight Trigrams Formation card artwork — 2026-09-20
+
+The supplied shield artwork is now stored at
+`public/eight-trigrams-card.jpg` and applied to the shared
+`.game-card.eighttrigrams` and `.played-card.eighttrigrams` presentation
+classes. Hand cards, centre reveals, private draws, target-card previews,
+Judgement/equipment-sized faces, and settled table cards share the same Eight
+Trigrams visual. A gold/black contrast gradient preserves the physical
+rank/suit, shield name, and equipment category labels while the existing
+suit-colour corner rules remain authoritative.
+
+No gameplay protocol, card identity, or non-Eight-Trigrams card presentation
+changed. The artwork is intentionally scoped to the normal Standard Eight
+Trigrams Formation identity; its Judgement-based Dodge and Armor behavior
+remain unchanged. Recommended next work remains the next individually verified
+Standard hero capability.
+
 ## Yin-Yang Swords card artwork — 2026-09-20
 
 The supplied dual-blade artwork is now stored at
