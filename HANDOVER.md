@@ -64,6 +64,21 @@ No gameplay protocol, card identity, Negation order, choice ownership, or
 deadline transition semantics changed. Recommended next work remains the next
 individually verified Standard hero capability.
 
+## Green Dragon Blade card artwork — 2026-09-20
+
+The supplied jade-blade artwork is now stored at
+`public/green-dragon-blade-card.jpg` and applied to the shared
+`.game-card.greendragonblade` and `.played-card.greendragonblade` presentation
+classes. Hand cards, centre reveals, private draws, equipment previews, and
+settled table cards share the same Green Dragon Blade visual. A teal/green
+contrast gradient preserves the physical rank/suit, weapon name, and equipment
+category labels while the existing suit-colour corner rules remain
+authoritative.
+
+No gameplay protocol, card identity, Attack Range 3 behavior, or
+`attack_dodged` follow-up semantics changed. Recommended next work remains the
+next individually verified Standard hero capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at

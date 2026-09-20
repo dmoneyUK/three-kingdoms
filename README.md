@@ -65,6 +65,10 @@ the same shared surfaces, including the revealed choice cards. Its bright
 ember/gold contrast treatment keeps the physical rank/suit and Bumper Harvest
 label legible without changing card semantics.
 
+The standard Green Dragon Blade card now uses the supplied jade-blade artwork
+across the same shared surfaces. Its teal/green contrast treatment keeps the
+physical rank/suit and equipment label legible without changing card semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun
