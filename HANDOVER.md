@@ -1,5 +1,20 @@
 # Three Kingdoms project handover
 
+## Peach card artwork — 2026-09-20
+
+The supplied blossom artwork is now stored at `public/peach-card.jpg` and
+applied to the shared `.game-card.peach` and `.played-card.peach` presentation
+classes. Hand cards, centre reveals, private draws, target-card previews,
+Judgement/equipment-sized faces, and settled table cards share the same Peach
+visual. A warm pink/gold readability gradient preserves the physical rank/suit,
+Peach name, and category labels while the existing suit-colour corner rules
+remain authoritative.
+
+No gameplay protocol, card identity, or non-Peach card presentation changed.
+The artwork is intentionally scoped to the normal Standard `Peach` identity;
+Peach rescue and other effects retain their existing semantics. Recommended
+next work remains the next individually verified Standard hero capability.
+
 ## Dodge card artwork — 2026-09-20
 
 The supplied blue moonlit artwork is now stored at `public/dodge-card.jpg` and
