@@ -5,6 +5,10 @@ across hand, reveal, and played-card surfaces. A readability gradient keeps
 the physical rank/suit and Attack label legible; gameplay semantics and the
 remaining Standard card presentation are unchanged.
 
+The standard Dodge card now uses the supplied blue moonlit artwork across the
+same shared surfaces. Its cool readability treatment keeps the physical
+rank/suit and Dodge label legible without changing card semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun

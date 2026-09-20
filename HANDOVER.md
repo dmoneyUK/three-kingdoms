@@ -1,5 +1,21 @@
 # Three Kingdoms project handover
 
+## Dodge card artwork — 2026-09-20
+
+The supplied blue moonlit artwork is now stored at `public/dodge-card.jpg` and
+applied to the shared `.game-card.dodge` and `.played-card.dodge` presentation
+classes. Hand cards, centre reveals, private draws, target-card previews,
+Judgement/equipment-sized faces, and settled table cards share the same Dodge
+visual. A blue readability gradient preserves the physical rank/suit, Dodge
+name, and category labels while the existing suit-colour corner rules remain
+authoritative.
+
+No gameplay protocol, card identity, or non-Dodge card presentation changed.
+The artwork is intentionally scoped to the normal Standard `Dodge` identity;
+cards that create or require Dodge responses retain their own physical-card
+presentation and semantics. Recommended next work remains the next
+individually verified Standard hero capability.
+
 ## Attack card artwork — 2026-09-20
 
 The supplied red-and-black battle artwork is now stored at
