@@ -51,6 +51,11 @@ The standard Eight Trigrams Formation card now uses the supplied shield artwork
 across the same shared surfaces. Its gold/black contrast treatment keeps the
 physical rank/suit and equipment label legible without changing card semantics.
 
+The standard Burning Bridges card now uses the supplied collapsing-bridge
+artwork across the same shared surfaces. Its ember/gold contrast treatment
+keeps the physical rank/suit and Burning Bridges label legible without changing
+card semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun

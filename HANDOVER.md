@@ -20,6 +20,22 @@ added; the full suite is now 93 tests.
 Known boundary: the remaining Standard heroes in the registry are still
 metadata-only and remain the next scoped work.
 
+## Burning Bridges card artwork — 2026-09-20
+
+The supplied collapsing-bridge artwork is now stored at
+`public/burning-bridges-card.jpg` and applied to the existing shared
+`.game-card.dismantle` and `.played-card.dismantle` presentation classes.
+Because the Standard card kind is `Dismantle` while its official display name
+is Burning Bridges, this keeps the artwork on the canonical card identity.
+Hand cards, centre reveals, private draws, target-card previews, and settled
+table cards share the same Burning Bridges visual. An ember/gold contrast
+gradient preserves the physical rank/suit, card name, and category labels
+while the existing suit-colour corner rules remain authoritative.
+
+No gameplay protocol, card identity, Negation flow, or target-card picker
+semantics changed. Recommended next work remains the next individually
+verified Standard hero capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at
