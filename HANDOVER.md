@@ -79,6 +79,14 @@ No gameplay protocol, Overindulgence Judgement lifecycle, or Attack/Dodge
 response semantics changed. Recommended next work remains the next
 individually verified Standard hero capability.
 
+## Card-name sizing consistency — 2026-09-20
+
+Shared `.game-card` and `.played-card` faces now clip overflow and constrain
+card-name labels to two wrapped lines. This keeps long names such as
+Overindulgence, Eight Trigrams Formation, and Something Out of Nothing within
+the same visual card footprint across hand, reveal, played, and compact table
+surfaces. No card dimensions or gameplay semantics vary by card identity.
+
 ## Burning Bridges card artwork — 2026-09-20
 
 The supplied collapsing-bridge artwork is now stored at

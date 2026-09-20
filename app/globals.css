@@ -112,3 +112,4 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .hero-choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));max-width:1180px;gap:14px;margin:38px auto 28px}.hero-info-skill{display:block;margin:-2px 0 8px;color:#e0bd72;font:700 11px Arial;letter-spacing:.16em;text-transform:uppercase}.hero-info-skill-block{margin-top:14px}.hero-info-skill-block p{margin:0}.hero-choice.taken{opacity:.42;cursor:not-allowed}.hero-choice.taken:hover{translate:0;border-color:#605c47}
 .hero-choice-grid{display:grid!important}
 @media(max-width:520px){.hero-choice-grid{grid-template-columns:1fr}}
+.game-card,.played-card{min-width:0;overflow:hidden}.game-card .card-name-mark,.played-card .card-name-mark{min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.game-card .card-name-mark{max-width:100%}

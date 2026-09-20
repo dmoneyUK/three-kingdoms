@@ -129,6 +129,11 @@ slash artwork across the same shared surfaces. Its existing readability
 treatment keeps the physical rank/suit and Attack label legible without
 changing card semantics.
 
+Card faces now keep one shared footprint even when a card name is long. Names
+such as Overindulgence, Eight Trigrams Formation, and Something Out of Nothing
+wrap within the card and are limited to two readable lines across hand, reveal,
+played, and compact table surfaces.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun
