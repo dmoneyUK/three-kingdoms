@@ -1,5 +1,20 @@
 # Three Kingdoms project handover
 
+## Attack card artwork — 2026-09-20
+
+The supplied red-and-black battle artwork is now stored at
+`public/attack-card.jpg` and applied to the shared `.game-card.attack` and
+`.played-card.attack` presentation classes. Hand cards, centre reveals,
+private draws, target-card previews, Judgement/equipment-sized faces, and
+settled table cards therefore share the same Attack visual. A dark readability
+gradient preserves the physical rank/suit, Attack name, and category labels.
+No gameplay protocol, card identity, or non-Attack card presentation changed.
+
+Known boundary: the artwork is intentionally scoped to the normal Standard
+`Attack` identity; other cards that may create or require Attacks retain their
+own physical-card artwork and semantics. Recommended next work remains the
+next individually verified Standard hero capability.
+
 ## Standard hero metadata and Quick Test start phase — 2026-09-20
 
 The shared Standard hero registry now carries the supplied English skill names
