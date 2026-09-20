@@ -75,7 +75,7 @@ function normalizeCurrentAction(value) {
         : isRecord(option.selection) && option.selection.type === "choice" && Array.isArray(option.selection.choices) && Array.isArray(option.selection.eligibleHandKeys)
           ? { type: "choice", choices: option.selection.choices.filter(isRecord).filter((choice) => typeof choice.id === "string" && typeof choice.label === "string").map((choice) => ({ id: choice.id, label: choice.label })), eligibleHandKeys: option.selection.eligibleHandKeys.filter((id) => typeof id === "string"), ...(isRecord(option.selection.cardCountByChoice) ? { cardCountByChoice: Object.fromEntries(Object.entries(option.selection.cardCountByChoice).filter(([id, count]) => typeof id === "string" && Number.isInteger(count) && count >= 0)) } : {}) }
         : null;
-    return [{ effectId: option.effectId, label: option.label, ...(option.allowDecline === false ? { allowDecline: false } : {}), ...(typeof option.timeoutChoiceId === "string" ? { timeoutChoiceId: option.timeoutChoiceId } : {}), selection }];
+    return [{ effectId: option.effectId, label: option.label, ...(typeof option.description === "string" ? { description: option.description } : {}), ...(option.allowDecline === false ? { allowDecline: false } : {}), ...(typeof option.timeoutChoiceId === "string" ? { timeoutChoiceId: option.timeoutChoiceId } : {}), selection }];
   }) : [];
   const playPhaseActions = Array.isArray(value.playPhaseActions) ? value.playPhaseActions.filter(isRecord).flatMap((action) => typeof action.cardId === "string" && action.canPlayAs === "attack" ? [{ cardId: action.cardId, canPlayAs: "attack" }] : []).filter((action, index, all) => all.findIndex((candidate) => candidate.cardId === action.cardId) === index) : [];
   return {

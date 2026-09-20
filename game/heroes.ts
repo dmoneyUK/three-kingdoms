@@ -8,7 +8,7 @@ const standard = (id: string, name: string, faction: string, hp: number, ability
 export const STANDARD_HEROES: readonly HeroDefinition[] = [
   standard("cao-cao","Cao Cao","Wei",4,"After taking damage, you may gain the card that caused it.","male"),
   standard("simayi","Sima Yi","Wei",3,"When a Judgement card is revealed, you may replace it with one card from your hand.","male"),
-  standard("xiahou-dun","Xiahou Dun","Wei",4,"After taking damage, judge: on red, the source discards or loses HP.","male"),
+  standard("xiahou-dun","Xiahou Dun","Wei",4,"After taking damage, you may enter Judgement. If the Judgement card is not a Heart, the damage source must choose one: discard exactly 2 cards from their hand (not Equipment or Judgement Zone cards), or take 1 damage from Xiahou Dun.","male"),
   standard("zhang-liao","Zhang Liao","Wei",4,"During draw, you may take cards from up to two players instead.","male"),
   standard("xu-chu","Xu Chu","Wei",4,"Draw one fewer card to make your Attack and Duel damage stronger.","male"),
   standard("guo-jia","Guo Jia","Wei",3,"After a judgement or damage, turn revealed cards into resources.","male"),

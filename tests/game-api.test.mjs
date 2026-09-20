@@ -1432,7 +1432,9 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   assert.equal(sourceView.currentAction.actorId, resolved.source.id);
   assert.ok(sourceView.currentAction.presentation?.readyAfterEventId, "the mandatory source choice retains its presentation barrier");
   const choice = sourceView.currentAction.triggerOptions.find((option) => option.effectId === "xiahou_dun_ganglie");
+  assert.equal(choice.description, "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.");
   assert.deepEqual(choice.selection.choices.map((entry) => entry.id), ["discard_two", "take_damage"]);
+  assert.equal(choice.selection.choices[0].label, "Discard exactly 2 cards from your hand");
   assert.equal(choice.selection.cardCountByChoice.discard_two, 2);
   assert.deepEqual(choice.selection.eligibleHandKeys, ["hand:0", "hand:1"]);
   const targetView = (await state(resolved.code, resolved.targetMember.token)).data;

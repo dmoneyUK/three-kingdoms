@@ -25,6 +25,15 @@ test("normalized malformed and unknown response states render safely", () => {
   const heroInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "simayi", name: "Sima Yi", faction: "Wei", hp: 3, skill: "Guicai", ability: "When a Judgement card is revealed, you may replace it with one card from your hand." }, onClose: () => {} }));
   assert.match(heroInfoHtml, />Guicai<\/strong>/);
   assert.match(heroInfoHtml, /When a Judgement card is revealed/);
+  const ganglieInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "xiahou-dun", name: "Xiahou Dun", faction: "Wei", hp: 4, skill: "Stauchness / Ganglie", ability: "After taking damage, you may enter Judgement. If the Judgement card is not a Heart, the damage source must choose one: discard exactly 2 cards from their hand (not Equipment or Judgement Zone cards), or take 1 damage from Xiahou Dun." }, onClose: () => {} }));
+  assert.match(ganglieInfoHtml, />Stauchness \/ Ganglie<\/strong>/);
+  assert.match(ganglieInfoHtml, /discard exactly 2 cards from their hand/);
+  assert.match(ganglieInfoHtml, /not Equipment or Judgement Zone cards/);
+  const choiceSelection = { type: "choice", choices: [{ id: "discard_two", label: "Discard exactly 2 cards from your hand" }, { id: "take_damage", label: "Take 1 damage from Xiahou Dun" }], eligibleHandKeys: ["hand:0", "hand:1"], cardCountByChoice: { discard_two: 2 } };
+  const ganglieChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, { option: { effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.", allowDecline: false, selection: choiceSelection }, selection: choiceSelection, selectedChoice: "", selectedKeys: [], disabled: false, error: "", onChoice: () => {}, onToggle: () => {}, onConfirm: () => {} }));
+  assert.match(ganglieChoiceHtml, /The Judgement is not a Heart/);
+  assert.match(ganglieChoiceHtml, /Discard exactly 2 cards from your hand/);
+  assert.match(ganglieChoiceHtml, /Take 1 damage from Xiahou Dun/);
   assert.match(html, /Attack/);
   assert.match(html, /class="game-card attack black-suit/);
   assert.match(html, /class="game-card attack red-suit/);

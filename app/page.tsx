@@ -269,7 +269,7 @@ export function HeroInfoDialog({ hero, onClose }: { hero: Hero; onClose: () => v
 }
 
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
-const HERO_SKILL_NAMES: Record<string, string> = { simayi: "Guicai", "guan-yu": "Wusheng", "zhao-yun": "Longdan", "zhang-fei": "Paoxiao", "zhen-ji": "Luoshen" };
+const HERO_SKILL_NAMES: Record<string, string> = { simayi: "Guicai", "xiahou-dun": "Stauchness / Ganglie", "guan-yu": "Wusheng", "zhao-yun": "Longdan", "zhang-fei": "Paoxiao", "zhen-ji": "Luoshen" };
 function heroSkillName(id?: string | null) { return id ? HERO_SKILL_NAMES[id] ?? null : null; }
 function heroDefinition(id?: string | null): Hero | null {
   const hero = HEROES.find((candidate) => candidate.id === id);
@@ -714,7 +714,7 @@ export function MandatoryChoiceDialog({ option, selection, selectedChoice, selec
   const complete = Boolean(selectedChoice && validSelectedKeys.length === requiredHandCount);
   const labelForChoice = (choice: { id: string; label: string }) => choice.id === "draw" ? "Keep hand — attacker draws 1 card" : choice.label;
   return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="true" aria-label={`${option.label} decision`}>
-    <header><strong>{option.label.toUpperCase()}</strong><span>Choose one:</span></header>
+    <header><strong>{option.label.toUpperCase()}</strong><span>{option.description ?? "Choose one:"}</span></header>
     <div className="choice-trigger-options">{selection.choices.map((choice) => <button type="button" key={choice.id} className={selectedChoice === choice.id ? "selected" : ""} disabled={disabled} aria-pressed={selectedChoice === choice.id} onClick={() => onChoice(choice.id)}>{labelForChoice(choice)}</button>)}</div>
     {needsHandCard && <><div className="target-card-picker-card-row choice-trigger-card-row" aria-label="Eligible hand cards">{handKeys.map((key) => { const index = Number(key.slice(5)); const selected = validSelectedKeys.includes(key); return <button type="button" key={key} className={`target-card-picker-card concealed-card ${selected ? "selected" : ""}`} disabled={disabled} aria-pressed={selected} aria-label={`Hidden hand card ${index + 1}`} onClick={() => onToggle(key)}><span aria-hidden="true">?</span>{selected && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>; })}</div><div className="target-card-picker-count" aria-live="polite">{validSelectedKeys.length} / {requiredHandCount} selected</div></>}
     <div className="target-card-picker-actions"><button type="button" className="primary" disabled={disabled || !complete} onClick={() => onConfirm(selectedChoice, validSelectedKeys)}>Confirm choice</button></div>

@@ -46,6 +46,13 @@ responses, Duel losses, Rock Cleaving Axe forced damage, and sourced damage
 caused by Stauchness use the same post-damage boundary; source-less Lightning
 does not invent a source.
 
+The Ganglie source consequence is presented as a mandatory generic choice: the
+damage source sees the complete non-Heart Judgement rule and must either
+discard exactly two cards from their hand or take 1 damage from Xiahou Dun;
+Equipment and Judgement Zone cards are not eligible. Xiahou Dun's hero
+information dialog now includes the skill name **Stauchness / Ganglie** and
+the complete hand-only rule text.
+
 Zhang Fei's Paoxiao is now a locked passive capability. The shared Attack-use-limit capability discovers Paoxiao and Zhuge Crossbow from `{ hero, equipment }`, so normal Attacks, Serpent Spear Attacks, and the projected `canDeclareAttack`/resume phase all share one authoritative unlimited-Attack result. Borrowed Sword forced Attacks remain outside the Play Phase limit. Existing Attack range, horse, weapon trigger, Dodge, damage, Dying, and Borrowed Sword behavior is unchanged.
 
 When Yin-Yang Swords lets the attacker draw, the drawn card now appears in the attacker's normal private centre-card presentation and remains hidden from the other seats.

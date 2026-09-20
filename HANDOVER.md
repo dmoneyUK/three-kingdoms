@@ -1,5 +1,21 @@
 # Three Kingdoms project handover
 
+## Ganglie source-choice prompt and hero information — 2026-09-20
+
+The mandatory Stauchness/Ganglie consequence now carries a generic trigger
+description into `currentAction`: after a non-Heart Judgement, the damage
+source must choose between discarding exactly two cards from their hand or
+taking 1 damage from Xiahou Dun. Equipment and Judgement Zone cards are
+explicitly excluded, and the shared choice dialog renders both the rule text
+and the legal choices. The API still owns the eligibility and card-count
+validation.
+
+Xiahou Dun's hero information now identifies the skill as **Stauchness /
+Ganglie** and shows the complete rule wording, including the exact discard
+count and hand-only source. Regression rendering covers the hero dialog and
+the mandatory trigger prompt; the existing API Ganglie source-choice tests
+remain green.
+
 ## P1 sourced-damage / Group continuation correction — 2026-09-20
 
 The post-damage `damage_suffered` event is now applied consistently after

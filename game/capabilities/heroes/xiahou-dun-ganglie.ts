@@ -8,13 +8,14 @@ export const xiahouDunGanglieTrigger: TriggeredEffect = {
   event: "damage_suffered",
   getOption(context: TriggerContext): TriggerOption | null {
     if (context.event !== "damage_suffered" || context.targetHero !== "xiahou-dun" || !context.sourceId) return null;
-    if (!context.judgementCard) return { effectId: id, label: "Use Stauchness", selection: null };
+    if (!context.judgementCard) return { effectId: id, label: "Use Stauchness", description: "After the damage, Xiahou Dun reveals a Judgement card.", selection: null };
     if (context.judgementPurpose !== "ganglie" || context.judgementCard.suit === "♥") return null;
     const choices = [{ id: "take_damage", label: "Take 1 damage from Xiahou Dun" }];
-    if ((context.sourceHand?.length ?? 0) >= 2) choices.unshift({ id: "discard_two", label: "Discard 2 hand cards" });
+    if ((context.sourceHand?.length ?? 0) >= 2) choices.unshift({ id: "discard_two", label: "Discard exactly 2 cards from your hand" });
     return {
       effectId: id,
       label: "Stauchness",
+      description: "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.",
       allowDecline: false,
       timeoutChoiceId: "take_damage",
       selection: {
