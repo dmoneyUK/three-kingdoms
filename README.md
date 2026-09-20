@@ -39,6 +39,10 @@ across the same shared surfaces. Its slate/gold contrast treatment keeps the
 physical rank/suit and Raining Arrows label legible without changing card
 semantics.
 
+The standard Zhuge Crossbow card now uses the supplied crossbow artwork across
+the same shared surfaces. Its dark gold contrast treatment keeps the physical
+rank/suit and equipment label legible without changing card semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun

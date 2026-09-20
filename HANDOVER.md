@@ -20,6 +20,22 @@ added; the full suite is now 93 tests.
 Known boundary: the remaining Standard heroes in the registry are still
 metadata-only and remain the next scoped work.
 
+## Zhuge Crossbow card artwork — 2026-09-20
+
+The supplied crossbow artwork is now stored at
+`public/zhuge-crossbow-card.jpg` and applied to the shared
+`.game-card.zhugecrossbow` and `.played-card.zhugecrossbow` presentation
+classes. Hand cards, centre reveals, private draws, target-card previews,
+Judgement/equipment-sized faces, and settled table cards share the same Zhuge
+Crossbow visual. A dark gold contrast gradient preserves the physical rank/suit,
+Crossbow name, and equipment category labels while the existing suit-colour
+corner rules remain authoritative.
+
+No gameplay protocol, card identity, or non-Crossbow card presentation changed.
+The artwork is intentionally scoped to the normal Standard Zhuge Crossbow
+identity; its unlimited-Attack capability remains unchanged. Recommended next
+work remains the next individually verified Standard hero capability.
+
 ## Raining Arrows card artwork — 2026-09-20
 
 The supplied arrow-storm artwork is now stored at
