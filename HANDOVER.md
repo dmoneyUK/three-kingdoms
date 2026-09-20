@@ -49,6 +49,21 @@ No gameplay protocol, card identity, target-distance validation, or target-card
 picker semantics changed. Recommended next work remains the next individually
 verified Standard hero capability.
 
+## Bumper Harvest card artwork — 2026-09-20
+
+The supplied harvest artwork is now stored at
+`public/bumper-harvest-card.jpg` and applied to the shared
+`.game-card.bumperharvest` and `.played-card.bumperharvest` presentation
+classes. Hand cards, centre reveals, private draws, the multi-card Bumper
+Harvest choice stage, and settled table cards share the same visual. A bright
+ember/gold contrast gradient preserves the physical rank/suit, card name, and
+category labels while the existing suit-colour corner rules remain
+authoritative.
+
+No gameplay protocol, card identity, Negation order, choice ownership, or
+deadline transition semantics changed. Recommended next work remains the next
+individually verified Standard hero capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at
