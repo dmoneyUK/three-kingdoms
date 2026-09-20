@@ -1,5 +1,22 @@
 # Three Kingdoms project handover
 
+## Raining Arrows card artwork — 2026-09-20
+
+The supplied arrow-storm artwork is now stored at
+`public/raining-arrows-card.jpg` and applied to the shared
+`.game-card.rainingarrows` and `.played-card.rainingarrows` presentation
+classes. Hand cards, centre reveals, private draws, target-card previews,
+Judgement/equipment-sized faces, and settled table cards share the same Raining
+Arrows visual. A slate/gold contrast gradient preserves the physical rank/suit,
+Raining Arrows name, and category labels while the existing suit-colour corner
+rules remain authoritative.
+
+No gameplay protocol, card identity, or non-Raining-Arrows card presentation
+changed. The artwork is intentionally scoped to the normal Standard Raining
+Arrows identity; its Group response and Dying continuation semantics are
+unchanged. Recommended next work remains the next individually verified
+Standard hero capability.
+
 ## Oath in Peach Garden card artwork — 2026-09-20
 
 The supplied blossom-oath artwork is now stored at `public/oath-card.jpg` and
