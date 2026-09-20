@@ -74,6 +74,11 @@ artwork across the same shared surfaces. Red Hare, Purple Bay, and Fergana
 Steed share the red/ember contrast treatment, while defensive plus-one-distance
 horses remain unchanged.
 
+The defensive plus-one-distance horse cards now use the supplied spectral horse
+artwork across the same shared surfaces. Shadowrunner, Hex Mark, and
+Yellow-Hoofed Flying-Lightning share the blue/silver contrast treatment, while
+outgoing minus-one-distance horses remain unchanged.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun

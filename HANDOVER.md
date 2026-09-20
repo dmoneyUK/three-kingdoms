@@ -96,6 +96,23 @@ No gameplay protocol, distance calculation, equipment-slot behavior, or
 defensive plus-one-distance horse presentation changed. Recommended next work
 remains the next individually verified Standard hero capability.
 
+## Defensive horse card artwork — 2026-09-20
+
+The supplied spectral horse artwork is now stored at
+`public/defensive-horse-card.jpg` and applied to the shared
+`.game-card.shadowrunner`, `.game-card.hexmark`,
+`.game-card.yellowhoofedflyinglightning`, and their `.played-card` counterparts,
+with the legacy `.defensivehorse` alias covered for saved-room compatibility.
+These cards represent the incoming plus-one-distance horse effect. Hand cards,
+centre reveals, private draws, equipment previews, and settled table cards
+share the same visual. A blue/silver contrast gradient preserves the physical
+rank/suit, horse name, and equipment category labels while the existing
+suit-colour corner rules remain authoritative.
+
+No gameplay protocol, distance calculation, equipment-slot behavior, or
+offensive minus-one-distance horse presentation changed. Recommended next work
+remains the next individually verified Standard hero capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at
