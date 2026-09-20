@@ -1,5 +1,21 @@
 # Three Kingdoms project handover
 
+## Lightning card artwork — 2026-09-20
+
+The supplied storm artwork is now stored at `public/lightning-card.jpg` and
+applied to the shared `.game-card.lightning` and `.played-card.lightning`
+presentation classes. Hand cards, centre reveals, private draws, target-card
+previews, Judgement/equipment-sized faces, and settled table cards share the
+same Lightning visual. An electric gold/blue contrast gradient preserves the
+physical rank/suit, Lightning name, and category labels while the existing
+suit-colour corner rules remain authoritative.
+
+No gameplay protocol, card identity, or non-Lightning card presentation
+changed. The artwork is intentionally scoped to the normal Standard
+`Lightning` identity; its delayed Judgement and damage semantics are unchanged.
+Recommended next work remains the next individually verified Standard hero
+capability.
+
 ## Duel card artwork — 2026-09-20
 
 The supplied red-and-gold battle artwork is now stored at `public/duel-card.jpg`
