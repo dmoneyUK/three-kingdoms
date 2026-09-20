@@ -129,6 +129,40 @@ test("Quick Test completes the shared hero start phase before dealing", async ()
   assert.ok(room.players.every((player) => player.hp === player.maxHp));
 });
 
+test("Wu hero skills complete through the normal semantic API", async () => {
+  const qixiGame = await createHumanGame(); const qixiSource = qixiGame.room.players[0]; const qixiTarget = qixiGame.room.players[1];
+  const blackCard = card("Peach", "qixi-black", "♣"); const targetCard = card("Peach", "qixi-target");
+  sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(qixiSource.id)}`); setHand(qixiSource.id, [blackCard], 4, 4); setHand(qixiTarget.id, [targetCard], 4, 4); setTurn(qixiGame.code, qixiSource.seat);
+  const qixi = await request("trigger", { code: qixiGame.code, token: qixiGame.members[0].token, providerId: "gan_ning_qixi", cardIds: [blackCard.id], targetId: qixiTarget.id });
+  assert.equal(qixi.status, 200, JSON.stringify(qixi.data)); assert.equal(qixi.data.room.pendingTargetCard.cardKind, "Dismantle");
+  const qixiChosen = await request("choose_target_card", { code: qixiGame.code, token: qixiGame.members[0].token, targetCardZone: "hand", targetCardIndex: 0 });
+  assert.equal(qixiChosen.status, 200, JSON.stringify(qixiChosen.data)); assert.ok(discardIds(qixiGame.code).includes(blackCard.id)); assert.ok(!JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(qixiTarget.id)}`)).some((item) => item.id === targetCard.id));
+
+  const kejiGame = await createHumanGame(); const kejiSource = kejiGame.room.players[0]; const oversized = [card("Peach", "keji-1"), card("Peach", "keji-2"), card("Peach", "keji-3")];
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(kejiSource.id)}`); setHand(kejiSource.id, oversized, 2, 4); setTurn(kejiGame.code, kejiSource.seat);
+  const keji = await request("end_turn", { code: kejiGame.code, token: kejiGame.members[0].token }); assert.equal(keji.status, 200, JSON.stringify(keji.data)); assert.notEqual(keji.data.room.phase, "discard");
+
+  const kurouGame = await createHumanGame(); const kurouSource = kurouGame.room.players[0]; const kurouDraw = [card("Peach", "kurou-a"), card("Dodge", "kurou-b")];
+  sql(`UPDATE players SET hero='huang-gai' WHERE id=${quote(kurouSource.id)}`); setHand(kurouSource.id, [], 4, 4); setDeck(kurouGame.code, kurouDraw); setTurn(kurouGame.code, kurouSource.seat);
+  const kurou = await request("trigger", { code: kurouGame.code, token: kurouGame.members[0].token, providerId: "huang_gai_kurou" }); assert.equal(kurou.status, 200, JSON.stringify(kurou.data)); assert.equal(kurou.data.room.players.find((player) => player.id === kurouSource.id).hp, 3); assert.equal(kurou.data.room.myHand.length, 2);
+
+  const zhouGame = await createHumanGame(); const zhouSource = zhouGame.room.players[0]; const zhouDraw = [card("Peach", "yingzi-a"), card("Dodge", "yingzi-b"), card("Attack", "yingzi-c")];
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(zhouSource.id)}`); setHand(zhouSource.id, [], 3, 3); setDeck(zhouGame.code, zhouDraw); setTurn(zhouGame.code, zhouSource.seat, "draw");
+  const yingzi = await request("draw", { code: zhouGame.code, token: zhouGame.members[0].token }); assert.equal(yingzi.status, 200, JSON.stringify(yingzi.data)); assert.equal(yingzi.data.room.myHand.length, 3);
+
+  const fanjianGame = await createHumanGame(); const fanjianSource = fanjianGame.room.players[0]; const fanjianTarget = fanjianGame.room.players[1]; const concealed = card("Peach", "fanjian-card", "♥");
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(fanjianSource.id)}`); setHand(fanjianSource.id, [concealed], 3, 3); setHand(fanjianTarget.id, [], 4, 4); setTurn(fanjianGame.code, fanjianSource.seat);
+  const fanjian = await request("trigger", { code: fanjianGame.code, token: fanjianGame.members[0].token, providerId: "zhou_yu_fanjian", cardIds: [concealed.id], targetId: fanjianTarget.id }); assert.equal(fanjian.status, 200, JSON.stringify(fanjian.data));
+  const guess = await request("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♠" }); assert.equal(guess.status, 200, JSON.stringify(guess.data)); assert.equal(guess.data.room.players.find((player) => player.id === fanjianTarget.id).hp, 3); assert.ok(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianTarget.id)}`)).some((item) => item.id === concealed.id));
+});
+
+test("Lü Bu Wushuang requires two Dodges for an Attack", async () => {
+  const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const attack = card("Attack", "wushuang-attack"); const dodges = [card("Dodge", "wushuang-dodge-a"), card("Dodge", "wushuang-dodge-b")];
+  sql(`UPDATE players SET hero='lü-bu' WHERE id=${quote(source.id)}`); setHand(source.id, [attack], 4, 4); setHand(target.id, dodges, 4, 4); setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data)); const response = await state(game.code, game.members[1].token); assert.equal(response.data.currentAction.requirement, "dodge"); assert.equal(response.data.currentAction.options.find((option) => option.providerId === "card").selection.min, 2);
+  const blocked = await request("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardIds: dodges.map((item) => item.id) }); assert.equal(blocked.status, 200, JSON.stringify(blocked.data)); assert.equal(blocked.data.room.players.find((player) => player.id === target.id).hp, 4);
+});
+
 test("room reads are read-only and presence heartbeats are throttled", async () => {
   const created = await request("create", { name: "Presence Host" });
   assert.equal(created.status, 201);
@@ -165,7 +199,7 @@ async function createHumanGame() {
   const members = [{ name: "Host", token: created.data.token }];
   for (const name of ["Alice", "Bob", "Carol"]) { const joined = await request("join", { code, name }); assert.equal(joined.status, 201); members.push({ name, token: joined.data.token }); }
   assert.equal((await request("start", { code, token: members[0].token, name: "Host" })).status, 200);
-  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => !["zhen-ji", "simayi", "xiahou-dun"].includes(option.id)) ?? before.data.myHeroOptions[0]; const chosen = await request("choose_hero", { code, token: member.token, heroId: hero.id }); assert.equal(chosen.status, 200, JSON.stringify(chosen.data)); }
+  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => !["zhen-ji", "simayi", "xiahou-dun", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lü-bu"].includes(option.id)) ?? before.data.myHeroOptions[0]; const chosen = await request("choose_hero", { code, token: member.token, heroId: hero.id }); assert.equal(chosen.status, 200, JSON.stringify(chosen.data)); }
   const started = (await state(code, members[0].token)).data; const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(code)}`) || "[]");
   for (const player of started.players) {
     const hand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`) || "[]");

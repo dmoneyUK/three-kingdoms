@@ -5,7 +5,7 @@ import type { TriggerEvent } from "./capabilities/triggers";
 
 /** The one persisted decision in a room, independent of HTTP and D1. */
 export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered" | "borrowed_sword";
-export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; sequenceStartCardId: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string };
+export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; requiredDodgeCount?: number; sequenceStartCardId: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string };
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
 export type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 export type TargetCardPending = { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
@@ -16,9 +16,9 @@ export type DeferredStratagem =
   | { kind: "dismantle"; targetId: string } | { kind: "steal"; targetId: string } | { kind: "duel"; pending: ResponsePending } | { kind: "group"; pending: GroupResponsePending }
   | { kind: "overindulgence"; targetId: string; cardId: string } | { kind: "lightning"; targetId: string; cardId: string } | { kind: "rations_depleted"; targetId: string; cardId: string } | { kind: "judgement"; targetId: string; cardId: string };
 /** Only effect-resumption data belongs in a canonical response continuation. */
-export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; resolutionId?: string };
+export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string };
 export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; resolutionId?: string };
-export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; damageCards?: Card[] };
+export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string };
 export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string };
 export type ResponseContinuation = AttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;
 
@@ -111,7 +111,14 @@ export type JudgementRevealedTriggerContinuation = {
   kind: "judgement_revealed_event";
   judgement: JudgementContinuation;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | JudgementRevealedTriggerContinuation;
+export type HeroChoiceTriggerContinuation = {
+  kind: "hero_choice_event";
+  sourceId: string;
+  targetId: string;
+  card: Card;
+  resumePhase: string;
+};
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | JudgementRevealedTriggerContinuation | HeroChoiceTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

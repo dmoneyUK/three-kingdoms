@@ -1,5 +1,13 @@
 # Three Kingdoms
 
+The next Wu/Qun hero batch is now playable: Gan Ning (Qixi), Lü Meng
+(Keji), Huang Gai (Kurou), Zhou Yu (Yingzi/Fanjian), and Lü Bu (Wushuang).
+Qixi uses the canonical Burning Bridges Negation and target-card flow; Keji,
+Kurou, Yingzi, and Fanjian are wired into the normal turn/trigger transitions;
+and Wushuang changes the server-side response count for Attack and Duel. The
+capabilities are available in normal multiplayer and Quick Test through the
+shared `trigger` / `respond` protocol.
+
 The standard Attack card now uses the supplied red-and-black battle artwork
 across hand, reveal, and played-card surfaces. A readability gradient keeps
 the physical rank/suit and Attack label legible; gameplay semantics and the

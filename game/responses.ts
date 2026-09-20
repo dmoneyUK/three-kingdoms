@@ -12,8 +12,8 @@ export type ResponseDelegate = { id: string; hero?: string | null; hand: Card[];
 export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null; playerId?: string; delegates?: ResponseDelegate[] };
 export type SemanticAction = "attack" | "dodge" | "damage" | "recover" | "draw" | "discard" | "negate" | "judgement" | "gain_card" | "lose_card";
 export type ActionRequirement =
-  | { kind: "dodge"; sourceId?: string; targetId?: string; attack?: { cardId?: string; suit?: string; ignoresArmor?: boolean } }
-  | { kind: "attack"; sourceId?: string; actorId?: string; context?: "duel" | "barbarian_invasion" | "green_dragon" }
+  | { kind: "dodge"; sourceId?: string; targetId?: string; count?: number; attack?: { cardId?: string; suit?: string; ignoresArmor?: boolean } }
+  | { kind: "attack"; sourceId?: string; actorId?: string; count?: number; context?: "duel" | "barbarian_invasion" | "green_dragon" }
   | { kind: "negate"; sourceId?: string; targetId?: string };
 export type ResponseSelection = { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null;
 export type CapabilityContext = ResponseContext & { requirement: ActionRequirement };
@@ -52,6 +52,8 @@ export function getResponseOptions(context: CapabilityContext, requirement: Acti
   const satisfies = requirement.kind;
   const options = providers.filter((provider) => provider.satisfies === satisfies).flatMap((provider) => {
     const option = provider.getOption({ ...context, requirement });
+    const requiredCount = requirement.kind === "attack" || requirement.kind === "dodge" ? requirement.count ?? 1 : 1;
+    if (option && requiredCount > 1 && option.selection && (option.selection.min !== requiredCount || option.selection.max !== requiredCount)) return [];
     return option ? [{ ...option, activation: provider.activation }] : [];
   });
   // The ordinary physical-card route is the sole immediate/default route.
@@ -88,4 +90,4 @@ export function resolveResponseProvider(providerId: unknown, context: ResponseEx
 }
 
 export function canRespondWithAttack(context: ResponseContext) { return getResponseOptions({ ...context, requirement: { kind: "attack" } }, { kind: "attack" }).length > 0; }
-export function canRespondWithDodge(context: ResponseContext) { return getResponseOptions({ ...context, requirement: { kind: "dodge" } }, { kind: "dodge" }).length > 0; }
+export function canRespondWithDodge(context: ResponseContext, count = 1) { return getResponseOptions({ ...context, requirement: { kind: "dodge", count } }, { kind: "dodge", count }).length > 0; }

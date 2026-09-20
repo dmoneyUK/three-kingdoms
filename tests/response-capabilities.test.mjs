@@ -11,8 +11,21 @@ import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement
 import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
 import { heroGender } from "../game/heroes.ts";
 import { canDeclareAttack, playPhaseAfterAttack } from "../game/rules.ts";
+import { getActiveHeroSkillOptions, resolveActiveHeroSkill } from "../game/capabilities/heroes/kings.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
+
+test("Wu and Qun hero capabilities project their private costs and Wushuang multiplicity", () => {
+  const black = card("Peach", "qixi-black");
+  const targets = ["target"];
+  const qixi = getActiveHeroSkillOptions({ playerId: "source", hero: "gan-ning", hand: [black], livingTargetIds: targets, skillState: {} });
+  assert.equal(qixi[0].effectId, "gan_ning_qixi");
+  assert.deepEqual(resolveActiveHeroSkill("gan_ning_qixi", { playerId: "source", hero: "gan-ning", hand: [black], livingTargetIds: targets, skillState: {} }, { cardIds: [black.id], targetId: "target" })?.outcome, { kind: "dismantle", sourceId: "source", targetId: "target", cardIds: [black.id] });
+  assert.equal(getActiveHeroSkillOptions({ playerId: "source", hero: "huang-gai", hand: [], livingTargetIds: targets, skillState: {} })[0].effectId, "huang_gai_kurou");
+  assert.equal(getActiveHeroSkillOptions({ playerId: "source", hero: "zhou-yu", hand: [black], livingTargetIds: targets, skillState: {} })[0].effectId, "zhou_yu_fanjian");
+  assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a"), card("Dodge", "dodge-b")], equipment: [], hero: null }, { kind: "dodge", count: 2 })[0].selection.min, 2);
+  assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a")], equipment: [], hero: null }, { kind: "dodge", count: 2 }).length, 0);
+});
 
 test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack", () => {
   const redPeach = { ...card("Peach", "red-peach"), suit: "♥" };

@@ -10,12 +10,12 @@ import { simaYiFankuiTrigger } from "./heroes/sima-yi-fankui";
 import { xiahouDunGanglieTrigger } from "./heroes/xiahou-dun-ganglie";
 import { caoCaoJianxiongTrigger } from "./heroes/cao-cao-jianxiong";
 
-export type TriggerEvent = "turn_start" | "judgement_revealed" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered";
+export type TriggerEvent = "turn_start" | "judgement_revealed" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice";
 /**
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
  */
-export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie" };
+export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie"; heroChoiceCard?: Card };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown; choice?: unknown };
 export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[]; targetIds?: string[] }
@@ -42,6 +42,7 @@ export type TriggerExecution =
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement_replacement"; cardId: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "gain_target_card"; sourceId: string; targetId: string; targetCardKey: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "gain_damage_cards"; targetId: string; cardIds: string[] } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_choice"; targetId: string; guess: string; correct: boolean } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "continue_event" } };
 export type TriggerPresentation = { label: string };
 export type TriggeredEffect = {
@@ -51,7 +52,23 @@ export type TriggeredEffect = {
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
 };
 
-const triggers: TriggeredEffect[] = [zhenJiLuoshenTrigger, simaYiGuicaiTrigger, simaYiFankuiTrigger, caoCaoJianxiongTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
+const zhouYuFanjianChoice: TriggeredEffect = {
+  id: "zhou_yu_fanjian_choice",
+  event: "hero_choice",
+  getOption: (context) => context.heroChoiceCard ? {
+    effectId: "zhou_yu_fanjian_choice",
+    label: "Guess the suit",
+    description: "Choose the suit of Zhou Yu's concealed card.",
+    allowDecline: false,
+    selection: { type: "choice", choices: [{ id: "♥", label: "Heart ♥" }, { id: "♦", label: "Diamond ♦" }, { id: "♣", label: "Club ♣" }, { id: "♠", label: "Spade ♠" }], eligibleHandKeys: [] },
+  } : null,
+  resolve: (context, selection) => {
+    if (!context.heroChoiceCard || typeof selection.choice !== "string" || !["♥", "♦", "♣", "♠"].includes(selection.choice)) return null;
+    return { status: "resolved", effectId: "zhou_yu_fanjian_choice", outcome: { kind: "fanjian_choice", targetId: context.targetId ?? "", guess: selection.choice, correct: selection.choice === context.heroChoiceCard.suit } };
+  },
+};
+
+const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, simaYiFankuiTrigger, caoCaoJianxiongTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {

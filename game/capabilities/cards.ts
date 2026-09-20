@@ -13,12 +13,15 @@ export const physicalAttackProvider: ResponseProvider = {
   activation: "implicit",
   getOption: (context) => {
     const cards = context.hand.filter(isAttackCard);
-    return cards.length ? { provider: "card", providerId: "card", satisfies: "attack", label: "Play Attack", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } } : null;
+    const count = context.requirement.count ?? 1;
+    return cards.length >= count ? { provider: "card", providerId: "card", satisfies: "attack", label: count === 1 ? "Play Attack" : `Play ${count} Attacks`, cards, selection: { type: "cards", min: count, max: count, eligibleCardIds: cards.map((card) => card.id) } } : null;
   },
   resolve: (context) => {
-    const card = selectedCard(context, context.hand.filter(isAttackCard));
-    if (!card) return null;
-    return { status: "satisfied", providerId: "card", satisfies: "attack", consumeCardIds: [card.id], resolution: "cards" };
+    const cards = context.hand.filter(isAttackCard);
+    const selected = context.selection.cardIds ?? (context.selection.cardId ? [context.selection.cardId] : []);
+    const count = context.requirement.count ?? 1;
+    if (selected.length !== count || new Set(selected).size !== selected.length || selected.some((id) => !cards.some((card) => card.id === id))) return null;
+    return { status: "satisfied", providerId: "card", satisfies: "attack", consumeCardIds: selected, resolution: "cards" };
   },
 };
 
@@ -28,12 +31,15 @@ export const physicalDodgeProvider: ResponseProvider = {
   activation: "implicit",
   getOption: (context) => {
     const cards = context.hand.filter((card) => card.kind === "Dodge");
-    return cards.length ? { provider: "card", providerId: "card", satisfies: "dodge", label: "Play Dodge", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } } : null;
+    const count = context.requirement.count ?? 1;
+    return cards.length >= count ? { provider: "card", providerId: "card", satisfies: "dodge", label: count === 1 ? "Play Dodge" : `Play ${count} Dodges`, cards, selection: { type: "cards", min: count, max: count, eligibleCardIds: cards.map((card) => card.id) } } : null;
   },
   resolve: (context) => {
-    const card = selectedCard(context, context.hand.filter((card) => card.kind === "Dodge"));
-    if (!card) return null;
-    return { status: "satisfied", providerId: "card", satisfies: "dodge", consumeCardIds: [card.id], resolution: "cards" };
+    const cards = context.hand.filter((card) => card.kind === "Dodge");
+    const selected = context.selection.cardIds ?? (context.selection.cardId ? [context.selection.cardId] : []);
+    const count = context.requirement.count ?? 1;
+    if (selected.length !== count || new Set(selected).size !== selected.length || selected.some((id) => !cards.some((card) => card.id === id))) return null;
+    return { status: "satisfied", providerId: "card", satisfies: "dodge", consumeCardIds: selected, resolution: "cards" };
   },
 };
 

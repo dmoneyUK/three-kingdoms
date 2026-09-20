@@ -6,6 +6,8 @@ export type KingSkillState = {
   zhihengUsed?: boolean;
   rendeGiven?: number;
   rendeRecovered?: boolean;
+  fanjianUsed?: boolean;
+  attackUsed?: boolean;
 };
 
 export type ActiveHeroSkillContext = {
@@ -18,10 +20,16 @@ export type ActiveHeroSkillContext = {
 
 export type ActiveHeroSkillExecution =
   | { status: "resolved"; effectId: string; outcome: { kind: "give_cards"; sourceId: string; targetId: string; cardIds: string[] } }
-  | { status: "resolved"; effectId: string; outcome: { kind: "discard_draw"; sourceId: string; cardIds: string[] } };
+  | { status: "resolved"; effectId: string; outcome: { kind: "discard_draw"; sourceId: string; cardIds: string[] } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "dismantle"; sourceId: string; targetId: string; cardIds: string[] } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "lose_draw"; sourceId: string; lose: number; draw: number } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "fanjian"; sourceId: string; targetId: string; cardIds: string[] } };
 
 const rendeId = "liu_bei_rende";
 const zhihengId = "sun_quan_zhiheng";
+const qixiId = "gan_ning_qixi";
+const kurouId = "huang_gai_kurou";
+const fanjianId = "zhou_yu_fanjian";
 
 /**
  * Active king skills are projected as semantic trigger options during the
@@ -45,12 +53,34 @@ export function getActiveHeroSkillOptions(context: ActiveHeroSkillContext): Trig
       selection: { type: "cards", min: 1, max: context.hand.length, eligibleCardIds: context.hand.map((card) => card.id) },
     }];
   }
+  if (context.hero === "gan-ning" && context.livingTargetIds.length > 0) {
+    const blackCards = context.hand.filter((card) => card.suit === "♠" || card.suit === "♣");
+    if (blackCards.length > 0) return [{
+      effectId: qixiId,
+      label: "Qixi",
+      description: "Use a black hand card as Burning Bridges against another living character.",
+      selection: { type: "cards", min: 1, max: 1, eligibleCardIds: blackCards.map((card) => card.id), targetIds: context.livingTargetIds },
+    }];
+  }
+  if (context.hero === "huang-gai") {
+    return [{ effectId: kurouId, label: "Kurou", description: "Lose 1 HP to draw 2 cards.", selection: null }];
+  }
+  if (context.hero === "zhou-yu" && !context.skillState.fanjianUsed && context.livingTargetIds.length > 0 && context.hand.length > 0) {
+    return [{
+      effectId: fanjianId,
+      label: "Fanjian",
+      description: "Give a hand card to another character and challenge them to guess its suit.",
+      selection: { type: "cards", min: 1, max: 1, eligibleCardIds: context.hand.map((card) => card.id), targetIds: context.livingTargetIds },
+    }];
+  }
   return [];
 }
 
 export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSkillContext, selection: { cardIds?: unknown; targetId?: unknown }): ActiveHeroSkillExecution | null {
   const option = getActiveHeroSkillOptions(context).find((candidate) => candidate.effectId === effectId);
-  if (!option || option.selection?.type !== "cards" || !Array.isArray(selection.cardIds)) return null;
+  if (!option) return null;
+  if (effectId === kurouId && option.selection === null) return { status: "resolved", effectId, outcome: { kind: "lose_draw", sourceId: context.playerId, lose: 1, draw: 2 } };
+  if (option.selection?.type !== "cards" || !Array.isArray(selection.cardIds)) return null;
   const cardIds = selection.cardIds.filter((id): id is string => typeof id === "string");
   if (cardIds.length < option.selection.min || cardIds.length > option.selection.max || new Set(cardIds).size !== cardIds.length || cardIds.some((id) => !option.selection?.eligibleCardIds.includes(id))) return null;
   if (effectId === rendeId) {
@@ -59,7 +89,17 @@ export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSki
     return { status: "resolved", effectId, outcome: { kind: "give_cards", sourceId: context.playerId, targetId, cardIds } };
   }
   if (effectId === zhihengId) return { status: "resolved", effectId, outcome: { kind: "discard_draw", sourceId: context.playerId, cardIds } };
+  if (effectId === qixiId) {
+    const targetId = typeof selection.targetId === "string" ? selection.targetId : "";
+    if (!option.selection.targetIds?.includes(targetId) || targetId === context.playerId) return null;
+    return { status: "resolved", effectId, outcome: { kind: "dismantle", sourceId: context.playerId, targetId, cardIds } };
+  }
+  if (effectId === fanjianId) {
+    const targetId = typeof selection.targetId === "string" ? selection.targetId : "";
+    if (!option.selection.targetIds?.includes(targetId) || targetId === context.playerId) return null;
+    return { status: "resolved", effectId, outcome: { kind: "fanjian", sourceId: context.playerId, targetId, cardIds } };
+  }
   return null;
 }
 
-export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId } as const;
+export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId, qixi: qixiId, kurou: kurouId, fanjian: fanjianId } as const;

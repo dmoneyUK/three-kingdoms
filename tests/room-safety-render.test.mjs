@@ -154,7 +154,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.doesNotMatch(noHandHtml, /Hidden hand card/);
 });
 
-test("the nine supplied Standard hero cards expose their printed English skill metadata", () => {
+test("the implemented Standard hero cards expose their printed English skill metadata", () => {
   const expected = {
     "cao-cao": ["Treachery", "Entourage"],
     simayi: ["Retaliation", "Necromancy"],
@@ -165,6 +165,11 @@ test("the nine supplied Standard hero cards expose their printed English skill m
     "zhao-yun": ["Braveheart"],
     "zhen-ji": ["Empress Dowager", "Goddess of Luo River"],
     "sun-quan": ["Equilibrium", "Deliverance"],
+    "gan-ning": ["Qixi"],
+    "lü-meng": ["Keji"],
+    "huang-gai": ["Kurou"],
+    "zhou-yu": ["Yingzi", "Fanjian"],
+    "lü-bu": ["Wushuang"],
   };
   for (const [id, names] of Object.entries(expected)) {
     const hero = STANDARD_HEROES.find((candidate) => candidate.id === id);

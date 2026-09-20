@@ -1,5 +1,25 @@
 # Three Kingdoms project handover
 
+## Wu/Qun hero batch — 2026-09-20
+
+Gan Ning, Lü Meng, Huang Gai, Zhou Yu, and Lü Bu are now executable Standard
+heroes in normal multiplayer and Quick Test. Qixi uses a black hand card as
+Burning Bridges and preserves the existing Negation and target-card picker
+continuations. Keji skips only the over-limit Discard Phase when no Attack was
+used. Kurou loses 1 HP and draws 2, including the shared Dying/rescue boundary.
+Yingzi changes normal draw to three cards, while Fanjian gives a concealed card
+and opens a mandatory private suit guess; a wrong guess uses the shared 1-damage
+transition. Wushuang changes the semantic response requirement to two Dodges
+against Lü Bu's Attacks and two Attacks for his Duel opponents.
+
+No provider-specific HTTP action was added. The five skills use currentAction
+projections and the existing `trigger`, `decline_trigger`, `respond`, and
+`decline_response` protocol. Deterministic capability and metadata coverage was
+added; the full suite is now 93 tests.
+
+Known boundary: the remaining Standard heroes in the registry are still
+metadata-only and remain the next scoped work.
+
 ## Raining Arrows card artwork — 2026-09-20
 
 The supplied arrow-storm artwork is now stored at

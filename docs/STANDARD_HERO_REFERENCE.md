@@ -360,7 +360,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Skills:**
   - **Qixi 奇袭:** A black card may be used as Burning Bridges (Dismantle).
 - **Likely engine shape:** virtual Stratagem provider/use.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Active Play Phase capability. A black hand card opens the normal Burning Bridges Negation window and then the shared target-card picker.
 
 ### Lu Meng (吕蒙)
 
@@ -372,7 +372,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Skills:**
   - **Keji 克己:** If Lu Meng did not use/play an Attack during his Play Phase, he may skip the normal Discard Phase / hand-limit discard.
 - **Likely engine shape:** turn-history condition; Discard Phase modifier.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Finishing Play directly skips an over-limit Discard Phase when Lü Meng has not used an Attack; an Attack leaves the normal `play-struck` path.
 
 ### Huang Gai (黄盖)
 
@@ -384,7 +384,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Skills:**
   - **Kurou 苦肉:** During the Play Phase, Huang Gai may lose 1 HP to draw 2 cards.
 - **Likely engine shape:** Play Phase active; HP loss + draw.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Active Play Phase capability. Kurou loses 1 HP, draws 2 cards, and uses the shared Dying/rescue flow if the loss reaches zero HP.
 
 ### Zhou Yu (周瑜)
 
@@ -397,7 +397,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
   - **Yingzi 英姿:** During the Draw Phase, Zhou Yu draws one additional card.
   - **Fanjian 反间:** Once during the Play Phase, Zhou Yu challenges another character with a concealed/guessed hand-card suit interaction; a failed suit guess causes 1 damage. Exact reveal/obtain ordering must follow the official card text.
 - **Likely engine shape:** Draw Phase modifier; Play Phase active / hidden-information choice.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Yingzi draws three cards in the normal Draw Phase. Fanjian transfers a concealed card, projects a mandatory private suit choice to the target, and deals 1 damage on a wrong guess.
 
 ### Da Qiao (大乔)
 
@@ -463,7 +463,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Skills:**
   - **Wushuang 无双:** Locked. A target of Lu Bu's Attack must provide two Dodges to stop it; in Duel, Lu Bu's opponent must provide two Attacks for each required response.
 - **Likely engine shape:** response multiplicity modifier for Attack/Duel.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Attack response requirements use two Dodges against Lü Bu; Duel response requirements use two Attacks for every non-Lü Bu duelist in the Duel.
 
 ### Diao Chan (貂蝉)
 

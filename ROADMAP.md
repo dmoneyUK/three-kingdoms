@@ -79,12 +79,12 @@ Canonical damage-trigger decisions bind the latest essential card/cards presenta
 
 Only `ResponsePending` and `TriggerPending` are persisted for semantic response and trigger decisions. Old Attack/Duel/Group/Negation saved response states, legacy-shaped `ResponseContinuation` compatibility, response expansion, and builder-conversion compatibility are unsupported and removed. `serializePending()` performs serialization only, and `DeferredStratagem` stores canonical Duel/Group responses.
 
-## Stage 6 Round 1 — runtime Standard roster and Guan Yu
+## Stage 6 Round 1 — runtime Standard roster and executable Wu/Qun batch
 
-Complete. `game/heroes.ts` is the authoritative 31-general Standard registry;
+Complete for the current batch. `game/heroes.ts` is the authoritative 31-general Standard registry;
 normal multiplayer and Quick Test draw from it. The three excluded legacy IDs
-remain readable/projectable but cannot enter new Standard selection. The six
-missing Standard generals are metadata-only. Guan Yu Wusheng is verified from
+remain readable/projectable but cannot enter new Standard selection. The
+remaining unimplemented Standard generals are metadata-only. Guan Yu Wusheng is verified from
 the current official Standard card and implemented as a small explicit semantic
 Attack provider, including live physical-card revalidation and Play Phase
 red-card conversion. The acting seat receives a private semantic Play Phase
@@ -94,8 +94,10 @@ Phase virtual Attack use”, so response-only providers cannot become active car
 sources. Borrowed Sword now continues through canonical Dodge discovery after
 Nio Shield. No universal hero framework was added.
 
-Next milestone: select and implement the next scoped Standard hero through the
-completed semantic provider/capability architecture.
+Gan Ning Qixi, Lü Meng Keji, Huang Gai Kurou, Zhou Yu Yingzi/Fanjian, and Lü Bu
+Wushuang now use the same semantic capability architecture. Next milestone:
+select and implement the next individually verified metadata-only Standard
+hero, keeping Quick Test fixtures and both project handover documents current.
 
 Final closure also makes virtual-Attack presentation explicit with the narrow
 `playedAs: "attack"` marker, preserves canonical `attack_targeted`/`choice`
