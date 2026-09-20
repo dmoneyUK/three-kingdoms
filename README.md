@@ -79,6 +79,11 @@ artwork across the same shared surfaces. Shadowrunner, Hex Mark, and
 Yellow-Hoofed Flying-Lightning share the blue/silver contrast treatment, while
 outgoing minus-one-distance horses remain unchanged.
 
+The Rock Cleaving Axe and Blue Steel Sword cards now use their supplied weapon
+artwork across the same shared surfaces. Rock Cleaving Axe uses a stone/ember
+treatment and Blue Steel Sword uses a blue-steel treatment; both preserve their
+physical rank/suit and equipment labels without changing card semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun

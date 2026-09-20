@@ -113,6 +113,22 @@ No gameplay protocol, distance calculation, equipment-slot behavior, or
 offensive minus-one-distance horse presentation changed. Recommended next work
 remains the next individually verified Standard hero capability.
 
+## Rock Cleaving Axe and Blue Steel Sword artwork — 2026-09-20
+
+The supplied weapon artwork is now stored at
+`public/rock-cleaving-axe-card.jpg` and `public/blue-steel-sword-card.jpg`.
+They are applied to the shared `.game-card.rockcleavingaxe` /
+`.played-card.rockcleavingaxe` and `.game-card.bluesteelsword` /
+`.played-card.bluesteelsword` presentation classes. Hand cards, centre reveals,
+private draws, equipment previews, and settled table cards share the respective
+visuals. Stone/ember and blue-steel contrast gradients preserve the physical
+rank/suit, weapon names, and equipment category labels while the existing
+suit-colour corner rules remain authoritative.
+
+No gameplay protocol, Rock Cleaving Axe `attack_dodged` continuation, or Blue
+Steel Sword Armor-suppression behavior changed. Recommended next work remains
+the next individually verified Standard hero capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at
