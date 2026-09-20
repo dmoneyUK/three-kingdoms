@@ -60,7 +60,7 @@ function normalizeCurrentAction(value) {
   const options = Array.isArray(value.options) ? value.options.filter(isRecord).flatMap((option) => {
     if (typeof option.providerId !== "string" || typeof option.label !== "string" || option.satisfies !== requirement) return [];
     const selection = option.selection === null ? null : isRecord(option.selection) && option.selection.type === "cards" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
-      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string") }
+      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string"), ...(Array.isArray(option.selection.targetIds) ? { targetIds: option.selection.targetIds.filter((id) => typeof id === "string") } : {}) }
       : null;
     const activation = option.activation === "explicit" ? "explicit" : option.activation === "implicit" || value.version === 1 ? "implicit" : null;
     if (!activation) return [];
@@ -88,7 +88,7 @@ function normalizeCurrentAction(value) {
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
-    ...(value.triggerEvent === "turn_start" || value.triggerEvent === "judgement_revealed" || value.triggerEvent === "attack_targeted" || value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" || value.triggerEvent === "damage_suffered" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
+    ...(value.triggerEvent === "turn_start" || value.triggerEvent === "judgement_revealed" || value.triggerEvent === "attack_targeted" || value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" || value.triggerEvent === "damage_suffered" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : triggerOptions.length ? { triggerOptions } : {}),
     ...(isRecord(value.presentation) ? { presentation: { resolutionId: typeof value.presentation.resolutionId === "string" ? value.presentation.resolutionId : null, readyAfterEventId: typeof value.presentation.readyAfterEventId === "string" ? value.presentation.readyAfterEventId : null } } : {}),
   };
 }

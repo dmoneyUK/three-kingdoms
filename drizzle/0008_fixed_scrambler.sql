@@ -1,0 +1,1 @@
+ALTER TABLE `rooms` ADD `skill_state_json` text;

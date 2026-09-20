@@ -6,8 +6,10 @@ import { serpentSpearAttackProvider } from "./capabilities/equipment/serpent-spe
 import { zhenJiBlackCardDodgeProvider } from "./capabilities/heroes/zhen-ji";
 import { guanYuRedCardAttackProvider } from "./capabilities/heroes/guan-yu";
 import { zhaoYunAttackAsDodgeProvider, zhaoYunDodgeAsAttackProvider } from "./capabilities/heroes/zhao-yun";
+import { caoCaoHujiaProvider, liuBeiJijiangProvider } from "./capabilities/heroes/lord-skills";
 
-export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null };
+export type ResponseDelegate = { id: string; hero?: string | null; hand: Card[]; equipment: Card[] };
+export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null; playerId?: string; delegates?: ResponseDelegate[] };
 export type SemanticAction = "attack" | "dodge" | "damage" | "recover" | "draw" | "discard" | "negate" | "judgement" | "gain_card" | "lose_card";
 export type ActionRequirement =
   | { kind: "dodge"; sourceId?: string; targetId?: string; attack?: { cardId?: string; suit?: string; ignoresArmor?: boolean } }
@@ -25,6 +27,7 @@ export type ResolutionEffect = JudgementResolution;
 /** A provider reports the semantic result and costs, never an HTTP action. */
 export type ResponseExecution =
   | { status: "satisfied"; providerId: string; satisfies: "attack" | "dodge" | "negate"; consumeCardIds?: string[]; resolution?: "cards"; playedAs?: "attack" | "dodge" }
+  | { status: "delegated"; providerId: string; satisfies: "attack" | "dodge"; delegateIds: string[] }
   | { status: "requires_resolution"; providerId: string; satisfies: "attack" | "dodge" | "negate"; resolution: ResolutionEffect; playedAs?: "attack" | "dodge" };
 export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation"; selection: { cardId?: string; cardIds?: string[] } };
 export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; playPhaseUse?: "attack"; getOption: (context: CapabilityContext) => ResponseProviderOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
@@ -34,7 +37,7 @@ export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "ne
 const providers: ResponseProvider[] = [
   physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider,
   eightTrigramsDodgeProvider, serpentSpearAttackProvider, zhenJiBlackCardDodgeProvider, guanYuRedCardAttackProvider,
-  zhaoYunDodgeAsAttackProvider, zhaoYunAttackAsDodgeProvider,
+  zhaoYunDodgeAsAttackProvider, zhaoYunAttackAsDodgeProvider, caoCaoHujiaProvider, liuBeiJijiangProvider,
 ];
 
 export function registerResponseProvider(provider: ResponseProvider) {

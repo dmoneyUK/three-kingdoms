@@ -57,6 +57,13 @@
       "when": 1789208344000,
       "tag": "0007_idle_room_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789908525898,
+      "tag": "0008_fixed_scrambler",
+      "breakpoints": true
     }
   ]
 }

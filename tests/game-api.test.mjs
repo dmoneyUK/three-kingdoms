@@ -125,7 +125,7 @@ async function createHumanGame() {
   const members = [{ name: "Host", token: created.data.token }];
   for (const name of ["Alice", "Bob", "Carol"]) { const joined = await request("join", { code, name }); assert.equal(joined.status, 201); members.push({ name, token: joined.data.token }); }
   assert.equal((await request("start", { code, token: members[0].token, name: "Host" })).status, 200);
-  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => !["zhen-ji", "simayi", "xiahou-dun"].includes(option.id)) ?? before.data.myHeroOptions[0]; assert.equal((await request("choose_hero", { code, token: member.token, heroId: hero.id })).status, 200); }
+  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => !["zhen-ji", "simayi", "xiahou-dun"].includes(option.id)) ?? before.data.myHeroOptions[0]; const chosen = await request("choose_hero", { code, token: member.token, heroId: hero.id }); assert.equal(chosen.status, 200, JSON.stringify(chosen.data)); }
   const started = (await state(code, members[0].token)).data; const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(code)}`) || "[]");
   for (const player of started.players) {
     const hand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`) || "[]");
@@ -135,6 +135,97 @@ async function createHumanGame() {
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(deck))} WHERE code=${quote(code)}`);
   return { code, members, room: (await state(code, members[0].token)).data };
 }
+
+test("the three faction lords expose their active skills through the semantic protocol", { timeout: 120_000 }, async () => {
+  const rendeGame = await createHumanGame();
+  const [rendeHost, rendeAlice] = rendeGame.members;
+  const rendeLiu = rendeGame.room.players.find((player) => player.name === "Host");
+  const rendeTarget = rendeGame.room.players.find((player) => player.name === "Alice");
+  assert.ok(rendeLiu && rendeTarget);
+  const rendeCards = [card("Attack", "rende-one"), card("Dodge", "rende-two"), card("Peach", "rende-three")];
+  sql(`UPDATE players SET hero='liu-bei' WHERE id=${quote(rendeLiu.id)}`);
+  setHand(rendeLiu.id, rendeCards, 3, 4); setHand(rendeTarget.id, [], 4, 4); setTurn(rendeGame.code, rendeLiu.seat);
+  const rendeView = await state(rendeGame.code, rendeHost.token);
+  const rendeOption = rendeView.data.currentAction.triggerOptions.find((option) => option.effectId === "liu_bei_rende");
+  assert.ok(rendeOption, "Liu Bei projects Rende as a generic Play Phase trigger");
+  assert.deepEqual(rendeOption.selection.eligibleCardIds, rendeCards.map((held) => held.id));
+  const rende = await request("trigger", { code: rendeGame.code, token: rendeHost.token, providerId: "liu_bei_rende", cardIds: [rendeCards[0].id, rendeCards[1].id], targetId: rendeTarget.id });
+  assert.equal(rende.status, 200, JSON.stringify(rende.data));
+  assert.equal(rende.data.room.players.find((player) => player.id === rendeLiu.id).hp, 4, "Rende recovers after giving two cards");
+  assert.deepEqual((await state(rendeGame.code, rendeAlice.token)).data.myHand.map((held) => held.id), [rendeCards[0].id, rendeCards[1].id]);
+
+  const zhihengGame = await createHumanGame();
+  const zhihengHost = zhihengGame.members[0];
+  const zhihengSun = zhihengGame.room.players.find((player) => player.name === "Host");
+  assert.ok(zhihengSun);
+  const discarded = card("Peach", "zhiheng-discard"); const drawn = card("Attack", "zhiheng-drawn");
+  sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(zhihengSun.id)}`);
+  setHand(zhihengSun.id, [discarded], 4, 4); setDeck(zhihengGame.code, [drawn]); setTurn(zhihengGame.code, zhihengSun.seat);
+  const zhiheng = await request("trigger", { code: zhihengGame.code, token: zhihengHost.token, providerId: "sun_quan_zhiheng", cardIds: [discarded.id] });
+  assert.equal(zhiheng.status, 200, JSON.stringify(zhiheng.data));
+  assert.ok(zhiheng.data.room.myHand.some((held) => held.id === drawn.id), "Zhiheng draws the replacement card privately");
+  assert.ok(discardIds(zhihengGame.code).includes(discarded.id));
+  assert.deepEqual(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(zhihengGame.code)}`)), { turnPlayerId: zhihengSun.id, zhihengUsed: true });
+
+  const jianxiongGame = await createHumanGame();
+  const jianxiongHost = jianxiongGame.members[0];
+  const jianxiongSource = jianxiongGame.room.players.find((player) => player.name === "Host");
+  const cao = jianxiongGame.room.players.find((player) => player.name === "Alice");
+  assert.ok(jianxiongSource && cao);
+  const damageCard = card("Attack", "jianxiong-attack");
+  sql(`UPDATE players SET hero=NULL WHERE id IN (${jianxiongGame.room.players.filter((player) => player.id !== cao.id).map((player) => quote(player.id)).join(",")})`); sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(cao.id)}`);
+  setEquipment(jianxiongSource.id, {}); setEquipment(cao.id, {}); setHand(jianxiongSource.id, [damageCard], 4, 4); setHand(cao.id, [], 4, 4); setTurn(jianxiongGame.code, jianxiongSource.seat);
+  const damage = await request("play_card", { code: jianxiongGame.code, token: jianxiongHost.token, cardId: damageCard.id, targetId: cao.id });
+  assert.equal(damage.status, 200, JSON.stringify(damage.data));
+  const caoDamageView = await state(jianxiongGame.code, jianxiongGame.members[1].token);
+  assert.ok(caoDamageView.data.currentAction.triggerOptions?.some((option) => option.effectId === "cao_cao_jianxiong"), JSON.stringify(caoDamageView.data));
+  const gained = await request("trigger", { code: jianxiongGame.code, token: jianxiongGame.members[1].token, providerId: "cao_cao_jianxiong" });
+  assert.equal(gained.status, 200, JSON.stringify(gained.data));
+  assert.ok((await state(jianxiongGame.code, jianxiongGame.members[1].token)).data.myHand.some((held) => held.id === damageCard.id));
+  assert.equal(discardIds(jianxiongGame.code).includes(damageCard.id), false, "Jianxiong takes the damage card before it reaches discard");
+
+  const hujiaGame = await createHumanGame();
+  const [hujiaHost, hujiaAlice, hujiaBob] = hujiaGame.members;
+  const hujiaSource = hujiaGame.room.players.find((player) => player.name === "Host");
+  const hujiaCao = hujiaGame.room.players.find((player) => player.name === "Alice");
+  const hujiaWei = hujiaGame.room.players.find((player) => player.name === "Bob");
+  assert.ok(hujiaSource && hujiaCao && hujiaWei);
+  const hujiaAttack = card("Attack", "hujia-attack"); const hujiaDodge = card("Dodge", "hujia-dodge");
+  sql(`UPDATE players SET hero=NULL WHERE id=${quote(hujiaSource.id)}`); sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(hujiaCao.id)}`); sql(`UPDATE players SET hero='zhang-liao' WHERE id=${quote(hujiaWei.id)}`);
+  setEquipment(hujiaCao.id, {}); setHand(hujiaSource.id, [hujiaAttack], 4, 4); setHand(hujiaCao.id, [], 4, 4); setHand(hujiaWei.id, [hujiaDodge], 4, 4); setTurn(hujiaGame.code, hujiaSource.seat);
+  const hujiaOpened = await request("play_card", { code: hujiaGame.code, token: hujiaHost.token, cardId: hujiaAttack.id, targetId: hujiaCao.id });
+  assert.equal(hujiaOpened.status, 200, JSON.stringify(hujiaOpened.data));
+  const hujiaTargetView = await state(hujiaGame.code, hujiaAlice.token);
+  assert.ok(hujiaTargetView.data.currentAction?.options?.some((option) => option.providerId === "cao_cao_hujia"), JSON.stringify(hujiaTargetView.data));
+  const delegated = await request("respond", { code: hujiaGame.code, token: hujiaAlice.token, providerId: "cao_cao_hujia" });
+  assert.equal(delegated.status, 200, JSON.stringify(delegated.data));
+  assert.equal(delegated.data.room.currentAction.actorId, hujiaWei.id, "Hujia moves the Dodge decision to a Wei delegate");
+  const hujiaDodged = await request("respond", { code: hujiaGame.code, token: hujiaBob.token, cardId: hujiaDodge.id });
+  assert.equal(hujiaDodged.status, 200, JSON.stringify(hujiaDodged.data));
+  assert.equal(hujiaDodged.data.room.players.find((player) => player.id === hujiaCao.id).hp, 4, "the delegated Dodge prevents damage");
+
+  const jijiangGame = await createHumanGame();
+  const [jijiangHost, jijiangAlice, jijiangBob] = jijiangGame.members;
+  const jijiangSource = jijiangGame.room.players.find((player) => player.name === "Host");
+  const liu = jijiangGame.room.players.find((player) => player.name === "Alice");
+  const shu = jijiangGame.room.players.find((player) => player.name === "Bob");
+  const other = jijiangGame.room.players.find((player) => player.name === "Carol");
+  assert.ok(jijiangSource && liu && shu && other);
+  const invasion = card("BarbarianInvasion", "jijiang-invasion"); const jijiangAttack = card("Attack", "jijiang-attack");
+  sql(`UPDATE players SET hero=NULL WHERE id=${quote(jijiangSource.id)}`); sql(`UPDATE players SET hero='liu-bei' WHERE id=${quote(liu.id)}`); sql(`UPDATE players SET hero='guan-yu' WHERE id=${quote(shu.id)}`); sql(`UPDATE players SET hero=NULL WHERE id=${quote(other.id)}`);
+  setHand(jijiangSource.id, [invasion], 4, 4); setHand(liu.id, [], 4, 4); setHand(shu.id, [jijiangAttack], 4, 4); setHand(other.id, [], 4, 4); setTurn(jijiangGame.code, jijiangSource.seat);
+  const invasionOpened = await request("play_card", { code: jijiangGame.code, token: jijiangHost.token, cardId: invasion.id });
+  assert.equal(invasionOpened.status, 200, JSON.stringify(invasionOpened.data));
+  const jijiangTargetView = await state(jijiangGame.code, jijiangAlice.token);
+  assert.ok(jijiangTargetView.data.currentAction.options.some((option) => option.providerId === "liu_bei_jijiang"));
+  const jijiangDelegated = await request("respond", { code: jijiangGame.code, token: jijiangAlice.token, providerId: "liu_bei_jijiang" });
+  assert.equal(jijiangDelegated.status, 200, JSON.stringify(jijiangDelegated.data));
+  assert.equal(jijiangDelegated.data.room.currentAction.actorId, shu.id);
+  const jijiangAnswered = await request("respond", { code: jijiangGame.code, token: jijiangBob.token, cardId: jijiangAttack.id });
+  assert.equal(jijiangAnswered.status, 200, JSON.stringify(jijiangAnswered.data));
+  assert.equal(jijiangAnswered.data.room.phase, "play", JSON.stringify(jijiangAnswered.data.room));
+  assert.ok(jijiangAnswered.data.room.log.some((entry) => entry.includes("Bob plays Attack against Barbarian Invasion")));
+});
 
 async function openGanglieAttack({ judge, sourceCards = [card("Attack", "ganglie-attack")], sourceHp = 4 } = {}) {
   const game = await createHumanGame();
@@ -1767,7 +1858,7 @@ test("damage_about_to_apply trigger exhaustion resumes original Attack damage on
   const hostPlayer = game.room.players.find((player) => player.name === "Host");
   const alicePlayer = game.room.players.find((player) => player.name === "Alice");
   assert.ok(hostPlayer && alicePlayer);
-  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(alicePlayer.id)}`);
+  sql(`UPDATE players SET hero=NULL WHERE id=${quote(alicePlayer.id)}`);
 
   setEquipment(hostPlayer.id, {
     armor: card("NioShield", "test-trigger-a-equipped"),

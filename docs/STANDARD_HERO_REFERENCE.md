@@ -102,7 +102,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
   - **Jianxiong 奸雄:** After Cao Cao suffers damage caused by a card, he may obtain the card(s) that caused that damage if they are still available.
   - **Hujia 护驾:** Lord skill. When Cao Cao needs to provide a Dodge, he may ask other Wei characters in action order to provide a Dodge for him.
 - **Likely engine shape:** damage-resolved trigger; delegated Dodge response.
-- **Current implementation:** Metadata only; no complete hero-skill implementation.
+- **Current implementation:** Jianxiong is a generic `damage_suffered` trigger that returns the exact damage-causing physical card(s) to Cao Cao before discard; Hujia is a delegated semantic Dodge provider that offers living Wei characters in action order. Both use `currentAction` and the canonical `respond`/`trigger` protocol.
 
 ### Sima Yi (司马懿)
 
@@ -146,7 +146,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Skills:**
   - **Tuxi 突袭:** During the Draw Phase, Zhang Liao may replace/reduce his normal draw to obtain one hand card from each of up to two other characters, according to the verified card wording.
 - **Likely engine shape:** Draw Phase replacement.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Rende is a generic Play Phase `trigger` option with server-validated hand-card and living-target selection; it recovers once after two cards have been given in that phase. Jijiang is a delegated semantic Attack provider that offers living Shu characters in action order. Both preserve private projections and stale-action validation.
 
 ### Xu Chu (许褚)
 
@@ -158,7 +158,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Skills:**
   - **Luoyi 裸衣:** During the Draw Phase, Xu Chu may take a reduced draw; if he does, damage from his Attack and Duel during that turn is increased by 1.
 - **Likely engine shape:** Draw Phase modifier; damage modifier.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Zhiheng is a once-per-Play-Phase generic `trigger` option that discards a server-validated hand selection and privately draws the same number. Jiuyuan is integrated into the canonical Peach rescue transition, giving Sun Quan the additional recovery when another living Wu character rescues him. No provider-specific route or client action was added.
 
 ### Guo Jia (郭嘉)
 

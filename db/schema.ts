@@ -13,6 +13,7 @@ export const rooms = sqliteTable("rooms", {
   discardJson: text("discard_json"),
   logJson: text("log_json"),
   pendingJson: text("pending_json"),
+  skillStateJson: text("skill_state_json"),
 }, (table) => [uniqueIndex("rooms_code_unique").on(table.code)]);
 
 export const players = sqliteTable("players", {

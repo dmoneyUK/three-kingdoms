@@ -1,5 +1,32 @@
 # Three Kingdoms project handover
 
+## Three faction lords — 2026-09-20
+
+Cao Cao, Liu Bei, and Sun Quan are now implemented through the completed
+semantic response/trigger architecture. Cao Cao's Jianxiong is a target-owned
+`damage_suffered` trigger that returns the exact physical damage card(s) before
+discard; Hujia is a delegated Dodge response offered to living Wei characters
+in action order. Liu Bei's Rende is a Play Phase `trigger` with private hand
+card and living-target projections, one recovery after two cards in the phase,
+and Jijiang delegates an Attack response to living Shu characters. Sun Quan's
+Zhiheng is a once-per-Play-Phase discard-and-draw action, and Jiuyuan is part of
+the canonical Peach rescue transition for another Wu rescuer.
+
+No hero-specific HTTP action, provider-specific client branch, or public
+private-hand projection was added. Active skills use the generic `trigger`
+command; Hujia/Jijiang use `respond` and the existing response continuation.
+Attack, Group, and Duel damage continuations preserve their physical card
+identity for Jianxiong. The default Quick Test roster remains the established
+Guan Yu / Sima Yi / Zhao Yun / Xiahou Dun fixture, while the shared controller
+and private actor projection are covered by the lord API fixture; changing the
+default roster would invalidate the existing capability-opening contract.
+
+The deterministic Worker/D1 suite now contains **88 tests** and includes
+Rende, Zhiheng, Jianxiong, Hujia, Jijiang, card conservation, private
+projection, and delegated multi-seat response assertions. The next milestone
+is the next individually verified Standard hero; keep the lord state and
+canonical protocol boundaries intact.
+
 ## Ganglie source-choice prompt and hero information — 2026-09-20
 
 The mandatory Stauchness/Ganglie consequence now carries a generic trigger
@@ -35,7 +62,7 @@ or Xiahou-specific route branch was added. API coverage covers both Group
 cards, decline and Judgement acceptance, next-target resumption, discard-once
 conservation, and Quick Test perspective/privacy.
 
-The clean Worker/D1 validation now passes **87 / 87**. The next milestone
+The clean Worker/D1 validation now passes **88 / 88**. The next milestone
 remains the next individually verified Standard hero; do not begin it until
 this correction has been merged and its exact-head CI/deployment verification
 is green.
