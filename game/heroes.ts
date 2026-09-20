@@ -15,7 +15,6 @@ export const STANDARD_HEROES: readonly HeroDefinition[] = [
   standard("guo-jia","Guo Jia","Wei",3,"After a judgement or damage, turn revealed cards into resources.","male"),
   standard("zhen-ji","Zhen Ji","Wei",3,"You may use or play a Black suited card as a [Dodge].","female", [{ name: "Empress Dowager", description: "You may use or play a Black suited card as a [Dodge]." }, { name: "Goddess of Luo River", description: "Preparation Phase, you may enter Judgement phase, if the Judgement card belongs to Black suited, you obtain it. You may repeat this procedure as long as your Judgement card is Black suited." }]),
   standard("yue-jin","Yue Jin","Wei",4,"Skill metadata pending individual verification.","male"),
-  standard("yu-jin","Yu Jin","Wei",4,"Skill metadata pending individual verification.","male"),
   standard("liu-bei","Liu Bei","Shu",4,"Play Phase, you may give away any number of your hand cards to other characters, and recover 1 HP if 2 or more cards are given away.","male", [{ name: "Benevolence", description: "Play Phase, you may give away any number of your hand cards to other characters, and recover 1 HP if 2 or more cards are given away." }, { name: "Influencing", description: "Lord: You may ask characters from the Shu kingdom to use or play an [Attack] on your behalf, provided they are willing to do so (you are deemed as the source of damage)." }]),
   standard("guan-yu","Guan Yu","Shu",4,"You may use or play a Red suited card as an [Attack].","male", [{ name: "God of War", description: "You may use or play a Red suited card as an [Attack]." }]),
   standard("zhang-fei","Zhang Fei","Shu",4,"Passive: You may use any number of [Attack] cards.","male", [{ name: "Battle Cry", description: "Passive: You may use any number of [Attack] cards." }]),
@@ -43,6 +42,7 @@ export const STANDARD_HEROES: readonly HeroDefinition[] = [
 // These heroes are retained only so saved rooms can continue to decode and
 // project their persisted state. They are never selected for new Standard games.
 export const LEGACY_HEROES: readonly HeroDefinition[] = [
+  { ...standard("yu-jin","Yu Jin","Wei",4,"Legacy metadata only.","male"), standardSelectable: false },
   { ...standard("yuanshao","Yuan Shao","Qun",4,"Legacy metadata only.","male"), standardSelectable: false },
   { ...standard("yanliang-wenchou","Yan Liang & Wen Chou","Qun",4,"Legacy metadata only.","male"), standardSelectable: false },
   { ...standard("pangde","Pang De","Qun",4,"Legacy metadata only.","male"), standardSelectable: false },

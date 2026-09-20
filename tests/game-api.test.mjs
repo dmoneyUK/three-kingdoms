@@ -113,7 +113,8 @@ test("Quick Test completes the shared hero start phase before dealing", async ()
   assert.equal(created.data.room.status, "heroes");
   assert.equal(created.data.room.isTestController, true);
   assert.equal(created.data.room.players.length, 4);
-  assert.equal(created.data.room.myHeroOptions.length, 31);
+  assert.equal(created.data.room.myHeroOptions.length, 30);
+  assert.equal(created.data.room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false);
   assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
 
   let room = created.data.room;

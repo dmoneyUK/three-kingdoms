@@ -1,5 +1,16 @@
 # Three Kingdoms project handover
 
+## Yu Jin removed from new Standard selection — 2026-09-20
+
+Yu Jin is no longer part of `STANDARD_HEROES`, so new multiplayer and Quick
+Test rooms now offer 30 selectable Standard heroes. His definition remains in
+`LEGACY_HEROES` with `standardSelectable: false` so saved rooms can continue
+to decode without reintroducing him to new-game selection. The Quick Test API
+coverage asserts both the new count and Yu Jin's exclusion.
+
+Recommended next work remains the next individually verified Standard hero
+capability.
+
 ## Wu/Qun hero batch — 2026-09-20
 
 Gan Ning, Lü Meng, Huang Gai, Zhou Yu, and Lü Bu are now executable Standard
@@ -1177,12 +1188,12 @@ Guan Yu Wusheng separates eligibility from intent. Native card behavior is the d
 ## Stage 6 Round 1 complete — Standard roster reconciliation and Guan Yu (2026-09-16)
 
 The runtime Standard roster now has one authoritative source in
-`game/heroes.ts`: `STANDARD_HEROES` contains the owner-verified 31-general
-roster using official Wei/Shu/Wu/Qun names. Normal multiplayer and Quick Test
-both use this registry. Yue Jin, Yu Jin, Zhuge Liang, Lady Gan, Gongsun Zan,
+`game/heroes.ts`: `STANDARD_HEROES` contains the owner-verified 30-general
+selectable roster using official Wei/Shu/Wu/Qun names. Normal multiplayer and
+Quick Test both use this registry. Yu Jin, Yue Jin, Zhuge Liang, Lady Gan, Gongsun Zan,
 and Pan Feng are metadata-only. Yuan Shao, Yan Liang & Wen Chou, and Pang De
 remain in `LEGACY_HEROES` for saved-room readability and gender projection but
-are excluded from new Standard selection.
+are excluded from new Standard selection; Yu Jin is retained there as well.
 
 The official current Guan Yu Standard card reads, “You may use or play a Red
 suited card as an [Attack].” Wusheng is implemented as the explicit semantic

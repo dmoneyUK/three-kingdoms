@@ -81,7 +81,7 @@ Only `ResponsePending` and `TriggerPending` are persisted for semantic response 
 
 ## Stage 6 Round 1 — runtime Standard roster and executable Wu/Qun batch
 
-Complete for the current batch. `game/heroes.ts` is the authoritative 31-general Standard registry;
+Complete for the current batch. `game/heroes.ts` is the authoritative 30-general Standard registry;
 normal multiplayer and Quick Test draw from it. The three excluded legacy IDs
 remain readable/projectable but cannot enter new Standard selection. The
 remaining unimplemented Standard generals are metadata-only. Guan Yu Wusheng is verified from

@@ -35,17 +35,19 @@ player-facing names used by hero selection and the private information dialog.
 
 ## Reconciliation result
 
-The official Standard roster contains **31 generals**:
+The current selectable Standard roster contains **30 generals**:
 
 | Faction | Count |
 | --- | ---: |
-| Wei | 9 |
+| Wei | 8 |
 | Shu | 8 |
 | Wu | 8 |
 | Qun | 6 |
-| **Total** | **31** |
+| **Total** | **30** |
 
-At the runtime baseline, `game/heroes.ts` contains 28 entries. Of those, 25 belong to the verified Standard roster.
+The current runtime exposes 30 selectable Standard entries. Four additional
+legacy definitions remain readable for saved rooms but are excluded from new
+Standard selection.
 
 ### Present in runtime but not in current Standard
 
@@ -54,11 +56,11 @@ These entries may remain **legacy-readable** for old saved rooms, but they must 
 - `yuanshao` — Yuan Shao
 - `yanliang-wenchou` — Yan Liang & Wen Chou
 - `pangde` — Pang De
+- `yu-jin` — Yu Jin
 
 ### Verified Standard generals missing from runtime
 
 - `yue-jin` — Yue Jin (乐进, Wei, male, 4 HP)
-- `yu-jin` — Yu Jin (于禁, Wei, male, 4 HP)
 - `zhuge-liang` — Zhuge Liang (诸葛亮, Shu, male, 3 HP)
 - `lady-gan` — Lady Gan (甘夫人, Shu, female, 3 HP)
 - `gongsun-zan` — Gongsun Zan (公孙瓒, Qun, male, 4 HP)
@@ -80,7 +82,6 @@ The official catalogue uses **Qun**. The current runtime uses `Neutral` for the 
 | Wei | `guo-jia` | Guo Jia | 郭嘉 | Male | 3 | Tiandu 天妒<br>Yiji 遗计 | Present |
 | Wei | `zhen-ji` | Zhen Ji | 甄姬 | Female | 3 | Empress Dowager<br>Goddess of Luo River | Present |
 | Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Xiaoguo 骁果 | **Present / metadata-only** |
-| Wei | `yu-jin` | Yu Jin | 于禁 | Male | 4 | Yizhong 毅重 | **Present / metadata-only** |
 | Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Benevolence<br>Influencing | Present |
 | Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | God of War | Present |
 | Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Battle Cry | Present |
@@ -217,17 +218,17 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Likely engine shape:** other-player Ending Phase trigger; forced choice.
 - **Current implementation:** Missing from runtime metadata and hero selection.
 
-### Yu Jin (于禁)
+### Yu Jin (于禁) — legacy-readable only
 
 - **Runtime ID:** `yu-jin`
 - **Faction:** Wei
 - **Gender:** Male
 - **Max HP:** 4
-- **Runtime roster status:** Missing
+- **Runtime roster status:** Legacy-readable only; excluded from new Standard hero selection
 - **Skills:**
   - **Yizhong 毅重:** Locked. While Yu Jin has no Armor equipped, black Attack cards have no effect on him.
 - **Likely engine shape:** passive Attack modifier / prevention.
-- **Current implementation:** Missing from runtime metadata and hero selection.
+- **Current implementation:** Retained only for saved-room compatibility; not present in the selectable Standard registry.
 
 ## Shu
 
@@ -554,4 +555,4 @@ Older English Sanguosha references are useful only as **secondary** rule-history
 
 ## Next repository change
 
-This file now documents the reconciled 31-General runtime roster and the verified hero capabilities implemented so far, including Sima Yi's Guicai and Retaliation. The next step is the next individually verified Standard hero; do not generalise a hero framework until another real skill proves the need.
+This file now documents the reconciled 30-general selectable runtime roster and the verified hero capabilities implemented so far, including Sima Yi's Guicai and Retaliation. Yu Jin remains legacy-readable for saved-room compatibility but is excluded from new Standard selection. The next step is the next individually verified Standard hero; do not generalise a hero framework until another real skill proves the need.

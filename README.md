@@ -282,8 +282,8 @@ For this project, always filter the catalogue to **Standard**. Endless Legends a
 
 Stage 6 Round 1 is complete. The latest UI pass adds the supplied Attack card
 artwork to the shared hand/reveal/played presentation path without changing
-the semantic card protocol. Step 3.5 test cleanup is complete, with behavioural coverage retained in the API/integration suite and brittle source-regex checks removed. Step 4 Duel canonicalization is complete: Duel uses `ResponsePending` plus `DuelContinuation` directly. Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, and Step 6B Negation canonicalization are complete. New Standard games use the single 31-general
-`STANDARD_HEROES` registry (Wei, Shu, Wu, Qun), including Yue Jin, Yu Jin,
+the semantic card protocol. Step 3.5 test cleanup is complete, with behavioural coverage retained in the API/integration suite and brittle source-regex checks removed. Step 4 Duel canonicalization is complete: Duel uses `ResponsePending` plus `DuelContinuation` directly. Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, and Step 6B Negation canonicalization are complete. New Standard games use the single 30-general
+`STANDARD_HEROES` registry (Wei, Shu, Wu, Qun), including Yue Jin,
 Zhuge Liang, Lady Gan, Gongsun Zan, and Pan Feng. Yuan Shao, Yan Liang & Wen
 Chou, and Pang De remain readable only through bounded legacy metadata.
 
