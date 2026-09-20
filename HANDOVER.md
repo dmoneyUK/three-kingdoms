@@ -1,5 +1,29 @@
 # Three Kingdoms project handover
 
+## P1 sourced-damage / Group continuation correction — 2026-09-20
+
+The post-damage `damage_suffered` event is now applied consistently after
+nonlethal damage from a living player source. Raining Arrows and Barbarian
+Invasion no longer finish a damaged target directly: the shared transition
+updates HP, resolves Dying first when lethal, and persists a generic
+`TriggerPending` for Stauchness/Ganglie. Its serializable continuation carries
+the suspended canonical Group response, so declining or resolving the reaction
+advances to the next living target and preserves held cards, `remainingIds`,
+`resolutionId`, presentation barriers, and the one final AOE discard.
+
+The same boundary now covers failed Eight Trigrams Attack Judgements, Duel
+losses, Rock Cleaving Axe forced damage, and sourced damage caused by
+Stauchness, including nested post-damage provider discovery. Source-less
+Lightning remains source-less and cannot invent a Ganglie source. No AOE-card
+or Xiahou-specific route branch was added. API coverage covers both Group
+cards, decline and Judgement acceptance, next-target resumption, discard-once
+conservation, and Quick Test perspective/privacy.
+
+The clean Worker/D1 validation now passes **87 / 87**. The next milestone
+remains the next individually verified Standard hero; do not begin it until
+this correction has been merged and its exact-head CI/deployment verification
+is green.
+
 ## Sima Yi — Retaliation / Fankui — 2026-09-20
 
 The current official Standard General Card catalogue prints Sima Yi's first

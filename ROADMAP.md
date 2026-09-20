@@ -25,6 +25,7 @@ The response refactor has reached its intended core shape:
 - Green Dragon Blade, Rock Cleaving Axe and Frost Sword use executable triggered-effect capability modules;
 - response interaction waits on a decision-specific `readyAfterEventId` instead of the entire presentation queue.
 - `attack_targeted` is a reusable capability event. Its persisted semantic decision may be target-owned, so Quick Test and multiplayer project private choices to the established target actor.
+- `damage_suffered` is now applied consistently after nonlethal sourced damage: normal Attacks, Group/AOE targets, failed Eight Trigrams responses, Duel losses, Rock Cleaving Axe forced damage, and sourced Stauchness consequences use the shared post-damage transition. Group continuations preserve held cards, remaining targets, resolution identity, and the final discard exactly once; source-less Lightning remains source-less.
 
 This response architecture cleanup is COMPLETE and should now be treated as the foundation, not redesigned again. The semantic response/trigger protocol and canonical persisted decision shapes are the supported architecture.
 

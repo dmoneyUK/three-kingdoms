@@ -37,6 +37,15 @@ nonlethal damage, Sima Yi can obtain one server-selected card from the source's
 hand, Equipment Zone, or Judgement Zone. Hidden-hand choices remain index/key
 based until resolution and are revealed only privately to Sima Yi.
 
+The P1 sourced-damage correction now routes nonlethal Raining Arrows and
+Barbarian Invasion damage through the same generic `damage_suffered` transition
+as Attack damage. The suspended `GroupContinuation` preserves held cards,
+remaining targets, resolution identity, presentation barriers, and the single
+final discard while Stauchness/Ganglie resolves. Failed Eight Trigrams
+responses, Duel losses, Rock Cleaving Axe forced damage, and sourced damage
+caused by Stauchness use the same post-damage boundary; source-less Lightning
+does not invent a source.
+
 Zhang Fei's Paoxiao is now a locked passive capability. The shared Attack-use-limit capability discovers Paoxiao and Zhuge Crossbow from `{ hero, equipment }`, so normal Attacks, Serpent Spear Attacks, and the projected `canDeclareAttack`/resume phase all share one authoritative unlimited-Attack result. Borrowed Sword forced Attacks remain outside the Play Phase limit. Existing Attack range, horse, weapon trigger, Dodge, damage, Dying, and Borrowed Sword behavior is unchanged.
 
 When Yin-Yang Swords lets the attacker draw, the drawn card now appears in the attacker's normal private centre-card presentation and remains hidden from the other seats.
@@ -55,7 +64,7 @@ errors remain normal validation errors. The Worker/D1 regression verifies one
 winner, one stale loser, one card/effect/log result, no resolving-room stall,
 and no private-hand leakage.
 
-Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, Sima Yi's Guicai/Retaliation, and Xiahou Dun's Stauchness/Ganglie are implemented through the semantic capability architecture. Luoshen, Guicai, and Stauchness use the canonical shared Judgement pipeline; the reusable post-damage `damage_suffered` event now discovers and exhausts both Stauchness and Retaliation providers, reopens unresolved providers with fresh presentation barriers and timers, and resumes its stored continuation once. Lethal damage still enters the existing Dying flow before optional post-damage reactions. Semantic trigger labels remain stable during submission, while busy state still disables duplicate interaction; in-game player hero cards stay concise and open a private info dialog for ability explanations. Qingguo remains unchanged, Paoxiao remains locked/passive, and Fankui uses no provider-specific protocol or client hero branch. Borrowed Sword forced Attacks preserve their original turn-owner resume phase and do not consume the holder's normal Play Phase Attack limit. The response-race stale-contract hardening and exact-head CI/deployment gate are green. Quick Test continues to assign Xiahou Dun to Player4 and Sima Yi to Player2; Luoshen coverage explicitly reassigns that deterministic fixture seat to Zhen Ji. Next milestone: the next individually verified Standard hero; Cao Cao and a general active-skill framework remain out of scope.
+Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, Sima Yi's Guicai/Retaliation, and Xiahou Dun's Stauchness/Ganglie are implemented through the semantic capability architecture. Luoshen, Guicai, and Stauchness use the canonical shared Judgement pipeline; the reusable post-damage `damage_suffered` event now discovers and exhausts both Stauchness and Retaliation providers across normal Attacks, Group/AOE damage, failed Eight Trigrams, Duel losses, Rock Cleaving Axe forced damage, and sourced Stauchness consequences, then resumes the exact stored continuation once. Lethal damage still enters the existing Dying flow before optional post-damage reactions, and source-less Lightning remains source-less. Semantic trigger labels remain stable during submission, while busy state still disables duplicate interaction; in-game player hero cards stay concise and open a private info dialog for ability explanations. Qingguo remains unchanged, Paoxiao remains locked/passive, and no provider-specific protocol or client hero branch was added. Borrowed Sword forced Attacks preserve their original turn-owner resume phase and do not consume the holder's normal Play Phase Attack limit. The response-race stale-contract hardening and exact-head CI/deployment gate are green. Quick Test continues to assign Xiahou Dun to Player4 and Sima Yi to Player2; Luoshen coverage explicitly reassigns that deterministic fixture seat to Zhen Ji. Next milestone: the next individually verified Standard hero; Cao Cao and a general active-skill framework remain out of scope.
 
 An English online implementation of WTK Standard, the classic hidden-role Three Kingdoms card game, built for small private groups of friends.
 
@@ -78,10 +87,10 @@ milestone is the next individually verified Standard hero.
 
 Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, Step 6B Negation canonicalization, Step 7A response expansion compatibility removal, Step 7B.1 rejection of legacy persisted Attack/Duel/Group/Negation response states, Step 7C direct response construction, and Step 7D documentation closure are complete. Audit/state validation, room projections, and response timers now read canonical `ResponsePending` and `TriggerPending` records directly; old response-family states never become actionable `currentAction` values or legacy response DTOs. Quick Test and normal multiplayer use human-style seats only; one Quick Test controller switches seats through the shared token. The next milestone is the next individually verified Standard hero.
 
-The current deterministic suite has been consolidated to 79 tracked test
+The current deterministic suite has been consolidated to 87 tracked test
 declarations while retaining the required human multiplayer and capability
 invariants. Pure helper assertions now run in grouped cases, and inactive bot-only
-tests and product paths have been removed. The Worker/D1 runner executes all 79 tests.
+tests and product paths have been removed. The Worker/D1 runner executes all 87 tests.
 
 Step 5E completed the response-builder typing cleanup: the former
 response-builder compatibility union

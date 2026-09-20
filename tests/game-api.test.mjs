@@ -181,6 +181,87 @@ async function openFankuiAttack({ sourceCards = [card("Attack", "fankui-attack")
   return { ...game, sourceMember, targetMember, source, target, actionPresentation: attack.data.room.currentAction.presentation };
 }
 
+async function openGanglieGroup({ kind, judge, suffix }) {
+  const game = await createHumanGame();
+  const [sourceMember, targetMember, bobMember, carolMember] = game.members;
+  const [source, target, bob, carol] = game.room.players;
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(target.id)}`);
+  sql(`UPDATE players SET hero=NULL WHERE id IN (${quote(bob.id)},${quote(carol.id)})`);
+  const required = kind === "RainingArrows" ? "Dodge" : "Attack";
+  setHand(source.id, [card(kind, `${suffix}-source`)], 4, 4);
+  setHand(target.id, [], 3, 3);
+  setHand(bob.id, [card(required, `${suffix}-bob`)], 4, 4);
+  setHand(carol.id, [card(required, `${suffix}-carol`)], 4, 4);
+  setTurn(game.code, source.seat);
+  setDeck(game.code, [judge]);
+  const started = await request("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source` });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  assert.equal(started.data.room.currentAction.kind, "trigger", JSON.stringify(started.data.room));
+  assert.equal(started.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(started.data.room.currentAction.actorId, target.id);
+  const targetView = (await state(game.code, targetMember.token)).data;
+  assert.ok(targetView.currentAction.triggerOptions.some((option) => option.effectId === "xiahou_dun_ganglie"));
+  return { ...game, sourceMember, targetMember, bobMember, carolMember, source, target, bob, carol, required };
+}
+
+
+test("Raining Arrows and Barbarian Invasion resume through Xiahou Dun Stauchness", { timeout: 30_000 }, async () => {
+  for (const kind of ["RainingArrows", "BarbarianInvasion"]) {
+    const declined = await openGanglieGroup({ kind, suffix: `ganglie-${kind.toLowerCase()}-decline`, judge: { ...card("Dodge", `ganglie-${kind.toLowerCase()}-decline-judge`), suit: "♥", rank: "2" } });
+    const skipped = await request("decline_trigger", { code: declined.code, token: declined.targetMember.token });
+    assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
+    assert.equal(skipped.data.room.currentAction.kind, "response");
+    assert.equal(skipped.data.room.currentAction.actorId, declined.bob.id, "declining Stauchness resumes the next AOE target");
+    assert.equal(skipped.data.room.players.find((player) => player.id === declined.target.id).hp, 2);
+    const bobAnswered = await request("respond", { code: declined.code, token: declined.bobMember.token, cardId: `${declined.required.toLowerCase()}-ganglie-${kind.toLowerCase()}-decline-bob` });
+    const finished = await request("respond", { code: declined.code, token: declined.carolMember.token, cardId: `${declined.required.toLowerCase()}-ganglie-${kind.toLowerCase()}-decline-carol` });
+    assert.equal(bobAnswered.status, 200); assert.equal(finished.status, 200, JSON.stringify(finished.data));
+    assert.equal(finished.data.room.phase, "play");
+    assert.equal(discardIds(declined.code).filter((id) => id === `${kind.toLowerCase()}-ganglie-${kind.toLowerCase()}-decline-source`).length, 1, "the held AOE card is discarded exactly once after completion");
+
+    const accepted = await openGanglieGroup({ kind, suffix: `ganglie-${kind.toLowerCase()}-accept`, judge: { ...card("Dodge", `ganglie-${kind.toLowerCase()}-accept-judge`), suit: "♠", rank: "7" } });
+    const judged = await request("trigger", { code: accepted.code, token: accepted.targetMember.token, providerId: "xiahou_dun_ganglie" });
+    assert.equal(judged.status, 200, JSON.stringify(judged.data));
+    assert.equal(judged.data.room.currentAction.kind, "trigger");
+    assert.equal(judged.data.room.currentAction.triggerEvent, "damage_suffered");
+    assert.equal(judged.data.room.currentAction.actorId, accepted.source.id, "the Stauchness consequence belongs to the damage source");
+    const consequence = await request("trigger", { code: accepted.code, token: accepted.sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "take_damage" });
+    assert.equal(consequence.status, 200, JSON.stringify(consequence.data));
+    assert.equal(consequence.data.room.currentAction.kind, "response");
+    assert.equal(consequence.data.room.currentAction.actorId, accepted.bob.id, "resolving Stauchness resumes the next AOE target");
+    assert.equal(consequence.data.room.players.find((player) => player.id === accepted.target.id).hp, 2);
+    assert.equal(consequence.data.room.players.find((player) => player.id === accepted.source.id).hp, 3);
+    await request("respond", { code: accepted.code, token: accepted.bobMember.token, cardId: `${accepted.required.toLowerCase()}-ganglie-${kind.toLowerCase()}-accept-bob` });
+    const acceptedFinished = await request("respond", { code: accepted.code, token: accepted.carolMember.token, cardId: `${accepted.required.toLowerCase()}-ganglie-${kind.toLowerCase()}-accept-carol` });
+    assert.equal(acceptedFinished.status, 200, JSON.stringify(acceptedFinished.data));
+    assert.equal(acceptedFinished.data.room.phase, "play");
+    assert.equal(discardIds(accepted.code).filter((id) => id === `${kind.toLowerCase()}-ganglie-${kind.toLowerCase()}-accept-source`).length, 1, "accepting Stauchness does not duplicate the held AOE discard");
+  }
+});
+
+test("Quick Test follows the Xiahou Dun Group trigger perspective", { timeout: 30_000 }, async () => {
+  const quick = await request("create", { quickStart: true });
+  const { token, room } = quick.data;
+  const [source, first, second, xiahou] = room.players;
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero=NULL WHERE id IN (${quote(first.id)},${quote(second.id)})`);
+  sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(xiahou.id)}`);
+  setHand(source.id, [card("RainingArrows", "quick-group-ganglie")], 4, 4);
+  setHand(first.id, [], 3, 3); setHand(second.id, [], 3, 3); setHand(xiahou.id, [], 3, 3);
+  setTurn(room.code, source.seat);
+  const opened = await request("play_card", { code: room.code, token, cardId: "rainingarrows-quick-group-ganglie" });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(opened.data.room.currentAction.actorId, xiahou.id);
+  assert.equal(opened.data.room.meId, xiahou.id, "Quick Test follows the Group trigger actor");
+  assert.equal(opened.data.room.isMyAction, true);
+  assert.deepEqual(opened.data.room.players.map((player) => player.handCards), [[], [], [], []]);
+  const declined = await request("decline_trigger", { code: room.code, token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  assert.equal(declined.data.room.phase, "play");
+  assert.equal(discardIds(room.code).filter((id) => id === "rainingarrows-quick-group-ganglie").length, 1);
+});
 
 test("Quick Test exhausts each AOE Negation window before the target response, with one private hand", async () => {
   for (const [kind, required] of [["RainingArrows", "Dodge"], ["BarbarianInvasion", "Attack"]]) {
@@ -259,6 +340,7 @@ test("AOE Attack capability preserves legal conversions and auto-damages only wi
   assert.equal(result.data.room.currentAction.actorId, p1.id, "no normal Attack, but a legal alternative keeps the decision open");
   assert.equal((await act("respond", { cardIds: ["dodge-cost1"] })).status, 409);
   result = await act("respond", { cardIds: ["dodge-cost1", "peach-cost2"] });
+  if (result.data.room.currentAction?.triggerEvent === "damage_suffered") result = await act("decline_trigger");
   assert.equal(result.data.room.phase, "play");
   assert.equal(result.data.room.players.find(p => p.id === p1.id).hp, 3);
   for (const p of [p2, p3]) assert.equal(result.data.room.players.find(player => player.id === p.id).hp, 2);
@@ -894,7 +976,9 @@ test("Quick Test accepts only one competing response submission", { timeout: 30_
   assert.equal([manual.status, timeout.status].filter((status) => status === 200).length, 1);
   assert.equal([manual.status, timeout.status].filter((status) => status === 409).length, 1);
   const final = await state(room.code, token);
-  assert.equal(final.data.pendingGroup, null); assert.equal(final.data.phase, "play"); assert.equal(final.data.meId, me.id);
+  if (final.data.currentAction?.triggerEvent === "damage_suffered") await request("decline_trigger", { code: room.code, token });
+  const settled = await state(room.code, token);
+  assert.equal(settled.data.pendingGroup, null); assert.equal(settled.data.phase, "play"); assert.equal(settled.data.meId, me.id);
 });
 
 test("Negation cancels a stratagem and a counter-Negation restores it in ordered response", { timeout: 30_000 }, async () => {
