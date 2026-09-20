@@ -1,5 +1,15 @@
 # Three Kingdoms project handover
 
+## Quick Test Xiahou Dun fixture — 2026-09-20
+
+The default four-seat Quick Test now assigns Xiahou Dun to Player4, replacing
+the former Zhen Ji assignment so the newly implemented Stauchness/Ganglie
+ability is immediately available in the product test game. Guan Yu, Sima Yi,
+and Zhao Yun remain in Players 1–3 with their existing seeded cards and
+capability coverage. Luoshen tests explicitly reassign the deterministic
+Player4 fixture to Zhen Ji, so that coverage remains available without
+changing the default Quick Test roster again.
+
 ## Hero name presentation — 2026-09-20
 
 Hero names on the in-game player cards are now displayed larger and with

@@ -125,7 +125,7 @@ async function createHumanGame() {
   const members = [{ name: "Host", token: created.data.token }];
   for (const name of ["Alice", "Bob", "Carol"]) { const joined = await request("join", { code, name }); assert.equal(joined.status, 201); members.push({ name, token: joined.data.token }); }
   assert.equal((await request("start", { code, token: members[0].token, name: "Host" })).status, 200);
-  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => option.id !== "zhen-ji" && option.id !== "simayi") ?? before.data.myHeroOptions[0]; assert.equal((await request("choose_hero", { code, token: member.token, heroId: hero.id })).status, 200); }
+  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => !["zhen-ji", "simayi", "xiahou-dun"].includes(option.id)) ?? before.data.myHeroOptions[0]; assert.equal((await request("choose_hero", { code, token: member.token, heroId: hero.id })).status, 200); }
   const started = (await state(code, members[0].token)).data; const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(code)}`) || "[]");
   for (const player of started.players) {
     const hand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`) || "[]");
@@ -805,7 +805,7 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   assert.equal(me.hero, "guan-yu", "Player1 is Guan Yu for Wusheng coverage");
   assert.equal(playerOne.hero, "simayi", "Player2 is Sima Yi for Guicai coverage");
   assert.equal(playerTwo.hero, "zhao-yun", "Player3 is Zhao Yun for Longdan coverage");
-  assert.equal(playerThree.hero, "zhen-ji", "Player4 is Zhen Ji for Luoshen coverage");
+  assert.equal(playerThree.hero, "xiahou-dun", "Player4 is Xiahou Dun for Stauchness coverage");
   assert.ok(openingHandKinds(me).includes("FrostSword"), "Player1 starts with Frost Sword");
   assert.ok(openingHandKinds(me).some((kind) => ["Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed"].includes(kind)), "Player1 starts with a horse");
   assert.ok(openingHandKinds(playerOne).includes("KirinBow"), "Player2 starts with Kirin Bow");
@@ -977,8 +977,9 @@ test("Luoshen repeats real Judgements before delayed-card Judgements and preserv
     const created = await request("create", { quickStart: true });
     const { token, room } = created.data;
     const code = room.code;
-    const zhen = room.players.find((player) => player.hero === "zhen-ji");
-    assert.ok(zhen, "Quick Test exposes Zhen Ji in the unused deterministic seat");
+    const zhen = room.players.find((player) => player.seat === 3);
+    assert.ok(zhen, "Quick Test exposes a deterministic Player4 seat for the Luoshen fixture");
+    sql(`UPDATE players SET hero='zhen-ji', hp=3, max_hp=3, hero_options_json='[]' WHERE id=${quote(zhen.id)}`);
     const previous = room.players.find((player) => player.seat === (zhen.seat + 3) % room.players.length);
     assert.ok(previous);
     for (const player of room.players) setHand(player.id, [], player.hp ?? 3, player.maxHp ?? 3);

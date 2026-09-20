@@ -684,16 +684,16 @@ async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
   const guanYu = STANDARD_HEROES.find((hero) => hero.id === "guan-yu")!;
   const simaYi = STANDARD_HEROES.find((hero) => hero.id === "simayi")!;
   const zhaoYun = STANDARD_HEROES.find((hero) => hero.id === "zhao-yun")!;
-  const zhenJi = STANDARD_HEROES.find((hero) => hero.id === "zhen-ji")!;
-  const otherHeroes = shuffle(STANDARD_HEROES.filter((hero) => ![guanYu.id, simaYi.id, zhaoYun.id, zhenJi.id].includes(hero.id)));
+  const xiahouDun = STANDARD_HEROES.find((hero) => hero.id === "xiahou-dun")!;
+  const otherHeroes = shuffle(STANDARD_HEROES.filter((hero) => ![guanYu.id, simaYi.id, zhaoYun.id, xiahouDun.id].includes(hero.id)));
   let otherHeroIndex = 0;
   const assigned = players.map((player, index) => {
-    const hero = player.id === hostPlayerId ? guanYu : player.seat === 1 ? simaYi : player.seat === 2 ? zhaoYun : player.seat === 3 ? zhenJi : otherHeroes[otherHeroIndex++];
+    const hero = player.id === hostPlayerId ? guanYu : player.seat === 1 ? simaYi : player.seat === 2 ? zhaoYun : player.seat === 3 ? xiahouDun : otherHeroes[otherHeroIndex++];
     const hp = hero.hp + (roles[index] === "Lord" ? 1 : 0);
     return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
   });
   await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
-  // Keep Guan Yu's red Wusheng, Zhao Yun's Longdan, and Zhen Ji's Luoshen
+  // Keep Guan Yu's red Wusheng, Zhao Yun's Longdan, and Xiahou Dun's Stauchness
   // capabilities available while seeding the requested Standard equipment for the first three
   // human-style seats; Yin-Yang Swords and Borrowed Sword are placed in
   // random open seats.
