@@ -6,12 +6,12 @@ import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card } from "../game/model";
 import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
 import { getResponseOptions } from "../game/responses";
-import { HEROES } from "../game/heroes";
+import { HEROES, type HeroSkill } from "../game/heroes";
 import { normalizeRoomData } from "../game/room-safety.js";
 import { canUseAction, type CurrentAction, type GameplayAction, type TriggerOptionView } from "../game/protocol.js";
 import { latestPublicMessages } from "../game/messages.js";
 
-type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string };
+type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type PresentationImportance = "essential" | "informational";
 type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge"; effectNotice?: boolean };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal"; presentation?: boolean };
@@ -257,23 +257,26 @@ export function HeroSelection({ room, busy, error, onChoose, onLeave }: { room: 
   const me = room.players.find((player) => player.id === room.meId);
   const waiting = Boolean(me?.hero);
   const chosenCount = room.players.filter((player) => player.hero).length;
+  const takenHeroIds = new Set(room.players.filter((player) => player.hero && player.id !== room.meId).map((player) => player.hero));
+  const effectiveSelected = room.myHeroOptions.some((hero) => hero.id === selected && !takenHeroIds.has(hero.id)) ? selected : room.myHeroOptions.find((hero) => !takenHeroIds.has(hero.id))?.id ?? "";
   return <main className="hero-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b><span>Choose a hero</span></div><button className="text-button" onClick={onLeave}>Exit</button></header>
-    <section className="hero-stage"><div className="hero-stage-head"><span className="eyebrow">YOUR SECRET ROLE · {room.myRole?.toUpperCase()}</span><h1>{waiting ? "Your general is chosen" : "Choose your general"}</h1><p>{waiting ? `Waiting for the other players · ${chosenCount}/${room.players.length} ready` : room.myRole === "Lord" ? "As Lord, choose from five generals. Your identity will be visible at the table." : "Choose one of your three private candidates."}</p></div>
-      {waiting ? <div className="chosen-wait"><div className="seal">✓</div><b>{heroName(me?.hero)}</b><span>Locked in</span><div className="ready-list">{room.players.map((player) => <small key={player.id} className={player.hero ? "ready" : ""}>{player.name} {player.hero ? "✓" : "…"}</small>)}</div></div> : <div className="hero-choice-grid">{room.myHeroOptions.map((hero) => <button key={hero.id} className={`hero-choice ${hero.faction.toLowerCase()} ${selected === hero.id ? "selected" : ""}`} onClick={() => setSelected(hero.id)}><span className="faction">{hero.faction}</span><div className="hero-monogram">{hero.name.split(" ").map((part) => part[0]).join("")}</div><h2>{hero.name}</h2><span className="hero-hp">{"♥".repeat(hero.hp)}</span><p>{heroSkillName(hero.id) ?? "Hero"}</p><i>{selected === hero.id ? "SELECTED" : "CHOOSE"}</i></button>)}</div>}
-      {!waiting && <div className="hero-confirm"><span>Hero choices are private until locked in.</span><button className="gold-button" disabled={busy || !selected} onClick={() => onChoose(selected)}>{busy ? "Locking in…" : `Confirm ${room.myHeroOptions.find((hero) => hero.id === selected)?.name ?? "hero"}`}</button></div>}{error && <p className="error hero-error" role="alert">{error}</p>}
+    <section className="hero-stage"><div className="hero-stage-head"><span className="eyebrow">{room.isTestController ? `QUICK TEST · ${me?.name?.toUpperCase()}` : `YOUR SECRET ROLE · ${room.myRole?.toUpperCase()}`}</span><h1>{waiting ? "Your general is chosen" : "Choose your general"}</h1><p>{waiting ? `Waiting for the other players · ${chosenCount}/${room.players.length} ready` : room.isTestController ? "Choose a different general for each seat. Quick Test keeps all Standard generals available for rapid rules testing." : room.myRole === "Lord" ? "As Lord, choose from five generals. Your identity will be visible at the table." : "Choose one of your three private candidates."}</p></div>
+      {waiting ? <div className="chosen-wait"><div className="seal">✓</div><b>{heroName(me?.hero)}</b><span>Locked in</span><div className="ready-list">{room.players.map((player) => <small key={player.id} className={player.hero ? "ready" : ""}>{player.name} {player.hero ? "✓" : "…"}</small>)}</div></div> : <div className="hero-choice-grid">{room.myHeroOptions.map((hero) => { const taken = takenHeroIds.has(hero.id); return <button key={hero.id} disabled={taken} className={`hero-choice ${hero.faction.toLowerCase()} ${effectiveSelected === hero.id ? "selected" : ""} ${taken ? "taken" : ""}`} onClick={() => setSelected(hero.id)}><span className="faction">{hero.faction}</span><div className="hero-monogram">{hero.name.split(" ").map((part) => part[0]).join("")}</div><h2>{hero.name}</h2><span className="hero-hp">{"♥".repeat(hero.hp)}</span><p>{heroSkillNames(hero).join(" · ")}</p><i>{taken ? "TAKEN" : effectiveSelected === hero.id ? "SELECTED" : "CHOOSE"}</i></button>; })}</div>}
+      {!waiting && <div className="hero-confirm"><span>{room.isTestController ? "Choose a unique general for each seat." : "Hero choices are private until locked in."}</span><button className="gold-button" disabled={busy || !effectiveSelected} onClick={() => onChoose(effectiveSelected)}>{busy ? "Locking in…" : `Confirm ${room.myHeroOptions.find((hero) => hero.id === effectiveSelected)?.name ?? "hero"}`}</button></div>}{error && <p className="error hero-error" role="alert">{error}</p>}
     </section></main>;
 }
 
 export function HeroInfoDialog({ hero, onClose }: { hero: Hero; onClose: () => void }) {
-  return <div className="card-info-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}><section className="card-info-dialog hero-info-dialog" role="dialog" aria-modal="true" aria-labelledby="hero-info-title"><button type="button" className="card-info-close" onClick={onClose} aria-label="Close hero information">×</button><span>HERO INFORMATION</span><small>{hero.faction} · {"♥".repeat(hero.hp)} · {hero.hp} HP</small><h2 id="hero-info-title">{hero.name}</h2>{hero.skill && <strong className="hero-info-skill">{hero.skill}</strong>}<p>{hero.ability}</p><em>Only you can see this information.</em></section></div>;
+  const skills = hero.skills?.length ? hero.skills : [{ name: hero.skill ?? "Hero Skill", description: hero.ability }];
+  return <div className="card-info-backdrop" role="presentation" onClick={(event) => event.target === event.currentTarget && onClose()}><section className="card-info-dialog hero-info-dialog" role="dialog" aria-modal="true" aria-labelledby="hero-info-title"><button type="button" className="card-info-close" onClick={onClose} aria-label="Close hero information">×</button><span>HERO INFORMATION</span><small>{hero.faction} · {"♥".repeat(hero.hp)} · {hero.hp} HP</small><h2 id="hero-info-title">{hero.name}</h2>{skills.map((skill) => <div className="hero-info-skill-block" key={skill.name}><strong className="hero-info-skill">{skill.name}</strong><p>{skill.description}</p></div>)}<em>Only you can see this information.</em></section></div>;
 }
 
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
-const HERO_SKILL_NAMES: Record<string, string> = { simayi: "Guicai", "xiahou-dun": "Stauchness / Ganglie", "guan-yu": "Wusheng", "zhao-yun": "Longdan", "zhang-fei": "Paoxiao", "zhen-ji": "Luoshen" };
-function heroSkillName(id?: string | null) { return id ? HERO_SKILL_NAMES[id] ?? null : null; }
+function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
+function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
 function heroDefinition(id?: string | null): Hero | null {
   const hero = HEROES.find((candidate) => candidate.id === id);
-  return hero ? { id: hero.id, name: hero.name, faction: hero.faction, hp: hero.hp, ability: hero.ability, skill: heroSkillName(hero.id) ?? undefined } : null;
+  return hero ? { id: hero.id, name: hero.name, faction: hero.faction, hp: hero.hp, ability: hero.ability, skills: hero.skills, skill: heroSkillName(hero.id) ?? undefined } : null;
 }
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 

@@ -3,6 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { GameRoom, HeroInfoDialog, MandatoryChoiceDialog } from "../app/page.tsx";
+import { STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
@@ -22,13 +23,14 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(html, /class="player-hero-card"/);
   assert.match(html, /aria-label="Explain Sima Yi"/);
   assert.doesNotMatch(html, />Guicai<\/em>/);
-  const heroInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "simayi", name: "Sima Yi", faction: "Wei", hp: 3, skill: "Guicai", ability: "When a Judgement card is revealed, you may replace it with one card from your hand." }, onClose: () => {} }));
-  assert.match(heroInfoHtml, />Guicai<\/strong>/);
-  assert.match(heroInfoHtml, /When a Judgement card is revealed/);
-  const ganglieInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "xiahou-dun", name: "Xiahou Dun", faction: "Wei", hp: 4, skill: "Stauchness / Ganglie", ability: "After taking damage, you may enter Judgement. If the Judgement card is not a Heart, the damage source must choose one: discard exactly 2 cards from their hand (not Equipment or Judgement Zone cards), or take 1 damage from Xiahou Dun." }, onClose: () => {} }));
-  assert.match(ganglieInfoHtml, />Stauchness \/ Ganglie<\/strong>/);
-  assert.match(ganglieInfoHtml, /discard exactly 2 cards from their hand/);
-  assert.match(ganglieInfoHtml, /not Equipment or Judgement Zone cards/);
+  const heroInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "simayi", name: "Sima Yi", faction: "Wei", hp: 3, skills: [{ name: "Retaliation", description: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, { name: "Necromancy", description: "After a Judgement card is flipped, you may discard 1 card from your hand. The discarded card then becomes the new Judgement card." }], ability: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, onClose: () => {} }));
+  assert.match(heroInfoHtml, />Retaliation<\/strong>/);
+  assert.match(heroInfoHtml, />Necromancy<\/strong>/);
+  assert.match(heroInfoHtml, /After a Judgement card is flipped/);
+  const ganglieInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "xiahou-dun", name: "Xiahou Dun", faction: "Wei", hp: 4, skill: "Stauchness", ability: "After you take damage, you may enter Judgement phase, if the Judgement card does not belong to [Heart], the source of damage must choose between: ①discard 2 hand cards; ②take 1 damage from you." }, onClose: () => {} }));
+  assert.match(ganglieInfoHtml, />Stauchness<\/strong>/);
+  assert.match(ganglieInfoHtml, /source of damage must choose between/);
+  assert.match(ganglieInfoHtml, /①discard 2 hand cards/);
   const choiceSelection = { type: "choice", choices: [{ id: "discard_two", label: "Discard exactly 2 cards from your hand" }, { id: "take_damage", label: "Take 1 damage from Xiahou Dun" }], eligibleHandKeys: ["hand:0", "hand:1"], cardCountByChoice: { discard_two: 2 } };
   const ganglieChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, { option: { effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.", allowDecline: false, selection: choiceSelection }, selection: choiceSelection, selectedChoice: "", selectedKeys: [], disabled: false, error: "", onChoice: () => {}, onToggle: () => {}, onConfirm: () => {} }));
   assert.match(ganglieChoiceHtml, /The Judgement is not a Heart/);
@@ -150,6 +152,25 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(noHandHtml, /Keep hand — attacker draws 1 card/);
   assert.doesNotMatch(noHandHtml, /Discard 1 hand card/);
   assert.doesNotMatch(noHandHtml, /Hidden hand card/);
+});
+
+test("the nine supplied Standard hero cards expose their printed English skill metadata", () => {
+  const expected = {
+    "cao-cao": ["Treachery", "Entourage"],
+    simayi: ["Retaliation", "Necromancy"],
+    "xiahou-dun": ["Stauchness"],
+    "liu-bei": ["Benevolence", "Influencing"],
+    "guan-yu": ["God of War"],
+    "zhang-fei": ["Battle Cry"],
+    "zhao-yun": ["Braveheart"],
+    "zhen-ji": ["Empress Dowager", "Goddess of Luo River"],
+    "sun-quan": ["Equilibrium", "Deliverance"],
+  };
+  for (const [id, names] of Object.entries(expected)) {
+    const hero = STANDARD_HEROES.find((candidate) => candidate.id === id);
+    assert.ok(hero, `${id} is in the Standard roster`);
+    assert.deepEqual(hero.skills.map((skill) => skill.name), names);
+  }
 });
 
 test("a normalized Negation response retains its legal controls", () => {

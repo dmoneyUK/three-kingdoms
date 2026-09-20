@@ -14,6 +14,25 @@
 - **Before implementing a hero**, re-open that hero's current official WTK Standard card/rulebook entry and confirm exact timing, card zones, optional/locked wording, target restrictions, and revised skill text. This is especially important for heroes that have had multiple published revisions.
 - Do not ship official card artwork from the catalogue without permission.
 
+## Supplied printed English metadata
+
+The following names and descriptions are transcribed from the nine Standard
+hero-card screenshots supplied for this implementation round. Runtime provider
+IDs remain stable for the already implemented skills; the printed names are the
+player-facing names used by hero selection and the private information dialog.
+
+| General | Printed skill text |
+| --- | --- |
+| Cao Cao | **Treachery:** After you take damage, you may obtain the card that caused damage on you. **Entourage:** Lord: You may ask characters from the Wei kingdom to use or play an [Dodge] on your behalf, provided they are willing to do so (you are deemed to use or play the [Dodge]). |
+| Sima Yi | **Retaliation:** After you take damage, you may obtain 1 card from the character that inflicted the damage. **Necromancy:** After a Judgement card is flipped, you may discard 1 card from your hand. The discarded card then becomes the new Judgement card. |
+| Xiahou Dun | **Stauchness:** After you take damage, you may enter Judgement phase, if the Judgement card does not belong to [Heart], the source of damage must choose between: ①discard 2 hand cards; ②take 1 damage from you. |
+| Liu Bei | **Benevolence:** Play Phase, you may give away any number of your hand cards to other characters, and recover 1 HP if 2 or more cards are given away. **Influencing:** Lord: You may ask characters from the Shu kingdom to use or play an [Attack] on your behalf, provided they are willing to do so (you are deemed as the source of damage). |
+| Guan Yu | **God of War:** You may use or play a Red suited card as an [Attack]. |
+| Zhang Fei | **Battle Cry:** Passive: You may use any number of [Attack] cards. |
+| Zhao Yun | **Braveheart:** You may use or play [Attack] as [Dodge] or [Dodge] as [Attack]. |
+| Zhen Ji | **Empress Dowager:** You may use or play a Black suited card as a [Dodge]. **Goddess of Luo River:** Preparation Phase, you may enter Judgement phase, if the Judgement card belongs to Black suited, you obtain it. You may repeat this procedure as long as your Judgement card is Black suited. |
+| Sun Quan | **Equilibrium:** Limited to once per Play Phase, you may discard any number of cards and draw an equal number of cards to replace them. **Deliverance:** Lord, Passive: You recover 1 additional HP when a [Peach] is used on you by other characters from the Wu Kingdom. |
+
 ## Reconciliation result
 
 The official Standard roster contains **31 generals**:
@@ -53,24 +72,24 @@ The official catalogue uses **Qun**. The current runtime uses `Neutral` for the 
 
 | Faction | Runtime ID | General | Chinese | Gender | Max HP | Skills | Runtime reconciliation |
 | --- | --- | --- | --- | --- | ---: | --- | --- |
-| Wei | `cao-cao` | Cao Cao | 曹操 | Male | 4 | Jianxiong 奸雄<br>Hujia 护驾 | Present |
-| Wei | `simayi` | Sima Yi | 司马懿 | Male | 3 | Retaliation (Fankui 反馈)<br>Necromancy (Guicai 鬼才) | Present |
-| Wei | `xiahou-dun` | Xiahou Dun | 夏侯惇 | Male | 4 | Ganglie 刚烈 | Present |
+| Wei | `cao-cao` | Cao Cao | 曹操 | Male | 4 | Treachery<br>Entourage | Present |
+| Wei | `simayi` | Sima Yi | 司马懿 | Male | 3 | Retaliation<br>Necromancy | Present |
+| Wei | `xiahou-dun` | Xiahou Dun | 夏侯惇 | Male | 4 | Stauchness | Present |
 | Wei | `zhang-liao` | Zhang Liao | 张辽 | Male | 4 | Tuxi 突袭 | Present |
 | Wei | `xu-chu` | Xu Chu | 许褚 | Male | 4 | Luoyi 裸衣 | Present |
 | Wei | `guo-jia` | Guo Jia | 郭嘉 | Male | 3 | Tiandu 天妒<br>Yiji 遗计 | Present |
-| Wei | `zhen-ji` | Zhen Ji | 甄姬 | Female | 3 | Qingguo 倾国<br>Luoshen 洛神 | Present |
+| Wei | `zhen-ji` | Zhen Ji | 甄姬 | Female | 3 | Empress Dowager<br>Goddess of Luo River | Present |
 | Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Xiaoguo 骁果 | **Present / metadata-only** |
 | Wei | `yu-jin` | Yu Jin | 于禁 | Male | 4 | Yizhong 毅重 | **Present / metadata-only** |
-| Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Rende 仁德<br>Jijiang 激将 | Present |
-| Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | Wusheng 武圣 | Present |
-| Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Paoxiao 咆哮 | Present |
+| Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Benevolence<br>Influencing | Present |
+| Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | God of War | Present |
+| Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Battle Cry | Present |
 | Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Guanxing 观星<br>Kongcheng 空城 | **Present / metadata-only** |
-| Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Longdan 龙胆 | Present |
+| Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Braveheart | Present |
 | Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Mashu 马术<br>Tieji 铁骑 | Present |
 | Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Jizhi 集智<br>Qicai 奇才 | Present |
 | Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Shushen 淑慎<br>Shenzhi 神智 | **Present / metadata-only** |
-| Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Zhiheng 制衡<br>Jiuyuan 救援 | Present |
+| Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Equilibrium<br>Deliverance | Present |
 | Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Qixi 奇袭 | Present |
 | Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Keji 克己 | Present |
 | Wu | `huang-gai` | Huang Gai | 黄盖 | Male | 4 | Kurou 苦肉 | Present |
@@ -99,8 +118,8 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Max HP:** 4
 - **Runtime roster status:** Present
 - **Skills:**
-  - **Jianxiong 奸雄:** After Cao Cao suffers damage caused by a card, he may obtain the card(s) that caused that damage if they are still available.
-  - **Hujia 护驾:** Lord skill. When Cao Cao needs to provide a Dodge, he may ask other Wei characters in action order to provide a Dodge for him.
+  - **Treachery / Jianxiong 奸雄:** After Cao Cao suffers damage caused by a card, he may obtain the card(s) that caused that damage if they are still available.
+  - **Entourage / Hujia 护驾:** Lord skill. When Cao Cao needs to provide a Dodge, he may ask other Wei characters in action order to provide a Dodge for him.
 - **Likely engine shape:** damage-resolved trigger; delegated Dodge response.
 - **Current implementation:** Jianxiong is a generic `damage_suffered` trigger that returns the exact damage-causing physical card(s) to Cao Cao before discard; Hujia is a delegated semantic Dodge provider that offers living Wei characters in action order. Both use `currentAction` and the canonical `respond`/`trigger` protocol.
 
@@ -181,8 +200,8 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Max HP:** 3
 - **Runtime roster status:** Present
 - **Skills:**
-  - **Qingguo 倾国:** A black hand card may be used or played as Dodge.
-  - **Luoshen 洛神:** At the beginning of her turn, Zhen Ji may repeatedly make Judgements. Black results are obtained and allow the sequence to continue; the sequence stops when a non-black result ends it.
+  - **Empress Dowager / Qingguo 倾国:** A black hand card may be used or played as Dodge.
+  - **Goddess of Luo River / Luoshen 洛神:** At the beginning of her turn, Zhen Ji may repeatedly make Judgements. Black results are obtained and allow the sequence to continue; the sequence stops when a non-black result ends it.
 - **Likely engine shape:** semantic Dodge provider; start-of-turn repeated Judgement.
 - **Current implementation:** Qingguo and Luoshen are implemented. Luoshen uses the canonical repeated Judgement flow; Qingguo behavior is unchanged by the Guicai work.
 
@@ -220,8 +239,8 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Max HP:** 4
 - **Runtime roster status:** Present
 - **Skills:**
-  - **Rende 仁德:** During the Play Phase, Liu Bei may give hand cards to other characters. After giving at least two cards through the skill in that phase, he recovers 1 HP once.
-  - **Jijiang 激将:** Lord skill. When Liu Bei needs an Attack, he may ask other Shu characters in action order to provide an Attack for him.
+  - **Benevolence / Rende 仁德:** During the Play Phase, Liu Bei may give hand cards to other characters. After giving at least two cards through the skill in that phase, he recovers 1 HP once.
+  - **Influencing / Jijiang 激将:** Lord skill. When Liu Bei needs an Attack, he may ask other Shu characters in action order to provide an Attack for him.
 - **Likely engine shape:** Play Phase active; delegated semantic Attack response/use.
 - **Current implementation:** Metadata only.
 
@@ -233,6 +252,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Max HP:** 4
 - **Runtime roster status:** Present
 - **Verified official source:** current Guan Yu card in the WTK Standard-filtered official General Card catalogue, <https://wtkgames.com/generalCard/> (card image identifies Guan Yu as SHU 002).
+- **Printed skill name:** **God of War** (the runtime capability retains `Wusheng` as its stable internal ID).
 - **Verified rule text:** “You may use or play a Red suited card as an [Attack].”
 - **Implementation interpretation:** Wusheng supplies a semantic Attack from one red-suited card in Guan Yu's hand. “Use or play” covers active Play Phase use and every existing semantic Attack requirement; an equipped card is not eligible because it is no longer legally supplied from the hand zone. The physical source card remains the consumed/presented card, with its original suit and ID. The acting seat receives a private `cardId -> canPlayAs: "attack"` Play Phase projection; the browser does not reimplement eligibility.
 - **Presentation boundary:** Virtual Attack events carry the narrow `playedAs: "attack"` marker while retaining the physical Card.kind, ID, suit and rank. This marker is used for history wording and to prevent equipment-flight or Judgement settlement from inferring the physical card's ordinary effect.
@@ -247,7 +267,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Max HP:** 4
 - **Runtime roster status:** Present
 - **Skills:**
-  - **Paoxiao 咆哮:** Locked/passive. During the Play Phase, Zhang Fei may use any number of Attacks rather than the normal once-per-turn limit.
+  - **Battle Cry / Paoxiao 咆哮:** Locked/passive. During the Play Phase, Zhang Fei may use any number of Attacks rather than the normal once-per-turn limit.
 - **Likely engine shape:** Attack-use limit modifier.
 - **Current implementation:** Core behaviour is currently live through route-specific Zhang Fei checks; should eventually be expressed as a capability instead of central hero-name branching.
 
@@ -272,7 +292,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Max HP:** 4
 - **Runtime roster status:** Present
 - **Skills:**
-  - **Longdan 龙胆:** Attack may be used or played as Dodge, and Dodge may be used or played as Attack.
+  - **Braveheart / Longdan 龙胆:** Attack may be used or played as Dodge, and Dodge may be used or played as Attack.
 - **Likely engine shape:** semantic Attack and Dodge providers.
 - **Current implementation:** Metadata only.
 
@@ -325,8 +345,8 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Max HP:** 4
 - **Runtime roster status:** Present
 - **Skills:**
-  - **Zhiheng 制衡:** Once during the Play Phase, Sun Quan may discard any number of cards and draw the same number of cards.
-  - **Jiuyuan 救援:** Lord skill. When another Wu character uses Peach to rescue Sun Quan while he is Dying, the Peach provides an additional recovery according to the Standard wording.
+  - **Equilibrium / Zhiheng 制衡:** Once during the Play Phase, Sun Quan may discard any number of cards and draw the same number of cards.
+  - **Deliverance / Jiuyuan 救援:** Lord skill. When another Wu character uses Peach to rescue Sun Quan while he is Dying, the Peach provides an additional recovery according to the Standard wording.
 - **Likely engine shape:** Play Phase active / redraw; Dying recovery modifier.
 - **Current implementation:** Metadata only.
 

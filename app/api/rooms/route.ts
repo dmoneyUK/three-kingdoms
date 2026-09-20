@@ -729,32 +729,31 @@ async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpenin
   await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify([`${lord.name} begins the match.`]), JSON.stringify({ turnPlayerId: lord.id }), roomId)]);
   await beginTurnStart(roomId, lord.seat);
 }
-async function beginRandomizedMatch(roomId: string, hostPlayerId: string) {
+async function prepareQuickTestMatch(roomId: string, hostPlayerId: string) {
   const result = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const players = result.results ?? [];
   const roles = shuffle(ROLE_SETS[players.length]);
   const lordIndex = players.findIndex((player) => player.id === hostPlayerId); const lordAt = roles.indexOf("Lord");
   [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
-  const guanYu = STANDARD_HEROES.find((hero) => hero.id === "guan-yu")!;
-  const simaYi = STANDARD_HEROES.find((hero) => hero.id === "simayi")!;
-  const zhaoYun = STANDARD_HEROES.find((hero) => hero.id === "zhao-yun")!;
-  const xiahouDun = STANDARD_HEROES.find((hero) => hero.id === "xiahou-dun")!;
-  const otherHeroes = shuffle(STANDARD_HEROES.filter((hero) => ![guanYu.id, simaYi.id, zhaoYun.id, xiahouDun.id].includes(hero.id)));
-  let otherHeroIndex = 0;
+  const preferredBySeat = ["guan-yu", "simayi", "zhao-yun", "xiahou-dun"];
   const assigned = players.map((player, index) => {
-    const hero = player.id === hostPlayerId ? guanYu : player.seat === 1 ? simaYi : player.seat === 2 ? zhaoYun : player.seat === 3 ? xiahouDun : otherHeroes[otherHeroIndex++];
-    const hp = hero.hp + (roles[index] === "Lord" ? 1 : 0);
-    return { ...player, role: roles[index], hero: hero.id, hp, max_hp: hp, hero_options_json: JSON.stringify([hero]) };
+    const preferred = STANDARD_HEROES.find((hero) => hero.id === preferredBySeat[player.seat]);
+    const options = preferred ? [preferred, ...shuffle(STANDARD_HEROES.filter((hero) => hero.id !== preferred.id))] : shuffle([...STANDARD_HEROES]);
+    return { ...player, role: roles[index], hero: null, hp: null, max_hp: null, hero_options_json: JSON.stringify(options) };
   });
-  await db().batch(assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = ?, hp = ?, max_hp = ?, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero, player.hp, player.max_hp, player.hero_options_json, player.id)));
-  // Keep Guan Yu's red Wusheng, Zhao Yun's Longdan, and Xiahou Dun's Stauchness
-  // capabilities available while seeding the requested Standard equipment for the first three
-  // human-style seats; Yin-Yang Swords and Borrowed Sword are placed in
-  // random open seats.
-  await beginMatch(roomId, assigned, [
-    { playerId: assigned[0].id, kinds: ["FrostSword", "RedHare", "Peach", "Attack"] },
-    { playerId: assigned[1].id, kinds: ["KirinBow", "NioShield"] },
-    { playerId: assigned[2].id, kinds: ["BlueSteelSword", "Dodge", "Attack"] },
+  await db().batch([
+    ...assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = NULL, hp = NULL, max_hp = NULL, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero_options_json, player.id)),
+    db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = NULL WHERE id = ?").bind(roomId),
+  ]);
+}
+
+async function beginQuickTestMatch(roomId: string, players: PlayerRow[]) {
+  // Keep the established Quick Test fixture useful for capability coverage;
+  // hero identity is now selected by the controller before this deal occurs.
+  await beginMatch(roomId, players, [
+    { playerId: players[0].id, kinds: ["FrostSword", "RedHare", "Peach", "Attack"] },
+    { playerId: players[1].id, kinds: ["KirinBow", "NioShield"] },
+    { playerId: players[2].id, kinds: ["BlueSteelSword", "Dodge", "Attack"] },
   ], ["YinYangSwords", "BorrowedSword", "BorrowedSword"]);
 }
 function db() { return env.DB; }
@@ -1990,14 +1989,16 @@ async function roomState(code: string, token?: string) {
   // Quick Test deliberately shares one local controller across all four seats.
   // A regular room still has exactly one player for each session token.
   const isTestController = sessionPlayers.length === players.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
-  const me = isTestController ? players.find((player) => player.id === actualActionPlayerId) ?? turnPlayer ?? sessionPlayers[0] : sessionPlayers[0];
+  const quickSelectionPlayer = room.status === "heroes" && isTestController ? players.find((player) => !player.hero)?.id ?? null : null;
+  const projectedActionPlayerId = quickSelectionPlayer ?? actualActionPlayerId;
+  const me = isTestController ? players.find((player) => player.id === projectedActionPlayerId) ?? turnPlayer ?? sessionPlayers[0] : sessionPlayers[0];
   // Reading a room must not create D1 writes. Presence is refreshed by the
   // throttled heartbeat action below, never by normal room polling.
   const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
-  const actionRevision = [room.phase ?? "", actualActionPlayerId ?? "", room.pending_json ?? ""].join("|");
+  const actionRevision = [room.status, room.phase ?? "", projectedActionPlayerId ?? "", room.pending_json ?? ""].join("|");
   const responseDeadline = pending && "deadline" in pending ? pending.deadline ?? 0 : 0;
   const responseCountdownVisibleAt = room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS + 5_000 : 0;
-  const actionPlayerId = room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
+  const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
   const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me, players) : undefined) : null;
@@ -2105,7 +2106,7 @@ export async function POST(request: Request) {
       await resetAudit(roomId);
       const createdRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const host = await db.prepare("SELECT * FROM players WHERE id = ?").bind(playerId).first<PlayerRow>();
       if (createdRoom && host) await recordAuditAction(createdRoom, host, playerName, "quick_start");
-      await beginRandomizedMatch(roomId, playerId);
+      await prepareQuickTestMatch(roomId, playerId);
     }
     return json({ token, room: await roomState(code, token) }, 201);
   }
@@ -2138,7 +2139,7 @@ export async function POST(request: Request) {
   const rawControllerPending = parsePersistedPending(room.pending_json);
   let pendingForController = rawControllerPending;
   let turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
-  let actionPlayerIdForController = room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
+  let actionPlayerIdForController = room.status === "heroes" ? allRoomPlayers.find((player) => !player.hero)?.id : room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
   let isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
   let me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
   if (action === "heartbeat") {
@@ -2170,11 +2171,11 @@ export async function POST(request: Request) {
     const rawCurrentPending = parsePersistedPending(room.pending_json);
     pendingForController = rawCurrentPending;
     turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
-    actionPlayerIdForController = room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
+    actionPlayerIdForController = room.status === "heroes" ? allRoomPlayers.find((player) => !player.hero)?.id : room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
     isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
     me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
     const submitted = body.context && typeof body.context === "object" ? body.context as { actionRevision?: unknown; meId?: unknown; phase?: unknown; pendingKind?: unknown; actorId?: unknown } : null;
-    const expectedRevision = [room.phase ?? "", actionPlayerIdForController ?? "", room.pending_json ?? ""].join("|");
+    const expectedRevision = [room.status, room.phase ?? "", actionPlayerIdForController ?? "", room.pending_json ?? ""].join("|");
     const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: pendingForController?.kind === "response" ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null, actorId: actionPlayerIdForController ?? null };
     const submittedPendingKind = submitted?.pendingKind === undefined ? undefined : String(submitted.pendingKind);
     const contextMismatch = submitted && (submitted.actionRevision !== undefined && String(submitted.actionRevision) !== expectedRevision || submitted.meId !== undefined && String(submitted.meId) !== String(expectedContext.meId) || submitted.phase !== undefined && String(submitted.phase) !== String(expectedContext.phase) || submittedPendingKind !== undefined && submittedPendingKind !== String(expectedContext.pendingKind) || submitted.actorId !== undefined && String(submitted.actorId) !== String(expectedContext.actorId));
@@ -2725,7 +2726,9 @@ export async function POST(request: Request) {
     const remaining = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND hero IS NULL").bind(room.id).first<{ count: number }>();
     if ((remaining?.count ?? 0) === 0) {
       const ready = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-      await beginMatch(room.id, ready.results ?? []);
+      const readyPlayers = ready.results ?? [];
+      const quickTest = readyPlayers.length === 4 && new Set(readyPlayers.map((player) => player.token_hash)).size === 1;
+      await (quickTest ? beginQuickTestMatch(room.id, readyPlayers) : beginMatch(room.id, readyPlayers));
       }
     return json({ room: await roomState(code, token) });
   }

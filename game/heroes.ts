@@ -1,29 +1,30 @@
 export type Gender = "male" | "female";
-export type HeroDefinition = { id: string; name: string; faction: string; hp: number; ability: string; gender: Gender; standardSelectable: boolean };
+export type HeroSkill = { name: string; description: string };
+export type HeroDefinition = { id: string; name: string; faction: string; hp: number; ability: string; skills: readonly HeroSkill[]; gender: Gender; standardSelectable: boolean };
 
 // Standard roster metadata. Membership is authoritative for new Standard
 // games; skill text remains UI metadata until each card is individually
 // verified against the current official source.
-const standard = (id: string, name: string, faction: string, hp: number, ability: string, gender: Gender): HeroDefinition => ({ id, name, faction, hp, ability, gender, standardSelectable: true });
+const standard = (id: string, name: string, faction: string, hp: number, ability: string, gender: Gender, skills: readonly HeroSkill[] = [{ name: "Hero Skill", description: ability }]): HeroDefinition => ({ id, name, faction, hp, ability, skills, gender, standardSelectable: true });
 export const STANDARD_HEROES: readonly HeroDefinition[] = [
-  standard("cao-cao","Cao Cao","Wei",4,"After taking damage, you may gain the card that caused it.","male"),
-  standard("simayi","Sima Yi","Wei",3,"When a Judgement card is revealed, you may replace it with one card from your hand.","male"),
-  standard("xiahou-dun","Xiahou Dun","Wei",4,"After taking damage, you may enter Judgement. If the Judgement card is not a Heart, the damage source must choose one: discard exactly 2 cards from their hand (not Equipment or Judgement Zone cards), or take 1 damage from Xiahou Dun.","male"),
+  standard("cao-cao","Cao Cao","Wei",4,"After you take damage, you may obtain the card that caused damage on you.","male", [{ name: "Treachery", description: "After you take damage, you may obtain the card that caused damage on you." }, { name: "Entourage", description: "Lord: You may ask characters from the Wei kingdom to use or play a [Dodge] on your behalf, provided they are willing to do so (you are deemed to use or play the [Dodge])." }]),
+  standard("simayi","Sima Yi","Wei",3,"After you take damage, you may obtain 1 card from the character that inflicted the damage.","male", [{ name: "Retaliation", description: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, { name: "Necromancy", description: "After a Judgement card is flipped, you may discard 1 card from your hand. The discarded card then becomes the new Judgement card." }]),
+  standard("xiahou-dun","Xiahou Dun","Wei",4,"After you take damage, you may enter Judgement phase, if the Judgement card does not belong to [Heart], the source of damage must choose between: ①discard 2 hand cards; ②take 1 damage from you.","male", [{ name: "Stauchness", description: "After you take damage, you may enter Judgement phase, if the Judgement card does not belong to [Heart], the source of damage must choose between: ①discard 2 hand cards; ②take 1 damage from you." }]),
   standard("zhang-liao","Zhang Liao","Wei",4,"During draw, you may take cards from up to two players instead.","male"),
   standard("xu-chu","Xu Chu","Wei",4,"Draw one fewer card to make your Attack and Duel damage stronger.","male"),
   standard("guo-jia","Guo Jia","Wei",3,"After a judgement or damage, turn revealed cards into resources.","male"),
-  standard("zhen-ji","Zhen Ji","Wei",3,"Black cards may be used as Dodge; black judgements can extend your draw.","female"),
+  standard("zhen-ji","Zhen Ji","Wei",3,"You may use or play a Black suited card as a [Dodge].","female", [{ name: "Empress Dowager", description: "You may use or play a Black suited card as a [Dodge]." }, { name: "Goddess of Luo River", description: "Preparation Phase, you may enter Judgement phase, if the Judgement card belongs to Black suited, you obtain it. You may repeat this procedure as long as your Judgement card is Black suited." }]),
   standard("yue-jin","Yue Jin","Wei",4,"Skill metadata pending individual verification.","male"),
   standard("yu-jin","Yu Jin","Wei",4,"Skill metadata pending individual verification.","male"),
-  standard("liu-bei","Liu Bei","Shu",4,"Give cards to allies; after giving enough, recover 1 HP.","male"),
-  standard("guan-yu","Guan Yu","Shu",4,"You may use or play a red suited card as an Attack.","male"),
-  standard("zhang-fei","Zhang Fei","Shu",4,"You may play any number of Attacks during your turn.","male"),
+  standard("liu-bei","Liu Bei","Shu",4,"Play Phase, you may give away any number of your hand cards to other characters, and recover 1 HP if 2 or more cards are given away.","male", [{ name: "Benevolence", description: "Play Phase, you may give away any number of your hand cards to other characters, and recover 1 HP if 2 or more cards are given away." }, { name: "Influencing", description: "Lord: You may ask characters from the Shu kingdom to use or play an [Attack] on your behalf, provided they are willing to do so (you are deemed as the source of damage)." }]),
+  standard("guan-yu","Guan Yu","Shu",4,"You may use or play a Red suited card as an [Attack].","male", [{ name: "God of War", description: "You may use or play a Red suited card as an [Attack]." }]),
+  standard("zhang-fei","Zhang Fei","Shu",4,"Passive: You may use any number of [Attack] cards.","male", [{ name: "Battle Cry", description: "Passive: You may use any number of [Attack] cards." }]),
   standard("zhuge-liang","Zhuge Liang","Shu",3,"Skill metadata pending individual verification.","male"),
-  standard("zhao-yun","Zhao Yun","Shu",4,"Attack and Dodge may be used interchangeably.","male"),
+  standard("zhao-yun","Zhao Yun","Shu",4,"You may use or play [Attack] as [Dodge] or [Dodge] as [Attack].","male", [{ name: "Braveheart", description: "You may use or play [Attack] as [Dodge] or [Dodge] as [Attack]." }]),
   standard("ma-chao","Ma Chao","Shu",4,"Your attack distance improves; judgement may make an Attack unavoidable.","male"),
   standard("huang-yueying","Huang Yueying","Shu",3,"After using a tactic, draw a card; equipment has no distance limit.","female"),
   standard("lady-gan","Lady Gan","Shu",3,"Skill metadata pending individual verification.","female"),
-  standard("sun-quan","Sun Quan","Wu",4,"Once per turn, exchange any number of cards for new ones.","male"),
+  standard("sun-quan","Sun Quan","Wu",4,"Limited to once per Play Phase, you may discard any number of cards and draw an equal number of cards to replace them.","male", [{ name: "Equilibrium", description: "Limited to once per Play Phase, you may discard any number of cards and draw an equal number of cards to replace them." }, { name: "Deliverance", description: "Lord, Passive: You recover 1 additional HP when a [Peach] is used on you by other characters from the Wu Kingdom." }]),
   standard("gan-ning","Gan Ning","Wu",4,"Any black card may be used to dismantle another player's card.","male"),
   standard("lü-meng","Lü Meng","Wu",4,"If you play no Attack, you may ignore the normal hand limit.","male"),
   standard("huang-gai","Huang Gai","Wu",4,"Lose 1 HP to draw two cards.","male"),

@@ -20,6 +20,15 @@ function normalizeCards(value) {
   return Array.isArray(value) ? value.map(normalizeCard).filter(Boolean) : [];
 }
 
+function normalizeHeroes(value) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((hero) => {
+    if (!isRecord(hero) || typeof hero.id !== "string" || typeof hero.name !== "string" || typeof hero.faction !== "string" || typeof hero.hp !== "number" || typeof hero.ability !== "string") return [];
+    const skills = Array.isArray(hero.skills) ? hero.skills.filter((skill) => isRecord(skill) && typeof skill.name === "string" && typeof skill.description === "string").map((skill) => ({ name: skill.name, description: skill.description })) : undefined;
+    return [{ ...hero, ...(skills?.length ? { skills } : {}) }];
+  });
+}
+
 function normalizePresentationMeta(entry) {
   const metadata = {};
   if (typeof entry.resolutionId === "string" && entry.resolutionId.length > 0) metadata.resolutionId = entry.resolutionId;
@@ -118,7 +127,7 @@ export function normalizeRoomData(value) {
     myHand: normalizeCards(value.myHand),
     timeline: normalizeTimeline(value.timeline),
     log: Array.isArray(value.log) ? value.log.filter((entry) => typeof entry === "string") : [],
-    myHeroOptions: Array.isArray(value.myHeroOptions) ? value.myHeroOptions.filter((hero) => isRecord(hero) && typeof hero.id === "string" && typeof hero.name === "string" && typeof hero.faction === "string" && typeof hero.hp === "number" && typeof hero.ability === "string") : [],
+    myHeroOptions: normalizeHeroes(value.myHeroOptions),
     discardTop: normalizeCard(value.discardTop),
     pending: isRecord(value.pending) && typeof value.pending.kind === "string" && PENDING_KINDS.has(value.pending.kind) ? { kind: value.pending.kind } : null,
     currentAction: normalizeCurrentAction(value.currentAction),

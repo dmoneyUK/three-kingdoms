@@ -89,6 +89,46 @@ function setDeck(roomCode, cards) { sql(`UPDATE rooms SET deck_json=${quote(JSON
 function setTurn(roomCode, seat, phase = "play") { sql(`UPDATE rooms SET turn_seat=${seat}, phase=${quote(phase)}, pending_json=NULL, status='playing' WHERE code=${quote(roomCode)}`); }
 function discardIds(roomCode) { return query(`SELECT json_extract(value,'$.id') FROM rooms,json_each(rooms.discard_json) WHERE rooms.code=${quote(roomCode)}`).split("\n").filter(Boolean); }
 
+async function createQuickTestGame() {
+  const created = await request("create", { quickStart: true });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  let room = created.data.room;
+  const defaults = ["guan-yu", "simayi", "zhao-yun", "xiahou-dun"];
+  while (room.status === "heroes") {
+    const actor = room.players.find((player) => player.id === room.meId);
+    assert.ok(actor, "Quick Test projects the next seat to the shared controller");
+    const desired = defaults[actor.seat];
+    const chosen = room.myHeroOptions.find((option) => option.id === desired) ?? room.myHeroOptions.find((option) => !room.players.some((player) => player.hero === option.id));
+    assert.ok(chosen, `Quick Test exposes a selectable hero for ${actor.name}`);
+    const result = await request("choose_hero", { code: room.code, token: created.data.token, heroId: chosen.id });
+    assert.equal(result.status, 200, JSON.stringify(result.data));
+    room = result.data.room;
+  }
+  return { ...created, data: { ...created.data, room } };
+}
+
+test("Quick Test completes the shared hero start phase before dealing", async () => {
+  const created = await request("create", { quickStart: true });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.room.status, "heroes");
+  assert.equal(created.data.room.isTestController, true);
+  assert.equal(created.data.room.players.length, 4);
+  assert.equal(created.data.room.myHeroOptions.length, 31);
+  assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
+
+  let room = created.data.room;
+  for (const heroId of ["sun-quan", "liu-bei", "simayi", "zhao-yun"]) {
+    const actor = room.players.find((player) => player.id === room.meId);
+    const chosen = await request("choose_hero", { code: room.code, token: created.data.token, heroId });
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+    assert.equal(chosen.data.room.players.find((player) => player.id === actor.id).hero, heroId);
+    room = chosen.data.room;
+  }
+  assert.equal(room.status, "playing");
+  assert.ok(room.players.every((player) => player.hero));
+  assert.ok(room.players.every((player) => player.hp === player.maxHp));
+});
+
 test("room reads are read-only and presence heartbeats are throttled", async () => {
   const created = await request("create", { name: "Presence Host" });
   assert.equal(created.status, 201);
@@ -106,7 +146,7 @@ test("room reads are read-only and presence heartbeats are throttled", async () 
 });
 
 test("an inactive active room is closed after five minutes without a game event", async () => {
-  const created = await request("create", { quickStart: true });
+  const created = await createQuickTestGame();
   const { code } = created.data.room;
   const { token } = created.data;
   sql(`UPDATE rooms SET last_activity_at=${Date.now() - 5 * 60_000 - 1} WHERE code=${quote(code)}`);
@@ -357,7 +397,7 @@ test("Raining Arrows and Barbarian Invasion resume through Xiahou Dun Stauchness
 });
 
 test("Quick Test follows the Xiahou Dun Group trigger perspective", { timeout: 30_000 }, async () => {
-  const quick = await request("create", { quickStart: true });
+  const quick = await createQuickTestGame();
   const { token, room } = quick.data;
   const [source, first, second, xiahou] = room.players;
   sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
@@ -381,7 +421,7 @@ test("Quick Test follows the Xiahou Dun Group trigger perspective", { timeout: 3
 
 test("Quick Test exhausts each AOE Negation window before the target response, with one private hand", async () => {
   for (const [kind, required] of [["RainingArrows", "Dodge"], ["BarbarianInvasion", "Attack"]]) {
-  const created = await request("create", { quickStart: true }); const { token, room } = created.data;
+  const created = await createQuickTestGame(); const { token, room } = created.data;
   const [me, ...targets] = room.players;
   setHand(me.id, [card(kind, "perspective"), card("Negation", "perspective-user")], 3, 3);
   for (const target of targets) setHand(target.id, [card("Negation", `perspective-${target.seat}`), card(required, `perspective-${target.seat}`)], 3, 3);
@@ -415,7 +455,7 @@ test("Quick Test exhausts each AOE Negation window before the target response, w
 });
 
 test("AOE counter rounds include their own Negation player last and resume the affected target", async () => {
-  const created = await request("create", { quickStart: true }); const { token, room } = created.data;
+  const created = await createQuickTestGame(); const { token, room } = created.data;
   const [me, p1, p2, p3] = room.players;
   for (const p of room.players) setHand(p.id, [card("Negation", `self-${p.seat}`), card("Attack", `self-${p.seat}`)], 3, 3);
   setHand(me.id, [card("BarbarianInvasion", "self-root"), card("Negation", "self-0")], 3, 3);
@@ -444,7 +484,7 @@ test("AOE counter rounds include their own Negation player last and resume the a
 });
 
 test("AOE Attack capability preserves legal conversions and auto-damages only without a response", async () => {
-  const created = await request("create", { quickStart: true }); const { token, room } = created.data;
+  const created = await createQuickTestGame(); const { token, room } = created.data;
   const [me, p1, p2, p3] = room.players;
   for (const p of room.players) { setHand(p.id, [], 3, 3); setEquipment(p.id, {}); }
   setHand(me.id, [card("BarbarianInvasion", "capability")], 3, 3);
@@ -1024,7 +1064,7 @@ test("Something Out of Nothing preserves Play Phase and reveals the stratagem wi
 });
 
 test("Quick Test follows the live actor for Something Out of Nothing and rejects stale actions", { timeout: 30_000 }, async () => {
-  const quick = await request("create", { quickStart: true }); const { token, room } = quick.data;
+  const quick = await createQuickTestGame(); const { token, room } = quick.data;
   const [me, playerOne, playerTwo, playerThree] = room.players;
   const openingHandKinds = (player) => JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`)).map((held) => held.kind);
   assert.equal(me.hero, "guan-yu", "Player1 is Guan Yu for Wusheng coverage");
@@ -1072,7 +1112,7 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
 });
 
 test("Quick Test Something Out of Nothing resolves without a generic damage response", { timeout: 30_000 }, async () => {
-  const quick = await request("create", { quickStart: true }); const { token, room } = quick.data;
+  const quick = await createQuickTestGame(); const { token, room } = quick.data;
   const [me, playerOne, playerTwo, playerThree] = room.players;
   setHand(me.id, [], 3, 3); setHand(playerOne.id, [card("DrawTwo", "quick-no-negation")], 3, 3); setHand(playerTwo.id, [], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, playerOne.seat, "play");
   const result = await request("play_card", { code: room.code, token, cardId: "drawtwo-quick-no-negation" });
@@ -1080,7 +1120,7 @@ test("Quick Test Something Out of Nothing resolves without a generic damage resp
 });
 
 test("Quick Test accepts only one competing response submission", { timeout: 30_000 }, async () => {
-  const quick = await request("create", { quickStart: true }); const { token, room } = quick.data;
+  const quick = await createQuickTestGame(); const { token, room } = quick.data;
   const [me, playerOne, playerTwo, playerThree] = room.players;
   setHand(me.id, [card("BarbarianInvasion", "quick-race")], 3, 3); setHand(playerOne.id, [card("Attack", "quick-race")], 3, 3); setHand(playerTwo.id, [], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, me.seat, "play");
   const started = await request("play_card", { code: room.code, token, cardId: "barbarianinvasion-quick-race" });
@@ -1201,7 +1241,7 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
 
 test("Luoshen repeats real Judgements before delayed-card Judgements and preserves card destinations", { timeout: 30_000 }, async () => {
   async function beginZhenTurn(deck, judgement = [], simaHand = []) {
-    const created = await request("create", { quickStart: true });
+    const created = await createQuickTestGame();
     const { token, room } = created.data;
     const code = room.code;
     const zhen = room.players.find((player) => player.seat === 3);
@@ -1623,7 +1663,7 @@ test("Stauchness uses the final Guicai card, limits discard choices, and resumes
 });
 
 test("Quick Test projects Stauchness privately through the generic currentAction", { timeout: 30_000 }, async () => {
-  const quick = await request("create", { quickStart: true });
+  const quick = await createQuickTestGame();
   const { token, room } = quick.data;
   const [source, target, ...others] = room.players;
   sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
@@ -1721,7 +1761,7 @@ test("Retaliation rejects stale source cards, handles a vanished source, and has
 });
 
 test("Quick Test follows Sima Yi only while he owns the Retaliation decision", { timeout: 30_000 }, async () => {
-  const started = await request("create", { quickStart: true });
+  const started = await createQuickTestGame();
   const { token, room } = started.data;
   const [source, sima] = room.players;
   sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);

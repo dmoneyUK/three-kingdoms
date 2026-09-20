@@ -1,5 +1,31 @@
 # Three Kingdoms project handover
 
+## Standard hero metadata and Quick Test start phase — 2026-09-20
+
+The shared Standard hero registry now carries the supplied English skill names
+and descriptions for Cao Cao, Liu Bei, Sun Quan, Sima Yi, Xiahou Dun, Guan Yu,
+Zhang Fei, Zhao Yun, and Zhen Ji. Selection cards and the private in-game hero
+information dialog render this same multi-skill metadata; persisted hero
+payloads are normalized before React receives them.
+
+Quick Test no longer calls the match-deal path directly. It creates four
+human-style seats, enters `status: 'heroes'`, projects the next unchosen seat
+to the shared controller, and accepts one unique Standard hero per seat through
+the existing `choose_hero` action. The match starts only after all four choices
+are locked, then uses the established deterministic equipment/opening fixture.
+Normal multiplayer selection remains unchanged and still uses private options
+per player. No provider-specific protocol or hero-specific HTTP action was
+added.
+
+The deterministic suite now contains **90 tests**. It covers the nine supplied
+hero metadata sets, Quick Test's selection-to-deal transition, and the existing
+lord/capability, privacy, stale-action, and card-conservation paths. Known
+boundary: hero selection is complete for the Standard roster, but only the
+already implemented hero capabilities are executable; metadata-only generals
+remain selectable without new rules behavior.
+
+Recommended next work: the next individually verified Standard hero capability.
+
 ## Three faction lords — 2026-09-20
 
 Cao Cao, Liu Bei, and Sun Quan are now implemented through the completed
@@ -16,12 +42,12 @@ No hero-specific HTTP action, provider-specific client branch, or public
 private-hand projection was added. Active skills use the generic `trigger`
 command; Hujia/Jijiang use `respond` and the existing response continuation.
 Attack, Group, and Duel damage continuations preserve their physical card
-identity for Jianxiong. The default Quick Test roster remains the established
-Guan Yu / Sima Yi / Zhao Yun / Xiahou Dun fixture, while the shared controller
-and private actor projection are covered by the lord API fixture; changing the
-default roster would invalidate the existing capability-opening contract.
+identity for Jianxiong. Quick Test now opens the shared hero-selection phase
+before preserving the established Guan Yu / Sima Yi / Zhao Yun / Xiahou Dun
+choices as the first deterministic options. The shared controller and private
+actor projection are covered by the Quick Test API fixture.
 
-The deterministic Worker/D1 suite now contains **88 tests** and includes
+The deterministic Worker/D1 suite now contains **90 tests** and includes
 Rende, Zhiheng, Jianxiong, Hujia, Jijiang, card conservation, private
 projection, and delegated multi-seat response assertions. The next milestone
 is the next individually verified Standard hero; keep the lord state and
