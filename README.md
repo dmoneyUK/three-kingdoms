@@ -98,6 +98,11 @@ use their supplied artwork across the same shared surfaces. Their ivory/gold,
 red/brown, and purple/gold contrast treatments preserve physical rank/suit and
 card labels without changing their multi-target, Group, or Negation semantics.
 
+The standard Frost Sword, Something Out of Nothing, and Borrowed Sword cards
+now use their supplied artwork across the same shared surfaces. Their icy blue,
+gold/black, and red/black contrast treatments preserve physical rank/suit and
+card labels without changing their weapon, draw, or forced-Attack semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun

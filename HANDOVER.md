@@ -165,6 +165,24 @@ Barbarian Invasion Group response, or Negation parity/counter-chain semantics
 changed. Recommended next work remains the next individually verified Standard
 hero capability.
 
+## Frost Sword, Something Out of Nothing, and Borrowed Sword artwork — 2026-09-20
+
+The supplied artwork is now stored at `public/frost-sword-card.jpg`,
+`public/something-out-of-nothing-card.jpg`, and
+`public/borrowed-sword-card.jpg`. It is applied to the shared
+`.game-card`/`.played-card` classes for `frostsword`, `drawtwo`, and
+`borrowedsword`. Hand cards, centre reveals, private draws, equipment previews,
+target-card previews, and settled table cards share the respective visuals.
+Icy blue, gold/black, and red/black contrast treatments preserve physical
+rank/suit, card names, and category labels while the existing suit-colour
+corner rules remain authoritative.
+
+No gameplay protocol, Frost Sword damage trigger, Something Out of Nothing draw
+flow, or Borrowed Sword target/forced-Attack continuation changed. This leaves
+Overindulgence as the only Standard card without custom graphic artwork.
+Recommended next work remains the next individually verified Standard hero
+capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at
