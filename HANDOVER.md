@@ -36,6 +36,19 @@ No gameplay protocol, card identity, Negation flow, or target-card picker
 semantics changed. Recommended next work remains the next individually
 verified Standard hero capability.
 
+## Steal card artwork — 2026-09-20
+
+The supplied card-taking artwork is now stored at `public/steal-card.jpg` and
+applied to the shared `.game-card.steal` and `.played-card.steal` presentation
+classes. Hand cards, centre reveals, private draws, target-card previews, and
+settled table cards share the same Steal visual. An ember/gold contrast
+gradient preserves the physical rank/suit, card name, and category labels
+while the existing suit-colour corner rules remain authoritative.
+
+No gameplay protocol, card identity, target-distance validation, or target-card
+picker semantics changed. Recommended next work remains the next individually
+verified Standard hero capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at
