@@ -20,6 +20,22 @@ added; the full suite is now 93 tests.
 Known boundary: the remaining Standard heroes in the registry are still
 metadata-only and remain the next scoped work.
 
+## Overindulgence artwork and Attack artwork update — 2026-09-20
+
+The supplied Overindulgence artwork is now stored at
+`public/overindulgence-card.jpg` and applied to the shared
+`.game-card.overindulgence` and `.played-card.overindulgence` presentation
+classes. The supplied Attack replacement is stored at
+`public/attack-card.jpg`. Hand cards, centre reveals, private draws,
+delayed-Judgement previews, and settled table cards share the respective
+visuals. Purple/gold and red/black contrast treatments preserve physical
+rank/suit, card names, and category labels while the existing suit-colour
+corner rules remain authoritative.
+
+No gameplay protocol, Overindulgence Judgement lifecycle, or Attack/Dodge
+response semantics changed. Recommended next work remains the next
+individually verified Standard hero capability.
+
 ## Burning Bridges card artwork — 2026-09-20
 
 The supplied collapsing-bridge artwork is now stored at

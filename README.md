@@ -103,6 +103,16 @@ now use their supplied artwork across the same shared surfaces. Their icy blue,
 gold/black, and red/black contrast treatments preserve physical rank/suit and
 card labels without changing their weapon, draw, or forced-Attack semantics.
 
+The standard Overindulgence card now uses the supplied banquet artwork across
+the same shared surfaces. Its purple/gold contrast treatment keeps the physical
+rank/suit and Overindulgence label legible without changing its delayed
+Judgement semantics.
+
+The standard Attack card artwork has been updated to the supplied red-and-black
+slash artwork across the same shared surfaces. Its existing readability
+treatment keeps the physical rank/suit and Attack label legible without
+changing card semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun
