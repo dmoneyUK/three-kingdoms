@@ -129,6 +129,25 @@ No gameplay protocol, Rock Cleaving Axe `attack_dodged` continuation, or Blue
 Steel Sword Armor-suppression behavior changed. Recommended next work remains
 the next individually verified Standard hero capability.
 
+## Blue Steel Sword update, Serpent Spear, Kirin Bow, and Nio Shield artwork — 2026-09-20
+
+The supplied Blue Steel Sword replacement is stored at
+`public/blue-steel-sword-card.jpg`. New artwork is stored at
+`public/serpent-spear-card.jpg`, `public/kirin-bow-card.jpg`, and
+`public/nio-shield-card.jpg`. They are applied to the shared
+`.game-card`/`.played-card` classes for `bluesteelsword`, `serpentspear`,
+`kirinbow`, and `nioshield`. Hand cards, centre reveals, private draws,
+equipment previews, target-card previews, and settled table cards share the
+respective visuals. Their blue, teal, gold, and gold/black contrast treatments
+preserve physical rank/suit, equipment names, and category labels while the
+existing suit-colour corner rules remain authoritative.
+
+No gameplay protocol, Blue Steel Sword Armor suppression, Serpent Spear Attack
+provider, Kirin Bow damage trigger, or Nio Shield passive prevention behavior
+changed. Kirin Bow remains presentation-only compatibility artwork because its
+existing deck/status boundaries are unchanged. Recommended next work remains
+the next individually verified Standard hero capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at

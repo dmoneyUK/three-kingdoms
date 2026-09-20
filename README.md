@@ -84,6 +84,15 @@ artwork across the same shared surfaces. Rock Cleaving Axe uses a stone/ember
 treatment and Blue Steel Sword uses a blue-steel treatment; both preserve their
 physical rank/suit and equipment labels without changing card semantics.
 
+The Blue Steel Sword artwork has been updated to the supplied close-up blade
+artwork. Its existing blue-steel contrast treatment remains shared across hand,
+reveal, equipment, and settled-card surfaces without changing card semantics.
+
+The standard Serpent Spear, Kirin Bow, and Nio Shield cards now use their
+supplied artwork across the same shared surfaces. Their teal, gold, and
+gold/black contrast treatments preserve physical rank/suit and equipment labels
+without changing weapon or Armor semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun
