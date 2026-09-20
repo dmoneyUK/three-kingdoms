@@ -1,5 +1,20 @@
 # Three Kingdoms project handover
 
+## Duel card artwork — 2026-09-20
+
+The supplied red-and-gold battle artwork is now stored at `public/duel-card.jpg`
+and applied to the shared `.game-card.duel` and `.played-card.duel` presentation
+classes. Hand cards, centre reveals, private draws, target-card previews,
+Judgement/equipment-sized faces, and settled table cards share the same Duel
+visual. A warm contrast gradient preserves the physical rank/suit, Duel name,
+and category labels while the existing suit-colour corner rules remain
+authoritative.
+
+No gameplay protocol, card identity, or non-Duel card presentation changed.
+The artwork is intentionally scoped to the normal Standard `Duel` identity;
+the Duel response continuation retains its existing semantics. Recommended
+next work remains the next individually verified Standard hero capability.
+
 ## Peach card artwork — 2026-09-20
 
 The supplied blossom artwork is now stored at `public/peach-card.jpg` and
