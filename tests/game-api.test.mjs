@@ -157,6 +157,30 @@ async function openGanglieAttack({ judge, sourceCards = [card("Attack", "ganglie
   return { ...game, sourceMember, targetMember, source, target, actionPresentation: attack.data.room.currentAction.presentation };
 }
 
+async function openFankuiAttack({ sourceCards = [card("Attack", "fankui-attack"), card("Peach", "fankui-source-hidden")], sourceHp = 4, sourceMaxHp = 4, sourceEquipment = {}, sourceJudgement = [], expectReaction = true } = {}) {
+  const game = await createHumanGame();
+  const sourceMember = game.members[0];
+  const targetMember = game.members[1];
+  const source = game.room.players.find((player) => player.name === "Host");
+  const target = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(source && target);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='simayi' WHERE id=${quote(target.id)}`);
+  setHand(source.id, sourceCards, sourceHp, sourceMaxHp);
+  setHand(target.id, [], 3, 3);
+  setEquipment(source.id, sourceEquipment);
+  setJudgement(source.id, sourceJudgement);
+  setTurn(game.code, source.seat);
+  const attack = await request("play_card", { code: game.code, token: sourceMember.token, cardId: sourceCards[0].id, targetId: target.id });
+  assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  if (expectReaction) {
+    assert.equal(attack.data.room.currentAction.kind, "trigger", JSON.stringify(attack.data.room));
+    assert.equal(attack.data.room.currentAction.triggerEvent, "damage_suffered");
+    assert.equal(attack.data.room.currentAction.actorId, target.id);
+  }
+  return { ...game, sourceMember, targetMember, source, target, actionPresentation: attack.data.room.currentAction.presentation };
+}
+
 
 test("Quick Test exhausts each AOE Negation window before the target response, with one private hand", async () => {
   for (const [kind, required] of [["RainingArrows", "Dodge"], ["BarbarianInvasion", "Attack"]]) {
@@ -180,6 +204,9 @@ test("Quick Test exhausts each AOE Negation window before the target response, w
     assert.equal(result.data.room.meId, target.id); assert.equal(result.data.room.pendingNegation, null);
     assert.equal(result.data.room.currentAction.requirement, required.toLowerCase());
     result = await act("respond", { cardId: `${required.toLowerCase()}-perspective-${target.seat}` }); assert.equal(result.status, 200);
+    if (result.data.room.currentAction?.triggerEvent === "damage_suffered") {
+      result = await act("decline_trigger"); assert.equal(result.status, 200, JSON.stringify(result.data));
+    }
   }
   assert.equal(result.data.room.meId, me.id); assert.equal(result.data.room.phase, "play");
   assert.ok(result.data.room.players.every((p) => p.handCards.length === 0));
@@ -1415,6 +1442,102 @@ test("Quick Test projects Stauchness privately through the generic currentAction
   assert.deepEqual(accepted.data.room.currentAction.triggerOptions[0].selection.eligibleHandKeys, ["hand:0", "hand:1"]);
   assert.deepEqual(accepted.data.room.players.map((player) => player.handCards), [[], [], [], []], "Quick Test never projects other hands");
   assert.deepEqual(accepted.data.room.myHand.map((held) => held.id), ["dodge-quick-ganglie-cost-a", "peach-quick-ganglie-cost-b"]);
+});
+
+test("Sima Yi Retaliation uses the generic target-card picker with privacy and exact card conservation", { timeout: 30_000 }, async () => {
+  const game = await openFankuiAttack();
+  const pending = (await state(game.code, game.targetMember.token)).data;
+  const option = pending.currentAction.triggerOptions.find((entry) => entry.effectId === "sima_yi_fankui");
+  assert.deepEqual(option.selection, { type: "target_cards", targetId: game.source.id, min: 1, max: 1, eligibleKeys: ["hand:0"] });
+  assert.deepEqual(pending.myHand, [], "Sima Yi starts with an empty hand");
+  assert.equal(pending.players.find((player) => player.id === game.source.id).handCards.length, 0, "Sima Yi does not receive source hand identities");
+  const unrelated = (await state(game.code, game.members[2].token)).data;
+  assert.equal(unrelated.players.find((player) => player.id === game.source.id).handCards.length, 0, "unrelated viewers do not receive source hand identities");
+
+  const obtained = await request("trigger", { code: game.code, token: game.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
+  assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
+  assert.equal(obtained.data.room.phase, "play-struck");
+  assert.deepEqual(obtained.data.room.myHand.map((held) => held.id), ["peach-fankui-source-hidden"]);
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(game.source.id)} AND json_extract(value,'$.id')='peach-fankui-source-hidden'`), "0");
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(game.target.id)} AND json_extract(value,'$.id')='peach-fankui-source-hidden'`), "1");
+  assert.equal(obtained.data.room.log.filter((entry) => /obtains a card from Host with Retaliation/.test(entry)).length, 1);
+});
+
+test("Retaliation can obtain an eligible public Equipment or Judgement card and ignores empty sources", { timeout: 30_000 }, async () => {
+  const shield = card("NioShield", "fankui-public-equipment");
+  const equipmentGame = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-equipment-attack")], sourceEquipment: { armor: shield } });
+  const equipmentState = (await state(equipmentGame.code, equipmentGame.targetMember.token)).data;
+  assert.deepEqual(equipmentState.currentAction.triggerOptions[0].selection.eligibleKeys, [shield.id]);
+  const tookEquipment = await request("trigger", { code: equipmentGame.code, token: equipmentGame.targetMember.token, providerId: "sima_yi_fankui", cardKeys: [shield.id] });
+  assert.equal(tookEquipment.status, 200, JSON.stringify(tookEquipment.data));
+  assert.deepEqual(tookEquipment.data.room.myHand.map((held) => held.id), [shield.id]);
+  assert.deepEqual(tookEquipment.data.room.players.find((player) => player.id === equipmentGame.source.id).equipmentCards, []);
+
+  const delayed = card("Lightning", "fankui-public-judgement");
+  const judgementGame = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-judgement-attack")], sourceJudgement: [delayed] });
+  const judgementState = (await state(judgementGame.code, judgementGame.targetMember.token)).data;
+  assert.deepEqual(judgementState.currentAction.triggerOptions[0].selection.eligibleKeys, [delayed.id]);
+  const tookJudgement = await request("trigger", { code: judgementGame.code, token: judgementGame.targetMember.token, providerId: "sima_yi_fankui", cardKeys: [delayed.id] });
+  assert.equal(tookJudgement.status, 200, JSON.stringify(tookJudgement.data));
+  assert.deepEqual(tookJudgement.data.room.myHand.map((held) => held.id), [delayed.id]);
+  assert.deepEqual(tookJudgement.data.room.players.find((player) => player.id === judgementGame.source.id).judgementCards, []);
+
+  const emptyGame = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-empty-source")], expectReaction: false });
+  const emptyState = (await state(emptyGame.code, emptyGame.targetMember.token)).data;
+  assert.equal(emptyState.phase, "play-struck", JSON.stringify(emptyState));
+  assert.equal(emptyState.currentAction.kind, "turn");
+  assert.equal(emptyState.currentAction.triggerEvent, undefined);
+});
+
+test("Retaliation rejects stale source cards, handles a vanished source, and has one concurrent winner", { timeout: 30_000 }, async () => {
+  const stale = await openFankuiAttack();
+  setHand(stale.source.id, [], 4, 4);
+  const staleResult = await request("trigger", { code: stale.code, token: stale.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
+  assert.equal(staleResult.status, 409);
+  assert.equal(staleResult.data.stale, true);
+  assert.equal(staleResult.data.room.pending.kind, "trigger");
+
+  const vanished = await openFankuiAttack();
+  sql(`UPDATE players SET alive=0, hp=0, hand_json='[]', equipment_json='{}', judgement_json='[]' WHERE id=${quote(vanished.source.id)}`);
+  sql(`UPDATE rooms SET turn_seat=${vanished.target.seat} WHERE code=${quote(vanished.code)}`);
+  const skipped = await request("decline_trigger", { code: vanished.code, token: vanished.targetMember.token });
+  assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
+  assert.equal(skipped.data.room.phase, "play-struck");
+  assert.equal(skipped.data.room.pending, null);
+
+  const race = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-race-attack"), card("Peach", "fankui-race-hidden")] });
+  const [first, second] = await Promise.all([
+    request("trigger", { code: race.code, token: race.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] }),
+    request("trigger", { code: race.code, token: race.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] }),
+  ]);
+  assert.equal([first.status, second.status].filter((status) => status === 200).length, 1);
+  const loser = [first, second].find((result) => result.status === 409);
+  assert.ok(loser?.data.stale === true);
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(race.target.id)} AND json_extract(value,'$.id')='peach-fankui-race-hidden'`), "1");
+  assert.equal(discardIds(race.code).filter((id) => id === "peach-fankui-race-hidden").length, 0);
+  assert.equal((await state(race.code, race.targetMember.token)).data.phase, "play-struck");
+});
+
+test("Quick Test follows Sima Yi only while he owns the Retaliation decision", { timeout: 30_000 }, async () => {
+  const started = await request("create", { quickStart: true });
+  const { token, room } = started.data;
+  const [source, sima] = room.players;
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='simayi' WHERE id=${quote(sima.id)}`);
+  setHand(source.id, [card("Attack", "quick-fankui-attack"), card("Peach", "quick-fankui-hidden")], 4, 4);
+  setHand(sima.id, [], 3, 3);
+  for (const player of room.players) { setEquipment(player.id, {}); setJudgement(player.id, []); }
+  for (const player of room.players.slice(2)) setHand(player.id, [], 3, 3);
+  setTurn(room.code, source.seat);
+  const attacked = await request("play_card", { code: room.code, token, cardId: "attack-quick-fankui-attack", targetId: sima.id });
+  assert.equal(attacked.status, 200, JSON.stringify(attacked.data));
+  assert.equal(attacked.data.room.meId, sima.id);
+  assert.equal(attacked.data.room.currentAction.actorId, sima.id);
+  assert.deepEqual(attacked.data.room.currentAction.triggerOptions[0].selection.eligibleKeys, ["hand:0"]);
+  const obtained = await request("trigger", { code: room.code, token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
+  assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(sima.id)} AND json_extract(value,'$.id')='peach-quick-fankui-hidden'`), "1");
+  assert.equal(obtained.data.room.meId, source.id);
 });
 
 test("Stauchness take-damage choice enters the normal Dying flow and stale concurrent acceptance has one winner", { timeout: 30_000 }, async () => {

@@ -727,11 +727,11 @@ function TargetCardPicker({ option, selection, target, selectedKeys, disabled, c
   const handKeys = selection.eligibleKeys
     .filter((key) => /^hand:\d+$/.test(key))
     .sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)));
-  const eligibleEquipmentKeys = new Set(selection.eligibleKeys.filter((key) => !/^hand:\d+$/.test(key)));
-  const equipment = target.equipmentCards.filter((item) => eligibleEquipmentKeys.has(item.id));
+  const eligiblePublicKeys = new Set(selection.eligibleKeys.filter((key) => !/^hand:\d+$/.test(key)));
+  const publicCards = [...target.equipmentCards, ...target.judgementCards].filter((item) => eligiblePublicKeys.has(item.id));
   const items = [
     ...handKeys.map((key) => ({ key, label: `Hidden hand card ${Number(key.slice(5)) + 1}`, hidden: true, card: null })),
-    ...equipment.map((item) => ({ key: item.id, label: cardDefinition(item.kind).name, hidden: false, card: item })),
+    ...publicCards.map((item) => ({ key: item.id, label: cardDefinition(item.kind).name, hidden: false, card: item })),
   ];
   const effectLabel = option.label.replace(/^Use\s+/i, "");
   const amount = selection.min === selection.max ? `${selection.min}` : `${selection.min}–${selection.max}`;

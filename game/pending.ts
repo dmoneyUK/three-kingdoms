@@ -72,7 +72,11 @@ export type DamageSufferedTriggerContinuation = {
   resumePlayerId?: string;
   sequenceStartCardId: string;
   origin?: AttackOrigin;
-  stage: "reaction" | "source_choice";
+  stage: "reaction" | "secondary";
+  /** Provider currently completing a provider-owned secondary flow. */
+  secondaryEffectId?: string;
+  /** Optional providers already resolved for this one damage event. */
+  resolvedEffectIds?: string[];
   judgementCard?: Card;
   resolutionId?: string;
 };

@@ -150,6 +150,28 @@ test("passive and triggered equipment capabilities are discovered outside the ro
   assert.equal(getTriggeredEffects({ ...kirinContext, targetEquipment: [card("NioShield", "armor")] }).length, 0);
 });
 
+test("Sima Yi Retaliation projects only source Playing Area cards and consumes its event identity", () => {
+  const hidden = card("Peach", "source-hidden");
+  const equipment = card("NioShield", "source-equipment");
+  const judgement = card("Lightning", "source-judgement");
+  const context = {
+    event: "damage_suffered",
+    sourceId: "source",
+    sourceHand: [hidden],
+    sourceEquipment: [equipment],
+    sourceJudgement: [judgement],
+    targetId: "sima",
+    targetHero: "simayi",
+    damageAmount: 2,
+  };
+  assert.deepEqual(getTriggeredEffects(context), [{ effectId: "sima_yi_fankui", label: "Retaliation", selection: { type: "target_cards", targetId: "source", min: 1, max: 1, eligibleKeys: ["hand:0", equipment.id, judgement.id] } }]);
+  assert.deepEqual(resolveTriggeredEffect("sima_yi_fankui", context, { cardKeys: ["hand:0"] })?.outcome, { kind: "gain_target_card", sourceId: "source", targetId: "sima", targetCardKey: "hand:0" });
+  assert.equal(getTriggeredEffects(context, ["sima_yi_fankui"]).length, 0);
+  assert.equal(getTriggeredEffects({ ...context, sourceHand: [], sourceEquipment: [], sourceJudgement: [] }).length, 0);
+  assert.equal(getTriggeredEffects({ ...context, targetHero: "cao-cao" }).length, 0);
+  assert.equal(getTriggeredEffects({ ...context, judgementCard: card("Judge", "revealed") }).length, 0, "provider-owned secondary Judgement choices do not reopen Retaliation");
+});
+
 test("Yin-Yang Swords is a target-owned attack_targeted capability with live legal choices", () => {
   const context = { event: "attack_targeted", sourceEquipment: [card("YinYangSwords", "yy")], sourceGender: heroGender("zhang-fei"), targetGender: heroGender("zhen-ji"), targetId: "target", targetHand: [card("Peach", "hidden")], targetEquipment: [] };
   assert.deepEqual(getTriggeredEffects(context), [{ effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, timeoutChoiceId: "draw", selection: { type: "choice", choices: [{ id: "discard", label: "Discard 1 hand card" }, { id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: ["hand:0"] } }]);
@@ -185,6 +207,29 @@ test("multiple event triggers are projected without route-level provider selecti
     assert.deepEqual(getTriggeredEffects(context).slice(-2).map((option) => option.effectId), ["test_first_dodged_trigger", "test_second_dodged_trigger"]);
     assert.deepEqual(resolveTriggeredEffect("test_second_dodged_trigger", context, {}), { status: "resolved", effectId: "test_second_dodged_trigger", outcome: { kind: "continue_event" } });
     assert.ok(!getTriggeredEffects(context, ["test_first_dodged_trigger"]).some((option) => option.effectId === "test_first_dodged_trigger"));
+  } finally {
+    unregisterSecond();
+    unregisterFirst();
+  }
+});
+
+test("damage_suffered keeps unresolved providers available after one resolves", () => {
+  const unregisterFirst = registerTriggeredEffect({
+    id: "test_first_damage_suffered_trigger",
+    event: "damage_suffered",
+    getOption: () => ({ effectId: "test_first_damage_suffered_trigger", label: "First damage reaction", selection: null }),
+    resolve: () => ({ status: "resolved", effectId: "test_first_damage_suffered_trigger", outcome: { kind: "continue_event" } }),
+  });
+  const unregisterSecond = registerTriggeredEffect({
+    id: "test_second_damage_suffered_trigger",
+    event: "damage_suffered",
+    getOption: () => ({ effectId: "test_second_damage_suffered_trigger", label: "Second damage reaction", selection: null }),
+    resolve: () => ({ status: "resolved", effectId: "test_second_damage_suffered_trigger", outcome: { kind: "continue_event" } }),
+  });
+  try {
+    const context = { event: "damage_suffered", sourceId: "source", sourceEquipment: [], targetId: "target", targetHero: "cao-cao" };
+    assert.deepEqual(getTriggeredEffects(context).slice(-2).map((option) => option.effectId), ["test_first_damage_suffered_trigger", "test_second_damage_suffered_trigger"]);
+    assert.deepEqual(getTriggeredEffects(context, ["test_first_damage_suffered_trigger"]).slice(-2).map((option) => option.effectId), ["test_second_damage_suffered_trigger"]);
   } finally {
     unregisterSecond();
     unregisterFirst();

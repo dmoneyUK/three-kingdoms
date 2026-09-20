@@ -1,5 +1,39 @@
 # Three Kingdoms project handover
 
+## Sima Yi — Retaliation / Fankui — 2026-09-20
+
+The current official Standard General Card catalogue prints Sima Yi's first
+skill as **Retaliation**: “After you take damage, you may obtain 1 card from
+the character that inflicted the damage.” The official Standard rulebook puts
+this after damage is taken, distinguishes one injury/damage event from damage
+points, and defines the source's Playing Area as Hand, Equipment Zone, and
+Judgement Zone. The implementation therefore offers it once after qualifying
+nonlethal damage, with a random/index-key hand choice or a selected public
+Equipment/Judgement card. A source with no eligible card produces no trigger;
+an unavailable source or stale selected card ends/rejects the reaction through
+the normal continuation boundary.
+
+Retaliation is a `TriggeredEffect` provider for the shared `damage_suffered`
+event. The event is now provider-agnostic: it discovers live options from the
+post-play state, records `resolvedEffectIds`, reopens the same event for any
+remaining provider with a fresh presentation barrier and response timer, and
+resumes the stored continuation once all reactions finish or are declined. The
+semantic outcome is provider-neutral `gain_target_card`; there is no Fankui
+HTTP action, `pendingFankui` DTO, or Sima Yi branch in `app/page.tsx`.
+
+The generic `target_cards` projection exposes only the source ID, hidden-hand
+keys, public card IDs, and a one-card min/max. Hidden source cards remain
+private until resolution; public cards are logged/presented normally. Tests
+cover decline, hidden/public acquisition, empty and disappearing sources,
+stale and concurrent submissions, card conservation, privacy, Quick Test
+perspective, provider exhaustion, and Stauchness regressions. Guicai is
+unchanged, and the default four Quick Test heroes remain unchanged.
+
+The full clean Worker/D1 validation now passes **85 / 85**. Recommended next
+work is the next individually verified Standard hero; Cao Cao, delegated Lord
+skills, a general active-skill framework, and compatibility DTO cleanup remain
+outside this round.
+
 ## Quick Test Xiahou Dun fixture — 2026-09-20
 
 The default four-seat Quick Test now assigns Xiahou Dun to Player4, replacing
@@ -30,9 +64,10 @@ enters the existing Dying flow before the optional post-damage reaction.
 The correction and source links are recorded in
 `docs/STANDARD_HERO_REFERENCE.md`.
 
-Ganglie is implemented as the first reusable `damage_suffered` semantic trigger
-provider. The damage transition applies nonlethal damage, persists the generic
-post-damage continuation, and offers Xiahou Dun an optional `TriggerPending`.
+Ganglie and Retaliation now share the reusable `damage_suffered` semantic
+trigger provider. The damage transition applies nonlethal damage, persists the
+generic post-damage continuation, discovers all live providers from the
+post-play state, and offers the damaged character an optional `TriggerPending`.
 Acceptance starts a real shared Judgement; `judgement_revealed` therefore gives
 Sima Yi's Guicai its normal replacement window. The final card, not merely the
 original reveal, determines the result. A qualifying final card opens a
@@ -50,7 +85,7 @@ the consequence, card conservation, presentation barriers, and four repeated
 concurrent acceptance races. The full Worker/D1 suite passes **79 / 79**.
 The exact-head response-race commit and its rerun Cloudflare deployment/smoke
 checks are green. The next work remains the next individually verified
-Standard hero; Cao Cao, Fankui, a general active-skill framework, compatibility
+Standard hero; Cao Cao, a general active-skill framework, compatibility
 projection removal, and route/page refactors are outside this round.
 
 ## Canonical response race stale contract — 2026-09-20

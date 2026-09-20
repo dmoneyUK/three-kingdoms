@@ -54,7 +54,7 @@ The official catalogue uses **Qun**. The current runtime uses `Neutral` for the 
 | Faction | Runtime ID | General | Chinese | Gender | Max HP | Skills | Runtime reconciliation |
 | --- | --- | --- | --- | --- | ---: | --- | --- |
 | Wei | `cao-cao` | Cao Cao | 曹操 | Male | 4 | Jianxiong 奸雄<br>Hujia 护驾 | Present |
-| Wei | `simayi` | Sima Yi | 司马懿 | Male | 3 | Fankui 反馈<br>Guicai 鬼才 | Present |
+| Wei | `simayi` | Sima Yi | 司马懿 | Male | 3 | Retaliation (Fankui 反馈)<br>Necromancy (Guicai 鬼才) | Present |
 | Wei | `xiahou-dun` | Xiahou Dun | 夏侯惇 | Male | 4 | Ganglie 刚烈 | Present |
 | Wei | `zhang-liao` | Zhang Liao | 张辽 | Male | 4 | Tuxi 突袭 | Present |
 | Wei | `xu-chu` | Xu Chu | 许褚 | Male | 4 | Luoyi 裸衣 | Present |
@@ -111,11 +111,16 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 3
 - **Runtime roster status:** Present
+- **Verified official Standard card:** The current English General Card catalogue card is Wei 002 Sima Yi, at <https://wtkgames.com/generalCard/> with the product filter set to Standard. Its printed skill names are **Retaliation** and **Necromancy**; this project retains the established internal/Chinese identifiers `Fankui` and `Guicai` for compatibility and uses the current English names in the player-facing reference.
+- **Verified Retaliation wording:** “After you take damage, you may obtain 1 card from the character that inflicted the damage.” This is a post-damage timing window: it is one optional trigger for the damage event, not one trigger per damage point. The official rulebook defines an injury from one damage event as “One Injury” regardless of the amount inflicted; the card does not use the separate “1 Damage” wording that can repeat per point.
+- **Verified card zones:** The rulebook's Appendix defines obtaining a card from another character's **Playing Area** as a random card from that character's Hand, or the chosen card when designated from that character's Equipment Zone or Judgement Zone. Retaliation therefore exposes exactly the damage source's hidden-hand keys plus its public Equipment/Judgement cards. It does not expose card identities from the source's hand before resolution, and it does not reach the deck, discard pile, or cards outside that source's Playing Area.
+- **Verified unavailable-source boundary:** If the source has no eligible Playing Area card, Retaliation is not offered. If the source is no longer alive/available when the decision resolves, the optional reaction cannot be completed and the stored damage continuation resumes. Defeat discards the source's Hand, Equipment Zone, and Judgement Zone before the source is unavailable, so no source card remains eligible in that case.
+- **Sources:** current official Standard General Card catalogue <https://wtkgames.com/generalCard/>; current official Standard card API <https://api.wtkgames.com/api/hero?product=1>; official Standard rulebook linked from <https://wtkgames.com/product/Standard/> (Appendix: “Obtain a card from someone's Playing Area”, and the damage timing definitions).
 - **Skills:**
-  - **Fankui 反馈:** After Sima Yi suffers damage, he may obtain one card from the damage source.
-  - **Guicai 鬼才:** Before a Judgement result takes effect, Sima Yi may play a hand card to replace the Judgement card.
-- **Likely engine shape:** damage-resolved trigger; Judgement replacement.
-- **Current implementation:** Guicai is implemented through the canonical `judgement_revealed` trigger and persisted Judgement continuation. Fankui is not implemented.
+  - **Retaliation / Fankui 反馈:** After Sima Yi takes damage, he may obtain one eligible card from the character that inflicted that damage.
+  - **Necromancy / Guicai 鬼才:** Before a Judgement result takes effect, Sima Yi may play a hand card to replace the Judgement card.
+- **Likely engine shape:** reusable `damage_suffered` trigger with source-owned target-card selection; shared Judgement replacement.
+- **Current implementation:** Guicai is implemented through the canonical `judgement_revealed` trigger and persisted Judgement continuation. Retaliation is implemented as a `damage_suffered` `TriggeredEffect`, using the generic target-card picker and semantic gain outcome. The shared event reopens unresolved providers and resumes its stored continuation exactly once; hidden hand choices remain key-based until authoritative resolution.
 
 ### Xiahou Dun (夏侯惇)
 
@@ -529,4 +534,4 @@ Older English Sanguosha references are useful only as **secondary** rule-history
 
 ## Next repository change
 
-This file now documents the reconciled 31-General runtime roster and the first verified hero capability. The next step is architecture review of Guan Yu before selecting another Standard hero; do not generalise a hero framework until another real skill proves the need.
+This file now documents the reconciled 31-General runtime roster and the verified hero capabilities implemented so far, including Sima Yi's Guicai and Retaliation. The next step is the next individually verified Standard hero; do not generalise a hero framework until another real skill proves the need.
