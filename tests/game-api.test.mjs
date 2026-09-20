@@ -93,41 +93,124 @@ async function createQuickTestGame() {
   const created = await request("create", { quickStart: true });
   assert.equal(created.status, 201, JSON.stringify(created.data));
   let room = created.data.room;
-  const defaults = ["guan-yu", "simayi", "zhao-yun", "xiahou-dun"];
   while (room.status === "heroes") {
     const actor = room.players.find((player) => player.id === room.meId);
     assert.ok(actor, "Quick Test projects the next seat to the shared controller");
-    const desired = defaults[actor.seat];
-    const chosen = room.myHeroOptions.find((option) => option.id === desired) ?? room.myHeroOptions.find((option) => !room.players.some((player) => player.hero === option.id));
+    const chosen = room.myHeroOptions[0];
     assert.ok(chosen, `Quick Test exposes a selectable hero for ${actor.name}`);
     const result = await request("choose_hero", { code: room.code, token: created.data.token, heroId: chosen.id });
     assert.equal(result.status, 200, JSON.stringify(result.data));
     room = result.data.room;
   }
-  return { ...created, data: { ...created.data, room } };
+  const fixtureHeroes = ["guan-yu", "simayi", "zhao-yun", "xiahou-dun"];
+  const fixtureHp = { "guan-yu": 4, simayi: 3, "zhao-yun": 4, "xiahou-dun": 3 };
+  for (const player of room.players) {
+    const hero = fixtureHeroes[player.seat];
+    const hp = fixtureHp[hero] + (player.role === "Lord" ? 1 : 0);
+    sql(`UPDATE players SET hero=${quote(hero)}, hp=${hp}, max_hp=${hp}, hero_options_json='[]' WHERE id=${quote(player.id)}`);
+  }
+  return { ...created, data: { ...created.data, room: (await state(room.code, created.data.token)).data } };
 }
 
-test("Quick Test completes the shared hero start phase before dealing", async () => {
+async function createHumanSetupGame() {
+  const created = await request("create", { name: "Host" });
+  assert.equal(created.status, 201);
+  const code = created.data.room.code;
+  const members = [{ name: "Host", token: created.data.token }];
+  for (const name of ["Alice", "Bob", "Carol"]) {
+    const joined = await request("join", { code, name });
+    assert.equal(joined.status, 201);
+    members.push({ name, token: joined.data.token });
+  }
+  const started = await request("start", { code, token: created.data.token, name: "Host" });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  const views = await Promise.all(members.map((member) => state(code, member.token)));
+  return { code, members, views: views.map((view) => view.data) };
+}
+
+test("normal and Quick Test share Standard role, general, privacy, HP, and turn setup", async () => {
   const created = await request("create", { quickStart: true });
   assert.equal(created.status, 201);
   assert.equal(created.data.room.status, "heroes");
   assert.equal(created.data.room.isTestController, true);
   assert.equal(created.data.room.players.length, 4);
-  assert.equal(created.data.room.myHeroOptions.length, 30);
+  assert.equal(created.data.room.myHeroOptions.length, 5);
   assert.equal(created.data.room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false);
   assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
+  assert.equal(created.data.room.players.filter((player) => player.role === "Lord").length, 1);
+  assert.equal(created.data.room.players.filter((player) => player.role === null).length, 3);
 
   let room = created.data.room;
-  for (const heroId of ["sun-quan", "liu-bei", "simayi", "zhao-yun"]) {
+  const lord = room.players.find((player) => player.role === "Lord");
+  assert.equal(room.meId, lord.id, "Quick Test automatically moves to the Lord first");
+  const lordChoice = room.myHeroOptions[0].id;
+  const lordResult = await request("choose_hero", { code: room.code, token: created.data.token, heroId: lordChoice });
+  assert.equal(lordResult.status, 200, JSON.stringify(lordResult.data));
+  room = lordResult.data.room;
+  assert.equal(room.myHeroOptions.length, 3);
+  assert.equal(room.players.find((player) => player.id === lord.id).hero, lordChoice, "the Lord general is public");
+  assert.ok(room.players.filter((player) => player.generalReady).length === 1);
+  assert.ok(room.players.filter((player) => player.id !== lord.id).every((player) => player.hero === null), "locked non-Lord generals remain hidden");
+  while (room.status === "heroes") {
     const actor = room.players.find((player) => player.id === room.meId);
-    const chosen = await request("choose_hero", { code: room.code, token: created.data.token, heroId });
+    const chosen = await request("choose_hero", { code: room.code, token: created.data.token, heroId: room.myHeroOptions[0].id });
     assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
-    assert.equal(chosen.data.room.players.find((player) => player.id === actor.id).hero, heroId);
+    assert.equal(chosen.data.room.players.find((player) => player.id === actor.id).generalReady, true);
+    if (chosen.data.room.status === "heroes") {
+      assert.notEqual(chosen.data.room.meId, actor.id, "Quick Test advances its private perspective to the next unresolved seat");
+      assert.ok(chosen.data.room.players.filter((player) => player.id !== lord.id && player.id !== chosen.data.room.meId).every((player) => player.hero === null), "Quick Test hides other non-Lord selections after switching seats");
+    }
     room = chosen.data.room;
   }
   assert.equal(room.status, "playing");
   assert.ok(room.players.every((player) => player.hero));
   assert.ok(room.players.every((player) => player.hp === player.maxHp));
+  assert.equal(room.turnSeat, lord.seat);
+  assert.equal(room.players.find((player) => player.id === lord.id).hp, room.players.find((player) => player.id === lord.id).maxHp);
+
+  const normal = await createHumanSetupGame();
+  const normalLordView = normal.views.find((view) => view.myRole === "Lord");
+  assert.ok(normalLordView, "normal multiplayer reveals the Lord role only to the Lord seat");
+  assert.equal(normalLordView.myHeroOptions.length, 5);
+  const normalLordMember = normal.members.find((member, index) => normal.views[index].meId === normalLordView.meId);
+  const normalById = new Map(normal.views.map((view, index) => [view.meId, { view, member: normal.members[index] }]));
+  for (const { view } of normalById.values()) {
+    assert.equal(view.players.filter((player) => player.role === "Lord").length, 1);
+    assert.equal(view.players.filter((player) => player.hero !== null).length, 0, "no general is revealed before selection");
+    if (view.myRole !== "Lord") assert.equal(view.myHeroOptions.length, 0, "non-Lords wait for the Lord before receiving candidates");
+  }
+  const firstNonLord = [...normalById.values()].find(({ view }) => view.myRole !== "Lord");
+  assert.ok(firstNonLord);
+  const blocked = await request("choose_hero", { code: normal.code, token: firstNonLord.member.token, heroId: firstNonLord.view.myHeroOptions[0]?.id ?? "cao-cao" });
+  assert.equal(blocked.status, 409, "normal multiplayer cannot choose before the Lord");
+  const normalLordChoice = normalLordView.myHeroOptions[0];
+  let normalProgress = await request("choose_hero", { code: normal.code, token: normalLordMember.token, heroId: normalLordChoice.id });
+  assert.equal(normalProgress.status, 200, JSON.stringify(normalProgress.data));
+  let normalState = normalProgress.data.room;
+  assert.equal(normalState.players.find((player) => player.id === normalLordView.meId).hero, normalLordChoice.id);
+  assert.equal(normalState.players.filter((player) => player.id !== normalLordView.meId && player.hero !== null).length, 0);
+  while (normalState.status === "heroes") {
+    const actorId = normalState.actionPlayerId;
+    const actor = normal.members.find((member) => normalState.players.find((player) => player.id === actorId)?.name === member.name);
+    assert.ok(actor);
+    const actorView = (await state(normal.code, actor.token)).data;
+    assert.equal(actorView.isMyAction, true);
+    assert.equal(actorView.myHeroOptions.length, 3);
+    normalProgress = await request("choose_hero", { code: normal.code, token: actor.token, heroId: actorView.myHeroOptions[0].id });
+    assert.equal(normalProgress.status, 200, JSON.stringify(normalProgress.data));
+    normalState = normalProgress.data.room;
+    if (normalState.status === "heroes") {
+      const observer = normal.members.find((member) => member.token !== actor.token);
+      const observerView = (await state(normal.code, observer.token)).data;
+      assert.equal(observerView.players.find((player) => player.id === actorId).hero, null, "other non-Lord selections stay hidden");
+      assert.equal(observerView.players.find((player) => player.id === actorId).generalReady, true);
+    }
+  }
+  assert.equal(normalState.status, "playing");
+  const normalLord = normalState.players.find((player) => player.id === normalLordView.meId);
+  assert.equal(normalState.turnSeat, normalLord.seat);
+  assert.equal(normalLord.hp, normalLord.maxHp);
+  assert.equal(normalLord.maxHp, normalLordChoice.hp + 1, "the Lord receives the Standard +1 HP bonus");
 });
 
 test("Wu hero skills complete through the normal semantic API", async () => {
@@ -200,12 +283,24 @@ async function createHumanGame() {
   const members = [{ name: "Host", token: created.data.token }];
   for (const name of ["Alice", "Bob", "Carol"]) { const joined = await request("join", { code, name }); assert.equal(joined.status, 201); members.push({ name, token: joined.data.token }); }
   assert.equal((await request("start", { code, token: members[0].token, name: "Host" })).status, 200);
-  for (const member of members) { const before = await state(code, member.token); const hero = before.data.myHeroOptions.find((option) => !["zhen-ji", "simayi", "xiahou-dun", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lü-bu"].includes(option.id)) ?? before.data.myHeroOptions[0]; const chosen = await request("choose_hero", { code, token: member.token, heroId: hero.id }); assert.equal(chosen.status, 200, JSON.stringify(chosen.data)); }
+  let setup = (await state(code, members[0].token)).data;
+  while (setup.status === "heroes") {
+    const actorMember = members.find((member) => setup.players.some((player) => player.id === setup.actionPlayerId && player.name === member.name));
+    assert.ok(actorMember, "the authoritative setup actor has a matching human seat");
+    const actorView = (await state(code, actorMember.token)).data;
+    const chosen = await request("choose_hero", { code, token: actorMember.token, heroId: actorView.myHeroOptions[0].id });
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+    setup = chosen.data.room;
+  }
   const started = (await state(code, members[0].token)).data; const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(code)}`) || "[]");
   for (const player of started.players) {
     const hand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`) || "[]");
     for (let index = 0; index < hand.length; index++) if (hand[index].kind === "Negation") { const replacementIndex = deck.findIndex((held) => held.kind !== "Negation"); const [replacement] = deck.splice(replacementIndex, 1); deck.push(hand[index]); hand[index] = replacement; }
     sql(`UPDATE players SET hand_json=${quote(JSON.stringify(hand))} WHERE id=${quote(player.id)}`);
+  }
+  for (const player of started.players) {
+    const hp = 4 + (player.role === "Lord" ? 1 : 0);
+    sql(`UPDATE players SET hero='yue-jin', hp=${hp}, max_hp=${hp}, hero_options_json='[]' WHERE id=${quote(player.id)}`);
   }
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(deck))} WHERE code=${quote(code)}`);
   return { code, members, room: (await state(code, members[0].token)).data };
@@ -1106,27 +1201,9 @@ test("Quick Test follows the live actor for Something Out of Nothing and rejects
   assert.equal(playerOne.hero, "simayi", "Player2 is Sima Yi for Guicai coverage");
   assert.equal(playerTwo.hero, "zhao-yun", "Player3 is Zhao Yun for Longdan coverage");
   assert.equal(playerThree.hero, "xiahou-dun", "Player4 is Xiahou Dun for Stauchness coverage");
-  assert.ok(openingHandKinds(me).includes("FrostSword"), "Player1 starts with Frost Sword");
-  assert.ok(openingHandKinds(me).some((kind) => ["Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed"].includes(kind)), "Player1 starts with a horse");
-  assert.ok(openingHandKinds(playerOne).includes("KirinBow"), "Player2 starts with Kirin Bow");
-  assert.ok(openingHandKinds(playerOne).includes("NioShield"), "Player2 starts with Nio Shield");
-  assert.ok(openingHandKinds(playerTwo).includes("BlueSteelSword"), "Player3 starts with Blue Steel Sword");
-  assert.ok(openingHandKinds(playerTwo).includes("Dodge"), "Player3 starts with a Dodge for Longdan");
-  assert.ok(openingHandKinds(playerTwo).includes("Attack"), "Player3 starts with an Attack for Longdan");
   const openingPlayers = [me, playerOne, playerTwo, playerThree];
-  const yinYangHolders = openingPlayers.filter((player) => openingHandKinds(player).includes("YinYangSwords"));
-  const borrowedSwordHolders = openingPlayers.filter((player) => openingHandKinds(player).includes("BorrowedSword"));
-  assert.equal(yinYangHolders.length, 1, "exactly one random seat starts with Yin-Yang Swords");
-  assert.equal(borrowedSwordHolders.length, 2, "both Borrowed Sword cards start in random seats");
-  assert.equal(new Set([yinYangHolders[0].id, ...borrowedSwordHolders.map((player) => player.id)]).size, 3, "all randomized sword cards start in distinct seats");
-  const openingSwordKinds = openingPlayers.flatMap(openingHandKinds);
-  assert.equal(openingSwordKinds.filter((kind) => kind === "YinYangSwords").length, 1, "the single Yin-Yang Swords card is dealt");
-  assert.equal(openingSwordKinds.filter((kind) => kind === "BorrowedSword").length, 2, "both Borrowed Sword cards are dealt");
-  const remainingDeckKinds = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(room.code)}`)).map((held) => held.kind);
-  assert.equal(remainingDeckKinds.filter((kind) => kind === "YinYangSwords").length, 0, "Yin-Yang Swords is not left in the opening deck");
-  assert.equal(remainingDeckKinds.filter((kind) => kind === "BorrowedSword").length, 0, "Borrowed Sword cards are not left in the opening deck");
   assert.ok(openingPlayers.every((player) => openingHandKinds(player).length === 4), "every Quick Test seat receives four opening cards");
-  assert.equal(openingHandKinds(playerThree).length, 4, "Player4 receives a full random opening hand");
+  assert.equal(JSON.parse(query(`SELECT COUNT(*) FROM json_each((SELECT deck_json FROM rooms WHERE code=${quote(room.code)}))`)), 92, "Quick Test uses the same 4-card opening deal as normal games");
   setHand(me.id, [], 3, 3); setHand(playerOne.id, [card("DrawTwo", "quick-live")], 3, 3); setHand(playerTwo.id, [card("Negation", "quick-live")], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, playerOne.seat, "play");
   const before = await state(room.code, token);
   const played = await request("play_card", { code: room.code, token, cardId: "drawtwo-quick-live" });

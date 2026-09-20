@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getRequestExecutionContext } from "vinext/shims/request-context";
 import { cardDefinition, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
-import type { Card, CardKind, EquipmentZone } from "../../../game/model";
+import type { Card, EquipmentZone } from "../../../game/model";
 import { canDeclareAttack as canDeclareAttackFor, distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithAttack, canRespondWithDodge as hasDodgeResponse, getAttackCardProvider, getPlayPhaseActions, getResponseOptions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
@@ -29,6 +29,7 @@ type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
 
 const ROLE_SETS: Record<number, string[]> = { 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
+const LORD_GENERAL_IDS = new Set(["cao-cao", "liu-bei", "sun-quan"]);
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 const publicRoleName = (role: string | null | undefined) => role === "Renegade" ? "Traitor" : role ?? null;
@@ -65,6 +66,35 @@ function newToken() { return Array.from(crypto.getRandomValues(new Uint8Array(24
 async function hash(value: string) { const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)); return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join(""); }
 function parse<T>(value: string | null, fallback: T): T {
   try { return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
+}
+
+function generalSelectionOrder(players: PlayerRow[]) {
+  return [...players].sort((left, right) => {
+    if (left.role === "Lord" && right.role !== "Lord") return -1;
+    if (left.role !== "Lord" && right.role === "Lord") return 1;
+    return left.seat - right.seat;
+  });
+}
+
+function nextGeneralSelector(players: PlayerRow[]) {
+  return generalSelectionOrder(players).find((player) => !player.hero) ?? null;
+}
+
+async function beginStandardHeroSelection(roomId: string, players: PlayerRow[]) {
+  const roles = shuffle([...(ROLE_SETS[players.length] ?? [])]);
+  const rulers = STANDARD_HEROES.filter((hero) => LORD_GENERAL_IDS.has(hero.id));
+  const shuffledGenerals = shuffle(STANDARD_HEROES.filter((hero) => !LORD_GENERAL_IDS.has(hero.id)));
+  let generalCursor = 0;
+  const assigned = players.map((player, index) => {
+    const role = roles[index];
+    const options = role === "Lord" ? [...rulers, ...shuffledGenerals.slice(generalCursor, generalCursor + 2)] : shuffledGenerals.slice(generalCursor, generalCursor + 3);
+    generalCursor += role === "Lord" ? 2 : 3;
+    return { player, role, options };
+  });
+  await db().batch([
+    ...assigned.map(({ player, role, options }) => db().prepare("UPDATE players SET role = ?, hero = NULL, hp = NULL, max_hp = NULL, hero_options_json = ? WHERE id = ?").bind(role, JSON.stringify(options), player.id)),
+    db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = NULL, pending_json = NULL WHERE id = ?").bind(roomId),
+  ]);
 }
 function parsePersistedPending(value: string | null): Pending | null {
   try { return value ? JSON.parse(value) as Pending : null; } catch { return null; }
@@ -712,56 +742,19 @@ async function beginTurnStart(roomId: string, turnSeat: number) {
     .bind(turnSeat, serializePending(pending), JSON.stringify(presentation.log), skillState, roomId).run();
 }
 
-async function beginMatch(roomId: string, players: PlayerRow[], guaranteedOpeningCards: { playerId: string; kinds: CardKind[] }[] = [], randomizedOpeningKinds: CardKind[] = []) {
+async function beginMatch(roomId: string, players: PlayerRow[]) {
   const deck = makeDeck();
   const openingHands = players.map((player) => ({ player, cards: [] as Card[] }));
-  for (const guarantee of guaranteedOpeningCards) {
-    const opening = openingHands.find(({ player }) => player.id === guarantee.playerId);
-    if (!opening) continue;
-    for (const kind of guarantee.kinds) {
-      const deckIndex = deck.findIndex((card) => card.kind === kind);
-      if (deckIndex >= 0) opening.cards.push(...deck.splice(deckIndex, 1));
-    }
-  }
-  const randomizedTargets = shuffle(openingHands.filter(({ cards }) => cards.length < 4));
-  for (const kind of randomizedOpeningKinds) {
-    const opening = randomizedTargets.shift();
-    if (!opening) break;
-    const deckIndex = deck.findIndex((card) => card.kind === kind);
-    if (deckIndex >= 0) opening.cards.push(...deck.splice(deckIndex, 1));
-  }
   for (const entry of openingHands) entry.cards = shuffle([...entry.cards, ...deck.splice(0, Math.max(0, 4 - entry.cards.length))]);
-  const updates = openingHands.map(({ player, cards }) => db().prepare("UPDATE players SET hand_json = ?, judgement_json = '[]', equipment_json = '{}', alive = 1 WHERE id = ?").bind(JSON.stringify(cards), player.id));
+  const updates = openingHands.map(({ player, cards }) => {
+    const hero = STANDARD_HEROES.find((candidate) => candidate.id === player.hero);
+    const maxHp = hero?.hp ?? player.max_hp ?? 0;
+    const hp = maxHp + (player.role === "Lord" ? 1 : 0);
+    return db().prepare("UPDATE players SET hp = ?, max_hp = ?, hand_json = ?, judgement_json = '[]', equipment_json = '{}', alive = 1 WHERE id = ?").bind(hp, hp, JSON.stringify(cards), player.id);
+  });
   const lord = players.find((player) => player.role === "Lord") ?? players[0];
   await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify([`${lord.name} begins the match.`]), JSON.stringify({ turnPlayerId: lord.id }), roomId)]);
   await beginTurnStart(roomId, lord.seat);
-}
-async function prepareQuickTestMatch(roomId: string, hostPlayerId: string) {
-  const result = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
-  const players = result.results ?? [];
-  const roles = shuffle(ROLE_SETS[players.length]);
-  const lordIndex = players.findIndex((player) => player.id === hostPlayerId); const lordAt = roles.indexOf("Lord");
-  [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
-  const preferredBySeat = ["guan-yu", "simayi", "zhao-yun", "xiahou-dun"];
-  const assigned = players.map((player, index) => {
-    const preferred = STANDARD_HEROES.find((hero) => hero.id === preferredBySeat[player.seat]);
-    const options = preferred ? [preferred, ...shuffle(STANDARD_HEROES.filter((hero) => hero.id !== preferred.id))] : shuffle([...STANDARD_HEROES]);
-    return { ...player, role: roles[index], hero: null, hp: null, max_hp: null, hero_options_json: JSON.stringify(options) };
-  });
-  await db().batch([
-    ...assigned.map((player) => db().prepare("UPDATE players SET role = ?, hero = NULL, hp = NULL, max_hp = NULL, hero_options_json = ? WHERE id = ?").bind(player.role, player.hero_options_json, player.id)),
-    db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = NULL WHERE id = ?").bind(roomId),
-  ]);
-}
-
-async function beginQuickTestMatch(roomId: string, players: PlayerRow[]) {
-  // Keep the established Quick Test fixture useful for capability coverage;
-  // hero identity is now selected by the controller before this deal occurs.
-  await beginMatch(roomId, players, [
-    { playerId: players[0].id, kinds: ["FrostSword", "RedHare", "Peach", "Attack"] },
-    { playerId: players[1].id, kinds: ["KirinBow", "NioShield"] },
-    { playerId: players[2].id, kinds: ["BlueSteelSword", "Dodge", "Attack"] },
-  ], ["YinYangSwords", "BorrowedSword", "BorrowedSword"]);
 }
 function db() { return env.DB; }
 
@@ -2000,8 +1993,8 @@ async function roomState(code: string, token?: string) {
   // Quick Test deliberately shares one local controller across all four seats.
   // A regular room still has exactly one player for each session token.
   const isTestController = sessionPlayers.length === players.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
-  const quickSelectionPlayer = room.status === "heroes" && isTestController ? players.find((player) => !player.hero)?.id ?? null : null;
-  const projectedActionPlayerId = quickSelectionPlayer ?? actualActionPlayerId;
+  const heroSelectionPlayer = room.status === "heroes" ? nextGeneralSelector(players) : null;
+  const projectedActionPlayerId = heroSelectionPlayer?.id ?? actualActionPlayerId;
   const me = isTestController ? players.find((player) => player.id === projectedActionPlayerId) ?? turnPlayer ?? sessionPlayers[0] : sessionPlayers[0];
   // Reading a room must not create D1 writes. Presence is refreshed by the
   // throttled heartbeat action below, never by normal room polling.
@@ -2027,7 +2020,7 @@ async function roomState(code: string, token?: string) {
   const currentAction: CurrentAction = {
     version: 3,
     kind: responsePending ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
-    actorId: actualActionPlayerId,
+    actorId: room.status === "heroes" ? projectedActionPlayerId : actualActionPlayerId,
     deadline: responseDeadline,
     reason: actionReason,
     // This list is calculated only for the current private view. It is never
@@ -2043,10 +2036,10 @@ async function roomState(code: string, token?: string) {
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
-    myHeroOptions: room.status === "heroes" && me?.hero_options_json ? JSON.parse(me.hero_options_json) : [],
+    myHeroOptions: room.status === "heroes" && me && !me.hero && (me.role === "Lord" || Boolean(players.find((player) => player.role === "Lord")?.hero)) && me.hero_options_json ? JSON.parse(me.hero_options_json) : [],
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
-    timeline: gameTimeline(rawLog, me?.id), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "playing" && me?.id === actualActionPlayerId,
+    timeline: gameTimeline(rawLog, me?.id), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && me?.id === actualActionPlayerId,
     pendingAttack,
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or
@@ -2069,7 +2062,7 @@ async function roomState(code: string, token?: string) {
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null, eligibleTargetIds: pending.stage === "choose_target" ? borrowedSwordEligibleTargetIds(players, pending.holderId) : [] } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId, eligibleTargetIds: [] } : null,
     pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
-    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: player.hero, hp: player.hp, maxHp: player.max_hp, alive: Boolean(player.alive), connected: isTestController || viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
+    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: isTestController || viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
   };
 }
 
@@ -2117,7 +2110,8 @@ export async function POST(request: Request) {
       await resetAudit(roomId);
       const createdRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const host = await db.prepare("SELECT * FROM players WHERE id = ?").bind(playerId).first<PlayerRow>();
       if (createdRoom && host) await recordAuditAction(createdRoom, host, playerName, "quick_start");
-      await prepareQuickTestMatch(roomId, playerId);
+      const quickPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+      await beginStandardHeroSelection(roomId, quickPlayers.results ?? []);
     }
     return json({ token, room: await roomState(code, token) }, 201);
   }
@@ -2150,7 +2144,7 @@ export async function POST(request: Request) {
   const rawControllerPending = parsePersistedPending(room.pending_json);
   let pendingForController = rawControllerPending;
   let turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
-  let actionPlayerIdForController = room.status === "heroes" ? allRoomPlayers.find((player) => !player.hero)?.id : room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
+  let actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
   let isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
   let me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
   if (action === "heartbeat") {
@@ -2182,7 +2176,7 @@ export async function POST(request: Request) {
     const rawCurrentPending = parsePersistedPending(room.pending_json);
     pendingForController = rawCurrentPending;
     turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
-    actionPlayerIdForController = room.status === "heroes" ? allRoomPlayers.find((player) => !player.hero)?.id : room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
+    actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
     isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
     me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
     const submitted = body.context && typeof body.context === "object" ? body.context as { actionRevision?: unknown; meId?: unknown; phase?: unknown; pendingKind?: unknown; actorId?: unknown } : null;
@@ -2765,19 +2759,7 @@ export async function POST(request: Request) {
     if (players.length < 4) return json({ error: "Classic mode needs at least 4 players." }, 409);
     await resetAudit(room.id);
     await recordAuditAction(room, me, name, action);
-    const roles = shuffle(ROLE_SETS[players.length]);
-    const lordIndex = players.findIndex((player) => player.id === room.host_player_id); const lordAt = roles.indexOf("Lord");
-    [roles[lordAt], roles[lordIndex]] = [roles[lordIndex], roles[lordAt]];
-    const rulers = STANDARD_HEROES.filter((hero) => ["cao-cao", "liu-bei", "sun-quan"].includes(hero.id));
-    const shuffledHeroes = shuffle(STANDARD_HEROES.filter((hero) => !rulers.some((ruler) => ruler.id === hero.id)));
-    let heroCursor = 0;
-    await db.batch([
-      ...players.map((player, index) => {
-        const options = roles[index] === "Lord" ? [...rulers, ...Array.from({ length: 2 }, () => shuffledHeroes[heroCursor++ % shuffledHeroes.length])] : Array.from({ length: 3 }, () => shuffledHeroes[heroCursor++ % shuffledHeroes.length]);
-        return db.prepare("UPDATE players SET role = ?, hero = NULL, hp = NULL, max_hp = NULL, hero_options_json = ? WHERE id = ?").bind(roles[index], JSON.stringify(options), player.id);
-      }),
-      db.prepare("UPDATE rooms SET status = 'heroes' WHERE id = ?").bind(room.id),
-    ]);
+    await beginStandardHeroSelection(room.id, players);
     return json({ room: await roomState(code, token) });
   }
 
@@ -2785,20 +2767,22 @@ export async function POST(request: Request) {
     if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     if (room.status !== "heroes") return json({ error: "Hero selection is not active." }, 409);
     if (me.hero) return json({ error: "Your hero is already locked in." }, 409);
+    const livePlayers = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
+    const selector = nextGeneralSelector(livePlayers);
+    if (!selector || selector.id !== me.id) return json({ error: "Wait for the current seat to choose its general." }, 409);
     const heroId = String(body.heroId ?? "");
     const options = me.hero_options_json ? JSON.parse(me.hero_options_json) as Hero[] : [];
     const hero = options.find((item) => item.id === heroId);
     if (!hero) return json({ error: "That hero is not one of your choices." }, 400);
     const taken = await db.prepare("SELECT 1 FROM players WHERE room_id = ? AND hero = ?").bind(room.id, hero.id).first();
     if (taken) return json({ error: "That hero was just selected. Choose another." }, 409);
-    const hp = hero.hp + (me.role === "Lord" ? 1 : 0);
-    await db.prepare("UPDATE players SET hero = ?, hp = ?, max_hp = ? WHERE id = ?").bind(hero.id, hp, hp, me.id).run();
+    const locked = await db.prepare("UPDATE players SET hero = ?, hp = NULL, max_hp = NULL WHERE id = ? AND hero IS NULL").bind(hero.id, me.id).run();
+    if ((locked.meta.changes ?? 0) <= 0) return json({ error: "That general choice is stale. Refresh the table and try again." }, 409);
     const remaining = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND hero IS NULL").bind(room.id).first<{ count: number }>();
     if ((remaining?.count ?? 0) === 0) {
       const ready = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
       const readyPlayers = ready.results ?? [];
-      const quickTest = readyPlayers.length === 4 && new Set(readyPlayers.map((player) => player.token_hash)).size === 1;
-      await (quickTest ? beginQuickTestMatch(room.id, readyPlayers) : beginMatch(room.id, readyPlayers));
+      await beginMatch(room.id, readyPlayers);
       }
     return json({ room: await roomState(code, token) });
   }

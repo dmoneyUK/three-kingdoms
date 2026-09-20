@@ -1,5 +1,21 @@
 # Three Kingdoms
 
+## Standard setup parity — 2026-09-20
+
+Normal multiplayer and Quick Test now use one Standard setup state machine:
+random role assignment, Lord-first general selection, private 5/3 candidate
+deals, hidden non-Lord selections with readiness-only projection, simultaneous
+general reveal, hero HP application, four-card opening hands, and the Lord's
+first turn. Quick Test only changes the controller perspective: one token is
+projected as the currently unresolved seat. It no longer seeds preferred
+heroes, exposes the full Standard roster, forces the host to be Lord, or deals
+special opening cards. Deterministic hero/card scenarios belong in test
+fixtures, not production setup logic.
+
+The current stage is Standard setup/privacy parity complete; the next milestone
+remains the next individually verified Standard hero capability. Full Worker/D1
+validation currently passes 93 tests.
+
 The next Wu/Qun hero batch is now playable: Gan Ning (Qixi), Lü Meng
 (Keji), Huang Gai (Kurou), Zhou Yu (Yingzi/Fanjian), and Lü Bu (Wushuang).
 Qixi uses the canonical Burning Bridges Negation and target-card flow; Keji,
@@ -121,11 +137,12 @@ Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 skill text is shared by the selection cards and each private in-game hero
 information dialog.
 
-Quick Test now enters the same authoritative `heroes` start phase as normal
-rooms. The single controller chooses a unique Standard general for Player1
-through Player4, with the next unchosen seat projected privately; the match
-deals and starts only after all four choices are locked. The established
-Quick Test opening equipment and card fixture remains intact after selection.
+Quick Test enters the same authoritative `heroes` start phase as normal rooms.
+The single controller is projected as the Lord first and then as each
+unresolved non-Lord seat in authoritative order. Candidate counts are exactly
+five for the Lord and three for each non-Lord; locked non-Lord generals project
+only as `generalReady` until all selections are complete. The final reveal,
+HP, opening deal, and Lord turn all use the normal `beginMatch` path.
 
 In-game player cards now show hero names at a larger, more readable size while
 remaining responsive on smaller screens.
@@ -184,10 +201,9 @@ Zhang Fei's Paoxiao is now a locked passive capability. The shared Attack-use-li
 
 When Yin-Yang Swords lets the attacker draw, the drawn card now appears in the attacker's normal private centre-card presentation and remains hidden from the other seats.
 
-Quick Test opening-deal clarification: the one Yin-Yang Swords card and both
-Borrowed Sword cards are dealt to three distinct random seats with capacity;
-they are removed from the opening deck and all four seats still receive four
-cards.
+Quick Test opening-deal parity: production uses the same shuffled four-card
+deal as normal multiplayer. Special hero/card allocations remain test-helper
+fixtures and are not part of game rules.
 
 Concurrent canonical response submissions now retain the compare-and-set
 single-winner claim. If a valid earlier Attack, Duel, Group, Negation,
@@ -198,7 +214,7 @@ errors remain normal validation errors. The Worker/D1 regression verifies one
 winner, one stale loser, one card/effect/log result, no resolving-room stall,
 and no private-hand leakage.
 
-Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, Sima Yi's Guicai/Retaliation, and Xiahou Dun's Stauchness/Ganglie are implemented through the semantic capability architecture. Luoshen, Guicai, and Stauchness use the canonical shared Judgement pipeline; the reusable post-damage `damage_suffered` event now discovers and exhausts both Stauchness and Retaliation providers across normal Attacks, Group/AOE damage, failed Eight Trigrams, Duel losses, Rock Cleaving Axe forced damage, and sourced Stauchness consequences, then resumes the exact stored continuation once. Lethal damage still enters the existing Dying flow before optional post-damage reactions, and source-less Lightning remains source-less. Semantic trigger labels remain stable during submission, while busy state still disables duplicate interaction; in-game player hero cards stay concise and open a private info dialog for ability explanations. Qingguo remains unchanged, Paoxiao remains locked/passive, and no provider-specific protocol or client hero branch was added. Borrowed Sword forced Attacks preserve their original turn-owner resume phase and do not consume the holder's normal Play Phase Attack limit. The response-race stale-contract hardening and exact-head CI/deployment gate are green. Quick Test now opens hero selection before retaining the deterministic Guan Yu / Sima Yi / Zhao Yun / Xiahou Dun defaults used by coverage; Luoshen coverage explicitly reassigns that fixture seat to Zhen Ji. The three faction lords and the shared hero start phase are now the latest verified batch; the next milestone is the next individually verified Standard hero capability.
+Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, Sima Yi's Guicai/Retaliation, Xiahou Dun's Stauchness/Ganglie, and the three faction lords are implemented through the semantic capability architecture. The Standard setup/privacy parity pass is complete: normal multiplayer and Quick Test share one role, candidate, reveal, HP, opening-hand, and starting-turn path; Quick Test only supplies a shared-seat projection. No provider-specific protocol or client hero branch was added. The next milestone is the next individually verified Standard hero capability.
 
 The three Standard faction lords are now playable through the same semantic layer. Cao Cao has Jianxiong, which can reclaim the exact physical damage card(s), and Hujia, which delegates a Dodge request to Wei characters in action order. Liu Bei has Play Phase Rende card-gifting with one-per-phase recovery after two cards, plus Jijiang delegation to Shu characters for Attack responses. Sun Quan has once-per-Play-Phase Zhiheng and the Jiuyuan rescue modifier for another Wu character's Peach. These abilities project private legal choices through `currentAction` and use only the canonical `respond`, `decline_response`, `trigger`, and `decline_trigger` commands; deterministic Worker/D1 coverage exercises normal multiplayer and the shared multi-seat perspective model. The next milestone is the next individually verified Standard hero capability; the start phase and Quick Test selection contract are now complete.
 
@@ -223,10 +239,9 @@ milestone is the next individually verified Standard hero.
 
 Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, Step 6B Negation canonicalization, Step 7A response expansion compatibility removal, Step 7B.1 rejection of legacy persisted Attack/Duel/Group/Negation response states, Step 7C direct response construction, and Step 7D documentation closure are complete. Audit/state validation, room projections, and response timers now read canonical `ResponsePending` and `TriggerPending` records directly; old response-family states never become actionable `currentAction` values or legacy response DTOs. Quick Test and normal multiplayer use human-style seats only; one Quick Test controller switches seats through the shared token. The next milestone is the next individually verified Standard hero.
 
-The current deterministic suite has been consolidated to 88 tracked test
-declarations while retaining the required human multiplayer and capability
-invariants. Pure helper assertions now run in grouped cases, and inactive bot-only
-tests and product paths have been removed. The Worker/D1 runner executes all 88 tests.
+The current deterministic suite has 93 tracked test declarations while retaining
+the required human multiplayer, Quick Test perspective, setup privacy, and
+capability invariants. The Worker/D1 runner executes all 93 tests.
 
 Step 5E completed the response-builder typing cleanup: the former
 response-builder compatibility union
@@ -256,7 +271,7 @@ Successful Judgement-based Negation now applies one transitioned parity/depth st
 
 The foldable Game Messages window is the sole public textual event-history surface and derives its latest 10 entries from the authoritative server timeline. The centre presentation displays cards only: informational text never enters the sequential visual presentation queue, so response availability and timers still wait only for the exact `readyAfterEventId` card or essential visual event while card settlement animations now use a synchronized 2-second duration. Damage-trigger decisions bind the latest essential card/cards presentation belonging to the current Attack when one exists, and otherwise carry no barrier; the browser also treats any legacy informational barrier as already ready.
 
-The game table now uses a responsive four-seat player board with no in-game top bar. Each player square keeps the hero name, HP, hand count, compact equipment and Judgement cards together; active and self seats remain visually identifiable, and distance is no longer shown in player UI cards. Quick Test now assigns each selected hero's real maximum HP, including the Lord's +1 bonus; Guan Yu therefore starts as Player1/Lord at 5 HP.
+The game table now uses a responsive four-seat player board with no in-game top bar. Each player square keeps the hero name, HP, hand count, compact equipment and Judgement cards together; active and self seats remain visually identifiable, and distance is no longer shown in player UI cards. Both normal multiplayer and Quick Test apply each selected hero's real maximum HP, including the Lord's +1 bonus.
 
 Raining Arrows is covered through the current semantic response path: each living target receives a Dodge decision, and declining or timing out that decision applies its 1 damage before the next target is processed.
 
@@ -351,7 +366,7 @@ The playable alpha includes:
 - table-based card-resolution presentation;
 - event history and detailed rule-audit trail; and
 - deterministic quick-test setups for card and response-chain development.
-- a single-device Quick Test controller that follows the legal acting seat and shows only that player's hand in the normal bottom area. Perspective changes never trigger a private draw. Quick Test names its human-style seats Player1 through Player4, opens the shared hero-selection phase with every Standard general available, and keeps the former Guan Yu / Sima Yi / Zhao Yun / Xiahou Dun choices first for deterministic coverage. After the four selections, it seeds the first three seats with the requested Standard equipment plus a Dodge and Attack for Longdan (Frost Sword plus Red Hare; Kirin Bow plus Nio Shield; Blue Steel Sword plus Dodge and Attack), deals Yin-Yang Swords and Borrowed Sword to three distinct random seats with opening-hand capacity, preserves red Wusheng-capable cards for Player1, and fills all remaining opening slots from the shuffled deck. Luoshen tests explicitly reassign Player4 to Zhen Ji when needed.
+- a single-device Quick Test controller that follows the authoritative Lord-first general-selection order and shows only the currently projected seat's private information. Perspective changes never trigger a private draw; production Quick Test uses the same Standard role, candidate, reveal, HP, hand, and starting-turn rules as normal multiplayer. Deterministic hero/card scenarios, including Luoshen, reassign heroes or cards in test helpers only.
 - generic `target_cards` reactions open in one centred `.play-table` picker. The picker renders only server-projected `selection.targetId`, `eligibleKeys`, `min`, and `max`; it keeps hidden hand positions private, derives every `hand:N` card directly from `eligibleKeys`, shows only matching eligible equipment as readable faces, and places Skip reaction and the selected effect action below the cards.
 
 ### Implemented Standard cards

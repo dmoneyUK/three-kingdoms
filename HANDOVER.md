@@ -1,5 +1,37 @@
 # Three Kingdoms project handover
 
+## Standard setup parity and privacy — 2026-09-20
+
+The Standard hero-selection fix is complete and supersedes earlier Quick Test
+fixture notes below. Normal multiplayer and Quick Test now call the same
+`beginStandardHeroSelection()` path. It randomly assigns the Standard role
+set without forcing the host to Lord, projects only the Lord role publicly,
+deals five Lord candidates and three non-Lord candidates from one shuffled
+eligible Standard pool, and enforces the authoritative order Lord first then
+unresolved non-Lord seats by seat.
+
+The `heroes` state now projects private information per effective viewer:
+`myRole`, `myHeroOptions`, and a locked own general are private; the Lord's
+locked general is public; other locked non-Lord generals are `null` and expose
+only `generalReady`. The controller token is the only Quick Test special case:
+the server projects it as the next unresolved seat. It does not alter roles,
+candidate counts, reveal timing, HP, opening hands, hidden information, or the
+Lord's first turn. The old preferred-hero setup, broad/all-hero options,
+host-forced-Lord assignment, Quick Test opening-card deal, and separate
+`prepareQuickTestMatch`/`beginQuickTestMatch` paths are removed.
+
+`beginMatch()` is now the sole completion path for both modes. It applies the
+selected hero's normal HP, adds the Standard Lord +1, deals four shuffled
+opening cards to every player, and starts the Lord. Deterministic hero/card
+scenarios remain in test helpers/database setup; production Quick Test is a
+real Standard game.
+
+Validation: the isolated Worker/D1 suite passes **93 / 93**, alongside a
+successful build and lint. Recommended next work is the next individually
+verified Standard hero capability. Known boundary: legacy historical notes in
+this append-only handover may describe earlier Quick Test fixtures; this
+section is the current contract.
+
 ## Yu Jin removed from new Standard selection — 2026-09-20
 
 Yu Jin is no longer part of `STANDARD_HEROES`, so new multiplayer and Quick
