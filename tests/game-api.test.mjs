@@ -167,6 +167,31 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.ok(discardIds(zhihengGame.code).includes(discarded.id));
   assert.deepEqual(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(zhihengGame.code)}`)), { turnPlayerId: zhihengSun.id, zhihengUsed: true });
 
+  const jiuyuanGame = await createHumanGame();
+  const jiuyuanMembers = jiuyuanGame.members;
+  const jiuyuanSource = jiuyuanGame.room.players.find((player) => player.name === "Host");
+  const sun = jiuyuanGame.room.players.find((player) => player.name === "Alice");
+  const wuRescuer = jiuyuanGame.room.players.find((player) => player.name === "Bob");
+  assert.ok(jiuyuanSource && sun && wuRescuer);
+  const lethalAttack = card("Attack", "jiuyuan-lethal"); const rescuePeach = card("Peach", "jiuyuan-peach");
+  sql(`UPDATE players SET hero=NULL WHERE id IN (${jiuyuanGame.room.players.filter((player) => player.id !== sun.id && player.id !== wuRescuer.id).map((player) => quote(player.id)).join(",")})`);
+  sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(sun.id)}`); sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(wuRescuer.id)}`);
+  setEquipment(sun.id, {}); setHand(jiuyuanSource.id, [lethalAttack], 4, 4); setHand(sun.id, [], 1, 4); setHand(wuRescuer.id, [rescuePeach], 4, 4); setTurn(jiuyuanGame.code, jiuyuanSource.seat);
+  const jiuyuanAttack = await request("play_card", { code: jiuyuanGame.code, token: jiuyuanMembers[0].token, cardId: lethalAttack.id, targetId: sun.id });
+  assert.equal(jiuyuanAttack.status, 200, JSON.stringify(jiuyuanAttack.data));
+  let jiuyuanRescue = null;
+  const jiuyuanMemberById = new Map(jiuyuanGame.room.players.map((player, index) => [player.id, jiuyuanMembers[index]]));
+  for (let attempt = 0; attempt < jiuyuanMembers.length && !jiuyuanRescue; attempt++) {
+    const view = await state(jiuyuanGame.code, jiuyuanMembers[0].token); const actorId = view.data.currentAction?.actorId; const actorMember = actorId ? jiuyuanMemberById.get(actorId) : null;
+    if (view.data.currentAction?.kind !== "dying" || !actorMember) break;
+    jiuyuanRescue = actorId === wuRescuer.id
+      ? await request("give_peach", { code: jiuyuanGame.code, token: actorMember.token, cardId: rescuePeach.id })
+      : await request("skip_rescue", { code: jiuyuanGame.code, token: actorMember.token });
+    if (actorId !== wuRescuer.id) jiuyuanRescue = null;
+  }
+  assert.equal(jiuyuanRescue?.status, 200, JSON.stringify(jiuyuanRescue?.data));
+  assert.equal(jiuyuanRescue.data.room.players.find((player) => player.id === sun.id).hp, 2, JSON.stringify(jiuyuanRescue.data.room));
+
   const jianxiongGame = await createHumanGame();
   const jianxiongHost = jianxiongGame.members[0];
   const jianxiongSource = jianxiongGame.room.players.find((player) => player.name === "Host");

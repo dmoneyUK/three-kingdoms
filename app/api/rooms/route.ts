@@ -3085,7 +3085,7 @@ export async function POST(request: Request) {
         await advanceDyingRescue(room.id);
       } else {
         const next = dyingResumeState(resumedPending, resume);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = 1, alive = 1 WHERE id = ?").bind(pending.targetId), db.prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(discard), JSON.stringify(log), room.id)]);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId), db.prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(next.phase, next.pendingJson, JSON.stringify(discard), JSON.stringify(log), room.id)]);
         await continueDyingResolution(room.id, resumedPending);
       }
     } else if (pending.remainingIds[0]) {
