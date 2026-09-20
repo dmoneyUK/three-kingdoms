@@ -1,5 +1,20 @@
 # Three Kingdoms project handover
 
+## Oath in Peach Garden card artwork — 2026-09-20
+
+The supplied blossom-oath artwork is now stored at `public/oath-card.jpg` and
+applied to the shared `.game-card.oath` and `.played-card.oath` presentation
+classes. Hand cards, centre reveals, private draws, target-card previews,
+Judgement/equipment-sized faces, and settled table cards share the same Oath
+visual. A warm pink/gold contrast gradient preserves the physical rank/suit,
+Oath name, and category labels while the existing suit-colour corner rules
+remain authoritative.
+
+No gameplay protocol, card identity, or non-Oath card presentation changed.
+The artwork is intentionally scoped to the normal Standard Oath in Peach Garden
+identity; its all-player effect semantics are unchanged. Recommended next work
+remains the next individually verified Standard hero capability.
+
 ## Lightning card artwork — 2026-09-20
 
 The supplied storm artwork is now stored at `public/lightning-card.jpg` and

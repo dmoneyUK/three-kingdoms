@@ -21,6 +21,11 @@ The standard Lightning card now uses the supplied storm artwork across the same
 shared surfaces. Its electric gold/blue contrast treatment keeps the physical
 rank/suit and Lightning label legible without changing card semantics.
 
+The standard Oath in Peach Garden card now uses the supplied blossom-oath
+artwork across the same shared surfaces. Its warm pink/gold contrast treatment
+keeps the physical rank/suit and Oath label legible without changing card
+semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun
