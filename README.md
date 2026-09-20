@@ -69,6 +69,11 @@ The standard Green Dragon Blade card now uses the supplied jade-blade artwork
 across the same shared surfaces. Its teal/green contrast treatment keeps the
 physical rank/suit and equipment label legible without changing card semantics.
 
+The outgoing minus-one-distance horse cards now use the supplied fiery horse
+artwork across the same shared surfaces. Red Hare, Purple Bay, and Fergana
+Steed share the red/ember contrast treatment, while defensive plus-one-distance
+horses remain unchanged.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun

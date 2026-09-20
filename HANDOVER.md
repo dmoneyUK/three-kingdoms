@@ -79,6 +79,23 @@ No gameplay protocol, card identity, Attack Range 3 behavior, or
 `attack_dodged` follow-up semantics changed. Recommended next work remains the
 next individually verified Standard hero capability.
 
+## Offensive horse card artwork — 2026-09-20
+
+The supplied fiery horse artwork is now stored at
+`public/offensive-horse-card.jpg` and applied to the shared
+`.game-card.redhare`, `.game-card.purplebay`, `.game-card.ferganasteed`, and
+their `.played-card` counterparts, with the legacy `.offensivehorse` alias
+covered for saved-room compatibility. These cards represent the outgoing
+minus-one-distance horse effect. Hand cards, centre reveals, private draws,
+equipment previews, and settled table cards share the same visual. A
+red/ember contrast gradient preserves the physical rank/suit, horse name, and
+equipment category labels while the existing suit-colour corner rules remain
+authoritative.
+
+No gameplay protocol, distance calculation, equipment-slot behavior, or
+defensive plus-one-distance horse presentation changed. Recommended next work
+remains the next individually verified Standard hero capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at
