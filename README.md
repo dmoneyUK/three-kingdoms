@@ -93,6 +93,11 @@ supplied artwork across the same shared surfaces. Their teal, gold, and
 gold/black contrast treatments preserve physical rank/suit and equipment labels
 without changing weapon or Armor semantics.
 
+The standard Sky Piercing Halberd, Barbarian Invasion, and Negation cards now
+use their supplied artwork across the same shared surfaces. Their ivory/gold,
+red/brown, and purple/gold contrast treatments preserve physical rank/suit and
+card labels without changing their multi-target, Group, or Negation semantics.
+
 The hero start phase now uses the supplied Standard English card metadata for
 Cao Cao (Treachery, Entourage), Liu Bei (Benevolence, Influencing), Sun Quan
 (Equilibrium, Deliverance), Sima Yi (Retaliation, Necromancy), Xiahou Dun

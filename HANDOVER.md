@@ -148,6 +148,23 @@ changed. Kirin Bow remains presentation-only compatibility artwork because its
 existing deck/status boundaries are unchanged. Recommended next work remains
 the next individually verified Standard hero capability.
 
+## Sky Piercing Halberd, Barbarian Invasion, and Negation artwork — 2026-09-20
+
+The supplied artwork is now stored at
+`public/sky-piercing-halberd-card.jpg`, `public/barbarian-invasion-card.jpg`,
+and `public/negation-card.jpg`. It is applied to the shared
+`.game-card`/`.played-card` classes for `skypiercinghalberd`,
+`barbarianinvasion`, and `negation`. Hand cards, centre reveals, private draws,
+equipment previews, Group/AOE response cards, and settled table cards share the
+respective visuals. Ivory/gold, red/brown, and purple/gold contrast treatments
+preserve physical rank/suit, card names, and category labels while the existing
+suit-colour corner rules remain authoritative.
+
+No gameplay protocol, Sky Piercing Halberd multi-target continuation,
+Barbarian Invasion Group response, or Negation parity/counter-chain semantics
+changed. Recommended next work remains the next individually verified Standard
+hero capability.
+
 ## Eight Trigrams Formation card artwork — 2026-09-20
 
 The supplied shield artwork is now stored at
