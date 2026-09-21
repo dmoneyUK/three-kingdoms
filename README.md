@@ -1,5 +1,23 @@
 # Three Kingdoms
 
+## Cao Cao Hujia delegation correction — 2026-09-21
+
+Cao Cao's Entourage / Hujia now asks every living Wei character in action
+order based on faction eligibility, even when that character has no Dodge or
+other Dodge provider. The delegate receives a private semantic response
+decision with Skip response available and no fabricated card option. When all
+delegates decline, control returns to Cao Cao with Hujia disabled for that
+Attack, so he can still play his own Dodge or decline normally. The same
+generic eligibility fix applies to Liu Bei's Jijiang / Influencing delegation.
+API coverage now includes empty delegates, successful delegated responses,
+multiple delegates, all-decline fallback, private prompt projection, and
+Jijiang action order. The full Worker/D1 suite passes 103 tests.
+
+The current stage remains Stage 6 hero-capability execution complete for the
+implemented Standard heroes. The next milestone is the next individually
+verified Standard hero capability, preserving the canonical semantic response
+protocol and Quick Test privacy.
+
 ## Zhou Yu Yingzi correction — 2026-09-21
 
 Yingzi now follows the optional WTK Standard wording: after required Draw
@@ -288,9 +306,9 @@ milestone is the next individually verified Standard hero.
 
 Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, Step 6B Negation canonicalization, Step 7A response expansion compatibility removal, Step 7B.1 rejection of legacy persisted Attack/Duel/Group/Negation response states, Step 7C direct response construction, and Step 7D documentation closure are complete. Audit/state validation, room projections, and response timers now read canonical `ResponsePending` and `TriggerPending` records directly; old response-family states never become actionable `currentAction` values or legacy response DTOs. Quick Game is a single-player human-style room with one shared controller switching across four seats. The next milestone is the next individually verified Standard hero.
 
-The current deterministic suite has 95 tracked test declarations while retaining
+The current deterministic suite has 103 tracked test declarations while retaining
 the required human multiplayer, Quick Test perspective, setup privacy, and
-capability invariants. The Worker/D1 runner executes all 95 tests.
+capability invariants. The Worker/D1 runner executes all 103 tests.
 
 Step 5E completed the response-builder typing cleanup: the former
 response-builder compatibility union

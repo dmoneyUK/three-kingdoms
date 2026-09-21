@@ -35,6 +35,7 @@ export type ResponsePending = {
   deadline?: number;
   resolutionId?: string;
   readyAfterEventId?: string;
+  disabledProviderIds?: string[];
   delegation?: { kind: "attack" | "dodge"; requesterId: string; providerId: string; remainingActorIds: string[] };
   continuation: ResponseContinuation;
 };

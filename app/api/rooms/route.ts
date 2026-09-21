@@ -218,6 +218,18 @@ function responseContext(player?: PlayerRow | null, players: PlayerRow[] = []) {
     : [];
   return { hand: parse<Card[]>(player?.hand_json ?? null, []), equipment: equipmentCards(player), hero: player?.hero, delegates };
 }
+function heroDisplayName(player?: PlayerRow | null) { return player ? STANDARD_HEROES.find((hero) => hero.id === player.hero)?.name ?? player.name : "The requester"; }
+function delegatedResponseReason(response: ResponsePending, viewer: PlayerRow | undefined, players: PlayerRow[]) {
+  const delegation = response.delegation;
+  if (!delegation) return response.reason;
+  const requester = players.find((player) => player.id === delegation.requesterId);
+  const providerName = delegation.providerId === "cao_cao_hujia" ? "Hujia" : delegation.providerId === "liu_bei_jijiang" ? "Jijiang" : "this delegation";
+  const requiredName = response.requirement.kind === "dodge" ? "Dodge" : "Attack";
+  const prompt = requester ? heroDisplayName(requester) + " asks you to provide " + requiredName + " with " + providerName + "." : "You have been asked to provide " + requiredName + " with " + providerName + ".";
+  if (viewer?.id !== response.actorId) return prompt;
+  const options = responseDecisionFor(response, responseContext(viewer, players))?.options ?? [];
+  return options.length ? prompt + " Play " + requiredName + " or decline." : prompt;
+}
 function activeHeroSkillOptions(player: PlayerRow | null | undefined, room: RoomRow, players: PlayerRow[]) {
   if (!player || !player.alive || !room.phase?.startsWith("play")) return [];
   const skillState = parse<KingSkillState>(room.skill_state_json, {});
@@ -2063,7 +2075,9 @@ async function roomState(code: string, token?: string) {
   const responseDeadline = pending && "deadline" in pending ? pending.deadline ?? 0 : 0;
   const responseCountdownVisibleAt = room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS + 5_000 : 0;
   const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
-  const privateActionReason = pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
+  const privateActionReason = responsePending?.delegation
+    ? delegatedResponseReason(responsePending, me, players)
+    : pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
   const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me, players) : undefined) : null;
   const canDeclareAttack = me?.id === actualActionPlayerId && canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, room.phase);
@@ -2253,7 +2267,7 @@ export async function POST(request: Request) {
       if (response.delegation) {
         const nextId = response.delegation.remainingActorIds.find((candidateId) => {
           const candidate = allRoomPlayers.find((player) => player.id === candidateId && player.alive);
-          return Boolean(candidate && responseDecisionFor(response, responseContext(candidate, allRoomPlayers))?.options.length);
+          return Boolean(candidate);
         });
         if (nextId) {
           const next = { ...response, actorId: nextId, deadline: 0, delegation: { ...response.delegation, remainingActorIds: response.delegation.remainingActorIds.filter((candidateId) => candidateId !== nextId) } };
@@ -2262,10 +2276,12 @@ export async function POST(request: Request) {
           if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
           return json({ room: await roomState(code, token) });
         }
-        const withoutDelegation = { ...response, delegation: undefined, actorId: response.delegation.requesterId, deadline: 0 };
-        await db.prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(withoutDelegation), room.id, room.pending_json).run();
-        pendingForController = withoutDelegation;
-        room = { ...room, pending_json: serializePending(withoutDelegation) };
+        const requesterId = response.delegation.requesterId;
+        const disabledProviderIds = [...new Set([...(response.disabledProviderIds ?? []), response.delegation.providerId])];
+        const withoutDelegation = { ...response, delegation: undefined, actorId: requesterId, deadline: 0, disabledProviderIds } satisfies ResponsePending;
+        const claim = await db.prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(serializePending(withoutDelegation), room.id, room.pending_json).run();
+        if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
+        return json({ room: await roomState(code, token) });
       }
       const declined = applyResponseDeclined(response);
       canonicalResponseDeclined = true;
@@ -2290,7 +2306,7 @@ export async function POST(request: Request) {
         if (!responsePending) return json({ error: "That response is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         const nextId = responseExecution.delegateIds.find((candidateId) => {
           const candidate = allRoomPlayers.find((player) => player.id === candidateId && player.alive);
-          return Boolean(candidate && responseDecisionFor(responsePending, responseContext(candidate, allRoomPlayers))?.options.length);
+          return Boolean(candidate);
         });
         if (!nextId) return json({ error: "No eligible faction character can provide that response.", stale: true, room: await roomState(code, token) }, 409);
         const next = { ...responsePending, actorId: nextId, deadline: 0, delegation: { kind: responsePending.requirement.kind as "attack" | "dodge", requesterId: me?.id ?? responsePending.actorId, providerId: responseExecution.providerId, remainingActorIds: responseExecution.delegateIds.filter((candidateId) => candidateId !== nextId) } } satisfies ResponsePending;

@@ -23,13 +23,16 @@ export function responseDecisionFor(pending: Pending | null, context: ResponseCo
   const response = pending?.kind === "response" ? pending : null;
   if (!response || !context) return null;
   const { requirement } = response;
-  return { requirement: requirement.kind, options: getResponseOptions({ ...context, requirement }, requirement).map(({ providerId, satisfies, activation, label, selection, playedAs }) => ({ providerId, satisfies, activation, label, selection, ...(playedAs ? { playedAs } : {}) })), declineAction: "decline_response" };
+  return { requirement: requirement.kind, options: getResponseOptions({ ...context, requirement }, requirement)
+    .filter((option) => !response.disabledProviderIds?.includes(option.providerId))
+    .map(({ providerId, satisfies, activation, label, selection, playedAs }) => ({ providerId, satisfies, activation, label, selection, ...(playedAs ? { playedAs } : {}) })), declineAction: "decline_response" };
 }
 
 /** Resolves a selected provider after recomputing it from live server state. */
 export function resolveResponseDecision(pending: Pending | null, context: ResponseContext | undefined, providerId: unknown, selection: ResponseSelectionInput) {
   const response = pending?.kind === "response" ? pending : null;
   if (!response || !context) return null;
+  if (typeof providerId === "string" && response.disabledProviderIds?.includes(providerId)) return null;
   const cardId = typeof selection.cardId === "string" ? selection.cardId : undefined;
   const cardIds = Array.isArray(selection.cardIds) && selection.cardIds.every((id) => typeof id === "string") ? selection.cardIds : undefined;
   return resolveResponseProvider(providerId, { ...context, requirement: response.requirement, pendingKind: response.continuation.kind, selection: { cardId, cardIds } });

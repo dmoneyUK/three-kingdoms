@@ -499,6 +499,136 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.ok(jijiangAnswered.data.room.log.some((entry) => entry.includes("Bob plays Attack against Barbarian Invasion")));
 });
 
+test("Hujia prompts a living Wei character even when that character has no Dodge", { timeout: 120_000 }, async () => {
+  const game = await openHujiaScenario({ delegateHero: "simayi" });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  assert.equal(activated.status, 200, JSON.stringify(activated.data));
+  assert.equal(activated.data.error, undefined);
+  assert.equal(activated.data.room.currentAction.actorId, game.delegate.id);
+  const delegateView = await state(game.code, game.delegateMember.token);
+  assert.deepEqual(delegateView.data.currentAction.legalActions, ["decline_response"]);
+  assert.deepEqual(delegateView.data.currentAction.options, []);
+  assert.match(delegateView.data.currentAction.reason, /^Cao Cao asks you to provide Dodge with Hujia\.$/);
+  const caoView = await state(game.code, game.caoMember.token);
+  assert.doesNotMatch(caoView.data.currentAction.reason, /no Dodge/i);
+});
+
+test("Hujia lets a Wei character with Dodge cancel the Attack", { timeout: 120_000 }, async () => {
+  const dodge = card("Dodge", "hujia-regression-dodge");
+  const game = await openHujiaScenario({ delegateHero: "simayi", delegateCards: [dodge] });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  assert.equal(activated.status, 200, JSON.stringify(activated.data));
+  const delegateView = await state(game.code, game.delegateMember.token);
+  assert.ok(delegateView.data.currentAction.legalActions.includes("respond"));
+  assert.ok(delegateView.data.currentAction.legalActions.includes("decline_response"));
+  assert.match(delegateView.data.currentAction.reason, /Play Dodge or decline/);
+  const answered = await request("respond", { code: game.code, token: game.delegateMember.token, cardId: dodge.id });
+  assert.equal(answered.status, 200, JSON.stringify(answered.data));
+  assert.equal(answered.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
+});
+
+test("Hujia asks Wei characters in action order instead of skipping empty hands", { timeout: 120_000 }, async () => {
+  const dodge = card("Dodge", "hujia-order-dodge");
+  const game = await openHujiaScenario({ delegateHero: "simayi", thirdHero: "zhang-liao", thirdCards: [dodge] });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  assert.equal(activated.status, 200, JSON.stringify(activated.data));
+  assert.equal(activated.data.room.currentAction.actorId, game.delegate.id);
+  const firstDecline = await request("decline_response", { code: game.code, token: game.delegateMember.token });
+  assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data));
+  assert.equal(firstDecline.data.room.currentAction.actorId, game.third.id);
+  const answered = await request("respond", { code: game.code, token: game.thirdMember.token, cardId: dodge.id });
+  assert.equal(answered.status, 200, JSON.stringify(answered.data));
+  assert.equal(answered.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
+});
+
+test("Hujia returns to Cao Cao after every Wei character declines without looping", { timeout: 120_000 }, async () => {
+  const game = await openHujiaScenario({ delegateHero: "simayi", thirdHero: "zhang-liao" });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  assert.equal(activated.status, 200, JSON.stringify(activated.data));
+  const firstDecline = await request("decline_response", { code: game.code, token: game.delegateMember.token });
+  assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data));
+  assert.equal(firstDecline.data.room.currentAction.actorId, game.third.id);
+  const secondDecline = await request("decline_response", { code: game.code, token: game.thirdMember.token });
+  assert.equal(secondDecline.status, 200, JSON.stringify(secondDecline.data));
+  assert.equal(secondDecline.data.room.currentAction.actorId, game.cao.id);
+  const caoAfterDelegation = await state(game.code, game.caoMember.token);
+  assert.deepEqual(caoAfterDelegation.data.currentAction.legalActions, ["decline_response"]);
+  assert.deepEqual(caoAfterDelegation.data.currentAction.options, []);
+  const finalDecline = await request("decline_response", { code: game.code, token: game.caoMember.token });
+  assert.equal(finalDecline.status, 200, JSON.stringify(finalDecline.data));
+  assert.equal(finalDecline.data.room.players.find((player) => player.id === game.cao.id).hp, 3);
+});
+
+test("Hujia fallback lets Cao Cao use his own Dodge after all Wei declines", { timeout: 120_000 }, async () => {
+  const dodge = card("Dodge", "hujia-fallback-dodge");
+  const game = await openHujiaScenario({ delegateHero: "simayi", caoCards: [dodge] });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  assert.equal(activated.status, 200, JSON.stringify(activated.data));
+  const declined = await request("decline_response", { code: game.code, token: game.delegateMember.token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  assert.equal(declined.data.room.currentAction.actorId, game.cao.id);
+  const caoView = await state(game.code, game.caoMember.token);
+  assert.ok(caoView.data.currentAction.legalActions.includes("respond"));
+  assert.ok(caoView.data.currentAction.legalActions.includes("decline_response"));
+  assert.ok(caoView.data.currentAction.options.some((option) => option.providerId === "card"));
+  assert.equal(caoView.data.currentAction.options.some((option) => option.providerId === "cao_cao_hujia"), false);
+  const answered = await request("respond", { code: game.code, token: game.caoMember.token, cardId: dodge.id });
+  assert.equal(answered.status, 200, JSON.stringify(answered.data));
+  assert.equal(answered.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
+});
+
+test("Jijiang also asks an empty-handed Shu character before the next delegate", { timeout: 120_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, liuMember, firstShuMember, secondShuMember] = game.members;
+  const source = game.room.players.find((player) => player.name === "Host");
+  const liu = game.room.players.find((player) => player.name === "Alice");
+  const firstShu = game.room.players.find((player) => player.name === "Bob");
+  const secondShu = game.room.players.find((player) => player.name === "Carol");
+  assert.ok(source && liu && firstShu && secondShu);
+  const invasion = card("BarbarianInvasion", "jijiang-order-invasion");
+  const attack = card("Attack", "jijiang-order-attack");
+  for (const player of game.room.players) sql("UPDATE players SET hero=NULL WHERE id=" + quote(player.id));
+  sql("UPDATE players SET hero='liu-bei' WHERE id=" + quote(liu.id));
+  sql("UPDATE players SET hero='guan-yu' WHERE id=" + quote(firstShu.id));
+  sql("UPDATE players SET hero='zhao-yun' WHERE id=" + quote(secondShu.id));
+  setHand(source.id, [invasion], 4, 4); setHand(liu.id, [], 4, 4); setHand(firstShu.id, [], 4, 4); setHand(secondShu.id, [attack], 4, 4); setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: invasion.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const liuView = await state(game.code, liuMember.token);
+  assert.ok(liuView.data.currentAction.options.some((option) => option.providerId === "liu_bei_jijiang"));
+  const activated = await request("respond", { code: game.code, token: liuMember.token, providerId: "liu_bei_jijiang" });
+  assert.equal(activated.status, 200, JSON.stringify(activated.data));
+  assert.equal(activated.data.room.currentAction.actorId, firstShu.id);
+  const firstDecline = await request("decline_response", { code: game.code, token: firstShuMember.token });
+  assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data));
+  assert.equal(firstDecline.data.room.currentAction.actorId, secondShu.id);
+  const answered = await request("respond", { code: game.code, token: secondShuMember.token, cardId: attack.id });
+  assert.equal(answered.status, 200, JSON.stringify(answered.data));
+});
+
+async function openHujiaScenario({ delegateHero, delegateCards = [], thirdHero = null, thirdCards = [], caoCards = [] }) {
+  const game = await createHumanGame();
+  const [sourceMember, caoMember, delegateMember, thirdMember] = game.members;
+  const source = game.room.players.find((player) => player.name === "Host");
+  const cao = game.room.players.find((player) => player.name === "Alice");
+  const delegate = game.room.players.find((player) => player.name === "Bob");
+  const third = game.room.players.find((player) => player.name === "Carol");
+  assert.ok(source && cao && delegate && third);
+  const attack = card("Attack", "hujia-regression-attack");
+  for (const player of game.room.players) sql("UPDATE players SET hero=NULL WHERE id=" + quote(player.id));
+  sql("UPDATE players SET hero='cao-cao' WHERE id=" + quote(cao.id));
+  sql("UPDATE players SET hero=" + quote(delegateHero) + " WHERE id=" + quote(delegate.id));
+  if (thirdHero) sql("UPDATE players SET hero=" + quote(thirdHero) + " WHERE id=" + quote(third.id));
+  setEquipment(cao.id, {});
+  setHand(source.id, [attack], 4, 4); setHand(cao.id, caoCards, 4, 4); setHand(delegate.id, delegateCards, 4, 4); setHand(third.id, thirdCards, 4, 4);
+  setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: cao.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const caoView = await state(game.code, caoMember.token);
+  assert.ok(caoView.data.currentAction.options.some((option) => option.providerId === "cao_cao_hujia"), JSON.stringify(caoView.data));
+  return { ...game, source, cao, delegate, third, sourceMember, caoMember, delegateMember, thirdMember };
+}
+
 async function openGanglieAttack({ judge, sourceCards = [card("Attack", "ganglie-attack")], sourceHp = 4 } = {}) {
   const game = await createHumanGame();
   const sourceMember = game.members[0];

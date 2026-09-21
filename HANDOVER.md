@@ -1617,6 +1617,38 @@ Before a functional release, follow `AGENTS.md`:
 - use GitHub Actions as the only production deployment path.
 
 Do not claim local tests ran unless they actually ran. A GitHub workflow startup failure is not evidence that the code failed tests; it is also not evidence that the code passed them.
+
+## Cao Cao Hujia delegation correction — 2026-09-21
+
+Cao Cao's Hujia / Entourage now separates delegate eligibility from response
+capability. The response provider supplies living Wei delegate IDs in action
+order; the room route only revalidates that each candidate still exists and is
+alive. It no longer calls responseDecisionFor(...).options.length while
+selecting a delegate, so a Wei character with no Dodge is still asked and can
+privately use decline_response. Liu Bei's Jijiang / Influencing path uses the
+same generic fix for living Shu delegates.
+
+Delegated prompts are private-view aware: the acting delegate sees an explicit
+Hujia/Jijiang request and a Play-or-decline suffix only when that actor has a
+legal provider; other viewers receive no hand/capability detail. After the
+last delegate declines, the response returns to the requester with the
+delegation provider disabled for that response. Cao Cao can therefore use a
+physical Dodge or another valid Dodge provider, or decline and take damage,
+without a repeated Hujia loop.
+
+Regression coverage in tests/game-api.test.mjs now covers: a no-Dodge Wei
+delegate, a successful Dodge delegate, multiple Wei delegates in action
+order, all delegates declining, Cao Cao's own-Dodge fallback, and the same
+empty-delegate behavior for Jijiang. The full Worker/D1 suite passes 103 /
+103 tests. Build and git diff --check pass; lint remains part of the final
+release validation.
+
+Known boundary: the disabled-provider marker is scoped to the current
+ResponsePending only; it does not change future attacks or future Hujia
+offers. The canonical protocol remains respond / decline_response, with
+no provider-specific HTTP action. Recommended next work is the next
+individually verified Standard hero capability.
+
 ## Step 3.5 complete — prune redundant tests (2026-09-17)
 
 Test cleanup is complete with no production-code changes. The suite now keeps behavioural coverage in the Worker/D1 API and integration paths, including the 108-card physical deck, Dying and match outcomes, private-hand perspective/privacy, canonical `currentAction` safety, real card rules, and semantic response/trigger chains. The duplicate latest-ten Game Messages checks were merged; capability discovery and generic response-decision checks were merged; synthetic capability registry setup/cleanup checks were merged; and source-regex tests for route/page implementation details were removed. The lobby SSR smoke test and focused room-safety rendering tests remain as independent rendering coverage.
