@@ -28,7 +28,7 @@ type RoomRow = { id: string; code: string; host_player_id: string; status: strin
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
 
-const ROLE_SETS: Record<number, string[]> = { 1: ["Lord"], 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
+const ROLE_SETS: Record<number, string[]> = { 4: ["Lord", "Loyalist", "Rebel", "Renegade"], 5: ["Lord", "Loyalist", "Rebel", "Rebel", "Renegade"], 6: ["Lord", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 7: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Renegade"], 8: ["Lord", "Loyalist", "Loyalist", "Rebel", "Rebel", "Rebel", "Rebel", "Renegade"] };
 const LORD_GENERAL_IDS = new Set(["cao-cao", "liu-bei", "sun-quan"]);
 
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
@@ -1990,7 +1990,7 @@ async function roomState(code: string, token?: string) {
   const turnPlayer = room.status === "playing" ? players.find((player) => player.seat === room.turn_seat && player.alive) : undefined;
   const actualActionPlayerId = room.status !== "playing" ? null : room.phase === "response" || room.phase === "dying" ? pending?.actorId ?? pending?.targetId ?? turnPlayer?.id ?? null : turnPlayer?.id ?? null;
   const sessionPlayers = players.filter((player) => player.token_hash === tokenHash);
-  // Quick Test deliberately shares one local controller across all four seats.
+  // Quick Game deliberately shares one local controller across all four seats.
   // A regular room still has exactly one player for each session token.
   const isTestController = sessionPlayers.length === players.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
   const heroSelectionPlayer = room.status === "heroes" ? nextGeneralSelector(players) : null;
@@ -2098,12 +2098,13 @@ export async function POST(request: Request) {
   if (action === "create") {
     const quickStart = body.quickStart === true; const playerName = quickStart ? "Player1" : name;
     if (playerName.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
-    const roomId = crypto.randomUUID(); const playerId = crypto.randomUUID(); const token = newToken(); const tokenHash = await hash(token); const maxPlayers = quickStart ? 1 : 8; let code = randomCode();
+    const roomId = crypto.randomUUID(); const playerId = crypto.randomUUID(); const token = newToken(); const tokenHash = await hash(token); let code = randomCode();
     for (let attempt = 0; attempt < 4; attempt++) { const exists = await db.prepare("SELECT 1 FROM rooms WHERE code = ?").bind(code).first(); if (!exists) break; code = randomCode(); }
     const inserts = [
-      db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', ?, ?)").bind(roomId, code, playerId, maxPlayers, Date.now()),
+      db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', 8, ?)").bind(roomId, code, playerId, Date.now()),
       db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, playerName, tokenHash, Date.now()),
     ];
+    if (quickStart) for (let index = 1; index <= 3; index++) inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), roomId, `Player${index + 1}`, tokenHash, index, Date.now()));
     await db.batch(inserts);
     if (quickStart) {
       await resetAudit(roomId);
@@ -2148,7 +2149,7 @@ export async function POST(request: Request) {
   let me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
   if (action === "heartbeat") {
     if (!sessionPlayers.length) return json({ error: "Your player session is no longer valid." }, 403);
-    // Quick Test has four seats behind one controller token. Its state does
+    // Quick Game has four seats behind one controller token. Its state does
     // not need four presence writes, and the projected seats are always live.
     if (!isTestController) {
       const now = Date.now();

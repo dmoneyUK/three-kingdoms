@@ -1,12 +1,13 @@
 # Three Kingdoms
 
-## Quick Game single-player setup — 2026-09-21
+## Quick Game shared-controller setup — 2026-09-21
 
-Quick Game now creates one local player, keeps the normal Lord-first hero
-selection, and starts through the same `beginMatch()` path as multiplayer.
-The opening hand is four cards dealt from the normally shuffled Standard
-108-card deck; no hero or card fixture is injected into production Quick Game.
-Deterministic multi-seat scenarios remain test-only fixtures.
+Quick Game is a single-player controller mode: one local player switches
+between four human-style seats and plays each seat in turn. It keeps the normal
+Lord-first hero selection and starts through the same `beginMatch()` path as
+multiplayer. The opening hands are four cards dealt from the normally shuffled
+Standard 108-card deck; no hero or card fixture is injected into production
+Quick Game.
 
 ## Standard setup parity — 2026-09-20
 
@@ -14,13 +15,13 @@ Normal multiplayer and Quick Game now use one Standard setup state machine:
 random role assignment, Lord-first general selection, private 5/3 candidate
 deals, hidden non-Lord selections with readiness-only projection, simultaneous
 general reveal, hero HP application, four-card opening hands, and the Lord's
-first turn. Quick Game has one Lord seat; multiplayer retains the full role
-set. The former shared-seat controller perspective exists only in deterministic
-test fixtures. Preferred heroes, the full Standard roster, and special opening
-cards are never injected into production setup logic.
+first turn. Quick Game uses one shared controller across four human-style seats;
+multiplayer retains the full role set. Preferred heroes, the full Standard
+roster, and special opening cards are never injected into production setup
+logic.
 
 The current stage is Standard setup/privacy parity complete, with Quick Game
-now single-player; the next milestone
+now using one shared controller across four seats; the next milestone
 remains the next individually verified Standard hero capability. Full Worker/D1
 validation currently passes 93 tests.
 
@@ -238,7 +239,7 @@ errors remain normal validation errors. The Worker/D1 regression verifies one
 winner, one stale loser, one card/effect/log result, no resolving-room stall,
 and no private-hand leakage.
 
-Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, Sima Yi's Guicai/Retaliation, Xiahou Dun's Stauchness/Ganglie, and the three faction lords are implemented through the semantic capability architecture. The Standard setup/privacy parity pass is complete: normal multiplayer and Quick Game share one role, candidate, reveal, HP, opening-hand, and starting-turn path; deterministic shared-seat projections remain test-only. No provider-specific protocol or client hero branch was added. The next milestone is the next individually verified Standard hero capability.
+Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, Sima Yi's Guicai/Retaliation, Xiahou Dun's Stauchness/Ganglie, and the three faction lords are implemented through the semantic capability architecture. The Standard setup/privacy parity pass is complete: normal multiplayer and Quick Game share one role, candidate, reveal, HP, opening-hand, and starting-turn path; Quick Game projects the current seat through one shared controller token. No provider-specific protocol or client hero branch was added. The next milestone is the next individually verified Standard hero capability.
 
 The three Standard faction lords are now playable through the same semantic layer. Cao Cao has Jianxiong, which can reclaim the exact physical damage card(s), and Hujia, which delegates a Dodge request to Wei characters in action order. Liu Bei has Play Phase Rende card-gifting with one-per-phase recovery after two cards, plus Jijiang delegation to Shu characters for Attack responses. Sun Quan has once-per-Play-Phase Zhiheng and the Jiuyuan rescue modifier for another Wu character's Peach. These abilities project private legal choices through `currentAction` and use only the canonical `respond`, `decline_response`, `trigger`, and `decline_trigger` commands; deterministic Worker/D1 coverage exercises normal multiplayer and the shared multi-seat test fixture. The next milestone is the next individually verified Standard hero capability; the start phase and Quick Game selection contract are now complete.
 
@@ -261,7 +262,7 @@ remain. `TriggerPending` is the only persisted semantic trigger decision, and
 old saved Attack/Duel/Group/Negation response states are unsupported. The next
 milestone is the next individually verified Standard hero.
 
-Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, Step 6B Negation canonicalization, Step 7A response expansion compatibility removal, Step 7B.1 rejection of legacy persisted Attack/Duel/Group/Negation response states, Step 7C direct response construction, and Step 7D documentation closure are complete. Audit/state validation, room projections, and response timers now read canonical `ResponsePending` and `TriggerPending` records directly; old response-family states never become actionable `currentAction` values or legacy response DTOs. Quick Game is a single-player human-style room; the shared four-seat controller remains only in deterministic tests. The next milestone is the next individually verified Standard hero.
+Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, Step 6B Negation canonicalization, Step 7A response expansion compatibility removal, Step 7B.1 rejection of legacy persisted Attack/Duel/Group/Negation response states, Step 7C direct response construction, and Step 7D documentation closure are complete. Audit/state validation, room projections, and response timers now read canonical `ResponsePending` and `TriggerPending` records directly; old response-family states never become actionable `currentAction` values or legacy response DTOs. Quick Game is a single-player human-style room with one shared controller switching across four seats. The next milestone is the next individually verified Standard hero.
 
 The current deterministic suite has 93 tracked test declarations while retaining
 the required human multiplayer, Quick Test perspective, setup privacy, and
@@ -295,7 +296,7 @@ Successful Judgement-based Negation now applies one transitioned parity/depth st
 
 The foldable Game Messages window is the sole public textual event-history surface and derives its latest 10 entries from the authoritative server timeline. The centre presentation displays cards only: informational text never enters the sequential visual presentation queue, so response availability and timers still wait only for the exact `readyAfterEventId` card or essential visual event while card settlement animations now use a synchronized 2-second duration. Damage-trigger decisions bind the latest essential card/cards presentation belonging to the current Attack when one exists, and otherwise carry no barrier; the browser also treats any legacy informational barrier as already ready.
 
-The game table now uses a responsive player board with no in-game top bar. Each player square keeps the hero name, HP, hand count, compact equipment and Judgement cards together; active and self seats remain visually identifiable, and distance is no longer shown in player UI cards. Both normal multiplayer and Quick Game apply each selected hero's real maximum HP, including the Lord's +1 bonus.
+The game table now uses a responsive four-seat player board with no in-game top bar. Each player square keeps the hero name, HP, hand count, compact equipment and Judgement cards together; active and self seats remain visually identifiable, and distance is no longer shown in player UI cards. Both normal multiplayer and Quick Game apply each selected hero's real maximum HP, including the Lord's +1 bonus.
 
 Raining Arrows is covered through the current semantic response path: each living target receives a Dodge decision, and declining or timing out that decision applies its 1 damage before the next target is processed.
 
@@ -346,8 +347,8 @@ builder-conversion compatibility are removed.
 
 The project has moved beyond the initial table prototype. A complete
 four-player match loop runs in normal human multiplayer rooms, while Quick
-Game provides a single-player table using the same card and turn engine. Turn
-ownership, ordered responses, death rewards and victory checks are working.
+Game provides a single-player controller switching across four seats using the
+same card and turn engine. Turn ownership, ordered responses, death rewards and victory checks are working.
 Human card and weapon responses use a 30-second action window. Bot gameplay is
 not supported.
 
@@ -355,7 +356,7 @@ The architecture milestone is complete. Normal Attack cards, Serpent Spear-forme
 
 The Cloudflare deployment workflow now performs a post-deploy smoke test against `/` and the Worker-only `/api/health` endpoint. A successful Wrangler upload is not considered production-ready unless both checks return successfully.
 
-Room reads are now deliberately read-only: they do not refresh presence, progress gameplay, or run schema DDL. The browser polls every 8 seconds while idle, every second during an active response, and every 60 seconds in a hidden tab. Normal multiplayer and Quick Game presence use a separate 60-second throttled heartbeat. Timer-driven Bumper Harvest transitions use an explicit action at the authoritative deadline rather than GET polling. An active match with no game-state event for five minutes is closed as finished by the next one-minute inactivity check; opening a saved room also performs that check. Presentation events now carry a resolution identity separate from action revisions, plus explicit importance/final-result metadata, so informational response chatter can collapse without hiding essential outcomes. `currentAction` publishes the private semantic response or trigger decision and its legal providers. `ResponsePending` is requirement-centric, while `TriggerPending` persists the domain event and a small continuation for the supported reactions. New decision transitions pass their exact event ID directly; the barrier helper no longer scans logs, and log scanning is not part of the semantic decision contract. The client submits the generic `respond`/`decline_response` or `trigger`/`decline_trigger` protocol, and the server revalidates every provider against live state before the canonical continuation resumes. The semantic execution layer now advances Negation passes correctly, safely resumes secondary Judgement across response continuations, and resumes exhausted trigger events semantically (including deferred damage and Dying). The next work is the next scoped Standard hero.
+Room reads are now deliberately read-only: they do not refresh presence, progress gameplay, or run schema DDL. The browser polls every 8 seconds while idle, every second during an active response, and every 60 seconds in a hidden tab. Normal multiplayer presence uses a separate 60-second throttled heartbeat; Quick Game's shared controller writes no per-seat presence rows. Timer-driven Bumper Harvest transitions use an explicit action at the authoritative deadline rather than GET polling. An active match with no game-state event for five minutes is closed as finished by the next one-minute inactivity check; opening a saved room also performs that check. Presentation events now carry a resolution identity separate from action revisions, plus explicit importance/final-result metadata, so informational response chatter can collapse without hiding essential outcomes. `currentAction` publishes the private semantic response or trigger decision and its legal providers. `ResponsePending` is requirement-centric, while `TriggerPending` persists the domain event and a small continuation for the supported reactions. New decision transitions pass their exact event ID directly; the barrier helper no longer scans logs, and log scanning is not part of the semantic decision contract. The client submits the generic `respond`/`decline_response` or `trigger`/`decline_trigger` protocol, and the server revalidates every provider against live state before the canonical continuation resumes. The semantic execution layer now advances Negation passes correctly, safely resumes secondary Judgement across response continuations, and resumes exhausted trigger events semantically (including deferred damage and Dying). The next work is the next scoped Standard hero.
 
 Human response timing is now tied to the visible decision, rather than the server transition that created it. A response's providers, decline control, card/cost selectors and countdown remain unavailable while the preceding public presentation is active; all become interactive together once that presentation settles. Human decisions begin unarmed, and the first client timer request arms one fixed 30-second deadline; reloads and duplicate requests preserve it. The response UI renders the server-projected provider list directly: a provider first identifies itself, then the player supplies only the card cost permitted by that provider. Generic submission validates every provider's `min`/`max` card constraints and supports one or many cards; Play Phase Serpent Spear remains a separate weapon action. Response selection is reset whenever the authoritative action revision changes, so chained decisions cannot inherit a prior provider or card cost. Any former bot timing path is inactive legacy code.
 
@@ -395,7 +396,7 @@ The playable alpha includes:
 - table-based card-resolution presentation;
 - event history and detailed rule-audit trail; and
 - deterministic quick-test setups for card and response-chain development.
-- a single-player Quick Game that follows the authoritative Lord-first general-selection order, deals a normal shuffled opening hand, and keeps deterministic hero/card scenarios confined to test helpers.
+- a single-player Quick Game controller that follows the authoritative Lord-first general-selection order across four seats, deals normal shuffled opening hands, and keeps deterministic hero/card scenarios confined to test helpers.
 - generic `target_cards` reactions open in one centred `.play-table` picker. The picker renders only server-projected `selection.targetId`, `eligibleKeys`, `min`, and `max`; it keeps hidden hand positions private, derives every `hand:N` card directly from `eligibleKeys`, shows only matching eligible equipment as readable faces, and places Skip reaction and the selected effect action below the cards.
 
 ### Implemented Standard cards

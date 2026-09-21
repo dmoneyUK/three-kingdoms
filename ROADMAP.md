@@ -106,11 +106,11 @@ normalization, and projects server-owned `currentAction.canDeclareAttack` to
 the acting browser seat. These changes complete the Round 1 browser parity and
 presentation boundary without introducing a hero DSL.
 
-Quick Game now creates one Player1 seat, keeps the Lord-first general
-selection, and uses the ordinary shuffled four-card opening deal. The former
-four-seat shared-controller arrangement remains only in deterministic test
-fixtures; normal multiplayer keeps its supplied player names and uses the same
-Standard registry.
+Quick Game now creates four human-style seats behind one Player1 controller,
+keeps the Lord-first general selection, and uses the ordinary shuffled
+four-card opening deal. One person can switch seats and play each seat;
+normal multiplayer keeps its supplied player names and uses the same Standard
+registry.
 
 ## Validation status
 
@@ -137,7 +137,7 @@ The following should remain invariant while the architecture migration continues
 - tests use isolated `.wrangler/test-state` D1 data;
 - migrations are the schema authority;
 - human response timers arm only after the decision is visible and duplicate starts cannot extend the deadline;
-- Quick Game uses one player token and only that player's private state is projected;
+- Quick Game uses one shared controller token and only the acting seat's private state is projected;
 - stale gameplay actions carry `actionRevision`/actor context and are rejected safely;
 - `resolutionId` is separate from stale-action identity;
 - presentation events carry importance/final-result metadata so informational backlog can collapse without dropping essential outcomes;

@@ -90,21 +90,9 @@ function setTurn(roomCode, seat, phase = "play") { sql(`UPDATE rooms SET turn_se
 function discardIds(roomCode) { return query(`SELECT json_extract(value,'$.id') FROM rooms,json_each(rooms.discard_json) WHERE rooms.code=${quote(roomCode)}`).split("\n").filter(Boolean); }
 
 async function createQuickTestGame() {
-  // Deterministic multi-seat coverage still needs one controller token, but
-  // production Quick Game is now a single-player room. Build this fixture
-  // from a normal four-seat room and share the host token only in the test DB.
-  const created = await request("create", { name: "Player1" });
+  const created = await request("create", { quickStart: true });
   assert.equal(created.status, 201, JSON.stringify(created.data));
-  const code = created.data.room.code;
-  for (const name of ["Player2", "Player3", "Player4"]) {
-    const joined = await request("join", { code, name });
-    assert.equal(joined.status, 201, JSON.stringify(joined.data));
-  }
-  const sharedTokenHash = query(`SELECT token_hash FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)}) AND seat=0`);
-  sql(`UPDATE players SET token_hash=${quote(sharedTokenHash)} WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(code)})`);
-  const started = await request("start", { code, token: created.data.token, name: "Player1" });
-  assert.equal(started.status, 200, JSON.stringify(started.data));
-  let room = started.data.room;
+  let room = created.data.room;
   while (room.status === "heroes") {
     const actor = room.players.find((player) => player.id === room.meId);
     assert.ok(actor, "Quick Test projects the next seat to the shared controller");
@@ -140,31 +128,41 @@ async function createHumanSetupGame() {
   return { code, members, views: views.map((view) => view.data) };
 }
 
-test("Quick Game is a single-player room with a normal shuffled opening deal", async () => {
+test("Quick Game uses one controller across four seats with a normal shuffled opening deal", async () => {
   const created = await request("create", { quickStart: true });
   assert.equal(created.status, 201);
   assert.equal(created.data.room.status, "heroes");
-  assert.equal(created.data.room.isTestController, false);
-  assert.equal(created.data.room.maxPlayers, 1);
-  assert.equal(created.data.room.players.length, 1);
+  assert.equal(created.data.room.isTestController, true);
+  assert.equal(created.data.room.players.length, 4);
   assert.equal(created.data.room.myHeroOptions.length, 5);
   assert.equal(created.data.room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false);
   assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
   assert.equal(created.data.room.players.filter((player) => player.role === "Lord").length, 1);
-  const quickHero = created.data.room.myHeroOptions[0];
-  const chosen = await request("choose_hero", { code: created.data.room.code, token: created.data.token, heroId: quickHero.id });
-  assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
-  const room = chosen.data.room;
+  assert.equal(created.data.room.players.filter((player) => player.role === null).length, 3);
+  let room = created.data.room;
+  const lord = room.players.find((player) => player.role === "Lord");
+  assert.equal(room.meId, lord.id, "Quick Game starts with the shared controller on the Lord seat");
+  const lordChoice = room.myHeroOptions[0].id;
+  const lordResult = await request("choose_hero", { code: room.code, token: created.data.token, heroId: lordChoice });
+  assert.equal(lordResult.status, 200, JSON.stringify(lordResult.data));
+  room = lordResult.data.room;
+  while (room.status === "heroes") {
+    const actor = room.players.find((player) => player.id === room.meId);
+    const chosen = await request("choose_hero", { code: room.code, token: created.data.token, heroId: room.myHeroOptions[0].id });
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+    assert.equal(chosen.data.room.players.find((player) => player.id === actor.id).generalReady, true);
+    room = chosen.data.room;
+  }
   assert.equal(room.status, "playing");
-  assert.equal(room.players.length, 1);
-  assert.equal(room.players[0].hero, quickHero.id);
-  assert.equal(room.players[0].hp, room.players[0].maxHp);
-  assert.equal(room.turnSeat, room.players[0].seat);
-  assert.equal(room.myHand.length, 4);
-  assert.equal(room.deckCount, 104);
-  const openingHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(room.players[0].id)}`));
+  assert.equal(room.players.length, 4);
+  assert.ok(room.players.every((player) => player.hero));
+  assert.ok(room.players.every((player) => player.hp === player.maxHp));
+  assert.equal(room.turnSeat, lord.seat);
+  assert.equal(room.deckCount, 92);
+  const openingHands = room.players.map((player) => JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`)));
   const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(room.code)}`));
-  const allOpeningIds = [...openingHand, ...deck].map((card) => card.id);
+  assert.ok(openingHands.every((hand) => hand.length === 4));
+  const allOpeningIds = [...openingHands.flat(), ...deck].map((card) => card.id);
   assert.equal(new Set(allOpeningIds).size, 108, "Quick Game preserves the shuffled physical deck without special-card duplication");
 
   const normal = await createHumanSetupGame();

@@ -1,20 +1,21 @@
 # Three Kingdoms project handover
 
-## Quick Game is now single-player — 2026-09-21
+## Quick Game shared-controller mode — 2026-09-21
 
-The `quickStart` create path now creates one Player1 seat with the Lord role,
-offers five private Lord candidates, and starts after that player chooses one
-hero. It no longer inserts three shared-controller seats. `beginMatch()` uses
-the ordinary shuffled Standard deck and deals four cards from it; no
-production Quick Game hero or opening-hand fixture is applied. The normal
-four-player multiplayer path is unchanged.
+Quick Game is a single-player controller mode: the `quickStart` create path
+creates four human-style seats behind one Player1 token. The controller
+switches to the current legal seat during hero selection and gameplay, so one
+person can play every seat. `beginMatch()` uses the ordinary shuffled Standard
+deck and deals four cards to each seat; no production Quick Game hero or
+opening-hand fixture is applied. The normal four-player multiplayer path is
+unchanged.
 
-The old four-seat shared-token arrangement remains only in deterministic test
-helpers so response, privacy, and seat-switching regressions can continue to
-exercise those semantics without changing the product Quick Game contract.
+The shared-token arrangement is the product Quick Game contract, not an AI or
+bot mode; bot gameplay remains inactive.
 
-Validation coverage now asserts one Quick Game player, a 104-card remaining
-deck, four unique opening cards, and the absence of special-card duplication.
+Validation coverage now asserts four Quick Game seats, one shared controller,
+92 cards remaining after the ordinary opening deal, four cards per seat, and
+the absence of special-card duplication.
 Recommended next work remains the next individually verified Standard hero
 capability.
 
@@ -23,10 +24,11 @@ capability.
 The Standard hero-selection fix is complete and supersedes earlier Quick Test
 fixture notes below. Normal multiplayer and Quick Game now call the same
 `beginStandardHeroSelection()` path. Multiplayer randomly assigns the Standard
-role set; Quick Game uses one Lord seat. The multiplayer path projects only the
-Lord role publicly, deals five Lord candidates and three non-Lord candidates
-from one shuffled eligible Standard pool, and enforces the authoritative order
-Lord first then unresolved non-Lord seats by seat.
+role set; Quick Game uses the same four-seat role set behind one shared
+controller. Both paths project only the Lord role publicly, deal five Lord
+candidates and three non-Lord candidates from one shuffled eligible Standard
+pool, and enforce the authoritative order Lord first then unresolved non-Lord
+seats by seat.
 
 The `heroes` state now projects private information per effective viewer:
 `myRole`, `myHeroOptions`, and a locked own general are private; the Lord's
@@ -41,7 +43,7 @@ Quick Test opening-card deal, and separate `prepareQuickTestMatch`/
 selected hero's normal HP, adds the Standard Lord +1, deals four shuffled
 opening cards to every player, and starts the Lord. Deterministic hero/card
 scenarios remain in test helpers/database setup; production Quick Game is a
-real single-player Standard game.
+real single-player-controller Standard game across four human-style seats.
 
 Validation: the isolated Worker/D1 suite passes **93 / 93**, alongside a
 successful build and lint. Recommended next work is the next individually

@@ -223,7 +223,7 @@ export default function Home() {
           <div className="role-row"><Role title="Lord" glyph="主" /><Role title="Loyalist" glyph="忠" /><Role title="Rebel" glyph="反" /><Role title="Traitor" glyph="内" /></div>
         </div>
         <div className="entry-card">
-          <div className="entry-title"><span>ENTER THE REALM</span><small>Quick Game: 1 player · Multiplayer: 4–8</small></div>
+          <div className="entry-title"><span>ENTER THE REALM</span><small>Quick Game: 1 controller · Multiplayer: 4–8</small></div>
           <div className="test-player-name"><span>YOU ARE PLAYING AS</span><b>Player1</b></div>
           {token && code.length === 5 && <button className="rejoin-button" disabled={busy} onClick={() => fetchRoom(code, token)}>{busy ? "Rejoining…" : `Rejoin game ${code}`}</button>}
           <button className="gold-button" disabled={busy} onClick={() => send("create", { quickStart: true })}>{busy ? "Preparing…" : "Start quick game"}</button>
