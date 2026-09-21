@@ -1,5 +1,18 @@
 # Three Kingdoms
 
+## Responsive rank/suit shield variants — 2026-09-21
+
+Rank and suit shields are now embedded against the top-left edge of hand and
+normal revealed cards. Private draws use an explicit hand-scale shield, while
+settled or equipped table cards use compact 20×28 shields, reducing to 18×25
+at the smallest breakpoint so the miniature card artwork remains visible.
+Red and black suit contrast is preserved. This is a presentation-only change;
+card data, rules, and the semantic gameplay protocol are unchanged.
+
+The current stage remains Stage 6 hero-capability execution complete. The next
+milestone is the next individually verified Standard hero capability, while
+preserving the canonical semantic response protocol and Quick Test privacy.
+
 ## Visible suit card graphics — 2026-09-21
 
 Hand cards and revealed card graphics now show the rank and suit together in a

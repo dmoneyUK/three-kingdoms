@@ -470,8 +470,8 @@
 }
 
 .game-card .corner {
-  left: 5px;
-  top: 0;
+  left: -1px;
+  top: -1px;
   font-size: 15px;
 }
 
@@ -482,11 +482,27 @@
 }
 
 .played-card > i {
-  left: 11px;
-  top: 9px;
+  left: -1px;
+  top: -1px;
   width: 42px;
   min-height: 58px;
   padding: 4px 5px 12px;
+}
+
+.table-played-card .played-card > i {
+  left: -1px;
+  top: -1px;
+  width: 20px;
+  min-height: 28px;
+  padding: 2px 2px 5px;
+  border-width: 1px;
+  border-radius: 0 0 5px 0;
+  font-size: 9px;
+}
+
+.table-played-card .played-card > i small {
+  margin-top: 1px;
+  font-size: 8px;
 }
 
 .played-card > i small {
@@ -528,8 +544,11 @@
 }
 
 .private-draw-row .played-card > i {
-  left: 8px;
-  top: 7px;
+  left: -1px;
+  top: -1px;
+  width: 34px;
+  min-height: 48px;
+  padding: 3px 4px 10px;
   font-size: 15px;
 }
 
@@ -560,5 +579,18 @@
     flex-basis: 92px;
     width: 92px;
     height: 140px;
+  }
+}
+
+@media (max-width: 480px) {
+  .table-played-card .played-card > i {
+    width: 18px;
+    min-height: 25px;
+    padding: 1px 2px 4px;
+    font-size: 8px;
+  }
+
+  .table-played-card .played-card > i small {
+    font-size: 7px;
   }
 }

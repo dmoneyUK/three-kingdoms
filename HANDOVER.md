@@ -1,5 +1,21 @@
 # Three Kingdoms project handover
 
+## Responsive rank/suit shield variants — 2026-09-21
+
+`app/sequence-overrides.css` now treats the rank/suit shield as four physical
+variants: the hand corner is embedded at `-1px`, the normal centre reveal uses
+the existing 42×58 shield at `-1px`, private draws use a hand-scale 34×48
+shield, and settled/equipped table cards use a compact 20×28 shield. At
+`max-width: 480px`, the settled shield reduces to 18×25. Existing red-suit
+and black-suit color rules remain unchanged, and the card title area is not
+changed.
+
+No card data, gameplay semantics, privacy behavior, or server protocol changed.
+The clean full test suite passes; direct mobile screenshot verification was
+blocked because the local browser host became locked after the preview
+navigation timed out. Recommended next work remains the next individually
+verified Standard hero capability.
+
 ## Visible suit card graphics — 2026-09-21
 
 The shared hand-card and revealed-card renderers now use the reference card's
