@@ -2580,7 +2580,8 @@ export async function POST(request: Request) {
         return json({ error: "That Composure decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       }
       const player = (await db.prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(continuation.playerId, room.id).first<PlayerRow>()) ?? null;
-      if (!player || !player.alive || player.hero !== "lü-meng") return json({ error: "That Composure decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      const context = triggerContextFor(trigger, allRoomPlayers);
+      if (!player || !player.alive || !context || getTriggeredEffects(context).length === 0) return json({ error: "That Composure decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Composure decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
       const hand = parse<Card[]>(player.hand_json, []);
@@ -3695,7 +3696,8 @@ export async function POST(request: Request) {
         hero: me.hero,
         attackUsed,
       });
-      if (discardOptions.length > 0) {
+      const needsDiscard = hand.length > Math.max(0, me.hp ?? 0);
+      if (needsDiscard && discardOptions.length > 0) {
         const presentation = addLogWithId(log, `${me.name} may use Composure to skip the Discard Phase.`);
         const pending: TriggerPending = {
           kind: "trigger",

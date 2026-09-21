@@ -8,8 +8,9 @@ the printed English skill names. Composure is a `discard_phase` semantic
 trigger backed by generic turn history: every semantic Attack produced by the
 current turn owner, including physical, virtual, Duel/group, and triggered
 paths, sets the turn-scoped `attackUsed` fact. The canonical turn-start reset
-prevents leakage. Its optional acceptance skips Discard; decline enters the
-normal Discard Phase.
+prevents leakage. At the normal phase boundary, an in-limit hand follows the
+ordinary no-discard flow; when discard is required, its optional acceptance
+skips Discard and decline enters the normal Discard Phase.
 
 Influencing keeps the existing delegated Attack response provider and adds an
 active Liu Bei Play Phase continuation. Targets are projected using Liu Bei's
@@ -29,8 +30,11 @@ as implemented. Known boundary: the remaining missing Standard skills are
 still intentionally unimplemented and must continue one hero at a time through
 the semantic capability/provider/trigger contracts.
 
-Validation for this round: isolated Worker/D1 `node tests/run-tests.mjs` passed
-118/118; `npm run build`, `npm run lint`, and `git diff --check` also pass.
+Validation for this round: isolated Worker/D1 `npm test` passed 119/119,
+including the production build; `npm run lint` and `git diff --check` also
+pass. Regression coverage includes no-discard boundaries, Dodged and lethal
+Attacks, non-Attack cards, hosted seats, reload persistence, stale decisions,
+and next-turn reset.
 
 ## Hosted games and test-player flow — 2026-09-21
 

@@ -247,7 +247,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **WU 003**, printed name **Lv Meng**, printed title **Infiltration Incognito**.
 - **Implementation interpretation:** The condition covers the whole turn, not only the Play Phase.
 - **Likely engine shape:** turn-history condition; optional Discard Phase skip.
-- **Current implementation:** Composure uses generic turn history to record every semantic Attack produced by the current turn owner, including physical, virtual, Duel/group, and triggered Attack paths. At the Play-to-Discard boundary it offers a private optional `discard_phase` decision only when no Attack was used or played; acceptance skips Discard, while decline follows the normal Discard rules. The canonical turn-start reset prevents state leaking into the next turn.
+- **Current implementation:** Composure uses generic turn history to record every semantic Attack produced by the current turn owner, including physical, virtual, Duel/group, and triggered Attack paths. At a boundary where the normal rules require Discard, it offers a private optional `discard_phase` decision only when no Attack was used or played; acceptance skips Discard, while decline follows the normal Discard rules. The canonical turn-start reset prevents state leaking into the next turn.
 
 ### Huang Gai (黄盖)
 

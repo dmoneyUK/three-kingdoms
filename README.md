@@ -6,7 +6,9 @@ Existing player-facing hero skills now use the printed English names from
 `docs/STANDARD_HERO_REFERENCE.md` while persisted provider/effect IDs remain
 unchanged. Composure uses generic turn history to track every semantic Attack
 produced during the current turn, including physical, virtual, and response
-Attack paths, then offers an optional canonical Discard Phase decision.
+Attack paths. At the normal Play-to-Discard boundary, it offers the optional
+canonical Discard Phase decision only when the hand actually exceeds current
+HP; accepting skips Discard and declining follows the ordinary hand limit.
 Influencing now has
 an active Play Phase path: Liu Bei selects an in-range target, asks living Shu
 characters in action order, and any willing delegate enters the normal Attack
@@ -17,9 +19,10 @@ and draws one replacement per discarded card. Ambushment remains hand-scoped
 under Standard use/play zone rules and still uses the shared Burning Bridges
 Negation and target-card pipeline.
 
-API regressions cover canonical projected labels, Composure accept/decline and
-turn reset behavior, Influencing range/order/privacy/settlement, and
-Equilibrium card conservation. The next milestone remains the next
+API regressions cover canonical projected labels, Composure accept/decline,
+Dodged and lethal Attack blocking, no-discard boundaries, reload/stale safety,
+and turn reset behavior, alongside Influencing range/order/privacy/settlement
+and Equilibrium card conservation. The next milestone remains the next
 individually verified missing Standard hero, with semantic currentAction,
 Quick Test privacy, stale safety, and exact card conservation preserved.
 

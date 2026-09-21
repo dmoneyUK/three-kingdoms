@@ -666,9 +666,7 @@ test("Composure remains optional at the boundary, resets next turn, and is share
   const noDiscard = await createHumanGame(); const noDiscardSource = noDiscard.room.players[0];
   sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(noDiscardSource.id)}`); setHand(noDiscardSource.id, [card("Peach", "composure-no-discard")], 2, 4); setTurn(noDiscard.code, noDiscardSource.seat);
   const noDiscardOffer = await request("end_turn", { code: noDiscard.code, token: noDiscard.members[0].token });
-  assert.equal(noDiscardOffer.status, 200, JSON.stringify(noDiscardOffer.data)); assert.equal(noDiscardOffer.data.room.phase, "response"); assert.equal(noDiscardOffer.data.room.currentAction.triggerOptions[0].label, "Composure");
-  const noDiscardDeclined = await request("decline_trigger", { code: noDiscard.code, token: noDiscard.members[0].token });
-  assert.equal(noDiscardDeclined.status, 200, JSON.stringify(noDiscardDeclined.data)); assert.notEqual(noDiscardDeclined.data.room.phase, "discard", "declining with no excess cards still completes the ordinary boundary");
+  assert.equal(noDiscardOffer.status, 200, JSON.stringify(noDiscardOffer.data)); assert.notEqual(noDiscardOffer.data.room.phase, "response"); assert.notEqual(noDiscardOffer.data.room.phase, "discard", "an in-limit hand follows the ordinary no-discard boundary");
 
   const reset = await createHumanGame(); const resetSource = reset.room.players[0];
   sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(resetSource.id)}`); setHand(resetSource.id, [card("Peach", "composure-reset-a"), card("Dodge", "composure-reset-b"), card("Peach", "composure-reset-c")], 2, 4);
@@ -693,6 +691,31 @@ test("Composure remains optional at the boundary, resets next turn, and is share
   const hosted = await createTestGame(); const hostedSource = hosted.data.room.players[0];
   sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(hostedSource.id)}`); setHand(hostedSource.id, [card("Peach", "composure-hosted-a"), card("Dodge", "composure-hosted-b")], 1, 4); setTurn(hosted.data.room.code, hostedSource.seat);
   const hostedOffer = await request("end_turn", { code: hosted.data.room.code, token: hosted.data.token }); assert.equal(hostedOffer.status, 200, JSON.stringify(hostedOffer.data)); assert.equal(hostedOffer.data.room.currentAction.triggerOptions[0].label, "Composure");
+});
+
+test("Composure counts Dodged and lethal Attacks, survives reload, and rejects stale use", { timeout: 120_000 }, async () => {
+  const dodged = await createHumanGame(); const dodgedSource = dodged.room.players[0]; const dodgedTarget = dodged.room.players[1];
+  const dodgedAttack = card("Attack", "composure-dodged-attack"); const dodgedHand = [dodgedAttack, card("Peach", "composure-dodged-extra-a"), card("Dodge", "composure-dodged-extra-b"), card("Peach", "composure-dodged-extra-c")];
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(dodgedSource.id)}`); setHand(dodgedSource.id, dodgedHand, 2, 4); setHand(dodgedTarget.id, [card("Dodge", "composure-dodged-response")], 4, 4); setTurn(dodged.code, dodgedSource.seat);
+  const dodgedPlay = await request("play_card", { code: dodged.code, token: dodged.members[0].token, cardId: dodgedAttack.id, targetId: dodgedTarget.id, preserveResponse: true }); assert.equal(dodgedPlay.status, 200, JSON.stringify(dodgedPlay.data));
+  const dodgedResponse = await request("respond", { code: dodged.code, token: dodged.members[1].token, cardId: "dodge-composure-dodged-response", preserveResponse: true }); assert.equal(dodgedResponse.status, 200, JSON.stringify(dodgedResponse.data));
+  const reloaded = await state(dodged.code, dodged.members[0].token); assert.ok(reloaded.data.phase?.startsWith("play"), `the Dodged Attack returns to the Play flow, got ${reloaded.data.phase}`); assert.equal(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(dodged.code)}`)).attackUsed, true, "the authoritative turn fact survives a room reload");
+  const dodgedEnded = await request("end_turn", { code: dodged.code, token: dodged.members[0].token }); assert.equal(dodgedEnded.status, 200, JSON.stringify(dodgedEnded.data)); assert.equal(dodgedEnded.data.room.phase, "discard"); assert.equal(dodgedEnded.data.room.currentAction?.triggerOptions?.some((option) => option.label === "Composure") ?? false, false);
+
+  const lethal = await createHumanGame(); const lethalSource = lethal.room.players[0]; const lethalTarget = lethal.room.players[1];
+  const lethalAttack = card("Attack", "composure-lethal-attack"); sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(lethalSource.id)}`); setHand(lethalSource.id, [lethalAttack, card("Dodge", "composure-lethal-extra-a"), card("Dodge", "composure-lethal-extra-b"), card("Dodge", "composure-lethal-extra-c")], 2, 4); setHand(lethalTarget.id, [], 1, 4); setTurn(lethal.code, lethalSource.seat);
+  const lethalPlay = await request("play_card", { code: lethal.code, token: lethal.members[0].token, cardId: lethalAttack.id, targetId: lethalTarget.id }); assert.equal(lethalPlay.status, 200, JSON.stringify(lethalPlay.data));
+  const lethalEnded = await request("end_turn", { code: lethal.code, token: lethal.members[0].token }); assert.equal(lethalEnded.status, 200, JSON.stringify(lethalEnded.data)); assert.equal(lethalEnded.data.room.phase, "discard"); assert.equal(lethalEnded.data.room.players.find((player) => player.id === lethalTarget.id).alive, false); assert.equal(lethalEnded.data.room.currentAction?.triggerOptions?.some((option) => option.label === "Composure") ?? false, false);
+
+  const equipment = await createHumanGame(); const equipmentSource = equipment.room.players[0]; const shield = card("NioShield", "composure-equipment", "♣");
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(equipmentSource.id)}`); setHand(equipmentSource.id, [shield, card("Peach", "composure-equipment-extra-a"), card("Dodge", "composure-equipment-extra-b"), card("Peach", "composure-equipment-extra-c")], 2, 4); setTurn(equipment.code, equipmentSource.seat);
+  const equipped = await request("play_card", { code: equipment.code, token: equipment.members[0].token, cardId: shield.id }); assert.equal(equipped.status, 200, JSON.stringify(equipped.data));
+  const equipmentEnded = await request("end_turn", { code: equipment.code, token: equipment.members[0].token }); assert.equal(equipmentEnded.status, 200, JSON.stringify(equipmentEnded.data)); assert.equal(equipmentEnded.data.room.currentAction.triggerOptions[0].label, "Composure", "non-Attack equipment does not disable Composure");
+
+  const stale = await createHumanGame(); const staleSource = stale.room.players[0]; sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(staleSource.id)}`); setHand(staleSource.id, [card("Peach", "composure-stale-a"), card("Dodge", "composure-stale-b"), card("Peach", "composure-stale-c")], 2, 4); setTurn(stale.code, staleSource.seat);
+  const staleOpen = await request("end_turn", { code: stale.code, token: stale.members[0].token }); assert.equal(staleOpen.data.room.currentAction.triggerOptions[0].label, "Composure");
+  const staleDecline = await request("decline_trigger", { code: stale.code, token: stale.members[0].token }); assert.equal(staleDecline.status, 200, JSON.stringify(staleDecline.data));
+  const staleReplay = await request("trigger", { code: stale.code, token: stale.members[0].token, providerId: "lu_meng_keji" }); assert.equal(staleReplay.status, 409); assert.equal(staleReplay.data.stale, true);
 });
 
 test("host test flow uses Fanjian's shared-controller sequence and private opaque card choice", async () => {
