@@ -79,6 +79,17 @@ No gameplay protocol, Overindulgence Judgement lifecycle, or Attack/Dodge
 response semantics changed. Recommended next work remains the next
 individually verified Standard hero capability.
 
+## Zhuge Crossbow artwork update — 2026-09-21
+
+The latest supplied close-up crossbow graphic replaces
+`public/zhuge-crossbow-card.jpg`. The existing shared presentation mapping
+continues to cover hand cards, centre reveals, equipment previews, private
+draws, and settled table cards.
+
+No gameplay protocol, card identity, Paoxiao/Attack-use-limit capability, or
+equipment behavior changed. Recommended next work remains the next individually
+verified Standard hero capability.
+
 ## Card-name sizing consistency — 2026-09-20
 
 Shared `.game-card` and `.played-card` faces now clip overflow and constrain

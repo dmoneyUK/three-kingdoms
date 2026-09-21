@@ -59,6 +59,10 @@ The standard Zhuge Crossbow card now uses the supplied crossbow artwork across
 the same shared surfaces. Its dark gold contrast treatment keeps the physical
 rank/suit and equipment label legible without changing card semantics.
 
+The Zhuge Crossbow artwork has been updated to the latest supplied close-up
+crossbow graphic. Its existing dark-gold treatment remains shared across hand,
+reveal, equipment, and settled-card surfaces without changing card semantics.
+
 The standard Yin-Yang Swords card now uses the supplied dual-blade artwork
 across the same shared surfaces. Its red/blue contrast treatment keeps the
 physical rank/suit and equipment label legible without changing card semantics.
