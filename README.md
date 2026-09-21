@@ -1,5 +1,18 @@
 # Three Kingdoms
 
+## CardFace shield scale audit — 2026-09-21
+
+The shared rank/suit shield now has explicit physical-size variants for every
+smaller `CardFace` surface instead of inheriting the 42×58 centre-reveal
+dimensions. Settled table cards use 15×21 shields, reducing to 14×19 below
+480px; judgement, sequence, picker, harvest, and discard cards use their own
+proportional sizes. Red shields keep their dark filled pointed shape but no
+longer draw a visible red border. This remains a presentation-only change.
+
+The current stage remains Stage 6 hero-capability execution complete. The next
+milestone is the next individually verified Standard hero capability, while
+preserving the canonical semantic response protocol and Quick Test privacy.
+
 ## Xiahou Dun Stauchness private discard choice — 2026-09-21
 
 Mandatory own-hand choices now resolve eligible `hand:N` keys against the

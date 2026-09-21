@@ -1,5 +1,24 @@
 # Three Kingdoms project handover
 
+## CardFace shield scale audit — 2026-09-21
+
+The rank/suit shield CSS now keeps the normal centre reveal at approximately
+42×58, while explicitly sizing all smaller `CardFace` contexts: private draw
+34×48, settled table 15×21 (14×19 below 480px), graphical judgement 13×18,
+sequence 22×31, target picker 28×39, harvest 28×39, and discard 28×39 with
+smaller mobile overrides. Each variant also owns its padding, border width,
+corner radius, rank size, and suit size. The red-suit border is transparent so
+the dark pointed fill remains without the former pink outline; black-suit
+contrast is unchanged. Permanent `.mini-zone-card` equipment and judgement
+markup was not changed.
+
+No card data, gameplay rules, API behavior, privacy behavior, or semantic
+protocol changed. The full test suite and lint pass. Direct <=480px screenshot
+verification remains environment-blocked because the browser host is locked;
+the CSS was reviewed against the actual rendered sizes in the source.
+Recommended next work remains the next individually verified Standard hero
+capability.
+
 ## Xiahou Dun Stauchness private discard choice — 2026-09-21
 
 `MandatoryChoiceDialog` now receives the acting player's private `room.myHand`
