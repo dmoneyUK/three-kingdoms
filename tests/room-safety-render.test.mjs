@@ -159,23 +159,39 @@ test("the implemented Standard hero cards expose their printed English skill met
     "cao-cao": ["Treachery", "Entourage"],
     simayi: ["Retaliation", "Necromancy"],
     "xiahou-dun": ["Stauchness"],
+    "zhang-liao": ["Assault"],
+    "xu-chu": ["Bared Bodied"],
+    "guo-jia": ["Jealousy of God", "Legacy"],
+    "zhen-ji": ["Empress Dowager", "Godess of Luo River"],
+    "yue-jin": ["Dauntless"],
     "liu-bei": ["Benevolence", "Influencing"],
     "guan-yu": ["God of War"],
     "zhang-fei": ["Battle Cry"],
+    "zhuge-liang": ["Stargazing", "Empty Fortress Strategem"],
     "zhao-yun": ["Braveheart"],
-    "zhen-ji": ["Empress Dowager", "Goddess of Luo River"],
+    "ma-chao": ["Horse Riding", "Cavalry"],
+    "huang-yueying": ["Cultivation", "Wizardry"],
+    "lady-gan": ["Divine Wisdom", "Prudence"],
     "sun-quan": ["Equilibrium", "Deliverance"],
-    "gan-ning": ["Qixi"],
-    "lü-meng": ["Keji"],
-    "huang-gai": ["Kurou"],
-    "zhou-yu": ["Yingzi", "Fanjian"],
+    "gan-ning": ["Ambushment"],
+    "lü-meng": ["Composure"],
+    "huang-gai": ["Self Sacrifice"],
+    "zhou-yu": ["Heroic", "Sowing Distrust"],
+    daqiao: ["Captivating", "Deflection"],
     "lu-xun": ["Modesty", "Second Wind"],
-    "lü-bu": ["Wushuang"],
+    "sun-shangxiang": ["Betrothment", "Daredevil"],
+    "hua-tuo": ["First Aid", "Prodigal Healer"],
+    "lü-bu": ["Unrivaled"],
+    "diao-chan": ["Lust", "Beauty Outshining the Moon"],
+    huaxiong: ["Triumphant"],
+    "gongsun-zan": ["Militia"],
+    "pan-feng": ["Axe of Insanity"],
   };
   for (const [id, names] of Object.entries(expected)) {
     const hero = STANDARD_HEROES.find((candidate) => candidate.id === id);
     assert.ok(hero, `${id} is in the Standard roster`);
     assert.deepEqual(hero.skills.map((skill) => skill.name), names);
+    assert.ok(hero.skills.every((skill) => skill.description && !skill.description.includes("metadata pending")), `${id} has printed skill descriptions`);
   }
   const luXun = STANDARD_HEROES.find((hero) => hero.id === "lu-xun");
   assert.deepEqual(luXun?.skills, [

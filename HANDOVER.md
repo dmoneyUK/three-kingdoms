@@ -1,5 +1,18 @@
 # Three Kingdoms project handover
 
+## Standard hero card metadata — 2026-09-21
+
+`STANDARD_HEROES` now reconciles every one of the 30 selectable Standard
+generals to the printed skill names and descriptions in
+`docs/STANDARD_HERO_REFERENCE.md`. Placeholder summaries were removed, and
+the player-facing names now include the printed Xu Zhu, Lv Meng, and Lv Bu
+spellings. No new hero capability was implemented or enabled by this change;
+the server rules and semantic protocol are unchanged.
+
+The render regression now checks the complete Standard skill-name roster and
+rejects placeholder descriptions. Recommended next work remains the next
+individually verified Standard hero capability.
+
 ## Private draw card sizing — 2026-09-21
 
 The private opening draw overlay now matches the normal hand cards at each

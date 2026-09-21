@@ -129,15 +129,15 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **WEI 004**, printed title **The Vanguard General**.
 - **Implementation interpretation:** Assault is an optional replacement for Zhang Liao's normal Draw Phase draw. If accepted, he obtains one hidden hand card from each of up to two chosen characters instead of drawing from the deck.
 - **Likely engine shape:** Draw Phase replacement; hidden-hand random/authoritative card acquisition.
-- **Current implementation:** Hero metadata is present, but the current runtime ability summary is coarse. Treat the verified card text above as authoritative before implementing Assault.
+- **Current implementation:** Player-facing hero metadata now matches the verified printed skill text; Assault itself remains unimplemented.
 
 ### Xu Zhu (许褚)
 
-- **Runtime ID:** `xu-chu` (retained for compatibility; current runtime metadata still uses “Xu Chu”)
+- **Runtime ID:** `xu-chu` (retained for compatibility; the player-facing runtime name now uses the printed “Xu Zhu”)
 - **Verified official Standard card:** **WEI 005**, printed name **Xu Zhu**, printed title **The Ferocious Folly**.
 - **Implementation interpretation:** Bared Bodied is optional during the Draw Phase. If activated, Xu Zhu draws one fewer card than the normal Draw Phase amount, and each qualifying [Attack] or [Duel] damage event during that turn deals 1 additional damage. The modifier expires when that turn ends.
 - **Likely engine shape:** Draw Phase modifier; turn-scoped Attack/Duel damage modifier.
-- **Current implementation:** Hero metadata is present, but the current runtime ability summary is coarse and the player-facing runtime name still says “Xu Chu”. Treat the verified card text and printed name above as authoritative for future implementation/UI reconciliation.
+- **Current implementation:** Player-facing hero metadata now uses the printed name and verified skill text; Bared Bodied itself remains unimplemented.
 
 ### Guo Jia (郭嘉)
 
@@ -214,7 +214,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **SHU 007**, printed title **Veiled Heroine in Seclusion**.
 - **Implementation interpretation:** Cultivation applies after Huang Yueying uses a Stratagem card as printed; do not silently narrow it to only non-delayed Stratagems. Wizardry removes range restrictions from her Stratagem cards.
 - **Likely engine shape:** Stratagem-used trigger; Stratagem range modifier.
-- **Current implementation:** Metadata only. Current runtime ability string is too coarse and should be reconciled to the verified text.
+- **Current implementation:** Player-facing hero metadata now matches the verified printed skill text; the capabilities remain unimplemented.
 
 ### Lady Gan (甘夫人)
 
@@ -283,7 +283,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **WU 008**, printed title **The Enchanting Princess**.
 - **Implementation interpretation:** Betrothment requires an injured male target and exactly two hand cards as the cost; both Sun Shangxiang and the target recover 1 HP. Daredevil grants 2 cards when an equipped Equipment is lost.
 - **Likely engine shape:** once-per-Play-Phase active / dual recovery; equipment-lost trigger.
-- **Current implementation:** Metadata only. Current runtime ability string is incomplete and should be reconciled to the verified text.
+- **Current implementation:** Player-facing hero metadata now matches the verified printed skill text; the capabilities remain unimplemented.
 
 ## Qun
 
@@ -292,7 +292,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Runtime ID:** `hua-tuo`
 - **Verified official Standard card:** **QUN 001**, printed title **Divine Physician**.
 - **Likely engine shape:** semantic Peach provider outside own turn; once-per-Play-Phase recovery active.
-- **Current implementation:** Metadata only. Current runtime ability summary should be reconciled to the verified printed names and exact zone/timing wording.
+- **Current implementation:** Player-facing hero metadata now matches the verified printed names and exact zone/timing wording; the capabilities remain unimplemented.
 
 ### Lu Bu (吕布)
 

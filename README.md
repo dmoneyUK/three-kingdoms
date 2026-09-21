@@ -1,5 +1,17 @@
 # Three Kingdoms
 
+## Standard hero card metadata — 2026-09-21
+
+All 30 selectable Standard hero cards now use the printed skill names and
+descriptions recorded in `docs/STANDARD_HERO_REFERENCE.md`. This reconciles
+the previously coarse or placeholder cards, including the official printed
+names for Xu Zhu, Lv Meng, and Lv Bu. This is a presentation and metadata
+update only; unimplemented hero mechanics remain clearly documented as such.
+
+The current stage remains Stage 6 hero-capability execution complete. The next
+milestone is the next individually verified Standard hero capability, while
+preserving the canonical semantic response protocol and Quick Test privacy.
+
 ## Private draw card sizing — 2026-09-21
 
 The private opening-hand reveal now uses the same responsive card dimensions,
