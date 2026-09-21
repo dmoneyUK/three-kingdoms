@@ -43,6 +43,8 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(html, /class="played-card peach red-suit/);
   assert.match(html, /class="played-card dodge black-suit/);
   assert.match(html, /class="played-card peach black-suit/);
+  assert.match(html, /class="suit-watermark" aria-hidden="true">♥<\/span>/);
+  assert.match(html, /class="suit-watermark" aria-hidden="true">♠<\/span>/);
   assert.doesNotMatch(html, /Cannot read properties of null/);
   const waitingRoom = normalizeRoomData({
     code: "SAFE2", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],

@@ -1,5 +1,16 @@
 # Three Kingdoms
 
+## Visible suit card graphics — 2026-09-21
+
+Hand cards and revealed card graphics now show a high-contrast suit badge in
+the corner plus a subtle large suit watermark over the artwork. Red and black
+suits use distinct bright treatments so suit identity remains readable on dark
+or visually busy card illustrations.
+
+The current stage remains Stage 6 hero-capability execution complete. The next
+milestone is the next individually verified Standard hero capability, while
+preserving the canonical semantic response protocol and Quick Test privacy.
+
 ## Standard hero card metadata — 2026-09-21
 
 All 30 selectable Standard hero cards now use the printed skill names and
