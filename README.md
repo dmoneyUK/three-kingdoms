@@ -3,11 +3,13 @@
 ## CardFace shield scale audit — 2026-09-21
 
 The shared rank/suit shield now has explicit physical-size variants for every
-smaller `CardFace` surface instead of inheriting the 42×58 centre-reveal
-dimensions. Settled table cards use 15×21 shields, reducing to 14×19 below
-480px; judgement, sequence, picker, harvest, and discard cards use their own
-proportional sizes. Red shields keep their dark filled pointed shape but no
-longer draw a visible red border. This remains a presentation-only change.
+`CardFace` surface instead of inheriting one fixed size. The centre reveal is
+34×46, hand and private-draw shields are 27×38, settled cards are 13×18
+(12×17 below 480px), and picker, harvest, discard, sequence, and graphical
+judgement cards each use smaller proportional dimensions. Permanent equipment
+and judgement zones remain compact rank+suit text rather than gaining a large
+shield. Red shields keep their dark filled pointed shape but no longer draw a
+visible red border. This remains a presentation-only change.
 
 The current stage remains Stage 6 hero-capability execution complete. The next
 milestone is the next individually verified Standard hero capability, while

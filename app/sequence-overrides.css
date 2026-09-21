@@ -472,45 +472,65 @@
 .game-card .corner {
   left: -1px;
   top: -1px;
-  font-size: 15px;
+  width: 27px;
+  min-height: 38px;
+  padding: 2px 3px 8px;
+  border-width: 2px;
+  border-radius: 0 0 9px 0;
+  font-size: 12px;
+  line-height: .95;
 }
 
 .game-card .corner i {
-  margin-top: 1px;
-  font-size: 18px;
+  margin-top: 0;
+  font-size: 14px;
   line-height: 1;
 }
 
 .played-card > i {
   left: -1px;
   top: -1px;
-  width: 42px;
-  min-height: 58px;
-  padding: 4px 5px 12px;
+  width: 34px;
+  min-height: 46px;
+  padding: 3px 4px 9px;
+  border-width: 2px;
+  border-radius: 0 0 9px 0;
+  font-size: 18px;
+  line-height: .95;
 }
 
 .table-played-card .played-card > i {
   left: -1px;
   top: -1px;
-  width: 15px;
-  min-height: 21px;
+  width: 13px;
+  min-height: 18px;
   padding: 1px 1px 4px;
   border-width: 1px;
   border-radius: 0 0 4px 0;
-  font-size: 7px;
+  font-size: 6px;
   line-height: .9;
 }
 
 .table-played-card .played-card > i small {
   margin-top: 0;
-  font-size: 6px;
+  font-size: 5px;
   line-height: 1;
 }
 
 .played-card > i small {
-  margin-top: 2px;
-  font-size: 19px;
+  margin-top: 1px;
+  font-size: 15px;
   line-height: 1;
+}
+
+@media (max-width: 650px) {
+  .played-card > i {
+    font-size: 16px;
+  }
+
+  .played-card > i small {
+    font-size: 13px;
+  }
 }
 
 .game-card.red-suit .corner,
@@ -550,16 +570,16 @@
 .private-draw-row .played-card > i {
   left: -1px;
   top: -1px;
-  width: 34px;
-  min-height: 48px;
-  padding: 3px 4px 10px;
+  width: 27px;
+  min-height: 38px;
+  padding: 2px 3px 8px;
   border-width: 2px;
-  border-radius: 0 0 11px 0;
-  font-size: 15px;
+  border-radius: 0 0 9px 0;
+  font-size: 13px;
 }
 
 .private-draw-row .played-card > i small {
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1;
 }
 
@@ -591,8 +611,8 @@
 
 @media (max-width: 480px) {
   .table-played-card .played-card > i {
-    width: 14px;
-    min-height: 19px;
+    width: 12px;
+    min-height: 17px;
     padding: 1px 1px 3px;
     font-size: 6px;
   }
@@ -603,39 +623,53 @@
 }
 
 /* CardFace variants must size the whole shield, not only its typography. */
+.player-equipment-card > i {
+  left: 3px;
+  top: 2px;
+  font-size: 7px;
+}
+
+.player-equipment-card > i small {
+  font-size: 6px;
+}
+
+.mini-zone-card small {
+  font-size: 6px;
+}
+
 .target-card-picker-card .played-card > i {
   left: 8px;
   top: 7px;
-  width: 28px;
-  min-height: 39px;
-  padding: 2px 3px 7px;
+  width: 24px;
+  min-height: 33px;
+  padding: 1px 2px 6px;
   border-width: 1px;
   border-radius: 0 0 7px 0;
-  font-size: 12px;
+  font-size: 10px;
   line-height: .95;
 }
 
 .target-card-picker-card .played-card > i small {
-  margin-top: 1px;
-  font-size: 10px;
+  margin-top: 0;
+  font-size: 8px;
   line-height: 1;
 }
 
 .player-judgement-card .played-card > i {
   left: -1px;
   top: -1px;
-  width: 13px;
-  min-height: 18px;
-  padding: 1px 1px 3px;
+  width: 11px;
+  min-height: 15px;
+  padding: 1px 1px 2px;
   border-width: 1px;
   border-radius: 0 0 3px 0;
-  font-size: 6px;
+  font-size: 5px;
   line-height: .9;
 }
 
 .player-judgement-card .played-card > i small {
   margin-top: 0;
-  font-size: 5px;
+  font-size: 4px;
   line-height: 1;
 }
 
@@ -643,125 +677,139 @@
 .sequence-mini-cards .played-card > i {
   left: -1px;
   top: -1px;
-  width: 22px;
-  min-height: 31px;
-  padding: 2px 2px 5px;
+  width: 18px;
+  min-height: 25px;
+  padding: 1px 1px 4px;
   border-width: 1px;
   border-radius: 0 0 5px 0;
-  font-size: 10px;
+  font-size: 8px;
   line-height: .9;
 }
 
 .sequence-card .played-card > i small,
 .sequence-mini-cards .played-card > i small {
   margin-top: 0;
-  font-size: 8px;
+  font-size: 6px;
   line-height: 1;
 }
 
 .harvest-card-choice .played-card > i {
   left: -1px;
   top: -1px;
-  width: 28px;
-  min-height: 39px;
-  padding: 2px 3px 7px;
+  width: 23px;
+  min-height: 32px;
+  padding: 1px 2px 6px;
   border-width: 1px;
   border-radius: 0 0 7px 0;
-  font-size: 12px;
+  font-size: 10px;
   line-height: .95;
 }
 
 .harvest-card-choice .played-card > i small {
-  margin-top: 1px;
-  font-size: 10px;
+  margin-top: 0;
+  font-size: 8px;
   line-height: 1;
 }
 
 .discard-card-row .played-card > i {
   left: -1px;
   top: -1px;
-  width: 28px;
-  min-height: 39px;
-  padding: 2px 3px 7px;
+  width: 23px;
+  min-height: 32px;
+  padding: 1px 2px 6px;
   border-width: 1px;
   border-radius: 0 0 7px 0;
-  font-size: 12px;
+  font-size: 10px;
   line-height: .95;
 }
 
 .discard-card-row .played-card > i small {
-  margin-top: 1px;
-  font-size: 10px;
+  margin-top: 0;
+  font-size: 8px;
   line-height: 1;
 }
 
 @media (max-width: 700px) {
   .discard-card-row .played-card > i {
-    width: 20px;
-    min-height: 28px;
-    padding: 1px 2px 4px;
-    font-size: 9px;
-  }
-
-  .discard-card-row .played-card > i small {
-    margin-top: 0;
-    font-size: 7px;
-  }
-}
-
-@media (max-width: 600px) {
-  .sequence-card .played-card > i,
-  .sequence-mini-cards .played-card > i {
     width: 18px;
     min-height: 25px;
     padding: 1px 1px 4px;
     font-size: 8px;
   }
 
+  .discard-card-row .played-card > i small {
+    margin-top: 0;
+    font-size: 6px;
+  }
+}
+
+@media (max-width: 600px) {
+  .sequence-card .played-card > i,
+  .sequence-mini-cards .played-card > i {
+    width: 16px;
+    min-height: 22px;
+    padding: 1px 1px 4px;
+    font-size: 7px;
+  }
+
   .sequence-card .played-card > i small,
   .sequence-mini-cards .played-card > i small {
-    font-size: 7px;
+    font-size: 6px;
   }
 }
 
 @media (max-width: 520px) {
+  .player-equipment-card > i {
+    left: 2px;
+    top: 2px;
+    font-size: 6px;
+  }
+
+  .player-equipment-card > i small {
+    font-size: 5px;
+  }
+
+  .mini-zone-card small {
+    font-size: 5px;
+  }
+
   .target-card-picker-card .played-card > i {
-    width: 24px;
-    min-height: 34px;
-    padding: 1px 2px 5px;
-    font-size: 10px;
+    width: 21px;
+    min-height: 29px;
+    padding: 1px 1px 5px;
+    font-size: 9px;
   }
 
   .target-card-picker-card .played-card > i small {
-    font-size: 8px;
+    font-size: 7px;
   }
 
   .player-judgement-card .played-card > i {
-    width: 12px;
-    min-height: 17px;
+    width: 10px;
+    min-height: 14px;
   }
 
   .harvest-card-choice .played-card > i {
-    width: 24px;
-    min-height: 34px;
-    padding: 1px 2px 5px;
-    font-size: 10px;
+    width: 20px;
+    min-height: 28px;
+    padding: 1px 1px 5px;
+    font-size: 9px;
   }
 
   .harvest-card-choice .played-card > i small {
-    font-size: 8px;
+    font-size: 7px;
   }
 }
 
 @media (max-width: 480px) {
   .discard-card-row .played-card > i {
-    width: 18px;
-    min-height: 25px;
+    width: 17px;
+    min-height: 24px;
     padding: 1px 1px 3px;
-    font-size: 8px;
+    font-size: 7px;
   }
 
   .discard-card-row .played-card > i small {
-    font-size: 6px;
+    font-size: 5px;
   }
 }
