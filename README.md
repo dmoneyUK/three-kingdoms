@@ -4,8 +4,10 @@
 
 Existing player-facing hero skills now use the printed English names from
 `docs/STANDARD_HERO_REFERENCE.md` while persisted provider/effect IDs remain
-unchanged. Composure tracks physical and virtual Attacks for the entire turn
-and offers an optional canonical Discard Phase decision. Influencing now has
+unchanged. Composure uses generic turn history to track every semantic Attack
+produced during the current turn, including physical, virtual, and response
+Attack paths, then offers an optional canonical Discard Phase decision.
+Influencing now has
 an active Play Phase path: Liu Bei selects an in-range target, asks living Shu
 characters in action order, and any willing delegate enters the normal Attack
 pipeline with Liu Bei as source; all-decline recovery leaves Liu Bei's normal
@@ -269,12 +271,13 @@ logic.
 The current stage is Standard setup/privacy parity complete, with Quick Game
 now using one shared controller across four seats; the next milestone remains
 the next individually verified Standard hero capability. Full Worker/D1
-validation currently passes 97 tests.
+validation currently passes 118 tests.
 
-The next Wu/Qun hero batch is now playable: Gan Ning (Qixi), Lü Meng
-(Keji), Huang Gai (Kurou), Zhou Yu (Yingzi/Fanjian), and Lü Bu (Wushuang).
-Qixi uses the canonical Burning Bridges Negation and target-card flow; Keji,
-Kurou, Yingzi, and Fanjian are wired into the normal turn/trigger transitions;
+The next Wu/Qun hero batch is now playable: Gan Ning (Ambushment), Lü Meng
+(Composure), Huang Gai (Self Sacrifice), Zhou Yu (Heroic/Sowing Distrust),
+and Lü Bu (Wushuang). Ambushment uses the canonical Burning Bridges Negation
+and target-card flow; Composure, Self Sacrifice, Heroic, and Sowing Distrust
+are wired into the normal turn/trigger transitions;
 and Wushuang changes the server-side response count for Attack and Duel. The
 capabilities are available in normal multiplayer and Quick Test through the
 shared `trigger` / `respond` protocol.

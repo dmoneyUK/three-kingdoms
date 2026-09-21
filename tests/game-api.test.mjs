@@ -641,7 +641,7 @@ test("Composure tracks the whole turn and can optionally skip Discard", { timeou
   const noAttack = await createHumanGame(); const noAttackSource = noAttack.room.players[0];
   sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(noAttackSource.id)}`); setHand(noAttackSource.id, [card("Peach", "composure-no-attack-a"), card("Dodge", "composure-no-attack-b"), card("Peach", "composure-no-attack-c")], 2, 4); setTurn(noAttack.code, noAttackSource.seat);
   const offered = await request("end_turn", { code: noAttack.code, token: noAttack.members[0].token });
-  assert.equal(offered.status, 200, JSON.stringify(offered.data)); assert.equal(offered.data.room.currentAction.triggerOptions[0].label, "Composure"); assert.equal(offered.data.room.phase, "response");
+  assert.equal(offered.status, 200, JSON.stringify(offered.data)); assert.equal(offered.data.room.currentAction.triggerOptions[0].label, "Composure"); assert.notEqual(offered.data.room.currentAction.triggerOptions[0].label, "Keji"); assert.equal(offered.data.room.phase, "response");
   const declined = await request("decline_trigger", { code: noAttack.code, token: noAttack.members[0].token });
   assert.equal(declined.status, 200, JSON.stringify(declined.data)); assert.equal(declined.data.room.phase, "discard");
 
@@ -660,6 +660,39 @@ test("Composure tracks the whole turn and can optionally skip Discard", { timeou
   sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(virtualSource.id)}`); setHand(virtualSource.id, virtualCost, 2, 4); setEquipment(virtualSource.id, { weapon: card("SerpentSpear", "composure-virtual-spear") }); setHand(virtualTarget.id, [], 4, 4); setTurn(virtual.code, virtualSource.seat);
   const virtualPlayed = await request("serpent_spear_attack", { code: virtual.code, token: virtual.members[0].token, cardIds: virtualCost.map((held) => held.id), targetId: virtualTarget.id }); assert.equal(virtualPlayed.status, 200, JSON.stringify(virtualPlayed.data));
   const virtualEnded = await request("end_turn", { code: virtual.code, token: virtual.members[0].token }); assert.equal(virtualEnded.status, 200, JSON.stringify(virtualEnded.data)); assert.notEqual(virtualEnded.data.room.currentAction?.triggerOptions?.some((option) => option.label === "Composure"), true);
+});
+
+test("Composure remains optional at the boundary, resets next turn, and is shared by hosted seats", { timeout: 120_000 }, async () => {
+  const noDiscard = await createHumanGame(); const noDiscardSource = noDiscard.room.players[0];
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(noDiscardSource.id)}`); setHand(noDiscardSource.id, [card("Peach", "composure-no-discard")], 2, 4); setTurn(noDiscard.code, noDiscardSource.seat);
+  const noDiscardOffer = await request("end_turn", { code: noDiscard.code, token: noDiscard.members[0].token });
+  assert.equal(noDiscardOffer.status, 200, JSON.stringify(noDiscardOffer.data)); assert.equal(noDiscardOffer.data.room.phase, "response"); assert.equal(noDiscardOffer.data.room.currentAction.triggerOptions[0].label, "Composure");
+  const noDiscardDeclined = await request("decline_trigger", { code: noDiscard.code, token: noDiscard.members[0].token });
+  assert.equal(noDiscardDeclined.status, 200, JSON.stringify(noDiscardDeclined.data)); assert.notEqual(noDiscardDeclined.data.room.phase, "discard", "declining with no excess cards still completes the ordinary boundary");
+
+  const reset = await createHumanGame(); const resetSource = reset.room.players[0];
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(resetSource.id)}`); setHand(resetSource.id, [card("Peach", "composure-reset-a"), card("Dodge", "composure-reset-b"), card("Peach", "composure-reset-c")], 2, 4);
+  for (const player of reset.room.players.filter((candidate) => candidate.id !== resetSource.id)) setHand(player.id, [], 4, 4);
+  setTurn(reset.code, resetSource.seat);
+  const firstOffer = await request("end_turn", { code: reset.code, token: reset.members[0].token }); assert.equal(firstOffer.data.room.currentAction.triggerOptions[0].label, "Composure");
+  const firstAccepted = await request("trigger", { code: reset.code, token: reset.members[0].token, providerId: "lu_meng_keji" }); assert.equal(firstAccepted.status, 200, JSON.stringify(firstAccepted.data));
+  for (let offset = 1; offset < reset.room.players.length; offset++) {
+    const seat = (resetSource.seat + offset) % reset.room.players.length; const token = reset.members[seat].token;
+    const drawn = await request("draw", { code: reset.code, token }); assert.equal(drawn.status, 200, JSON.stringify(drawn.data));
+    const ended = await request("end_turn", { code: reset.code, token }); assert.equal(ended.status, 200, JSON.stringify(ended.data));
+  }
+  const nextDraw = await request("draw", { code: reset.code, token: reset.members[resetSource.seat].token });
+  assert.equal(nextDraw.status, 200, JSON.stringify(nextDraw.data));
+  const resetOffer = await request("end_turn", { code: reset.code, token: reset.members[resetSource.seat].token });
+  assert.equal(resetOffer.status, 200, JSON.stringify(resetOffer.data)); assert.equal(resetOffer.data.room.currentAction.triggerOptions[0].label, "Composure", "the next turn starts with a fresh no-Attack history");
+
+  const ordinary = await createHumanGame(); const ordinarySource = ordinary.room.players[0];
+  sql(`UPDATE players SET hero='guan-yu' WHERE id=${quote(ordinarySource.id)}`); setHand(ordinarySource.id, [card("Peach", "composure-ordinary-a"), card("Peach", "composure-ordinary-b")], 1, 4); setTurn(ordinary.code, ordinarySource.seat);
+  const ordinaryEnded = await request("end_turn", { code: ordinary.code, token: ordinary.members[0].token }); assert.equal(ordinaryEnded.status, 200, JSON.stringify(ordinaryEnded.data)); assert.equal(ordinaryEnded.data.room.phase, "discard"); assert.equal(ordinaryEnded.data.room.currentAction?.triggerOptions?.some((option) => option.label === "Composure") ?? false, false);
+
+  const hosted = await createTestGame(); const hostedSource = hosted.data.room.players[0];
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(hostedSource.id)}`); setHand(hostedSource.id, [card("Peach", "composure-hosted-a"), card("Dodge", "composure-hosted-b")], 1, 4); setTurn(hosted.data.room.code, hostedSource.seat);
+  const hostedOffer = await request("end_turn", { code: hosted.data.room.code, token: hosted.data.token }); assert.equal(hostedOffer.status, 200, JSON.stringify(hostedOffer.data)); assert.equal(hostedOffer.data.room.currentAction.triggerOptions[0].label, "Composure");
 });
 
 test("host test flow uses Fanjian's shared-controller sequence and private opaque card choice", async () => {

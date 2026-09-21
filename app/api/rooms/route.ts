@@ -19,6 +19,7 @@ import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type Judge
 import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type DrawPhaseTriggerContinuation, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
+import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 
 export const runtime = "edge";
 
@@ -347,9 +348,10 @@ function selectedSerpentSpearCards(player: PlayerRow | null | undefined, hand: C
 }
 function attackUseLimitContext(player?: PlayerRow | null) { return { hero: player?.hero, equipment: equipmentCards(player) }; }
 function phaseAfterAttack(player?: PlayerRow | null) { return playPhaseAfterAttack(attackUseLimitContext(player)); }
-function attackStateWrite(room: RoomRow, player: PlayerRow) {
+function turnHistoryAttackWrite(room: RoomRow, player: PlayerRow) {
   const state = parse<KingSkillState>(room.skill_state_json, {});
-  return db().prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(player.hero === "lü-meng" ? { ...state, turnPlayerId: player.id, attackUsed: true } : state), room.id);
+  const next = room.turn_seat === player.seat ? recordAttackForTurn(state, player.id, player.id) : state;
+  return db().prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(next), room.id);
 }
 function latestResolutionId(log: string[]) {
   for (let index = log.length - 1; index >= 0; index--) {
@@ -840,7 +842,7 @@ async function beginTurnStart(roomId: string, turnSeat: number) {
   if (!room || !player) return;
   const options = getTriggeredEffects(turnStartContext(player));
   const log = parse<string[]>(room.log_json, []);
-  const skillState = JSON.stringify({ turnPlayerId: player.id });
+  const skillState = JSON.stringify(turnHistoryFor(player.id));
   if (!options.length) {
     await db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'draw', pending_json = NULL, skill_state_json = ? WHERE id = ? AND status = 'playing'").bind(turnSeat, skillState, roomId).run();
     return;
@@ -871,7 +873,7 @@ async function beginMatch(roomId: string, players: PlayerRow[]) {
     return db().prepare("UPDATE players SET hp = ?, max_hp = ?, hand_json = ?, judgement_json = '[]', equipment_json = '{}', alive = 1 WHERE id = ?").bind(hp, hp, JSON.stringify(cards), player.id);
   });
   const lord = players.find((player) => player.role === "Lord") ?? players[0];
-  await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify(openingLog), JSON.stringify({ turnPlayerId: lord.id }), roomId)]);
+  await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify(openingLog), JSON.stringify(turnHistoryFor(lord.id)), roomId)]);
   await beginTurnStart(roomId, lord.seat);
 }
 function db() { return env.DB; }
@@ -1774,7 +1776,7 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
   discard.push(attack); const followUpPresentation = addCardEventWithId(log, source.name, attack, target.name); log = addLog(followUpPresentation.log, `${source.name} uses ${displayLabel} to play another Attack on ${target.name}.`);
   if (attackTargetedOptions(source, target).length) {
     const targetedPresentation = addLogWithId(log, `${source.name}'s Yin-Yang Swords affects ${target.name}. ${target.name} chooses how to resolve it.`);
-    await beginAttackTargeted(room, declaration, source, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id)]);
+    await beginAttackTargeted(room, declaration, source, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id), turnHistoryAttackWrite(room, source)]);
     return;
   }
   const prevention = addPassiveAttackPreventionNotice(log, source, target, attackPhysicalCard(declaration));
@@ -1782,6 +1784,7 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
     log = prevention.log;
     await db().batch([
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
+      turnHistoryAttackWrite(room, source),
       db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(log), room.id),
     ]);
     await continueAfterDying(room.id, continuation.resumePlayerId ?? source.id);
@@ -1790,7 +1793,8 @@ async function applyFollowUpAttackOutcome(room: RoomRow, continuation: AttackDod
   const presentation = addLogWithId(log, `${source.name} plays a triggered Attack on ${target.name}. Action passes to ${target.name} for Dodge response.`);
   const attackDecisionState = withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, followUpPresentation.eventId);
   await db().batch([
-    db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
+      db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextSourceHand), source.id),
+      turnHistoryAttackWrite(room, source),
     db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(attackDecisionState), JSON.stringify(discard), JSON.stringify(presentation.log), room.id),
   ]);
 }
@@ -3275,7 +3279,7 @@ export async function POST(request: Request) {
     const declaration = { ...attackDeclaration(holder, target, "borrowed_sword", attackCards, continuation.resumePhase, attack), resumePlayerId: continuation.resumePlayerId } satisfies AttackDeclaration;
     const next = attackResponseDecision(declaration, target);
     if (attackTargetedOptions(holder, target).length) {
-      await beginAttackTargeted(liveRoom, declaration, { ...holder, hand_json: JSON.stringify(hand) }, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), holder.id)]);
+      await beginAttackTargeted(liveRoom, declaration, { ...holder, hand_json: JSON.stringify(hand) }, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), holder.id), turnHistoryAttackWrite(liveRoom, holder)]);
       await maybeOpenHandLossTrigger(room.id, holder.id, holderHandBefore);
       return json({ room: await roomState(code, token) });
     }
@@ -3283,11 +3287,12 @@ export async function POST(request: Request) {
     if (prevention) {
       await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), holder.id),
+        turnHistoryAttackWrite(liveRoom, holder),
         db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(discard), JSON.stringify(prevention.log), room.id),
       ]);
         await continueAfterDying(room.id, continuation.resumePlayerId);
     } else {
-      await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), holder.id).run();
+      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), holder.id), turnHistoryAttackWrite(liveRoom, holder)]);
       await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(next, presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id).run();
     }
     await maybeOpenHandLossTrigger(room.id, holder.id, holderHandBefore);
@@ -3320,6 +3325,7 @@ export async function POST(request: Request) {
         : nextDuelResponse(pending.response, pending.continuation, opponent.id, me.id, nextResponseDeadline(opponent));
       await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+        turnHistoryAttackWrite(liveRoom, me),
         db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(log), room.id),
       ]);
       await advanceDuel(room.id);
@@ -3352,7 +3358,7 @@ export async function POST(request: Request) {
     } else {
       const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextContinuation = appendHeldGroupCards(continuation, responseCards);
       log = selectedResponse ? addCardEvent(log, me.name, selectedResponse, me.name, "play", true, groupExecution.playedAs ? { playedAs: groupExecution.playedAs } : undefined) : responseCards.length ? addCardGroupEvent(log, me.name, responseCards, "play") : addLog(log, `${me.name} uses ${groupExecution.providerId} against ${groupCardName(continuation.cardKind)}.`); log = addLog(log, selectedResponse ? `${me.name} plays ${continuation.requiredKind} against ${groupCardName(continuation.cardKind)}.` : responseCards.length ? `${me.name} discards cards with Serpent Spear to form an Attack against ${groupCardName(continuation.cardKind)}.` : `${me.name} satisfies the ${continuation.requiredKind} requirement against ${groupCardName(continuation.cardKind)}.`);
-      await finishGroupStep(liveRoom, { ...response, continuation: nextContinuation }, nextContinuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
+      await finishGroupStep(liveRoom, { ...response, continuation: nextContinuation }, nextContinuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), ...(continuation.requiredKind === "Attack" ? [turnHistoryAttackWrite(liveRoom, me)] : [])]);
     }
     await maybeOpenHandLossTrigger(room.id, me.id, handBeforeGroup);
     return json({ room: await roomState(code, token) });
@@ -3377,14 +3383,14 @@ export async function POST(request: Request) {
     const targetedOptions = attackTargetedOptions(source, target);
     if (targetedOptions.length) {
       const presentation = addLogWithId(log, `${source.name}'s Attack affects ${target.name}; ${target.name} chooses how to resolve it.`);
-      await beginAttackTargeted(liveRoom, declaration, source, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), attackStateWrite(liveRoom, source)]);
+      await beginAttackTargeted(liveRoom, declaration, source, target, discard, presentation.log, presentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source)]);
     } else {
       const prevention = addPassiveAttackPreventionNotice(log, source, target, attackCard);
       if (prevention) {
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), attackStateWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(source), JSON.stringify(discard), JSON.stringify(prevention.log), room.id)]);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(source), JSON.stringify(discard), JSON.stringify(prevention.log), room.id)]);
       } else {
         const presentation = addLogWithId(log, `${target.name} must respond to ${source.name}'s Influencing Attack.`);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), attackStateWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
       }
     }
     return json({ room: await roomState(code, token) });
@@ -3501,14 +3507,14 @@ export async function POST(request: Request) {
       const declaration = attackDeclaration(me, target, "serpent_spear", materials, phaseAfterAttack(me));
       if (attackTargetedOptions(me, target).length) {
         const targetedPresentation = addLogWithId(log, `${me.name}'s Yin-Yang Swords affects ${target.name}. ${target.name} chooses how to resolve it.`);
-        await beginAttackTargeted(liveRoom, declaration, me, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), attackStateWrite(liveRoom, me)]);
+        await beginAttackTargeted(liveRoom, declaration, me, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me)]);
         await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
         return json({ room: await roomState(code, token) });
       }
       const presentation = addLogWithId(log, `Action passes from ${me.name} to ${target.name} for Dodge response.`);
       const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, latestResolutionId(presentation.log));
       const nextPending = readyAfterEventId ? withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, readyAfterEventId) : attackResponseDecision(declaration, target);
-      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), attackStateWrite(liveRoom, me), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
+      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
     } else if (action === "play_card") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before playing a card." }, 409);
       const card = hand.find((item) => item.id === String(body.cardId ?? ""));
@@ -3646,7 +3652,7 @@ export async function POST(request: Request) {
         if (halberdAttack && targets.length > 1) {
           const pending = withPresentationBarrier(groupResponseDecision("SkyPiercingHalberdAttack", me.id, target.id, targets.slice(1).map((entry) => entry.id), "Dodge", phaseAfterAttack(me), `Respond to Sky Piercing Halberd Attack: select Dodge or take 1 damage`, nextResponseDeadline(target), [card]), log, attackPresentation.eventId);
           log = addLog(log, `${me.name} uses their last hand card as Attack with Sky Piercing Halberd, targeting ${targets.map((entry) => entry.name).join(", ")}. ${target.name} resolves first.`);
-          await beginGroupTarget(liveRoom, pending, pending.continuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
+          await beginGroupTarget(liveRoom, pending, pending.continuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me)]);
           await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
           return json({ room: await roomState(code, token) });
         }
@@ -3656,7 +3662,7 @@ export async function POST(request: Request) {
         const targetedOptions = attackTargetedOptions(me, target);
         if (targetedOptions.length) {
           const targetedPresentation = addLogWithId(log, `${me.name}'s Yin-Yang Swords affects ${target.name}. ${target.name} chooses how to resolve it.`);
-          await beginAttackTargeted(liveRoom, declaration, me, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id)]);
+          await beginAttackTargeted(liveRoom, declaration, me, target, discard, targetedPresentation.log, targetedPresentation.eventId, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me)]);
           await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
           return json({ room: await roomState(code, token) });
         }
@@ -3665,14 +3671,14 @@ export async function POST(request: Request) {
           log = prevention.log;
           await db.batch([
             db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
-            attackStateWrite(liveRoom, me),
+            turnHistoryAttackWrite(liveRoom, me),
             db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(me), JSON.stringify(discard), JSON.stringify(log), room.id),
           ]);
           await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
           return json({ room: await roomState(code, token) });
         }
         const presentation = addLogWithId(log, `${me.name} plays Attack on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), attackStateWrite(liveRoom, me), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, attackPresentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, attackPresentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
       } else {
         return json({ error: "That card is not playable yet." }, 400);
       }
@@ -3680,7 +3686,16 @@ export async function POST(request: Request) {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Only the active player can finish the Play Phase." }, 409);
       if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
       const skillState = parse<KingSkillState>(liveRoom.skill_state_json, {});
-      if (me.hero === "lü-meng" && !skillState.attackUsed) {
+      const attackUsed = attackWasUsed(skillState, me.id);
+      const discardOptions = getTriggeredEffects({
+        event: "discard_phase",
+        sourceEquipment: equipmentCards(me),
+        sourceHand: hand,
+        playerId: me.id,
+        hero: me.hero,
+        attackUsed,
+      });
+      if (discardOptions.length > 0) {
         const presentation = addLogWithId(log, `${me.name} may use Composure to skip the Discard Phase.`);
         const pending: TriggerPending = {
           kind: "trigger",
@@ -3688,7 +3703,7 @@ export async function POST(request: Request) {
           actorId: me.id,
           reason: `${me.name} may use Composure to skip the Discard Phase, or decline`,
           deadline: nextResponseDeadline(me),
-          continuation: { kind: "discard_phase_event", playerId: me.id, attackUsed: false },
+          continuation: { kind: "discard_phase_event", playerId: me.id, attackUsed },
         };
         await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(pending, presentation.log, presentation.eventId)), JSON.stringify(presentation.log), room.id).run();
         return json({ room: await roomState(code, token) });

@@ -5,9 +5,11 @@
 The reconciliation round preserves all persisted legacy provider/effect IDs,
 but canonicalizes player-facing labels, descriptions, prompts, and history to
 the printed English skill names. Composure is a `discard_phase` semantic
-trigger backed by a turn-scoped `attackUsed` flag set by physical, virtual,
-and Serpent Spear Attacks and reset at the next turn. Its optional acceptance
-skips Discard; decline enters the normal Discard Phase.
+trigger backed by generic turn history: every semantic Attack produced by the
+current turn owner, including physical, virtual, Duel/group, and triggered
+paths, sets the turn-scoped `attackUsed` fact. The canonical turn-start reset
+prevents leakage. Its optional acceptance skips Discard; decline enters the
+normal Discard Phase.
 
 Influencing keeps the existing delegated Attack response provider and adds an
 active Liu Bei Play Phase continuation. Targets are projected using Liu Bei's
@@ -28,7 +30,7 @@ still intentionally unimplemented and must continue one hero at a time through
 the semantic capability/provider/trigger contracts.
 
 Validation for this round: isolated Worker/D1 `node tests/run-tests.mjs` passed
-113/113; `npm run build`, `npm run lint`, and `git diff --check` also pass.
+118/118; `npm run build`, `npm run lint`, and `git diff --check` also pass.
 
 ## Hosted games and test-player flow — 2026-09-21
 
@@ -394,10 +396,11 @@ capability.
 ## Wu/Qun hero batch — 2026-09-20
 
 Gan Ning, Lü Meng, Huang Gai, Zhou Yu, and Lü Bu are now executable Standard
-heroes in normal multiplayer and Quick Test. Qixi uses a black hand card as
-Burning Bridges and preserves the existing Negation and target-card picker
-continuations. Keji skips only the over-limit Discard Phase when no Attack was
-used. Kurou loses 1 HP and draws 2, including the shared Dying/rescue boundary.
+heroes in normal multiplayer and Quick Test. Ambushment uses a black hand card
+as Burning Bridges and preserves the existing Negation and target-card picker
+continuations. Composure offers an optional Discard Phase skip only when no
+Attack was used. Self Sacrifice loses 1 HP and draws 2, including the shared
+Dying/rescue boundary.
 Yingzi is an optional post-Judgement normal Draw Phase modifier: it draws three
 cards when accepted and two when declined, without changing unrelated draws.
 Fanjian is now target-first: the

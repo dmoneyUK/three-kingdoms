@@ -79,7 +79,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Divine Wisdom<br>Prudence | **Present / metadata-only** |
 | Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Equilibrium<br>Deliverance | Implemented |
 | Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Ambushment | Present |
-| Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Composure | Present |
+| Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Composure | Implemented |
 | Wu | `huang-gai` | Huang Gai | 黄盖 | Male | 4 | Self Sacrifice | Present |
 | Wu | `zhou-yu` | Zhou Yu | 周瑜 | Male | 3 | Heroic<br>Sowing Distrust | Present |
 | Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Captivating<br>Deflection | Present |
@@ -247,7 +247,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **WU 003**, printed name **Lv Meng**, printed title **Infiltration Incognito**.
 - **Implementation interpretation:** The condition covers the whole turn, not only the Play Phase.
 - **Likely engine shape:** turn-history condition; optional Discard Phase skip.
-- **Current implementation:** Composure tracks physical and virtual Attack use throughout the turn, offers an optional private Discard Phase trigger only when no Attack was used or played, and resolves accept/decline through the canonical trigger continuation. The turn-start reset keeps the condition scoped to the current turn.
+- **Current implementation:** Composure uses generic turn history to record every semantic Attack produced by the current turn owner, including physical, virtual, Duel/group, and triggered Attack paths. At the Play-to-Discard boundary it offers a private optional `discard_phase` decision only when no Attack was used or played; acceptance skips Discard, while decline follows the normal Discard rules. The canonical turn-start reset prevents state leaking into the next turn.
 
 ### Huang Gai (黄盖)
 
