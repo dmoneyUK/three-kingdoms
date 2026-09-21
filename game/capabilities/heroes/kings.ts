@@ -8,6 +8,7 @@ export type KingSkillState = {
   rendeRecovered?: boolean;
   fanjianUsed?: boolean;
   attackUsed?: boolean;
+  baredBodiedActive?: boolean;
 };
 
 export type ActiveHeroSkillContext = {

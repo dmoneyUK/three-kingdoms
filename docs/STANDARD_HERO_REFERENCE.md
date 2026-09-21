@@ -137,7 +137,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **WEI 005**, printed name **Xu Zhu**, printed title **The Ferocious Folly**.
 - **Implementation interpretation:** Bared Bodied is optional during the Draw Phase. If activated, Xu Zhu draws one fewer card than the normal Draw Phase amount, and each qualifying [Attack] or [Duel] damage event during that turn deals 1 additional damage. The modifier expires when that turn ends.
 - **Likely engine shape:** Draw Phase modifier; turn-scoped Attack/Duel damage modifier.
-- **Current implementation:** Player-facing hero metadata now uses the printed name and verified skill text; Bared Bodied itself remains unimplemented.
+- **Current implementation:** Bared Bodied is implemented as an optional semantic Draw Phase modifier. Acceptance draws one fewer card than the normal Draw Phase amount and persists a turn-scoped flag; the central damage settlement applies +1 to each Xu Zhu-sourced Attack or Duel damage event as one combined event, with the flag reset at the next turn boundary. Declining preserves the normal draw, and unrelated damage remains unchanged.
 
 ### Guo Jia (郭嘉)
 

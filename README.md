@@ -1,5 +1,21 @@
 # Three Kingdoms
 
+## Xu Zhu Bared Bodied — 2026-09-21
+
+Xu Zhu's optional Bared Bodied decision now opens only at the canonical normal
+Draw Phase boundary, after delayed Judgements. It uses the shared semantic
+`trigger` / `decline_trigger` protocol and the reusable Draw Phase modifier
+outcome: accepting draws one fewer card than the normal amount and stores a
+turn-scoped flag, while declining preserves the normal two-card draw.
+
+The central sourced-damage boundary applies the active flag only to damage
+whose semantic cause is an Attack or Duel and whose source is Xu Zhu. The
+bonus is folded into the single damage event before HP, post-damage triggers,
+and Dying are resolved; group, judgement, equipment-forced, and other damage
+remain unchanged. API coverage includes decline/accept, reload and stale
+safety, Attack and Duel source ownership, Dying, and next-turn reset. The next
+milestone is the next individually verified missing Standard hero.
+
 ## Zhang Liao Assault — 2026-09-21
 
 Zhang Liao's optional Assault now opens only at the canonical normal Draw Phase
@@ -17,7 +33,7 @@ after ownership changes; public history names the source characters but never
 reveals card identity. API coverage includes decline, one/two targets, invalid
 targets, privacy, reload/stale safety, no eligible targets, conservation, and
 delayed-Judgement ordering. The next milestone is the next individually
-verified missing Standard hero; Xu Zhu remains out of scope for this round.
+verified missing Standard hero.
 
 ## Standard hero reconciliation — 2026-09-21
 

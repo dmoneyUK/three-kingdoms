@@ -12,8 +12,22 @@ import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSe
 import { heroGender } from "../game/heroes.ts";
 import { canDeclareAttack, playPhaseAfterAttack } from "../game/rules.ts";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill } from "../game/capabilities/heroes/kings.ts";
+import { resolveDamageModifiers } from "../game/capabilities/damage-modifiers.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
+
+test("Xu Zhu Bared Bodied is a reusable Draw Phase modifier and semantic damage modifier", () => {
+  const context = { event: "draw_phase", sourceEquipment: [], sourceHand: [], playerId: "xu", hero: "xu-chu" };
+  assert.deepEqual(getTriggeredEffects(context), [{ effectId: "xu_chu_bared_bodied", label: "Bared Bodied", description: "Draw 1 fewer card this Draw Phase. Your Attack and Duel damage deals +1 damage this turn.", selection: null, allowDecline: true }]);
+  assert.deepEqual(resolveTriggeredEffect("xu_chu_bared_bodied", context, {}).outcome, { kind: "draw_phase_modifier", amount: -1, modifierId: "bared_bodied" });
+  const active = { turnPlayerId: "xu", baredBodiedActive: true };
+  assert.equal(resolveDamageModifiers({ sourceId: "xu", sourceHero: "xu-chu", cause: "attack", baseAmount: 1, turnState: active }), 2);
+  assert.equal(resolveDamageModifiers({ sourceId: "xu", sourceHero: "xu-chu", cause: "duel", baseAmount: 1, turnState: active }), 2);
+  assert.equal(resolveDamageModifiers({ sourceId: "xu", sourceHero: "xu-chu", cause: "attack", baseAmount: 1, turnState: active }), 2, "the modifier is not consumed");
+  assert.equal(resolveDamageModifiers({ sourceId: "xu", sourceHero: "xu-chu", cause: "other", baseAmount: 1, turnState: active }), 1);
+  assert.equal(resolveDamageModifiers({ sourceId: "other", sourceHero: "xu-chu", cause: "attack", baseAmount: 1, turnState: active }), 1);
+  assert.equal(resolveDamageModifiers({ sourceId: "xu", sourceHero: "xu-chu", cause: "attack", baseAmount: 1, turnState: { turnPlayerId: "other", baredBodiedActive: true } }), 1);
+});
 
 test("Wu and Qun hero capabilities project their private costs and Wushuang multiplicity", () => {
   const black = card("Peach", "qixi-black");

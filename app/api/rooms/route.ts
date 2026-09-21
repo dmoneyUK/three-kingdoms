@@ -19,6 +19,7 @@ import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type Judge
 import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type DrawPhaseTriggerContinuation, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
+import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 
 export const runtime = "edge";
@@ -472,7 +473,7 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
   if (flags.skipDraw) {
     log = addLog(log, `${target.name} skips the Draw Phase because of Rations Depleted.`);
   } else {
-    const count = 2 + Math.max(0, additionalCards);
+    const count = Math.max(0, 2 + additionalCards);
     const draw = drawCards(deck, discard, count, log);
     deck = draw.deck;
     discard = draw.discard;
@@ -1192,8 +1193,9 @@ async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePendi
     resumePlayerId: resume.id,
     sequenceStartCardId: "",
     damageCards: pending.continuation.damageCards,
+    cause: "duel",
     label: "Duel damage",
-    damageDescription: `${loser.name} fails to play Attack and takes 1 Duel damage from ${opponent.name}`,
+    damageDescription: (amount) => `${loser.name} fails to play Attack and takes ${amount} Duel damage from ${opponent.name}`,
   });
 }
 
@@ -1438,7 +1440,8 @@ async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePendi
     sequenceStartCardId: continuation.sequenceStartCardId ?? "",
     damageCards: continuation.damageCards,
     origin: continuation.origin,
-    damageDescription: `${actor.name} takes 1 damage from the Attack`,
+    cause: "attack",
+    damageDescription: (amount) => `${actor.name} takes ${amount} damage from the Attack`,
     writes: [db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id)],
   });
 }
@@ -1555,6 +1558,7 @@ type AttackDamageTransition = {
   sequenceStartCardId: string;
   damageCards?: Card[];
   origin?: AttackOrigin;
+  cause?: DamageCause;
   label?: string;
   writes?: D1PreparedStatement[];
   onDamageApplied?: (hp: number) => Promise<void> | void;
@@ -1578,8 +1582,9 @@ type SourcedDamageTransition = {
   sequenceStartCardId: string;
   damageCards?: Card[];
   origin?: AttackOrigin;
+  cause?: DamageCause;
   label?: string;
-  damageDescription?: string;
+  damageDescription?: string | ((amount: number) => string);
   writes?: D1PreparedStatement[];
   resumeGroup?: GroupResponsePending;
   resumePending?: GroupResponsePending;
@@ -1588,9 +1593,10 @@ type SourcedDamageTransition = {
 };
 
 /** Applies sourced damage, then discovers the generic post-damage event. */
-async function resolveSourcedDamage({ room, source, target, players, amount, discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], origin, label = "Damage", damageDescription, writes = [], resumeGroup, resumePending, resumeDamageSuffered, onDamageApplied }: SourcedDamageTransition): Promise<AttackDamageResult> {
-  const hp = applyDamage(target.hp ?? 1, amount);
-  const description = damageDescription ?? `${target.name} takes ${amount} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
+async function resolveSourcedDamage({ room, source, target, players, amount, discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], origin, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumePending, resumeDamageSuffered, onDamageApplied }: SourcedDamageTransition): Promise<AttackDamageResult> {
+  const finalAmount = resolveDamageModifiers({ sourceId: source?.id, sourceHero: source?.hero, cause, baseAmount: amount, turnState: parse<KingSkillState>(room.skill_state_json, {}) });
+  const hp = applyDamage(target.hp ?? 1, finalAmount);
+  const description = typeof damageDescription === "function" ? damageDescription(finalAmount) : damageDescription ?? `${target.name} takes ${finalAmount} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
   const damageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
   if (isDying(hp)) {
     const resumePlayer = players.find((player) => player.id === (resumePlayerId ?? source?.id)) ?? source ?? target;
@@ -1601,10 +1607,10 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dis
   const updatedTarget = { ...target, hp } satisfies PlayerRow;
   const updatedPlayers = players.map((player) => player.id === target.id ? updatedTarget : player);
   const updatedSource = source && source.id === target.id ? updatedTarget : source;
-  const postDamageOptions = source?.alive && target.alive ? damageSufferedTriggerOptions(updatedSource, updatedTarget, amount, undefined, [], damageCards) : [];
+  const postDamageOptions = source?.alive && target.alive ? damageSufferedTriggerOptions(updatedSource, updatedTarget, finalAmount, undefined, [], damageCards) : [];
   if (postDamageOptions.length && source) {
     const presentation = addLogWithId(damageLog, `${target.name} may use a post-damage reaction, or skip.`);
-    const pending = damageSufferedTriggerPending(source, updatedTarget, amount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, resumeGroup, resumeDamageSuffered, damageCards);
+    const pending = damageSufferedTriggerPending(source, updatedTarget, finalAmount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, resumeGroup, resumeDamageSuffered, damageCards);
     await db().batch([
       ...writes,
       db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id),
@@ -1655,7 +1661,7 @@ async function resolveAttackDamageAboutToApply({ room, source, target, players, 
   // future source-owned damage provider is discovered.
   return resolveSourcedDamage({
     room, source: { ...source, hand_json: JSON.stringify(sourceHand) }, target, players, amount: 1, discard, log, resumePhase, resumePlayerId,
-    sequenceStartCardId, damageCards, origin, label, writes: [
+    sequenceStartCardId, damageCards, origin, cause: "attack", label, writes: [
       ...writes,
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id),
     ], onDamageApplied,
@@ -2757,6 +2763,7 @@ export async function POST(request: Request) {
       const players = rows.results ?? [];
       const player = players.find((candidate) => candidate.id === continuation.playerId && candidate.alive);
       if (!player) return json({ error: "The Draw Phase player is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (liveRoom.turn_seat !== player.seat) return json({ error: "That Draw Phase decision is stale; the turn has advanced.", stale: true, room: await roomState(code, token) }, 409);
       const replacementTargets = triggerExecution?.outcome.kind === "draw_phase_replacement"
         ? selectedDrawPhaseTargets(player, triggerExecution.outcome.targetIds, players)
         : null;
@@ -2774,8 +2781,15 @@ export async function POST(request: Request) {
         if (!transferred) return json({ error: "Assault could not be settled safely.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token), gainedCards: transferred });
       }
-      const additionalCards = (continuation.additionalCards ?? 0) + (action === "apply_trigger" && triggerExecution?.outcome.kind === "draw_phase_modifier" ? triggerExecution.outcome.amount : 0);
-      const drawn = await resolveNormalDrawPhase(liveRoom, player, continuation.resumePhase, additionalCards, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
+      const modifier = action === "apply_trigger" && triggerExecution?.outcome.kind === "draw_phase_modifier" ? triggerExecution.outcome : null;
+      const modifierWrites: D1PreparedStatement[] = [];
+      if (modifier?.modifierId === "bared_bodied") {
+        const skillState = parse<KingSkillState>(liveRoom.skill_state_json, {});
+        modifierWrites.push(db.prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify({ ...skillState, turnPlayerId: player.id, baredBodiedActive: true }), room.id));
+        log = addHistory(log, `${player.name} activates Bared Bodied and draws 1 fewer card.`, player.id);
+      }
+      const additionalCards = (continuation.additionalCards ?? 0) + (modifier?.amount ?? 0);
+      const drawn = await resolveNormalDrawPhase(liveRoom, player, continuation.resumePhase, additionalCards, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log, modifierWrites);
       return json({ room: await roomState(code, token), ...(drawn.length ? { drawnCards: drawn } : {}) });
     }
     if (liveRoom && trigger && continuation?.kind === "turn_start_event" && trigger.actorId === me.id) {

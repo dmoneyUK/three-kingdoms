@@ -1,5 +1,28 @@
 # Three Kingdoms project handover
 
+## Xu Zhu — Bared Bodied — 2026-09-21
+
+Bared Bodied is implemented through the existing semantic Draw Phase modifier
+boundary. After required Judgements and only at Xu Zhu's canonical Draw Phase,
+the generic `trigger` / `decline_trigger` protocol offers the optional skill.
+Declining resolves the normal two-card draw; accepting resolves the normal draw
+with amount minus one and writes `baredBodiedActive` with the current turn
+player ID into authoritative room skill state.
+
+The shared sourced-damage settlement resolves a semantic `attack`, `duel`, or
+`other` cause before HP deduction. It adds one only when the active turn-state
+flag belongs to Xu Zhu and Xu Zhu is the damage source, so each qualifying
+Attack or Duel remains one damage event with the final amount passed to
+post-damage and Dying logic. Group effects, judgement damage, equipment-forced
+damage, and other unrelated sources use `other` and are not increased. The
+normal turn-start state reset removes the flag on the next turn; reload reads
+the persisted room state.
+
+Regression coverage includes accept/decline, one-card draw replacement, reload,
+stale activation, Attack and Duel ownership, combined two-point damage,
+negative-HP/Dying, and next-turn reset. No Xu Zhu-specific HTTP action was
+added, and the existing Attack pipeline remains the only Attack damage entry.
+
 ## Zhang Liao — Assault — 2026-09-21
 
 Assault is implemented through the existing semantic Draw Phase trigger
@@ -23,10 +46,11 @@ through `trigger`; no Assault-specific HTTP action was added. Regression
 coverage includes decline, one/two-target transfers, invalid and duplicate
 targets, self/empty-hand rejection, hidden currentAction data, reload/stale
 decisions, no eligible targets, delayed Judgement ordering, and exact physical
-card conservation. Xu Zhu and other Draw Phase skills remain out of scope.
+card conservation. Xu Zhu now uses the adjacent reusable Draw Phase modifier
+path described above.
 
 Validation checkpoint for this round: the isolated `npm test` suite passes all
-120 tests, `npm run lint` passes, and `git diff --check` passes. The production
+122 tests, `npm run lint` passes, and `git diff --check` passes. The production
 build also passes through `npm test`; the validated commit is ready for the
 normal GitHub `main` push path.
 
