@@ -129,6 +129,11 @@ slash artwork across the same shared surfaces. Its existing readability
 treatment keeps the physical rank/suit and Attack label legible without
 changing card semantics.
 
+The Eight Trigrams Formation, Nio Shield, Sky Piercing Halberd, Blue Steel
+Sword, Serpent Spear, Kirin Bow, Frost Sword, Rock Cleaving Axe, Green Dragon
+Blade, and Yin-Yang Swords artwork has been updated with the latest supplied
+graphics. Existing shared card treatments and card semantics remain unchanged.
+
 Card faces now keep one shared footprint even when a card name is long. Names
 such as Overindulgence, Eight Trigrams Formation, and Something Out of Nothing
 wrap within the card and are limited to two readable lines across hand, reveal,

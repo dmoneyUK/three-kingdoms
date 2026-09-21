@@ -87,6 +87,19 @@ Overindulgence, Eight Trigrams Formation, and Something Out of Nothing within
 the same visual card footprint across hand, reveal, played, and compact table
 surfaces. No card dimensions or gameplay semantics vary by card identity.
 
+## Ten equipment artwork updates — 2026-09-21
+
+The latest supplied graphics replace the existing assets for Eight Trigrams
+Formation, Nio Shield, Sky Piercing Halberd, Blue Steel Sword, Serpent Spear,
+Kirin Bow, Frost Sword, Rock Cleaving Axe, Green Dragon Blade, and Yin-Yang
+Swords. The existing shared `.game-card` and `.played-card` CSS mappings remain
+in place, so hand cards, centre reveals, equipment previews, private draws,
+target-card previews, and settled table cards receive the updated visuals.
+
+No card identity, equipment behavior, Attack/Dodge continuation, damage trigger,
+or target-owned decision semantics changed. Recommended next work remains the
+next individually verified Standard hero capability.
+
 ## Burning Bridges card artwork — 2026-09-20
 
 The supplied collapsing-bridge artwork is now stored at
