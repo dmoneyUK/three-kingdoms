@@ -17,7 +17,7 @@ test("server-renders the Three Kingdoms lobby", async () => {
   const html = await response.text();
   assert.match(html, /<title>Three Kingdoms/);
   assert.match(html, /Classic hidden-role mode/i);
-  assert.match(html, /Start test game/);
+  assert.match(html, /Start quick game/);
   assert.match(html, /YOU ARE PLAYING AS/);
   assert.doesNotMatch(html, /Your display name/);
   assert.match(html, /Join room/);

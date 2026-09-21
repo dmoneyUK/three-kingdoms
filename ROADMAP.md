@@ -82,7 +82,7 @@ Only `ResponsePending` and `TriggerPending` are persisted for semantic response 
 ## Stage 6 Round 1 — runtime Standard roster and executable Wu/Qun batch
 
 Complete for the current batch. `game/heroes.ts` is the authoritative 30-general Standard registry;
-normal multiplayer and Quick Test draw from it. The three excluded legacy IDs
+normal multiplayer and Quick Game draw from it. The three excluded legacy IDs
 remain readable/projectable but cannot enter new Standard selection. The
 remaining unimplemented Standard generals are metadata-only. Guan Yu Wusheng is verified from
 the current official Standard card and implemented as a small explicit semantic
@@ -97,7 +97,8 @@ Nio Shield. No universal hero framework was added.
 Gan Ning Qixi, Lü Meng Keji, Huang Gai Kurou, Zhou Yu Yingzi/Fanjian, and Lü Bu
 Wushuang now use the same semantic capability architecture. Next milestone:
 select and implement the next individually verified metadata-only Standard
-hero, keeping Quick Test fixtures and both project handover documents current.
+hero, keeping Quick Game and deterministic test fixtures plus both project
+handover documents current.
 
 Final closure also makes virtual-Attack presentation explicit with the narrow
 `playedAs: "attack"` marker, preserves canonical `attack_targeted`/`choice`
@@ -105,10 +106,11 @@ normalization, and projects server-owned `currentAction.canDeclareAttack` to
 the acting browser seat. These changes complete the Round 1 browser parity and
 presentation boundary without introducing a hero DSL.
 
-Quick Test now uses the explicit human-style seat names Player1 through
-Player4, with Player1 as the Guan Yu-controlled seat and a guaranteed red
-opening card for Wusheng demonstration. Normal multiplayer keeps its supplied
-player names and uses the same Standard registry.
+Quick Game now creates one Player1 seat, keeps the Lord-first general
+selection, and uses the ordinary shuffled four-card opening deal. The former
+four-seat shared-controller arrangement remains only in deterministic test
+fixtures; normal multiplayer keeps its supplied player names and uses the same
+Standard registry.
 
 ## Validation status
 
@@ -135,7 +137,7 @@ The following should remain invariant while the architecture migration continues
 - tests use isolated `.wrangler/test-state` D1 data;
 - migrations are the schema authority;
 - human response timers arm only after the decision is visible and duplicate starts cannot extend the deadline;
-- Quick Test uses one controller token but only the acting seat's private state is projected;
+- Quick Game uses one player token and only that player's private state is projected;
 - stale gameplay actions carry `actionRevision`/actor context and are rejected safely;
 - `resolutionId` is separate from stale-action identity;
 - presentation events carry importance/final-result metadata so informational backlog can collapse without dropping essential outcomes;
@@ -214,7 +216,7 @@ Endless Legends and Kingdom Wars remain out of scope.
 For functional changes follow `AGENTS.md`:
 
 1. update `README.md` and `HANDOVER.md`;
-2. keep Quick Test and deterministic regression coverage current;
+2. keep Quick Game and deterministic regression coverage current;
 3. run build, full tests, lint and `git diff --check`;
 4. push validated code to `main`;
 5. let GitHub Actions be the only production deployment path.
