@@ -91,3 +91,11 @@ export function resolveResponseProvider(providerId: unknown, context: ResponseEx
 
 export function canRespondWithAttack(context: ResponseContext) { return getResponseOptions({ ...context, requirement: { kind: "attack" } }, { kind: "attack" }).length > 0; }
 export function canRespondWithDodge(context: ResponseContext, count = 1) { return getResponseOptions({ ...context, requirement: { kind: "dodge", count } }, { kind: "dodge", count }).length > 0; }
+/**
+ * Negation eligibility is capability-based rather than card-name based. This
+ * keeps the reaction scheduler open to hero skills, conversions, and other
+ * providers that legally satisfy the same semantic requirement.
+ */
+export function canRespondWithNegation(context: ResponseContext, requirement: Extract<ActionRequirement, { kind: "negate" }> = { kind: "negate" }) {
+  return getResponseOptions({ ...context, requirement }, requirement).length > 0;
+}

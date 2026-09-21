@@ -722,7 +722,7 @@ test("Qixi uses the ordinary Burning Bridges Negation and target-card continuati
   const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const material = card("BorrowedSword", "qixi-negation-material", "♣"); const negation = card("Negation", "qixi-negation"); const targetCard = card("Peach", "qixi-negation-target");
   sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(source.id)}`); setHand(source.id, [material], 4, 4); setHand(target.id, [negation, targetCard], 4, 4); setTurn(game.code, source.seat);
   const opened = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "gan_ning_qixi", cardIds: [material.id], targetId: target.id });
-  assert.equal(opened.status, 200); assert.equal(opened.data.room.currentAction.actorId, target.id); assert.equal((await state(game.code, game.members[1].token)).data.currentAction.requirement, "negate");
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.actionPlayerId, null); assert.equal(opened.data.room.pendingNegation.actorId, null); assert.equal((await state(game.code, game.members[1].token)).data.currentAction.requirement, "negate");
   const declined = await request("decline_response", { code: game.code, token: game.members[1].token });
   assert.equal(declined.status, 200); assert.equal(declined.data.room.pendingTargetCard.cardKind, "Dismantle");
   const selected = await request("choose_target_card", { code: game.code, token: game.members[0].token, targetCardZone: "hand", targetCardIndex: 1 });
@@ -859,8 +859,7 @@ test("Xu Zhu Bared Bodied replaces one Draw Phase card and scopes Attack/Duel da
 
   const duelLoss = await createHumanGame(); const lossSource = duelLoss.room.players[0]; const lossTarget = duelLoss.room.players[1]; const lossDuel = card("Duel", "bared-duel-loss"); const lossAttack = card("Attack", "bared-duel-loss-response");
   sql(`UPDATE players SET hero='xu-chu' WHERE id=${quote(lossSource.id)}`); setHand(lossSource.id, [], 4, 4); setHand(lossTarget.id, [lossAttack], 4, 4); for (const player of duelLoss.room.players.slice(2)) setHand(player.id, [], 4, 4); setDeck(duelLoss.code, [lossDuel, card("Dodge", "bared-duel-loss-deck")]); setTurn(duelLoss.code, lossSource.seat, "draw");
-  await request("draw", { code: duelLoss.code, token: duelLoss.members[0].token }); await request("trigger", { code: duelLoss.code, token: duelLoss.members[0].token, providerId: "xu_chu_bared_bodied" }); await request("play_card", { code: duelLoss.code, token: duelLoss.members[0].token, cardId: lossDuel.id, targetId: lossTarget.id, preserveResponse: true }); await request("decline_response", { code: duelLoss.code, token: duelLoss.members[0].token, preserveResponse: true }); await request("decline_response", { code: duelLoss.code, token: duelLoss.members[1].token, preserveResponse: true });
-  await request("decline_response", { code: duelLoss.code, token: duelLoss.members[2].token, preserveResponse: true }); await request("decline_response", { code: duelLoss.code, token: duelLoss.members[3].token, preserveResponse: true }); const lossRespond = await request("respond", { code: duelLoss.code, token: duelLoss.members[1].token, cardId: lossAttack.id, preserveResponse: true }); assert.equal(lossRespond.status, 200, JSON.stringify(lossRespond.data)); const lossResult = await request("decline_response", { code: duelLoss.code, token: duelLoss.members[0].token }); assert.equal(lossResult.status, 200, JSON.stringify(lossResult.data)); assert.equal(lossResult.data.room.players.find((player) => player.id === lossSource.id).hp, 3); assert.equal(lossResult.data.room.players.find((player) => player.id === lossTarget.id).hp, 4);
+  await request("draw", { code: duelLoss.code, token: duelLoss.members[0].token }); await request("trigger", { code: duelLoss.code, token: duelLoss.members[0].token, providerId: "xu_chu_bared_bodied" }); await request("play_card", { code: duelLoss.code, token: duelLoss.members[0].token, cardId: lossDuel.id, targetId: lossTarget.id, preserveResponse: true }); const lossRespond = await request("respond", { code: duelLoss.code, token: duelLoss.members[1].token, cardId: lossAttack.id, preserveResponse: true }); assert.equal(lossRespond.status, 200, JSON.stringify(lossRespond.data)); const lossResult = await request("decline_response", { code: duelLoss.code, token: duelLoss.members[0].token }); assert.equal(lossResult.status, 200, JSON.stringify(lossResult.data)); assert.equal(lossResult.data.room.players.find((player) => player.id === lossSource.id).hp, 3); assert.equal(lossResult.data.room.players.find((player) => player.id === lossTarget.id).hp, 4);
 
   const dying = await createHumanGame(); const dyingSource = dying.room.players[0]; const dyingTarget = dying.room.players[1]; const dyingAttack = card("Attack", "bared-dying-attack");
   sql(`UPDATE players SET hero='xu-chu' WHERE id=${quote(dyingSource.id)}`); setHand(dyingSource.id, [], 4, 4); setHand(dyingTarget.id, [], 2, 4); for (const player of dying.room.players.slice(2)) setHand(player.id, [], 4, 4); setDeck(dying.code, [dyingAttack]); setTurn(dying.code, dyingSource.seat, "draw");
@@ -1059,33 +1058,50 @@ test("Attack response windows are public while Dodge options remain private", { 
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(held.target.id)}`)).map((item) => item.id), ["dodge-privacy-held"]);
 });
 
-test("Negation windows and counter-windows include players without private Negation", { timeout: 30_000 }, async () => {
-  const game = await createHumanGame(); const [sourceMember, firstMember, secondMember] = game.members;
-  const [source, first, second, last] = game.room.players; const drawTwo = card("DrawTwo", "privacy-negation");
-  setHand(source.id, [drawTwo], 4, 4); setHand(first.id, [], 4, 4); setHand(second.id, [], 4, 4); setHand(last.id, [], 4, 4); setTurn(game.code, source.seat);
+test("Negation skips ineligible seats privately and keeps the public wait generic", { timeout: 30_000 }, async () => {
+  const nobody = await createHumanGame(); const [nobodySourceMember] = nobody.members; const [nobodySource, ...nobodyOthers] = nobody.room.players; const drawTwo = card("DrawTwo", "privacy-negation");
+  setHand(nobodySource.id, [drawTwo], 4, 4); for (const player of nobodyOthers) setHand(player.id, [], 4, 4); setTurn(nobody.code, nobodySource.seat);
+  const settled = await request("play_card", { code: nobody.code, token: nobodySourceMember.token, cardId: drawTwo.id, preserveResponse: true });
+  assert.equal(settled.status, 200); assert.equal(settled.data.room.pendingNegation, null); assert.equal(settled.data.room.phase, "play");
+  assert.ok(settled.data.room.log.some((entry) => entry.includes("No Negation responses remain")));
+  assert.equal(settled.data.room.log.some((entry) => /passes the Negation|Checking|Skipping/.test(entry)), false);
+
+  async function openWithNegation(holderIndex) {
+    const game = await createHumanGame(); const sourceMember = game.members[0]; const holderMember = game.members[holderIndex]; const otherMember = game.members[holderIndex === 1 ? 2 : 1]; const source = game.room.players[0]; const holder = game.room.players[holderIndex]; const root = card("DrawTwo", `privacy-holder-${holderIndex}`); const negation = card("Negation", `privacy-holder-${holderIndex}`);
+    for (const player of game.room.players) setHand(player.id, [], 4, 4); setHand(source.id, [root], 4, 4); setHand(holder.id, [negation], 4, 4); setTurn(game.code, source.seat);
+    const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: root.id, preserveResponse: true });
+    assert.equal(opened.status, 200); return { game, sourceMember, holderMember, otherMember, source, holder, root, negation, opened };
+  }
+
+  const target = await openWithNegation(1); const targetView = (await state(target.game.code, target.holderMember.token)).data; const publicTargetView = (await state(target.game.code, target.sourceMember.token)).data; const targetOtherView = (await state(target.game.code, target.otherMember.token)).data;
+  assert.equal(targetView.currentAction.requirement, "negate"); assert.ok(targetView.currentAction.options.some((option) => option.providerId === "negation_card")); assert.equal(targetView.isMyAction, true);
+  assert.equal(publicTargetView.actionPlayerId, null); assert.equal(publicTargetView.pendingNegation.actorId, null); assert.equal(publicTargetView.actionReason, "Waiting for Negation..."); assert.equal(publicTargetView.currentAction.options?.length ?? 0, 0);
+  assert.equal(targetOtherView.actionPlayerId, null); assert.equal(targetOtherView.pendingNegation.actorId, null); assert.equal(targetOtherView.actionReason, "Waiting for Negation...");
+  const targetPassed = await request("decline_response", { code: target.game.code, token: target.holderMember.token, preserveResponse: true }); assert.equal(targetPassed.status, 200); assert.equal(targetPassed.data.room.pendingNegation, null);
+
+  const nonTarget = await openWithNegation(2); const nonTargetView = (await state(nonTarget.game.code, nonTarget.holderMember.token)).data;
+  assert.equal(nonTargetView.currentAction.requirement, "negate"); assert.ok(nonTargetView.currentAction.options.some((option) => option.providerId === "negation_card")); assert.equal(nonTargetView.isMyAction, true);
+  assert.equal((await request("decline_response", { code: nonTarget.game.code, token: nonTarget.holderMember.token, preserveResponse: true })).status, 200);
+});
+
+test("an eligible Negation responder times out as a silent Pass", async () => {
+  const game = await createHumanGame(); const [sourceMember, targetMember] = game.members;
+  const [source, target] = game.room.players;
+  const drawTwo = card("DrawTwo", "negation-timeout");
+  setHand(source.id, [drawTwo], 4, 4); setHand(target.id, [card("Negation", "negation-timeout")], 4, 4);
+  setTurn(game.code, source.seat);
+
   const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id, preserveResponse: true });
-  assert.equal(opened.status, 200); const sourceView = (await state(game.code, sourceMember.token)).data;
-  assert.equal(sourceView.currentAction.requirement, "negate"); assert.deepEqual(sourceView.currentAction.options, []); assert.deepEqual(sourceView.currentAction.legalActions, ["decline_response"]);
-  const passed = await request("decline_response", { code: game.code, token: sourceMember.token, preserveResponse: true });
-  assert.equal(passed.status, 200); const firstView = (await state(game.code, firstMember.token)).data;
-  assert.equal(firstView.currentAction.actorId, first.id); assert.equal(firstView.currentAction.requirement, "negate"); assert.deepEqual(firstView.currentAction.options, []);
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.actorId, null, "the source view does not reveal the waiting responder");
+  const targetView = (await state(game.code, targetMember.token)).data;
+  assert.equal(targetView.currentAction.requirement, "negate"); assert.ok(targetView.currentAction.deadline > Date.now());
 
-  setHand(first.id, [card("Negation", "privacy-counter")], 4, 4);
-  const withCard = (await state(game.code, firstMember.token)).data;
-  assert.ok(withCard.currentAction.options.some((option) => option.providerId === "negation_card"), JSON.stringify(withCard.currentAction));
-  const declined = await request("decline_response", { code: game.code, token: firstMember.token, preserveResponse: true });
-  assert.equal(declined.status, 200); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(first.id)}`)).map((item) => item.id), ["negation-privacy-counter"]);
-  assert.equal((await state(game.code, secondMember.token)).data.currentAction.actorId, second.id);
-
-  const counterGame = await createHumanGame(); const [counterSource, counterFirst, counterSecond, counterLast] = counterGame.members; const [counterSourcePlayer] = counterGame.room.players;
-  setHand(counterSourcePlayer.id, [card("DrawTwo", "counter-root")], 4, 4); setHand(counterGame.room.players[1].id, [card("Negation", "counter-negation")], 4, 4); setHand(counterGame.room.players[2].id, [], 4, 4); setHand(counterGame.room.players[3].id, [], 4, 4); setTurn(counterGame.code, counterSourcePlayer.seat);
-  await request("play_card", { code: counterGame.code, token: counterSource.token, cardId: "drawtwo-counter-root", preserveResponse: true });
-  await request("decline_response", { code: counterGame.code, token: counterSource.token, preserveResponse: true });
-  const negated = await request("respond", { code: counterGame.code, token: counterFirst.token, providerId: "negation_card", cardId: "negation-counter-negation", preserveResponse: true });
-  assert.equal(negated.status, 200); const counterSecondView = (await state(counterGame.code, counterSecond.token)).data;
-  assert.equal(counterSecondView.currentAction.requirement, "negate"); assert.deepEqual(counterSecondView.currentAction.options, []); assert.deepEqual(counterSecondView.currentAction.legalActions, ["decline_response"]);
-  assert.equal((await request("decline_response", { code: counterGame.code, token: counterSecond.token, preserveResponse: true })).status, 200);
-  assert.equal((await state(counterGame.code, counterLast.token)).data.currentAction.requirement, "negate");
+  const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  pending.deadline = Date.now() - 1;
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(pending))} WHERE code=${quote(game.code)}`);
+  const advanced = await request("advance_timers", { code: game.code, token: sourceMember.token, preserveResponse: true });
+  assert.equal(advanced.status, 200); assert.equal(advanced.data.room.pendingNegation, null); assert.equal(advanced.data.room.phase, "play");
+  assert.equal(advanced.data.room.log.some((entry) => /passes the Negation|Checking|Skipping|timed out/.test(entry)), false);
 });
 
 test("Dying rescue gives every living rescuer a private Peach decision", { timeout: 30_000 }, async () => {
@@ -1107,17 +1123,14 @@ test("Dying rescue gives every living rescuer a private Peach decision", { timeo
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(holder.source.id)}`)).map((item) => item.id), ["peach-peach-holder"]);
 });
 
-test("AOE response windows open before failure for players with no private response", { timeout: 30_000 }, async () => {
+test("AOE Negation skips empty seats before the target response", { timeout: 30_000 }, async () => {
   for (const [kind, required] of [["RainingArrows", "dodge"], ["BarbarianInvasion", "attack"]]) {
-    const game = await createHumanGame(); const [sourceMember, firstMember, secondMember, lastMember] = game.members; const [source, first, second, last] = game.room.players;
+    const game = await createHumanGame(); const [sourceMember, firstMember] = game.members; const [source, first, second, last] = game.room.players;
     const group = card(kind, `privacy-${kind}`); setHand(source.id, [group], 4, 4); setHand(first.id, [], 4, 4); setHand(second.id, [], 4, 4); setHand(last.id, [], 4, 4); setTurn(game.code, source.seat);
-    await request("play_card", { code: game.code, token: sourceMember.token, cardId: group.id, preserveResponse: true });
-    for (const member of [sourceMember, firstMember, secondMember, lastMember]) {
-      const view = (await state(game.code, member.token)).data; assert.equal(view.currentAction.requirement, "negate"); assert.deepEqual(view.currentAction.options, []);
-      assert.equal((await request("decline_response", { code: game.code, token: member.token, preserveResponse: true })).status, 200);
-    }
+    const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: group.id, preserveResponse: true });
+    assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation, null);
     const firstResponse = (await state(game.code, firstMember.token)).data;
-    assert.equal(firstResponse.currentAction.requirement, required); assert.deepEqual(firstResponse.currentAction.options, []); assert.deepEqual(firstResponse.currentAction.legalActions, ["decline_response"]);
+    assert.equal(firstResponse.currentAction.requirement, required); assert.deepEqual(firstResponse.currentAction.options, []); assert.deepEqual(firstResponse.currentAction.legalActions, ["decline_response"]); assert.equal(firstResponse.pendingNegation, null);
   }
 });
 
@@ -1170,8 +1183,11 @@ test("the three faction lords expose their active skills through the semantic pr
   let jiuyuanRescue = null;
   const jiuyuanMemberById = new Map(jiuyuanGame.room.players.map((player, index) => [player.id, jiuyuanMembers[index]]));
   for (let attempt = 0; attempt < jiuyuanMembers.length && !jiuyuanRescue; attempt++) {
-    const view = await state(jiuyuanGame.code, jiuyuanMembers[0].token); const actorId = view.data.currentAction?.actorId; const actorMember = actorId ? jiuyuanMemberById.get(actorId) : null;
-    if (view.data.currentAction?.kind !== "dying" || !actorMember) break;
+    const privateViews = await Promise.all(jiuyuanMembers.map((member) => state(jiuyuanGame.code, member.token)));
+    const activeIndex = privateViews.findIndex((view) => view.data.currentAction?.kind === "dying" && view.data.isMyAction);
+    const view = activeIndex >= 0 ? privateViews[activeIndex] : null;
+    const actorId = view?.data.currentAction?.actorId; const actorMember = actorId ? jiuyuanMemberById.get(actorId) : null;
+    if (!view || !actorMember) break;
     jiuyuanRescue = actorId === wuRescuer.id
       ? await request("give_peach", { code: jiuyuanGame.code, token: actorMember.token, cardId: rescuePeach.id })
       : await request("skip_rescue", { code: jiuyuanGame.code, token: actorMember.token });
@@ -1701,7 +1717,7 @@ test("AOE counter rounds include their own Negation player last and resume the a
   const act = (action, extra = {}) => request(action, { code: room.code, token, ...extra });
   let result = await act("play_card", { cardId: "barbarianinvasion-self-root" });
   assert.equal(result.data.room.actionPlayerId, me.id);
-  assert.equal(result.data.room.responseCountdownVisibleAt, 0, "a human Negation window has no countdown before its presentation is ready");
+  assert.ok(result.data.room.responseCountdownVisibleAt > Date.now(), "an eligible Negation response receives a server-side timeout");
   await act("decline_response");
   result = await act("respond", { cardId: "negation-self-1" });
   assert.equal(result.data.room.actionPlayerId, p2.id); assert.equal(result.data.room.pendingNegation.chainDepth, 1); assert.equal(result.data.room.pendingNegation.negated, true); assert.equal(result.data.room.pendingNegation.latestNegationPlayerId, p1.id);
@@ -1820,7 +1836,7 @@ test("human seat switching preserves private decisions across response and trigg
   assert.equal((await state(game.code, host.token)).data.players.find((player) => player.id === bobPlayer.id).hp, 4);
 });
 
-test("Negation opportunities start at the target, include the user, and reset only after a card", async () => {
+test("Negation opportunities follow reaction order, include the user, and reset only after a card", async () => {
   const game = await createHumanGame(); const players = game.room.players;
   for (const player of players) setHand(player.id, [card("Negation", `${player.seat}-one`), card("Negation", `${player.seat}-two`), card("Attack", `${player.seat}-reply`)], 4, 4);
   setHand(players[0].id, [card("Duel", "ordered"), card("Negation", "0-one"), card("Attack", "0-reply")], 4, 4);
@@ -1828,8 +1844,9 @@ test("Negation opportunities start at the target, include the user, and reset on
   const act = (seat, action, extra = {}) => request(action, { code: game.code, token: game.members[seat].token, ...extra });
   let result = await act(0, "play_card", { cardId: "duel-ordered", targetId: players[2].id });
   for (const seat of [0, 1, 2, 3]) {
-    assert.equal(result.data.room.actionPlayerId, players[seat].id);
-    assert.equal(result.data.room.currentAction.kind, "response");
+    const privateView = (await state(game.code, game.members[seat].token)).data;
+    assert.equal(privateView.actionPlayerId, players[seat].id);
+    assert.equal(privateView.currentAction.kind, "response");
     result = await act(seat, "decline_response");
   }
   assert.equal(result.data.room.pendingNegation, null);
@@ -2328,7 +2345,7 @@ test("host test flow follows the live actor for Something Out of Nothing and rej
   assert.equal(stale.status, 409); assert.equal(stale.data.stale, true); assert.equal(stale.data.room.meId, playerTwo.id); assert.equal(stale.data.room.pendingNegation.actorId, playerTwo.id);
   const passed = await request("decline_response", { code: room.code, token });
   assert.equal(passed.status, 200); assert.equal(passed.data.room.phase, "play"); assert.equal(passed.data.room.pendingNegation, null);
-  assert.ok(passed.data.room.timeline.some((event) => (event.message ?? "").includes("Negation window closes") && (event.message ?? "").includes(responseTarget)), "the completed response window is visible in the event history");
+  assert.ok(passed.data.room.timeline.some((event) => (event.message ?? "").includes("No Negation responses remain") && (event.message ?? "").includes(responseTarget)), "the completed response window is visible in the event history");
 });
 
 test("host test flow Something Out of Nothing resolves without a generic damage response", { timeout: 30_000 }, async () => {
@@ -2368,7 +2385,7 @@ test("Negation cancels a stratagem and a counter-Negation restores it in ordered
   setHand(alicePlayer.id, [card("Attack", "protected"), card("Negation", "cancel")], 4, 4);
   setTurn(game.code, hostPlayer.seat);
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-cancelled", targetId: alicePlayer.id, targetCardIndex: 0 });
-  assert.equal(opened.status, 200); assert.equal(opened.data.room.phase, "response"); assert.equal(opened.data.room.pendingNegation.cardName, "Burning Bridges"); assert.equal(opened.data.room.pendingNegation.responseTarget, "Burning Bridges's effect on Alice"); assert.equal(opened.data.room.actionPlayerId, alicePlayer.id);
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.phase, "response"); assert.equal(opened.data.room.pendingNegation.cardName, "Burning Bridges"); assert.equal(opened.data.room.pendingNegation.responseTarget, "Burning Bridges's effect on Alice"); assert.equal(opened.data.room.actionPlayerId, null);
   assert.equal(opened.data.room.discardTop, null, "Burning Bridges stays outside discard while its Negation decision is open");
   const cancelled = await request("respond", { code: game.code, token: alice.token, cardId: "negation-cancel" });
   assert.equal(cancelled.status, 200); assert.equal(cancelled.data.room.phase, "play"); assert.equal(cancelled.data.room.pendingNegation, null);
@@ -2378,13 +2395,14 @@ test("Negation cancels a stratagem and a counter-Negation restores it in ordered
   setHand(alicePlayer.id, [card("Attack", "removed"), card("Negation", "first")], 4, 4);
   setTurn(game.code, hostPlayer.seat);
   const reopened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-restored", targetId: alicePlayer.id, targetCardIndex: 0 });
-  assert.equal(reopened.data.room.actionPlayerId, hostPlayer.id, "the initial response starts with the source");
+  assert.equal(reopened.data.room.actionPlayerId, hostPlayer.id, "the initial response starts with the source when the source has a Negation capability");
   assert.equal(reopened.data.room.discardTop.id, "negation-cancel", "the previous completed discard remains visible while the new sequence is pending");
-  const firstNegation = await request("decline_response", { code: game.code, token: host.token });
-  assert.equal(firstNegation.data.room.actionPlayerId, alicePlayer.id);
+  await request("decline_response", { code: game.code, token: host.token });
+  assert.equal((await state(game.code, alice.token)).data.actionPlayerId, alicePlayer.id);
   const firstPlayed = await request("respond", { code: game.code, token: alice.token, cardId: "negation-first" });
-  assert.equal(firstPlayed.data.room.actionPlayerId, hostPlayer.id);
-  assert.equal(firstPlayed.data.room.pendingNegation.responseTarget, "Alice's Negation", "the counter window names the latest Negation rather than the root Stratagem");
+  const counterView = (await state(game.code, host.token)).data;
+  assert.equal(counterView.actionPlayerId, hostPlayer.id);
+  assert.equal(counterView.pendingNegation.responseTarget, "Alice's Negation", "the counter window names the latest Negation rather than the root Stratagem");
   assert.equal(firstPlayed.data.room.discardTop.id, "negation-cancel", "neither Burning Bridges nor the first Negation enters discard before the counter decision");
   const restored = await request("respond", { code: game.code, token: host.token, cardId: "negation-counter" });
   assert.equal(restored.status, 200); assert.equal(restored.data.room.phase, "response"); assert.equal(restored.data.room.pendingTargetCard.cardKind, "Dismantle");
@@ -2541,7 +2559,7 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
   assert.ok(hostPlayer && alicePlayer && bobPlayer && carolPlayer);
 
   for (const { kind, requiredKind } of [{ kind: "BarbarianInvasion", requiredKind: "Attack" }, { kind: "RainingArrows", requiredKind: "Dodge" }]) {
-    setHand(hostPlayer.id, [card(kind, "per-target"), card("Negation", `${kind}-counter-option`)], 5, 5);
+    setHand(hostPlayer.id, [card(kind, "per-target")], 5, 5);
     setHand(alicePlayer.id, [card("Negation", `${kind}-alice`)], 4, 4);
     setHand(bobPlayer.id, [card(requiredKind, `${kind}-bob`)], 4, 4);
     setHand(carolPlayer.id, [card(requiredKind, `${kind}-carol`)], 4, 4);
@@ -2549,24 +2567,16 @@ test("Negation cancels an AOE for one target and the card continues in seat orde
     sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
 
     const opened = await request("play_card", { code: game.code, token: host.token, cardId: `${kind.toLowerCase()}-per-target` });
-    assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.effectTargetId, alicePlayer.id); assert.equal(opened.data.room.actionPlayerId, hostPlayer.id);
-    await request("decline_response", { code: game.code, token: host.token });
+    assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.effectTargetId, alicePlayer.id); assert.equal(opened.data.room.actionPlayerId, null);
     assert.deepEqual(discardIds(game.code), [], `${kind} stays staged while Alice decides whether to Negate`);
     const aliceNegates = await request("respond", { code: game.code, token: alice.token, cardId: `negation-${kind}-alice` });
-    assert.equal(aliceNegates.status, 200); assert.equal(aliceNegates.data.room.actionPlayerId, hostPlayer.id, "the source may immediately counter or skip after a target Negates");
-    assert.deepEqual(discardIds(game.code), [], `the ${kind} and first Negation both remain staged`);
-    const counterTimer = await request("start_response_timer", { code: game.code, token: host.token }); assert.ok(counterTimer.data.room.pendingNegation.deadline > Date.now());
-    const repeatedCounterTimer = await request("start_response_timer", { code: game.code, token: host.token }); assert.equal(repeatedCounterTimer.data.room.pendingNegation.deadline, counterTimer.data.room.pendingNegation.deadline, "counter-Negation timer remains idempotent");
-    const protectedAlice = await request("decline_response", { code: game.code, token: host.token });
-    assert.equal(protectedAlice.status, 200); assert.equal(protectedAlice.data.room.pendingNegation.effectTargetId, bobPlayer.id, `${kind} opens Bob's separate Negation opportunity`);
-    const bobWindowClosed = await request("decline_response", { code: game.code, token: host.token });
-    assert.equal(bobWindowClosed.data.room.pendingNegation, null); assert.equal(bobWindowClosed.data.room.currentAction.actorId, bobPlayer.id);
-    assert.equal(protectedAlice.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
+    assert.equal(aliceNegates.status, 200); assert.equal(aliceNegates.data.room.pendingNegation, null, "an empty counter round is skipped without prompting the source");
+    assert.equal(aliceNegates.data.room.currentAction.actorId, bobPlayer.id, `${kind} moves to Bob's target response`);
+    assert.equal(aliceNegates.data.room.pendingGroup.requiredKind, requiredKind);
+    assert.equal(aliceNegates.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
     const bobResponse = await request("respond", { code: game.code, token: bob.token, cardId: `${requiredKind.toLowerCase()}-${kind}-bob` });
-    assert.equal(bobResponse.status, 200); assert.equal(bobResponse.data.room.pendingNegation.effectTargetId, carolPlayer.id, `${kind} continues to Carol after Bob responds`);
-    const carolWindowClosed = await request("decline_response", { code: game.code, token: host.token });
-    assert.equal(carolWindowClosed.data.room.currentAction.actorId, carolPlayer.id);
+    assert.equal(bobResponse.status, 200); assert.equal(bobResponse.data.room.currentAction.actorId, carolPlayer.id, `${kind} continues to Carol after Bob responds`);
     assert.deepEqual(discardIds(game.code), [], `${kind}, Negation, and Bob's response remain staged`);
     const finished = await request("respond", { code: game.code, token: carol.token, cardId: `${requiredKind.toLowerCase()}-${kind}-carol` });
     assert.equal(finished.status, 200); assert.equal(finished.data.room.phase, "play"); assert.equal(finished.data.room.pendingGroup, null);
@@ -3201,7 +3211,7 @@ test("unknown semantic Dodge and Negate providers cross the real API and D1 boun
   sql(`UPDATE players SET hero='test-hero' WHERE id=${quote(alicePlayer.id)}`);
   setHand(hostPlayer.id, [card("Dismantle", "semantic-negate")], 4, 4); setHand(alicePlayer.id, [card("Attack", "semantic-kept")], 4, 4); setTurn(game.code, hostPlayer.seat);
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-semantic-negate", targetId: alicePlayer.id, targetCardIndex: 0 });
-  assert.equal(opened.status, 200); assert.equal(opened.data.room.actionPlayerId, alicePlayer.id); const negateView = await state(game.code, alice.token); assert.ok(negateView.data.currentAction.options.some((option) => option.providerId === "test_semantic_negate"));
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.actionPlayerId, null); const negateView = await state(game.code, alice.token); assert.ok(negateView.data.currentAction.options.some((option) => option.providerId === "test_semantic_negate"));
   const negated = await request("respond", { code: game.code, token: alice.token, providerId: "test_semantic_negate" });
   assert.equal(negated.status, 200); assert.equal(negated.data.room.phase, "response"); assert.equal(negated.data.room.pendingNegation.chainDepth, 1); assert.equal(negated.data.room.pendingNegation.negated, true);
 });

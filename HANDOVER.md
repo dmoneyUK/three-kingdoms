@@ -1,5 +1,30 @@
 # Three Kingdoms project handover
 
+## Negation reaction UX — 2026-09-21
+
+Current Negation scheduling is capability-driven and privacy-safe. A
+Stratagem is held outside settlement while a public waiting state names only
+the effect and target. Every viewer sees the same generic “Waiting for
+Negation” state; the projected actor, private options, and all internal
+eligibility/skip decisions are shown only to the eligible responding seat.
+
+The server walks the established reaction order using the shared semantic
+response-provider registry rather than checking for a physical card by name.
+It silently advances ineligible seats, arms eligible response deadlines so a
+timeout or disconnect becomes an indistinguishable Pass, and emits only the
+generic completion message when no response remains. A played Negation is
+publicly recorded, then opens a new Negation window against that card. The
+normal target Attack/Dodge window is created only after the entire chain
+settles; cancelled effects never create that target response.
+
+Regression coverage includes no responders, target/non-target responders,
+reaction order, hidden skips, chained Negation and counter-Negation,
+capability-only providers, timeout advancement, AOE cancellation, and the
+post-chain target response. No card rules, card data, or gameplay protocol
+were changed; this round updates response scheduling and room/UI projection.
+The current stage remains Stage 6 hero-capability execution active. Recommended
+next work is the next individually verified Standard hero capability.
+
 ## Hero-selection role visibility — 2026-09-21
 
 The hero-selection screen now presents the effective viewer's private role in

@@ -3,7 +3,7 @@ import { getRequestExecutionContext } from "vinext/shims/request-context";
 import { cardDefinition, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import type { Card, EquipmentZone } from "../../../game/model";
 import { canDeclareAttack as canDeclareAttackFor, distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
-import { getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
+import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { responseCostActor, semanticResponseActor } from "../../../game/response-identity";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
@@ -1314,6 +1314,9 @@ function playersInNegationOrder(players: PlayerRow[], startSeat: number) {
 function negationRequirement(pending: NegationContinuation, targetId = pending.effectTargetId) {
   return { kind: "negate" as const, sourceId: pending.latestNegationPlayerId ?? pending.sourceId, targetId };
 }
+function canPlayerRespondWithNegation(player: PlayerRow | null | undefined, continuation: NegationContinuation, players: PlayerRow[]) {
+  return Boolean(player?.alive && canRespondWithNegation(responseContext(player, players), negationRequirement(continuation)));
+}
 async function startJudgementNegation(room: RoomRow, target: PlayerRow, players: PlayerRow[], delayed: Card, deck: Card[], discard: Card[], log: string[]) {
   const responders = playersInNegationOrder(players, target.seat);
   if (!responders.length) return false;
@@ -1462,17 +1465,63 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
 }
 
 async function advanceNegation(roomId: string) {
-  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
-  const stored = parse<Pending | null>(room?.pending_json ?? null);
-  const pending = negationResponse(stored?.kind === "response" ? stored : null);
-  if (!room || room.phase !== "response" || !pending) return;
-  const actor = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.response.actorId).first<PlayerRow>();
-  if (!actor) { await resolveDeferredStratagem(roomId, pending.continuation); return; }
-  // Negation remains an explicit decision for the acting human seat.
+  for (let guard = 0; guard < 64; guard++) {
+    const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+    const stored = parse<Pending | null>(room?.pending_json ?? null);
+    const pending = negationResponse(stored?.kind === "response" ? stored : null);
+    if (!room || room.phase !== "response" || !pending) return;
+    const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
+    const players = rows.results ?? [];
+    const actor = players.find((player) => player.id === pending.response.actorId) ?? null;
+    const eligible = canPlayerRespondWithNegation(actor, pending.continuation, players);
+    const timedOut = Boolean(pending.response.deadline && pending.response.deadline <= Date.now());
+
+    // A response clock is armed server-side for eligible seats. This keeps a
+    // disconnected responder from blocking the chain, while the client still
+    // owns the visible countdown and can submit an ordinary Pass first.
+    if (eligible && !timedOut && !pending.response.deadline) {
+      const armed = { ...pending.response, deadline: nextResponseDeadline(actor, true) } satisfies ResponsePending;
+      const updated = await db().prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?")
+        .bind(serializePending(armed), roomId, room.pending_json).run();
+      if ((updated.meta.changes ?? 0) > 0) continue;
+      continue;
+    }
+    if (eligible && !timedOut) return;
+
+    // Ineligible seats and expired eligible seats advance identically. No
+    // player-specific pass/checking event is written to the public timeline.
+    const nextIds = pending.continuation.remainingIds.filter((id) => players.some((player) => player.id === id && player.alive));
+    const nextActorId = nextIds[0];
+    if (nextActorId) {
+      const nextActor = players.find((player) => player.id === nextActorId) ?? null;
+      const next: ResponsePending = {
+        ...pending.response,
+        actorId: nextActorId,
+        deadline: nextResponseDeadline(nextActor, true),
+        readyAfterEventId: pending.response.readyAfterEventId,
+        continuation: { ...pending.continuation, remainingIds: nextIds.slice(1) },
+      };
+      const updated = await db().prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?")
+        .bind(serializePending(next), roomId, room.pending_json).run();
+      if ((updated.meta.changes ?? 0) > 0) continue;
+      continue;
+    }
+
+    const log = addLog(parse<string[]>(room.log_json, []), `No Negation responses remain for ${pending.continuation.responseTarget ?? pending.continuation.cardName}; resolving the effect.`);
+    const resolved: ResponsePending = { ...pending.response, continuation: { ...pending.continuation, remainingIds: [] } };
+    const claimed = await db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?")
+      .bind(serializePending(resolved), JSON.stringify(log), roomId, room.pending_json).run();
+    if ((claimed.meta.changes ?? 0) > 0) {
+      await resolveDeferredStratagem(roomId, resolved.continuation);
+      return;
+    }
+  }
 }
 
 async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRow[], card: Card, targetName: string, effectTargetId: string, effect: DeferredStratagem, hand: Card[], deck: Card[], discard: Card[], log: string[]): Promise<Card[]> {
-  // Initial opportunities start at the affected target, including the user.
+  // Preserve the established reaction order for this Stratagem family: the
+  // current turn owner/source starts, then the remaining living seats follow.
+  // Ineligible seats are silently removed by advanceNegation().
   const responders = playersInNegationOrder(players, source.seat);
   const holdUntilTargetedEffectFinishes = effect.kind === "dismantle" || effect.kind === "steal";
   const sequenceDiscard = holdUntilTargetedEffectFinishes ? discard.filter((discarded) => discarded.id !== card.id) : discard;
@@ -1612,10 +1661,10 @@ async function applyNegationResponseOutcome(room: RoomRow, pending: { response: 
     : continuation.remainingIds;
   const nextActorId = nextIds[0];
   if (nextActorId) {
-    const next: ResponsePending = { kind: "response", actorId: nextActorId, requirement: negationRequirement(transitioned), reason: success ? `Play Negation on ${actor.name}'s Negation, or pass` : response.reason, deadline: nextResponseDeadline(players.find((player) => player.id === nextActorId)), resolutionId: response.resolutionId, continuation: { ...transitioned, remainingIds: nextIds.slice(1) } };
-    const decision = freshDecision(next, nextLog, `Negation response passes to ${players.find((player) => player.id === nextActorId)?.name ?? "the next player"}.`);
+    const next: ResponsePending = { kind: "response", actorId: nextActorId, requirement: negationRequirement(transitioned), reason: success ? `Play Negation on ${actor.name}'s Negation, or pass` : response.reason, deadline: 0, resolutionId: response.resolutionId, continuation: { ...transitioned, remainingIds: nextIds.slice(1) } };
     await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(serializePending(decision.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(decision.log), room.id).run();
+      .bind(serializePending(next), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(nextLog), room.id).run();
+    await advanceNegation(room.id);
   } else {
     const resolved: ResponsePending = { ...response, continuation: transitioned };
     await db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
@@ -2033,7 +2082,8 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
     await advanceGroup(room.id);
     return;
   }
-  // Each AOE target gets one initial pass beginning at the current turn owner.
+  // Each AOE target gets one initial Negation window beginning at the current
+  // turn owner, preserving the established ordered AOE response sequence.
   const responders = playersInNegationOrder(players, room.turn_seat ?? players.find((player) => player.id === continuation.sourceId)?.seat ?? actor.seat);
   if (!responders.length) {
     writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(response), JSON.stringify(discard), JSON.stringify(log), room.id));
@@ -2285,7 +2335,7 @@ async function roomState(code: string, token?: string) {
   const pendingGroup = responseContinuation?.kind === "group"
     ? { ...responseContinuation, actorId: projectedResponsePending.actorId, reason: projectedResponsePending.reason, deadline: projectedResponsePending.deadline }
     : null;
-  const pendingNegation = responseContinuation?.kind === "negation"
+  const pendingNegationBase = responseContinuation?.kind === "negation"
     ? { kind: "negation" as const, sourceId: responseContinuation.sourceId, actorId: projectedResponsePending.actorId, effectTargetId: responseContinuation.effectTargetId, cardName: responseContinuation.cardName, responseTarget: responseContinuation.responseTarget ?? responseContinuation.cardName, latestNegationPlayerId: responseContinuation.latestNegationPlayerId ?? null, latestNegationCardId: responseContinuation.latestNegationCardId ?? null, chainDepth: responseContinuation.chainDepth ?? 0, negated: responseContinuation.negated, deadline: projectedResponsePending.deadline ?? 0 }
     : null;
   const tokenHash = token ? await hash(token) : "";
@@ -2303,17 +2353,21 @@ async function roomState(code: string, token?: string) {
   const me = isTestController
     ? projectedActionPlayerId && controlledPlayerIds.has(projectedActionPlayerId) ? players.find((player) => player.id === projectedActionPlayerId) ?? controllerFallback : controllerFallback
     : sessionPlayers[0];
+  const negationWaitingForOther = responseContinuation?.kind === "negation" && me?.id !== actualActionPlayerId;
+  const pendingNegation = pendingNegationBase ? { ...pendingNegationBase, actorId: negationWaitingForOther ? null : pendingNegationBase.actorId } : null;
   // Reading a room must not create D1 writes. Presence is refreshed by the
   // throttled heartbeat action below, never by normal room polling.
   const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
   const actionRevision = await actionRevisionFor(room, players, projectedActionPlayerId);
   const responseDeadline = pending && "deadline" in pending ? pending.deadline ?? 0 : 0;
   const responseCountdownVisibleAt = room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS + 5_000 : 0;
-  const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
+  const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : negationWaitingForOther || room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
   const privateActionReason = responsePending?.delegation
     ? delegatedResponseReason(responsePending, me, players)
     : pending?.reason ?? (room.phase?.startsWith("draw") ? "Resolve judgement, then draw two cards" : room.phase?.startsWith("play") ? "Play cards or finish the Play Phase" : room.phase === "discard" ? "Discard down to the hand limit" : room.phase === "resolving" ? "Resolving the submitted action" : room.phase === "finished" ? "Match complete" : "Waiting for the next legal action");
-  const actionReason = room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
+  const actionReason = negationWaitingForOther
+    ? "Waiting for Negation..."
+    : room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
   const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me, players) : undefined) : null;
   const canDeclareAttack = me?.id === actualActionPlayerId && canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, room.phase);
   const playPhaseActions = me?.id === actualActionPlayerId && room.phase?.startsWith("play") ? getPlayPhaseActions(responseContext(me, players)) : [];
@@ -2329,7 +2383,7 @@ async function roomState(code: string, token?: string) {
   const currentAction: CurrentAction = {
     version: 3,
     kind: responsePending ? "response" : triggerPending ? "trigger" : legacyResponsePending ? "none" : pending?.kind ?? (actualActionPlayerId ? "turn" : "none"),
-    actorId: room.status === "heroes" ? projectedActionPlayerId : actualActionPlayerId,
+    actorId: room.status === "heroes" ? projectedActionPlayerId : actionPlayerId,
     deadline: responseDeadline,
     reason: actionReason,
     // This list is calculated only for the current private view. It is never
@@ -3305,6 +3359,7 @@ export async function POST(request: Request) {
   if (action === "advance_timers") {
     await expireDyingRescue(room.id);
     await advanceHarvest(room.id);
+    await advanceNegation(room.id);
     return json({ room: await roomState(code, token) });
   }
 
@@ -3405,13 +3460,11 @@ export async function POST(request: Request) {
       await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(responders.length ? "response" : "resolving", serializePending(readyAfterEventId ? withPresentationBarrier(next, log, readyAfterEventId) : next), JSON.stringify(discard), JSON.stringify(log), room.id)]);
       if (responders.length) await advanceNegation(room.id); else await resolveDeferredStratagem(room.id, next.continuation);
     } else if (continuation.remainingIds[0]) {
-      const presentation = addLogWithId(parse<string[]>(liveRoom.log_json, []), `${me.name} passes the Negation opportunity for ${continuation.responseTarget ?? continuation.cardName}.`);
-      const log = presentation.log;
-      const nextActorId = continuation.remainingIds[0]; const nextActor = await db.prepare("SELECT * FROM players WHERE id = ?").bind(nextActorId).first<PlayerRow>(); const next: ResponsePending = { ...response, actorId: nextActorId, deadline: nextResponseDeadline(nextActor), readyAfterEventId: undefined, continuation: { ...continuation, remainingIds: continuation.remainingIds.slice(1) } };
+      const nextActorId = continuation.remainingIds[0]; const next: ResponsePending = { ...response, actorId: nextActorId, deadline: 0, readyAfterEventId: undefined, continuation: { ...continuation, remainingIds: continuation.remainingIds.slice(1) } };
+      const log = parse<string[]>(liveRoom.log_json, []);
       await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(next), JSON.stringify(log), room.id).run(); await advanceNegation(room.id);
     } else {
-      let log = addLog(parse<string[]>(liveRoom.log_json, []), `${me.name} passes the Negation opportunity for ${continuation.responseTarget ?? continuation.cardName}.`);
-      log = addLog(log, `Negation window closes for ${continuation.responseTarget ?? continuation.cardName}; resolving the effect.`);
+      const log = addLog(parse<string[]>(liveRoom.log_json, []), `No Negation responses remain for ${continuation.responseTarget ?? continuation.cardName}; resolving the effect.`);
       await db.prepare("UPDATE rooms SET phase = 'resolving', log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id).run();
       await resolveDeferredStratagem(room.id, continuation);
     }

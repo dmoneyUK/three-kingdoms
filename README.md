@@ -1,5 +1,27 @@
 # Three Kingdoms
 
+## Negation reaction UX — 2026-09-21
+
+Stratagems now open a public Negation waiting state before their effects
+settle. The public projection identifies only the effect and target, such as
+“Waiting for Negation · Barbarian Invasion's effect on Guan Yu”; it never
+reveals which seats were checked, skipped, or found without a response.
+
+Eligibility is capability-based through the shared semantic response-provider
+registry, so physical Negation cards, legal conversions, and future hero
+providers can use the same window. Ineligible seats are advanced silently;
+eligible seats receive the private Negation/Pass decision, an expired or
+disconnected decision advances as a silent Pass, and a played Negation creates
+the next public card event and counter-window. Only after the chain finishes
+does the normal target Attack/Dodge response open. The same privacy boundary
+applies to ordinary multiplayer and Quick Test/shared-controller views.
+
+Regression coverage now includes empty windows, target and non-target
+capabilities, reaction order, hidden skip state, chained Negation, capability
+providers, timeout advancement, AOE cancellation, and the subsequent target
+response. The current stage remains Stage 6 hero-capability execution active;
+the next milestone is the next individually verified Standard hero capability.
+
 ## Hero-selection role visibility — 2026-09-21
 
 The Standard hero-selection screen now clearly shows the effective viewer's
@@ -793,11 +815,11 @@ The official catalogue and `docs/OFFICIAL_CARD_REFERENCE.md` take precedence ove
 
 ### Current stage and next milestone
 
-The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, and keeps Quick Test at three HP with named mounts in the deck. Attack, AOE, Negation, and Dying response windows are now entitled by public game state alone: a player with zero private options still receives the same semantic decision and can explicitly skip, while another player's private options remain projected only to that player. The Attack card artwork is now part of the shared presentation layer; the next milestone remains the next individually verified Standard hero capability. Attack cards, Duel, AOE, Lightning, and forced damage converge on authoritative negative-HP and ordered Dying rules. After an unrescued defeat, outcome is calculated before exactly one legal continuation: finish, resume the interrupted effect, continue the AOE sequence, or advance to the next living turn owner. The dead saved-room trigger adapters and provider-specific Green Dragon Blade, Rock Cleaving Axe, and Frost Sword continuation branches have now been removed; `TriggerPending` is now the only trigger decision in the persisted `Pending` model, Attack responses now resolve directly from canonical `ResponsePending` plus `AttackContinuation`, Duel responses now resolve directly from `ResponsePending` plus `DuelContinuation`, `advanceGroup()` now reads canonical `ResponsePending` plus `GroupContinuation`, Dying Group resume storage now persists canonical `ResponsePending` as well, and Negation runtime now uses canonical `ResponsePending` plus `NegationContinuation`. Response architecture cleanup — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 delayed Stratagem/Judgement lifecycle — COMPLETE. Stage 6 hero abilities — ACTIVE.
+The shared turn and response engine now uses effective horse-adjusted distance consistently in both UI and API, and keeps Quick Test at three HP with named mounts in the deck. Attack, AOE, Negation, and Dying response windows preserve private capability projections while exposing only generic public waiting state. The Attack card artwork is now part of the shared presentation layer; the next milestone remains the next individually verified Standard hero capability. Attack cards, Duel, AOE, Lightning, and forced damage converge on authoritative negative-HP and ordered Dying rules. After an unrescued defeat, outcome is calculated before exactly one legal continuation: finish, resume the interrupted effect, continue the AOE sequence, or advance to the next living turn owner. The dead saved-room trigger adapters and provider-specific Green Dragon Blade, Rock Cleaving Axe, and Frost Sword continuation branches have now been removed; `TriggerPending` is now the only trigger decision in the persisted `Pending` model, Attack responses now resolve directly from canonical `ResponsePending` plus `AttackContinuation`, Duel responses now resolve directly from `ResponsePending` plus `DuelContinuation`, `advanceGroup()` now reads canonical `ResponsePending` plus `GroupContinuation`, Dying Group resume storage now persists canonical `ResponsePending` as well, and Negation runtime now uses capability-driven canonical `ResponsePending` plus `NegationContinuation`. Response architecture cleanup — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 delayed Stratagem/Judgement lifecycle — COMPLETE. Stage 6 hero abilities — ACTIVE.
 
 ## Roadmap
 
-Negation now resolves each target separately: its initial window starts at the target and includes the Stratagem user. Every entitled living player receives the opportunity regardless of private Negation ownership; passing is final within that opportunity, and playing Negation opens a new counter window after its player. Once everyone passes, parity determines whether the normal semantic Dodge/Attack/Serpent Spear response opens, with a fresh timer; the AOE decision itself remains present even when its private option list is empty. Attack, group, Negation, and Dying decisions now preserve zero-option private projections instead of auto-resolving or silently skipping a seat. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture, Dying/multi-damage, death/continuation/match outcome, and delayed Stratagem/Judgement lifecycle are complete. Stage 5 is complete; Stage 6 hero abilities is active.
+Negation now resolves each target separately in the established reaction order. The public window opens before the Stratagem settles, while the server silently skips seats without a capability and privately prompts only eligible providers. A played Negation becomes a public centre reveal and starts a fresh counter-window; only after the chain ends does the normal semantic Dodge/Attack/Serpent Spear response open. Public projections never expose skipped seats or another player's private options, and expired eligible windows advance as silent Passes. Eight Trigrams can now provide an optional Judgement-based Dodge for both physical and Serpent Spear-formed Attacks. The reusable `attack_targeted` event now supports target-owned decisions and Yin-Yang Swords before Armor/Dodge resolution. Semantic response/trigger architecture, Dying/multi-damage, death/continuation/match outcome, and delayed Stratagem/Judgement lifecycle are complete. Stage 5 is complete; Stage 6 hero abilities is active.
 
 Equipment presentation now uses a single centre-to-slot animation: the rack copy is hidden until the public reveal finishes, and no numbered sequence copy is retained. This covers both the optimistic player action and incoming events for other viewers. Eight Trigrams Formation now uses the same equipment rack and presentation path. Equipment and Judgement Zone cards retain an info button that opens their existing card explanation dialog. Informational gameplay messages appear only in the foldable Game Messages window, which retains the latest 10 public events in chronological order and does not hold cards, decisions, turns, timers, or later animations. Passive equipment prevention notices use the same non-blocking informational metadata as optional reactions, with `effectNotice` preserved through room normalization for the on-table “Effect Triggered” presentation. The canonical equipment card event supplies rank, suit, and name; the redundant semantic equipment history event is removed.
 
