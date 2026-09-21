@@ -1,5 +1,19 @@
 # Three Kingdoms
 
+## Public Judgement reveal timing — 2026-09-21
+
+Public Judgement reveals now stay in the centre presentation for four seconds,
+about two seconds longer than ordinary card reveals. The server marks delayed,
+Luoshen, response, Guicai replacement, and Ganglie Judgement reveals with
+shared presentation metadata; the client uses that marker for both the public
+timer and flight animation. Fanjian and ordinary card reveals remain at the
+normal two-second duration.
+
+The current stage remains Stage 6 hero-capability execution complete for the
+implemented Standard heroes. The next milestone is the next individually
+verified Standard hero capability, preserving the canonical semantic response
+protocol and Quick Test privacy.
+
 ## Cao Cao Hujia delegation correction — 2026-09-21
 
 Cao Cao's Entourage / Hujia now asks every living Wei character in action

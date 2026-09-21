@@ -23,7 +23,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge"; effectNotice?: boolean };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge"; effectNotice?: boolean; judgement?: boolean };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -350,7 +350,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}) };
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
@@ -702,7 +702,7 @@ async function beginDelayedJudgement(room: RoomRow, target: PlayerRow, players: 
     await db().batch([...writes, db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
     return [];
   }
-  const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal");
+  const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, { judgement: true });
   const judgement: JudgementContinuation = { targetId: target.id, purpose: judgementPurposeForDelayed(delayed) ?? "overindulgence", revealedCard: draw.card, revealedEventId: presentation.eventId, resume: { kind: "delayed", targetId: target.id, delayedCard: delayed, remainingDelayedCards: remaining, resumePhase } };
   return beginJudgementResolution(room, target, players, judgement, deck, discard, presentation.log, writes);
 }
@@ -1283,7 +1283,7 @@ async function resolveTurnStartLuoshen(room: RoomRow, player: PlayerRow) {
   }
 
   const revealed = draw.card;
-  const presentation = addCardEventWithId(log, player.name, revealed, player.name, "reveal");
+  const presentation = addCardEventWithId(log, player.name, revealed, player.name, "reveal", true, { judgement: true });
   const judgement: JudgementContinuation = { targetId: player.id, purpose: "luoshen", revealedCard: revealed, revealedEventId: presentation.eventId, resume: { kind: "luoshen", playerId: player.id } };
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
   await beginJudgementResolution(room, player, rows.results ?? [], judgement, deck, discard, presentation.log);
@@ -1411,7 +1411,7 @@ async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: Play
     if (negation) return applyNegationResponseOutcome(room, negation, actor, players, outcome);
     throw new Error("Response Judgement continuation is no longer valid");
   }
-  const presentation = addCardEventWithId(log, actor.name, draw.card, actor.name, "reveal");
+  const presentation = addCardEventWithId(log, actor.name, draw.card, actor.name, "reveal", true, { judgement: true });
   const judgement: JudgementContinuation = {
     targetId: actor.id,
     purpose: resolution.purpose,
@@ -2542,7 +2542,7 @@ export async function POST(request: Request) {
       const discard = parse<Card[]>(liveRoom.discard_json, []);
       if (replacement) {
         const nextHand = hand.filter((card) => card.id !== replacement.id);
-        const replacementPresentation = addCardEventWithId(parse<string[]>(liveRoom.log_json, []), actor.name, replacement, target.name, "reveal");
+        const replacementPresentation = addCardEventWithId(parse<string[]>(liveRoom.log_json, []), actor.name, replacement, target.name, "reveal", true, { judgement: true });
         const log = addLog(replacementPresentation.log, `${judgementActorName(actor)} replaces the Judgement card with ${replacement.rank}${replacement.suit} using Guicai.`);
         const updatedPlayers = players.map((player) => player.id === actor.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
         await db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), actor.id).run();
@@ -2715,7 +2715,7 @@ export async function POST(request: Request) {
           return json({ room: await roomState(code, token) });
         }
         log = addTriggeredEffectNotice(log, target.name, triggerExecution?.presentation?.label ?? "Stauchness").log;
-        const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal");
+        const presentation = addCardEventWithId(log, target.name, draw.card, target.name, "reveal", true, { judgement: true });
         const judgement: JudgementContinuation = {
           targetId: target.id,
           purpose: "ganglie",

@@ -1,5 +1,18 @@
 # Three Kingdoms project handover
 
+## Public Judgement reveal timing — 2026-09-21
+
+Judgement reveal events now carry shared `judgement` presentation metadata
+through the server timeline and room-safety projection. The browser keeps
+these public centre cards visible for 4 seconds total, approximately 2 seconds
+longer than ordinary 2-second card reveals, and keeps the CSS flight animation
+in sync. This covers delayed Judgements, Luoshen, response Judgements, Guicai
+replacement cards, and Ganglie; Fanjian's ordinary public reveal is unchanged.
+
+No gameplay protocol, Judgement resolution, privacy boundary, or presentation
+barrier semantics changed. Recommended next work remains the next individually
+verified Standard hero capability.
+
 ## Zhou Yu Yingzi correction — 2026-09-21
 
 Yingzi is now an optional `draw_phase` capability rather than an automatic
