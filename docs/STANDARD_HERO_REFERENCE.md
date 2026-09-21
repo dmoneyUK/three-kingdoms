@@ -64,33 +64,33 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Wei | `cao-cao` | Cao Cao | 曹操 | Male | 4 | Treachery<br>Entourage | Present |
 | Wei | `simayi` | Sima Yi | 司马懿 | Male | 3 | Retaliation<br>Necromancy | Present |
 | Wei | `xiahou-dun` | Xiahou Dun | 夏侯惇 | Male | 4 | Stauchness | Present |
-| Wei | `zhang-liao` | Zhang Liao | 张辽 | Male | 4 | Assault / Tuxi 突袭 | Present |
-| Wei | `xu-chu` | Xu Zhu | 许褚 | Male | 4 | Bared Bodied / Luoyi 裸衣 | Present |
-| Wei | `guo-jia` | Guo Jia | 郭嘉 | Male | 3 | Jealousy of God / Tiandu 天妒<br>Legacy / Yiji 遗计 | Present |
+| Wei | `zhang-liao` | Zhang Liao | 张辽 | Male | 4 | Assault | Present |
+| Wei | `xu-chu` | Xu Zhu | 许褚 | Male | 4 | Bared Bodied | Present |
+| Wei | `guo-jia` | Guo Jia | 郭嘉 | Male | 3 | Jealousy of God<br>Legacy | Present |
 | Wei | `zhen-ji` | Zhen Ji | 甄姬 | Female | 3 | Empress Dowager<br>Godess of Luo River | Present |
-| Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Dauntless / Xiaoguo 骁果 | **Present / metadata-only** |
+| Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Dauntless | **Present / metadata-only** |
 | Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Benevolence<br>Influencing | Present |
 | Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | God of War | Present |
 | Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Battle Cry | Present |
-| Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Stargazing / Guanxing 观星<br>Empty Fortress Strategem / Kongcheng 空城 | **Present / metadata-only** |
+| Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Stargazing<br>Empty Fortress Strategem | **Present / metadata-only** |
 | Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Braveheart | Present |
-| Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Horse Riding / Mashu 马术<br>Cavalry / Tieji 铁骑 | Present |
-| Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Cultivation / Jizhi 集智<br>Wizardry / Qicai 奇才 | Present |
-| Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Divine Wisdom / Shenzhi 神智<br>Prudence / Shushen 淑慎 | **Present / metadata-only** |
+| Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Horse Riding<br>Cavalry | Present |
+| Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Cultivation<br>Wizardry | Present |
+| Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Divine Wisdom<br>Prudence | **Present / metadata-only** |
 | Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Equilibrium<br>Deliverance | Present |
-| Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Ambushment / Qixi 奇袭 | Present |
-| Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Composure / Keji 克己 | Present |
-| Wu | `huang-gai` | Huang Gai | 黄盖 | Male | 4 | Self Sacrifice / Kurou 苦肉 | Present |
-| Wu | `zhou-yu` | Zhou Yu | 周瑜 | Male | 3 | Heroic / Yingzi 英姿<br>Sowing Distrust / Fanjian 反间 | Present |
-| Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Captivating / Guose 国色<br>Deflection / Liuli 流离 | Present |
-| Wu | `lu-xun` | Lu Xun | 陆逊 | Male | 3 | Modesty / Qianxun 谦逊<br>Second Wind / Lianying 连营 | Present |
-| Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Betrothment / Jieyin 结姻<br>Daredevil / Xiaoji 枭姬 | Present |
-| Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid / Jijiu 急救<br>Prodigal Healer / Qingnang 青囊 | Present |
-| Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Unrivaled / Wushuang 无双 | Present |
-| Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust / Lijian 离间<br>Beauty Outshining the Moon / Biyue 闭月 | Present |
-| Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Triumphant / Shiyong 恃勇 | Present |
-| Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Militia / Yicong 义从 | **Present / metadata-only** |
-| Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Axe of Insanity / Kuangfu 狂斧 | **Present / metadata-only** |
+| Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Ambushment | Present |
+| Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Composure | Present |
+| Wu | `huang-gai` | Huang Gai | 黄盖 | Male | 4 | Self Sacrifice | Present |
+| Wu | `zhou-yu` | Zhou Yu | 周瑜 | Male | 3 | Heroic<br>Sowing Distrust | Present |
+| Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Captivating<br>Deflection | Present |
+| Wu | `lu-xun` | Lu Xun | 陆逊 | Male | 3 | Modesty<br>Second Wind | Present |
+| Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Betrothment<br>Daredevil | Present |
+| Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid<br>Prodigal Healer | Present |
+| Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Unrivaled | Present |
+| Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust<br>Beauty Outshining the Moon | Present |
+| Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Triumphant | Present |
+| Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Militia | **Present / metadata-only** |
+| Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Axe of Insanity | **Present / metadata-only** |
 
 ## Detailed hero data
 
@@ -102,25 +102,25 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 
 - **Runtime ID:** `cao-cao`
 - **Likely engine shape:** damage-resolved trigger; delegated Dodge response.
-- **Current implementation:** Jianxiong is a generic `damage_suffered` trigger that returns the exact damage-causing physical card(s) to Cao Cao before discard; Hujia is a delegated semantic Dodge provider that offers living Wei characters in action order. Both use `currentAction` and the canonical `respond`/`trigger` protocol.
+- **Current implementation:** Treachery is a generic `damage_suffered` trigger that returns the exact damage-causing physical card(s) to Cao Cao before discard; Entourage is a delegated semantic Dodge provider that offers living Wei characters in action order. Both use `currentAction` and the canonical `respond`/`trigger` protocol.
 
 ### Sima Yi (司马懿)
 
 - **Runtime ID:** `simayi`
-- **Verified official Standard card:** The current English General Card catalogue card is Wei 002 Sima Yi, at <https://wtkgames.com/generalCard/> with the product filter set to Standard. Its printed skill names are **Retaliation** and **Necromancy**; this project retains the established internal/Chinese identifiers `Fankui` and `Guicai` for compatibility and uses the current English names in the player-facing reference.
+- **Verified official Standard card:** The current English General Card catalogue card is Wei 002 Sima Yi, at <https://wtkgames.com/generalCard/> with the product filter set to Standard. Its printed skill names are **Retaliation** and **Necromancy**; these English names are used throughout this reference.
 - **Verified Retaliation wording:** “After you take damage, you may obtain 1 card from the character that inflicted the damage.” This is a post-damage timing window: it is one optional trigger for the damage event, not one trigger per damage point. The official rulebook defines an injury from one damage event as “One Injury” regardless of the amount inflicted; the card does not use the separate “1 Damage” wording that can repeat per point.
 - **Verified card zones:** The rulebook's Appendix defines obtaining a card from another character's **Playing Area** as a random card from that character's Hand, or the chosen card when designated from that character's Equipment Zone or Judgement Zone. Retaliation therefore exposes exactly the damage source's hidden-hand keys plus its public Equipment/Judgement cards. It does not expose card identities from the source's hand before resolution, and it does not reach the deck, discard pile, or cards outside that source's Playing Area.
 - **Verified unavailable-source boundary:** If the source has no eligible Playing Area card, Retaliation is not offered. If the source is no longer alive/available when the decision resolves, the optional reaction cannot be completed and the stored damage continuation resumes. Defeat discards the source's Hand, Equipment Zone, and Judgement Zone before the source is unavailable, so no source card remains eligible in that case.
 - **Sources:** current official Standard General Card catalogue <https://wtkgames.com/generalCard/>; current official Standard card API <https://api.wtkgames.com/api/hero?product=1>; official Standard rulebook linked from <https://wtkgames.com/product/Standard/> (Appendix: “Obtain a card from someone's Playing Area”, and the damage timing definitions).
 - **Likely engine shape:** reusable `damage_suffered` trigger with source-owned target-card selection; shared Judgement replacement.
-- **Current implementation:** Guicai is implemented through the canonical `judgement_revealed` trigger and persisted Judgement continuation. Retaliation is implemented as a `damage_suffered` `TriggeredEffect`, using the generic target-card picker and semantic gain outcome. The shared event reopens unresolved providers and resumes its stored continuation exactly once; hidden hand choices remain key-based until authoritative resolution.
+- **Current implementation:** Necromancy is implemented through the canonical `judgement_revealed` trigger and persisted Judgement continuation. Retaliation is implemented as a `damage_suffered` `TriggeredEffect`, using the generic target-card picker and semantic gain outcome. The shared event reopens unresolved providers and resumes its stored continuation exactly once; hidden hand choices remain key-based until authoritative resolution.
 
 ### Xiahou Dun (夏侯惇)
 
 - **Runtime ID:** `xiahou-dun`
 - **Verified timing boundary:** The official Standard rulebook places Judgement phase before the normal turn phases and says that a character whose HP is reduced to 0 enters the immediate defeat/Dying process. The implementation therefore offers this post-damage reaction only after normal damage has been applied and Xiahou Dun remains available; lethal damage enters the existing Dying flow first. The source choice's 1 damage uses the normal damage/Dying primitives.
 - **Likely engine shape:** reusable post-damage `damage_suffered` trigger + shared Judgement continuation + generic mandatory source choice.
-- **Current implementation:** Implemented as the reusable `damage_suffered` semantic trigger provider, using the shared Judgement continuation, Sima Yi's normal Guicai replacement window, a generic mandatory source choice, ordinary discard/damage primitives, and the existing Dying flow. Normal Attack, Group/AOE, failed Eight Trigrams, Duel, Rock Cleaving Axe, and sourced Stauchness damage now share the post-damage transition; source-less Lightning does not create a source. No Xiahou-specific protocol action or client rule branch was added.
+- **Current implementation:** Implemented as the reusable `damage_suffered` semantic trigger provider, using the shared Judgement continuation, Sima Yi's normal Necromancy replacement window, a generic mandatory source choice, ordinary discard/damage primitives, and the existing Dying flow. Normal Attack, Group/AOE, failed Eight Trigrams, Duel, Rock Cleaving Axe, and sourced Stauchness damage now share the post-damage transition; source-less Lightning does not create a source. No Xiahou-specific protocol action or client rule branch was added.
 - **Sources:** official Standard product/card catalogue <https://www.wtkgames.com/product/Standard/>; official Standard rulebook linked by the product entry.
 
 ### Zhang Liao (张辽)
@@ -151,7 +151,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 
 - **Runtime ID:** `zhen-ji`
 - **Likely engine shape:** semantic Dodge provider; start-of-turn repeated Judgement.
-- **Current implementation:** Qingguo and Luoshen are implemented. Luoshen uses the canonical repeated Judgement flow; Qingguo behavior is unchanged by the Guicai work.
+- **Current implementation:** Empress Dowager and Godess of Luo River are implemented. Godess of Luo River uses the canonical repeated Judgement flow; Empress Dowager behavior is unchanged by the Necromancy work.
 
 ### Yue Jin (乐进)
 
@@ -173,9 +173,9 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 
 - **Runtime ID:** `guan-yu`
 - **Verified official source:** current Guan Yu card in the WTK Standard-filtered official General Card catalogue, <https://wtkgames.com/generalCard/> (card image identifies Guan Yu as SHU 002).
-- **Printed skill name:** **God of War** (the runtime capability retains `Wusheng` as its stable internal ID).
+- **Printed skill name:** **God of War**.
 - **Verified rule text:** “You may use or play a Red suited card as an [Attack].”
-- **Implementation interpretation:** Wusheng supplies a semantic Attack from one red-suited card in Guan Yu's hand. “Use or play” covers active Play Phase use and every existing semantic Attack requirement; an equipped card is not eligible because it is no longer legally supplied from the hand zone. The physical source card remains the consumed/presented card, with its original suit and ID. The acting seat receives a private `cardId -> canPlayAs: "attack"` Play Phase projection; the browser does not reimplement eligibility.
+- **Implementation interpretation:** God of War supplies a semantic Attack from one red-suited card in Guan Yu's hand. “Use or play” covers active Play Phase use and every existing semantic Attack requirement; an equipped card is not eligible because it is no longer legally supplied from the hand zone. The physical source card remains the consumed/presented card, with its original suit and ID. The acting seat receives a private `cardId -> canPlayAs: "attack"` Play Phase projection; the browser does not reimplement eligibility.
 - **Presentation boundary:** Virtual Attack events carry the narrow `playedAs: "attack"` marker while retaining the physical Card.kind, ID, suit and rank. This marker is used for history wording and to prevent equipment-flight or Judgement settlement from inferring the physical card's ordinary effect.
 - **Likely engine shape:** virtual Attack provider/use.
 - **Current implementation:** Implemented as the explicit `guan_yu_red_card_attack` semantic Attack provider, including live hand-card revalidation and Play Phase virtual Attack use. `playPhaseUse: "attack"` is explicit: an Attack requirement provider is not automatically an active Play Phase source. No Guan-Yu-specific pending type or central resolver branch exists. Borrowed Sword uses the same canonical Dodge discovery as ordinary Attacks after Nio Shield.
@@ -236,7 +236,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 
 - **Runtime ID:** `gan-ning`
 - **Verified official Standard card:** **WU 002**, printed title **The Flamboyant Ranger**.
-- **Printed skill name:** **Ambushment** (Qixi / 奇袭 in the established runtime metadata).
+- **Printed skill name:** **Ambushment**.
 - **Verified rule text:** “You may use a Black suited card as a [Burning Bridges].”
 - **Likely engine shape:** virtual Burning Bridges provider/use.
 - **Current implementation:** Active Play Phase capability. A black hand card opens the normal Burning Bridges Negation window and then the shared target-card picker.
@@ -254,7 +254,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Runtime ID:** `huang-gai`
 - **Verified official Standard card:** **WU 004**, printed title **The Dedicated Patriot**.
 - **Likely engine shape:** Play Phase active; HP loss + draw.
-- **Current implementation:** Active Play Phase capability. Kurou loses 1 HP, draws 2 cards, and uses the shared Dying/rescue flow if the loss reaches zero HP.
+- **Current implementation:** Active Play Phase capability. Self Sacrifice loses 1 HP, draws 2 cards, and uses the shared Dying/rescue flow if the loss reaches zero HP.
 
 ### Zhou Yu (周瑜)
 
@@ -262,7 +262,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **WU 005**, printed title **Commander-in-Chief**.
 - **Implementation interpretation:** Heroic is optional. For Sowing Distrust, the target picks the suit first, then receives a random/hidden card from Zhou Yu's hand and reveals it; the target keeps that card regardless of whether damage is dealt.
 - **Likely engine shape:** Draw Phase modifier; once-per-Play-Phase active with private suit choice, concealed hand transfer, reveal and conditional damage.
-- **Current implementation:** Yingzi opens an optional private Draw Phase decision after required Judgements; accepting draws three normal Draw Phase cards and declining draws two. Fanjian transfers a concealed card, projects a mandatory private suit choice to the target, and deals 1 damage on a wrong guess; verify the exact choice-before-draw ordering and keep-card settlement against this printed text.
+- **Current implementation:** Heroic opens an optional private Draw Phase decision after required Judgements; accepting draws three normal Draw Phase cards and declining draws two. Sowing Distrust transfers a concealed card, projects a mandatory private suit choice to the target, and deals 1 damage on a wrong guess; verify the exact choice-before-draw ordering and keep-card settlement against this printed text.
 
 ### Da Qiao (大乔)
 
@@ -317,7 +317,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **QUN 019**, printed title **The Haughty Gladiator**.
 - **Implementation interpretation:** This is a benefit offered to the character that dealt the qualifying damage: after a Red-suited [Attack] damages Hua Xiong, that source may choose either to recover 1 HP or draw 1 card.
 - **Likely engine shape:** post-damage passive trigger owned by Hua Xiong but resolved as an optional choice for the damage source.
-- **Current implementation:** Metadata only. The previous placeholder warning about older Shiyong wording is superseded by this verified current card text.
+- **Current implementation:** Metadata only. The previous placeholder warning about older versions of the skill wording is superseded by this verified current card text.
 
 ### Gongsun Zan (公孙瓒)
 
