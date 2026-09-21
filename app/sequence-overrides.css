@@ -450,3 +450,56 @@
   outline: 4px solid #fff6c7;
   outline-offset: 4px;
 }
+
+/* Keep the private opening reveal the same physical size and card rhythm as the hand. */
+.private-draw-row {
+  gap: 0;
+}
+
+.private-draw-row .played-card {
+  flex: 0 0 108px;
+  width: 108px;
+  height: 154px;
+  margin-left: -13px;
+  padding: 12px 9px;
+}
+
+.private-draw-row .played-card:first-child {
+  margin-left: 0;
+}
+
+.private-draw-row .played-card > i {
+  left: 8px;
+  top: 7px;
+  font-size: 15px;
+}
+
+.private-draw-row .played-card > i small {
+  font-size: 13px;
+}
+
+.private-draw-row .played-card .card-name-mark {
+  max-width: 100%;
+  font-size: clamp(17px, 1.6vw, 24px);
+}
+
+.private-draw-row .played-card.drawtwo .card-name-mark {
+  font-size: 15px;
+}
+
+.private-draw-row .played-card.dismantle .card-name-mark {
+  font-size: 17px;
+}
+
+.private-draw-row .played-card > strong {
+  font-size: 8px;
+  margin-top: 4px;
+}
+
+@media (max-width: 800px) {
+  .private-draw-row .played-card {
+    flex-basis: 92px;
+    width: 92px;
+    height: 140px;
+  }
+}

@@ -1,5 +1,15 @@
 # Three Kingdoms
 
+## Private draw card sizing — 2026-09-21
+
+The private opening-hand reveal now uses the same responsive card dimensions,
+typography, padding, and overlapping layout as the normal drawing hand. Four
+cards remain visible together on narrow screens without the centre cards being
+stretched or oversized.
+
+The current stage remains Stage 6 hero-capability execution complete. The next
+milestone is the next individually verified Standard hero capability, while
+preserving the canonical semantic response protocol and Quick Test privacy.
 ## Clear selection states — 2026-09-21
 
 Selected cards, heroes, player targets, equipment costs, and response-picker

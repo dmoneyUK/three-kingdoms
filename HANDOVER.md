@@ -1,5 +1,16 @@
 # Three Kingdoms project handover
 
+## Private draw card sizing — 2026-09-21
+
+The private opening draw overlay now matches the normal hand cards at each
+responsive breakpoint: 108×154 on larger screens and 92×140 on narrow screens.
+It also uses the hand overlap spacing, padding, corner mark scale, card-name
+scale, and category label scale so all four initial cards fit and read as a
+drawn hand rather than a stretched presentation card.
+
+No gameplay, privacy, timing, or semantic protocol behavior changed. The
+recommended next work remains the next individually verified Standard hero
+capability.
 ## Clear selection states — 2026-09-21
 
 The shared selection presentation now makes selected cards, hero choices,
