@@ -69,6 +69,20 @@ function parse<T>(value: string | null, fallback: T): T {
   try { return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
 }
 
+function currentHeroOptions(value: string | null): Hero[] {
+  const persisted = parse<unknown[]>(value, []);
+  if (!Array.isArray(persisted)) return [];
+  return persisted.flatMap((candidate) => {
+    const id = typeof candidate === "string"
+      ? candidate
+      : candidate && typeof candidate === "object" && "id" in candidate && typeof candidate.id === "string"
+        ? candidate.id
+        : null;
+    const hero = id ? STANDARD_HEROES.find((definition) => definition.id === id) : null;
+    return hero ? [hero] : [];
+  });
+}
+
 function generalSelectionOrder(players: PlayerRow[]) {
   return [...players].sort((left, right) => {
     if (left.role === "Lord" && right.role !== "Lord") return -1;
@@ -2172,7 +2186,7 @@ async function roomState(code: string, token?: string) {
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
-    myHeroOptions: room.status === "heroes" && me && !me.hero && (me.role === "Lord" || Boolean(players.find((player) => player.role === "Lord")?.hero)) && me.hero_options_json ? JSON.parse(me.hero_options_json) : [],
+    myHeroOptions: room.status === "heroes" && me && !me.hero && (me.role === "Lord" || Boolean(players.find((player) => player.role === "Lord")?.hero)) ? currentHeroOptions(me.hero_options_json) : [],
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
     timeline: gameTimeline(rawLog, me?.id), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && me?.id === actualActionPlayerId,
@@ -2990,7 +3004,7 @@ export async function POST(request: Request) {
     const selector = nextGeneralSelector(livePlayers);
     if (!selector || selector.id !== me.id) return json({ error: "Wait for the current seat to choose its general." }, 409);
     const heroId = String(body.heroId ?? "");
-    const options = me.hero_options_json ? JSON.parse(me.hero_options_json) as Hero[] : [];
+    const options = currentHeroOptions(me.hero_options_json);
     const hero = options.find((item) => item.id === heroId);
     if (!hero) return json({ error: "That hero is not one of your choices." }, 400);
     const taken = await db.prepare("SELECT 1 FROM players WHERE room_id = ? AND hero = ?").bind(room.id, hero.id).first();

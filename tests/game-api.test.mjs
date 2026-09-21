@@ -137,6 +137,15 @@ test("Quick Game uses one controller across four seats with a normal shuffled op
   assert.equal(created.data.room.myHeroOptions.length, 5);
   assert.equal(created.data.room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false);
   assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
+  const lordId = created.data.room.meId;
+  const storedOptions = query(`SELECT hero_options_json FROM players WHERE id=${quote(lordId)}`);
+  const staleOptions = JSON.parse(storedOptions).map((hero) => ({ ...hero, name: "Old name", skills: [{ name: "Old skill", description: "Old description" }] }));
+  sql(`UPDATE players SET hero_options_json=${quote(JSON.stringify(staleOptions))} WHERE id=${quote(lordId)}`);
+  const refreshedOptions = (await state(created.data.room.code, created.data.token)).data.myHeroOptions;
+  const refreshedCao = refreshedOptions.find((hero) => hero.id === "cao-cao");
+  assert.deepEqual(refreshedCao?.skills.map((skill) => skill.name), ["Treachery", "Entourage"], "persisted hero candidates rehydrate current skill names");
+  assert.match(refreshedCao?.skills[1].description ?? "", /characters from the Wei kingdom/);
+  sql(`UPDATE players SET hero_options_json=${quote(storedOptions)} WHERE id=${quote(lordId)}`);
   assert.equal(created.data.room.players.filter((player) => player.role === "Lord").length, 1);
   assert.equal(created.data.room.players.filter((player) => player.role === null).length, 3);
   let room = created.data.room;

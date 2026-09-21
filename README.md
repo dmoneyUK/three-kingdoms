@@ -14,10 +14,13 @@ preserving the canonical semantic response protocol and Quick Test privacy.
 ## Standard hero card metadata — 2026-09-21
 
 All 30 selectable Standard hero cards now use the printed skill names and
-descriptions recorded in `docs/STANDARD_HERO_REFERENCE.md`. This reconciles
-the previously coarse or placeholder cards, including the official printed
-names for Xu Zhu, Lv Meng, and Lv Bu. This is a presentation and metadata
-update only; unimplemented hero mechanics remain clearly documented as such.
+descriptions recorded in `docs/STANDARD_HERO_REFERENCE.md`. Candidate data is
+also rehydrated from the canonical hero IDs when rooms are read, so existing
+hero-selection rooms do not keep stale persisted names or descriptions. This
+reconciles the previously coarse or placeholder cards, including the official
+printed names for Xu Zhu, Lv Meng, and Lv Bu. This is a presentation and
+metadata update only; unimplemented hero mechanics remain clearly documented
+as such.
 
 The current stage remains Stage 6 hero-capability execution complete. The next
 milestone is the next individually verified Standard hero capability, while

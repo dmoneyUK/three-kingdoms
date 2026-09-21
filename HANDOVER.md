@@ -14,10 +14,13 @@ changed.
 
 `STANDARD_HEROES` now reconciles every one of the 30 selectable Standard
 generals to the printed skill names and descriptions in
-`docs/STANDARD_HERO_REFERENCE.md`. Placeholder summaries were removed, and
-the player-facing names now include the printed Xu Zhu, Lv Meng, and Lv Bu
-spellings. No new hero capability was implemented or enabled by this change;
-the server rules and semantic protocol are unchanged.
+`docs/STANDARD_HERO_REFERENCE.md`. Hero candidates are rehydrated by canonical
+ID during room projection and selection validation, so rooms created before
+the metadata update also receive the current names and descriptions.
+Placeholder summaries were removed, and the player-facing names now include
+the printed Xu Zhu, Lv Meng, and Lv Bu spellings. No new hero capability was
+implemented or enabled by this change; the server rules and semantic protocol
+are unchanged.
 
 The render regression now checks the complete Standard skill-name roster and
 rejects placeholder descriptions. Recommended next work remains the next
