@@ -1,6 +1,6 @@
 # WTK Standard Hero Reference and Roster Reconciliation
 
-> Status: **authoritative roster reference for this project** as reconciled on 2026-09-16; additional official Wei General card text verified from owner-supplied screenshots on 2026-09-21.
+> Status: **authoritative roster reference for this project** as reconciled on 2026-09-16; printed skill text for all 30 Standard Generals has now been transcribed from owner-supplied official WTK card screenshots through 2026-09-21.
 > This file records the current WTK **Standard** General roster shown in the official WTK General Card catalogue and the implementation confidence boundary for hero rules.
 
 ## Source and verification policy
@@ -10,16 +10,17 @@
 - **Runtime reconciliation baseline:** `main` at `6b7ba951eb2125c511315515327ad1dbbc4790b9`, before this round's changes.
 - The Standard-filtered official catalogue is authoritative for **which generals belong in new Standard games**, even when older Sanguosha/WTK material originally classified a general as SP, Kingdom Wars, or another pack.
 - **Roster membership is owner-verified** against the supplied official Standard-filtered WTK General catalogue. Faction, name, gender, and HP are retained only where supported by the official card/source or explicitly treated as implementation metadata pending individual verification.
-- Skill descriptions below are **implementation-oriented paraphrases**, not quotations. They are not authoritative official rules until that specific General card has been checked.
+- The **Supplied printed English metadata** table below is a direct transcription of owner-supplied official WTK Standard card screenshots. Detailed hero sections may also include implementation-oriented interpretations; where an interpretation differs from the printed text, the printed card text wins.
 - **Before implementing a hero**, re-open that hero's current official WTK Standard card/rulebook entry and confirm exact timing, card zones, optional/locked wording, target restrictions, and revised skill text. This is especially important for heroes that have had multiple published revisions.
 - Do not ship official card artwork from the catalogue without permission.
 
 ## Supplied printed English metadata
 
-The following names and descriptions are transcribed from the Standard
-hero-card screenshots supplied through 2026-09-21. Runtime provider
-IDs remain stable for the already implemented skills; the printed names are the
-player-facing names used by hero selection and the private information dialog.
+The following printed English names and skill descriptions are transcribed from
+owner-supplied screenshots of the official WTK Standard General cards through
+2026-09-21. This now covers the full 30-General Standard roster. Runtime provider
+IDs remain stable for already implemented skills; the printed names below are the
+authoritative player-facing skill names for this project.
 
 | General | Printed skill text |
 | --- | --- |
@@ -29,13 +30,30 @@ player-facing names used by hero selection and the private information dialog.
 | Zhang Liao | **Assault:** Draw Phase, you may choose not to draw cards from the deck, choose up to 2 characters and obtain 1 card from each their hand instead. |
 | Xu Zhu | **Bared Bodied:** Draw Phase, you may choose draw 1 lesser card. If you do so, your [Attack] or [Duel] in this turn will deal 1 additional damage. |
 | Guo Jia | **Jealousy of God:** After your Judgment card takes effect, you may obtain it. **Legacy:** After you take 1 damage, you may look at the top 2 cards of the deck, then give them away to any character(s) including yourself. |
+| Zhen Ji | **Empress Dowager:** You may use or play a Black suited card as a [Dodge]. **Godess of Luo River:** Preparation Phase, you may enter Judgement phase, if the Judgement card belongs to Black suited, you obtain it. You may repeat this procedure as long as your Judgement card is Black suited. |
+| Yue Jin | **Dauntless:** At the end of other characters' turn, you may discard 1 basic card to let target character discard 1 equipment card, otherwise you deal 1 damage to that character. |
 | Liu Bei | **Benevolence:** Play Phase, you may give away any number of your hand cards to other characters, and recover 1 HP if 2 or more cards are given away. **Influencing:** Lord: You may ask characters from the Shu kingdom to use or play an [Attack] on your behalf, provided they are willing to do so (you are deemed as the source of damage). |
 | Guan Yu | **God of War:** You may use or play a Red suited card as an [Attack]. |
 | Zhang Fei | **Battle Cry:** Passive: You may use any number of [Attack] cards. |
+| Zhuge Liang | **Stargazing:** Preparation Phase, you may look at X cards from the top of deck (X = number of characters in the game, limited to 5), then place any number of cards in any order at the top of deck, and place the remaining cards at the bottom of the deck. **Empty Fortress Strategem:** Passive: You cannot be targeted by [Attack] or [Duel] if you have no cards in hand. |
 | Zhao Yun | **Braveheart:** You may use or play [Attack] as [Dodge] or [Dodge] as [Attack]. |
-| Zhen Ji | **Empress Dowager:** You may use or play a Black suited card as a [Dodge]. **Godess of Luo River:** Preparation Phase, you may enter Judgement phase, if the Judgement card belongs to Black suited, you obtain it. You may repeat this procedure as long as your Judgement card is Black suited. |
-| Yue Jin | **Dauntless:** At the end of other characters' turn, you may discard 1 basic card to let target character discard 1 equipment card, otherwise you deal 1 damage to that character. |
+| Ma Chao | **Horse Riding:** Passive: You subtract 1 from the distance between you and the other characters. **Cavalry:** You may enter Judgement Phase when you use [Attack] on a target. If the Judgement card belongs to Red suited, the target is unable to use [Dodge]. |
+| Huang Yueying | **Cultivation:** You may draw 1 card after using a Stratagem card. **Wizardry:** Passive: Your Stratagem cards have unlimited range. |
+| Lady Gan | **Divine Wisdom:** At the start of your turn, you may discard all your hand cards, you recover 1 HP if the number of discarded cards is more than your HP. **Prudence:** When you recover 1 HP, you may choose another character to draw 1 card, draw 2 cards if that character does not have any hand cards at that point. |
 | Sun Quan | **Equilibrium:** Limited to once per Play Phase, you may discard any number of cards and draw an equal number of cards to replace them. **Deliverance:** Lord, Passive: You recover 1 additional HP when a [Peach] is used on you by other characters from the Wu Kingdom. |
+| Gan Ning | **Ambushment:** You may use a Black suited card as a [Burning Bridges]. |
+| Lv Meng | **Composure:** You may skip the Discard Phase if you did not use or play [Attack] during your turn. |
+| Huang Gai | **Self Sacrifice:** Play Phase, you may choose to lose 1 HP in order to draw 2 cards. |
+| Zhou Yu | **Heroic:** Draw Phase, you may draw an additional card. **Sowing Distrust:** Limited to once per Play Phase, you may choose a character to pick a suit, then that character draws 1 card from your hand and reveals it. Targeted character takes 1 damage if the card revealed is different suit from the picked one (target will keeps the card from your hand regardless of the result). |
+| Da Qiao | **Captivating:** You may use a ♦ suit card as an [Overindulgence]. **Deflection:** When you become the target of [Attack], you may discard 1 card to transfer this [Attack] to another character within your attack range (except the character who played that [Attack]). |
+| Lu Xun | **Modesty:** Passive: You cannot be targeted by [Steal] and [Overindulgence]. **Second Wind:** You may draw 1 card when you lose your last hand card. |
+| Sun Shangxiang | **Betrothment:** Limited to once per Play Phase, you may choose an injured male character, then discard 2 cards from your hand to let both of you and the chosen male character recover 1 HP. **Daredevil:** You may draw 2 cards when you lose an equipped equipment. |
+| Hua Tuo | **First Aid:** You may use a Red suited card as a [Peach] when it is not your turn. **Prodigal Healer:** Limited to once per Play Phase, you may discard 1 card from your hand to let an injured character recover 1 HP. |
+| Lv Bu | **Unrivaled:** Passive: Other characters have to play 2 [Dodge] cards to offset your [Attack], any character engaged in a [Duel] with you must play 2 [Attack] cards each time required. |
+| Diao Chan | **Lust:** Limited to once per Play Phase, you may discard 1 card to select 2 male characters to [Duel] each other (①you decide who will play [Attack] first; ②this cannot be dispelled by [Negation]). **Beauty Outshining the Moon:** Final Phase, you may draw 1 card. |
+| Hua Xiong | **Triumphant:** Passive: When a character deals damage to you with a Red suited [Attack], that character may recover 1 HP or draw 1 card. |
+| Gongsun Zan | **Militia:** Passive: You subtract 1 from the distance between you and the other characters when your HP is greater than 2; other characters add 1 to the distance between you and them when your HP is less/equal than 2. |
+| Pan Feng | **Axe of Insanity:** Passive: Limited to once per Play Phase, after your [Attack] deals damage to another character: if that character's HP is lesser than you, you draw 2 cards; if that character's HP is greater/equal than you, you lose 1 HP. |
 
 ## Reconciliation result
 
@@ -62,8 +80,12 @@ These entries may remain **legacy-readable** for old saved rooms, but they must 
 - `pangde` — Pang De
 - `yu-jin` — Yu Jin
 
-### Verified Standard generals missing from runtime
+### Verified Standard generals present as metadata-only
 
+These Standard entries are selectable in the current authoritative registry but
+their hero mechanics are not yet implemented:
+
+- `yue-jin` — Yue Jin (乐进, Wei, male, 4 HP)
 - `zhuge-liang` — Zhuge Liang (诸葛亮, Shu, male, 3 HP)
 - `lady-gan` — Lady Gan (甘夫人, Shu, female, 3 HP)
 - `gongsun-zan` — Gongsun Zan (公孙瓒, Qun, male, 4 HP)
@@ -88,25 +110,25 @@ The official catalogue uses **Qun**. The current runtime uses `Neutral` for the 
 | Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Benevolence<br>Influencing | Present |
 | Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | God of War | Present |
 | Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Battle Cry | Present |
-| Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Guanxing 观星<br>Kongcheng 空城 | **Present / metadata-only** |
+| Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Stargazing / Guanxing 观星<br>Empty Fortress Strategem / Kongcheng 空城 | **Present / metadata-only** |
 | Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Braveheart | Present |
-| Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Mashu 马术<br>Tieji 铁骑 | Present |
-| Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Jizhi 集智<br>Qicai 奇才 | Present |
-| Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Shushen 淑慎<br>Shenzhi 神智 | **Present / metadata-only** |
+| Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Horse Riding / Mashu 马术<br>Cavalry / Tieji 铁骑 | Present |
+| Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Cultivation / Jizhi 集智<br>Wizardry / Qicai 奇才 | Present |
+| Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Divine Wisdom / Shenzhi 神智<br>Prudence / Shushen 淑慎 | **Present / metadata-only** |
 | Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Equilibrium<br>Deliverance | Present |
-| Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Qixi 奇袭 | Present |
-| Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Keji 克己 | Present |
-| Wu | `huang-gai` | Huang Gai | 黄盖 | Male | 4 | Kurou 苦肉 | Present |
-| Wu | `zhou-yu` | Zhou Yu | 周瑜 | Male | 3 | Yingzi 英姿<br>Fanjian 反间 | Present |
-| Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Guose 国色<br>Liuli 流离 | Present |
-| Wu | `lu-xun` | Lu Xun | 陆逊 | Male | 3 | Qianxun 谦逊<br>Lianying 连营 | Present |
-| Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Jieyin 结姻<br>Xiaoji 枭姬 | Present |
-| Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | Qingnang 青囊<br>Jijiu 急救 | Present |
-| Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Wushuang 无双 | Present |
-| Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lijian 离间<br>Biyue 闭月 | Present |
-| Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Shiyong 恃勇 | Present |
-| Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Yicong 义从 | **Present / metadata-only** |
-| Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Kuangfu 狂斧 | **Present / metadata-only** |
+| Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Ambushment / Qixi 奇袭 | Present |
+| Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Composure / Keji 克己 | Present |
+| Wu | `huang-gai` | Huang Gai | 黄盖 | Male | 4 | Self Sacrifice / Kurou 苦肉 | Present |
+| Wu | `zhou-yu` | Zhou Yu | 周瑜 | Male | 3 | Heroic / Yingzi 英姿<br>Sowing Distrust / Fanjian 反间 | Present |
+| Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Captivating / Guose 国色<br>Deflection / Liuli 流离 | Present |
+| Wu | `lu-xun` | Lu Xun | 陆逊 | Male | 3 | Modesty / Qianxun 谦逊<br>Second Wind / Lianying 连营 | Present |
+| Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Betrothment / Jieyin 结姻<br>Daredevil / Xiaoji 枭姬 | Present |
+| Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid / Jijiu 急救<br>Prodigal Healer / Qingnang 青囊 | Present |
+| Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Unrivaled / Wushuang 无双 | Present |
+| Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust / Lijian 离间<br>Beauty Outshining the Moon / Biyue 闭月 | Present |
+| Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Triumphant / Shiyong 恃勇 | Present |
+| Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Militia / Yicong 义从 | **Present / metadata-only** |
+| Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Axe of Insanity / Kuangfu 狂斧 | **Present / metadata-only** |
 
 ## Detailed hero data
 
@@ -289,12 +311,14 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Faction:** Shu
 - **Gender:** Male
 - **Max HP:** 3
-- **Runtime roster status:** Missing
+- **Runtime roster status:** Present / metadata-only
+- **Verified official Standard card:** **SHU 004**, printed title **The Prime Minister who is Past his Prime**.
 - **Skills:**
-  - **Guanxing 观星:** During the Preparation/Start Phase, Zhuge Liang may view the top X deck cards (X is the number of living characters, capped at 5) and place any number on top and the rest on the bottom in any order.
-  - **Kongcheng 空城:** Locked. While Zhuge Liang has no hand cards, Attack and Duel cannot effectively target him / have no effect on him under the Standard wording.
-- **Likely engine shape:** turn-start deck manipulation; passive target/effect modifier.
-- **Current implementation:** Missing from runtime metadata and hero selection.
+  - **Stargazing / Guanxing 观星:** “Preparation Phase, you may look at X cards from the top of deck (X = number of characters in the game, limited to 5), then place any number of cards in any order at the top of deck, and place the remaining cards at the bottom of the deck.”
+  - **Empty Fortress Strategem / Kongcheng 空城:** “Passive: You cannot be targeted by [Attack] or [Duel] if you have no cards in hand.”
+- **Implementation interpretation:** Stargazing uses the number of characters in the game, capped at 5, not the number of currently living characters unless the official rules separately define otherwise. Empty Fortress Strategem is a targeting prohibition: while Zhuge Liang has zero hand cards, [Attack] and [Duel] cannot select him as a target.
+- **Likely engine shape:** Preparation Phase deck-ordering decision; passive target-legality modifier.
+- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skills are not implemented.
 
 ### Zhao Yun (赵云)
 
@@ -315,10 +339,12 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 4
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **SHU 006**, printed title **A Thousand Calvaries**.
 - **Skills:**
-  - **Mashu 马术:** Locked. Distance from Ma Chao to other characters is reduced by 1.
-  - **Tieji 铁骑:** When Ma Chao uses Attack on a target, he may make a Judgement; on the qualifying result, the target cannot provide Dodge for that Attack under the Standard card wording.
-- **Likely engine shape:** distance modifier; attack-targeted Judgement modifier.
+  - **Horse Riding / Mashu 马术:** “Passive: You subtract 1 from the distance between you and the other characters.”
+  - **Cavalry / Tieji 铁骑:** “You may enter Judgement Phase when you use [Attack] on a target. If the Judgement card belongs to Red suited, the target is unable to use [Dodge].”
+- **Implementation interpretation:** Horse Riding modifies distance from Ma Chao to other characters by -1. Cavalry is optional for an [Attack] target; a Red Judgement result prevents that target from using [Dodge] against the relevant [Attack].
+- **Likely engine shape:** outbound distance modifier; attack-targeted optional Judgement and Dodge prohibition.
 - **Current implementation:** Metadata only.
 
 ### Huang Yueying (黄月英)
@@ -328,11 +354,13 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Female
 - **Max HP:** 3
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **SHU 007**, printed title **Veiled Heroine in Seclusion**.
 - **Skills:**
-  - **Jizhi 集智:** After Huang Yueying uses a non-delayed Stratagem, she may draw 1 card.
-  - **Qicai 奇才:** Locked/passive. Huang Yueying ignores the normal distance restriction when using Stratagem cards under the classic Standard wording.
-- **Likely engine shape:** card-used trigger; Stratagem range modifier.
-- **Current implementation:** Metadata only. Current runtime ability string is too coarse and should not be treated as authoritative rule text.
+  - **Cultivation / Jizhi 集智:** “You may draw 1 card after using a Stratagem card.”
+  - **Wizardry / Qicai 奇才:** “Passive: Your Stratagem cards have unlimited range.”
+- **Implementation interpretation:** Cultivation applies after Huang Yueying uses a Stratagem card as printed; do not silently narrow it to only non-delayed Stratagems. Wizardry removes range restrictions from her Stratagem cards.
+- **Likely engine shape:** Stratagem-used trigger; Stratagem range modifier.
+- **Current implementation:** Metadata only. Current runtime ability string is too coarse and should be reconciled to the verified text.
 
 ### Lady Gan (甘夫人)
 
@@ -340,12 +368,14 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Faction:** Shu
 - **Gender:** Female
 - **Max HP:** 3
-- **Runtime roster status:** Missing
+- **Runtime roster status:** Present / metadata-only
+- **Verified official Standard card:** **SHU 016**, printed title **Empress of Zhao Lie**.
 - **Skills:**
-  - **Shushen 淑慎:** After Lady Gan recovers 1 HP, she may let another character draw a card.
-  - **Shenzhi 神智:** During the Preparation/Start Phase, Lady Gan may discard all hand cards. If the number discarded is at least her current HP, she recovers 1 HP.
-- **Likely engine shape:** recovery trigger; turn-start active/recovery.
-- **Current implementation:** Missing from runtime metadata and hero selection.
+  - **Divine Wisdom / Shenzhi 神智:** “At the start of your turn, you may discard all your hand cards, you recover 1 HP if the number of discarded cards is more than your HP.”
+  - **Prudence / Shushen 淑慎:** “When you recover 1 HP, you may choose another character to draw 1 card, draw 2 cards if that character does not have any hand cards at that point.”
+- **Implementation interpretation:** Divine Wisdom uses a strict “more than your HP” comparison after discarding all hand cards. Prudence targets another character; the recipient draws 2 rather than 1 if they have no hand cards at that point.
+- **Likely engine shape:** start-of-turn all-hand discard/recovery; per-1-HP recovery trigger with target draw modifier.
+- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skills are not implemented.
 
 ## Wu
 
@@ -369,9 +399,10 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 4
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WU 002**, printed title **The Flamboyant Ranger**.
 - **Skills:**
-  - **Qixi 奇袭:** A black card may be used as Burning Bridges (Dismantle).
-- **Likely engine shape:** virtual Stratagem provider/use.
+  - **Ambushment / Qixi 奇袭:** “You may use a Black suited card as a [Burning Bridges].”
+- **Likely engine shape:** virtual Burning Bridges provider/use.
 - **Current implementation:** Active Play Phase capability. A black hand card opens the normal Burning Bridges Negation window and then the shared target-card picker.
 
 ### Lu Meng (吕蒙)
@@ -381,10 +412,12 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 4
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WU 003**, printed name **Lv Meng**, printed title **Infiltration Incognito**.
 - **Skills:**
-  - **Keji 克己:** If Lu Meng did not use/play an Attack during his Play Phase, he may skip the normal Discard Phase / hand-limit discard.
-- **Likely engine shape:** turn-history condition; Discard Phase modifier.
-- **Current implementation:** Finishing Play directly skips an over-limit Discard Phase when Lü Meng has not used an Attack; an Attack leaves the normal `play-struck` path.
+  - **Composure / Keji 克己:** “You may skip the Discard Phase if you did not use or play [Attack] during your turn.”
+- **Implementation interpretation:** The condition covers the whole turn, not only the Play Phase.
+- **Likely engine shape:** turn-history condition; optional Discard Phase skip.
+- **Current implementation:** Finishing Play directly skips an over-limit Discard Phase when Lü Meng has not used an Attack; implementation should be checked against the verified “during your turn” wording, including Attacks used or played outside the Play Phase.
 
 ### Huang Gai (黄盖)
 
@@ -393,8 +426,9 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 4
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WU 004**, printed title **The Dedicated Patriot**.
 - **Skills:**
-  - **Kurou 苦肉:** During the Play Phase, Huang Gai may lose 1 HP to draw 2 cards.
+  - **Self Sacrifice / Kurou 苦肉:** “Play Phase, you may choose to lose 1 HP in order to draw 2 cards.”
 - **Likely engine shape:** Play Phase active; HP loss + draw.
 - **Current implementation:** Active Play Phase capability. Kurou loses 1 HP, draws 2 cards, and uses the shared Dying/rescue flow if the loss reaches zero HP.
 
@@ -405,11 +439,13 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 3
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WU 005**, printed title **Commander-in-Chief**.
 - **Skills:**
-  - **Yingzi 英姿:** During the Draw Phase, Zhou Yu may draw one additional card.
-  - **Fanjian 反间:** Once during the Play Phase, Zhou Yu challenges another character with a concealed/guessed hand-card suit interaction; a failed suit guess causes 1 damage. Exact reveal/obtain ordering must follow the official card text.
-- **Likely engine shape:** Draw Phase modifier; Play Phase active / hidden-information choice.
-- **Current implementation:** Yingzi opens an optional private Draw Phase decision after required Judgements; accepting draws three normal Draw Phase cards and declining draws two. It does not modify unrelated draws. Fanjian transfers a concealed card, projects a mandatory private suit choice to the target, and deals 1 damage on a wrong guess.
+  - **Heroic / Yingzi 英姿:** “Draw Phase, you may draw an additional card.”
+  - **Sowing Distrust / Fanjian 反间:** “Limited to once per Play Phase, you may choose a character to pick a suit, then that character draws 1 card from your hand and reveals it. Targeted character takes 1 damage if the card revealed is different suit from the picked one (target will keeps the card from your hand regardless of the result).”
+- **Implementation interpretation:** Heroic is optional. For Sowing Distrust, the target picks the suit first, then receives a random/hidden card from Zhou Yu's hand and reveals it; the target keeps that card regardless of whether damage is dealt.
+- **Likely engine shape:** Draw Phase modifier; once-per-Play-Phase active with private suit choice, concealed hand transfer, reveal and conditional damage.
+- **Current implementation:** Yingzi opens an optional private Draw Phase decision after required Judgements; accepting draws three normal Draw Phase cards and declining draws two. Fanjian transfers a concealed card, projects a mandatory private suit choice to the target, and deals 1 damage on a wrong guess; verify the exact choice-before-draw ordering and keep-card settlement against this printed text.
 
 ### Da Qiao (大乔)
 
@@ -418,10 +454,12 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Female
 - **Max HP:** 3
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WU 006**, printed title **Reserved Beauty**.
 - **Skills:**
-  - **Guose 国色:** A Diamond card may be used as Overindulgence.
-  - **Liuli 流离:** When Da Qiao becomes a target of an Attack, she may discard a card to redirect that Attack to another legal character within her attack range, excluding prohibited targets under the card wording.
-- **Likely engine shape:** virtual delayed Stratagem; attack-targeted redirect trigger.
+  - **Captivating / Guose 国色:** “You may use a ♦ suit card as an [Overindulgence].”
+  - **Deflection / Liuli 流离:** “When you become the target of [Attack], you may discard 1 card to transfer this [Attack] to another character within your attack range (except the character who played that [Attack]).”
+- **Implementation interpretation:** Captivating is specifically Diamond-suited. Deflection requires a one-card discard and a new target within Da Qiao's attack range; the original attacker cannot be selected.
+- **Likely engine shape:** virtual delayed Stratagem provider/use; attack-targeted redirect trigger with cost and target-legality check.
 - **Current implementation:** Metadata only.
 
 ### Lu Xun (陆逊)
@@ -431,10 +469,11 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 3
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WU 007**, printed title **The Scholarly Tactician**.
 - **Skills:**
-  - **Qianxun 谦逊:** Locked. Steal and Overindulgence cannot effectively target Lu Xun under the Standard wording.
-  - **Lianying 连营:** When Lu Xun loses his last hand card, he may draw 1 card.
-- **Likely engine shape:** passive target modifier; hand-empty trigger.
+  - **Modesty / Qianxun 谦逊:** “Passive: You cannot be targeted by [Steal] and [Overindulgence].”
+  - **Second Wind / Lianying 连营:** “You may draw 1 card when you lose your last hand card.”
+- **Likely engine shape:** passive target-legality modifier; hand-empty trigger.
 - **Current implementation:** Metadata only.
 
 ### Sun Shangxiang (孙尚香)
@@ -444,11 +483,13 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Female
 - **Max HP:** 3
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WU 008**, printed title **The Enchanting Princess**.
 - **Skills:**
-  - **Jieyin 结姻:** Once during the Play Phase, Sun Shangxiang may discard two hand cards and choose a wounded male character; she and that character each recover 1 HP.
-  - **Xiaoji 枭姬:** When Equipment cards leave Sun Shangxiang's Equipment Zone, she may draw cards according to the skill, classically 2 cards for each qualifying loss event/card.
-- **Likely engine shape:** Play Phase active / dual recovery; equipment-lost trigger.
-- **Current implementation:** Metadata only. Current runtime ability string is incomplete and should not be treated as full rule text.
+  - **Betrothment / Jieyin 结姻:** “Limited to once per Play Phase, you may choose an injured male character, then discard 2 cards from your hand to let both of you and the chosen male character recover 1 HP.”
+  - **Daredevil / Xiaoji 枭姬:** “You may draw 2 cards when you lose an equipped equipment.”
+- **Implementation interpretation:** Betrothment requires an injured male target and exactly two hand cards as the cost; both Sun Shangxiang and the target recover 1 HP. Daredevil grants 2 cards when an equipped Equipment is lost.
+- **Likely engine shape:** once-per-Play-Phase active / dual recovery; equipment-lost trigger.
+- **Current implementation:** Metadata only. Current runtime ability string is incomplete and should be reconciled to the verified text.
 
 ## Qun
 
@@ -459,11 +500,12 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 3
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **QUN 001**, printed title **Divine Physician**.
 - **Skills:**
-  - **Qingnang 青囊:** Once during the Play Phase, Hua Tuo may discard one hand card to let a wounded character recover 1 HP.
-  - **Jijiu 急救:** Outside Hua Tuo's own turn, a red card may be used or played as Peach.
-- **Likely engine shape:** Play Phase active / recovery; semantic Peach provider outside own turn.
-- **Current implementation:** Metadata only. Current runtime ability summary is not precise enough to be authoritative.
+  - **First Aid / Jijiu 急救:** “You may use a Red suited card as a [Peach] when it is not your turn.”
+  - **Prodigal Healer / Qingnang 青囊:** “Limited to once per Play Phase, you may discard 1 card from your hand to let an injured character recover 1 HP.”
+- **Likely engine shape:** semantic Peach provider outside own turn; once-per-Play-Phase recovery active.
+- **Current implementation:** Metadata only. Current runtime ability summary should be reconciled to the verified printed names and exact zone/timing wording.
 
 ### Lu Bu (吕布)
 
@@ -472,8 +514,9 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 4
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **QUN 002**, printed name **Lv Bu**, printed title **Embodiment of Force**.
 - **Skills:**
-  - **Wushuang 无双:** Locked. A target of Lu Bu's Attack must provide two Dodges to stop it; in Duel, Lu Bu's opponent must provide two Attacks for each required response.
+  - **Unrivaled / Wushuang 无双:** “Passive: Other characters have to play 2 [Dodge] cards to offset your [Attack], any character engaged in a [Duel] with you must play 2 [Attack] cards each time required.”
 - **Likely engine shape:** response multiplicity modifier for Attack/Duel.
 - **Current implementation:** Attack response requirements use two Dodges against Lü Bu; Duel response requirements use two Attacks for every non-Lü Bu duelist in the Duel.
 
@@ -484,10 +527,12 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Female
 - **Max HP:** 3
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **QUN 003**, printed title **The Seductive Dancer**.
 - **Skills:**
-  - **Lijian 离间:** Once during the Play Phase, Diao Chan may discard a card and choose two male characters, causing one to Duel the other according to the skill's target ordering.
-  - **Biyue 闭月:** During the Ending Phase, Diao Chan may draw 1 card.
-- **Likely engine shape:** Play Phase active / generated Duel; Ending Phase trigger.
+  - **Lust / Lijian 离间:** “Limited to once per Play Phase, you may discard 1 card to select 2 male characters to [Duel] each other (①you decide who will play [Attack] first; ②this cannot be dispelled by [Negation]).”
+  - **Beauty Outshining the Moon / Biyue 闭月:** “Final Phase, you may draw 1 card.”
+- **Implementation interpretation:** Lust is a generated Duel-like settlement that explicitly cannot be dispelled by Negation, and Diao Chan chooses which selected male character provides the first [Attack]. Beauty Outshining the Moon is optional in the Final Phase.
+- **Likely engine shape:** once-per-Play-Phase active / generated Duel with custom first responder and no Negation window; Final Phase draw trigger.
 - **Current implementation:** Metadata only.
 
 ### Hua Xiong (华雄)
@@ -497,10 +542,12 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 6
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **QUN 019**, printed title **The Haughty Gladiator**.
 - **Skills:**
-  - **Shiyong 恃勇:** Locked. Hua Xiong has a drawback when damaged by a qualifying red Attack (and, in older wording, Wine-enhanced Attack); the exact current WTK Standard consequence must be verified from the individual card before implementation.
-- **Likely engine shape:** damage-resolved locked drawback.
-- **Current implementation:** Metadata only. Existing runtime summary says red Attack damage can reward the attacker; do not implement until the current official card wording is rechecked.
+  - **Triumphant / Shiyong 恃勇:** “Passive: When a character deals damage to you with a Red suited [Attack], that character may recover 1 HP or draw 1 card.”
+- **Implementation interpretation:** This is a benefit offered to the character that dealt the qualifying damage: after a Red-suited [Attack] damages Hua Xiong, that source may choose either to recover 1 HP or draw 1 card.
+- **Likely engine shape:** post-damage passive trigger owned by Hua Xiong but resolved as an optional choice for the damage source.
+- **Current implementation:** Metadata only. The previous placeholder warning about older Shiyong wording is superseded by this verified current card text.
 
 ### Gongsun Zan (公孙瓒)
 
@@ -508,11 +555,13 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Faction:** Qun
 - **Gender:** Male
 - **Max HP:** 4
-- **Runtime roster status:** Missing
+- **Runtime roster status:** Present / metadata-only
+- **Verified official Standard card:** **QUN 026**, printed title **The General on the White Stallion**.
 - **Skills:**
-  - **Yicong 义从:** Locked. While HP is greater than 2, distance from Gongsun Zan to other characters is reduced by 1; while HP is 2 or less, distance from other characters to Gongsun Zan is increased by 1.
+  - **Militia / Yicong 义从:** “Passive: You subtract 1 from the distance between you and the other characters when your HP is greater than 2; other characters add 1 to the distance between you and them when your HP is less/equal than 2.”
+- **Implementation interpretation:** At HP > 2, only Gongsun Zan's outbound distance is reduced by 1. At HP <= 2, only other characters' distance to Gongsun Zan is increased by 1.
 - **Likely engine shape:** bidirectional HP-dependent distance modifier.
-- **Current implementation:** Missing from runtime metadata and hero selection.
+- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skill is not implemented.
 
 ### Pan Feng (潘凤)
 
@@ -520,11 +569,13 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Faction:** Qun
 - **Gender:** Male
 - **Max HP:** 4
-- **Runtime roster status:** Missing
+- **Runtime roster status:** Present / metadata-only
+- **Verified official Standard card:** **QUN 017**, printed title **General of the Coalition**.
 - **Skills:**
-  - **Kuangfu 狂斧:** Attack-related Equipment interaction. The historical/common wording lets Pan Feng manipulate an Equipment card after his Attack connects; the exact current WTK Standard card wording must be verified before implementation because Pan Feng has had multiple published revisions.
-- **Likely engine shape:** Attack-targeted / Attack-damage trigger with Equipment movement/discard.
-- **Current implementation:** Missing from runtime metadata and hero selection; exact current skill revision must be card-verified before coding.
+  - **Axe of Insanity / Kuangfu 狂斧:** “Passive: Limited to once per Play Phase, after your [Attack] deals damage to another character: if that character's HP is lesser than you, you draw 2 cards; if that character's HP is greater/equal than you, you lose 1 HP.”
+- **Implementation interpretation:** The once-per-Play-Phase trigger evaluates HP after the [Attack] has dealt damage. If the damaged character's current HP is lower than Pan Feng's current HP, Pan Feng draws 2 cards; otherwise Pan Feng loses 1 HP.
+- **Likely engine shape:** once-per-Play-Phase post-Attack-damage trigger with post-damage HP comparison and draw/HP-loss branch.
+- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skill is not implemented.
 
 ## Legacy/non-Standard runtime entries
 
@@ -545,25 +596,52 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 5. **Exact official skill text wins.** The summaries in this file identify intended mechanics, but any discrepancy found on the current official Standard card/rulebook must be resolved in favor of the official source before implementation.
 6. **Quick Test remains human-style.** A new hero skill must preserve acting-seat perspective, private hand/provider projection, stale-action rejection and normal multiplayer ownership.
 
-## Skill wording that needs card-level re-verification before implementation
+## Card-level verification status
 
-The following are deliberately called out because their published wording has changed across editions or because the existing runtime summary is incomplete:
+The owner-supplied official WTK screenshots now provide printed English skill text
+for all 30 Standard Generals. The following previously uncertain cards were
+resolved in the 2026-09-21 screenshot batches:
 
-- Zhang Liao — **verified 2026-09-21** from WEI 004: Assault replaces the normal Draw Phase deck draw with obtaining 1 hand card from each of up to 2 chosen characters.
-- Guan Yu — verified and implemented: one red-suited hand card may be used or played as Attack; equipped cards are not eligible. Play Phase action projection and shared response parity are included in the hardening scope.
-- Zhuge Liang — exact Kongcheng target/effect wording and any card-gain timing rider on the current WTK card.
-- Ma Chao — exact Tieji qualifying Judgement result and resulting Dodge restriction.
-- Huang Yueying — exact Qicai range wording.
-- Lady Gan — exact Shushen draw amount/conditions in the current Standard printing.
-- Zhou Yu — exact Fanjian reveal/obtain/guess ordering.
-- Sun Shangxiang — exact Xiaoji draw count per Equipment-loss event.
-- Hua Xiong — current Shiyong consequence; older printings differ materially.
-- Pan Feng — current Kuangfu revision; multiple published versions exist.
+- Zhang Liao — Assault (WEI 004)
+- Xu Zhu — Bared Bodied (WEI 005)
+- Guo Jia — Jealousy of God / Legacy (WEI 006)
+- Yue Jin — Dauntless (WEI 016)
+- Zhuge Liang — Stargazing / Empty Fortress Strategem (SHU 004)
+- Ma Chao — Horse Riding / Cavalry (SHU 006)
+- Huang Yueying — Cultivation / Wizardry (SHU 007)
+- Lady Gan — Divine Wisdom / Prudence (SHU 016)
+- Gan Ning — Ambushment (WU 002)
+- Lv Meng — Composure (WU 003)
+- Huang Gai — Self Sacrifice (WU 004)
+- Zhou Yu — Heroic / Sowing Distrust (WU 005)
+- Da Qiao — Captivating / Deflection (WU 006)
+- Lu Xun — Modesty / Second Wind (WU 007)
+- Sun Shangxiang — Betrothment / Daredevil (WU 008)
+- Hua Tuo — First Aid / Prodigal Healer (QUN 001)
+- Lv Bu — Unrivaled (QUN 002)
+- Diao Chan — Lust / Beauty Outshining the Moon (QUN 003)
+- Pan Feng — Axe of Insanity (QUN 017)
+- Hua Xiong — Triumphant (QUN 019)
+- Gongsun Zan — Militia (QUN 026)
+
+Implementation should still consult the Standard rulebook for generic timing,
+Judgement, damage, target-legality, zone and settlement semantics where the
+card text relies on those defined game concepts.
 
 ## Secondary cross-check notes
 
 Older English Sanguosha references are useful only as **secondary** rule-history checks, not as roster authority. Examples used while reconciling unusual additions include Yue Jin/Xiaoguo, Yu Jin/Yizhong, Lady Gan/Shushen+Shenzhi, Gongsun Zan/Yicong and Pan Feng/Kuangfu. Their historical pack labels do not override the current official WTK Standard filter.
 
 ## Next repository change
+
+The hero reference now contains owner-supplied printed English skill text for the
+full 30-General Standard roster, including the newly verified Shu, Wu and Qun
+cards. The next engineering pass should reconcile `game/heroes.ts` player-facing
+names/ability summaries with this reference and then implement/review the
+remaining metadata-only skills one General at a time. Preserve stable runtime IDs
+for saved-room compatibility, and continue using semantic capabilities/triggers
+rather than adding hero-name branches to central game resolution.
+
+
 
 This file now documents the reconciled 30-general selectable runtime roster and the verified hero capabilities implemented so far. The 2026-09-21 verification batch adds exact current printed card text for Zhang Liao (Assault), Xu Zhu (Bared Bodied), Guo Jia (Jealousy of God / Legacy), and Yue Jin (Dauntless), and preserves Xu Zhu's existing `xu-chu` runtime ID for compatibility. Yu Jin remains legacy-readable for saved-room compatibility but is excluded from new Standard selection. The next step is to reconcile runtime/UI metadata for these newly verified cards before implementing their mechanics; do not generalise a hero framework until another real skill proves the need.
