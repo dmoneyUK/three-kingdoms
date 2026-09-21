@@ -1,5 +1,17 @@
 # Three Kingdoms
 
+## Clear selection states — 2026-09-21
+
+Selected cards, heroes, player targets, equipment costs, and response-picker
+items now use one high-contrast selection treatment: a bright wide outline,
+gold glow, lifted position, and stronger selected background. This keeps the
+selected object obvious across the hand, hero-selection screen, target board,
+and semantic response pickers without changing the underlying action rules.
+
+The current stage remains Stage 6 hero-capability execution complete. The next
+milestone is the next individually verified Standard hero capability, while
+preserving the canonical semantic response protocol and Quick Test privacy.
+
 ## Private opening-hand presentation — 2026-09-21
 
 Each player now receives four private opening-deal events, so their own

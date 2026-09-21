@@ -1,5 +1,17 @@
 # Three Kingdoms project handover
 
+## Clear selection states — 2026-09-21
+
+The shared selection presentation now makes selected cards, hero choices,
+player targets, equipment costs, and response-picker items unmistakable with a
+bright wide outline, gold glow, lifted position, and stronger selected
+background. Player targets and compact equipment costs now expose their own
+selected class so the same visual treatment applies to board selections.
+
+No action semantics or server protocol changed. The visual regression surface
+remains the existing rendered-room and picker coverage; recommended next work
+is the next individually verified Standard hero capability.
+
 ## Private opening-hand presentation — 2026-09-21
 
 `beginMatch()` now records each four-card opening hand as private

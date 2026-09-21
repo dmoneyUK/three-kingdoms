@@ -372,3 +372,81 @@
   .player-judgement-card .played-card { width: 32px; height: 46px; }
   .player-judgement-card .played-card .card-name-mark { font-size: 5px; }
 }
+
+/* Make every committed selection unmistakable across cards, heroes, targets, and pickers. */
+.game-card.selected,
+.hero-choice.selected,
+.player-square.selected-target,
+.target-card-picker-card.selected,
+.hidden-card-picker button.selected,
+.frost-inline-picker button.selected,
+.choice-trigger-options button.selected,
+.player-equipment-card.selected-cost,
+.mini-equipment-button.selected-cost,
+.hero-skill-button.active,
+.serpent-control.active {
+  border-color: #ffe28a !important;
+  outline: 3px solid #ffe28a;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px #ffdc6b66, 0 0 28px #ffd15faa, 0 12px 28px #000d;
+}
+
+.game-card.selected {
+  background: linear-gradient(160deg, #fff0b0 0%, #d8ad52 34%, #eee4ce 100%);
+  color: #19160e;
+  transform: translateY(-19px) scale(1.02);
+}
+
+.hero-choice.selected {
+  background: linear-gradient(160deg, #66532a 0%, #252718 58%, #131611 100%);
+  transform: translateY(-10px) scale(1.015);
+}
+
+.player-square.selected-target {
+  background: linear-gradient(160deg, #5e4c25 0%, #20251a 62%, #151812 100%);
+  border-width: 2px;
+}
+
+.target-card-picker-card.selected,
+.hidden-card-picker button.selected,
+.frost-inline-picker button.selected,
+.choice-trigger-options button.selected {
+  background: #d8ad52;
+  color: #19160e;
+}
+
+.player-equipment-card.selected-cost {
+  background: #f4d889;
+  color: #19160e;
+  filter: none;
+  transform: translateY(-9px) scale(1.04);
+}
+
+.mini-equipment-button.selected-cost {
+  background: #f4d889;
+  border: 2px solid #ffe28a;
+  color: #19160e;
+  box-shadow: inset 0 0 0 1px #6d5120, 0 0 14px #ffd15faa;
+  transform: translateY(-3px) scale(1.04);
+}
+
+.harvest-card-choice.pending-choice .played-card {
+  outline: 3px solid #ffe28a;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px #ffdc6b66, 0 0 30px #ffd15faa, 0 28px 70px #000d;
+}
+
+.game-card.selected:focus-visible,
+.hero-choice.selected:focus-visible,
+.player-square.selected-target .player-square-target:focus-visible,
+.target-card-picker-card.selected:focus-visible,
+.hidden-card-picker button.selected:focus-visible,
+.frost-inline-picker button.selected:focus-visible,
+.choice-trigger-options button.selected:focus-visible,
+.player-equipment-card.selected-cost:focus-visible,
+.mini-equipment-button.selected-cost:focus-visible,
+.hero-skill-button.active:focus-visible,
+.serpent-control.active:focus-visible {
+  outline: 4px solid #fff6c7;
+  outline-offset: 4px;
+}
