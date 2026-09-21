@@ -2,14 +2,13 @@
 
 ## Visible suit card graphics — 2026-09-21
 
-The shared hand-card and revealed-card renderers now include an explicit
-high-contrast suit badge and a low-opacity suit watermark. Red suits use a
-bright red mark, while black suits use a bright near-white mark with a dark
-badge background, so both remain visible over the card artwork.
+The shared hand-card and revealed-card renderers now use the reference card's
+slim pointed corner shield, with rank and suit stacked together. Red suits use
+a red outlined shield, while black suits use a light shield with dark symbols,
+so both remain visible over the card artwork without adding a watermark.
 
-The room-safety render regression asserts that suit watermark markup is present
-for both red and black cards. No card rules, selection semantics, privacy, or
-semantic protocol behavior changed.
+No card rules, selection semantics, privacy, or semantic protocol behavior
+changed.
 
 ## Standard hero card metadata — 2026-09-21
 

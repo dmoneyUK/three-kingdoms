@@ -2,10 +2,10 @@
 
 ## Visible suit card graphics — 2026-09-21
 
-Hand cards and revealed card graphics now show a high-contrast suit badge in
-the corner plus a subtle large suit watermark over the artwork. Red and black
-suits use distinct bright treatments so suit identity remains readable on dark
-or visually busy card illustrations.
+Hand cards and revealed card graphics now show the rank and suit together in a
+slim pointed corner shield that matches the reference card design. Red suits
+use a red outlined shield, while black suits use a light shield with dark
+symbols so suit identity remains readable without covering the artwork.
 
 The current stage remains Stage 6 hero-capability execution complete. The next
 milestone is the next individually verified Standard hero capability, while

@@ -451,20 +451,28 @@
   outline-offset: 4px;
 }
 
-/* Make each suit legible over every card illustration, including black artwork. */
-.game-card .corner {
+/* Match the reference card-corner shield: rank and suit share one pointed mark. */
+.game-card .corner,
+.played-card > i {
   z-index: 2;
   display: grid;
   grid-template-rows: auto auto;
   justify-items: center;
-  width: 30px;
-  min-height: 39px;
-  padding: 3px 4px 4px;
-  border: 1px solid currentColor;
-  border-radius: 5px;
-  background: #050607d9;
-  box-shadow: 0 2px 8px #000b;
+  width: 34px;
+  min-height: 48px;
+  padding: 3px 4px 10px;
+  border: 2px solid currentColor;
+  border-radius: 0 0 11px 0;
+  clip-path: polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%);
+  background: #080a0dcc;
+  box-shadow: none;
   line-height: .95;
+}
+
+.game-card .corner {
+  left: 5px;
+  top: 0;
+  font-size: 15px;
 }
 
 .game-card .corner i {
@@ -474,17 +482,11 @@
 }
 
 .played-card > i {
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  min-height: 46px;
-  padding: 4px 5px;
-  border: 2px solid currentColor;
-  border-radius: 6px;
-  background: #050607d9;
-  box-shadow: 0 2px 10px #000b;
-  line-height: .95;
+  left: 11px;
+  top: 9px;
+  width: 42px;
+  min-height: 58px;
+  padding: 4px 5px 12px;
 }
 
 .played-card > i small {
@@ -493,40 +495,19 @@
   line-height: 1;
 }
 
-.game-card .suit-watermark,
-.played-card .suit-watermark {
-  position: absolute;
-  left: 50%;
-  top: 47%;
-  z-index: 0;
-  translate: -50% -50%;
-  color: #fff;
-  font: 700 clamp(42px, 6vw, 76px)/1 Georgia, "Times New Roman", serif;
-  opacity: .18;
-  text-shadow: 0 2px 10px #000;
-  pointer-events: none;
-}
-
 .game-card.red-suit .corner,
-.played-card.red-suit > i,
-.game-card.red-suit .suit-watermark,
-.played-card.red-suit .suit-watermark {
-  color: #ff7a85;
+.played-card.red-suit > i {
+  color: #ff5a6d;
+  border-color: #ff6b7f;
+  background: #210910e6;
 }
 
 .game-card.black-suit .corner,
-.played-card.black-suit > i,
-.game-card.black-suit .suit-watermark,
-.played-card.black-suit .suit-watermark {
-  color: #f3f6ff;
-}
-
-.game-card .card-name-mark,
-.game-card > strong,
-.played-card .card-name-mark,
-.played-card > strong {
-  position: relative;
-  z-index: 1;
+.played-card.black-suit > i {
+  color: #16181c;
+  border-color: #f7f9ff;
+  background: #eef1f4ed;
+  text-shadow: none;
 }
 
 /* Keep the private opening reveal the same physical size and card rhythm as the hand. */
