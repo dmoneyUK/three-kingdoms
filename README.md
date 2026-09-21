@@ -1,5 +1,29 @@
 # Three Kingdoms
 
+## Guo Jia — Jealousy of God + Legacy — 2026-09-21
+
+Guo Jia is implemented through the semantic trigger architecture. Jealousy of
+God opens after the final Judgment card is established and its result is fixed,
+after any Necromancy replacement but before the card's normal destination. The
+persisted continuation holds that exact physical card until Guo Jia accepts or
+declines; accepted replacement cards move to Guo Jia's hand without duplication.
+
+Legacy uses a reusable per-damage-point continuation: a 2-damage event remains
+one HP/Dying event but creates two independent optional Legacy opportunities.
+Each accepted opportunity privately holds the next two deck cards and lets Guo
+Jia assign them atomically, one card at a time, to any living character. The
+source is optional, so the same path covers Lightning's source-less damage.
+Reload, stale decisions, private projections, Bared Bodied, Judgement
+replacement, and exact card conservation are covered by Worker/D1 regressions.
+
+The current stage is Stage 6 hero-capability execution complete for Guo Jia's
+three-step round. The next milestone is the next individually verified missing
+Standard hero, with the semantic `currentAction` protocol and Quick Test
+privacy preserved.
+
+Dying/rescue preserves a damage continuation only when a post-damage reaction
+or nested continuation is pending; ordinary Dying resolution remains unchanged.
+
 ## Liu Bei — Benevolence + Influencing — 2026-09-21
 
 Liu Bei is complete through the semantic response architecture. Benevolence

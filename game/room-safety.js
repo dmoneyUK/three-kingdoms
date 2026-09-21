@@ -4,7 +4,7 @@ const CARD_KINDS = new Set([
   "Attack", "Dodge", "Peach", "DrawTwo", "Dismantle", "Steal", "Duel", "Oath", "BarbarianInvasion", "RainingArrows", "BumperHarvest", "Negation", "Overindulgence", "Lightning", "BorrowedSword", "ZhugeCrossbow", "BlueSteelSword", "YinYangSwords", "GreenDragonBlade", "SerpentSpear", "RockCleavingAxe", "SkyPiercingHalberd", "KirinBow", "FrostSword", "NioShield", "EightTrigrams", "Shadowrunner", "HexMark", "YellowHoofedFlyingLightning", "RedHare", "PurpleBay", "FerganaSteed", "OffensiveHorse", "DefensiveHorse", "RationsDepleted", "Strike",
 ]);
 const ROOM_STATUSES = new Set(["lobby", "heroes", "started", "playing", "finished"]);
-const PENDING_KINDS = new Set(["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation", "harvest", "target_card", "borrowed_sword", "dying", "response", "trigger"]);
+const PENDING_KINDS = new Set(["attack", "green_dragon", "rock_cleaving", "frost_sword", "duel", "group", "negation", "harvest", "target_card", "borrowed_sword", "card_distribution", "dying", "response", "trigger"]);
 const GAMEPLAY_ACTION_SET = new Set(GAMEPLAY_ACTIONS);
 
 function isRecord(value) {
@@ -101,7 +101,8 @@ function normalizeCurrentAction(value) {
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
-    ...(value.triggerEvent === "turn_start" || value.triggerEvent === "draw_phase" || value.triggerEvent === "discard_phase" || value.triggerEvent === "judgement_revealed" || value.triggerEvent === "attack_targeted" || value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" || value.triggerEvent === "damage_suffered" || value.triggerEvent === "hero_choice" || value.triggerEvent === "hand_lost" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : triggerOptions.length ? { triggerOptions } : {}),
+    ...(value.triggerEvent === "turn_start" || value.triggerEvent === "draw_phase" || value.triggerEvent === "discard_phase" || value.triggerEvent === "judgement_revealed" || value.triggerEvent === "judgement_effective" || value.triggerEvent === "attack_targeted" || value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" || value.triggerEvent === "damage_suffered" || value.triggerEvent === "hero_choice" || value.triggerEvent === "hand_lost" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : triggerOptions.length ? { triggerOptions } : {}),
+    ...(value.kind === "card_distribution" && isRecord(value.distribution) && Array.isArray(value.distribution.cards) ? { distribution: { cards: normalizeCards(value.distribution.cards), eligibleRecipientIds: Array.isArray(value.distribution.eligibleRecipientIds) ? value.distribution.eligibleRecipientIds.filter((id) => typeof id === "string") : [] } } : {}),
     ...(isRecord(value.presentation) ? { presentation: { resolutionId: typeof value.presentation.resolutionId === "string" ? value.presentation.resolutionId : null, readyAfterEventId: typeof value.presentation.readyAfterEventId === "string" ? value.presentation.readyAfterEventId : null } } : {}),
   };
 }

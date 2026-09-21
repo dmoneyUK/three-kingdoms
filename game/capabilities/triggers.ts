@@ -14,8 +14,9 @@ import { luXunSecondWindTrigger } from "./heroes/lu-xun-second-wind";
 import { luMengComposureTrigger } from "./heroes/lu-meng-composure";
 import { zhangLiaoAssaultTrigger } from "./heroes/zhang-liao-assault";
 import { xuChuBaredBodiedTrigger } from "./heroes/xu-chu-bared-bodied";
+import { guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger } from "./heroes/guo-jia";
 
-export type TriggerEvent = "turn_start" | "draw_phase" | "discard_phase" | "judgement_revealed" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice" | "hand_lost";
+export type TriggerEvent = "turn_start" | "draw_phase" | "discard_phase" | "judgement_revealed" | "judgement_effective" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice" | "hand_lost";
 /**
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
@@ -46,6 +47,8 @@ export type TriggerExecution =
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "attacker_draw" } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement" } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement_replacement"; cardId: string } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "obtain_judgement_card"; playerId: string; cardId: string } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "legacy_distribution"; playerId: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "gain_target_card"; sourceId: string; targetId: string; targetCardKey: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "gain_damage_cards"; targetId: string; cardIds: string[] } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_guess"; targetId: string; guess: string } }
@@ -61,6 +64,8 @@ export type TriggeredEffect = {
   event: TriggerEvent;
   getOption: (context: TriggerContext) => TriggerOption | null;
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
+  /** A provider with this flag may be offered once for each point of one damage event. */
+  repeatPerDamagePoint?: boolean;
 };
 
 const zhouYuFanjianChoice: TriggeredEffect = {
@@ -91,7 +96,7 @@ const zhouYuFanjianChoice: TriggeredEffect = {
   },
 };
 
-const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, simaYiFankuiTrigger, caoCaoJianxiongTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {
@@ -103,9 +108,10 @@ export function registerTriggeredEffect(effect: TriggeredEffect) {
 }
 
 /** Returns triggered effects supplied by the relevant equipped/hero capabilities. */
-export function getTriggeredEffects(context: TriggerContext, resolvedEffectIds: readonly string[] = []) {
+export function getTriggeredEffects(context: TriggerContext, resolvedEffectIds: readonly string[] = [], resolvedDamagePointEffectIds: readonly string[] = []) {
   const resolved = new Set(resolvedEffectIds);
-  return triggers.filter((trigger) => trigger.event === context.event && !resolved.has(trigger.id)).map((trigger) => trigger.getOption(context)).filter((option): option is TriggerOption => Boolean(option));
+  const resolvedPoint = new Set(resolvedDamagePointEffectIds);
+  return triggers.filter((trigger) => trigger.event === context.event && !(trigger.repeatPerDamagePoint ? resolvedPoint : resolved).has(trigger.id)).map((trigger) => trigger.getOption(context)).filter((option): option is TriggerOption => Boolean(option));
 }
 
 /** Revalidates a selected triggered effect against the live source state. */

@@ -143,9 +143,10 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 
 - **Runtime ID:** `guo-jia`
 - **Verified official Standard card:** **WEI 006**, printed title **Short-lived Prophet**.
-- **Rulebook interaction:** The Standard rulebook distinguishes an Injury from “1 Damage” and states that a “1 Damage” effect can be triggered multiple times when multiple points of damage are inflicted in one damage event. Legacy therefore needs to preserve per-damage-point trigger semantics rather than collapsing a multi-point injury into one trigger.
-- **Likely engine shape:** Judgement-finished trigger; per-damage-point trigger / private top-deck reveal and card distribution.
-- **Current implementation:** Metadata only.
+- **Rulebook interaction:** The Standard rulebook distinguishes an Injury from “1 Damage” and states that a “1 Damage” effect can be triggered multiple times when multiple points of damage are inflicted in one damage event. Legacy therefore preserves per-damage-point trigger semantics rather than collapsing a multi-point injury into one trigger.
+- **Judgement timing interpretation:** “After your Judgment card takes effect” is the post-Judgment-card boundary: the final effective card is fixed after any Necromancy replacement and its Judgment result is determined, but before the card reaches its normal destination. This is distinct from `judgement_revealed`, which is the earlier replacement window. Jealousy is semantic and applies to any Judgment owned by Guo Jia, not only delayed Stratagems.
+- **Current implementation:** Jealousy of God is a private optional `judgement_effective` trigger. The final effective card remains held in the persisted Judgment continuation until the trigger is accepted or declined; an accepted trigger transfers that exact card to Guo Jia, while a decline uses the ordinary destination. Necromancy discards the original reveal and makes its replacement the obtainable final card.
+- **Current implementation:** Legacy is a generic `damage_suffered` provider marked per damage point. The original multi-point damage remains one settled damage event for HP, Dying, and source-dependent reactions, while each damage point gets its own optional Legacy window, including source-less damage such as Lightning. An accepted window removes the next two cards from the deck, holds them in a persisted private distribution continuation visible only to Guo Jia, and atomically assigns each card to any living character, including Guo Jia or the same recipient twice. The normal reshuffle helper is shared with ordinary draws.
 
 ### Zhen Ji (甄姬)
 

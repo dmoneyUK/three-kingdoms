@@ -135,6 +135,11 @@ function setEquipment(playerId, equipment = {}) { sql(`UPDATE players SET equipm
 function setDeck(roomCode, cards) { sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(cards))}, discard_json='[]' WHERE code=${quote(roomCode)}`); }
 function setTurn(roomCode, seat, phase = "play") { sql(`UPDATE rooms SET turn_seat=${seat}, phase=${quote(phase)}, pending_json=NULL, status='playing' WHERE code=${quote(roomCode)}`); }
 function discardIds(roomCode) { return query(`SELECT json_extract(value,'$.id') FROM rooms,json_each(rooms.discard_json) WHERE rooms.code=${quote(roomCode)}`).split("\n").filter(Boolean); }
+function roomCardCount(roomCode, cardId) {
+  const roomZones = query(`SELECT deck_json || char(10) || discard_json FROM rooms WHERE code=${quote(roomCode)}`).split("\n").filter(Boolean);
+  const playerHands = query(`SELECT hand_json FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(roomCode)})`).split("\n").filter(Boolean);
+  return [...roomZones, ...playerHands].reduce((count, json) => count + JSON.parse(json || "[]").filter((item) => item.id === cardId).length, 0);
+}
 async function markReady(code, members) {
   for (const member of members) {
     const result = await request("set_ready", { code, token: member.token, ready: true });
@@ -314,6 +319,160 @@ test("host test seats use one controller across four seats with a normal shuffle
     assert.equal(initialDraws.length, 4, "each multiplayer private view receives exactly four opening draw cards");
     assert.equal(view.timeline.filter((event) => event.type === "card" && event.initialDeal && event.drawPlayerId !== view.meId).length, 0, "opening hands remain private to each player view");
   }
+});
+
+async function prepareGuoJudgement({ original, replacement = null, purposeCard = null }) {
+  const game = await createHumanGame();
+  const [source, guo, sima, other] = game.room.players;
+  const [sourceMember, guoMember, simaMember] = game.members;
+  sql(`UPDATE players SET hero='yue-jin' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='guo-jia', hp=3, max_hp=3 WHERE id=${quote(guo.id)}`);
+  sql(`UPDATE players SET hero='simayi', hp=3, max_hp=3 WHERE id=${quote(sima.id)}`);
+  sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(other.id)}`);
+  for (const player of [source, guo, sima, other]) setHand(player.id, [], 3, 3);
+  if (replacement) setHand(sima.id, [replacement], 3, 3);
+  setJudgement(guo.id, [purposeCard ?? card("Overindulgence", "guo-delayed", "♠")]);
+  setDeck(game.code, [original, card("Attack", "guo-draw-a"), card("Dodge", "guo-draw-b")]);
+  setTurn(game.code, guo.seat, "draw");
+  return { game, source, guo, sima, sourceMember, guoMember, simaMember };
+}
+
+test("Guo Jia Jealousy of God waits for the final Judgment card and handles Necromancy", { timeout: 30_000 }, async () => {
+  const original = { ...card("Dodge", "guo-original"), suit: "♠", rank: "7" };
+  const replacement = { ...card("Peach", "guo-replacement"), suit: "♥", rank: "Q" };
+  const accepted = await prepareGuoJudgement({ original, replacement });
+  const opened = await request("draw", { code: accepted.game.code, token: accepted.guoMember.token, preserveResponse: true });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  await passNegationWindows(accepted.game.code, accepted.game.members);
+  const revealed = await waitForState(accepted.game.code, accepted.guoMember.token, (room) => room.currentAction?.kind === "trigger" && room.currentAction.triggerEvent === "judgement_revealed");
+  assert.equal(revealed.currentAction.triggerOptions.length, 0, "Guo Jia is not offered before Necromancy finishes");
+  const replaced = await request("trigger", { code: accepted.game.code, token: accepted.simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
+  assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
+  const reloaded = await waitForState(accepted.game.code, accepted.guoMember.token, (room) => room.currentAction?.kind === "trigger" && room.currentAction.triggerEvent === "judgement_effective");
+  assert.equal(reloaded.currentAction.triggerEvent, "judgement_effective");
+  assert.deepEqual(reloaded.currentAction.triggerOptions.map((option) => option.label), ["Jealousy of God"]);
+  assert.deepEqual((await state(accepted.game.code, accepted.simaMember.token)).data.currentAction.triggerOptions ?? [], [], "the private Jealousy choice belongs only to Guo Jia");
+  const acceptedResult = await request("trigger", { code: accepted.game.code, token: accepted.guoMember.token, providerId: "guo_jia_jealousy_of_god" });
+  assert.equal(acceptedResult.status, 200, JSON.stringify(acceptedResult.data));
+  assert.ok(acceptedResult.data.room.myHand.some((held) => held.id === replacement.id), "the replacement Judgment card enters Guo Jia's hand");
+  assert.equal(roomCardCount(accepted.game.code, original.id), 1, "the original revealed card remains exactly once after normal discard/reshuffle processing");
+  assert.equal(roomCardCount(accepted.game.code, replacement.id), 1, "the obtained replacement remains exactly once");
+  assert.equal(JSON.parse(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(accepted.sima.id)} AND json_extract(value,'$.id')=${quote(replacement.id)}`)), 0, "Necromancy removes the replacement from Sima Yi");
+  assert.equal((await request("trigger", { code: accepted.game.code, token: accepted.guoMember.token, providerId: "guo_jia_jealousy_of_god" })).status, 409, "stale Jealousy cannot obtain the card twice");
+
+  const declinedOriginal = { ...original, id: "guo-decline-original" };
+  const declined = await prepareGuoJudgement({ original: declinedOriginal, purposeCard: card("Overindulgence", "guo-decline-delayed", "♠") });
+  const declineOpened = await request("draw", { code: declined.game.code, token: declined.guoMember.token, preserveResponse: true });
+  assert.equal(declineOpened.status, 200);
+  await passNegationWindows(declined.game.code, declined.game.members);
+  await waitForState(declined.game.code, declined.guoMember.token, (room) => room.currentAction?.kind === "trigger" && room.currentAction.triggerEvent === "judgement_effective");
+  const declinedResult = await request("decline_trigger", { code: declined.game.code, token: declined.guoMember.token });
+  assert.equal(declinedResult.status, 200, JSON.stringify(declinedResult.data));
+  assert.equal(roomCardCount(declined.game.code, declinedOriginal.id), 1, "a declined final Judgment card follows the normal discard/reshuffle destination");
+});
+
+async function openGuoDamage({ amount = 1, deckCards = [] } = {}) {
+  const game = await createHumanGame();
+  const [source, guo, bob, carol] = game.room.players;
+  const [sourceMember, guoMember] = game.members;
+  sql(`UPDATE players SET hero='${amount === 2 ? "xu-chu" : "yue-jin"}' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='guo-jia', hp=4, max_hp=4 WHERE id=${quote(guo.id)}`);
+  for (const player of [source, guo, bob, carol]) setHand(player.id, [], 4, 4);
+  const attack = card("Attack", `guo-damage-${amount}`);
+  setHand(source.id, [attack], amount === 2 ? 4 : 4, 4);
+  if (amount === 2) sql(`UPDATE rooms SET skill_state_json=${quote(JSON.stringify({ turnPlayerId: source.id, baredBodiedActive: true }))} WHERE code=${quote(game.code)}`);
+  setDeck(game.code, deckCards);
+  setTurn(game.code, source.seat, "play");
+  const played = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: guo.id, preserveResponse: true });
+  assert.equal(played.status, 200, JSON.stringify(played.data));
+  if (played.data.room.currentAction?.kind === "response") {
+    const declined = await request("decline_response", { code: game.code, token: guoMember.token });
+    assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  }
+  const guoView = (await state(game.code, guoMember.token)).data;
+  assert.equal(guoView.currentAction.kind, "trigger", JSON.stringify(guoView));
+  assert.equal(guoView.currentAction.triggerEvent, "damage_suffered");
+  return { game, source, guo, sourceMember, guoMember };
+}
+
+async function distributeLegacy(opened, recipientId) {
+  const view = (await state(opened.game.code, opened.guoMember.token)).data;
+  const cards = view.currentAction.distribution.cards;
+  assert.equal(cards.length, 2);
+  const submitted = await request("trigger", { code: opened.game.code, token: opened.guoMember.token, providerId: "private_card_distribution", assignments: cards.map((held) => ({ cardId: held.id, recipientId })) });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  return { cards, room: submitted.data.room };
+}
+
+test("Legacy privately distributes top two cards and repeats once per damage point", { timeout: 30_000 }, async () => {
+  const firstCards = [card("Peach", "legacy-one-a"), card("Dodge", "legacy-one-b"), card("Attack", "legacy-spare")];
+  const one = await openGuoDamage({ deckCards: firstCards });
+  const privateView = (await state(one.game.code, one.guoMember.token)).data;
+  const otherView = (await state(one.game.code, one.game.members[2].token)).data;
+  assert.equal(privateView.currentAction.kind, "trigger");
+  const accepted = await request("trigger", { code: one.game.code, token: one.guoMember.token, providerId: "guo_jia_legacy" });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const held = (await state(one.game.code, one.guoMember.token)).data;
+  const hidden = (await state(one.game.code, one.game.members[2].token)).data;
+  assert.equal(held.currentAction.kind, "card_distribution");
+  assert.deepEqual(held.currentAction.distribution.cards.map((card) => card.id), [firstCards[0].id, firstCards[1].id]);
+  assert.equal(hidden.currentAction.distribution, undefined, "other seats cannot inspect Legacy's held cards");
+  assert.equal(JSON.stringify(hidden.currentAction).includes(firstCards[0].id), false);
+  const settled = await distributeLegacy(one, one.guo.id);
+  assert.deepEqual(settled.room.players.find((player) => player.id === one.guo.id).handCount, 2);
+  assert.equal(settled.room.players.find((player) => player.id === one.guo.id).hp, 3);
+  assert.equal((await request("trigger", { code: one.game.code, token: one.guoMember.token, providerId: "private_card_distribution", assignments: [] })).status, 409, "stale distribution cannot replay cards");
+  assert.ok(privateView.currentAction.triggerOptions.every((option) => option.effectId === "guo_jia_legacy"));
+  void otherView;
+
+  const two = await openGuoDamage({ amount: 2, deckCards: [card("Peach", "legacy-two-a"), card("Dodge", "legacy-two-b"), card("Attack", "legacy-two-c"), card("Peach", "legacy-two-d"), card("Attack", "legacy-two-spare")] });
+  assert.equal((await state(two.game.code, two.guoMember.token)).data.players.find((player) => player.id === two.guo.id).hp, 2, "Bared Bodied applies one 2-damage event");
+  const firstTrigger = await request("trigger", { code: two.game.code, token: two.guoMember.token, providerId: "guo_jia_legacy" });
+  assert.equal(firstTrigger.status, 200, JSON.stringify(firstTrigger.data));
+  const firstDistribution = await distributeLegacy(two, two.guo.id);
+  assert.equal(firstDistribution.room.players.find((player) => player.id === two.guo.id).handCount, 2);
+  const secondTriggerView = (await state(two.game.code, two.guoMember.token)).data;
+  assert.equal(secondTriggerView.currentAction.kind, "trigger", "a 2-damage event opens a second independent Legacy opportunity");
+  assert.ok(secondTriggerView.currentAction.triggerOptions.some((option) => option.effectId === "guo_jia_legacy"));
+  await request("trigger", { code: two.game.code, token: two.guoMember.token, providerId: "guo_jia_legacy" });
+  const secondDistribution = await distributeLegacy(two, two.guo.id);
+  assert.equal(secondDistribution.room.players.find((player) => player.id === two.guo.id).handCount, 4);
+  assert.equal(secondDistribution.room.players.find((player) => player.id === two.guo.id).hp, 2, "Bared Bodied keeps one 2-damage event while Legacy repeats twice");
+  const totalHeld = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(two.guo.id)}`));
+  assert.deepEqual(totalHeld.map((held) => held.id), ["peach-legacy-two-a", "dodge-legacy-two-b", "attack-legacy-two-c", "peach-legacy-two-d"]);
+});
+
+test("source-less Lightning damage can open three independent Legacy opportunities", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source, guo] = game.room.players;
+  const guoMember = game.members[1];
+  sql(`UPDATE players SET hero='guo-jia', hp=4, max_hp=4 WHERE id=${quote(guo.id)}`);
+  for (const player of game.room.players) setHand(player.id, [], 4, 4);
+  const lightning = { ...card("Lightning", "guo-lightning"), suit: "♠", rank: "5" };
+  setJudgement(guo.id, [lightning]);
+  const legacyCards = [card("Peach", "guo-lightning-a"), card("Dodge", "guo-lightning-b"), card("Attack", "guo-lightning-c"), card("Peach", "guo-lightning-d"), card("Attack", "guo-lightning-e"), card("Dodge", "guo-lightning-f")];
+  setDeck(game.code, [{ ...card("Attack", "guo-lightning-judge"), suit: "♠", rank: "6" }, ...legacyCards]);
+  setTurn(game.code, guo.seat, "draw");
+  const started = await request("draw", { code: game.code, token: guoMember.token, preserveResponse: true });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  await passNegationWindows(game.code, game.members);
+  let view = (await state(game.code, guoMember.token)).data;
+  if (view.currentAction.triggerEvent === "judgement_effective") {
+    const declinedJudgement = await request("decline_trigger", { code: game.code, token: guoMember.token });
+    assert.equal(declinedJudgement.status, 200, JSON.stringify(declinedJudgement.data));
+    view = (await state(game.code, guoMember.token)).data;
+  }
+  for (let index = 0; index < 3; index++) {
+    assert.equal(view.currentAction.kind, "trigger", JSON.stringify(view));
+    assert.equal(view.currentAction.triggerEvent, "damage_suffered");
+    await request("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_legacy" });
+    await distributeLegacy({ game: { code: game.code }, guoMember }, guo.id);
+    view = (await state(game.code, guoMember.token)).data;
+  }
+  assert.equal(view.players.find((player) => player.id === guo.id).hp, 1);
+  const lightningHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(guo.id)}`));
+  assert.ok(legacyCards.every((card) => lightningHand.some((held) => held.id === card.id)), "all three Legacy resolutions transfer their own next two cards");
+  void source;
 });
 
 test("normal multiplayer lobby requires named ready players and keeps roles private", async () => {

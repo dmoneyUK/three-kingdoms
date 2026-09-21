@@ -68,9 +68,11 @@ export type DamageAboutToApplyTriggerContinuation = {
 };
 export type DamageSufferedTriggerContinuation = {
   kind: "damage_suffered_event";
-  sourceId: string;
+  sourceId?: string;
   targetId: string;
   amount: number;
+  damagePointIndex?: number;
+  damagePointCount?: number;
   damageCards?: Card[];
   resumePhase: string;
   resumePlayerId?: string;
@@ -81,11 +83,23 @@ export type DamageSufferedTriggerContinuation = {
   secondaryEffectId?: string;
   /** Optional providers already resolved for this one damage event. */
   resolvedEffectIds?: string[];
+  /** Per-point providers reset after each point of one damage event. */
+  resolvedDamagePointEffectIds?: string[];
   /** Resume a suspended Group/AOE after this damage event is exhausted. */
   resumeGroup?: GroupResponsePending;
   /** Resume an enclosing sourced-damage event after nested damage resolves. */
   resumeDamageSuffered?: DamageSufferedTriggerContinuation;
   judgementCard?: Card;
+  resolutionId?: string;
+};
+export type CardDistributionPending = {
+  kind: "card_distribution";
+  actorId: string;
+  cards: Card[];
+  eligibleRecipientIds: string[];
+  resumeDamageSuffered: DamageSufferedTriggerContinuation;
+  reason: string;
+  deadline?: number;
   resolutionId?: string;
 };
 export type TurnStartTriggerContinuation = {
@@ -124,6 +138,12 @@ export type JudgementRevealedTriggerContinuation = {
   kind: "judgement_revealed_event";
   judgement: JudgementContinuation;
 };
+export type JudgementEffectiveTriggerContinuation = {
+  kind: "judgement_effective_event";
+  judgement: JudgementContinuation;
+  finalCard: Card;
+  result: "satisfied" | "unsatisfied";
+};
 export type HeroChoiceTriggerContinuation = {
   kind: "hero_choice_event";
   sourceId: string;
@@ -140,7 +160,7 @@ export type HandLossTriggerContinuation = {
   resumeTurnSeat: number | null;
   resumePending?: Pending;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | JudgementRevealedTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation;
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {
@@ -157,7 +177,7 @@ export type TriggerPending = {
   continuation: TriggerContinuation;
 };
 export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; origin?: AttackOrigin; reason: string };
-export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | ResponsePending | TriggerPending | DyingPending;
+export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | CardDistributionPending | ResponsePending | TriggerPending | DyingPending;
 
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
   return pending?.kind === "trigger" ? pending : null;

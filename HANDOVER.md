@@ -1,5 +1,40 @@
 # Three Kingdoms project handover
 
+## Guo Jia — Jealousy of God + Legacy — 2026-09-21
+
+Guo Jia is complete through three staged semantic changes. Step A added the
+reusable `judgement_effective` lifecycle boundary. It runs after Necromancy or
+any other Judgment replacement has finished and after the final Judgment result
+is determined, but before the final effective card reaches its normal discard
+or other destination. The continuation persists the final card; Jealousy of
+God accepts it into Guo Jia's hand or declines into the ordinary destination.
+The original reveal is discarded once when a replacement is used, and the
+replacement is the only card Jealousy can obtain.
+
+Step B added source-optional per-point damage continuations. The central damage
+settlement still applies a multi-point amount once and sends one canonical
+damage event through Dying, rescue, Stauchness, Treachery, and Retaliation.
+Providers marked `repeatPerDamagePoint` are reopened for point indexes 1..N;
+Legacy therefore gets two windows after 2 damage and three after 3 damage,
+while ordinary “after you take damage” providers remain one-per-event. The
+source-optional context allows Lightning to use the same continuation.
+
+Step C added the reusable private card-distribution pending state. Legacy takes
+the next two cards with the shared deck/reshuffle helper, removes them from the
+deck, persists them server-side, and projects their identities only to Guo Jia.
+The generic `trigger` submission validates every held card exactly once and
+each living recipient, then transfers both cards in one database batch. Public
+history identifies only the Legacy distribution, not the card identities.
+
+Regression coverage includes Jealousy accept/decline, Necromancy replacement,
+reload/stale decisions, private actor projection, Legacy decline and private
+distribution, same/split recipient conservation, 2-damage Bared Bodied,
+source-less 3-damage Lightning, and existing Judgement/damage regressions.
+No Guo-Jia-specific HTTP command was added.
+
+Dying/rescue preserves a damage continuation only when a post-damage reaction
+or nested continuation is pending; ordinary Dying resolution remains unchanged.
+
 ## Liu Bei — Benevolence + Influencing — 2026-09-21
 
 Liu Bei is complete and remains marked Implemented in the Standard reference.
