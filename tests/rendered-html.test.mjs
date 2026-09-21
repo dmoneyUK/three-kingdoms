@@ -17,11 +17,12 @@ test("server-renders the Three Kingdoms lobby", async () => {
   const html = await response.text();
   assert.match(html, /<title>Three Kingdoms/);
   assert.match(html, /Classic hidden-role mode/i);
-  assert.match(html, /Host multiplayer game/);
-  assert.match(html, /Quick game/);
+  assert.match(html, /Host Game/);
   assert.match(html, /PLAYER NAME/);
+  assert.match(html, /ROOM CODE/);
   assert.doesNotMatch(html, /Your display name/);
-  assert.match(html, /Join multiplayer game/);
+  assert.match(html, /Join Game/);
+  assert.doesNotMatch(html, /Host multiplayer game|Join multiplayer game|Quick game|Rejoin game/);
   assert.match(html, /Lord/);
   assert.match(html, /Loyalist/);
   assert.match(html, /Rebel/);

@@ -2149,12 +2149,17 @@ async function roomState(code: string, token?: string) {
   const turnPlayer = room.status === "playing" ? players.find((player) => player.seat === room.turn_seat && player.alive) : undefined;
   const actualActionPlayerId = room.status !== "playing" ? null : room.phase === "response" || room.phase === "dying" ? pending?.actorId ?? pending?.targetId ?? turnPlayer?.id ?? null : turnPlayer?.id ?? null;
   const sessionPlayers = players.filter((player) => player.token_hash === tokenHash);
-  // Quick Game deliberately shares one local controller across all four seats.
-  // A regular room still has exactly one player for each session token.
-  const isTestController = sessionPlayers.length === players.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
+  // A host token may control the host plus generated test seats. In a mixed
+  // room, only project an active seat when that seat belongs to this token;
+  // otherwise keep the host as the private fallback perspective.
+  const isTestController = sessionPlayers.length > 1 && sessionPlayers.some((player) => player.id === room.host_player_id);
   const heroSelectionPlayer = room.status === "heroes" ? nextGeneralSelector(players) : null;
   const projectedActionPlayerId = heroSelectionPlayer?.id ?? actualActionPlayerId;
-  const me = isTestController ? players.find((player) => player.id === projectedActionPlayerId) ?? turnPlayer ?? sessionPlayers[0] : sessionPlayers[0];
+  const controlledPlayerIds = new Set(sessionPlayers.map((player) => player.id));
+  const controllerFallback = sessionPlayers.find((player) => player.id === room.host_player_id) ?? sessionPlayers[0];
+  const me = isTestController
+    ? projectedActionPlayerId && controlledPlayerIds.has(projectedActionPlayerId) ? players.find((player) => player.id === projectedActionPlayerId) ?? controllerFallback : controllerFallback
+    : sessionPlayers[0];
   // Reading a room must not create D1 writes. Presence is refreshed by the
   // throttled heartbeat action below, never by normal room polling.
   const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
@@ -2223,7 +2228,7 @@ async function roomState(code: string, token?: string) {
     pendingTargetCard: pending?.kind === "target_card" ? { kind: "target_card", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, cardKind: pending.cardKind } : null,
     pendingBorrowedSword: pending?.kind === "borrowed_sword" ? { kind: "borrowed_sword", sourceId: pending.sourceId, actorId: pending.actorId, targetId: pending.targetId, holderId: pending.holderId, stage: pending.stage, weaponId: pending.weaponId ?? null, eligibleTargetIds: pending.stage === "choose_target" ? borrowedSwordEligibleTargetIds(players, pending.holderId) : [] } : responsePending?.continuation.kind === "borrowed_sword_attack" ? { kind: "borrowed_sword", sourceId: responsePending.continuation.sourceId, actorId: responsePending.actorId, targetId: responsePending.continuation.targetId, holderId: responsePending.continuation.holderId, stage: "force_attack", weaponId: responsePending.continuation.weaponId, eligibleTargetIds: [] } : null,
     pendingDying: pending?.kind === "dying" ? { kind: "dying", sourceId: pending.sourceId, targetId: pending.targetId, origin: pending.origin ?? null, recoveryNeeded: recoveryNeeded(players.find((player) => player.id === pending.targetId)?.hp ?? 0), deadline: me?.id === pending.actorId ? pending.deadline : 0 } : null,
-    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), ready: Boolean(player.ready), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: isTestController || viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
+    players: players.map((player) => ({ id: player.id, name: player.name, seat: player.seat, hero: room.status === "heroes" && player.role !== "Lord" && player.id !== me?.id ? null : player.hero, generalReady: Boolean(player.hero), ready: Boolean(player.ready), hp: room.status === "heroes" ? null : player.hp, maxHp: room.status === "heroes" ? null : player.max_hp, alive: Boolean(player.alive), connected: viewerPlayerIds.has(player.id) || Date.now() - player.connected_at < 90_000, handCount: parse<Card[]>(player.hand_json, []).length, handCards: [], judgementCards: parse<Card[]>(player.judgement_json, []), equipmentCards: equipmentCards(player), attackRange: attackRangeFor(player), distance: me ? attackDistance(players, me.id, player.id) : null, isHost: player.id === room.host_player_id, role: player.role === "Lord" || !player.alive || room.status === "finished" || player.id === me?.id ? publicRoleName(player.role) : null })),
   };
 }
 
@@ -2257,23 +2262,14 @@ export async function POST(request: Request) {
   const db = env.DB;
 
   if (action === "create") {
-    const quickStart = body.quickStart === true; const playerName = quickStart ? "Player1" : name;
-    if (playerName.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
+    if (name.length < 2) return json({ error: "Enter a name with at least 2 characters." }, 400);
     const roomId = crypto.randomUUID(); const playerId = crypto.randomUUID(); const token = newToken(); const tokenHash = await hash(token); let code = randomCode();
     for (let attempt = 0; attempt < 4; attempt++) { const exists = await db.prepare("SELECT 1 FROM rooms WHERE code = ?").bind(code).first(); if (!exists) break; code = randomCode(); }
     const inserts = [
       db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at) VALUES (?, ?, ?, 'lobby', 8, ?)").bind(roomId, code, playerId, Date.now()),
-      db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, playerName, tokenHash, Date.now()),
+      db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, 0, ?)").bind(playerId, roomId, name, tokenHash, Date.now()),
     ];
-    if (quickStart) for (let index = 1; index <= 3; index++) inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, connected_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), roomId, `Player${index + 1}`, tokenHash, index, Date.now()));
     await db.batch(inserts);
-    if (quickStart) {
-      await resetAudit(roomId);
-      const createdRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const host = await db.prepare("SELECT * FROM players WHERE id = ?").bind(playerId).first<PlayerRow>();
-      if (createdRoom && host) await recordAuditAction(createdRoom, host, playerName, "quick_start");
-      const quickPlayers = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
-      await beginStandardHeroSelection(roomId, quickPlayers.results ?? []);
-    }
     return json({ token, room: await roomState(code, token) }, 201);
   }
 
@@ -2306,13 +2302,17 @@ export async function POST(request: Request) {
   let pendingForController = rawControllerPending;
   let turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
   let actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
-  let isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
-  let me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
+  let isTestController = sessionPlayers.length > 1 && sessionPlayers.some((player) => player.id === room.host_player_id);
+  const controlledPlayerIds = new Set(sessionPlayers.map((player) => player.id));
+  const controllerFallback = sessionPlayers.find((player) => player.id === room.host_player_id) ?? sessionPlayers[0];
+  let me = isTestController
+    ? actionPlayerIdForController && controlledPlayerIds.has(actionPlayerIdForController) ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? controllerFallback : controllerFallback
+    : sessionPlayers[0];
   if (action === "heartbeat") {
     if (!sessionPlayers.length) return json({ error: "Your player session is no longer valid." }, 403);
-    // Quick Game has four seats behind one controller token. Its state does
-    // not need four presence writes, and the projected seats are always live.
-    if (!isTestController) {
+    // A pure generated-seat room has live seats behind one controller token;
+    // mixed rooms still refresh the host and its generated seats normally.
+    if (!isTestController || sessionPlayers.length !== allRoomPlayers.length) {
       const now = Date.now();
       const result = await db.prepare("UPDATE players SET connected_at = ? WHERE room_id = ? AND token_hash = ? AND connected_at < ?").bind(now, room.id, tokenHash, now - 60_000).run();
       if ((result.meta.changes ?? 0) > 0) console.log(JSON.stringify({ event: "d1_presence_heartbeat", endpoint: "rooms", request: "POST", roomCode: code, writes: result.meta.changes }));
@@ -2346,8 +2346,10 @@ export async function POST(request: Request) {
     pendingForController = rawCurrentPending;
     turnPlayerForController = allRoomPlayers.find((player) => player.seat === room.turn_seat);
     actionPlayerIdForController = room.status === "heroes" ? nextGeneralSelector(allRoomPlayers)?.id : room.phase === "response" || room.phase === "dying" ? pendingForController?.actorId ?? pendingForController?.targetId ?? turnPlayerForController?.id : turnPlayerForController?.id;
-    isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
-    me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
+    isTestController = sessionPlayers.length > 1 && sessionPlayers.some((player) => player.id === room.host_player_id);
+    me = isTestController
+      ? actionPlayerIdForController && sessionPlayers.some((player) => player.id === actionPlayerIdForController) ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? controllerFallback : controllerFallback
+      : sessionPlayers[0];
     const submitted = body.context && typeof body.context === "object" ? body.context as { actionRevision?: unknown; meId?: unknown; phase?: unknown; pendingKind?: unknown; actorId?: unknown } : null;
     const expectedRevision = await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
     const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: pendingForController?.kind === "response" ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null, actorId: actionPlayerIdForController ?? null };
@@ -3011,7 +3013,7 @@ export async function POST(request: Request) {
     const inserts = [];
     for (let index = 0; index < needed; index++) {
       let seat = 0; while (seats.has(seat)) seat++; seats.add(seat);
-      inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at) VALUES (?, ?, ?, ?, ?, 1, ?)").bind(crypto.randomUUID(), room.id, `Player ${index + 1}`, tokenHash, seat, Date.now()));
+      inserts.push(db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, ready, connected_at) VALUES (?, ?, ?, ?, ?, 1, ?)").bind(crypto.randomUUID(), room.id, `Test Player ${seat + 1}`, tokenHash, seat, Date.now()));
     }
     if (inserts.length) await db.batch(inserts);
     return json({ room: await roomState(code, token) });

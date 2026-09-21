@@ -1,5 +1,37 @@
 # Three Kingdoms project handover
 
+## Hosted games and test-player flow — 2026-09-21
+
+The landing page now exposes one simplified entry flow: `Host Game` or `Join
+Game`, with `PLAYER NAME`, `ROOM CODE`, and the existing role preview. The
+separate Quick Game and visible Rejoin controls were removed. Home restores a
+valid saved room/token automatically and clears invalid sessions; Join Game
+also attempts the stored session when its room code matches before posting a
+new join request.
+
+The intended product paths are now:
+
+- Normal game: Host Game → lobby → real players Join Game → Ready → Start.
+- Test game: Host Game → lobby → Add Test Players → Ready → Start.
+
+`add_test_players` remains host-only and lobby-only, fills the room to four
+seats, names generated seats `Test Player 2`, `Test Player 3`, and so on by
+seat, and marks them ready. The production `quickStart` create branch was
+removed. Shared control now means that a host token may control its own seat
+and generated seats associated with that token. In a mixed room, if the live
+actor belongs to another human token, the host view falls back to the host
+seat instead of projecting that human's private hand, role, hero choice, or
+decision. Regression coverage exercises both pure host/test seats and a Host
++ Alice + generated-test room.
+
+Known boundary: the shared-controller behavior remains intentionally limited
+to generated seats sharing the host token; it is not a general multi-human
+controller. Recommended next work remains the next individually verified
+Standard hero capability.
+
+Validation for this round: `npm test` (111/111, including build), `npm run lint`,
+and `git diff --check` pass.
+
 ## Gan Ning Qixi browser contract repair — 2026-09-21
 
 The production Qixi failure was caused at the browser projection boundary:
@@ -38,10 +70,10 @@ individually verified Standard hero capability.
 
 ## Normal human multiplayer lobby repair — 2026-09-21
 
-Normal multiplayer now has a real landing-page entry flow: a named player can
-host a lobby, receive a five-character share code, or join an existing lobby
-with that code. Quick Game remains a separate single-controller path and still
-uses its existing four human-style seats and Standard setup.
+Normal multiplayer has a real landing-page entry flow: a named player can host
+a lobby, receive a five-character share code, or join an existing lobby with
+that code. Host testing uses the same lobby through `Add Test Players`; there
+is no separate landing-page game mode.
 
 Lobby readiness is persistent in `players.ready` (default false). The
 authenticated `set_ready` action can change only the caller's own readiness

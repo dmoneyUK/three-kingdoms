@@ -1,5 +1,28 @@
 # Three Kingdoms
 
+## Hosted games and test-player flow — 2026-09-21
+
+The landing page now has one product path: enter a player name and choose
+Host Game, or enter a room code and choose Join Game. The separate Quick Game
+and visible Rejoin game controls are gone. A saved room/token is resumed
+automatically when valid, while a stale session is cleared and returns to the
+normal landing form; submitting Join Game for that same saved room also tries
+the existing session before creating a new seat.
+
+Normal game flow is Host Game → lobby → real players Join Game → Ready → Start.
+Test game flow is Host Game → lobby → Add Test Players → Ready → Start. The
+host-only test-player action fills the room to four seats, names generated
+seats by position, and marks them ready. The shared-controller implementation
+remains available only for seats owned by the host token, including mixed
+human/test rooms; another human's private hand, role, hero choice, and action
+are never projected through the host view. Production no longer accepts the
+separate `quickStart` create path.
+
+The current stage remains Stage 6 hero-capability execution complete. The next
+milestone is the next individually verified Standard hero capability, while
+preserving canonical semantic decisions, hosted test-seat privacy, and exact
+card conservation.
+
 ## Gan Ning Qixi browser contract repair — 2026-09-21
 
 Gan Ning's Qixi now follows the real `currentAction` client contract for
@@ -201,14 +224,15 @@ marked used when committed, resets at Zhou Yu's next turn, and stale or
 duplicate submissions cannot repeat the transfer. The initial UI has no
 Fanjian hand-card selection step. Full Worker/D1 validation now passes 97 tests.
 
-## Quick Game shared-controller setup — 2026-09-21
+## Hosted test-seat shared-controller setup — 2026-09-21
 
-Quick Game is a single-player controller mode: one local player switches
-between four human-style seats and plays each seat in turn. It keeps the normal
-Lord-first hero selection and starts through the same `beginMatch()` path as
-multiplayer. The opening hands are four cards dealt from the normally shuffled
-Standard 108-card deck; no hero or card fixture is injected into production
-Quick Game.
+The former single-player Quick Game setup is now reached through the hosted
+lobby: the host creates a normal room, adds test players, marks the host ready,
+and starts through the same `beginMatch()` path as multiplayer. Generated
+seats share the host token and retain normal Lord-first hero selection and
+shuffled Standard opening hands. This exercises the same setup path as a
+hosted multiplayer game, with deterministic hero/card fixtures confined to
+test helpers.
 
 ## Standard setup parity — 2026-09-20
 

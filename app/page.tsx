@@ -120,14 +120,16 @@ export default function Home() {
       const response = await fetch(`/api/rooms?code=${roomCode}&token=${playerToken}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Room is no longer available.");
       const nextRoom = normalizeRoomData(await readApiJson(response)) as Room | null;
-      if (!nextRoom) throw new Error("Previous game data is no longer compatible. Start a new game.");
+      if (!nextRoom || !nextRoom.meId) throw new Error("Your player session is no longer valid.");
       if (epoch === stateEpoch.current) setRoom(nextRoom as Room);
+      return true;
     } catch (cause) {
-      if (cause instanceof Error && /Previous game data|no longer available/.test(cause.message)) {
+      if (cause instanceof Error && /Previous game data|no longer available|session is no longer valid/.test(cause.message)) {
         localStorage.removeItem("three-realms-session");
         if (epoch === stateEpoch.current) { setRoom(null); setCode(""); setToken(""); }
       }
       if (!quiet) setError(cause instanceof Error ? cause.message : "Could not reach the room.");
+      return false;
     }
   }, []);
 
@@ -136,7 +138,8 @@ export default function Home() {
     if (!saved) return;
     try {
       const session = JSON.parse(saved) as { code: string; token: string; name?: string };
-      const timer = setTimeout(() => { setToken(session.token); setCode(session.code); if (session.name) setName(session.name); fetchRoom(session.code, session.token); }, 0);
+      if (!/^[A-Z0-9]{5}$/.test(session.code) || !session.token) throw new Error("Invalid saved session");
+      const timer = setTimeout(() => { setToken(session.token); setCode(session.code); if (session.name) setName(session.name); void fetchRoom(session.code, session.token, true); }, 0);
       return () => clearTimeout(timer);
     } catch { localStorage.removeItem("three-realms-session"); }
   }, [fetchRoom]);
@@ -166,6 +169,13 @@ export default function Home() {
     const epoch = nonBlocking ? stateEpoch.current : ++stateEpoch.current; const mutationSequence = nonBlocking ? latestAppliedMutation.current : epoch;
     if (!nonBlocking) { setBusy(true); setError(""); }
     try {
+      if (action === "join") {
+        const saved = localStorage.getItem("three-realms-session");
+        try {
+          const session = saved ? JSON.parse(saved) as { code?: string; token?: string } : null;
+          if (session?.code === code && session.token && await fetchRoom(code, session.token, true)) return true;
+        } catch { localStorage.removeItem("three-realms-session"); }
+      }
       const context = room && !["create", "join", "start", "set_ready", "add_test_players", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId } : undefined;
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...extra }) });
       const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown }>(response);
@@ -230,15 +240,13 @@ export default function Home() {
           <div className="role-row"><Role title="Lord" glyph="主" /><Role title="Loyalist" glyph="忠" /><Role title="Rebel" glyph="反" /><Role title="Spy" glyph="内" /></div>
         </div>
         <div className="entry-card">
-          <div className="entry-title"><span>ENTER THE REALM</span><small>Quick Game: 1 controller · Multiplayer: 4–8</small></div>
+          <div className="entry-title"><span>ENTER THE REALM</span><small>4–8 players</small></div>
           <label className="test-player-name"><span>PLAYER NAME</span><input value={name} onChange={(event) => setName(event.target.value.slice(0, 20))} maxLength={20} placeholder="Enter your name" autoComplete="nickname" /></label>
-          {token && code.length === 5 && <button className="rejoin-button" disabled={busy} onClick={() => fetchRoom(code, token)}>{busy ? "Rejoining…" : `Rejoin game ${code}`}</button>}
-          <button className="gold-button" disabled={busy || name.trim().length < 2} onClick={() => send("create")}>{busy ? "Preparing…" : "Host multiplayer game"}</button>
-          <button className="outline-button" disabled={busy} onClick={() => send("create", { quickStart: true })}>Quick game</button>
-          <div className="divider"><span>OR JOIN A MULTIPLAYER GAME</span></div>
+          <button className="gold-button" disabled={busy || name.trim().length < 2} onClick={() => send("create")}>{busy ? "Preparing…" : "Host Game"}</button>
+          <div className="divider"><span>OR JOIN A GAME</span></div>
           <form onSubmit={(event: FormEvent) => { event.preventDefault(); send("join"); }}>
-            <label>Five-character room code<input className="code-input" value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="ABCDE" autoCapitalize="characters" /></label>
-            <button className="outline-button" disabled={busy || name.trim().length < 2 || code.length !== 5}>Join multiplayer game</button>
+            <label><span>ROOM CODE</span><input className="code-input" value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="ABCDE" autoCapitalize="characters" /></label>
+            <button className="outline-button" disabled={busy || name.trim().length < 2 || code.length !== 5}>Join Game</button>
           </form>
           {error && <p className="error" role="alert">{error}</p>}
           <small className="privacy-note">Your secret role and player key stay private on this device.</small>
@@ -260,7 +268,7 @@ function WaitingRoom({ room, busy, error, onStart, onReady, onAddTestPlayers, on
   return <main className="lobby-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><button className="text-button" onClick={onLeave}>Leave room</button></header>
     <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1><p>Share this code with your friends. The match begins when 4–8 players have joined and everyone is ready.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
       <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isHost ? "HOST" : "PLAYER"} · {player.ready ? "READY" : "NOT READY"}</small></> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
-      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players · {readyCount} ready</span><div className="host-actions">{me && <button className="outline-button" disabled={busy} onClick={() => onReady(!me.ready)}>{me.ready ? "Mark not ready" : "Ready"}</button>}{room.isHost && <>{room.players.length < 4 && <button className="test-button" disabled={busy} onClick={onAddTestPlayers}>+ Add test players</button>}<button className="gold-button" disabled={busy || !canStart} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : readyCount < room.players.length ? "Waiting for ready" : "Start match"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>{error && <p className="error" role="alert">{error}</p>}</section></main>;
+      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players · {readyCount} ready</span><div className="host-actions">{me && <button className="outline-button" disabled={busy} onClick={() => onReady(!me.ready)}>{me.ready ? "Mark not ready" : "Ready"}</button>}{room.isHost && <>{room.players.length < 4 && <button className="test-button" disabled={busy} onClick={onAddTestPlayers}>+ Add {4 - room.players.length} Test Player{4 - room.players.length === 1 ? "" : "s"}</button>}<button className="gold-button" disabled={busy || !canStart} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : readyCount < room.players.length ? "Waiting for ready" : "Start match"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>{error && <p className="error" role="alert">{error}</p>}</section></main>;
 }
 
 export function HeroSelection({ room, busy, error, onChoose, onLeave }: { room: Room; busy: boolean; error: string; onChoose: (heroId: string) => void; onLeave: () => void }) {
