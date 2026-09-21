@@ -129,7 +129,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **WEI 004**, printed title **The Vanguard General**.
 - **Implementation interpretation:** Assault is an optional replacement for Zhang Liao's normal Draw Phase draw. If accepted, he obtains one hidden hand card from each of up to two chosen characters instead of drawing from the deck.
 - **Likely engine shape:** Draw Phase replacement; hidden-hand random/authoritative card acquisition.
-- **Current implementation:** Player-facing hero metadata now matches the verified printed skill text; Assault itself remains unimplemented.
+- **Current implementation:** Assault is implemented as an optional semantic `draw_phase` replacement. After required Judgements finish and Zhang Liao enters his normal Draw Phase, the `Assault` trigger projects only living other characters with a non-empty hand. Zhang Liao selects one or two target IDs through the generic `trigger` protocol; the server revalidates them, chooses one physical card opaquely from each target hand, transfers those cards to Zhang Liao, leaves the deck unchanged, and then enters Play Phase. The target hand contents are not exposed in `currentAction` or public history; the received cards become private to Zhang Liao only after settlement. `decline_trigger` continues the normal two-card deck draw, and no eligible target suppresses the Assault offer.
 
 ### Xu Zhu (许褚)
 

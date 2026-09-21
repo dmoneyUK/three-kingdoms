@@ -82,7 +82,7 @@ function normalizeCurrentAction(value) {
     const selection = option.selection === null ? null : isRecord(option.selection) && option.selection.type === "cards" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
       ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string"), ...(Array.isArray(option.selection.targetIds) ? { targetIds: option.selection.targetIds.filter((id) => typeof id === "string") } : {}) }
       : isRecord(option.selection) && option.selection.type === "target" && Array.isArray(option.selection.targetIds)
-        ? { type: "target", targetIds: option.selection.targetIds.filter((id) => typeof id === "string") }
+        ? { type: "target", targetIds: option.selection.targetIds.filter((id) => typeof id === "string"), ...(Number.isInteger(option.selection.min) ? { min: option.selection.min } : {}), ...(Number.isInteger(option.selection.max) ? { max: option.selection.max } : {}) }
       : isRecord(option.selection) && option.selection.type === "target_cards" && typeof option.selection.targetId === "string" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleKeys)
         ? { type: "target_cards", targetId: option.selection.targetId, min: option.selection.min, max: option.selection.max, eligibleKeys: option.selection.eligibleKeys.filter((id) => typeof id === "string") }
         : isRecord(option.selection) && option.selection.type === "choice" && Array.isArray(option.selection.choices) && Array.isArray(option.selection.eligibleHandKeys)

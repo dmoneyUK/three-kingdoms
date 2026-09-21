@@ -186,7 +186,7 @@ function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
   }
   if (continuation.kind === "draw_phase_event") {
     const player = players.find((candidate) => candidate.id === continuation.playerId);
-    return player ? { event: pending.event, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), playerId: player.id, hero: player.hero } : null;
+    return player ? { event: pending.event, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), targetIds: drawPhaseTargetIds(player, players), playerId: player.id, hero: player.hero } : null;
   }
   if (continuation.kind === "discard_phase_event") {
     const player = players.find((candidate) => candidate.id === continuation.playerId);
@@ -451,8 +451,18 @@ function judgementPurposeForDelayed(card: Card): JudgementPurpose | null {
   return null;
 }
 
-function drawPhaseTriggerContext(player: PlayerRow) {
-  return { event: "draw_phase" as const, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), playerId: player.id, hero: player.hero };
+function drawPhaseTargetIds(player: PlayerRow, players: PlayerRow[]) {
+  return players.filter((candidate) => candidate.alive && candidate.id !== player.id && parse<Card[]>(candidate.hand_json, []).length > 0).map((candidate) => candidate.id);
+}
+function selectedDrawPhaseTargets(player: PlayerRow, targetIds: string[], players: PlayerRow[]) {
+  if (targetIds.length < 1 || targetIds.length > 2 || new Set(targetIds).size !== targetIds.length) return null;
+  const eligible = new Set(drawPhaseTargetIds(player, players));
+  if (targetIds.some((targetId) => !eligible.has(targetId))) return null;
+  const targets = targetIds.map((targetId) => players.find((candidate) => candidate.id === targetId)).filter((candidate): candidate is PlayerRow => Boolean(candidate));
+  return targets.length === targetIds.length ? targets : null;
+}
+function drawPhaseTriggerContext(player: PlayerRow, players: PlayerRow[] = []) {
+  return { event: "draw_phase" as const, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), targetIds: drawPhaseTargetIds(player, players), playerId: player.id, hero: player.hero };
 }
 
 /** Resolves only the normal Draw Phase draw; card effects use their own paths. */
@@ -479,12 +489,38 @@ async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePh
   return drawnCards;
 }
 
-/** Opens optional Draw Phase capabilities after all required Judgements finish. */
-async function beginDrawPhaseDecision(room: RoomRow, target: PlayerRow, resumePhase: string, deck: Card[], discard: Card[], log: string[], additionalCards = 0, writes: D1PreparedStatement[] = []) {
+/** Settles a semantic Draw Phase replacement with physical hidden-hand transfers. */
+async function resolveDrawPhaseReplacement(room: RoomRow, target: PlayerRow, targets: PlayerRow[], resumePhase: string, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
+  let targetHand = parse<Card[]>(target.hand_json, []);
+  const transferred: Card[] = [];
+  for (const source of targets) {
+    const sourceHand = parse<Card[]>(source.hand_json, []);
+    if (!sourceHand.length) return null;
+    const index = crypto.getRandomValues(new Uint32Array(1))[0] % sourceHand.length;
+    const [obtained] = sourceHand.splice(index, 1);
+    if (!obtained) return null;
+    targetHand = [...targetHand, obtained];
+    transferred.push(obtained);
+    writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id));
+  }
+  const sourceNames = targets.map((source) => source.name);
+  for (const obtained of transferred) log = addPrivateDrawEvent(log, target, obtained);
+  log = addHistory(log, `${target.name} uses Assault and obtains 1 hand card from ${sourceNames.join(" and ")}.`, target.id);
   const flags = drawPhaseFlags(resumePhase);
-  const options = flags.skipDraw ? [] : getTriggeredEffects(drawPhaseTriggerContext(target));
+  writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id));
+  writes.push(db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+    .bind(flags.skipPlay ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+  await db().batch(writes);
+  return transferred;
+}
+
+/** Opens optional Draw Phase capabilities after all required Judgements finish. */
+async function beginDrawPhaseDecision(room: RoomRow, target: PlayerRow, resumePhase: string, deck: Card[], discard: Card[], log: string[], additionalCards = 0, writes: D1PreparedStatement[] = [], players: PlayerRow[] = []) {
+  const flags = drawPhaseFlags(resumePhase);
+  const options = flags.skipDraw ? [] : getTriggeredEffects(drawPhaseTriggerContext(target, players));
   if (!options.length) return resolveNormalDrawPhase(room, target, resumePhase, additionalCards, deck, discard, log, writes);
-  const presentation = addLogWithId(log, `${target.name} may use Heroic to draw one additional card this Draw Phase.`);
+  const optionText = options.map((option) => option.label).join(" or ");
+  const presentation = addLogWithId(log, `${target.name} may use ${optionText} during this Draw Phase, or skip.`);
   const continuation: DrawPhaseTriggerContinuation = {
     kind: "draw_phase_event",
     playerId: target.id,
@@ -495,7 +531,7 @@ async function beginDrawPhaseDecision(room: RoomRow, target: PlayerRow, resumePh
     kind: "trigger",
     event: "draw_phase",
     actorId: target.id,
-    reason: `${target.name} may use Heroic to draw one additional card this Draw Phase, or skip`,
+    reason: `${target.name} may use ${optionText} during this Draw Phase, or skip`,
     deadline: nextResponseDeadline(target),
     continuation,
   }, presentation.log, presentation.eventId);
@@ -716,7 +752,7 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
       await db().batch([...writes, db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(nextPhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
       return [];
     }
-    return beginDrawPhaseDecision(room, target, nextPhase, deck, discard, log, 0, writes);
+    return beginDrawPhaseDecision(room, target, nextPhase, deck, discard, log, 0, writes, players);
   }
 
   const responseResume = judgement.resume.kind === "response" ? judgement.resume : null;
@@ -2521,7 +2557,7 @@ export async function POST(request: Request) {
       if (action === "trigger" && !available.some((option) => option.effectId === triggerId)) {
         return json({ error: "That trigger provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       }
-      triggerExecution = action === "trigger" && context ? resolveTriggeredEffect(triggerId, context, { cardId: body.cardId, cardIds: body.cardIds, cardKeys: body.cardKeys, choice: body.choice }) : null;
+      triggerExecution = action === "trigger" && context ? resolveTriggeredEffect(triggerId, context, { cardId: body.cardId, cardIds: body.cardIds, cardKeys: body.cardKeys, targetId: body.targetId, targetIds: body.targetIds, choice: body.choice }) : null;
       if (triggerExecution) {
         const selectedOption = available.find((option) => option.effectId === triggerId);
         triggerExecution = { ...triggerExecution, presentation: selectedOption ? { label: selectedOption.label } : undefined };
@@ -2714,17 +2750,30 @@ export async function POST(request: Request) {
       return json({ room: await roomState(code, token) });
     }
     if (liveRoom && trigger && continuation?.kind === "draw_phase_event" && trigger.actorId === me.id) {
-      if (action === "apply_trigger" && triggerExecution?.outcome.kind !== "draw_phase_modifier") {
+      if (action === "apply_trigger" && triggerExecution?.outcome.kind !== "draw_phase_modifier" && triggerExecution?.outcome.kind !== "draw_phase_replacement") {
         return json({ error: "That Draw Phase decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      }
+      const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+      const players = rows.results ?? [];
+      const player = players.find((candidate) => candidate.id === continuation.playerId && candidate.alive);
+      if (!player) return json({ error: "The Draw Phase player is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      const replacementTargets = triggerExecution?.outcome.kind === "draw_phase_replacement"
+        ? selectedDrawPhaseTargets(player, triggerExecution.outcome.targetIds, players)
+        : null;
+      if (triggerExecution?.outcome.kind === "draw_phase_replacement" && !replacementTargets) {
+        return json({ error: "The selected Assault targets are no longer available.", stale: true, room: await roomState(code, token) }, 409);
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Draw Phase decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
-      const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
-      const player = (rows.results ?? []).find((candidate) => candidate.id === continuation.playerId && candidate.alive);
-      if (!player) return json({ error: "The Draw Phase player is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       let log = parse<string[]>(liveRoom.log_json, []);
-      if (action === "apply_trigger") log = addTriggeredEffectNotice(log, player.name, triggerExecution?.presentation?.label ?? "Heroic").log;
-      else log = addLog(log, `${player.name} declines Heroic; normal Draw Phase draw continues.`);
+      const optionLabel = triggerExecution?.presentation?.label ?? triggerOptionsFor(trigger, players)[0]?.label ?? "Draw Phase effect";
+      if (action === "apply_trigger") log = addTriggeredEffectNotice(log, player.name, optionLabel).log;
+      else log = addLog(log, `${player.name} declines ${optionLabel}; normal Draw Phase draw continues.`);
+      if (replacementTargets) {
+        const transferred = await resolveDrawPhaseReplacement(liveRoom, player, replacementTargets, continuation.resumePhase, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
+        if (!transferred) return json({ error: "Assault could not be settled safely.", stale: true, room: await roomState(code, token) }, 409);
+        return json({ room: await roomState(code, token), gainedCards: transferred });
+      }
       const additionalCards = (continuation.additionalCards ?? 0) + (action === "apply_trigger" && triggerExecution?.outcome.kind === "draw_phase_modifier" ? triggerExecution.outcome.amount : 0);
       const drawn = await resolveNormalDrawPhase(liveRoom, player, continuation.resumePhase, additionalCards, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
       return json({ room: await roomState(code, token), ...(drawn.length ? { drawnCards: drawn } : {}) });
@@ -3492,7 +3541,7 @@ export async function POST(request: Request) {
         const delayedDrawn = await beginDelayedJudgement(liveRoom, me, players, selectedDelayed.delayed, selectedDelayed.remaining, deck, discard, log, liveRoom.phase ?? "draw", [db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(selectedDelayed.remaining), me.id)]);
         return json({ room: await roomState(code, token), ...(delayedDrawn?.length ? { drawnCards: delayedDrawn } : {}) });
       }
-      drawnCards = await beginDrawPhaseDecision(liveRoom, me, liveRoom.phase ?? "draw", deck, discard, log);
+      drawnCards = await beginDrawPhaseDecision(liveRoom, me, liveRoom.phase ?? "draw", deck, discard, log, 0, [], players);
     } else if (action === "serpent_spear_attack") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before forming an Attack." }, 409);
       if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may use only one Attack per turn." }, 409);

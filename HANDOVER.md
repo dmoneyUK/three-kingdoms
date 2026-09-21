@@ -1,5 +1,35 @@
 # Three Kingdoms project handover
 
+## Zhang Liao — Assault — 2026-09-21
+
+Assault is implemented through the existing semantic Draw Phase trigger
+boundary. `draw_phase_modifier` remains the Zhou Yu Heroic shape; the new
+`draw_phase_replacement` outcome lets Zhang Liao replace the normal deck draw
+with one physical, server-selected opaque hand-card transfer from each of one
+or two living other characters. The provider projects only eligible target
+IDs, never target hand positions or card identities.
+
+The normal order is preserved: required delayed Judgements resolve first,
+then the optional Assault decision opens only for Zhang Liao's canonical Draw
+Phase. `decline_trigger` runs the ordinary two-card draw. Acceptance
+revalidates the actor, phase/pending CAS state, target aliveness, non-self
+ownership, non-empty hands, uniqueness, and the maximum of two targets before
+settling; deck and discard are unchanged. Private card events become visible
+to Zhang Liao only after the cards enter his hand, while public history names
+only the source characters.
+
+The browser uses the generic trigger target selector and submits `targetIds`
+through `trigger`; no Assault-specific HTTP action was added. Regression
+coverage includes decline, one/two-target transfers, invalid and duplicate
+targets, self/empty-hand rejection, hidden currentAction data, reload/stale
+decisions, no eligible targets, delayed Judgement ordering, and exact physical
+card conservation. Xu Zhu and other Draw Phase skills remain out of scope.
+
+Validation checkpoint for this round: the isolated `npm test` suite passes all
+120 tests, `npm run lint` passes, and `git diff --check` passes. The production
+build also passes through `npm test`; the validated commit is ready for the
+normal GitHub `main` push path.
+
 ## Standard hero reconciliation — 2026-09-21
 
 The reconciliation round preserves all persisted legacy provider/effect IDs,

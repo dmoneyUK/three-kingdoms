@@ -1,5 +1,24 @@
 # Three Kingdoms
 
+## Zhang Liao Assault — 2026-09-21
+
+Zhang Liao's optional Assault now opens only at the canonical normal Draw Phase
+boundary, after delayed Judgements. It uses the shared semantic `trigger` /
+`decline_trigger` protocol and a reusable Draw Phase outcome distinction:
+Zhou Yu's Heroic remains a normal-draw modifier, while Assault is a replacement
+that transfers one server-selected opaque hand card from each of one or two
+eligible living characters. The deck is not drawn when Assault is accepted;
+declining draws the normal two cards.
+
+Target IDs are projected without hand contents, revalidated for aliveness,
+non-self ownership, non-empty hands, uniqueness, and the two-target limit, and
+settled as exact physical transfers. Zhang Liao sees each received card only
+after ownership changes; public history names the source characters but never
+reveals card identity. API coverage includes decline, one/two targets, invalid
+targets, privacy, reload/stale safety, no eligible targets, conservation, and
+delayed-Judgement ordering. The next milestone is the next individually
+verified missing Standard hero; Xu Zhu remains out of scope for this round.
+
 ## Standard hero reconciliation — 2026-09-21
 
 Existing player-facing hero skills now use the printed English names from
