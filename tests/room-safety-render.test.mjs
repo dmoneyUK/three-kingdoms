@@ -2,11 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GameRoom, HeroInfoDialog, MandatoryChoiceDialog } from "../app/page.tsx";
+import { GameRoom, HeroInfoDialog, HeroSelection, MandatoryChoiceDialog } from "../app/page.tsx";
 import { STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
+
+test("hero selection shows the effective viewer's private role", () => {
+  const room = {
+    code: "ROLE1", isTestController: true, meId: "p2", myRole: "Rebel", myHeroOptions: STANDARD_HEROES.slice(0, 3),
+    players: [{ id: "p1", name: "PLAYER 1", hero: null, generalReady: false }, { id: "p2", name: "PLAYER 2", hero: null, generalReady: false }],
+    isMyAction: true, actionPlayerId: "p2",
+  };
+  const html = renderToStaticMarkup(React.createElement(HeroSelection, { room, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
+  assert.match(html, /YOUR SECRET ROLE/);
+  assert.match(html, />Rebel<\/strong>/);
+  assert.match(html, /aria-label="Your secret role is Rebel"/);
+});
 
 test("normalized malformed and unknown response states render safely", () => {
   const room = normalizeRoomData({

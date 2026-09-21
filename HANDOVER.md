@@ -1,5 +1,15 @@
 # Three Kingdoms project handover
 
+## Hero-selection role visibility — 2026-09-21
+
+The hero-selection screen now presents the effective viewer's private role in
+a dedicated role banner before general selection. Normal multiplayer uses the
+owning seat's `myRole`; Quick Test uses the currently controlled seat's
+`myRole`, so switching perspective updates the banner without exposing other
+roles. This is presentation-only and preserves the canonical Standard setup,
+private candidate projection, and hidden non-Lord selections. Recommended
+next work remains the next individually verified Standard hero capability.
+
 ## Guo Jia — Jealousy of God + Legacy — 2026-09-21
 
 Guo Jia is complete through three staged semantic changes. Step A added the

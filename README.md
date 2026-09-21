@@ -1,5 +1,14 @@
 # Three Kingdoms
 
+## Hero-selection role visibility — 2026-09-21
+
+The Standard hero-selection screen now clearly shows the effective viewer's
+private role before a general is chosen. This includes Quick Test: when the
+controller switches seats, the role banner follows that seat's projected
+`myRole`; it does not reveal any other player's hidden role. The canonical
+Standard setup and private candidate projection are unchanged. The next
+milestone remains the next individually verified Standard hero capability.
+
 ## Guo Jia — Jealousy of God + Legacy — 2026-09-21
 
 Guo Jia is implemented through the semantic trigger architecture. Jealousy of
