@@ -118,6 +118,10 @@ use their supplied artwork across the same shared surfaces. Their ivory/gold,
 red/brown, and purple/gold contrast treatments preserve physical rank/suit and
 card labels without changing their multi-target, Group, or Negation semantics.
 
+The Negation artwork has been updated to the latest supplied purple-and-gold
+formation graphic. Its existing contrast treatment remains shared across hand,
+reveal, played, and settled-card surfaces without changing Negation semantics.
+
 The standard Frost Sword, Something Out of Nothing, and Borrowed Sword cards
 now use their supplied artwork across the same shared surfaces. Their icy blue,
 gold/black, and red/black contrast treatments preserve physical rank/suit and

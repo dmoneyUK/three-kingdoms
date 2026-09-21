@@ -90,6 +90,17 @@ No gameplay protocol, card identity, Paoxiao/Attack-use-limit capability, or
 equipment behavior changed. Recommended next work remains the next individually
 verified Standard hero capability.
 
+## Negation artwork update — 2026-09-21
+
+The latest supplied purple-and-gold formation graphic replaces
+`public/negation-card.jpg`. The existing shared Negation presentation mapping
+continues to cover hand cards, centre reveals, played cards, and settled table
+cards.
+
+No canonical Negation scheduling, parity/depth transition, response ownership,
+or counter-window semantics changed. Recommended next work remains the next
+individually verified Standard hero capability.
+
 ## Card-name sizing consistency — 2026-09-20
 
 Shared `.game-card` and `.played-card` faces now clip overflow and constrain
