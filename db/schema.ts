@@ -23,6 +23,7 @@ export const players = sqliteTable("players", {
   tokenHash: text("token_hash").notNull(),
   seat: integer("seat").notNull(),
   role: text("role"),
+  ready: integer("ready", { mode: "boolean" }).notNull().default(false),
   hero: text("hero"),
   hp: integer("hp"),
   maxHp: integer("max_hp"),

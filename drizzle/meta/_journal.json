@@ -64,6 +64,13 @@
       "when": 1789908525898,
       "tag": "0008_fixed_scrambler",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789988416840,
+      "tag": "0009_parallel_loa",
+      "breakpoints": true
     }
   ]
 }

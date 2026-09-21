@@ -1,5 +1,39 @@
 # Three Kingdoms project handover
 
+## Normal human multiplayer lobby repair — 2026-09-21
+
+Normal multiplayer now has a real landing-page entry flow: a named player can
+host a lobby, receive a five-character share code, or join an existing lobby
+with that code. Quick Game remains a separate single-controller path and still
+uses its existing four human-style seats and Standard setup.
+
+Lobby readiness is persistent in `players.ready` (default false). The
+authenticated `set_ready` action can change only the caller's own readiness
+while the room is in `lobby`; the projection exposes readiness without
+exposing any role. The host is seat 0 but has no role advantage. Start is
+host-only, requires 4–8 current players, requires every player to be ready,
+and returns 409 unless the room is still in `lobby`, preventing stale Starts
+from resetting hero selection or an active match. New seats default to not
+ready, so joining or replacement cannot inherit another player's state.
+
+Waiting Room labels are now `HOST` / `PLAYER` plus `READY` / `NOT READY`; no
+identity is shown before allocation. Standard role allocation remains shuffled
+independently of seat and uses the existing one-Spy default sets for 4–8
+players. User-facing `Renegade` compatibility values project as `Spy`, while
+the Lord is public and each non-Lord identity remains private to its owner.
+Lord-first General selection, private 5/3 candidates, `generalReady`, automatic
+Playing transition after the final confirmation, Lord +1 HP, and Lord-first
+turn order remain unchanged.
+
+Regression coverage now includes named host creation, seats 1–N, lobby-ready
+gating, host-only/stale Start guards, the eight-player maximum, exact default
+role counts, host non-forcing, role privacy, private non-Lord Generals, and
+automatic match start. Alternative selectable two-Spy 6/8-player variants are
+not implemented in this round.
+
+Validation: clean isolated D1 run, `npm test` 107/107, `npm run lint`,
+`npm run build`, and `git diff --check` remain required before release.
+
 ## CardFace shield scale audit — 2026-09-21
 
 The rank/suit shield CSS now keeps the normal centre reveal at approximately

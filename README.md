@@ -428,6 +428,27 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 - Official card reference: [docs/OFFICIAL_CARD_REFERENCE.md](docs/OFFICIAL_CARD_REFERENCE.md)
 - Current stage: **playable four-player alpha — 28 / 28 verified Standard card identities and the physical Standard 108-card deck complete; Stage 5 match-rule correctness COMPLETE; Stage 6 Round 1 roster reconciliation, Guan Yu Wusheng hardening and final UI cleanup, Step 4.3 response-helper cleanup, single-controller bot-surface removal, Step 5E response-builder typing, Step 6B Negation canonicalization, Step 7B.1 legacy persisted-response rejection, Step 7C direct response construction, Step 7D response architecture documentation closure, Sima Yi Guicai Judgement continuation, Xiahou Dun Stauchness/Ganglie, and the three faction lords COMPLETE**
 
+## Current multiplayer lobby milestone — COMPLETE
+
+Normal human multiplayer now starts from a named host or a five-character room
+code join flow. The host becomes seat 0 and receives the shareable room code,
+but roles remain unassigned until Start Match. The Waiting Room persists a
+per-player Ready / Not Ready state and enables the host's Start Match only for
+4–8 players when every current player is ready. Stale Starts after the lobby
+return HTTP 409, and new seats default to not ready.
+
+Role allocation remains shuffled independently of host or seat with the
+existing one-Spy Standard sets for 4, 5, 6, 7, and 8 players. Before and during
+General selection, only the Lord is publicly revealed; each player sees their
+own identity and non-Lord General choices remain private. The Lord receives
+five candidates and chooses first, other seats receive three in seat order,
+and the final confirmation still enters Playing automatically with Lord +1 HP
+and the Lord's first turn. Alternative selectable two-Spy variants remain a
+future milestone. Quick Game remains a separate single-controller experience.
+
+The next milestone is the next individually verified Standard hero capability,
+while continuing mobile polish and production multiplayer smoke testing.
+
 Step 7D closes the semantic response architecture cleanup. `ResponsePending` is the sole semantic Attack, Duel,
 Group, and Negation decision shape. Attack, ordinary AOE, Halberd, and Duel
 creation now return canonical responses directly; DeferredStratagem stores

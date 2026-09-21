@@ -18,7 +18,7 @@ type PresentationEventMeta = { resolutionId?: string; importance?: PresentationI
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
-type Player = { id: string; name: string; seat: number; hero: string | null; generalReady: boolean; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; role: string | null };
+type Player = { id: string; name: string; seat: number; hero: string | null; generalReady: boolean; ready: boolean; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; role: string | null };
  type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; choices: { cardId: string; playerId: string; playerName: string }[]; previewCardId: string | null; complete: boolean; countdownUntil: number } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
 function hpDisplay(hp: number | null) { return hp !== null && hp <= 0 ? `${hp} HP` : "♥".repeat(Math.max(0, hp ?? 0)); }
@@ -102,7 +102,7 @@ async function readApiJson<T>(response: Response): Promise<T> {
 }
 
 export default function Home() {
-  const name = "Player1";
+  const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [room, setRoom] = useState<Room | null>(null);
   const [token, setToken] = useState("");
@@ -134,8 +134,8 @@ export default function Home() {
     const saved = localStorage.getItem("three-realms-session");
     if (!saved) return;
     try {
-      const session = JSON.parse(saved) as { code: string; token: string };
-      const timer = setTimeout(() => { setToken(session.token); setCode(session.code); fetchRoom(session.code, session.token); }, 0);
+      const session = JSON.parse(saved) as { code: string; token: string; name?: string };
+      const timer = setTimeout(() => { setToken(session.token); setCode(session.code); if (session.name) setName(session.name); fetchRoom(session.code, session.token); }, 0);
       return () => clearTimeout(timer);
     } catch { localStorage.removeItem("three-realms-session"); }
   }, [fetchRoom]);
@@ -155,7 +155,7 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase]);
 
-  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
+  async function send(action: "create" | "join" | "start" | "set_ready" | "add_test_players" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
     const backgroundPreview = action === "preview_harvest" || action === "heartbeat";
     const nonBlocking = backgroundPreview;
     const mutationKey = `${action}:${room?.actionRevision ?? room?.phase ?? "landing"}`;
@@ -165,7 +165,7 @@ export default function Home() {
     const epoch = nonBlocking ? stateEpoch.current : ++stateEpoch.current; const mutationSequence = nonBlocking ? latestAppliedMutation.current : epoch;
     if (!nonBlocking) { setBusy(true); setError(""); }
     try {
-      const context = room && !["create", "join", "start", "add_test_players", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId } : undefined;
+      const context = room && !["create", "join", "start", "set_ready", "add_test_players", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId } : undefined;
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...extra }) });
       const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown }>(response);
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
@@ -174,7 +174,7 @@ export default function Home() {
       if (action === "heartbeat") return true;
       const nextToken = data.token ?? token;
       if (epoch === stateEpoch.current && mutationSequence >= latestAppliedMutation.current) { latestAppliedMutation.current = mutationSequence; setToken(nextToken); setRoom(data.room); setCode(data.room.code); }
-      localStorage.setItem("three-realms-session", JSON.stringify({ code: data.room.code, token: nextToken, name }));
+      localStorage.setItem("three-realms-session", JSON.stringify({ code: data.room.code, token: nextToken, name: name.trim() }));
       return true;
     } catch (cause) { if (!backgroundPreview) setError(cause instanceof Error ? cause.message : "Something went wrong."); return false; }
     finally { if (!nonBlocking) { if (mutationInFlight.current === mutationKey) mutationInFlight.current = null; setBusy(false); } }
@@ -215,7 +215,7 @@ export default function Home() {
 
   if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} busy={busy} error={error} onAction={send} onLeave={leave} /></GameRoomErrorBoundary>;
   if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
-  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onLeave={leave} />;
+  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onReady={(ready) => send("set_ready", { ready })} onAddTestPlayers={() => send("add_test_players")} onLeave={leave} />;
 
   return (
     <main className="landing-shell">
@@ -226,17 +226,18 @@ export default function Home() {
           <span className="eyebrow">A PRIVATE TABLE FOR FRIENDS</span>
           <h1>Strategy has<br /><em>four faces.</em></h1>
           <p>Rule the realm. Defend your lord. Overthrow the throne. Or outlive them all.</p>
-          <div className="role-row"><Role title="Lord" glyph="主" /><Role title="Loyalist" glyph="忠" /><Role title="Rebel" glyph="反" /><Role title="Traitor" glyph="内" /></div>
+          <div className="role-row"><Role title="Lord" glyph="主" /><Role title="Loyalist" glyph="忠" /><Role title="Rebel" glyph="反" /><Role title="Spy" glyph="内" /></div>
         </div>
         <div className="entry-card">
           <div className="entry-title"><span>ENTER THE REALM</span><small>Quick Game: 1 controller · Multiplayer: 4–8</small></div>
-          <div className="test-player-name"><span>YOU ARE PLAYING AS</span><b>Player1</b></div>
+          <label className="test-player-name"><span>PLAYER NAME</span><input value={name} onChange={(event) => setName(event.target.value.slice(0, 20))} maxLength={20} placeholder="Enter your name" autoComplete="nickname" /></label>
           {token && code.length === 5 && <button className="rejoin-button" disabled={busy} onClick={() => fetchRoom(code, token)}>{busy ? "Rejoining…" : `Rejoin game ${code}`}</button>}
-          <button className="gold-button" disabled={busy} onClick={() => send("create", { quickStart: true })}>{busy ? "Preparing…" : "Start quick game"}</button>
-          <div className="divider"><span>OR JOIN A FRIEND</span></div>
+          <button className="gold-button" disabled={busy || name.trim().length < 2} onClick={() => send("create")}>{busy ? "Preparing…" : "Host multiplayer game"}</button>
+          <button className="outline-button" disabled={busy} onClick={() => send("create", { quickStart: true })}>Quick game</button>
+          <div className="divider"><span>OR JOIN A MULTIPLAYER GAME</span></div>
           <form onSubmit={(event: FormEvent) => { event.preventDefault(); send("join"); }}>
             <label>Five-character room code<input className="code-input" value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5))} maxLength={5} placeholder="ABCDE" autoCapitalize="characters" /></label>
-            <button className="outline-button" disabled={busy || code.length !== 5}>Join room</button>
+            <button className="outline-button" disabled={busy || name.trim().length < 2 || code.length !== 5}>Join multiplayer game</button>
           </form>
           {error && <p className="error" role="alert">{error}</p>}
           <small className="privacy-note">Your secret role and player key stay private on this device.</small>
@@ -250,12 +251,15 @@ export default function Home() {
 function Brand() { return <div className="brand"><span className="brand-mark">三</span><div><strong>Three Kingdoms</strong><small>Classic card game</small></div></div>; }
 function Role({ title, glyph }: { title: string; glyph: string }) { return <div className="mini-role"><b>{glyph}</b><span>{title}</span></div>; }
 
-function WaitingRoom({ room, busy, error, onStart, onAddTestPlayers, onLeave }: { room: Room; busy: boolean; error: string; onStart: () => void; onAddTestPlayers: () => void; onLeave: () => void }) {
+function WaitingRoom({ room, busy, error, onStart, onReady, onAddTestPlayers, onLeave }: { room: Room; busy: boolean; error: string; onStart: () => void; onReady: (ready: boolean) => void; onAddTestPlayers: () => void; onLeave: () => void }) {
   const share = async () => { await navigator.clipboard?.writeText(room.code); };
+  const me = room.players.find((player) => player.id === room.meId);
+  const readyCount = room.players.filter((player) => player.ready).length;
+  const canStart = room.players.length >= 4 && room.players.length <= room.maxPlayers && readyCount === room.players.length;
   return <main className="lobby-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><button className="text-button" onClick={onLeave}>Leave room</button></header>
-    <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1><p>Share this code with your friends. The match begins when 4–8 players have joined.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
-      <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isHost ? "HOST · LORD" : "ROLE HIDDEN"}</small></> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
-      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players</span>{room.isHost ? <div className="host-actions">{room.players.length < 4 && <button className="test-button" disabled={busy} onClick={onAddTestPlayers}>+ Add test players</button>}<button className="gold-button" disabled={busy || room.players.length < 4} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start match"}</button></div> : <p>Waiting for the host to start…</p>}</div>{error && <p className="error" role="alert">{error}</p>}</section></main>;
+    <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1><p>Share this code with your friends. The match begins when 4–8 players have joined and everyone is ready.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
+      <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isHost ? "HOST" : "PLAYER"} · {player.ready ? "READY" : "NOT READY"}</small></> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
+      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players · {readyCount} ready</span><div className="host-actions">{me && <button className="outline-button" disabled={busy} onClick={() => onReady(!me.ready)}>{me.ready ? "Mark not ready" : "Ready"}</button>}{room.isHost && <>{room.players.length < 4 && <button className="test-button" disabled={busy} onClick={onAddTestPlayers}>+ Add test players</button>}<button className="gold-button" disabled={busy || !canStart} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : readyCount < room.players.length ? "Waiting for ready" : "Start match"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>{error && <p className="error" role="alert">{error}</p>}</section></main>;
 }
 
 export function HeroSelection({ room, busy, error, onChoose, onLeave }: { room: Room; busy: boolean; error: string; onChoose: (heroId: string) => void; onLeave: () => void }) {

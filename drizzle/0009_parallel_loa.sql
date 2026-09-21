@@ -1,0 +1,1 @@
+ALTER TABLE `players` ADD `ready` integer DEFAULT false NOT NULL;

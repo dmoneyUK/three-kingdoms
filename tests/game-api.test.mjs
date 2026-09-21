@@ -88,6 +88,12 @@ function setEquipment(playerId, equipment = {}) { sql(`UPDATE players SET equipm
 function setDeck(roomCode, cards) { sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(cards))}, discard_json='[]' WHERE code=${quote(roomCode)}`); }
 function setTurn(roomCode, seat, phase = "play") { sql(`UPDATE rooms SET turn_seat=${seat}, phase=${quote(phase)}, pending_json=NULL, status='playing' WHERE code=${quote(roomCode)}`); }
 function discardIds(roomCode) { return query(`SELECT json_extract(value,'$.id') FROM rooms,json_each(rooms.discard_json) WHERE rooms.code=${quote(roomCode)}`).split("\n").filter(Boolean); }
+async function markReady(code, members) {
+  for (const member of members) {
+    const result = await request("set_ready", { code, token: member.token, ready: true });
+    assert.equal(result.status, 200, JSON.stringify(result.data));
+  }
+}
 
 async function createQuickTestGame() {
   const created = await request("create", { quickStart: true });
@@ -122,6 +128,7 @@ async function createHumanSetupGame() {
     assert.equal(joined.status, 201);
     members.push({ name, token: joined.data.token });
   }
+  await markReady(code, members);
   const started = await request("start", { code, token: created.data.token, name: "Host" });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const views = await Promise.all(members.map((member) => state(code, member.token)));
@@ -227,6 +234,90 @@ test("Quick Game uses one controller across four seats with a normal shuffled op
     assert.equal(initialDraws.length, 4, "each multiplayer private view receives exactly four opening draw cards");
     assert.equal(view.timeline.filter((event) => event.type === "card" && event.initialDeal && event.drawPlayerId !== view.meId).length, 0, "opening hands remain private to each player view");
   }
+});
+
+test("normal multiplayer lobby requires named ready players and keeps roles private", async () => {
+  const created = await request("create", { name: "Host" });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.data.room.status, "lobby");
+  assert.equal(created.data.room.players[0].seat, 0);
+  assert.equal(created.data.room.players[0].isHost, true);
+  assert.equal(created.data.room.players[0].ready, false);
+  assert.equal(created.data.room.players[0].role, null);
+  assert.equal(query(`SELECT ready FROM players WHERE id=${quote(created.data.room.meId)}`), "0");
+
+  const members = [{ name: "Host", token: created.data.token }];
+  for (const name of ["Alice", "Bob"]) {
+    const joined = await request("join", { code: created.data.room.code, name });
+    assert.equal(joined.status, 201, JSON.stringify(joined.data));
+    members.push({ name, token: joined.data.token });
+  }
+  assert.deepEqual((await state(created.data.room.code, created.data.token)).data.players.map((player) => player.seat), [0, 1, 2]);
+  assert.equal((await request("start", { code: created.data.room.code, token: created.data.token })).status, 409, "a host cannot start below four players");
+  assert.equal((await request("set_ready", { code: created.data.room.code, token: members[0].token, ready: true })).status, 200);
+  assert.equal((await request("start", { code: created.data.room.code, token: members[0].token })).status, 409, "all current players must be ready");
+
+  const fourth = await request("join", { code: created.data.room.code, name: "Carol" });
+  assert.equal(fourth.status, 201);
+  assert.equal(fourth.data.room.players.find((player) => player.name === "Carol").ready, false, "a joining seat never inherits another player's readiness");
+  members.push({ name: "Carol", token: fourth.data.token });
+  for (const member of members.slice(1)) {
+    const ready = await request("set_ready", { code: created.data.room.code, token: member.token, ready: true });
+    assert.equal(ready.status, 200, JSON.stringify(ready.data));
+  }
+  assert.equal((await request("start", { code: created.data.room.code, token: members[1].token })).status, 403, "only the host can start");
+  const started = await request("start", { code: created.data.room.code, token: members[0].token });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  assert.equal(started.data.room.status, "heroes");
+  assert.equal((await request("join", { code: created.data.room.code, name: "Late" })).status, 409, "joining closes when the lobby ends");
+  assert.equal((await request("start", { code: created.data.room.code, token: members[0].token })).status, 409, "a stale start cannot reset hero selection");
+
+  const lobbyViews = await Promise.all(members.map((member) => state(created.data.room.code, member.token)));
+  for (const viewResponse of lobbyViews) {
+    const view = viewResponse.data;
+    assert.equal(view.players.filter((player) => player.role === "Lord").length, 1);
+    const visibleRoles = view.players.filter((player) => player.role !== null);
+    assert.equal(visibleRoles.length, view.myRole === "Lord" ? 1 : 2, "only the Lord and the viewer's own role are visible after allocation");
+    assert.equal(view.players.find((player) => player.id === view.meId).role, view.myRole, "the viewer sees their own role");
+    assert.ok(view.players.filter((player) => player.id !== view.meId && player.role !== null).every((player) => player.role === "Lord"));
+  }
+});
+
+test("normal role allocation preserves the exact Standard sets for four through eight players", async () => {
+  const expected = {
+    4: { Lord: 1, Loyalist: 1, Rebel: 1, Spy: 1 },
+    5: { Lord: 1, Loyalist: 1, Rebel: 2, Spy: 1 },
+    6: { Lord: 1, Loyalist: 1, Rebel: 3, Spy: 1 },
+    7: { Lord: 1, Loyalist: 2, Rebel: 3, Spy: 1 },
+    8: { Lord: 1, Loyalist: 2, Rebel: 4, Spy: 1 },
+  };
+  let hostWasNotLord = false;
+  for (const count of [4, 5, 6, 7, 8]) {
+    const created = await request("create", { name: `Host${count}` });
+    assert.equal(created.status, 201);
+    const members = [{ name: `Host${count}`, token: created.data.token }];
+    for (let seat = 1; seat < count; seat++) {
+      const joined = await request("join", { code: created.data.room.code, name: `Player${count}-${seat}` });
+      assert.equal(joined.status, 201);
+      members.push({ name: `Player${count}-${seat}`, token: joined.data.token });
+    }
+    if (count === 8) assert.equal((await request("join", { code: created.data.room.code, name: "TooMany" })).status, 409, "room maximum remains eight");
+    await markReady(created.data.room.code, members);
+    const started = await request("start", { code: created.data.room.code, token: members[0].token });
+    assert.equal(started.status, 200, JSON.stringify(started.data));
+    const views = await Promise.all(members.map((member) => state(created.data.room.code, member.token)));
+    const counts = Object.fromEntries(["Lord", "Loyalist", "Rebel", "Spy"].map((role) => [role, 0]));
+    for (const viewResponse of views) counts[viewResponse.data.myRole] += 1;
+    assert.deepEqual(counts, expected[count]);
+    for (const viewResponse of views) {
+      const view = viewResponse.data;
+      assert.equal(view.players.filter((player) => player.role === "Lord").length, 1);
+      assert.equal(view.players.filter((player) => player.role !== null).length, view.myRole === "Lord" ? 1 : 2);
+      assert.equal(view.players.find((player) => player.id === view.meId).role, view.myRole);
+    }
+    if (views[0].data.myRole !== "Lord") hostWasNotLord = true;
+  }
+  assert.equal(hostWasNotLord, true, "the host is not forced to be Lord");
 });
 
 test("Wu hero skills complete through the normal semantic API", async () => {
@@ -378,6 +469,7 @@ async function createHumanGame() {
   const code = created.data.room.code;
   const members = [{ name: "Host", token: created.data.token }];
   for (const name of ["Alice", "Bob", "Carol"]) { const joined = await request("join", { code, name }); assert.equal(joined.status, 201); members.push({ name, token: joined.data.token }); }
+  await markReady(code, members);
   assert.equal((await request("start", { code, token: members[0].token, name: "Host" })).status, 200);
   let setup = (await state(code, members[0].token)).data;
   while (setup.status === "heroes") {
