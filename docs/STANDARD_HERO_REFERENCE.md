@@ -69,21 +69,21 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Wei | `guo-jia` | Guo Jia | 郭嘉 | Male | 3 | Jealousy of God<br>Legacy | Present |
 | Wei | `zhen-ji` | Zhen Ji | 甄姬 | Female | 3 | Empress Dowager<br>Godess of Luo River | Present |
 | Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Dauntless | **Present / metadata-only** |
-| Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Benevolence<br>Influencing | Present |
+| Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Benevolence<br>Influencing | Implemented |
 | Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | God of War | Present |
 | Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Battle Cry | Present |
 | Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Stargazing<br>Empty Fortress Strategem | **Present / metadata-only** |
-| Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Braveheart | Present |
+| Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Braveheart | Implemented |
 | Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Horse Riding<br>Cavalry | Present |
 | Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Cultivation<br>Wizardry | Present |
 | Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Divine Wisdom<br>Prudence | **Present / metadata-only** |
-| Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Equilibrium<br>Deliverance | Present |
+| Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Equilibrium<br>Deliverance | Implemented |
 | Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Ambushment | Present |
 | Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Composure | Present |
 | Wu | `huang-gai` | Huang Gai | 黄盖 | Male | 4 | Self Sacrifice | Present |
 | Wu | `zhou-yu` | Zhou Yu | 周瑜 | Male | 3 | Heroic<br>Sowing Distrust | Present |
 | Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Captivating<br>Deflection | Present |
-| Wu | `lu-xun` | Lu Xun | 陆逊 | Male | 3 | Modesty<br>Second Wind | Present |
+| Wu | `lu-xun` | Lu Xun | 陆逊 | Male | 3 | Modesty<br>Second Wind | Implemented |
 | Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Betrothment<br>Daredevil | Present |
 | Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid<br>Prodigal Healer | Present |
 | Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Unrivaled | Present |
@@ -167,7 +167,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 
 - **Runtime ID:** `liu-bei`
 - **Likely engine shape:** Play Phase active; delegated semantic Attack response/use.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Benevolence is an active semantic Play Phase skill. Influencing is implemented as an active, range-checked Play Phase decision that asks living Shu characters in action order for an Attack; a willing delegate enters the normal Attack-targeted, Dodge, damage, and Dying pipeline with Liu Bei as the authoritative source. Declines end without consuming Liu Bei's normal Attack allowance, and delegate hand identities remain private.
 
 ### Guan Yu (关羽)
 
@@ -198,7 +198,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 
 - **Runtime ID:** `zhao-yun`
 - **Likely engine shape:** semantic Attack and Dodge providers.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Braveheart is implemented as the paired semantic Attack/Dodge providers, including Play Phase virtual Attack projection and private card-cost validation.
 
 ### Ma Chao (马超)
 
@@ -230,7 +230,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 
 - **Runtime ID:** `sun-quan`
 - **Likely engine shape:** Play Phase active / redraw; Dying recovery modifier.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Equilibrium is implemented once per Play Phase and can discard selected Hand or Equipment cards, removing equipment normally and drawing exactly one replacement per discarded physical card. Deliverance remains implemented in the shared Peach rescue/recovery path.
 
 ### Gan Ning (甘宁)
 
@@ -247,7 +247,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **WU 003**, printed name **Lv Meng**, printed title **Infiltration Incognito**.
 - **Implementation interpretation:** The condition covers the whole turn, not only the Play Phase.
 - **Likely engine shape:** turn-history condition; optional Discard Phase skip.
-- **Current implementation:** Finishing Play directly skips an over-limit Discard Phase when Lü Meng has not used an Attack; implementation should be checked against the verified “during your turn” wording, including Attacks used or played outside the Play Phase.
+- **Current implementation:** Composure tracks physical and virtual Attack use throughout the turn, offers an optional private Discard Phase trigger only when no Attack was used or played, and resolves accept/decline through the canonical trigger continuation. The turn-start reset keeps the condition scoped to the current turn.
 
 ### Huang Gai (黄盖)
 
@@ -277,7 +277,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Runtime ID:** `lu-xun`
 - **Verified official Standard card:** **WU 007**, printed title **The Scholarly Tactician**.
 - **Likely engine shape:** passive target-legality modifier; hand-empty trigger.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Modesty is a shared target-legality capability for Steal and Overindulgence. Second Wind is a private semantic hand-loss continuation that draws one card when Lu Xun loses his last hand card and then resumes the interrupted event.
 
 ### Sun Shangxiang (孙尚香)
 

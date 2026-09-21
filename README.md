@@ -1,5 +1,26 @@
 # Three Kingdoms
 
+## Standard hero reconciliation — 2026-09-21
+
+Existing player-facing hero skills now use the printed English names from
+`docs/STANDARD_HERO_REFERENCE.md` while persisted provider/effect IDs remain
+unchanged. Composure tracks physical and virtual Attacks for the entire turn
+and offers an optional canonical Discard Phase decision. Influencing now has
+an active Play Phase path: Liu Bei selects an in-range target, asks living Shu
+characters in action order, and any willing delegate enters the normal Attack
+pipeline with Liu Bei as source; all-decline recovery leaves Liu Bei's normal
+Attack allowance available. Equilibrium now projects Hand and Equipment cards,
+removes selected Equipment from its zone, discards the exact physical cards,
+and draws one replacement per discarded card. Ambushment remains hand-scoped
+under Standard use/play zone rules and still uses the shared Burning Bridges
+Negation and target-card pipeline.
+
+API regressions cover canonical projected labels, Composure accept/decline and
+turn reset behavior, Influencing range/order/privacy/settlement, and
+Equilibrium card conservation. The next milestone remains the next
+individually verified missing Standard hero, with semantic currentAction,
+Quick Test privacy, stale safety, and exact card conservation preserved.
+
 ## Hosted games and test-player flow — 2026-09-21
 
 The landing page now has one product path: enter a player name and choose

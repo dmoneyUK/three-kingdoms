@@ -26,13 +26,13 @@ test("Wu and Qun hero capabilities project their private costs and Wushuang mult
   const qixiBlackHand = getActiveHeroSkillOptions({ playerId: "source", hero: "gan-ning", hand: [borrowedSword, redCard], livingTargetIds: targets, targetableTargetIds: targets, skillState: {} })[0];
   assert.deepEqual(qixiBlackHand.selection, { type: "cards", min: 1, max: 1, eligibleCardIds: [borrowedSword.id], targetIds: targets });
   assert.deepEqual(resolveActiveHeroSkill("gan_ning_qixi", { playerId: "source", hero: "gan-ning", hand: [borrowedSword], livingTargetIds: targets, targetableTargetIds: targets, skillState: {} }, { cardIds: [borrowedSword.id], targetId: "target" })?.outcome, { kind: "dismantle", sourceId: "source", targetId: "target", cardIds: [borrowedSword.id] });
-  assert.equal(getActiveHeroSkillOptions({ playerId: "source", hero: "gan-ning", hand: [black], livingTargetIds: targets, targetableTargetIds: [], skillState: {} }).length, 0, "Qixi is not projected without a target that has an affectable card");
+  assert.equal(getActiveHeroSkillOptions({ playerId: "source", hero: "gan-ning", hand: [black], livingTargetIds: targets, targetableTargetIds: [], skillState: {} }).length, 0, "Ambushment is not projected without a target that has an affectable card");
   assert.equal(getActiveHeroSkillOptions({ playerId: "source", hero: "huang-gai", hand: [], livingTargetIds: targets, skillState: {} })[0].effectId, "huang_gai_kurou");
   const fanjian = getActiveHeroSkillOptions({ playerId: "source", hero: "zhou-yu", hand: [black], livingTargetIds: targets, skillState: {} })[0];
   assert.equal(fanjian.effectId, "zhou_yu_fanjian"); assert.deepEqual(fanjian.selection, { type: "target", targetIds: targets });
   assert.deepEqual(resolveActiveHeroSkill("zhou_yu_fanjian", { playerId: "source", hero: "zhou-yu", hand: [black], livingTargetIds: targets, skillState: {} }, { targetId: "target" })?.outcome, { kind: "fanjian", sourceId: "source", targetId: "target" });
   const yingziContext = { event: "draw_phase", sourceEquipment: [], sourceHand: [], playerId: "source", hero: "zhou-yu" };
-  assert.deepEqual(getTriggeredEffects(yingziContext), [{ effectId: "zhou_yu_yingzi", label: "Yingzi", description: "Draw one additional card this Draw Phase.", selection: null, allowDecline: true }]);
+  assert.deepEqual(getTriggeredEffects(yingziContext), [{ effectId: "zhou_yu_yingzi", label: "Heroic", description: "Draw one additional card this Draw Phase.", selection: null, allowDecline: true }]);
   assert.deepEqual(resolveTriggeredEffect("zhou_yu_yingzi", yingziContext, {}).outcome, { kind: "draw_phase_modifier", amount: 1 });
   assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a"), card("Dodge", "dodge-b")], equipment: [], hero: null }, { kind: "dodge", count: 2 })[0].selection.min, 2);
   assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a")], equipment: [], hero: null }, { kind: "dodge", count: 2 }).length, 0);

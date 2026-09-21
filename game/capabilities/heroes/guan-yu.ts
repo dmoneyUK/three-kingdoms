@@ -2,7 +2,7 @@ import type { ResponseProvider } from "../../responses";
 
 const isRed = (suit: string) => suit === "♥" || suit === "♦";
 
-/** Wusheng: a red suited hand card may be used or played as an Attack. */
+/** God of War: a red suited hand card may be used or played as an Attack. */
 export const guanYuRedCardAttackProvider: ResponseProvider = {
   id: "guan_yu_red_card_attack",
   satisfies: "attack",
@@ -12,7 +12,7 @@ export const guanYuRedCardAttackProvider: ResponseProvider = {
     if (context.hero !== "guan-yu") return null;
     const cards = (context.hand ?? []).filter((card) => isRed(card.suit));
     return cards.length
-      ? { provider: "guan_yu", providerId: "guan_yu_red_card_attack", satisfies: "attack", label: "Use Wusheng as Attack", cards, playedAs: "attack", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } }
+      ? { provider: "guan_yu", providerId: "guan_yu_red_card_attack", satisfies: "attack", label: "Use God of War as Attack", cards, playedAs: "attack", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } }
       : null;
   },
   resolve: (context) => {

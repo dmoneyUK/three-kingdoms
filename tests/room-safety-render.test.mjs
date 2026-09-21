@@ -22,7 +22,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(html, /game-exit/);
   assert.match(html, /class="player-hero-card"/);
   assert.match(html, /aria-label="Explain Sima Yi"/);
-  assert.doesNotMatch(html, />Guicai<\/em>/);
+  assert.doesNotMatch(html, />Necromancy<\/em>/);
   const heroInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "simayi", name: "Sima Yi", faction: "Wei", hp: 3, skills: [{ name: "Retaliation", description: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, { name: "Necromancy", description: "After a Judgement card is flipped, you may discard 1 card from your hand. The discarded card then becomes the new Judgement card." }], ability: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, onClose: () => {} }));
   assert.match(heroInfoHtml, />Retaliation<\/strong>/);
   assert.match(heroInfoHtml, />Necromancy<\/strong>/);
@@ -77,32 +77,32 @@ test("normalized malformed and unknown response states render safely", () => {
     currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "longdan-dodge", canPlayAs: "attack" }] },
   });
   const longdanPlayHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: longdanPlayRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(longdanPlayHtml, />LONGDAN<\/button>/);
+  assert.match(longdanPlayHtml, />Braveheart<\/button>/);
   assert.match(longdanPlayHtml, /class="game-card dodge black-suit/);
 
   const longdanResponseRoom = normalizeRoomData({
     code: "SAFE-LONGDAN-RESPONSE", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
     players: [{ id: "p1", name: "ME", seat: 0, hero: "zhao-yun", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" }],
     myHand: [card("longdan-response-attack", "Attack")], turnSeat: null, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Dodge or take damage", isMyAction: true,
-    pending: { kind: "response" }, currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Dodge or take damage", legalActions: ["respond", "decline_response"], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: null }, { providerId: "zhao_yun_attack_as_dodge", satisfies: "dodge", activation: "explicit", label: "Use Longdan as Dodge", playedAs: "dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["longdan-response-attack"] } }] },
+    pending: { kind: "response" }, currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Dodge or take damage", legalActions: ["respond", "decline_response"], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: null }, { providerId: "zhao_yun_attack_as_dodge", satisfies: "dodge", activation: "explicit", label: "Use Braveheart as Dodge", playedAs: "dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["longdan-response-attack"] } }] },
   });
   const longdanResponseHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: longdanResponseRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(longdanResponseHtml, />LONGDAN<\/button>/);
-  assert.doesNotMatch(longdanResponseHtml, /Use Longdan as Dodge/);
+  assert.match(longdanResponseHtml, />Braveheart<\/button>/);
+  assert.doesNotMatch(longdanResponseHtml, /Use Braveheart as Dodge/);
 
   const luoshenPayload = {
     code: "SAFE-LUOSHEN-BUSY", status: "playing", maxPlayers: 4, isHost: false, isTestController: true, meId: "p1", myRole: "Rebel", myHeroOptions: [],
     players: [{ id: "p1", name: "Zhen Ji", seat: 0, hero: "zhen-ji", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: false, role: "Rebel" }],
-    myHand: [], turnSeat: 0, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Choose whether to use Luoshen", isMyAction: true,
-    pending: { kind: "trigger" }, currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Choose whether to use Luoshen", legalActions: ["trigger", "decline_trigger"], triggerEvent: "turn_start", triggerOptions: [{ effectId: "zhen_ji_luoshen", label: "Luoshen", selection: null }], declineAction: "decline_trigger" },
+    myHand: [], turnSeat: 0, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Choose whether to use Godess of Luo River", isMyAction: true,
+    pending: { kind: "trigger" }, currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Choose whether to use Godess of Luo River", legalActions: ["trigger", "decline_trigger"], triggerEvent: "turn_start", triggerOptions: [{ effectId: "zhen_ji_luoshen", label: "Godess of Luo River", selection: null }], declineAction: "decline_trigger" },
     pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null, pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
   };
   const luoshenRoom = normalizeRoomData(luoshenPayload);
   const luoshenReadyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(luoshenReadyHtml, />Use Luoshen<\/button>/);
+  assert.match(luoshenReadyHtml, />Use Godess of Luo River<\/button>/);
   assert.match(luoshenReadyHtml, />Skip reaction<\/button>/);
   const luoshenBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Use Luoshen<\/button>/);
+  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Use Godess of Luo River<\/button>/);
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Skip reaction<\/button>/);
   assert.doesNotMatch(luoshenBusyHtml, /Resolving…|Skipping…/);
 

@@ -34,7 +34,7 @@ export function judgementSucceeds(purpose: JudgementPurpose, card: Card | undefi
 }
 
 export function judgementResolutionFor(purpose: JudgementPurpose): JudgementResolution {
-  if (purpose === "luoshen") return { kind: "judgement", purpose, label: "Luoshen", successText: "The black result is obtained and Luoshen may be used again.", failureText: "The result is red, so Luoshen ends." };
+  if (purpose === "luoshen") return { kind: "judgement", purpose, label: "Godess of Luo River", successText: "The black result is obtained and Godess of Luo River may be used again.", failureText: "The result is red, so Godess of Luo River ends." };
   if (purpose === "overindulgence") return { kind: "judgement", purpose, label: "Overindulgence", successText: "The Heart result allows the Play Phase.", failureText: "The result is not a Heart, so the Play Phase is skipped." };
   if (purpose === "rations_depleted") return { kind: "judgement", purpose, label: "Rations Depleted", successText: "The Club result allows the Draw Phase.", failureText: "The result is not a Club, so the Draw Phase is skipped." };
   if (purpose === "lightning") return { kind: "judgement", purpose, label: "Lightning", successText: "Lightning strikes for 3 thunder damage.", failureText: "Lightning misses and transfers to the next eligible Judgement Zone." };

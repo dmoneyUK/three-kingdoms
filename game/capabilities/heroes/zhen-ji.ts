@@ -1,6 +1,6 @@
 import type { ResponseProvider } from "../../responses";
 
-/** Qingguo: Zhen Ji may use one black hand card as a Dodge response. */
+/** Empress Dowager: Zhen Ji may use one black hand card as a Dodge response. */
 export const zhenJiBlackCardDodgeProvider: ResponseProvider = {
   id: "zhen_ji_black_card_dodge",
   satisfies: "dodge",
@@ -9,7 +9,7 @@ export const zhenJiBlackCardDodgeProvider: ResponseProvider = {
     if (context.hero !== "zhen-ji") return null;
     const cards = context.hand.filter((card) => card.suit === "♠" || card.suit === "♣");
     return cards.length
-      ? { provider: "zhen_ji_black_card_dodge", providerId: "zhen_ji_black_card_dodge", satisfies: "dodge", label: "Use Qingguo as Dodge", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } }
+      ? { provider: "zhen_ji_black_card_dodge", providerId: "zhen_ji_black_card_dodge", satisfies: "dodge", label: "Use Empress Dowager as Dodge", cards, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: cards.map((card) => card.id) } }
       : null;
   },
   resolve: (context) => {

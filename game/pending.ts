@@ -17,10 +17,11 @@ export type DeferredStratagem =
   | { kind: "overindulgence"; targetId: string; cardId: string } | { kind: "lightning"; targetId: string; cardId: string } | { kind: "rations_depleted"; targetId: string; cardId: string } | { kind: "judgement"; targetId: string; cardId: string };
 /** Only effect-resumption data belongs in a canonical response continuation. */
 export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string };
+export type InfluencingAttackContinuation = { kind: "influencing_attack"; sourceId: string; targetId: string; resumePhase: string; sequenceStartCardId: string; origin: "triggered" };
 export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; resolutionId?: string };
 export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string };
 export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string };
-export type ResponseContinuation = AttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;
+export type ResponseContinuation = AttackContinuation | InfluencingAttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;
 
 /**
  * The canonical persisted decision for a player who must satisfy a semantic
@@ -97,6 +98,11 @@ export type DrawPhaseTriggerContinuation = {
   resumePhase: string;
   additionalCards?: number;
 };
+export type DiscardPhaseTriggerContinuation = {
+  kind: "discard_phase_event";
+  playerId: string;
+  attackUsed: boolean;
+};
 export type JudgementResponseResume = {
   kind: "response";
   actorId: string;
@@ -134,7 +140,7 @@ export type HandLossTriggerContinuation = {
   resumeTurnSeat: number | null;
   resumePending?: Pending;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | JudgementRevealedTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation;
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | JudgementRevealedTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

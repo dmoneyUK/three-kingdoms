@@ -566,9 +566,34 @@ test("Yingzi opens only after a Zhou Yu delayed Judgement resolves", async () =>
   const delayed = card("Overindulgence", "yingzi-delayed"); const judge = card("Dodge", "yingzi-judge", "♥"); const normalDraw = [card("Peach", "yingzi-normal-a"), card("Dodge", "yingzi-normal-b"), card("Attack", "yingzi-normal-c")];
   sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(source.id)}`); setHand(source.id, [], 3, 3); setJudgement(source.id, [delayed]); setDeck(game.code, [judge, ...normalDraw]); setTurn(game.code, source.seat, "draw");
   const opened = await request("draw", { code: game.code, token: game.members[0].token }); assert.equal(opened.status, 200, JSON.stringify(opened.data)); assert.equal(opened.data.room.currentAction.triggerOptions[0].effectId, "zhou_yu_yingzi");
-  const judgementIndex = opened.data.room.log.findIndex((entry) => entry.includes("judges A♥ for Overindulgence")); const yingziIndex = opened.data.room.log.findIndex((entry) => entry.includes("may use Yingzi"));
-  assert.ok(judgementIndex >= 0 && judgementIndex < yingziIndex, "Judgement resolves before Yingzi is offered");
+  const judgementIndex = opened.data.room.log.findIndex((entry) => entry.includes("judges A♥ for Overindulgence")); const heroicIndex = opened.data.room.log.findIndex((entry) => entry.includes("may use Heroic"));
+  assert.ok(judgementIndex >= 0 && judgementIndex < heroicIndex, "Judgement resolves before Heroic is offered");
   const declined = await request("decline_trigger", { code: game.code, token: game.members[0].token }); assert.equal(declined.status, 200, JSON.stringify(declined.data)); assert.equal(declined.data.room.myHand.length, 2);
+});
+
+test("Composure tracks the whole turn and can optionally skip Discard", { timeout: 120_000 }, async () => {
+  const noAttack = await createHumanGame(); const noAttackSource = noAttack.room.players[0];
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(noAttackSource.id)}`); setHand(noAttackSource.id, [card("Peach", "composure-no-attack-a"), card("Dodge", "composure-no-attack-b"), card("Peach", "composure-no-attack-c")], 2, 4); setTurn(noAttack.code, noAttackSource.seat);
+  const offered = await request("end_turn", { code: noAttack.code, token: noAttack.members[0].token });
+  assert.equal(offered.status, 200, JSON.stringify(offered.data)); assert.equal(offered.data.room.currentAction.triggerOptions[0].label, "Composure"); assert.equal(offered.data.room.phase, "response");
+  const declined = await request("decline_trigger", { code: noAttack.code, token: noAttack.members[0].token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data)); assert.equal(declined.data.room.phase, "discard");
+
+  const acceptedGame = await createHumanGame(); const acceptedSource = acceptedGame.room.players[0];
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(acceptedSource.id)}`); setHand(acceptedSource.id, [card("Peach", "composure-accept-a"), card("Dodge", "composure-accept-b"), card("Peach", "composure-accept-c")], 2, 4); setTurn(acceptedGame.code, acceptedSource.seat);
+  const acceptedOffer = await request("end_turn", { code: acceptedGame.code, token: acceptedGame.members[0].token });
+  const accepted = await request("trigger", { code: acceptedGame.code, token: acceptedGame.members[0].token, providerId: "lu_meng_keji" });
+  assert.equal(acceptedOffer.status, 200); assert.equal(accepted.status, 200, JSON.stringify(accepted.data)); assert.notEqual(accepted.data.room.phase, "discard");
+
+  const physical = await createHumanGame(); const physicalSource = physical.room.players[0]; const physicalTarget = physical.room.players[1]; const physicalAttack = card("Attack", "composure-physical");
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(physicalSource.id)}`); setHand(physicalSource.id, [physicalAttack], 2, 4); setHand(physicalTarget.id, [], 4, 4); setTurn(physical.code, physicalSource.seat);
+  const physicalPlayed = await request("play_card", { code: physical.code, token: physical.members[0].token, cardId: physicalAttack.id, targetId: physicalTarget.id }); assert.equal(physicalPlayed.status, 200, JSON.stringify(physicalPlayed.data));
+  const physicalEnded = await request("end_turn", { code: physical.code, token: physical.members[0].token }); assert.equal(physicalEnded.status, 200, JSON.stringify(physicalEnded.data)); assert.notEqual(physicalEnded.data.room.currentAction?.triggerOptions?.some((option) => option.label === "Composure"), true);
+
+  const virtual = await createHumanGame(); const virtualSource = virtual.room.players[0]; const virtualTarget = virtual.room.players[1]; const virtualCost = [card("Peach", "composure-virtual-a"), card("Dodge", "composure-virtual-b")];
+  sql(`UPDATE players SET hero='lü-meng' WHERE id=${quote(virtualSource.id)}`); setHand(virtualSource.id, virtualCost, 2, 4); setEquipment(virtualSource.id, { weapon: card("SerpentSpear", "composure-virtual-spear") }); setHand(virtualTarget.id, [], 4, 4); setTurn(virtual.code, virtualSource.seat);
+  const virtualPlayed = await request("serpent_spear_attack", { code: virtual.code, token: virtual.members[0].token, cardIds: virtualCost.map((held) => held.id), targetId: virtualTarget.id }); assert.equal(virtualPlayed.status, 200, JSON.stringify(virtualPlayed.data));
+  const virtualEnded = await request("end_turn", { code: virtual.code, token: virtual.members[0].token }); assert.equal(virtualEnded.status, 200, JSON.stringify(virtualEnded.data)); assert.notEqual(virtualEnded.data.room.currentAction?.triggerOptions?.some((option) => option.label === "Composure"), true);
 });
 
 test("host test flow uses Fanjian's shared-controller sequence and private opaque card choice", async () => {
@@ -662,13 +687,16 @@ test("the three faction lords expose their active skills through the semantic pr
   const zhihengHost = zhihengGame.members[0];
   const zhihengSun = zhihengGame.room.players.find((player) => player.name === "Host");
   assert.ok(zhihengSun);
-  const discarded = card("Peach", "zhiheng-discard"); const drawn = card("Attack", "zhiheng-drawn");
+  const discarded = card("Peach", "zhiheng-discard"); const equipped = card("BlueSteelSword", "zhiheng-equipment"); const drawn = card("Attack", "zhiheng-drawn"); const drawnTwo = card("Dodge", "zhiheng-drawn-two");
   sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(zhihengSun.id)}`);
-  setHand(zhihengSun.id, [discarded], 4, 4); setDeck(zhihengGame.code, [drawn]); setTurn(zhihengGame.code, zhihengSun.seat);
-  const zhiheng = await request("trigger", { code: zhihengGame.code, token: zhihengHost.token, providerId: "sun_quan_zhiheng", cardIds: [discarded.id] });
+  setHand(zhihengSun.id, [discarded], 4, 4); setEquipment(zhihengSun.id, { weapon: equipped }); setDeck(zhihengGame.code, [drawn, drawnTwo]); setTurn(zhihengGame.code, zhihengSun.seat);
+  const projectedZhiheng = await state(zhihengGame.code, zhihengHost.token); const zhihengOption = projectedZhiheng.data.currentAction.triggerOptions.find((option) => option.effectId === "sun_quan_zhiheng");
+  assert.deepEqual(zhihengOption.selection.eligibleCardIds, [discarded.id, equipped.id]);
+  const zhiheng = await request("trigger", { code: zhihengGame.code, token: zhihengHost.token, providerId: "sun_quan_zhiheng", cardIds: [discarded.id, equipped.id] });
   assert.equal(zhiheng.status, 200, JSON.stringify(zhiheng.data));
-  assert.ok(zhiheng.data.room.myHand.some((held) => held.id === drawn.id), "Zhiheng draws the replacement card privately");
-  assert.ok(discardIds(zhihengGame.code).includes(discarded.id));
+  assert.deepEqual(new Set(zhiheng.data.room.myHand.map((held) => held.id)), new Set([drawn.id, drawnTwo.id]), "Equilibrium draws one replacement for each discarded card");
+  assert.ok(discardIds(zhihengGame.code).includes(discarded.id)); assert.ok(discardIds(zhihengGame.code).includes(equipped.id));
+  assert.deepEqual(JSON.parse(query(`SELECT equipment_json FROM players WHERE id=${quote(zhihengSun.id)}`)), {}, "an Equilibrium equipment cost leaves the Equipment Zone");
   assert.deepEqual(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(zhihengGame.code)}`)), { turnPlayerId: zhihengSun.id, zhihengUsed: true });
 
   const jiuyuanGame = await createHumanGame();
@@ -756,6 +784,28 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.ok(jijiangAnswered.data.room.log.some((entry) => entry.includes("Bob plays Attack against Barbarian Invasion")));
 });
 
+test("Influencing initiates a normal delegated Attack without leaking Shu hands", { timeout: 120_000 }, async () => {
+  const game = await createHumanGame(); const source = game.room.players[0]; const firstShu = game.room.players[1]; const secondShu = game.room.players[2]; const target = game.room.players[3];
+  const delegatedAttack = card("Attack", "influencing-attack"); const normalAttack = card("Attack", "influencing-normal");
+  sql(`UPDATE players SET hero='liu-bei' WHERE id=${quote(source.id)}`); sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(firstShu.id)}`); sql(`UPDATE players SET hero='zhuge-liang' WHERE id=${quote(secondShu.id)}`); sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(target.id)}`);
+  setHand(source.id, [normalAttack], 4, 4); setHand(firstShu.id, [delegatedAttack], 4, 4); setHand(secondShu.id, [], 4, 4); setHand(target.id, [], 4, 4); setTurn(game.code, source.seat);
+  const projected = await state(game.code, game.members[0].token); const option = projected.data.currentAction.triggerOptions.find((candidate) => candidate.effectId === "liu_bei_jijiang");
+  assert.ok(option, JSON.stringify(projected.data)); assert.equal(option.label, "Influencing"); assert.deepEqual(option.selection.targetIds, [firstShu.id, target.id]);
+  const selected = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "liu_bei_jijiang", targetId: target.id });
+  assert.equal(selected.status, 200, JSON.stringify(selected.data)); assert.equal(selected.data.room.currentAction.actorId, firstShu.id); assert.equal(selected.data.room.currentAction.reason.includes(delegatedAttack.id), false); assert.equal(JSON.stringify(selected.data.room.currentAction).includes(delegatedAttack.id), false);
+  const accepted = await request("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: delegatedAttack.id });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data)); assert.equal(accepted.data.room.players.find((player) => player.id === target.id).hp, 3); assert.equal(accepted.data.room.phase, "play-struck"); assert.ok(discardIds(game.code).includes(delegatedAttack.id));
+  assert.deepEqual((await state(game.code, game.members[0].token)).data.myHand, [normalAttack], "the delegate's private hand is not projected to Liu Bei");
+
+  const declinedGame = await createTestGame(); const declinedRoom = declinedGame.data.room; const declinedSource = declinedRoom.players[0]; const declinedFirst = declinedRoom.players[1]; const declinedSecond = declinedRoom.players[2]; const declinedTarget = declinedRoom.players[3]; const declinedToken = declinedGame.data.token; const followUpAttack = card("Attack", "influencing-follow-up");
+  sql(`UPDATE players SET hero='liu-bei' WHERE id=${quote(declinedSource.id)}`); sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(declinedFirst.id)}`); sql(`UPDATE players SET hero='zhuge-liang' WHERE id=${quote(declinedSecond.id)}`); sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(declinedTarget.id)}`);
+  setHand(declinedSource.id, [followUpAttack], 4, 4); setHand(declinedFirst.id, [], 4, 4); setHand(declinedSecond.id, [], 4, 4); setHand(declinedTarget.id, [], 4, 4); setTurn(declinedRoom.code, declinedSource.seat);
+  const declinedStart = await request("trigger", { code: declinedRoom.code, token: declinedToken, providerId: "liu_bei_jijiang", targetId: declinedTarget.id }); assert.equal(declinedStart.status, 200, JSON.stringify(declinedStart.data));
+  const firstDecline = await request("decline_response", { code: declinedRoom.code, token: declinedToken }); assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data)); assert.equal(firstDecline.data.room.currentAction.actorId, declinedSecond.id);
+  const allDeclined = await request("decline_response", { code: declinedRoom.code, token: declinedToken }); assert.equal(allDeclined.status, 200, JSON.stringify(allDeclined.data)); assert.equal(allDeclined.data.room.phase, "play"); assert.equal(discardIds(declinedRoom.code).includes(followUpAttack.id), false);
+  const normal = await request("play_card", { code: declinedRoom.code, token: declinedToken, cardId: followUpAttack.id, targetId: declinedTarget.id }); assert.equal(normal.status, 200, JSON.stringify(normal.data));
+});
+
 test("Hujia prompts a living Wei character even when that character has no Dodge", { timeout: 120_000 }, async () => {
   const game = await openHujiaScenario({ delegateHero: "simayi" });
   const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
@@ -765,7 +815,7 @@ test("Hujia prompts a living Wei character even when that character has no Dodge
   const delegateView = await state(game.code, game.delegateMember.token);
   assert.deepEqual(delegateView.data.currentAction.legalActions, ["decline_response"]);
   assert.deepEqual(delegateView.data.currentAction.options, []);
-  assert.match(delegateView.data.currentAction.reason, /^Cao Cao asks you to provide Dodge with Hujia\.$/);
+  assert.match(delegateView.data.currentAction.reason, /^Cao Cao asks you to provide Dodge with Entourage\.$/);
   const caoView = await state(game.code, game.caoMember.token);
   assert.doesNotMatch(caoView.data.currentAction.reason, /no Dodge/i);
 });
@@ -1965,7 +2015,7 @@ test("Luoshen repeats real Judgements before delayed-card Judgements and preserv
   assert.equal(sequence.room.phase, "response");
   assert.equal(sequence.room.currentAction.kind, "trigger");
   assert.equal(sequence.room.currentAction.triggerEvent, "turn_start");
-  assert.deepEqual(sequence.room.currentAction.triggerOptions.map((option) => option.label), ["Luoshen"]);
+  assert.deepEqual(sequence.room.currentAction.triggerOptions.map((option) => option.label), ["Godess of Luo River"]);
 
   const first = await request("trigger", { code: sequence.code, token: sequence.token, providerId: "zhen_ji_luoshen" });
   assert.equal(first.status, 200, JSON.stringify(first.data));
@@ -2033,7 +2083,7 @@ test("Luoshen repeats real Judgements before delayed-card Judgements and preserv
   assert.deepEqual(redReplaced.data.room.myHand.map((held) => held.id), [replacementBlack.id]);
   assert.equal(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(redToBlack.sima.id)}`), "0", "Guicai consumes the replacement from Sima Yi's hand");
   assert.ok(discardIds(redToBlack.code).includes(originalRed.id), "the original red reveal is discarded");
-  assert.ok(redReplaced.data.room.log.some((entry) => entry.includes("Sima Yi replaces the Judgement card with 7♠ using Guicai.")));
+  assert.ok(redReplaced.data.room.log.some((entry) => entry.includes("Sima Yi replaces the Judgement card with 7♠ using Necromancy.")));
   assert.equal((await request("decline_trigger", { code: redToBlack.code, token: redToBlack.token })).data.room.phase, "draw");
 
   const replacementRed = { ...card("Peach", "guicai-red"), suit: "♥", rank: "Q" };

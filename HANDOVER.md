@@ -1,5 +1,35 @@
 # Three Kingdoms project handover
 
+## Standard hero reconciliation — 2026-09-21
+
+The reconciliation round preserves all persisted legacy provider/effect IDs,
+but canonicalizes player-facing labels, descriptions, prompts, and history to
+the printed English skill names. Composure is a `discard_phase` semantic
+trigger backed by a turn-scoped `attackUsed` flag set by physical, virtual,
+and Serpent Spear Attacks and reset at the next turn. Its optional acceptance
+skips Discard; decline enters the normal Discard Phase.
+
+Influencing keeps the existing delegated Attack response provider and adds an
+active Liu Bei Play Phase continuation. Targets are projected using Liu Bei's
+normal range, living Shu delegates are asked in action order, hidden delegate
+hands remain private, and a supplied Attack runs through attack-targeted
+triggers, Armor, Dodge, damage, and Dying with Liu Bei as the source. An
+all-decline result returns to Play without consuming Liu Bei's normal Attack
+allowance. Equilibrium now projects Hand plus Equipment cards, removes an
+Equipment cost from its zone, discards each selected physical card, and draws
+the exact number discarded while retaining once-per-Play-Phase protection.
+Ambushment remains limited to black cards legally usable from Hand under the
+Standard use/play zone rule; its existing Negation and target-card pipeline is
+unchanged.
+
+The reference status table now marks Liu Bei, Zhao Yun, Sun Quan, and Lu Xun
+as implemented. Known boundary: the remaining missing Standard skills are
+still intentionally unimplemented and must continue one hero at a time through
+the semantic capability/provider/trigger contracts.
+
+Validation for this round: isolated Worker/D1 `node tests/run-tests.mjs` passed
+113/113; `npm run build`, `npm run lint`, and `git diff --check` also pass.
+
 ## Hosted games and test-player flow — 2026-09-21
 
 The landing page now exposes one simplified entry flow: `Host Game` or `Join
