@@ -29,7 +29,7 @@ export const STANDARD_HEROES: readonly HeroDefinition[] = [
   standard("huang-gai","Huang Gai","Wu",4,"Lose 1 HP to draw two cards.","male", [{ name: "Kurou", description: "During your Play Phase, lose 1 HP to draw 2 cards." }]),
   standard("zhou-yu","Zhou Yu","Wu",3,"Draw Phase, you may draw an additional card; challenge a player to guess a card's suit.","male", [{ name: "Yingzi", description: "Draw Phase, you may draw one additional card." }, { name: "Fanjian", description: "Once during your Play Phase, give a hand card to another character and have them guess its suit; a wrong guess causes 1 damage." }]),
   standard("daqiao","Da Qiao","Wu",3,"Diamond cards may delay another player's turn.","female"),
-  standard("lu-xun","Lu Xun","Wu",3,"You resist delayed capture; draw when your hand becomes empty.","male"),
+  standard("lu-xun","Lu Xun","Wu",3,"Passive: You cannot be targeted by [Steal] and [Overindulgence]. You may draw 1 card when you lose your last hand card.","male", [{ name: "Modesty", description: "Passive: You cannot be targeted by [Steal] and [Overindulgence]." }, { name: "Second Wind", description: "You may draw 1 card when you lose your last hand card." }]),
   standard("sun-shangxiang","Sun Shangxiang","Wu",3,"Draw when losing equipment; discard equipment to heal an injured ally.","female"),
   standard("hua-tuo","Hua Tuo","Qun",3,"Red cards may heal others; discard a card to heal yourself once per turn.","male"),
   standard("lü-bu","Lü Bu","Qun",4,"A target needs two Dodge cards to stop your Attack.","male", [{ name: "Wushuang", description: "Your Attack requires two Dodge cards; in a Duel, your opponent requires two Attack cards for each response." }]),

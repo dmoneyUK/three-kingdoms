@@ -10,13 +10,14 @@ import { simaYiFankuiTrigger } from "./heroes/sima-yi-fankui";
 import { xiahouDunGanglieTrigger } from "./heroes/xiahou-dun-ganglie";
 import { caoCaoJianxiongTrigger } from "./heroes/cao-cao-jianxiong";
 import { zhouYuYingziTrigger } from "./heroes/zhou-yu-yingzi";
+import { luXunSecondWindTrigger } from "./heroes/lu-xun-second-wind";
 
-export type TriggerEvent = "turn_start" | "draw_phase" | "judgement_revealed" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice";
+export type TriggerEvent = "turn_start" | "draw_phase" | "judgement_revealed" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice" | "hand_lost";
 /**
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
  */
-export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie"; heroChoiceStage?: "suit" | "card"; heroChoiceGuess?: string };
+export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; lostCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie"; heroChoiceStage?: "suit" | "card"; heroChoiceGuess?: string };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown; choice?: unknown };
 export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[]; targetIds?: string[] }
@@ -47,6 +48,7 @@ export type TriggerExecution =
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_guess"; targetId: string; guess: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_card"; sourceId: string; targetId: string; targetCardKey: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "draw_phase_modifier"; amount: number } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "draw_cards"; amount: number } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "continue_event" } };
 export type TriggerPresentation = { label: string };
 export type TriggeredEffect = {
@@ -84,7 +86,7 @@ const zhouYuFanjianChoice: TriggeredEffect = {
   },
 };
 
-const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, simaYiFankuiTrigger, caoCaoJianxiongTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, luXunSecondWindTrigger, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, simaYiFankuiTrigger, caoCaoJianxiongTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {

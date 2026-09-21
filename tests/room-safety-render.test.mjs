@@ -169,6 +169,7 @@ test("the implemented Standard hero cards expose their printed English skill met
     "lü-meng": ["Keji"],
     "huang-gai": ["Kurou"],
     "zhou-yu": ["Yingzi", "Fanjian"],
+    "lu-xun": ["Modesty", "Second Wind"],
     "lü-bu": ["Wushuang"],
   };
   for (const [id, names] of Object.entries(expected)) {
@@ -176,6 +177,11 @@ test("the implemented Standard hero cards expose their printed English skill met
     assert.ok(hero, `${id} is in the Standard roster`);
     assert.deepEqual(hero.skills.map((skill) => skill.name), names);
   }
+  const luXun = STANDARD_HEROES.find((hero) => hero.id === "lu-xun");
+  assert.deepEqual(luXun?.skills, [
+    { name: "Modesty", description: "Passive: You cannot be targeted by [Steal] and [Overindulgence]." },
+    { name: "Second Wind", description: "You may draw 1 card when you lose your last hand card." },
+  ]);
 });
 
 test("a normalized Negation response retains its legal controls", () => {

@@ -12,6 +12,26 @@ No action semantics or server protocol changed. The visual regression surface
 remains the existing rendered-room and picker coverage; recommended next work
 is the next individually verified Standard hero capability.
 
+## Lu Xun Modesty — 2026-09-21
+
+Lu Xun's Standard metadata now presents Modesty and Second Wind with their
+official English names and descriptions. Modesty is implemented through the
+shared target-legality capability registry and rejects only Steal and
+Overindulgence when Lu Xun is the target. The check runs before the source
+card is removed, before discard or Negation begins, and before an
+Overindulgence Judgement Zone update. The client uses the same capability for
+target-button presentation. Duel, Burning Bridges, and Steal/Overindulgence
+against other heroes remain legal.
+
+API coverage proves the blocked actions preserve the source hand, discard,
+Negation state, and Lu Xun's Judgement Zone, alongside the allowed unrelated
+and other-hero targets. Second Wind is registered as a semantic `hand_lost`
+provider and privately offers Lu Xun one draw after a qualifying transition to
+an empty hand; acceptance and decline restore the interrupted continuation.
+Coverage includes play, response, simultaneous discard, privacy, decline, and
+another player removing Lu Xun's last card. Recommended next work remains the
+next individually verified Standard hero capability.
+
 ## Private opening-hand presentation — 2026-09-21
 
 `beginMatch()` now records each four-card opening hand as private

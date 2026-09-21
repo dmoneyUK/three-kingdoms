@@ -1529,6 +1529,120 @@ test("Steal chooses from the target's current zones only after counter-Negation"
   assert.deepEqual(discardIds(game.code).slice(-3), ["steal-post-negation", "negation-cancel-steal", "negation-restore-steal"]);
 });
 
+test("Lu Xun's Modesty blocks only Steal and Overindulgence", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host] = game.members;
+  const source = game.room.players.find((player) => player.name === "Host");
+  const luXun = game.room.players.find((player) => player.name === "Alice");
+  const other = game.room.players.find((player) => player.name === "Carol");
+  assert.ok(source && luXun && other);
+  sql(`UPDATE players SET hero='lu-xun' WHERE id=${quote(luXun.id)}`);
+  sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
+
+  const steal = card("Steal", "modesty-blocked");
+  setHand(source.id, [steal], 4, 4); setHand(luXun.id, [card("Peach", "modesty-lu-card")], 3, 3); setTurn(game.code, source.seat);
+  const blockedSteal = await request("play_card", { code: game.code, token: host.token, cardId: steal.id, targetId: luXun.id });
+  assert.equal(blockedSteal.status, 409, JSON.stringify(blockedSteal.data));
+  const blockedStealState = await state(game.code, host.token);
+  assert.deepEqual(blockedStealState.data.myHand.map((held) => held.id), [steal.id], "Modesty rejects Steal before it leaves the source hand");
+  assert.equal(discardIds(game.code).includes(steal.id), false, "a blocked Steal is not discarded");
+  assert.equal(blockedStealState.data.pending, null, "a blocked Steal does not open a Negation decision");
+  assert.equal(blockedStealState.data.phase, "play");
+
+  const otherSteal = card("Steal", "modesty-other");
+  setHand(source.id, [otherSteal], 4, 4); setHand(other.id, [card("Peach", "modesty-other-card")], 4, 4); setTurn(game.code, source.seat);
+  const allowedOtherSteal = await request("play_card", { code: game.code, token: host.token, cardId: otherSteal.id, targetId: other.id });
+  assert.equal(allowedOtherSteal.status, 200, JSON.stringify(allowedOtherSteal.data));
+  assert.equal(allowedOtherSteal.data.room.pendingTargetCard.targetId, other.id, "other heroes remain valid Steal targets");
+
+  const overindulgence = card("Overindulgence", "modesty-blocked");
+  setHand(source.id, [overindulgence], 4, 4); setJudgement(luXun.id, []); setTurn(game.code, source.seat);
+  const blockedOverindulgence = await request("play_card", { code: game.code, token: host.token, cardId: overindulgence.id, targetId: luXun.id });
+  assert.equal(blockedOverindulgence.status, 409, JSON.stringify(blockedOverindulgence.data));
+  const blockedOverindulgenceState = await state(game.code, host.token);
+  assert.deepEqual(blockedOverindulgenceState.data.myHand.map((held) => held.id), [overindulgence.id], "Modesty rejects Overindulgence before it leaves the source hand");
+  assert.equal(discardIds(game.code).includes(overindulgence.id), false, "a blocked Overindulgence is not discarded");
+  assert.deepEqual(blockedOverindulgenceState.data.players.find((player) => player.id === luXun.id).judgementCards, [], "a blocked Overindulgence does not modify the Judgement Zone");
+  assert.equal(blockedOverindulgenceState.data.pending, null, "a blocked Overindulgence does not open a Negation decision");
+
+  const allowedOverindulgence = card("Overindulgence", "modesty-other");
+  setHand(source.id, [allowedOverindulgence], 4, 4); setJudgement(other.id, []); setTurn(game.code, source.seat);
+  const allowedOtherOverindulgence = await request("play_card", { code: game.code, token: host.token, cardId: allowedOverindulgence.id, targetId: other.id });
+  assert.equal(allowedOtherOverindulgence.status, 200, JSON.stringify(allowedOtherOverindulgence.data));
+  assert.deepEqual(allowedOtherOverindulgence.data.room.players.find((player) => player.id === other.id).judgementCards.map((delayed) => delayed.id), [allowedOverindulgence.id], "other heroes remain valid Overindulgence targets");
+
+  const duel = card("Duel", "modesty-duel");
+  setHand(source.id, [duel], 4, 4); setHand(luXun.id, [card("Attack", "modesty-duel-response")], 3, 3); setTurn(game.code, source.seat);
+  const allowedDuel = await request("play_card", { code: game.code, token: host.token, cardId: duel.id, targetId: luXun.id });
+  assert.equal(allowedDuel.status, 200, JSON.stringify(allowedDuel.data));
+  assert.equal(allowedDuel.data.room.pendingDuel.targetId, luXun.id, "Modesty does not affect Duel");
+
+  const burningBridges = card("Dismantle", "modesty-burning-bridges");
+  setHand(source.id, [burningBridges], 4, 4); setHand(luXun.id, [card("Peach", "modesty-burning-target")], 3, 3); setTurn(game.code, source.seat);
+  const allowedBurningBridges = await request("play_card", { code: game.code, token: host.token, cardId: burningBridges.id, targetId: luXun.id });
+  assert.equal(allowedBurningBridges.status, 200, JSON.stringify(allowedBurningBridges.data));
+  assert.equal(allowedBurningBridges.data.room.pendingTargetCard.targetId, luXun.id, "Modesty does not affect Burning Bridges");
+});
+
+test("Lu Xun's Second Wind is a private once-per-loss continuation", { timeout: 60_000 }, async () => {
+  const acceptedGame = await createHumanGame();
+  const acceptedLu = acceptedGame.room.players[1];
+  const acceptedTarget = acceptedGame.room.players[2];
+  sql(`UPDATE players SET hero='lu-xun' WHERE id=${quote(acceptedLu.id)}`);
+  const acceptedAttack = card("Attack", "second-wind-play");
+  setHand(acceptedLu.id, [acceptedAttack], 3, 3); setHand(acceptedTarget.id, [], 4, 4); setDeck(acceptedGame.code, [card("Peach", "second-wind-draw")]); setTurn(acceptedGame.code, acceptedLu.seat);
+  const played = await request("play_card", { code: acceptedGame.code, token: acceptedGame.members[1].token, cardId: acceptedAttack.id, targetId: acceptedTarget.id });
+  assert.equal(played.status, 200, JSON.stringify(played.data));
+  assert.equal(played.data.room.currentAction.kind, "trigger", "losing the last card offers Second Wind");
+  assert.equal(played.data.room.currentAction.actorId, acceptedLu.id);
+  assert.equal(played.data.room.currentAction.triggerOptions[0].effectId, "lu_xun_second_wind");
+  assert.deepEqual((await state(acceptedGame.code, acceptedGame.members[2].token)).data.currentAction.triggerOptions, [], "Second Wind remains private to Lu Xun");
+  const accepted = await request("trigger", { code: acceptedGame.code, token: acceptedGame.members[1].token, providerId: "lu_xun_second_wind" });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  assert.deepEqual(accepted.data.room.myHand.map((held) => held.id), ["peach-second-wind-draw"], "accepting draws exactly one card");
+  assert.equal(accepted.data.room.currentAction.kind, "turn", "the completed trigger resumes normal play");
+
+  const declinedGame = await createHumanGame();
+  const declinedLu = declinedGame.room.players[1]; const declinedTarget = declinedGame.room.players[2];
+  sql(`UPDATE players SET hero='lu-xun' WHERE id=${quote(declinedLu.id)}`);
+  const declinedAttack = card("Attack", "second-wind-decline");
+  setHand(declinedLu.id, [declinedAttack], 3, 3); setHand(declinedTarget.id, [], 4, 4); setDeck(declinedGame.code, [card("Peach", "second-wind-unused")]); setTurn(declinedGame.code, declinedLu.seat);
+  const declinedPlay = await request("play_card", { code: declinedGame.code, token: declinedGame.members[1].token, cardId: declinedAttack.id, targetId: declinedTarget.id });
+  assert.equal(declinedPlay.data.room.currentAction.triggerOptions[0].effectId, "lu_xun_second_wind");
+  const declined = await request("decline_trigger", { code: declinedGame.code, token: declinedGame.members[1].token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data)); assert.equal(declined.data.room.myHand.length, 0, "declining draws none"); assert.ok(["play", "play-struck"].includes(declined.data.room.phase), "declining resumes the interrupted continuation");
+
+  const responseGame = await createHumanGame();
+  const responseSource = responseGame.room.players[0]; const responseLu = responseGame.room.players[1];
+  sql(`UPDATE players SET hero='lu-xun' WHERE id=${quote(responseLu.id)}`);
+  const responseAttack = card("Attack", "second-wind-response-attack"); const responseDodge = card("Dodge", "second-wind-response-dodge");
+  setHand(responseSource.id, [responseAttack], 4, 4); setHand(responseLu.id, [responseDodge], 3, 3); setTurn(responseGame.code, responseSource.seat);
+  const responseOpened = await request("play_card", { code: responseGame.code, token: responseGame.members[0].token, cardId: responseAttack.id, targetId: responseLu.id });
+  assert.equal(responseOpened.status, 200, JSON.stringify(responseOpened.data));
+  const responseBlocked = await request("respond", { code: responseGame.code, token: responseGame.members[1].token, providerId: "card", cardId: responseDodge.id });
+  assert.equal(responseBlocked.status, 200, JSON.stringify(responseBlocked.data)); assert.equal(responseBlocked.data.room.currentAction.triggerOptions[0].effectId, "lu_xun_second_wind", "a last card used as a response also triggers Second Wind");
+
+  const discardGame = await createHumanGame(); const discardLu = discardGame.room.players[1];
+  sql(`UPDATE players SET hero='lu-xun' WHERE id=${quote(discardLu.id)}`);
+  const discardCards = [card("Peach", "second-wind-discard-a"), card("Dodge", "second-wind-discard-b")];
+  setHand(discardLu.id, discardCards, 0, 3); setTurn(discardGame.code, discardLu.seat, "discard");
+  const discarded = await request("discard_cards", { code: discardGame.code, token: discardGame.members[1].token, cardIds: discardCards.map((held) => held.id) });
+  assert.equal(discarded.status, 200, JSON.stringify(discarded.data)); assert.equal(discarded.data.room.currentAction.triggerOptions.length, 1, "losing multiple cards together opens one Second Wind decision");
+  const discardedDecline = await request("decline_trigger", { code: discardGame.code, token: discardGame.members[1].token });
+  assert.equal(discardedDecline.status, 200, JSON.stringify(discardedDecline.data)); assert.equal(discardedDecline.data.room.currentAction.kind, "turn");
+
+  const removedGame = await createHumanGame(); const removedSource = removedGame.room.players[0]; const removedLu = removedGame.room.players[1];
+  sql(`UPDATE players SET hero='lu-xun' WHERE id=${quote(removedLu.id)}`);
+  const dismantle = card("Dismantle", "second-wind-removed"); const removedCard = card("Peach", "second-wind-removed-target");
+  setHand(removedSource.id, [dismantle], 4, 4); setHand(removedLu.id, [removedCard], 3, 3); setTurn(removedGame.code, removedSource.seat);
+  const dismantled = await request("play_card", { code: removedGame.code, token: removedGame.members[0].token, cardId: dismantle.id, targetId: removedLu.id });
+  assert.equal(dismantled.status, 200, JSON.stringify(dismantled.data));
+  const removed = await request("choose_target_card", { code: removedGame.code, token: removedGame.members[0].token, targetCardZone: "hand", targetCardIndex: 0 });
+  assert.equal(removed.status, 200, JSON.stringify(removed.data)); assert.equal(removed.data.room.currentAction.actorId, removedLu.id, "removing Lu Xun's last card opens his private trigger");
+  assert.deepEqual(removed.data.room.currentAction.triggerOptions, [], "the trigger remains private from the removing player");
+  const removedLuView = await state(removedGame.code, removedGame.members[1].token);
+  assert.equal(removedLuView.data.currentAction.triggerOptions[0].effectId, "lu_xun_second_wind");
+});
+
 test("Negation cancels an AOE for one target and the card continues in seat order", { timeout: 30_000 }, async () => {
   const game = await createHumanGame(); const [host, alice, bob, carol] = game.members;
   const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice"); const bobPlayer = game.room.players.find((player) => player.name === "Bob"); const carolPlayer = game.room.players.find((player) => player.name === "Carol");

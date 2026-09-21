@@ -12,6 +12,23 @@ The current stage remains Stage 6 hero-capability execution complete. The next
 milestone is the next individually verified Standard hero capability, while
 preserving the canonical semantic response protocol and Quick Test privacy.
 
+## Lu Xun Modesty — 2026-09-21
+
+Lu Xun now exposes the official Standard skill metadata: Modesty and Second
+Wind. This step implements Modesty as a shared semantic target-legality
+capability: Lu Xun cannot be targeted by Steal or Overindulgence, while Duel,
+Burning Bridges, and unrelated targets remain legal. The server rejects an
+illegal target before card consumption, discard, Negation, or Judgement Zone
+mutation, and the client hides Lu Xun as a clickable target for those cards.
+Second Wind is a private semantic `hand_lost` trigger: it opens only after a
+non-empty Lu Xun hand becomes empty, draws exactly one card on acceptance, and
+restores the interrupted continuation on decline.
+
+The current stage remains Stage 6 hero-capability execution, with Lu Xun's
+Modesty and Second Wind verified through API regressions. The next milestone is the next
+individually scoped Standard hero capability, preserving the canonical
+semantic response protocol and Quick Game privacy.
+
 ## Private opening-hand presentation — 2026-09-21
 
 Each player now receives four private opening-deal events, so their own

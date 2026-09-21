@@ -126,7 +126,15 @@ export type HeroChoiceTriggerContinuation = {
   guess?: string;
   resumePhase: string;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | JudgementRevealedTriggerContinuation | HeroChoiceTriggerContinuation;
+export type HandLossTriggerContinuation = {
+  kind: "hand_loss_event";
+  playerId: string;
+  lostCards: Card[];
+  resumePhase: string;
+  resumeTurnSeat: number | null;
+  resumePending?: Pending;
+};
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | JudgementRevealedTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {
