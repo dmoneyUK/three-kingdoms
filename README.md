@@ -1,5 +1,18 @@
 # Three Kingdoms
 
+## Liu Bei — Benevolence + Influencing — 2026-09-21
+
+Liu Bei is complete through the semantic response architecture. Benevolence
+transfers exact hand cards, counts repeated gifts cumulatively across recipients,
+recovers once when the two-card threshold is reached, and spends that threshold
+even when Liu Bei is already at full HP. Influencing is Lord-only and keeps the
+semantic attacker/requester (Liu Bei) separate from the Shu provider who pays
+the Attack cost. Physical Attack, God of War, Braveheart, and Serpent Spear
+providers reuse the normal Attack pipeline, including Duel, Borrowed Sword,
+range, equipment, damage, Dying, privacy, stale safety, and Attack-use history.
+
+The next milestone is the next individually verified missing Standard hero.
+
 ## Xu Zhu Bared Bodied — 2026-09-21
 
 Xu Zhu's optional Bared Bodied decision now opens only at the canonical normal
@@ -44,10 +57,11 @@ produced during the current turn, including physical, virtual, and response
 Attack paths. At the normal Play-to-Discard boundary, it offers the optional
 canonical Discard Phase decision only when the hand actually exceeds current
 HP; accepting skips Discard and declining follows the ordinary hand limit.
-Influencing now has
-an active Play Phase path: Liu Bei selects an in-range target, asks living Shu
-characters in action order, and any willing delegate enters the normal Attack
-pipeline with Liu Bei as source; all-decline recovery leaves Liu Bei's normal
+Influencing now has an active Play Phase path: Liu Bei selects an in-range
+target, asks living Shu characters in action order, and any willing delegate
+enters the normal Attack pipeline with Liu Bei as semantic source while paying
+only the provider cost. Physical Attack, God of War, Braveheart, and Serpent
+Spear materials are supported; all-decline recovery leaves Liu Bei's normal
 Attack allowance available. Equilibrium now projects Hand and Equipment cards,
 removes selected Equipment from its zone, discards the exact physical cards,
 and draws one replacement per discarded card. Ambushment remains hand-scoped
@@ -528,7 +542,7 @@ and no private-hand leakage.
 
 Current Stage 6 milestone: Hero capability execution — Guan Yu's Wusheng, Zhao Yun's Longdan, Zhang Fei's Paoxiao, Zhen Ji's Luoshen, Sima Yi's Guicai/Retaliation, Xiahou Dun's Stauchness/Ganglie, and the three faction lords are implemented through the semantic capability architecture. The Standard setup/privacy parity pass is complete: normal multiplayer and Quick Game share one role, candidate, reveal, HP, opening-hand, and starting-turn path; Quick Game projects the current seat through one shared controller token. No provider-specific protocol or client hero branch was added. The next milestone is the next individually verified Standard hero capability.
 
-The three Standard faction lords are now playable through the same semantic layer. Cao Cao has Jianxiong, which can reclaim the exact physical damage card(s), and Hujia, which delegates a Dodge request to Wei characters in action order. Liu Bei has Play Phase Rende card-gifting with one-per-phase recovery after two cards, plus Jijiang delegation to Shu characters for Attack responses. Sun Quan has once-per-Play-Phase Zhiheng and the Jiuyuan rescue modifier for another Wu character's Peach. These abilities project private legal choices through `currentAction` and use only the canonical `respond`, `decline_response`, `trigger`, and `decline_trigger` commands; deterministic Worker/D1 coverage exercises normal multiplayer and the shared multi-seat test fixture. The next milestone is the next individually verified Standard hero capability; the start phase and Quick Game selection contract are now complete.
+The three Standard faction lords are now playable through the same semantic layer. Cao Cao has Jianxiong, which can reclaim the exact physical damage card(s), and Entourage, which delegates a Dodge request to Wei characters in action order. Liu Bei has Benevolence card-gifting with cumulative threshold/recovery semantics, plus Lord-only Influencing delegation to Shu characters for Attack responses and active Attacks. Sun Quan has once-per-Play-Phase Equilibrium and the Jiuyuan rescue modifier for another Wu character's Peach. These abilities project private legal choices through `currentAction` and use only the canonical `respond`, `decline_response`, `trigger`, and `decline_trigger` commands; deterministic Worker/D1 coverage exercises normal multiplayer and the shared multi-seat test fixture. The next milestone is the next individually verified Standard hero capability; the start phase and Quick Game selection contract are now complete.
 
 An English online implementation of WTK Standard, the classic hidden-role Three Kingdoms card game, built for small private groups of friends.
 

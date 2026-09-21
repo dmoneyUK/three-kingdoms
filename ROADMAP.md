@@ -12,6 +12,16 @@ are projected only when they have an affectable card, and the submission enters
 the ordinary Burning Bridges Negation/target-card pipeline. The next milestone
 remains the next individually verified Standard hero.
 
+## Stage 6 maintenance — Liu Bei semantic audit complete — 2026-09-21
+
+Liu Bei Benevolence and Lord-only Influencing are complete. Delegated responses
+now preserve semantic requester identity separately from provider-cost identity
+through ordinary Attack, Duel, Group/AOE, and Borrowed Sword continuations.
+Active Influencing accepts every currently legal semantic Attack provider tested
+for Standard: physical Attack, Guan Yu God of War, Zhao Yun Braveheart, and
+Serpent Spear. The next milestone remains the next individually verified
+Standard hero.
+
 ## Current architecture milestone — semantic decisions and capabilities
 
 The response refactor has reached its intended core shape:

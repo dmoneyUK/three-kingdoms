@@ -13,8 +13,33 @@ import { heroGender } from "../game/heroes.ts";
 import { canDeclareAttack, playPhaseAfterAttack } from "../game/rules.ts";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill } from "../game/capabilities/heroes/kings.ts";
 import { resolveDamageModifiers } from "../game/capabilities/damage-modifiers.ts";
+import { responseCostActor, semanticResponseActor } from "../game/response-identity.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
+
+test("delegated responses keep semantic and cost actors distinct", () => {
+  const response = {
+    kind: "response",
+    actorId: "shu-provider",
+    delegation: { kind: "attack", requesterId: "liu-bei", providerId: "liu_bei_jijiang", remainingActorIds: [] },
+    requirement: { kind: "attack", sourceId: "cao-cao", actorId: "shu-provider" },
+    reason: "Provide Attack",
+    continuation: { kind: "duel", sourceId: "cao-cao", targetId: "liu-bei", opponentId: "cao-cao", resumePhase: "play" },
+  };
+  assert.equal(semanticResponseActor(response), "liu-bei");
+  assert.equal(responseCostActor(response), "shu-provider");
+  assert.equal(semanticResponseActor({ ...response, delegation: undefined }), "shu-provider");
+  assert.equal(responseCostActor({ ...response, delegation: undefined }), "shu-provider");
+});
+
+test("Liu Bei Influencing is Lord-only and follows the normal Attack-use projection", () => {
+  const base = { playerId: "liu", hero: "liu-bei", hand: [], equipment: [], livingTargetIds: ["target"], attackTargetIds: ["target"], influencingAvailable: true, skillState: {} };
+  assert.equal(getActiveHeroSkillOptions({ ...base, role: "Lord", canDeclareAttack: true }).some((option) => option.effectId === "liu_bei_jijiang"), true);
+  assert.equal(getActiveHeroSkillOptions({ ...base, role: "Lord", canDeclareAttack: false }).some((option) => option.effectId === "liu_bei_jijiang"), false);
+  assert.equal(getActiveHeroSkillOptions({ ...base, role: "Loyalist", canDeclareAttack: true }).some((option) => option.effectId === "liu_bei_jijiang"), false);
+  assert.equal(getResponseOptions({ hero: "liu-bei", role: "Loyalist", hand: [], equipment: [], delegates: [{ id: "shu", hero: "guan-yu", hand: [], equipment: [] }] }, { kind: "attack" }).some((option) => option.providerId === "liu_bei_jijiang"), false);
+  assert.equal(getResponseOptions({ hero: "liu-bei", role: "Lord", hand: [], equipment: [], delegates: [{ id: "shu", hero: "guan-yu", hand: [], equipment: [] }] }, { kind: "attack" }).some((option) => option.providerId === "liu_bei_jijiang"), true);
+});
 
 test("Xu Zhu Bared Bodied is a reusable Draw Phase modifier and semantic damage modifier", () => {
   const context = { event: "draw_phase", sourceEquipment: [], sourceHand: [], playerId: "xu", hero: "xu-chu" };

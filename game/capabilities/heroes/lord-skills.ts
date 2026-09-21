@@ -30,11 +30,11 @@ export const liuBeiJijiangProvider: ResponseProvider = {
   satisfies: "attack",
   activation: "explicit",
   getOption(context) {
-    const delegates = context.hero === "liu-bei" ? delegatesFor(context, "Shu") : [];
+    const delegates = context.hero === "liu-bei" && context.role === "Lord" ? delegatesFor(context, "Shu") : [];
     return delegates.length ? { provider: "liu_bei", providerId: "liu_bei_jijiang", satisfies: "attack", label: "Use Influencing — ask Shu", selection: null } : null;
   },
   resolve(context) {
-    const delegates = context.hero === "liu-bei" ? delegatesFor(context, "Shu") : [];
+    const delegates = context.hero === "liu-bei" && context.role === "Lord" ? delegatesFor(context, "Shu") : [];
     return delegates.length ? { status: "delegated", providerId: "liu_bei_jijiang", satisfies: "attack", delegateIds: delegates.map((delegate) => delegate.id) } : null;
   },
 };

@@ -14,6 +14,7 @@ export type KingSkillState = {
 export type ActiveHeroSkillContext = {
   playerId: string;
   hero?: string | null;
+  role?: string | null;
   hand: Card[];
   equipment?: Card[];
   livingTargetIds: string[];
@@ -21,6 +22,7 @@ export type ActiveHeroSkillContext = {
   influencingAvailable?: boolean;
   targetableTargetIds?: string[];
   skillState: KingSkillState;
+  canDeclareAttack?: boolean;
 };
 
 export type ActiveHeroSkillExecution =
@@ -53,7 +55,7 @@ export function getActiveHeroSkillOptions(context: ActiveHeroSkillContext): Trig
     });
   }
   const influencingTargets = context.attackTargetIds ?? context.livingTargetIds;
-  if (context.hero === "liu-bei" && context.influencingAvailable !== false && influencingTargets.length > 0) options.push({
+  if (context.hero === "liu-bei" && context.role === "Lord" && context.canDeclareAttack !== false && context.influencingAvailable !== false && influencingTargets.length > 0) options.push({
     effectId: "liu_bei_jijiang",
     label: "Influencing",
     description: "Ask living Shu characters in action order to provide an Attack on your behalf, if willing.",

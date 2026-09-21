@@ -9,7 +9,7 @@ import { zhaoYunAttackAsDodgeProvider, zhaoYunDodgeAsAttackProvider } from "./ca
 import { caoCaoHujiaProvider, liuBeiJijiangProvider } from "./capabilities/heroes/lord-skills";
 
 export type ResponseDelegate = { id: string; hero?: string | null; hand: Card[]; equipment: Card[] };
-export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null; playerId?: string; delegates?: ResponseDelegate[] };
+export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null; role?: string | null; playerId?: string; delegates?: ResponseDelegate[] };
 export type SemanticAction = "attack" | "dodge" | "damage" | "recover" | "draw" | "discard" | "negate" | "judgement" | "gain_card" | "lose_card";
 export type ActionRequirement =
   | { kind: "dodge"; sourceId?: string; targetId?: string; count?: number; attack?: { cardId?: string; suit?: string; ignoresArmor?: boolean } }

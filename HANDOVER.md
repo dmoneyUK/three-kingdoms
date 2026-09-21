@@ -1,5 +1,34 @@
 # Three Kingdoms project handover
 
+## Liu Bei — Benevolence + Influencing — 2026-09-21
+
+Liu Bei is complete and remains marked Implemented in the Standard reference.
+Benevolence is a semantic Play Phase transfer: it accepts one or more physical
+hand cards, supports repeated uses and multiple recipients, counts gifts
+cumulatively, recovers once when the two-card threshold is first reached, and
+resets with the next Liu Bei turn. The threshold is recorded as spent even at
+full HP because the authoritative printed wording contains no deferred-recovery
+exception.
+
+Influencing is enforced as Lord-only in both active and response capability
+contexts. The reusable `game/response-identity.ts` abstraction defines
+`semanticResponseActor()` and `responseCostActor()`: ordinary responses use the
+same actor for both, while a delegated response uses the requester as semantic
+actor and the current delegate as cost actor. Duel, Borrowed Sword, Group/AOE,
+and ordinary Attack continuations now use that distinction without Liu Bei
+branches. Active Influencing accepts physical Attack, Guan Yu God of War, Zhao
+Yun Braveheart, and Serpent Spear materials, then reuses the canonical Attack
+targeted/Armor/Dodge/damage/Dying path. Liu Bei supplies range, equipment,
+history, and damage source; the delegate supplies only provider costs.
+
+Regression coverage includes action-order prompts for empty delegates,
+privacy-safe projections, all-decline and successful Attack-use limits, stale
+selections, semantic provider materials, Duel, Borrowed Sword, Barbarian
+Invasion, non-Lord rejection, normal multiplayer, and hosted multi-seat flow.
+Final validation: `npm test` passes all 128 tests from a fresh isolated Worker/
+D1 state, including the production build; `npm run lint` passes and
+`git diff --check` is clean.
+
 ## Xu Zhu — Bared Bodied — 2026-09-21
 
 Bared Bodied is implemented through the existing semantic Draw Phase modifier
@@ -49,10 +78,10 @@ decisions, no eligible targets, delayed Judgement ordering, and exact physical
 card conservation. Xu Zhu now uses the adjacent reusable Draw Phase modifier
 path described above.
 
-Validation checkpoint for this round: the isolated `npm test` suite passes all
-122 tests, `npm run lint` passes, and `git diff --check` passes. The production
-build also passes through `npm test`; the validated commit is ready for the
-normal GitHub `main` push path.
+Validation checkpoint for the preceding round: the older isolated suite passed
+122 tests. Liu Bei's final validation checkpoint is recorded below after the
+fresh full run; the production build, lint, and diff checks remain release
+gates before the normal GitHub `main` push path.
 
 ## Standard hero reconciliation — 2026-09-21
 
@@ -70,9 +99,13 @@ Influencing keeps the existing delegated Attack response provider and adds an
 active Liu Bei Play Phase continuation. Targets are projected using Liu Bei's
 normal range, living Shu delegates are asked in action order, hidden delegate
 hands remain private, and a supplied Attack runs through attack-targeted
-triggers, Armor, Dodge, damage, and Dying with Liu Bei as the source. An
-all-decline result returns to Play without consuming Liu Bei's normal Attack
-allowance. Equilibrium now projects Hand plus Equipment cards, removes an
+triggers, Armor, Dodge, damage, and Dying with Liu Bei as the source. The
+semantic/cost actor split preserves Liu Bei through Duel and Borrowed Sword
+while removing provider cards from the delegate. Physical Attack, God of War,
+Braveheart, and Serpent Spear are covered. An all-decline result returns to
+Play without consuming Liu Bei's normal Attack allowance; successful
+delegation records the Attack only for Liu Bei. Equilibrium now projects Hand
+plus Equipment cards, removes an
 Equipment cost from its zone, discards each selected physical card, and draws
 the exact number discarded while retaining once-per-Play-Phase protection.
 Ambushment remains limited to black cards legally usable from Hand under the
