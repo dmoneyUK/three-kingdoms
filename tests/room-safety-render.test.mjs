@@ -32,10 +32,25 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(ganglieInfoHtml, /source of damage must choose between/);
   assert.match(ganglieInfoHtml, /①discard 2 hand cards/);
   const choiceSelection = { type: "choice", choices: [{ id: "discard_two", label: "Discard exactly 2 cards from your hand" }, { id: "take_damage", label: "Take 1 damage from Xiahou Dun" }], eligibleHandKeys: ["hand:0", "hand:1"], cardCountByChoice: { discard_two: 2 } };
-  const ganglieChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, { option: { effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.", allowDecline: false, selection: choiceSelection }, selection: choiceSelection, selectedChoice: "", selectedKeys: [], disabled: false, error: "", onChoice: () => {}, onToggle: () => {}, onConfirm: () => {} }));
+  const ganglieHand = [{ ...card("ganglie-dodge", "Dodge"), suit: "♠", rank: "7" }, { ...card("ganglie-peach", "Peach"), suit: "♥", rank: "Q" }];
+  const ganglieChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, { option: { effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.", allowDecline: false, selection: choiceSelection }, selection: choiceSelection, hand: ganglieHand, selectedChoice: "", selectedKeys: [], disabled: false, error: "", onChoice: () => {}, onToggle: () => {}, onConfirm: () => {} }));
   assert.match(ganglieChoiceHtml, /The Judgement is not a Heart/);
   assert.match(ganglieChoiceHtml, /Discard exactly 2 cards from your hand/);
   assert.match(ganglieChoiceHtml, /Take 1 damage from Xiahou Dun/);
+  const ganglieDiscardChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, {
+    option: { effectId: "xiahou_dun_ganglie", label: "Stauchness", description: "The Judgement is not a Heart. Choose one: discard exactly 2 cards from your hand, or take 1 damage from Xiahou Dun. Equipment and Judgement Zone cards cannot be discarded for this choice.", allowDecline: false, selection: choiceSelection }, selection: choiceSelection, hand: ganglieHand, selectedChoice: "discard_two", selectedKeys: ["hand:0", "hand:1"], disabled: false, error: "",
+    onChoice: () => {}, onToggle: () => {}, onConfirm: () => {},
+  }));
+  assert.match(ganglieDiscardChoiceHtml, /class="played-card dodge black-suit/);
+  assert.match(ganglieDiscardChoiceHtml, /class="played-card peach red-suit/);
+  assert.match(ganglieDiscardChoiceHtml, />Dodge<\//);
+  assert.match(ganglieDiscardChoiceHtml, />Peach<\//);
+  assert.match(ganglieDiscardChoiceHtml, /7<small>♠<\/small>/);
+  assert.match(ganglieDiscardChoiceHtml, /Q<small>♥<\/small>/);
+  assert.match(ganglieDiscardChoiceHtml, /♠/);
+  assert.match(ganglieDiscardChoiceHtml, /♥/);
+  assert.equal((ganglieDiscardChoiceHtml.match(/class="target-card-picker-card selected/g) ?? []).length, 2, "Stauchness allows exactly the two eligible hand cards to be selected");
+  assert.doesNotMatch(ganglieDiscardChoiceHtml, /Hidden hand card|concealed-card|>\?<\/span>/);
   assert.match(html, /Attack/);
   assert.match(html, /class="game-card attack black-suit/);
   assert.match(html, /class="game-card attack red-suit/);
@@ -137,9 +152,11 @@ test("normalized malformed and unknown response states render safely", () => {
 
   const discardChoiceHtml = renderToStaticMarkup(React.createElement(MandatoryChoiceDialog, {
     option: choicePayload.currentAction.triggerOptions[0], selection: choicePayload.currentAction.triggerOptions[0].selection, selectedChoice: "discard", selectedKeys: [], disabled: false, error: "",
+    hand: choicePayload.myHand,
     onChoice: () => {}, onToggle: () => {}, onConfirm: () => {},
   }));
-  assert.equal((discardChoiceHtml.match(/aria-label="Hidden hand card \d+"/g) ?? []).length, 2, "mandatory discard choice uses readable concealed hand cards");
+  assert.equal((discardChoiceHtml.match(/aria-label="Attack [A-Z0-9]+[♠♥♦♣]"/g) ?? []).length, 2, "mandatory discard choice exposes the actor's private hand cards");
+  assert.doesNotMatch(discardChoiceHtml, /Hidden hand card|concealed-card|>\?<\/span>/, "mandatory own-hand choices do not use concealed card backs");
 
   const noHandRoom = normalizeRoomData({
     ...choicePayload,

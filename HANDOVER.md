@@ -1,5 +1,23 @@
 # Three Kingdoms project handover
 
+## Xiahou Dun Stauchness private discard choice — 2026-09-21
+
+`MandatoryChoiceDialog` now receives the acting player's private `room.myHand`
+and maps each eligible `hand:N` key to that card before rendering. The choice
+row uses `CardFace`, so Stauchness and other mandatory own-hand decisions such
+as Yin-Yang Swords show the actual name, suit, rank, artwork, and selected
+checkmark. Selection and confirmation still submit the original opaque hand
+keys, and no server-side Stauchness logic changed.
+
+`TargetCardPicker` was intentionally left unchanged: target-owned opponent
+hand positions still render as concealed card backs. Rendered regression
+coverage verifies Stauchness with Dodge 7♠ and Peach Q♥, the updated existing
+mandatory-choice case, exact two-card selection presentation, and preserved
+opponent-hand concealment. The isolated full suite passes 105/105 tests.
+
+No known gameplay or privacy boundary remains from this fix. Recommended next
+work remains the next individually verified Standard hero capability.
+
 ## Responsive rank/suit shield variants — 2026-09-21
 
 `app/sequence-overrides.css` now treats the rank/suit shield as four physical

@@ -1,5 +1,20 @@
 # Three Kingdoms
 
+## Xiahou Dun Stauchness private discard choice — 2026-09-21
+
+Mandatory own-hand choices now resolve eligible `hand:N` keys against the
+acting player's private `myHand` projection and render those cards with the
+shared card-face UI. Xiahou Dun's Stauchness discard-two choice therefore shows
+the real card name, suit, rank, artwork, and selected state while preserving the
+existing submitted hand keys and server resolution. Opponent-hand selections
+through `TargetCardPicker` remain concealed. Rendered coverage now verifies
+Stauchness with Dodge 7♠ and Peach Q♥, Yin-Yang Swords own-hand presentation,
+and opponent privacy; the full Worker/D1 suite passes 105 tests.
+
+The current stage remains Stage 6 hero-capability execution complete. The next
+milestone is the next individually verified Standard hero capability, while
+preserving the canonical semantic response protocol and Quick Test privacy.
+
 ## Responsive rank/suit shield variants — 2026-09-21
 
 Rank and suit shields are now embedded against the top-left edge of hand and
