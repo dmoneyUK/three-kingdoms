@@ -1,6 +1,6 @@
 # WTK Standard Hero Reference and Roster Reconciliation
 
-> Status: **authoritative roster reference for this project** as reconciled on 2026-09-16.
+> Status: **authoritative roster reference for this project** as reconciled on 2026-09-16; additional official Wei General card text verified from owner-supplied screenshots on 2026-09-21.
 > This file records the current WTK **Standard** General roster shown in the official WTK General Card catalogue and the implementation confidence boundary for hero rules.
 
 ## Source and verification policy
@@ -16,8 +16,8 @@
 
 ## Supplied printed English metadata
 
-The following names and descriptions are transcribed from the nine Standard
-hero-card screenshots supplied for this implementation round. Runtime provider
+The following names and descriptions are transcribed from the Standard
+hero-card screenshots supplied through 2026-09-21. Runtime provider
 IDs remain stable for the already implemented skills; the printed names are the
 player-facing names used by hero selection and the private information dialog.
 
@@ -26,11 +26,15 @@ player-facing names used by hero selection and the private information dialog.
 | Cao Cao | **Treachery:** After you take damage, you may obtain the card that caused damage on you. **Entourage:** Lord: You may ask characters from the Wei kingdom to use or play an [Dodge] on your behalf, provided they are willing to do so (you are deemed to use or play the [Dodge]). |
 | Sima Yi | **Retaliation:** After you take damage, you may obtain 1 card from the character that inflicted the damage. **Necromancy:** After a Judgement card is flipped, you may discard 1 card from your hand. The discarded card then becomes the new Judgement card. |
 | Xiahou Dun | **Stauchness:** After you take damage, you may enter Judgement phase, if the Judgement card does not belong to [Heart], the source of damage must choose between: ①discard 2 hand cards; ②take 1 damage from you. |
+| Zhang Liao | **Assault:** Draw Phase, you may choose not to draw cards from the deck, choose up to 2 characters and obtain 1 card from each their hand instead. |
+| Xu Zhu | **Bared Bodied:** Draw Phase, you may choose draw 1 lesser card. If you do so, your [Attack] or [Duel] in this turn will deal 1 additional damage. |
+| Guo Jia | **Jealousy of God:** After your Judgment card takes effect, you may obtain it. **Legacy:** After you take 1 damage, you may look at the top 2 cards of the deck, then give them away to any character(s) including yourself. |
 | Liu Bei | **Benevolence:** Play Phase, you may give away any number of your hand cards to other characters, and recover 1 HP if 2 or more cards are given away. **Influencing:** Lord: You may ask characters from the Shu kingdom to use or play an [Attack] on your behalf, provided they are willing to do so (you are deemed as the source of damage). |
 | Guan Yu | **God of War:** You may use or play a Red suited card as an [Attack]. |
 | Zhang Fei | **Battle Cry:** Passive: You may use any number of [Attack] cards. |
 | Zhao Yun | **Braveheart:** You may use or play [Attack] as [Dodge] or [Dodge] as [Attack]. |
-| Zhen Ji | **Empress Dowager:** You may use or play a Black suited card as a [Dodge]. **Goddess of Luo River:** Preparation Phase, you may enter Judgement phase, if the Judgement card belongs to Black suited, you obtain it. You may repeat this procedure as long as your Judgement card is Black suited. |
+| Zhen Ji | **Empress Dowager:** You may use or play a Black suited card as a [Dodge]. **Godess of Luo River:** Preparation Phase, you may enter Judgement phase, if the Judgement card belongs to Black suited, you obtain it. You may repeat this procedure as long as your Judgement card is Black suited. |
+| Yue Jin | **Dauntless:** At the end of other characters' turn, you may discard 1 basic card to let target character discard 1 equipment card, otherwise you deal 1 damage to that character. |
 | Sun Quan | **Equilibrium:** Limited to once per Play Phase, you may discard any number of cards and draw an equal number of cards to replace them. **Deliverance:** Lord, Passive: You recover 1 additional HP when a [Peach] is used on you by other characters from the Wu Kingdom. |
 
 ## Reconciliation result
@@ -60,7 +64,6 @@ These entries may remain **legacy-readable** for old saved rooms, but they must 
 
 ### Verified Standard generals missing from runtime
 
-- `yue-jin` — Yue Jin (乐进, Wei, male, 4 HP)
 - `zhuge-liang` — Zhuge Liang (诸葛亮, Shu, male, 3 HP)
 - `lady-gan` — Lady Gan (甘夫人, Shu, female, 3 HP)
 - `gongsun-zan` — Gongsun Zan (公孙瓒, Qun, male, 4 HP)
@@ -77,11 +80,11 @@ The official catalogue uses **Qun**. The current runtime uses `Neutral` for the 
 | Wei | `cao-cao` | Cao Cao | 曹操 | Male | 4 | Treachery<br>Entourage | Present |
 | Wei | `simayi` | Sima Yi | 司马懿 | Male | 3 | Retaliation<br>Necromancy | Present |
 | Wei | `xiahou-dun` | Xiahou Dun | 夏侯惇 | Male | 4 | Stauchness | Present |
-| Wei | `zhang-liao` | Zhang Liao | 张辽 | Male | 4 | Tuxi 突袭 | Present |
-| Wei | `xu-chu` | Xu Chu | 许褚 | Male | 4 | Luoyi 裸衣 | Present |
-| Wei | `guo-jia` | Guo Jia | 郭嘉 | Male | 3 | Tiandu 天妒<br>Yiji 遗计 | Present |
-| Wei | `zhen-ji` | Zhen Ji | 甄姬 | Female | 3 | Empress Dowager<br>Goddess of Luo River | Present |
-| Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Xiaoguo 骁果 | **Present / metadata-only** |
+| Wei | `zhang-liao` | Zhang Liao | 张辽 | Male | 4 | Assault / Tuxi 突袭 | Present |
+| Wei | `xu-chu` | Xu Zhu | 许褚 | Male | 4 | Bared Bodied / Luoyi 裸衣 | Present |
+| Wei | `guo-jia` | Guo Jia | 郭嘉 | Male | 3 | Jealousy of God / Tiandu 天妒<br>Legacy / Yiji 遗计 | Present |
+| Wei | `zhen-ji` | Zhen Ji | 甄姬 | Female | 3 | Empress Dowager<br>Godess of Luo River | Present |
+| Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Dauntless / Xiaoguo 骁果 | **Present / metadata-only** |
 | Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Benevolence<br>Influencing | Present |
 | Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | God of War | Present |
 | Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Battle Cry | Present |
@@ -163,22 +166,26 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 4
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WEI 004**, printed title **The Vanguard General**.
 - **Skills:**
-  - **Tuxi 突袭:** During the Draw Phase, Zhang Liao may replace/reduce his normal draw to obtain one hand card from each of up to two other characters, according to the verified card wording.
-- **Likely engine shape:** Draw Phase replacement.
-- **Current implementation:** Rende is a generic Play Phase `trigger` option with server-validated hand-card and living-target selection; it recovers once after two cards have been given in that phase. Jijiang is a delegated semantic Attack provider that offers living Shu characters in action order. Both preserve private projections and stale-action validation.
+  - **Assault / Tuxi 突袭:** “Draw Phase, you may choose not to draw cards from the deck, choose up to 2 characters and obtain 1 card from each their hand instead.”
+- **Implementation interpretation:** Assault is an optional replacement for Zhang Liao's normal Draw Phase draw. If accepted, he obtains one hidden hand card from each of up to two chosen characters instead of drawing from the deck.
+- **Likely engine shape:** Draw Phase replacement; hidden-hand random/authoritative card acquisition.
+- **Current implementation:** Hero metadata is present, but the current runtime ability summary is coarse. Treat the verified card text above as authoritative before implementing Assault.
 
-### Xu Chu (许褚)
+### Xu Zhu (许褚)
 
-- **Runtime ID:** `xu-chu`
+- **Runtime ID:** `xu-chu` (retained for compatibility; current runtime metadata still uses “Xu Chu”)
 - **Faction:** Wei
 - **Gender:** Male
 - **Max HP:** 4
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WEI 005**, printed name **Xu Zhu**, printed title **The Ferocious Folly**.
 - **Skills:**
-  - **Luoyi 裸衣:** During the Draw Phase, Xu Chu may take a reduced draw; if he does, damage from his Attack and Duel during that turn is increased by 1.
-- **Likely engine shape:** Draw Phase modifier; damage modifier.
-- **Current implementation:** Zhiheng is a once-per-Play-Phase generic `trigger` option that discards a server-validated hand selection and privately draws the same number. Jiuyuan is integrated into the canonical Peach rescue transition, giving Sun Quan the additional recovery when another living Wu character rescues him. No provider-specific route or client action was added.
+  - **Bared Bodied / Luoyi 裸衣:** “Draw Phase, you may choose draw 1 lesser card. If you do so, your [Attack] or [Duel] in this turn will deal 1 additional damage.”
+- **Implementation interpretation:** Bared Bodied is optional during the Draw Phase. If activated, Xu Zhu draws one fewer card than the normal Draw Phase amount, and each qualifying [Attack] or [Duel] damage event during that turn deals 1 additional damage. The modifier expires when that turn ends.
+- **Likely engine shape:** Draw Phase modifier; turn-scoped Attack/Duel damage modifier.
+- **Current implementation:** Hero metadata is present, but the current runtime ability summary is coarse and the player-facing runtime name still says “Xu Chu”. Treat the verified card text and printed name above as authoritative for future implementation/UI reconciliation.
 
 ### Guo Jia (郭嘉)
 
@@ -187,10 +194,12 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Gender:** Male
 - **Max HP:** 3
 - **Runtime roster status:** Present
+- **Verified official Standard card:** **WEI 006**, printed title **Short-lived Prophet**.
 - **Skills:**
-  - **Tiandu 天妒:** After Guo Jia's Judgement card takes effect, he may obtain that Judgement card.
-  - **Yiji 遗计:** After Guo Jia suffers damage, for each point of damage he may view the top two deck cards and distribute those cards among characters as allowed by the skill.
-- **Likely engine shape:** Judgement-finished trigger; damage-resolved trigger / card distribution.
+  - **Jealousy of God / Tiandu 天妒:** “After your Judgment card takes effect, you may obtain it.”
+  - **Legacy / Yiji 遗计:** “After you take 1 damage, you may look at the top 2 cards of the deck, then give them away to any character(s) including yourself.”
+- **Rulebook interaction:** The Standard rulebook distinguishes an Injury from “1 Damage” and states that a “1 Damage” effect can be triggered multiple times when multiple points of damage are inflicted in one damage event. Legacy therefore needs to preserve per-damage-point trigger semantics rather than collapsing a multi-point injury into one trigger.
+- **Likely engine shape:** Judgement-finished trigger; per-damage-point trigger / private top-deck reveal and card distribution.
 - **Current implementation:** Metadata only.
 
 ### Zhen Ji (甄姬)
@@ -202,7 +211,7 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Runtime roster status:** Present
 - **Skills:**
   - **Empress Dowager / Qingguo 倾国:** A black hand card may be used or played as Dodge.
-  - **Goddess of Luo River / Luoshen 洛神:** At the beginning of her turn, Zhen Ji may repeatedly make Judgements. Black results are obtained and allow the sequence to continue; the sequence stops when a non-black result ends it.
+  - **Godess of Luo River / Luoshen 洛神:** At the beginning of her turn, Zhen Ji may repeatedly make Judgements. Black results are obtained and allow the sequence to continue; the sequence stops when a non-black result ends it.
 - **Likely engine shape:** semantic Dodge provider; start-of-turn repeated Judgement.
 - **Current implementation:** Qingguo and Luoshen are implemented. Luoshen uses the canonical repeated Judgement flow; Qingguo behavior is unchanged by the Guicai work.
 
@@ -212,11 +221,13 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Faction:** Wei
 - **Gender:** Male
 - **Max HP:** 4
-- **Runtime roster status:** Missing
+- **Runtime roster status:** Present / metadata-only
+- **Verified official Standard card:** **WEI 016**, printed title **The Indomitable Spirit**.
 - **Skills:**
-  - **Xiaoguo 骁果:** During another character's Ending Phase, Yue Jin may discard a Basic card. That character must discard an Equipment card or take 1 damage from Yue Jin.
-- **Likely engine shape:** other-player Ending Phase trigger; forced choice.
-- **Current implementation:** Missing from runtime metadata and hero selection.
+  - **Dauntless / Xiaoguo 骁果:** “At the end of other characters' turn, you may discard 1 basic card to let target character discard 1 equipment card, otherwise you deal 1 damage to that character.”
+- **Implementation interpretation:** At the end of another character's turn, Yue Jin may discard one Basic card and target that character. The target must discard one Equipment card if able/required by settlement; otherwise Yue Jin deals 1 damage to that character.
+- **Likely engine shape:** other-player turn-end trigger; Basic-card cost; forced Equipment discard-or-damage settlement.
+- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skill is not implemented.
 
 ### Yu Jin (于禁) — legacy-readable only
 
@@ -538,7 +549,7 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 
 The following are deliberately called out because their published wording has changed across editions or because the existing runtime summary is incomplete:
 
-- Zhang Liao — exact Tuxi Draw Phase replacement/reduction wording.
+- Zhang Liao — **verified 2026-09-21** from WEI 004: Assault replaces the normal Draw Phase deck draw with obtaining 1 hand card from each of up to 2 chosen characters.
 - Guan Yu — verified and implemented: one red-suited hand card may be used or played as Attack; equipped cards are not eligible. Play Phase action projection and shared response parity are included in the hardening scope.
 - Zhuge Liang — exact Kongcheng target/effect wording and any card-gain timing rider on the current WTK card.
 - Ma Chao — exact Tieji qualifying Judgement result and resulting Dodge restriction.
@@ -555,4 +566,4 @@ Older English Sanguosha references are useful only as **secondary** rule-history
 
 ## Next repository change
 
-This file now documents the reconciled 30-general selectable runtime roster and the verified hero capabilities implemented so far, including Sima Yi's Guicai and Retaliation. Yu Jin remains legacy-readable for saved-room compatibility but is excluded from new Standard selection. The next step is the next individually verified Standard hero; do not generalise a hero framework until another real skill proves the need.
+This file now documents the reconciled 30-general selectable runtime roster and the verified hero capabilities implemented so far. The 2026-09-21 verification batch adds exact current printed card text for Zhang Liao (Assault), Xu Zhu (Bared Bodied), Guo Jia (Jealousy of God / Legacy), and Yue Jin (Dauntless), and preserves Xu Zhu's existing `xu-chu` runtime ID for compatibility. Yu Jin remains legacy-readable for saved-room compatibility but is excluded from new Standard selection. The next step is to reconcile runtime/UI metadata for these newly verified cards before implementing their mechanics; do not generalise a hero framework until another real skill proves the need.
