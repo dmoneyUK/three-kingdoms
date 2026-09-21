@@ -1,5 +1,19 @@
 # Three Kingdoms
 
+## Private opening-hand presentation — 2026-09-21
+
+Each player now receives four private opening-deal events, so their own
+browser presents those cards in the centre as a private draw. The events are
+filtered by player before projection and do not enter the public presentation
+queue. Quick Game applies the same behavior to the currently projected human
+seat. The first player waits for that private presentation, then the normal
+Draw Phase automatically draws two more cards.
+
+The current stage remains Stage 6 hero-capability execution complete for the
+implemented Standard heroes. The next milestone is the next individually
+verified Standard hero capability, preserving the canonical semantic response
+protocol and Quick Test privacy.
+
 ## Public Judgement reveal timing — 2026-09-21
 
 Public Judgement reveals now stay in the centre presentation for four seconds,

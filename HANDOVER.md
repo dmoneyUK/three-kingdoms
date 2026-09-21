@@ -1,5 +1,23 @@
 # Three Kingdoms project handover
 
+## Private opening-hand presentation — 2026-09-21
+
+`beginMatch()` now records each four-card opening hand as private
+`initialDeal` draw events. `gameTimeline()` continues filtering those events
+by `privateToPlayerId`, while the client reuses the private centre draw
+presentation for the current viewer. Quick Game can show the same opening
+animation as its shared controller moves between human-style seats.
+
+The first player's automatic Draw Phase is held until the private opening
+presentation closes, then proceeds through the existing authoritative `draw`
+action and draws the normal two cards. No public hand information is exposed,
+and ordinary later private draws retain their existing behavior.
+
+Coverage now asserts four opening draw events per private multiplayer view,
+Quick Game privacy, and initial-deal presentation after a shared-controller
+seat switch. Recommended next work remains the next individually verified
+Standard hero capability.
+
 ## Public Judgement reveal timing — 2026-09-21
 
 Judgement reveal events now carry shared `judgement` presentation metadata

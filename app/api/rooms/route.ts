@@ -18,12 +18,13 @@ import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type DrawPhaseTriggerContinuation, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
+import { canTargetCharacter } from "../../../game/capabilities/targeting";
 
 export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge"; effectNotice?: boolean; judgement?: boolean };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -350,7 +351,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}) };
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
@@ -363,7 +364,7 @@ function addLogWithId(log: string[], message: string, drawPlayerId?: string, met
 function addFinalResult(log: string[], message: string, drawPlayerId?: string, resolutionId?: string) { return addLog(log, message, drawPlayerId, { resolutionId, importance: "essential", finalResult: true }); }
 function addHistory(log: string[], message: string, drawPlayerId?: string, meta?: PresentationMeta) { return [...log.slice(-199), `@history:${JSON.stringify({ id: crypto.randomUUID(), message, presentation: false, ...presentationMeta(log, meta, "informational"), ...(drawPlayerId ? { drawPlayerId } : {}) })}`]; }
 function addCardEvent(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta, eventId = crypto.randomUUID()) { return [...log.slice(-199), `@card:${JSON.stringify({ id: eventId, player, target, card, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential") })}`]; }
-function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card) { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player: player.name, target: player.name, card, action: "draw", presentation: false, privateToPlayerId: player.id, drawPlayerId: player.id, ...presentationMeta(log, undefined, "informational") })}`]; }
+function addPrivateDrawEvent(log: string[], player: PlayerRow, card: Card, initialDeal = false) { return [...log.slice(-199), `@card:${JSON.stringify({ id: crypto.randomUUID(), player: player.name, target: player.name, card, action: "draw", presentation: false, privateToPlayerId: player.id, drawPlayerId: player.id, ...presentationMeta(log, initialDeal ? { initialDeal: true } : undefined, "informational") })}`]; }
 function addCardEventWithId(log: string[], player: string, card: Card, target = player, action: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" = "play", presentation = true, meta?: PresentationMeta) {
   const eventId = crypto.randomUUID();
   return { log: addCardEvent(log, player, card, target, action, presentation, meta, eventId), eventId };
@@ -817,6 +818,8 @@ async function beginMatch(roomId: string, players: PlayerRow[]) {
   const deck = makeDeck();
   const openingHands = players.map((player) => ({ player, cards: [] as Card[] }));
   for (const entry of openingHands) entry.cards = shuffle([...entry.cards, ...deck.splice(0, Math.max(0, 4 - entry.cards.length))]);
+  let openingLog = [`${(players.find((player) => player.role === "Lord") ?? players[0]).name} begins the match.`];
+  for (const { player, cards } of openingHands) for (const drawn of cards) openingLog = addPrivateDrawEvent(openingLog, player, drawn, true);
   const updates = openingHands.map(({ player, cards }) => {
     const hero = STANDARD_HEROES.find((candidate) => candidate.id === player.hero);
     const maxHp = hero?.hp ?? player.max_hp ?? 0;
@@ -824,7 +827,7 @@ async function beginMatch(roomId: string, players: PlayerRow[]) {
     return db().prepare("UPDATE players SET hp = ?, max_hp = ?, hand_json = ?, judgement_json = '[]', equipment_json = '{}', alive = 1 WHERE id = ?").bind(hp, hp, JSON.stringify(cards), player.id);
   });
   const lord = players.find((player) => player.role === "Lord") ?? players[0];
-  await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify([`${lord.name} begins the match.`]), JSON.stringify({ turnPlayerId: lord.id }), roomId)]);
+  await db().batch([...updates, db().prepare("UPDATE rooms SET status = 'playing', turn_seat = ?, phase = 'draw', deck_json = ?, discard_json = '[]', log_json = ?, skill_state_json = ? WHERE id = ?").bind(lord.seat, JSON.stringify(deck), JSON.stringify(openingLog), JSON.stringify({ turnPlayerId: lord.id }), roomId)]);
   await beginTurnStart(roomId, lord.seat);
 }
 function db() { return env.DB; }

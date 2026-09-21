@@ -17,6 +17,11 @@ test("private hand baselines, draw presentation, and redraw identity", () => {
   result = updatePrivateHand(previous, "me", hand, events); assert.deepEqual(result.drawn.map((item) => item.id), ["draw1", "draw2"]);
   result = updatePrivateHand(result.baseline, "me", hand, events); assert.deepEqual(result.drawn, []);
   result = updatePrivateHand(result.baseline, "me", [...hand, card("other-gain")], [...events, { id: "opponent-draw", drawPlayerId: "p1" }]); assert.deepEqual(result.drawn, []);
+  previous = baselineHand("me", [], []);
+  result = updatePrivateHand(previous, "me", [card("opening-a"), card("opening-b")], [{ id: "initial-a", drawPlayerId: "me", initialDeal: true }, { id: "initial-b", drawPlayerId: "me", initialDeal: true }]);
+  assert.deepEqual(result.drawn.map((item) => item.id), ["opening-a", "opening-b"]);
+  result = updatePrivateHand(result.baseline, "next-seat", [card("next-opening")], [{ id: "initial-next", drawPlayerId: "next-seat", initialDeal: true }]);
+  assert.equal(result.switched, true); assert.deepEqual(result.drawn.map((item) => item.id), ["next-opening"]);
   const oldEvents = [{ id: "old-draw", drawPlayerId: "me" }];
   previous = baselineHand("me", [card("a")], oldEvents); result = updatePrivateHand(previous, "me", [], oldEvents); previous = result.baseline;
   result = updatePrivateHand(previous, "me", [card("a")], [...oldEvents, { id: "new-draw", drawPlayerId: "me" }]); assert.deepEqual(result.drawn.map((item) => item.id), ["a"]);

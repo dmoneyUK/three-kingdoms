@@ -8,7 +8,7 @@ export function updatePrivateHand(previous, playerId, hand, events) {
   const baseline = baselineHand(playerId, hand, events);
   const switched = previous.playerId !== playerId;
   const freshEvents = events.filter((event) => !previous.eventIds.has(event.id));
-  const hasDraw = !switched && freshEvents.some((event) => event.drawPlayerId === playerId);
+  const hasDraw = freshEvents.some((event) => event.drawPlayerId === playerId && (!switched || event.initialDeal === true));
   const gains = new Set(freshEvents.flatMap((event) => event.gainedCardIds ?? []));
   const drawn = hasDraw ? hand.filter((card) => !previous.cardIds.has(card.id) && !gains.has(card.id)) : [];
   return { baseline, switched, drawn };

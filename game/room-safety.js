@@ -37,6 +37,7 @@ function normalizePresentationMeta(entry) {
   if (entry.playedAs === "attack" || entry.playedAs === "dodge") metadata.playedAs = entry.playedAs;
   if (entry.effectNotice === true) metadata.effectNotice = true;
   if (entry.judgement === true) metadata.judgement = true;
+  if (entry.initialDeal === true) metadata.initialDeal = true;
   return metadata;
 }
 

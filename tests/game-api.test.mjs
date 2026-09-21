@@ -162,6 +162,9 @@ test("Quick Game uses one controller across four seats with a normal shuffled op
   const openingHands = room.players.map((player) => JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`)));
   const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(room.code)}`));
   assert.ok(openingHands.every((hand) => hand.length === 4));
+  const quickInitialDraws = room.timeline.filter((event) => event.type === "card" && event.action === "draw" && event.initialDeal && event.drawPlayerId === room.meId);
+  assert.equal(quickInitialDraws.length, 4, "Quick Game projects the current seat's four-card opening deal as private draws");
+  assert.equal(room.timeline.filter((event) => event.type === "card" && event.initialDeal && event.drawPlayerId !== room.meId).length, 0, "Quick Game does not expose another seat's opening hand");
   const allOpeningIds = [...openingHands.flat(), ...deck].map((card) => card.id);
   assert.equal(new Set(allOpeningIds).size, 108, "Quick Game preserves the shuffled physical deck without special-card duplication");
 
@@ -208,6 +211,13 @@ test("Quick Game uses one controller across four seats with a normal shuffled op
   assert.equal(normalState.turnSeat, normalLord.seat);
   assert.equal(normalLord.hp, normalLord.maxHp);
   assert.equal(normalLord.maxHp, normalLordChoice.hp + 1, "the Lord receives the Standard +1 HP bonus");
+  const finalNormalViews = await Promise.all(normal.members.map((member) => state(normal.code, member.token)));
+  for (const viewResponse of finalNormalViews) {
+    const view = viewResponse.data;
+    const initialDraws = view.timeline.filter((event) => event.type === "card" && event.action === "draw" && event.initialDeal && event.drawPlayerId === view.meId);
+    assert.equal(initialDraws.length, 4, "each multiplayer private view receives exactly four opening draw cards");
+    assert.equal(view.timeline.filter((event) => event.type === "card" && event.initialDeal && event.drawPlayerId !== view.meId).length, 0, "opening hands remain private to each player view");
+  }
 });
 
 test("Wu hero skills complete through the normal semantic API", async () => {
@@ -2757,8 +2767,8 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
     const drawn = await request("trigger", { code: s.game.code, token: s.game.members[2].token, providerId: "yin_yang_swords_attack_targeted", choice: "draw" }); assert.equal(drawn.status, 200, JSON.stringify(drawn.data));
     assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(s.holder.id)}`)).length, 1, "the attacker draws one card");
     const holderView = (await state(s.game.code, s.alice.token)).data;
-    assert.equal(holderView.timeline.find((event) => event.type === "card" && event.action === "draw")?.card.id, "peach-yin-draw", "the attacker receives a private draw presentation card");
-    assert.equal((await state(s.game.code, s.game.members[2].token)).data.timeline.some((event) => event.type === "card" && event.action === "draw"), false, "the private drawn card is not exposed to the target");
+    assert.equal(holderView.timeline.find((event) => event.type === "card" && event.action === "draw" && !event.initialDeal)?.card.id, "peach-yin-draw", "the attacker receives a private draw presentation card");
+    assert.equal((await state(s.game.code, s.game.members[2].token)).data.timeline.some((event) => event.type === "card" && event.action === "draw" && !event.initialDeal), false, "the private drawn card is not exposed to the target");
     assert.equal(drawn.data.room.phase, "play");
   }
   {
