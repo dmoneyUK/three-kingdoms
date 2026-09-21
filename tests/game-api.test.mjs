@@ -7,8 +7,42 @@ import { normalizeRoomData } from "../game/room-safety.js";
 
 const baseUrl = process.env.GAME_TEST_URL ?? "http://localhost:3137";
 const d1Directory = new URL("../.wrangler/test-state/v3/d1/miniflare-D1DatabaseObject/", import.meta.url);
+const membersByCode = new Map();
+
+async function drainEmptyPrivateDecisions(code, fallbackToken) {
+  const members = membersByCode.get(code) ?? [{ token: fallbackToken }];
+  for (let guard = 0; guard < 40; guard++) {
+    let advanced = false;
+    for (const member of members) {
+      const preview = await state(code, member.token);
+      const current = preview.data.currentAction;
+      if (!preview.data.isMyAction) continue;
+      if (current?.kind === "response" && current.legalActions?.includes("decline_response") && !(current.options?.length ?? 0)) {
+        await request("decline_response", { code, token: member.token });
+        advanced = true;
+        break;
+      }
+      if (current?.kind === "dying" && current.legalActions?.includes("skip_rescue") && !current.legalActions?.includes("give_peach")) {
+        await request("skip_rescue", { code, token: member.token });
+        advanced = true;
+        break;
+      }
+    }
+    if (!advanced) break;
+  }
+}
 
 async function request(action, values = {}) {
+  const preserveResponse = Boolean(values.preserveResponse);
+  if (preserveResponse) { values = { ...values }; delete values.preserveResponse; }
+  // The browser explicitly passes zero-option semantic responses and empty
+  // Peach rescue decisions. Older scenario tests often submit the next
+  // domain action directly, so mirror that client behavior here without
+  // skipping any private option that the acting player could actually use.
+  if (values.code && !preserveResponse && !["respond", "decline_response", "trigger", "decline_trigger", "skip_rescue", "start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) await drainEmptyPrivateDecisions(values.code, values.token);
+  const handBeforeAction = values.code && values.token && ["play_card", "draw"].includes(action)
+    ? ((await state(values.code, values.token)).data.myHand ?? [])
+    : null;
   if ((action === "respond" || action === "trigger") && values.providerId === undefined) {
     const preview = await state(values.code, values.token);
     const options = action === "respond" ? preview.data.currentAction?.options ?? [] : preview.data.currentAction?.triggerOptions ?? [];
@@ -25,7 +59,20 @@ async function request(action, values = {}) {
     const response = await fetch(`${baseUrl}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...values }) });
     const text = await response.text();
     if (text) {
-      try { return { status: response.status, data: JSON.parse(text) }; }
+      try {
+        const result = { status: response.status, data: JSON.parse(text) };
+        if (values.code && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
+          await drainEmptyPrivateDecisions(values.code, values.token);
+          const refreshed = await state(values.code, values.token);
+          result.data = { ...result.data, room: refreshed.data };
+          if (result.data.drawnCards === undefined && handBeforeAction && Array.isArray(refreshed.data.myHand)) {
+            const beforeIds = new Set(handBeforeAction.map((card) => card.id));
+            const drawnCards = refreshed.data.myHand.filter((card) => !beforeIds.has(card.id));
+            if (drawnCards.length) result.data.drawnCards = drawnCards;
+          }
+        }
+        return result;
+      }
       catch {
         if (response.status < 500 || attempt === 2) assert.fail(`${action} returned a non-JSON ${response.status} response: ${text.slice(0, 120)}`);
       }
@@ -95,6 +142,23 @@ async function markReady(code, members) {
   }
 }
 
+async function passNegationWindows(code, members) {
+  for (let guard = 0; guard < 40; guard++) {
+    let passed = false;
+    for (const member of members) {
+      const view = (await state(code, member.token)).data;
+      if (view.isMyAction && view.currentAction?.kind === "response" && view.currentAction.requirement === "negate" && view.currentAction.legalActions?.includes("decline_response")) {
+        const declined = await request("decline_response", { code, token: member.token, preserveResponse: true });
+        assert.equal(declined.status, 200, JSON.stringify(declined.data));
+        passed = true;
+        break;
+      }
+    }
+    if (!passed) return;
+  }
+  assert.fail("Negation windows did not settle");
+}
+
 async function createTestLobby() {
   const created = await request("create", { name: "Host" });
   assert.equal(created.status, 201, JSON.stringify(created.data));
@@ -108,6 +172,7 @@ async function createTestLobby() {
   assert.equal(ready.status, 200, JSON.stringify(ready.data));
   const started = await request("start", { code, token: created.data.token, name: "Host" });
   assert.equal(started.status, 200, JSON.stringify(started.data));
+  membersByCode.set(code, [{ token: created.data.token }]);
   return { ...created, data: { ...created.data, room: started.data.room } };
 }
 
@@ -144,6 +209,7 @@ async function createHumanSetupGame() {
     members.push({ name, token: joined.data.token });
   }
   await markReady(code, members);
+  membersByCode.set(code, members);
   const started = await request("start", { code, token: created.data.token, name: "Host" });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const views = await Promise.all(members.map((member) => state(code, member.token)));
@@ -640,6 +706,7 @@ async function createHumanGame() {
   const code = created.data.room.code;
   const members = [{ name: "Host", token: created.data.token }];
   for (const name of ["Alice", "Bob", "Carol"]) { const joined = await request("join", { code, name }); assert.equal(joined.status, 201); members.push({ name, token: joined.data.token }); }
+  membersByCode.set(code, members);
   await markReady(code, members);
   assert.equal((await request("start", { code, token: members[0].token, name: "Host" })).status, 200);
   let setup = (await state(code, members[0].token)).data;
@@ -664,6 +731,102 @@ async function createHumanGame() {
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(deck))} WHERE code=${quote(code)}`);
   return { code, members, room: (await state(code, members[0].token)).data };
 }
+
+test("Attack response windows are public while Dodge options remain private", { timeout: 30_000 }, async () => {
+  async function open(targetCards, suffix) {
+    const game = await createHumanGame();
+    const [sourceMember, targetMember, otherMember] = game.members;
+    const [source, target, other, last] = game.room.players;
+    const attack = card("Attack", `privacy-${suffix}`);
+    setHand(source.id, [attack], 4, 4); setHand(target.id, targetCards, 4, 4); setHand(other.id, [], 4, 4); setHand(last.id, [], 4, 4);
+    setEquipment(source.id); setEquipment(target.id); setEquipment(other.id); setEquipment(last.id); setTurn(game.code, source.seat);
+    const played = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: target.id, preserveResponse: true });
+    assert.equal(played.status, 200, JSON.stringify(played.data));
+    return { game, sourceMember, targetMember, otherMember, source, target, other, attack };
+  }
+
+  const empty = await open([], "empty");
+  const emptyTarget = (await state(empty.game.code, empty.targetMember.token)).data;
+  assert.equal(emptyTarget.phase, "response"); assert.equal(emptyTarget.actionPlayerId, empty.target.id);
+  assert.equal(emptyTarget.currentAction.kind, "response"); assert.equal(emptyTarget.currentAction.requirement, "dodge");
+  assert.deepEqual(emptyTarget.currentAction.options, []); assert.ok(emptyTarget.currentAction.legalActions.includes("decline_response")); assert.equal(emptyTarget.currentAction.legalActions.includes("respond"), false);
+  assert.equal(emptyTarget.players.find((player) => player.id === empty.target.id).hp, 4);
+  const emptyOther = (await state(empty.game.code, empty.otherMember.token)).data;
+  assert.equal(emptyOther.phase, "response"); assert.equal(emptyOther.actionPlayerId, empty.target.id); assert.equal(emptyOther.currentAction.kind, "response");
+  assert.equal(emptyOther.currentAction.reason, emptyTarget.currentAction.reason); assert.deepEqual(emptyOther.currentAction.options ?? [], []);
+  const declinedEmpty = await request("decline_response", { code: empty.game.code, token: empty.targetMember.token });
+  assert.equal(declinedEmpty.status, 200); assert.equal(declinedEmpty.data.room.players.find((player) => player.id === empty.target.id).hp, 3);
+
+  const held = await open([card("Dodge", "privacy-held")], "held");
+  const heldTarget = (await state(held.game.code, held.targetMember.token)).data;
+  assert.ok(heldTarget.currentAction.options.some((option) => option.providerId === "card"));
+  assert.ok(heldTarget.currentAction.legalActions.includes("respond")); assert.ok(heldTarget.currentAction.legalActions.includes("decline_response"));
+  const declinedHeld = await request("decline_response", { code: held.game.code, token: held.targetMember.token });
+  assert.equal(declinedHeld.status, 200); assert.equal(declinedHeld.data.room.players.find((player) => player.id === held.target.id).hp, 3);
+  assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(held.target.id)}`)).map((item) => item.id), ["dodge-privacy-held"]);
+});
+
+test("Negation windows and counter-windows include players without private Negation", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [sourceMember, firstMember, secondMember] = game.members;
+  const [source, first, second, last] = game.room.players; const drawTwo = card("DrawTwo", "privacy-negation");
+  setHand(source.id, [drawTwo], 4, 4); setHand(first.id, [], 4, 4); setHand(second.id, [], 4, 4); setHand(last.id, [], 4, 4); setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: drawTwo.id, preserveResponse: true });
+  assert.equal(opened.status, 200); const sourceView = (await state(game.code, sourceMember.token)).data;
+  assert.equal(sourceView.currentAction.requirement, "negate"); assert.deepEqual(sourceView.currentAction.options, []); assert.deepEqual(sourceView.currentAction.legalActions, ["decline_response"]);
+  const passed = await request("decline_response", { code: game.code, token: sourceMember.token, preserveResponse: true });
+  assert.equal(passed.status, 200); const firstView = (await state(game.code, firstMember.token)).data;
+  assert.equal(firstView.currentAction.actorId, first.id); assert.equal(firstView.currentAction.requirement, "negate"); assert.deepEqual(firstView.currentAction.options, []);
+
+  setHand(first.id, [card("Negation", "privacy-counter")], 4, 4);
+  const withCard = (await state(game.code, firstMember.token)).data;
+  assert.ok(withCard.currentAction.options.some((option) => option.providerId === "negation_card"), JSON.stringify(withCard.currentAction));
+  const declined = await request("decline_response", { code: game.code, token: firstMember.token, preserveResponse: true });
+  assert.equal(declined.status, 200); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(first.id)}`)).map((item) => item.id), ["negation-privacy-counter"]);
+  assert.equal((await state(game.code, secondMember.token)).data.currentAction.actorId, second.id);
+
+  const counterGame = await createHumanGame(); const [counterSource, counterFirst, counterSecond, counterLast] = counterGame.members; const [counterSourcePlayer] = counterGame.room.players;
+  setHand(counterSourcePlayer.id, [card("DrawTwo", "counter-root")], 4, 4); setHand(counterGame.room.players[1].id, [card("Negation", "counter-negation")], 4, 4); setHand(counterGame.room.players[2].id, [], 4, 4); setHand(counterGame.room.players[3].id, [], 4, 4); setTurn(counterGame.code, counterSourcePlayer.seat);
+  await request("play_card", { code: counterGame.code, token: counterSource.token, cardId: "drawtwo-counter-root", preserveResponse: true });
+  await request("decline_response", { code: counterGame.code, token: counterSource.token, preserveResponse: true });
+  const negated = await request("respond", { code: counterGame.code, token: counterFirst.token, providerId: "negation_card", cardId: "negation-counter-negation", preserveResponse: true });
+  assert.equal(negated.status, 200); const counterSecondView = (await state(counterGame.code, counterSecond.token)).data;
+  assert.equal(counterSecondView.currentAction.requirement, "negate"); assert.deepEqual(counterSecondView.currentAction.options, []); assert.deepEqual(counterSecondView.currentAction.legalActions, ["decline_response"]);
+  assert.equal((await request("decline_response", { code: counterGame.code, token: counterSecond.token, preserveResponse: true })).status, 200);
+  assert.equal((await state(counterGame.code, counterLast.token)).data.currentAction.requirement, "negate");
+});
+
+test("Dying rescue gives every living rescuer a private Peach decision", { timeout: 30_000 }, async () => {
+  async function lethal(peach) {
+    const game = await createHumanGame(); const [sourceMember, targetMember] = game.members; const [source, target] = game.room.players;
+    const attack = card("Attack", peach ? "peach-holder-attack" : "peach-empty-attack");
+    setHand(source.id, peach ? [attack, card("Peach", "peach-holder") ] : [attack], 4, 4); setHand(target.id, [], 1, 4); setTurn(game.code, source.seat);
+    const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: target.id, preserveResponse: true });
+    assert.equal(opened.status, 200); assert.equal((await request("decline_response", { code: game.code, token: targetMember.token, preserveResponse: true })).status, 200);
+    return { game, sourceMember, targetMember, source, target };
+  }
+  const empty = await lethal(false); const emptyRescue = (await state(empty.game.code, empty.sourceMember.token)).data;
+  assert.equal(emptyRescue.phase, "dying"); assert.equal(emptyRescue.currentAction.kind, "dying"); assert.deepEqual(emptyRescue.currentAction.legalActions, ["skip_rescue"]);
+  const skipped = await request("skip_rescue", { code: empty.game.code, token: empty.sourceMember.token, preserveResponse: true }); assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "dying");
+
+  const holder = await lethal(true); const holderRescue = (await state(holder.game.code, holder.sourceMember.token)).data;
+  assert.equal(holderRescue.phase, "dying"); assert.ok(holderRescue.currentAction.legalActions.includes("skip_rescue")); assert.ok(holderRescue.currentAction.legalActions.includes("give_peach"));
+  const holderSkipped = await request("skip_rescue", { code: holder.game.code, token: holder.sourceMember.token }); assert.equal(holderSkipped.status, 200);
+  assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(holder.source.id)}`)).map((item) => item.id), ["peach-peach-holder"]);
+});
+
+test("AOE response windows open before failure for players with no private response", { timeout: 30_000 }, async () => {
+  for (const [kind, required] of [["RainingArrows", "dodge"], ["BarbarianInvasion", "attack"]]) {
+    const game = await createHumanGame(); const [sourceMember, firstMember, secondMember, lastMember] = game.members; const [source, first, second, last] = game.room.players;
+    const group = card(kind, `privacy-${kind}`); setHand(source.id, [group], 4, 4); setHand(first.id, [], 4, 4); setHand(second.id, [], 4, 4); setHand(last.id, [], 4, 4); setTurn(game.code, source.seat);
+    await request("play_card", { code: game.code, token: sourceMember.token, cardId: group.id, preserveResponse: true });
+    for (const member of [sourceMember, firstMember, secondMember, lastMember]) {
+      const view = (await state(game.code, member.token)).data; assert.equal(view.currentAction.requirement, "negate"); assert.deepEqual(view.currentAction.options, []);
+      assert.equal((await request("decline_response", { code: game.code, token: member.token, preserveResponse: true })).status, 200);
+    }
+    const firstResponse = (await state(game.code, firstMember.token)).data;
+    assert.equal(firstResponse.currentAction.requirement, required); assert.deepEqual(firstResponse.currentAction.options, []); assert.deepEqual(firstResponse.currentAction.legalActions, ["decline_response"]);
+  }
+});
 
 test("the three faction lords expose their active skills through the semantic protocol", { timeout: 120_000 }, async () => {
   const rendeGame = await createHumanGame();
@@ -800,15 +963,15 @@ test("Influencing initiates a normal delegated Attack without leaking Shu hands"
   const declinedGame = await createTestGame(); const declinedRoom = declinedGame.data.room; const declinedSource = declinedRoom.players[0]; const declinedFirst = declinedRoom.players[1]; const declinedSecond = declinedRoom.players[2]; const declinedTarget = declinedRoom.players[3]; const declinedToken = declinedGame.data.token; const followUpAttack = card("Attack", "influencing-follow-up");
   sql(`UPDATE players SET hero='liu-bei' WHERE id=${quote(declinedSource.id)}`); sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(declinedFirst.id)}`); sql(`UPDATE players SET hero='zhuge-liang' WHERE id=${quote(declinedSecond.id)}`); sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(declinedTarget.id)}`);
   setHand(declinedSource.id, [followUpAttack], 4, 4); setHand(declinedFirst.id, [], 4, 4); setHand(declinedSecond.id, [], 4, 4); setHand(declinedTarget.id, [], 4, 4); setTurn(declinedRoom.code, declinedSource.seat);
-  const declinedStart = await request("trigger", { code: declinedRoom.code, token: declinedToken, providerId: "liu_bei_jijiang", targetId: declinedTarget.id }); assert.equal(declinedStart.status, 200, JSON.stringify(declinedStart.data));
-  const firstDecline = await request("decline_response", { code: declinedRoom.code, token: declinedToken }); assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data)); assert.equal(firstDecline.data.room.currentAction.actorId, declinedSecond.id);
-  const allDeclined = await request("decline_response", { code: declinedRoom.code, token: declinedToken }); assert.equal(allDeclined.status, 200, JSON.stringify(allDeclined.data)); assert.equal(allDeclined.data.room.phase, "play"); assert.equal(discardIds(declinedRoom.code).includes(followUpAttack.id), false);
+  const declinedStart = await request("trigger", { code: declinedRoom.code, token: declinedToken, providerId: "liu_bei_jijiang", targetId: declinedTarget.id, preserveResponse: true }); assert.equal(declinedStart.status, 200, JSON.stringify(declinedStart.data));
+  const firstDecline = await request("decline_response", { code: declinedRoom.code, token: declinedToken, preserveResponse: true }); assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data)); assert.equal(firstDecline.data.room.currentAction.actorId, declinedSecond.id);
+  const allDeclined = await request("decline_response", { code: declinedRoom.code, token: declinedToken, preserveResponse: true }); assert.equal(allDeclined.status, 200, JSON.stringify(allDeclined.data)); assert.equal(allDeclined.data.room.phase, "play"); assert.equal(discardIds(declinedRoom.code).includes(followUpAttack.id), false);
   const normal = await request("play_card", { code: declinedRoom.code, token: declinedToken, cardId: followUpAttack.id, targetId: declinedTarget.id }); assert.equal(normal.status, 200, JSON.stringify(normal.data));
 });
 
 test("Hujia prompts a living Wei character even when that character has no Dodge", { timeout: 120_000 }, async () => {
   const game = await openHujiaScenario({ delegateHero: "simayi" });
-  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
   assert.equal(activated.data.error, undefined);
   assert.equal(activated.data.room.currentAction.actorId, game.delegate.id);
@@ -823,7 +986,7 @@ test("Hujia prompts a living Wei character even when that character has no Dodge
 test("Hujia lets a Wei character with Dodge cancel the Attack", { timeout: 120_000 }, async () => {
   const dodge = card("Dodge", "hujia-regression-dodge");
   const game = await openHujiaScenario({ delegateHero: "simayi", delegateCards: [dodge] });
-  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
   const delegateView = await state(game.code, game.delegateMember.token);
   assert.ok(delegateView.data.currentAction.legalActions.includes("respond"));
@@ -837,10 +1000,10 @@ test("Hujia lets a Wei character with Dodge cancel the Attack", { timeout: 120_0
 test("Hujia asks Wei characters in action order instead of skipping empty hands", { timeout: 120_000 }, async () => {
   const dodge = card("Dodge", "hujia-order-dodge");
   const game = await openHujiaScenario({ delegateHero: "simayi", thirdHero: "zhang-liao", thirdCards: [dodge] });
-  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
   assert.equal(activated.data.room.currentAction.actorId, game.delegate.id);
-  const firstDecline = await request("decline_response", { code: game.code, token: game.delegateMember.token });
+  const firstDecline = await request("decline_response", { code: game.code, token: game.delegateMember.token, preserveResponse: true });
   assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data));
   assert.equal(firstDecline.data.room.currentAction.actorId, game.third.id);
   const answered = await request("respond", { code: game.code, token: game.thirdMember.token, cardId: dodge.id });
@@ -850,18 +1013,18 @@ test("Hujia asks Wei characters in action order instead of skipping empty hands"
 
 test("Hujia returns to Cao Cao after every Wei character declines without looping", { timeout: 120_000 }, async () => {
   const game = await openHujiaScenario({ delegateHero: "simayi", thirdHero: "zhang-liao" });
-  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
-  const firstDecline = await request("decline_response", { code: game.code, token: game.delegateMember.token });
+  const firstDecline = await request("decline_response", { code: game.code, token: game.delegateMember.token, preserveResponse: true });
   assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data));
   assert.equal(firstDecline.data.room.currentAction.actorId, game.third.id);
-  const secondDecline = await request("decline_response", { code: game.code, token: game.thirdMember.token });
+  const secondDecline = await request("decline_response", { code: game.code, token: game.thirdMember.token, preserveResponse: true });
   assert.equal(secondDecline.status, 200, JSON.stringify(secondDecline.data));
   assert.equal(secondDecline.data.room.currentAction.actorId, game.cao.id);
   const caoAfterDelegation = await state(game.code, game.caoMember.token);
   assert.deepEqual(caoAfterDelegation.data.currentAction.legalActions, ["decline_response"]);
   assert.deepEqual(caoAfterDelegation.data.currentAction.options, []);
-  const finalDecline = await request("decline_response", { code: game.code, token: game.caoMember.token });
+  const finalDecline = await request("decline_response", { code: game.code, token: game.caoMember.token, preserveResponse: true });
   assert.equal(finalDecline.status, 200, JSON.stringify(finalDecline.data));
   assert.equal(finalDecline.data.room.players.find((player) => player.id === game.cao.id).hp, 3);
 });
@@ -869,9 +1032,9 @@ test("Hujia returns to Cao Cao after every Wei character declines without loopin
 test("Hujia fallback lets Cao Cao use his own Dodge after all Wei declines", { timeout: 120_000 }, async () => {
   const dodge = card("Dodge", "hujia-fallback-dodge");
   const game = await openHujiaScenario({ delegateHero: "simayi", caoCards: [dodge] });
-  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia" });
+  const activated = await request("respond", { code: game.code, token: game.caoMember.token, providerId: "cao_cao_hujia", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
-  const declined = await request("decline_response", { code: game.code, token: game.delegateMember.token });
+  const declined = await request("decline_response", { code: game.code, token: game.delegateMember.token, preserveResponse: true });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));
   assert.equal(declined.data.room.currentAction.actorId, game.cao.id);
   const caoView = await state(game.code, game.caoMember.token);
@@ -903,10 +1066,10 @@ test("Jijiang also asks an empty-handed Shu character before the next delegate",
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const liuView = await state(game.code, liuMember.token);
   assert.ok(liuView.data.currentAction.options.some((option) => option.providerId === "liu_bei_jijiang"));
-  const activated = await request("respond", { code: game.code, token: liuMember.token, providerId: "liu_bei_jijiang" });
+  const activated = await request("respond", { code: game.code, token: liuMember.token, providerId: "liu_bei_jijiang", preserveResponse: true });
   assert.equal(activated.status, 200, JSON.stringify(activated.data));
   assert.equal(activated.data.room.currentAction.actorId, firstShu.id);
-  const firstDecline = await request("decline_response", { code: game.code, token: firstShuMember.token });
+  const firstDecline = await request("decline_response", { code: game.code, token: firstShuMember.token, preserveResponse: true });
   assert.equal(firstDecline.status, 200, JSON.stringify(firstDecline.data));
   assert.equal(firstDecline.data.room.currentAction.actorId, secondShu.id);
   const answered = await request("respond", { code: game.code, token: secondShuMember.token, cardId: attack.id });
@@ -951,10 +1114,15 @@ async function openGanglieAttack({ judge, sourceCards = [card("Attack", "ganglie
   setDeck(game.code, [judge]);
   const attack = await request("play_card", { code: game.code, token: sourceMember.token, cardId: sourceCards[0].id, targetId: target.id });
   assert.equal(attack.status, 200, JSON.stringify(attack.data));
-  assert.equal(attack.data.room.currentAction.kind, "trigger", JSON.stringify(attack.data.room));
-  assert.equal(attack.data.room.currentAction.triggerEvent, "damage_suffered");
-  assert.equal(attack.data.room.currentAction.actorId, target.id);
-  return { ...game, sourceMember, targetMember, source, target, actionPresentation: attack.data.room.currentAction.presentation };
+  if (attack.data.room.currentAction?.kind === "response") {
+    const declined = await request("decline_response", { code: game.code, token: targetMember.token });
+    assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  }
+  const settled = (await state(game.code, sourceMember.token)).data;
+  assert.equal(settled.currentAction.kind, "trigger", JSON.stringify(settled));
+  assert.equal(settled.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(settled.currentAction.actorId, target.id);
+  return { ...game, sourceMember, targetMember, source, target, actionPresentation: settled.currentAction.presentation };
 }
 
 async function openFankuiAttack({ sourceCards = [card("Attack", "fankui-attack"), card("Peach", "fankui-source-hidden")], sourceHp = 4, sourceMaxHp = 4, sourceEquipment = {}, sourceJudgement = [], expectReaction = true } = {}) {
@@ -973,10 +1141,16 @@ async function openFankuiAttack({ sourceCards = [card("Attack", "fankui-attack")
   setTurn(game.code, source.seat);
   const attack = await request("play_card", { code: game.code, token: sourceMember.token, cardId: sourceCards[0].id, targetId: target.id });
   assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  if (attack.data.room.currentAction?.kind === "response") {
+    const declined = await request("decline_response", { code: game.code, token: targetMember.token });
+    assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  }
   if (expectReaction) {
-    assert.equal(attack.data.room.currentAction.kind, "trigger", JSON.stringify(attack.data.room));
-    assert.equal(attack.data.room.currentAction.triggerEvent, "damage_suffered");
-    assert.equal(attack.data.room.currentAction.actorId, target.id);
+    const settled = (await state(game.code, sourceMember.token)).data;
+    assert.equal(settled.currentAction.kind, "trigger", JSON.stringify(settled));
+    assert.equal(settled.currentAction.triggerEvent, "damage_suffered");
+    assert.equal(settled.currentAction.actorId, target.id);
+    return { ...game, sourceMember, targetMember, source, target, actionPresentation: settled.currentAction.presentation };
   }
   return { ...game, sourceMember, targetMember, source, target, actionPresentation: attack.data.room.currentAction.presentation };
 }
@@ -997,9 +1171,11 @@ async function openGanglieGroup({ kind, judge, suffix }) {
   setDeck(game.code, [judge]);
   const started = await request("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source` });
   assert.equal(started.status, 200, JSON.stringify(started.data));
-  assert.equal(started.data.room.currentAction.kind, "trigger", JSON.stringify(started.data.room));
-  assert.equal(started.data.room.currentAction.triggerEvent, "damage_suffered");
-  assert.equal(started.data.room.currentAction.actorId, target.id);
+  await passNegationWindows(game.code, game.members);
+  const settled = await state(game.code, sourceMember.token);
+  assert.equal(settled.data.currentAction.kind, "trigger", JSON.stringify(settled.data));
+  assert.equal(settled.data.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(settled.data.currentAction.actorId, target.id);
   const targetView = (await state(game.code, targetMember.token)).data;
   assert.ok(targetView.currentAction.triggerOptions.some((option) => option.effectId === "xiahou_dun_ganglie"));
   return { ...game, sourceMember, targetMember, bobMember, carolMember, source, target, bob, carol, required };
@@ -1432,7 +1608,7 @@ test("Serpent Spear grants range 3 and forms Attack from exactly two hand cards"
   setHand(hostPlayer.id, [card("Duel", "serpent")], 4, 4); setHand(alicePlayer.id, [card("Peach", "duel-one"), card("Dodge", "duel-two")], 4, 4); setTurn(game.code, hostPlayer.seat);
   assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: "duel-serpent", targetId: alicePlayer.id })).status, 200);
   const duelView = await state(game.code, alice.token); assert.equal(duelView.data.currentAction.kind, "response"); assert.equal(duelView.data.currentAction.requirement, "attack"); assert.ok(duelView.data.currentAction.options.some((option) => option.providerId === "serpent_spear_attack"));
-  const duelAnswer = await request("respond", { code: game.code, token: alice.token, providerId: "serpent_spear_attack", cardIds: ["peach-duel-one", "dodge-duel-two"] });
+  const duelAnswer = await request("respond", { code: game.code, token: alice.token, providerId: "serpent_spear_attack", cardIds: ["peach-duel-one", "dodge-duel-two"], preserveResponse: true });
   const hostAfterDuel = await state(game.code, host.token);
   assert.equal(duelAnswer.status, 200); assert.equal(hostAfterDuel.data.currentAction.kind, "response"); assert.equal(hostAfterDuel.data.currentAction.requirement, "attack"); assert.equal(hostAfterDuel.data.currentAction.actorId, hostPlayer.id); assert.ok(duelAnswer.data.room.timeline.some((event) => event.type === "cards" && event.action === "play" && event.player === "Alice"));
 
@@ -1753,12 +1929,14 @@ test("host test flow accepts only one competing response submission", { timeout:
   setHand(me.id, [card("BarbarianInvasion", "quick-race")], 3, 3); setHand(playerOne.id, [card("Attack", "quick-race")], 3, 3); setHand(playerTwo.id, [], 3, 3); setHand(playerThree.id, [], 3, 3); setTurn(room.code, me.seat, "play");
   const started = await request("play_card", { code: room.code, token, cardId: "barbarianinvasion-quick-race" });
   assert.equal(started.status, 200); assert.equal(started.data.room.currentAction.actorId, playerOne.id);
+  const raceContext = { actionRevision: started.data.room.actionRevision, meId: playerOne.id, phase: "response", pendingKind: "response", actorId: playerOne.id };
   const [manual, timeout] = await Promise.all([
-    request("respond", { code: room.code, token, cardId: "attack-quick-race" }),
-    request("decline_response", { code: room.code, token }),
+    request("respond", { code: room.code, token, cardId: "attack-quick-race", context: raceContext, preserveResponse: true }),
+    request("decline_response", { code: room.code, token, context: raceContext, preserveResponse: true }),
   ]);
   assert.equal([manual.status, timeout.status].filter((status) => status === 200).length, 1);
   assert.equal([manual.status, timeout.status].filter((status) => status === 409).length, 1);
+  await drainEmptyPrivateDecisions(room.code, token);
   const final = await state(room.code, token);
   if (final.data.currentAction?.triggerEvent === "damage_suffered") await request("decline_trigger", { code: room.code, token });
   const settled = await state(room.code, token);

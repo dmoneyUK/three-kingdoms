@@ -1586,11 +1586,12 @@ duplicate bot variants of human capability tests.
 Removed the pre-canonical helper-selection regression and the redundant generic
 Negation provider-extension regression. Current response-decision tests now use
 `ResponsePending` for Attack, Duel, and Qingguo/other Dodge provider resolution.
-`canRespondWithAttack` and `canRespondWithDodge` query `getResponseOptions()`
-directly, and the browser's Serpent Spear availability check uses the canonical
-provider projection. The bounded Group/AOE compatibility adapter now uses the
-canonical response execution result directly; Group/AOE and Negation migration
-were intentionally untouched.
+`canRespondWithAttack` and `canRespondWithDodge` remain private capability
+discovery helpers in `game/responses.ts`; the route no longer uses them to gate
+a response window, and the browser's Serpent Spear availability check uses the
+canonical provider projection. The bounded Group/AOE compatibility adapter now
+uses the canonical response execution result directly; Group/AOE and Negation
+now also use the canonical public-entitlement path.
 The response-capabilities file is 24 tests before this cleanup and 22 after.
 
 The follow-on test consolidation groups the pure Dying, private-hand,
@@ -1939,3 +1940,28 @@ individually verified Standard hero capability.
 Test cleanup is complete with no production-code changes. The suite now keeps behavioural coverage in the Worker/D1 API and integration paths, including the 108-card physical deck, Dying and match outcomes, private-hand perspective/privacy, canonical `currentAction` safety, real card rules, and semantic response/trigger chains. The duplicate latest-ten Game Messages checks were merged; capability discovery and generic response-decision checks were merged; synthetic capability registry setup/cleanup checks were merged; and source-regex tests for route/page implementation details were removed. The lobby SSR smoke test and focused room-safety rendering tests remain as independent rendering coverage.
 
 The cleanup removed tests that only enforced internal function names, exact source text, or lower-level behavior already proven through stronger API/integration regressions. Attack behavior remains covered through canonical `currentAction` plus `respond`/`decline_response`; no legacy trigger execution or response-alias tests were added. Step 4 Duel canonicalization is complete: Duel uses `ResponsePending` plus `DuelContinuation` directly. Group/AOE and Negation still used the old expansion boundary; the next architecture step was Step 5 Group/AOE.
+
+## Response-window privacy correction — 2026-09-21
+
+Response-window entitlement is now derived only from public rule state. The
+route always creates the canonical `ResponsePending` at the legal Dodge,
+Negation, group Attack/Dodge, and Dying rescue stages. `responseDecisionFor()`
+still discovers the acting player's private providers, so an empty projection
+contains only `decline_response` or `skip_rescue`, while a player with a valid
+card or capability may choose either the provider or the explicit pass.
+
+`advanceGroup()` no longer skips an empty-handed target, Negation order no
+longer filters on private providers, and Dying rescue no longer reads a
+rescuer's hand to decide whether to wait. Public logs use neutral window
+closure language. The client trusts only server-projected semantic options;
+it does not infer a response provider from `myHand` when the projected list is
+empty. The invariant is: **Response-window entitlement must depend only on
+public game state. Private capability discovery determines the acting
+player's available options, never whether the response window exists.**
+
+Worker/D1 API regressions now cover zero-option and intentional-decline Attack,
+Negation and counter-Negation opportunities, Peach rescue privacy, and AOE
+response opening. The complete 117-test Worker/D1 suite passes; legacy scenario
+helpers now model explicit declines only for tests that do not preserve a
+decision window for inspection, while privacy regressions preserve and assert
+the canonical zero-option state directly.
