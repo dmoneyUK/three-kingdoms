@@ -1,5 +1,28 @@
 # Three Kingdoms
 
+## Gan Ning Qixi browser contract repair — 2026-09-21
+
+Gan Ning's Qixi now follows the real `currentAction` client contract for
+black hand-card selection and target selection. The browser no longer shares
+Serpent Spear's local card state with active hero skills; Qixi selection is
+keyed to the current action revision and effect ID, and its submission is
+derived from the same server-projected option that enabled the button. The
+room normalizer preserves card-option `targetIds`, fixing the production K♣
+Borrowed Sword stale-selection failure.
+
+Qixi targets are projected server-side only when a living opponent has at
+least one affectable hand, equipment, or Judgement card. All pre-claim Qixi
+checks run before entering `resolving`, with deterministic recovery retained
+for impossible post-claim failures. Qixi continues through the ordinary
+Burning Bridges Negation and shared target-card picker pipeline. Normal
+multiplayer and Quick Test interaction-contract coverage now passes in the
+full 110-test suite.
+
+The current stage remains Stage 6 hero-capability execution complete. The next
+milestone is the next individually verified Standard hero capability, while
+preserving canonical semantic decisions, Quick Test privacy, and exact card
+conservation.
+
 ## CardFace shield scale audit — 2026-09-21
 
 The shared rank/suit shield now has explicit physical-size variants for every

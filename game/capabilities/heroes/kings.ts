@@ -15,6 +15,7 @@ export type ActiveHeroSkillContext = {
   hero?: string | null;
   hand: Card[];
   livingTargetIds: string[];
+  targetableTargetIds?: string[];
   skillState: KingSkillState;
 };
 
@@ -53,13 +54,14 @@ export function getActiveHeroSkillOptions(context: ActiveHeroSkillContext): Trig
       selection: { type: "cards", min: 1, max: context.hand.length, eligibleCardIds: context.hand.map((card) => card.id) },
     }];
   }
-  if (context.hero === "gan-ning" && context.livingTargetIds.length > 0) {
+  if (context.hero === "gan-ning") {
     const blackCards = context.hand.filter((card) => card.suit === "♠" || card.suit === "♣");
-    if (blackCards.length > 0) return [{
+    const targetIds = context.targetableTargetIds ?? context.livingTargetIds;
+    if (blackCards.length > 0 && targetIds.length > 0) return [{
       effectId: qixiId,
       label: "Qixi",
       description: "Use a black hand card as Burning Bridges against another living character.",
-      selection: { type: "cards", min: 1, max: 1, eligibleCardIds: blackCards.map((card) => card.id), targetIds: context.livingTargetIds },
+      selection: { type: "cards", min: 1, max: 1, eligibleCardIds: blackCards.map((card) => card.id), targetIds },
     }];
   }
   if (context.hero === "huang-gai") {
@@ -86,7 +88,8 @@ export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSki
     return { status: "resolved", effectId, outcome: { kind: "fanjian", sourceId: context.playerId, targetId } };
   }
   if (option.selection?.type !== "cards" || !Array.isArray(selection.cardIds)) return null;
-  const cardIds = selection.cardIds.filter((id): id is string => typeof id === "string");
+  if (!selection.cardIds.every((id): id is string => typeof id === "string")) return null;
+  const cardIds = selection.cardIds;
   if (cardIds.length < option.selection.min || cardIds.length > option.selection.max || new Set(cardIds).size !== cardIds.length || cardIds.some((id) => !option.selection?.eligibleCardIds.includes(id))) return null;
   if (effectId === rendeId) {
     const targetId = typeof selection.targetId === "string" ? selection.targetId : "";

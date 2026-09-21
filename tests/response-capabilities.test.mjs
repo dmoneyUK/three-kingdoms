@@ -17,10 +17,16 @@ const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
 test("Wu and Qun hero capabilities project their private costs and Wushuang multiplicity", () => {
   const black = card("Peach", "qixi-black");
+  const borrowedSword = { ...card("BorrowedSword", "qixi-borrowed"), suit: "♣" };
+  const redCard = { ...card("Peach", "qixi-red"), suit: "♥" };
   const targets = ["target"];
   const qixi = getActiveHeroSkillOptions({ playerId: "source", hero: "gan-ning", hand: [black], livingTargetIds: targets, skillState: {} });
   assert.equal(qixi[0].effectId, "gan_ning_qixi");
   assert.deepEqual(resolveActiveHeroSkill("gan_ning_qixi", { playerId: "source", hero: "gan-ning", hand: [black], livingTargetIds: targets, skillState: {} }, { cardIds: [black.id], targetId: "target" })?.outcome, { kind: "dismantle", sourceId: "source", targetId: "target", cardIds: [black.id] });
+  const qixiBlackHand = getActiveHeroSkillOptions({ playerId: "source", hero: "gan-ning", hand: [borrowedSword, redCard], livingTargetIds: targets, targetableTargetIds: targets, skillState: {} })[0];
+  assert.deepEqual(qixiBlackHand.selection, { type: "cards", min: 1, max: 1, eligibleCardIds: [borrowedSword.id], targetIds: targets });
+  assert.deepEqual(resolveActiveHeroSkill("gan_ning_qixi", { playerId: "source", hero: "gan-ning", hand: [borrowedSword], livingTargetIds: targets, targetableTargetIds: targets, skillState: {} }, { cardIds: [borrowedSword.id], targetId: "target" })?.outcome, { kind: "dismantle", sourceId: "source", targetId: "target", cardIds: [borrowedSword.id] });
+  assert.equal(getActiveHeroSkillOptions({ playerId: "source", hero: "gan-ning", hand: [black], livingTargetIds: targets, targetableTargetIds: [], skillState: {} }).length, 0, "Qixi is not projected without a target that has an affectable card");
   assert.equal(getActiveHeroSkillOptions({ playerId: "source", hero: "huang-gai", hand: [], livingTargetIds: targets, skillState: {} })[0].effectId, "huang_gai_kurou");
   const fanjian = getActiveHeroSkillOptions({ playerId: "source", hero: "zhou-yu", hand: [black], livingTargetIds: targets, skillState: {} })[0];
   assert.equal(fanjian.effectId, "zhou_yu_fanjian"); assert.deepEqual(fanjian.selection, { type: "target", targetIds: targets });

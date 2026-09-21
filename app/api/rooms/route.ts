@@ -260,7 +260,18 @@ function delegatedResponseReason(response: ResponsePending, viewer: PlayerRow | 
 function activeHeroSkillOptions(player: PlayerRow | null | undefined, room: RoomRow, players: PlayerRow[]) {
   if (!player || !player.alive || !room.phase?.startsWith("play")) return [];
   const skillState = parse<KingSkillState>(room.skill_state_json, {});
-  return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, hand: parse<Card[]>(player.hand_json, []), livingTargetIds: players.filter((candidate) => candidate.alive && candidate.id !== player.id).map((candidate) => candidate.id), skillState });
+  const livingTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id).map((candidate) => candidate.id);
+  const targetableTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && targetableCardCount(candidate) > 0).map((candidate) => candidate.id);
+  return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, hand: parse<Card[]>(player.hand_json, []), livingTargetIds, targetableTargetIds, skillState });
+}
+
+async function recoverClaimedHeroSkill(room: RoomRow, player: PlayerRow, hand: Card[], heldCards: Card[], discard: Card[], log: string[], message: string) {
+  discard.push(...heldCards);
+  log = addLog(log, message);
+  await db().batch([
+    db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), player.id),
+    db().prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(JSON.stringify(discard), JSON.stringify(log), room.id),
+  ]);
 }
 async function actionRevisionFor(room: RoomRow, players: PlayerRow[], projectedActionPlayerId: string | null) {
   // The revision changes when a relevant hand changes without disclosing card
@@ -2415,18 +2426,29 @@ export async function POST(request: Request) {
       const skillId = String(body.providerId ?? "");
       const option = options.find((candidate) => candidate.effectId === skillId);
       const skillState = parse<KingSkillState>(liveRoom?.skill_state_json ?? null, {});
-      const execution = liveMe && liveRoom && option ? resolveActiveHeroSkill(skillId, { playerId: liveMe.id, hero: liveMe.hero, hand: parse<Card[]>(liveMe.hand_json, []), livingTargetIds: livePlayers.filter((player) => player.alive && player.id !== liveMe.id).map((player) => player.id), skillState }, { cardIds: body.cardIds, targetId: body.targetId }) : null;
+      const livingTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id).map((player) => player.id);
+      const targetableTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && targetableCardCount(player) > 0).map((player) => player.id);
+      const liveHand = parse<Card[]>(liveMe?.hand_json ?? null, []);
+      const execution = liveMe && liveRoom && option ? resolveActiveHeroSkill(skillId, { playerId: liveMe.id, hero: liveMe.hero, hand: liveHand, livingTargetIds, targetableTargetIds, skillState }, { cardIds: body.cardIds, targetId: body.targetId }) : null;
       if (!execution || !liveRoom || !liveMe) return json({ error: "That hero skill is no longer available or its selection is stale.", stale: true, room: await roomState(code, token) }, 409);
+      const selectedCardIds = "cardIds" in execution.outcome ? execution.outcome.cardIds : [];
+      const selectedIds = new Set(selectedCardIds);
+      const selected = selectedCardIds.map((id) => liveHand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
+      if (selected.length !== selectedCardIds.length || selectedIds.size !== selectedCardIds.length) {
+        return json({ error: "One selected hero-skill card is no longer in your hand.", stale: true, room: await roomState(code, token) }, 409);
+      }
+      if (execution.outcome.kind === "give_cards" || execution.outcome.kind === "dismantle" || execution.outcome.kind === "fanjian") {
+        const target = livePlayers.find((player) => player.id === execution.outcome.targetId);
+        if (!target || !target.alive || target.id === liveMe.id) return json({ error: "The selected hero-skill target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+        if (execution.outcome.kind === "dismantle" && targetableCardCount(target) === 0) return json({ error: "The Qixi target no longer has a card to dismantle.", stale: true, room: await roomState(code, token) }, 409);
+        if (execution.outcome.kind === "fanjian" && liveHand.length === 0) return json({ error: "The Fanjian target or Zhou Yu's hand is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase LIKE 'play%'").bind(room.id, liveMe.seat).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "The turn changed before that hero skill resolved.", stale: true, room: await roomState(code, token) }, 409);
-      let hand = parse<Card[]>(liveMe.hand_json, []);
+      let hand = liveHand;
       let deck = parse<Card[]>(liveRoom.deck_json, []);
       let discard = parse<Card[]>(liveRoom.discard_json, []);
       let log = parse<string[]>(liveRoom.log_json, []);
-      const selectedCardIds = "cardIds" in execution.outcome ? execution.outcome.cardIds : [];
-      const selectedIds = new Set(selectedCardIds);
-      const selected = selectedCardIds.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
-      if (selected.length !== selectedIds.size) return json({ error: "One selected hero-skill card is no longer in your hand.", stale: true, room: await roomState(code, token) }, 409);
       hand = hand.filter((card) => !selectedIds.has(card.id));
       if (execution.outcome.kind === "give_cards") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
@@ -2455,12 +2477,13 @@ export async function POST(request: Request) {
       } else if (execution.outcome.kind === "dismantle") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
         const card = selected[0];
-        if (!target || !card || targetableCardCount(target) === 0) return json({ error: "The Qixi target no longer has a card to dismantle.", stale: true, room: await roomState(code, token) }, 409);
-        await startNegation(liveRoom, { ...liveMe, hand_json: JSON.stringify(hand) }, livePlayers, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, addLog(log, `${liveMe.name} uses Qixi as Burning Bridges on ${target.name}.`));
+        if (!target || !card) await recoverClaimedHeroSkill(liveRoom, liveMe, hand, selected, discard, log, `${liveMe.name}'s Qixi could not find a valid target and was settled safely.`);
+        else await startNegation(liveRoom, { ...liveMe, hand_json: JSON.stringify(hand) }, livePlayers, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, addLog(log, `${liveMe.name} uses Qixi as Burning Bridges on ${target.name}.`));
       } else if (execution.outcome.kind === "fanjian") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
         const sourceHand = parse<Card[]>(liveMe.hand_json, []);
-        if (!target || target.id === liveMe.id || sourceHand.length === 0) return json({ error: "The Fanjian target or Zhou Yu's hand is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+        if (!target || target.id === liveMe.id || sourceHand.length === 0) await recoverClaimedHeroSkill(liveRoom, liveMe, hand, selected, discard, log, `${liveMe.name}'s Fanjian could not find a valid target and was settled safely.`);
+        else {
         const nextState = { ...skillState, turnPlayerId: liveMe.id, fanjianUsed: true };
         const presentation = addLogWithId(log, `${liveMe.name} uses Fanjian on ${target.name}; ${target.name} must choose a suit before taking an unknown card.`);
         const pending: TriggerPending = withPresentationBarrier({
@@ -2471,6 +2494,7 @@ export async function POST(request: Request) {
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), liveMe.id),
           db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(nextState), JSON.stringify(presentation.log), room.id),
         ]);
+        }
       } else if (execution.outcome.kind === "lose_draw") {
         const draw = drawCards(deck, discard, execution.outcome.draw, log);
         deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${liveMe.name} uses Kurou, loses 1 HP, and draws ${draw.drawn.length} cards.`, liveMe.id);

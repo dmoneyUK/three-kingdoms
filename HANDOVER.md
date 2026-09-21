@@ -1,5 +1,41 @@
 # Three Kingdoms project handover
 
+## Gan Ning Qixi browser contract repair — 2026-09-21
+
+The production Qixi failure was caused at the browser projection boundary:
+`game/room-safety.js` discarded `targetIds` from card-based trigger options.
+React therefore enabled active-skill completion from one state calculation
+while its submission could lack the target selected from the authoritative
+option. `GameRoom` now owns a dedicated `{ revision, effectId, cardIds,
+targetIds }` active-skill selection, clears it whenever `actionRevision`
+changes, and submits only the current option's derived payload. Serpent Spear
+selection remains isolated.
+
+`getActiveHeroSkillOptions()` accepts a server-derived Qixi target projection;
+the Worker includes only living opponents with an affectable hand, equipment,
+or Judgement card. Qixi still accepts any black hand card, including K♣
+Borrowed Sword and black equipment cards in hand, while red cards and cards
+already in the Equipment Zone remain ineligible. The active-skill route now
+validates live identity, Play Phase, exact hand ownership, black material,
+target ownership/aliveness, and target card availability before the atomic
+`resolving` claim. Any impossible post-claim branch settles back to Play
+deterministically.
+
+The selected physical card is still held as the semantic Burning Bridges card,
+then enters the shared Negation and target-card continuation. Regression
+coverage exercises the normalized browser payload (provider, one card ID,
+target ID, and matching action context) in normal multiplayer and Quick Test,
+hand/equipment/Judgement-only targets, cardless rejection, red/equipped-card
+rejection, ordinary Negation, target-card settlement, negation settlement,
+duplicate stale submission, and resolving-state recovery. The isolated full
+Worker/D1 suite passes 110/110; lint, build, and `git diff --check` remain
+release gates.
+
+Known boundary: no Qixi-specific protocol action or card-effect engine was
+added. Future active skills must continue to use semantic `currentAction` and
+the canonical `trigger` path. Recommended next work remains the next
+individually verified Standard hero capability.
+
 ## Normal human multiplayer lobby repair — 2026-09-21
 
 Normal multiplayer now has a real landing-page entry flow: a named player can

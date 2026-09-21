@@ -80,7 +80,7 @@ function normalizeCurrentAction(value) {
   const triggerOptions = Array.isArray(value.triggerOptions) ? value.triggerOptions.filter(isRecord).flatMap((option) => {
     if (typeof option.effectId !== "string" || typeof option.label !== "string") return [];
     const selection = option.selection === null ? null : isRecord(option.selection) && option.selection.type === "cards" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
-      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string") }
+      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string"), ...(Array.isArray(option.selection.targetIds) ? { targetIds: option.selection.targetIds.filter((id) => typeof id === "string") } : {}) }
       : isRecord(option.selection) && option.selection.type === "target" && Array.isArray(option.selection.targetIds)
         ? { type: "target", targetIds: option.selection.targetIds.filter((id) => typeof id === "string") }
       : isRecord(option.selection) && option.selection.type === "target_cards" && typeof option.selection.targetId === "string" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleKeys)

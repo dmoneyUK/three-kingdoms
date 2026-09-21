@@ -4,6 +4,14 @@ This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL
 
 Stage 6 cleanup is canonical-only: response/trigger commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported; and `currentAction` is authoritative. Future cards/heroes must not add provider-specific HTTP actions. Wusheng requires explicit `playAs: "attack"`, with native card play as the default. The three faction lords now use this contract for both active Play Phase skills and delegated lord responses.
 
+## Stage 6 maintenance — Gan Ning Qixi browser parity complete — 2026-09-21
+
+Qixi's real-client contract is verified for normal human multiplayer and Quick
+Test: K♣ Borrowed Sword and every other black hand card are eligible, targets
+are projected only when they have an affectable card, and the submission enters
+the ordinary Burning Bridges Negation/target-card pipeline. The next milestone
+remains the next individually verified Standard hero.
+
 ## Current architecture milestone — semantic decisions and capabilities
 
 The response refactor has reached its intended core shape:

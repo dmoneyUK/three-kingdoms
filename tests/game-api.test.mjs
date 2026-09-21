@@ -364,6 +364,81 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   const duplicate = await request("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] }); assert.equal(duplicate.status, 409);
 });
 
+test("Qixi follows the normalized browser selection contract in multiplayer and Quick Test", async () => {
+  async function exercise(game, token, label) {
+    const source = game.room.players[0]; const target = game.room.players[1];
+    const material = card("BorrowedSword", `qixi-browser-${label}`, "♣"); const targetCard = card("Peach", `qixi-browser-target-${label}`);
+    sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(source.id)}`); setHand(source.id, [material], 4, 4); setHand(target.id, [targetCard], 4, 4); setTurn(game.room.code, source.seat);
+    const raw = await state(game.room.code, token); const client = normalizeRoomData(raw.data); assert.ok(client, `${label} client state normalizes`);
+    const option = client.currentAction?.triggerOptions?.find((candidate) => candidate.effectId === "gan_ning_qixi");
+    assert.ok(option, `${label} currentAction contains Gan Ning Qixi`);
+    assert.equal(option.selection?.type, "cards");
+    assert.ok(option.selection?.eligibleCardIds.includes(material.id), `${label} exposes K♣ Borrowed Sword as eligible material`);
+    assert.ok(option.selection?.targetIds?.includes(target.id), `${label} exposes the card-holding target`);
+    const cardIds = client.myHand.filter((held) => option.selection?.type === "cards" && option.selection.eligibleCardIds.includes(held.id)).map((held) => held.id).slice(0, 1);
+    const targetIds = option.selection?.type === "cards" ? option.selection.targetIds : [];
+    assert.deepEqual(cardIds, [material.id], `${label} client selection submits exactly one card`);
+    assert.ok(targetIds.includes(target.id), `${label} client selection includes targetId`);
+    const context = { actionRevision: client.actionRevision, meId: client.meId, phase: client.phase, pendingKind: client.pending?.kind ?? null, actorId: client.actionPlayerId };
+    assert.equal(option.effectId, "gan_ning_qixi");
+    assert.equal(context.meId, source.id); assert.equal(context.phase, "play"); assert.equal(context.pendingKind, null); assert.equal(context.actorId, source.id);
+    const posted = await request("trigger", { code: game.room.code, token, providerId: option.effectId, cardIds, targetId: target.id, context });
+    assert.equal(posted.status, 200, `${label} Qixi POST: ${JSON.stringify(posted.data)}`);
+    assert.equal(posted.data.room.phase, "response");
+    assert.ok(posted.data.room.pendingTargetCard?.cardKind === "Dismantle" || posted.data.room.currentAction?.requirement === "negate", `${label} enters the shared Burning Bridges continuation`);
+    const duplicate = await request("trigger", { code: game.room.code, token, providerId: option.effectId, cardIds, targetId: target.id, context });
+    assert.equal(duplicate.status, 409, `${label} duplicate Qixi submission is stale-safe`);
+    assert.notEqual((await state(game.room.code, token)).data.phase, "resolving", `${label} duplicate rejection never strands the room in resolving`);
+  }
+
+  const multiplayer = await createHumanGame();
+  await exercise(multiplayer, multiplayer.members[0].token, "multiplayer");
+  const quick = await createQuickTestGame();
+  await exercise(quick.data, quick.data.token, "quick-test");
+});
+
+test("Qixi projects only living targets with affectable cards and keeps material in hand-only scope", async () => {
+  for (const [zone, install] of [["hand", (player, value) => setHand(player.id, [value], 4, 4)], ["equipment", (player, value) => setEquipment(player.id, { weapon: value })], ["judgement", (player, value) => setJudgement(player.id, [value])]]) {
+    const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1];
+    const material = card("Peach", `qixi-${zone}-material`, "♠"); const targetCard = card("Peach", `qixi-${zone}-target`);
+    sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(source.id)}`); setHand(source.id, [material], 4, 4); setHand(target.id, [], 4, 4); install(target, targetCard); setTurn(game.code, source.seat);
+    const view = (await state(game.code, game.members[0].token)).data; const option = view.currentAction.triggerOptions.find((candidate) => candidate.effectId === "gan_ning_qixi");
+    assert.ok(option.selection.targetIds.includes(target.id), `${zone}-only target is eligible`); assert.ok(!option.selection.targetIds.includes(source.id), "self is never eligible");
+  }
+
+  const cardless = await createHumanGame(); const source = cardless.room.players[0]; const target = cardless.room.players[1]; const material = card("Peach", "qixi-cardless-material", "♣");
+  sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(source.id)}`); setHand(source.id, [material], 4, 4); setHand(target.id, [], 4, 4); setTurn(cardless.code, source.seat);
+  const cardlessView = (await state(cardless.code, cardless.members[0].token)).data; const cardlessOption = cardlessView.currentAction.triggerOptions.find((candidate) => candidate.effectId === "gan_ning_qixi");
+  assert.ok(!cardlessOption.selection.targetIds.includes(target.id), "a completely cardless target is not projected");
+  const rejected = await request("trigger", { code: cardless.code, token: cardless.members[0].token, providerId: "gan_ning_qixi", cardIds: [material.id], targetId: target.id });
+  assert.equal(rejected.status, 409); assert.equal((await state(cardless.code, cardless.members[0].token)).data.phase, "play");
+
+  const red = await createHumanGame(); const redSource = red.room.players[0]; const redTarget = red.room.players[1];
+  const redCard = card("Peach", "qixi-red-material", "♦"); sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(redSource.id)}`); setHand(redSource.id, [redCard], 4, 4); setHand(redTarget.id, [card("Peach", "qixi-red-target")], 4, 4); setTurn(red.code, redSource.seat);
+  assert.equal((await state(red.code, red.members[0].token)).data.currentAction.triggerOptions?.some((candidate) => candidate.effectId === "gan_ning_qixi") ?? false, false, "red material is not eligible");
+
+  const equippedMaterial = await createHumanGame(); const equippedSource = equippedMaterial.room.players[0]; const equippedTarget = equippedMaterial.room.players[1]; const equipment = card("BorrowedSword", "qixi-equipment-zone", "♣");
+  sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(equippedSource.id)}`); setHand(equippedSource.id, [], 4, 4); setEquipment(equippedSource.id, { weapon: equipment }); setHand(equippedTarget.id, [card("Peach", "qixi-equipment-target")], 4, 4); setTurn(equippedMaterial.code, equippedSource.seat);
+  assert.equal((await state(equippedMaterial.code, equippedMaterial.members[0].token)).data.currentAction.triggerOptions?.some((candidate) => candidate.effectId === "gan_ning_qixi") ?? false, false, "equipment already equipped cannot be Qixi material");
+});
+
+test("Qixi uses the ordinary Burning Bridges Negation and target-card continuations", async () => {
+  const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const material = card("BorrowedSword", "qixi-negation-material", "♣"); const negation = card("Negation", "qixi-negation"); const targetCard = card("Peach", "qixi-negation-target");
+  sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(source.id)}`); setHand(source.id, [material], 4, 4); setHand(target.id, [negation, targetCard], 4, 4); setTurn(game.code, source.seat);
+  const opened = await request("trigger", { code: game.code, token: game.members[0].token, providerId: "gan_ning_qixi", cardIds: [material.id], targetId: target.id });
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.currentAction.actorId, target.id); assert.equal((await state(game.code, game.members[1].token)).data.currentAction.requirement, "negate");
+  const declined = await request("decline_response", { code: game.code, token: game.members[1].token });
+  assert.equal(declined.status, 200); assert.equal(declined.data.room.pendingTargetCard.cardKind, "Dismantle");
+  const selected = await request("choose_target_card", { code: game.code, token: game.members[0].token, targetCardZone: "hand", targetCardIndex: 1 });
+  assert.equal(selected.status, 200); assert.equal(selected.data.room.phase, "play"); assert.ok(discardIds(game.code).includes(material.id)); assert.ok(!JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(target.id)}`)).some((held) => held.id === targetCard.id));
+
+  const negatedGame = await createHumanGame(); const negatedSource = negatedGame.room.players[0]; const negatedTarget = negatedGame.room.players[1]; const negatedMaterial = card("BorrowedSword", "qixi-negated-material", "♠"); const negatingCard = card("Negation", "qixi-negating-card"); const preservedTargetCard = card("Peach", "qixi-negated-target");
+  sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(negatedSource.id)}`); setHand(negatedSource.id, [negatedMaterial], 4, 4); setHand(negatedTarget.id, [negatingCard, preservedTargetCard], 4, 4); setTurn(negatedGame.code, negatedSource.seat);
+  const negated = await request("trigger", { code: negatedGame.code, token: negatedGame.members[0].token, providerId: "gan_ning_qixi", cardIds: [negatedMaterial.id], targetId: negatedTarget.id });
+  assert.equal(negated.status, 200); const answered = await request("respond", { code: negatedGame.code, token: negatedGame.members[1].token, cardId: negatingCard.id });
+  assert.equal(answered.status, 200); assert.equal(answered.data.room.phase, "play"); assert.ok(discardIds(negatedGame.code).includes(negatedMaterial.id)); assert.ok(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(negatedTarget.id)}`)).some((held) => held.id === preservedTargetCard.id));
+});
+
 test("Lü Bu Wushuang requires two Dodges for an Attack", async () => {
   const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const attack = card("Attack", "wushuang-attack"); const dodges = [card("Dodge", "wushuang-dodge-a"), card("Dodge", "wushuang-dodge-b")];
   sql(`UPDATE players SET hero='lü-bu' WHERE id=${quote(source.id)}`); setHand(source.id, [attack], 4, 4); setHand(target.id, dodges, 4, 4); setTurn(game.code, source.seat);
