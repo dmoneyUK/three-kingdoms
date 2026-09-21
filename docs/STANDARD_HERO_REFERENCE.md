@@ -236,6 +236,8 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 
 - **Runtime ID:** `gan-ning`
 - **Verified official Standard card:** **WU 002**, printed title **The Flamboyant Ranger**.
+- **Printed skill name:** **Ambushment** (Qixi / 奇袭 in the established runtime metadata).
+- **Verified rule text:** “You may use a Black suited card as a [Burning Bridges].”
 - **Likely engine shape:** virtual Burning Bridges provider/use.
 - **Current implementation:** Active Play Phase capability. A black hand card opens the normal Burning Bridges Negation window and then the shared target-card picker.
 
