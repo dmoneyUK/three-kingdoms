@@ -1,5 +1,35 @@
 # Three Kingdoms project handover
 
+## Zhou Yu Fanjian correction — 2026-09-21
+
+Fanjian was corrected to the official Standard order. The initial semantic
+hero-skill option is target-only and does not accept or project `cardIds`.
+After Zhou Yu commits the skill, the target receives a mandatory private
+`Fanjian — choose a suit` trigger. Once the suit is committed, the same target
+receives a generic target-card picker containing only opaque `hand:N` positions
+for Zhou Yu's current hand. The card remains in Zhou Yu's hand through both
+earlier stages and is transferred only after the server resolves the opaque
+position against the live source hand.
+
+The reveal then exposes the physical card to the normal presentation timeline,
+the target keeps it, and a mismatch calls `resolveSourcedDamage` with Zhou Yu
+as source. Matching suits return to Zhou Yu's Play Phase without damage;
+mismatches preserve post-damage triggers, Dying/rescue, and defeat continuation.
+`fanjianUsed` is set at commitment and naturally resets in `beginTurnStart`.
+The action revision now includes a private-safe hash of room hand state and
+skill state, preventing stale skill/opaque-position UI from surviving a hand
+mutation. The client clears Fanjian selection state with the authoritative
+action revision and never exposes Zhou Yu's card identities before reveal.
+
+Coverage includes target-only activation, self/empty-hand rejection, private
+suit projection, hidden-card privacy, suit-before-card ordering, matching and
+mismatching outcomes, canonical damage/Dying, once-per-phase and next-turn
+availability, stale/double-submission safety, and Quick Game shared-controller
+execution. Full Worker/D1 validation passes **95 / 95**.
+
+Known boundary: the remaining Standard heroes in the registry are still
+metadata-only and remain the next scoped work.
+
 ## Quick Game shared-controller mode — 2026-09-21
 
 Quick Game is a single-player controller mode: the `quickStart` create path
@@ -45,7 +75,7 @@ opening cards to every player, and starts the Lord. Deterministic hero/card
 scenarios remain in test helpers/database setup; production Quick Game is a
 real single-player-controller Standard game across four human-style seats.
 
-Validation: the isolated Worker/D1 suite passes **93 / 93**, alongside a
+Validation: the isolated Worker/D1 suite passes **95 / 95**, alongside a
 successful build and lint. Recommended next work is the next individually
 verified Standard hero capability. Known boundary: legacy historical notes in
 this append-only handover may describe earlier Quick Test fixtures; this
@@ -69,15 +99,16 @@ heroes in normal multiplayer and Quick Test. Qixi uses a black hand card as
 Burning Bridges and preserves the existing Negation and target-card picker
 continuations. Keji skips only the over-limit Discard Phase when no Attack was
 used. Kurou loses 1 HP and draws 2, including the shared Dying/rescue boundary.
-Yingzi changes normal draw to three cards, while Fanjian gives a concealed card
-and opens a mandatory private suit guess; a wrong guess uses the shared 1-damage
-transition. Wushuang changes the semantic response requirement to two Dodges
+Yingzi changes normal draw to three cards. Fanjian is now target-first: the
+target chooses a suit, then chooses an opaque position in Zhou Yu's hand; the
+card is transferred and revealed only after that choice, and a wrong guess uses
+the shared sourced 1-damage transition. Wushuang changes the semantic response requirement to two Dodges
 against Lü Bu's Attacks and two Attacks for his Duel opponents.
 
 No provider-specific HTTP action was added. The five skills use currentAction
 projections and the existing `trigger`, `decline_trigger`, `respond`, and
 `decline_response` protocol. Deterministic capability and metadata coverage was
-added; the full suite is now 93 tests.
+added; the full suite is now 95 tests.
 
 Known boundary: the remaining Standard heroes in the registry are still
 metadata-only and remain the next scoped work.

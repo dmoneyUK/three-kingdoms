@@ -23,7 +23,7 @@ export type ActiveHeroSkillExecution =
   | { status: "resolved"; effectId: string; outcome: { kind: "discard_draw"; sourceId: string; cardIds: string[] } }
   | { status: "resolved"; effectId: string; outcome: { kind: "dismantle"; sourceId: string; targetId: string; cardIds: string[] } }
   | { status: "resolved"; effectId: string; outcome: { kind: "lose_draw"; sourceId: string; lose: number; draw: number } }
-  | { status: "resolved"; effectId: string; outcome: { kind: "fanjian"; sourceId: string; targetId: string; cardIds: string[] } };
+  | { status: "resolved"; effectId: string; outcome: { kind: "fanjian"; sourceId: string; targetId: string } };
 
 const rendeId = "liu_bei_rende";
 const zhihengId = "sun_quan_zhiheng";
@@ -69,8 +69,8 @@ export function getActiveHeroSkillOptions(context: ActiveHeroSkillContext): Trig
     return [{
       effectId: fanjianId,
       label: "Fanjian",
-      description: "Give a hand card to another character and challenge them to guess its suit.",
-      selection: { type: "cards", min: 1, max: 1, eligibleCardIds: context.hand.map((card) => card.id), targetIds: context.livingTargetIds },
+      description: "Choose another living character; they choose a suit, then take an unknown card from your hand.",
+      selection: { type: "target", targetIds: context.livingTargetIds },
     }];
   }
   return [];
@@ -80,6 +80,11 @@ export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSki
   const option = getActiveHeroSkillOptions(context).find((candidate) => candidate.effectId === effectId);
   if (!option) return null;
   if (effectId === kurouId && option.selection === null) return { status: "resolved", effectId, outcome: { kind: "lose_draw", sourceId: context.playerId, lose: 1, draw: 2 } };
+  if (effectId === fanjianId) {
+    const targetId = typeof selection.targetId === "string" ? selection.targetId : "";
+    if (option.selection?.type !== "target" || !option.selection.targetIds.includes(targetId) || targetId === context.playerId) return null;
+    return { status: "resolved", effectId, outcome: { kind: "fanjian", sourceId: context.playerId, targetId } };
+  }
   if (option.selection?.type !== "cards" || !Array.isArray(selection.cardIds)) return null;
   const cardIds = selection.cardIds.filter((id): id is string => typeof id === "string");
   if (cardIds.length < option.selection.min || cardIds.length > option.selection.max || new Set(cardIds).size !== cardIds.length || cardIds.some((id) => !option.selection?.eligibleCardIds.includes(id))) return null;
@@ -93,11 +98,6 @@ export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSki
     const targetId = typeof selection.targetId === "string" ? selection.targetId : "";
     if (!option.selection.targetIds?.includes(targetId) || targetId === context.playerId) return null;
     return { status: "resolved", effectId, outcome: { kind: "dismantle", sourceId: context.playerId, targetId, cardIds } };
-  }
-  if (effectId === fanjianId) {
-    const targetId = typeof selection.targetId === "string" ? selection.targetId : "";
-    if (!option.selection.targetIds?.includes(targetId) || targetId === context.playerId) return null;
-    return { status: "resolved", effectId, outcome: { kind: "fanjian", sourceId: context.playerId, targetId, cardIds } };
   }
   return null;
 }

@@ -231,10 +231,20 @@ test("Wu hero skills complete through the normal semantic API", async () => {
   sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(zhouSource.id)}`); setHand(zhouSource.id, [], 3, 3); setDeck(zhouGame.code, zhouDraw); setTurn(zhouGame.code, zhouSource.seat, "draw");
   const yingzi = await request("draw", { code: zhouGame.code, token: zhouGame.members[0].token }); assert.equal(yingzi.status, 200, JSON.stringify(yingzi.data)); assert.equal(yingzi.data.room.myHand.length, 3);
 
-  const fanjianGame = await createHumanGame(); const fanjianSource = fanjianGame.room.players[0]; const fanjianTarget = fanjianGame.room.players[1]; const concealed = card("Peach", "fanjian-card", "♥");
-  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(fanjianSource.id)}`); setHand(fanjianSource.id, [concealed], 3, 3); setHand(fanjianTarget.id, [], 4, 4); setTurn(fanjianGame.code, fanjianSource.seat);
-  const fanjian = await request("trigger", { code: fanjianGame.code, token: fanjianGame.members[0].token, providerId: "zhou_yu_fanjian", cardIds: [concealed.id], targetId: fanjianTarget.id }); assert.equal(fanjian.status, 200, JSON.stringify(fanjian.data));
-  const guess = await request("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♠" }); assert.equal(guess.status, 200, JSON.stringify(guess.data)); assert.equal(guess.data.room.players.find((player) => player.id === fanjianTarget.id).hp, 3); assert.ok(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianTarget.id)}`)).some((item) => item.id === concealed.id));
+  const fanjianGame = await createHumanGame(); const fanjianSource = fanjianGame.room.players[0]; const fanjianTarget = fanjianGame.room.players[1]; const concealed = card("Peach", "fanjian-card", "♥"); const spare = card("Dodge", "fanjian-spare", "♠");
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(fanjianSource.id)}`); setHand(fanjianSource.id, [concealed, spare], 3, 3); setHand(fanjianTarget.id, [], 4, 4); setTurn(fanjianGame.code, fanjianSource.seat);
+  const sourceView = await state(fanjianGame.code, fanjianGame.members[0].token);
+  const initialOption = sourceView.data.currentAction.triggerOptions.find((option) => option.effectId === "zhou_yu_fanjian");
+  assert.ok(initialOption); assert.deepEqual(initialOption.selection, { type: "target", targetIds: [fanjianTarget.id, fanjianGame.room.players[2].id, fanjianGame.room.players[3].id] });
+  const fanjian = await request("trigger", { code: fanjianGame.code, token: fanjianGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: fanjianTarget.id }); assert.equal(fanjian.status, 200, JSON.stringify(fanjian.data));
+  assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianSource.id)}`)).length, 2, "activation does not transfer a card");
+  const suitView = await state(fanjianGame.code, fanjianGame.members[1].token); const suitOption = suitView.data.currentAction.triggerOptions.find((option) => option.effectId === "zhou_yu_fanjian_choice");
+  assert.deepEqual(suitOption.selection.choices.map((choice) => choice.id), ["♥", "♦", "♣", "♠"]); assert.equal(suitOption.allowDecline, false); assert.equal(JSON.stringify(suitView.data.currentAction).includes(concealed.id), false);
+  const guess = await request("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♠" }); assert.equal(guess.status, 200, JSON.stringify(guess.data));
+  const cardView = await state(fanjianGame.code, fanjianGame.members[1].token); const hiddenOption = cardView.data.currentAction.triggerOptions.find((option) => option.effectId === "zhou_yu_fanjian_choice");
+  assert.deepEqual(hiddenOption.selection, { type: "target_cards", targetId: fanjianSource.id, min: 1, max: 1, eligibleKeys: ["hand:0", "hand:1"] }); assert.equal(JSON.stringify(cardView.data.currentAction).includes(concealed.id), false); assert.equal(JSON.stringify(cardView.data.currentAction).includes(concealed.suit), false);
+  const obtained = await request("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] }); assert.equal(obtained.status, 200, JSON.stringify(obtained.data)); assert.equal(obtained.data.room.players.find((player) => player.id === fanjianTarget.id).hp, 3); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianTarget.id)}`)).map((item) => item.id), [concealed.id]); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(fanjianSource.id)}`)).map((item) => item.id), [spare.id]);
+  const duplicate = await request("trigger", { code: fanjianGame.code, token: fanjianGame.members[1].token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] }); assert.equal(duplicate.status, 409);
 });
 
 test("Lü Bu Wushuang requires two Dodges for an Attack", async () => {
@@ -242,6 +252,45 @@ test("Lü Bu Wushuang requires two Dodges for an Attack", async () => {
   sql(`UPDATE players SET hero='lü-bu' WHERE id=${quote(source.id)}`); setHand(source.id, [attack], 4, 4); setHand(target.id, dodges, 4, 4); setTurn(game.code, source.seat);
   const opened = await request("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data)); const response = await state(game.code, game.members[1].token); assert.equal(response.data.currentAction.requirement, "dodge"); assert.equal(response.data.currentAction.options.find((option) => option.providerId === "card").selection.min, 2);
   const blocked = await request("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardIds: dodges.map((item) => item.id) }); assert.equal(blocked.status, 200, JSON.stringify(blocked.data)); assert.equal(blocked.data.room.players.find((player) => player.id === target.id).hp, 4);
+});
+
+test("Fanjian validates target ownership, empty hands, matching suits, once-per-phase state, and Dying", async () => {
+  const selfGame = await createHumanGame(); const self = selfGame.room.players[0]; const selfCard = card("Peach", "fanjian-self");
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(self.id)}`); setHand(self.id, [selfCard], 3, 3); setTurn(selfGame.code, self.seat);
+  assert.equal((await request("trigger", { code: selfGame.code, token: selfGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: self.id })).status, 409, "Zhou Yu cannot target himself");
+  const emptyGame = await createHumanGame(); const emptySource = emptyGame.room.players[0]; const emptyTarget = emptyGame.room.players[1];
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(emptySource.id)}`); setHand(emptySource.id, [], 3, 3); setTurn(emptyGame.code, emptySource.seat);
+  assert.equal((await request("trigger", { code: emptyGame.code, token: emptyGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: emptyTarget.id })).status, 409, "Fanjian requires a non-empty hand");
+
+  const matchGame = await createHumanGame(); const matchSource = matchGame.room.players[0]; const matchTarget = matchGame.room.players[1]; const matchCard = card("Peach", "fanjian-match", "♥");
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(matchSource.id)}`); setHand(matchSource.id, [matchCard], 3, 3); setHand(matchTarget.id, [], 4, 4); setTurn(matchGame.code, matchSource.seat);
+  await request("trigger", { code: matchGame.code, token: matchGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: matchTarget.id });
+  await request("trigger", { code: matchGame.code, token: matchGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♥" });
+  const matched = await request("trigger", { code: matchGame.code, token: matchGame.members[1].token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] });
+  assert.equal(matched.status, 200, JSON.stringify(matched.data)); assert.equal(matched.data.room.players.find((player) => player.id === matchTarget.id).hp, 4); assert.equal((await request("trigger", { code: matchGame.code, token: matchGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: matchTarget.id })).status, 409, "Fanjian cannot be used twice in one Play Phase");
+  for (const player of matchGame.room.players.slice(2)) setHand(player.id, [], 4, 4);
+  assert.equal((await request("end_turn", { code: matchGame.code, token: matchGame.members[0].token })).status, 200);
+  for (const index of [1, 2, 3]) {
+    assert.equal((await request("draw", { code: matchGame.code, token: matchGame.members[index].token })).status, 200);
+    assert.equal((await request("end_turn", { code: matchGame.code, token: matchGame.members[index].token })).status, 200);
+  }
+  const nextDraw = await request("draw", { code: matchGame.code, token: matchGame.members[0].token }); assert.equal(nextDraw.status, 200, JSON.stringify(nextDraw.data)); assert.ok(nextDraw.data.room.currentAction.triggerOptions.some((option) => option.effectId === "zhou_yu_fanjian"), "Fanjian resets on Zhou Yu's next turn");
+
+  const dyingGame = await createHumanGame(); const dyingSource = dyingGame.room.players[0]; const dyingTarget = dyingGame.room.players[1]; const dyingCard = card("Peach", "fanjian-dying", "♥");
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(dyingSource.id)}`); setHand(dyingSource.id, [dyingCard], 3, 3); setHand(dyingTarget.id, [], 1, 4); setTurn(dyingGame.code, dyingSource.seat);
+  await request("trigger", { code: dyingGame.code, token: dyingGame.members[0].token, providerId: "zhou_yu_fanjian", targetId: dyingTarget.id });
+  await request("trigger", { code: dyingGame.code, token: dyingGame.members[1].token, providerId: "zhou_yu_fanjian_choice", choice: "♠" });
+  const lethal = await request("trigger", { code: dyingGame.code, token: dyingGame.members[1].token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] });
+  assert.equal(lethal.status, 200, JSON.stringify(lethal.data)); assert.equal(lethal.data.room.phase, "dying"); assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(dyingTarget.id)}`)).map((item) => item.id), [dyingCard.id]);
+});
+
+test("Quick Game uses Fanjian's shared-controller sequence and private opaque card choice", async () => {
+  const quick = await createQuickTestGame(); const { token, room } = quick.data; const { code } = room; const source = room.players[0]; const target = room.players[1]; const concealed = card("Peach", "quick-fanjian", "♦");
+  sql(`UPDATE players SET hero='zhou-yu' WHERE id=${quote(source.id)}`); setHand(source.id, [concealed], 3, 3); setHand(target.id, [], 4, 4); setTurn(code, source.seat);
+  const opened = await request("trigger", { code, token, providerId: "zhou_yu_fanjian", targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data)); assert.equal(opened.data.room.currentAction.actorId, target.id);
+  const targetView = await state(code, token); assert.equal(targetView.data.meId, target.id); assert.equal(targetView.data.currentAction.triggerOptions[0].selection.type, "choice");
+  const guessed = await request("trigger", { code, token, providerId: "zhou_yu_fanjian_choice", choice: "♦" }); assert.equal(guessed.status, 200, JSON.stringify(guessed.data)); assert.equal(guessed.data.room.currentAction.triggerOptions[0].selection.type, "target_cards"); assert.deepEqual(guessed.data.room.currentAction.triggerOptions[0].selection.eligibleKeys, ["hand:0"]);
+  const selected = await request("trigger", { code, token, providerId: "zhou_yu_fanjian_choice", cardKeys: ["hand:0"] }); assert.equal(selected.status, 200, JSON.stringify(selected.data)); assert.equal(selected.data.room.players.find((player) => player.id === target.id).handCount, 1); assert.equal(selected.data.room.players.find((player) => player.id === target.id).hp, 4);
 });
 
 test("room reads are read-only and presence heartbeats are throttled", async () => {

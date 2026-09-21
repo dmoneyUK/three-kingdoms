@@ -115,7 +115,8 @@ export type HeroChoiceTriggerContinuation = {
   kind: "hero_choice_event";
   sourceId: string;
   targetId: string;
-  card: Card;
+  stage: "suit" | "card";
+  guess?: string;
   resumePhase: string;
 };
 export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | JudgementRevealedTriggerContinuation | HeroChoiceTriggerContinuation;

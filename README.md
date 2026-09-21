@@ -1,5 +1,20 @@
 # Three Kingdoms
 
+## Zhou Yu Fanjian correction — 2026-09-21
+
+Fanjian now follows the WTK Standard sequence exactly: Zhou Yu selects only
+another living character, that target privately commits Heart, Diamond, Club,
+or Spade, and only then chooses one anonymous position from Zhou Yu's hand.
+The server transfers and reveals the selected physical card after the opaque
+selection, keeps it in the target's hand, compares the committed suit, and
+routes a mismatch through canonical sourced damage and Dying handling.
+
+The target projection exposes only the number of available hidden positions;
+card IDs, kinds, ranks, and suits are withheld until the reveal. Fanjian is
+marked used when committed, resets at Zhou Yu's next turn, and stale or
+duplicate submissions cannot repeat the transfer. The initial UI has no
+Fanjian hand-card selection step. Full Worker/D1 validation now passes 95 tests.
+
 ## Quick Game shared-controller setup — 2026-09-21
 
 Quick Game is a single-player controller mode: one local player switches
@@ -21,9 +36,9 @@ roster, and special opening cards are never injected into production setup
 logic.
 
 The current stage is Standard setup/privacy parity complete, with Quick Game
-now using one shared controller across four seats; the next milestone
-remains the next individually verified Standard hero capability. Full Worker/D1
-validation currently passes 93 tests.
+now using one shared controller across four seats; the next milestone remains
+the next individually verified Standard hero capability. Full Worker/D1
+validation currently passes 95 tests.
 
 The next Wu/Qun hero batch is now playable: Gan Ning (Qixi), Lü Meng
 (Keji), Huang Gai (Kurou), Zhou Yu (Yingzi/Fanjian), and Lü Bu (Wushuang).
@@ -264,9 +279,9 @@ milestone is the next individually verified Standard hero.
 
 Stage 6 architecture cleanup is canonical-only: supported gameplay commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`, and `currentAction` is the authoritative client decision contract. Old clients and persisted in-progress legacy decisions are unsupported. Future cards and heroes must expose provider capabilities through this semantic contract, never concrete provider-specific HTTP actions. Wusheng conversion is explicit via `playAs: "attack"`; absent that field, the physical card performs its native action. Step 3.5 test cleanup, Step 4 Duel canonicalization, Step 4.3 response-helper cleanup, Step 5A Group/AOE response canonicalization, Step 5B `advanceGroup()` canonicalization, Step 5C canonical Dying Group resume, removal of inactive bot gameplay, Step 6A canonical Negation responses, the Step 6A.1 continuation boundary, Step 6B Negation canonicalization, Step 7A response expansion compatibility removal, Step 7B.1 rejection of legacy persisted Attack/Duel/Group/Negation response states, Step 7C direct response construction, and Step 7D documentation closure are complete. Audit/state validation, room projections, and response timers now read canonical `ResponsePending` and `TriggerPending` records directly; old response-family states never become actionable `currentAction` values or legacy response DTOs. Quick Game is a single-player human-style room with one shared controller switching across four seats. The next milestone is the next individually verified Standard hero.
 
-The current deterministic suite has 93 tracked test declarations while retaining
+The current deterministic suite has 95 tracked test declarations while retaining
 the required human multiplayer, Quick Test perspective, setup privacy, and
-capability invariants. The Worker/D1 runner executes all 93 tests.
+capability invariants. The Worker/D1 runner executes all 95 tests.
 
 Step 5E completed the response-builder typing cleanup: the former
 response-builder compatibility union

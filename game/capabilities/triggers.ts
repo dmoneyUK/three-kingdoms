@@ -15,10 +15,11 @@ export type TriggerEvent = "turn_start" | "judgement_revealed" | "attack_targete
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
  */
-export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie"; heroChoiceCard?: Card };
+export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; targetId?: string; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie"; heroChoiceStage?: "suit" | "card"; heroChoiceGuess?: string };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown; choice?: unknown };
 export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[]; targetIds?: string[] }
+  | { type: "target"; targetIds: string[] }
   | { type: "target_cards"; targetId: string; min: number; max: number; eligibleKeys: string[] }
   | { type: "choice"; choices: { id: string; label: string }[]; eligibleHandKeys: string[]; cardCountByChoice?: Record<string, number> };
 export type TriggerOption = { effectId: string; label: string; description?: string; selection: TriggerSelectionConstraint | null; allowDecline?: boolean; timeoutChoiceId?: string };
@@ -42,7 +43,8 @@ export type TriggerExecution =
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement_replacement"; cardId: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "gain_target_card"; sourceId: string; targetId: string; targetCardKey: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "gain_damage_cards"; targetId: string; cardIds: string[] } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_choice"; targetId: string; guess: string; correct: boolean } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_guess"; targetId: string; guess: string } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_card"; sourceId: string; targetId: string; targetCardKey: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "continue_event" } };
 export type TriggerPresentation = { label: string };
 export type TriggeredEffect = {
@@ -55,16 +57,28 @@ export type TriggeredEffect = {
 const zhouYuFanjianChoice: TriggeredEffect = {
   id: "zhou_yu_fanjian_choice",
   event: "hero_choice",
-  getOption: (context) => context.heroChoiceCard ? {
+  getOption: (context) => context.heroChoiceStage === "suit" ? {
     effectId: "zhou_yu_fanjian_choice",
-    label: "Guess the suit",
-    description: "Choose the suit of Zhou Yu's concealed card.",
+    label: "Fanjian — choose a suit",
+    description: "Choose the suit before taking an unknown card from Zhou Yu's hand.",
     allowDecline: false,
-    selection: { type: "choice", choices: [{ id: "♥", label: "Heart ♥" }, { id: "♦", label: "Diamond ♦" }, { id: "♣", label: "Club ♣" }, { id: "♠", label: "Spade ♠" }], eligibleHandKeys: [] },
+    selection: { type: "choice", choices: [{ id: "♥", label: "♥ Heart" }, { id: "♦", label: "♦ Diamond" }, { id: "♣", label: "♣ Club" }, { id: "♠", label: "♠ Spade" }], eligibleHandKeys: [] },
+  } : context.heroChoiceStage === "card" && context.sourceId && context.sourceHand?.length ? {
+    effectId: "zhou_yu_fanjian_choice",
+    label: "Fanjian — choose a hidden card",
+    description: "Choose one anonymous card from Zhou Yu's hand.",
+    allowDecline: false,
+    selection: { type: "target_cards", targetId: context.sourceId, min: 1, max: 1, eligibleKeys: context.sourceHand.map((_, index) => `hand:${index}`) },
   } : null,
   resolve: (context, selection) => {
-    if (!context.heroChoiceCard || typeof selection.choice !== "string" || !["♥", "♦", "♣", "♠"].includes(selection.choice)) return null;
-    return { status: "resolved", effectId: "zhou_yu_fanjian_choice", outcome: { kind: "fanjian_choice", targetId: context.targetId ?? "", guess: selection.choice, correct: selection.choice === context.heroChoiceCard.suit } };
+    if (context.heroChoiceStage === "suit" && typeof selection.choice === "string" && ["♥", "♦", "♣", "♠"].includes(selection.choice)) {
+      return { status: "resolved", effectId: "zhou_yu_fanjian_choice", outcome: { kind: "fanjian_guess", targetId: context.targetId ?? "", guess: selection.choice } };
+    }
+    if (context.heroChoiceStage === "card" && context.sourceId && context.targetId && Array.isArray(selection.cardKeys) && selection.cardKeys.length === 1 && typeof selection.cardKeys[0] === "string" && /^hand:\d+$/.test(selection.cardKeys[0])) {
+      const index = Number(selection.cardKeys[0].slice(5));
+      if (Number.isInteger(index) && index >= 0 && index < (context.sourceHand?.length ?? 0)) return { status: "resolved", effectId: "zhou_yu_fanjian_choice", outcome: { kind: "fanjian_card", sourceId: context.sourceId, targetId: context.targetId, targetCardKey: selection.cardKeys[0] } };
+    }
+    return null;
   },
 };
 

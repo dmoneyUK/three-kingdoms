@@ -162,7 +162,7 @@ function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
   if (continuation.kind === "hero_choice_event") {
     const source = players.find((player) => player.id === continuation.sourceId && player.alive);
     const target = players.find((player) => player.id === continuation.targetId && player.alive);
-    return source && target ? { event: pending.event, sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []), targetId: target.id, targetHand: parse<Card[]>(target.hand_json, []), heroChoiceCard: continuation.card, playerId: target.id, hero: target.hero } : null;
+    return source && target ? { event: pending.event, sourceId: source.id, sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []), targetId: target.id, targetHand: parse<Card[]>(target.hand_json, []), heroChoiceStage: continuation.stage, ...(continuation.guess ? { heroChoiceGuess: continuation.guess } : {}), playerId: target.id, hero: target.hero } : null;
   }
   if (continuation.kind === "turn_start_event") {
     const player = players.find((candidate) => candidate.id === continuation.playerId);
@@ -218,6 +218,13 @@ function activeHeroSkillOptions(player: PlayerRow | null | undefined, room: Room
   if (!player || !player.alive || !room.phase?.startsWith("play")) return [];
   const skillState = parse<KingSkillState>(room.skill_state_json, {});
   return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, hand: parse<Card[]>(player.hand_json, []), livingTargetIds: players.filter((candidate) => candidate.alive && candidate.id !== player.id).map((candidate) => candidate.id), skillState });
+}
+async function actionRevisionFor(room: RoomRow, players: PlayerRow[], projectedActionPlayerId: string | null) {
+  // The revision changes when a relevant hand changes without disclosing card
+  // identities. This keeps opaque-position decisions from surviving a stale
+  // hand mutation while remaining safe to expose in the public projection.
+  const handRevision = await hash(players.map((player) => `${player.id}:${player.hand_json ?? "[]"}`).join("|"));
+  return [room.status, room.phase ?? "", projectedActionPlayerId ?? "", room.pending_json ?? "", room.skill_state_json ?? "", handRevision].join("|");
 }
 function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1; }
 function hasOffensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).offensiveHorse); }
@@ -1999,7 +2006,7 @@ async function roomState(code: string, token?: string) {
   // Reading a room must not create D1 writes. Presence is refreshed by the
   // throttled heartbeat action below, never by normal room polling.
   const viewerPlayerIds = new Set(sessionPlayers.map((player) => player.id));
-  const actionRevision = [room.status, room.phase ?? "", projectedActionPlayerId ?? "", room.pending_json ?? ""].join("|");
+  const actionRevision = await actionRevisionFor(room, players, projectedActionPlayerId);
   const responseDeadline = pending && "deadline" in pending ? pending.deadline ?? 0 : 0;
   const responseCountdownVisibleAt = room.phase === "response" && responseDeadline ? responseDeadline - HUMAN_RESPONSE_TIMEOUT_MS + 5_000 : 0;
   const actionPlayerId = room.status === "heroes" ? projectedActionPlayerId : room.phase === "dying" && me?.id !== actualActionPlayerId ? null : actualActionPlayerId;
@@ -2180,7 +2187,7 @@ export async function POST(request: Request) {
     isTestController = sessionPlayers.length === allRoomPlayers.length && sessionPlayers.length === 4 && sessionPlayers.some((player) => player.id === room.host_player_id);
     me = isTestController ? allRoomPlayers.find((player) => player.id === actionPlayerIdForController) ?? turnPlayerForController ?? sessionPlayers[0] : sessionPlayers[0];
     const submitted = body.context && typeof body.context === "object" ? body.context as { actionRevision?: unknown; meId?: unknown; phase?: unknown; pendingKind?: unknown; actorId?: unknown } : null;
-    const expectedRevision = [room.status, room.phase ?? "", actionPlayerIdForController ?? "", room.pending_json ?? ""].join("|");
+    const expectedRevision = await actionRevisionFor(room, allRoomPlayers, actionPlayerIdForController);
     const expectedContext = { meId: me?.id ?? null, phase: room.phase ?? null, pendingKind: pendingForController?.kind === "response" ? "response" : asTriggerPending(pendingForController) ? "trigger" : pendingForController?.kind ?? null, actorId: actionPlayerIdForController ?? null };
     const submittedPendingKind = submitted?.pendingKind === undefined ? undefined : String(submitted.pendingKind);
     const contextMismatch = submitted && (submitted.actionRevision !== undefined && String(submitted.actionRevision) !== expectedRevision || submitted.meId !== undefined && String(submitted.meId) !== String(expectedContext.meId) || submitted.phase !== undefined && String(submitted.phase) !== String(expectedContext.phase) || submittedPendingKind !== undefined && submittedPendingKind !== String(expectedContext.pendingKind) || submitted.actorId !== undefined && String(submitted.actorId) !== String(expectedContext.actorId));
@@ -2299,18 +2306,16 @@ export async function POST(request: Request) {
         await startNegation(liveRoom, { ...liveMe, hand_json: JSON.stringify(hand) }, livePlayers, card, target.name, target.id, { kind: "dismantle", targetId: target.id }, hand, deck, discard, addLog(log, `${liveMe.name} uses Qixi as Burning Bridges on ${target.name}.`));
       } else if (execution.outcome.kind === "fanjian") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
-        const card = selected[0];
-        if (!target || !card) return json({ error: "The Fanjian target or card is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-        const targetHand = [...parse<Card[]>(target.hand_json, []), card];
+        const sourceHand = parse<Card[]>(liveMe.hand_json, []);
+        if (!target || target.id === liveMe.id || sourceHand.length === 0) return json({ error: "The Fanjian target or Zhou Yu's hand is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         const nextState = { ...skillState, turnPlayerId: liveMe.id, fanjianUsed: true };
-        const presentation = addLogWithId(log, `${liveMe.name} gives ${target.name} a concealed card with Fanjian; ${target.name} must guess its suit.`);
+        const presentation = addLogWithId(log, `${liveMe.name} uses Fanjian on ${target.name}; ${target.name} must choose a suit before taking an unknown card.`);
         const pending: TriggerPending = withPresentationBarrier({
-          kind: "trigger", event: "hero_choice", actorId: target.id, reason: `Guess the suit of ${liveMe.name}'s concealed Fanjian card`, deadline: nextResponseDeadline(target),
-          continuation: { kind: "hero_choice_event", sourceId: liveMe.id, targetId: target.id, card, resumePhase: "play" },
+          kind: "trigger", event: "hero_choice", actorId: target.id, reason: `Fanjian — choose a suit before taking a hidden card from ${liveMe.name}'s hand`, deadline: nextResponseDeadline(target),
+          continuation: { kind: "hero_choice_event", sourceId: liveMe.id, targetId: target.id, stage: "suit", resumePhase: "play" },
         }, presentation.log, presentation.eventId);
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), liveMe.id),
-          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
           db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(nextState), JSON.stringify(presentation.log), room.id),
         ]);
       } else if (execution.outcome.kind === "lose_draw") {
@@ -2406,16 +2411,48 @@ export async function POST(request: Request) {
       const source = players.find((player) => player.id === continuation.sourceId && player.alive) ?? null;
       const target = players.find((player) => player.id === continuation.targetId && player.alive) ?? null;
       const execution = triggerExecution;
-      if (!source || !target || action === "decline_trigger_effect" || execution?.outcome.kind !== "fanjian_choice") return json({ error: "That Fanjian choice is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      const sourceHand = source ? parse<Card[]>(source.hand_json, []) : [];
+      if (!source || !target || sourceHand.length === 0 || action === "decline_trigger_effect") return json({ error: "That Fanjian choice is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (continuation.stage === "suit") {
+        if (execution?.outcome.kind !== "fanjian_guess") return json({ error: "That Fanjian suit choice is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+        const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+        if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Fanjian choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+        const log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Fanjian — choose a suit").log;
+        const presentation = addLogWithId(log, `${target.name} chooses ${execution.outcome.guess}. ${target.name} now chooses one hidden card from ${source.name}'s hand.`);
+        const next: TriggerPending = {
+          ...trigger,
+          deadline: nextResponseDeadline(target),
+          continuation: { ...continuation, stage: "card", guess: execution.outcome.guess },
+          readyAfterEventId: presentation.eventId,
+        };
+        await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(next), JSON.stringify(presentation.log), room.id).run();
+        return json({ room: await roomState(code, token) });
+      }
+      if (execution?.outcome.kind !== "fanjian_card" || execution.outcome.sourceId !== source.id || execution.outcome.targetId !== target.id) return json({ error: "That Fanjian hidden-card choice is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      const cardIndexMatch = /^hand:(\d+)$/.exec(execution.outcome.targetCardKey);
+      const cardIndex = cardIndexMatch ? Number(cardIndexMatch[1]) : -1;
+      const card = Number.isInteger(cardIndex) && cardIndex >= 0 ? sourceHand[cardIndex] : undefined;
+      if (!card || !continuation.guess) return json({ error: "That Fanjian hidden-card choice is stale.", stale: true, room: await roomState(code, token) }, 409);
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Fanjian choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
-      let log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Guess the suit").log;
-      if (execution.outcome.correct) {
-        log = addLog(log, `${target.name} guesses the suit correctly and keeps the Fanjian card.`);
-        await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(log), room.id).run();
+      const sourceHandAfter = sourceHand.filter((held) => held.id !== card.id);
+      const targetHand = [...parse<Card[]>(target.hand_json, []), card];
+      const updatedSource = { ...source, hand_json: JSON.stringify(sourceHandAfter) } satisfies PlayerRow;
+      const updatedTarget = { ...target, hand_json: JSON.stringify(targetHand) } satisfies PlayerRow;
+      let log = addTriggeredEffectNotice(parse<string[]>(liveRoom.log_json, []), target.name, "Fanjian — choose a hidden card").log;
+      const presentation = addCardEventWithId(log, source.name, card, target.name, "reveal");
+      log = addLog(presentation.log, `${target.name} chooses ${card.rank}${card.suit}. ${continuation.guess === card.suit ? "The suits match; no damage is dealt." : `${target.name} takes 1 damage from Fanjian.`}`);
+      if (continuation.guess === card.suit) {
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHandAfter), source.id),
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
+          db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(continuation.resumePhase, JSON.stringify(log), room.id),
+        ]);
       } else {
-        log = addLog(log, `${target.name} guesses ${execution.outcome.guess}, but the suit is ${continuation.card.suit}. ${target.name} takes 1 damage from Fanjian.`);
-        await resolveSourcedDamage({ room: liveRoom, source, target, players, amount: 1, discard: parse<Card[]>(liveRoom.discard_json, []), log, resumePhase: continuation.resumePhase, resumePlayerId: source.id, sequenceStartCardId: continuation.card.id, damageCards: [continuation.card], label: "Fanjian", damageDescription: `${target.name} takes 1 damage from Fanjian` });
+        await resolveSourcedDamage({ room: liveRoom, source: updatedSource, target: updatedTarget, players: players.map((player) => player.id === source.id ? updatedSource : player.id === target.id ? updatedTarget : player), amount: 1, discard: parse<Card[]>(liveRoom.discard_json, []), log, resumePhase: continuation.resumePhase, resumePlayerId: source.id, sequenceStartCardId: card.id, damageCards: [card], label: "Fanjian", damageDescription: `${target.name} takes 1 damage from Fanjian`, writes: [
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHandAfter), source.id),
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(targetHand), target.id),
+        ] });
       }
       return json({ room: await roomState(code, token) });
     }

@@ -22,7 +22,9 @@ test("Wu and Qun hero capabilities project their private costs and Wushuang mult
   assert.equal(qixi[0].effectId, "gan_ning_qixi");
   assert.deepEqual(resolveActiveHeroSkill("gan_ning_qixi", { playerId: "source", hero: "gan-ning", hand: [black], livingTargetIds: targets, skillState: {} }, { cardIds: [black.id], targetId: "target" })?.outcome, { kind: "dismantle", sourceId: "source", targetId: "target", cardIds: [black.id] });
   assert.equal(getActiveHeroSkillOptions({ playerId: "source", hero: "huang-gai", hand: [], livingTargetIds: targets, skillState: {} })[0].effectId, "huang_gai_kurou");
-  assert.equal(getActiveHeroSkillOptions({ playerId: "source", hero: "zhou-yu", hand: [black], livingTargetIds: targets, skillState: {} })[0].effectId, "zhou_yu_fanjian");
+  const fanjian = getActiveHeroSkillOptions({ playerId: "source", hero: "zhou-yu", hand: [black], livingTargetIds: targets, skillState: {} })[0];
+  assert.equal(fanjian.effectId, "zhou_yu_fanjian"); assert.deepEqual(fanjian.selection, { type: "target", targetIds: targets });
+  assert.deepEqual(resolveActiveHeroSkill("zhou_yu_fanjian", { playerId: "source", hero: "zhou-yu", hand: [black], livingTargetIds: targets, skillState: {} }, { targetId: "target" })?.outcome, { kind: "fanjian", sourceId: "source", targetId: "target" });
   assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a"), card("Dodge", "dodge-b")], equipment: [], hero: null }, { kind: "dodge", count: 2 })[0].selection.min, 2);
   assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a")], equipment: [], hero: null }, { kind: "dodge", count: 2 }).length, 0);
 });
