@@ -1,5 +1,19 @@
 # Three Kingdoms project handover
 
+## Zhou Yu Yingzi correction — 2026-09-21
+
+Yingzi is now an optional `draw_phase` capability rather than an automatic
+hero-specific draw count. Required delayed Judgements resolve first; the
+canonical normal Draw Phase then opens a private Zhou Yu choice to use Yingzi
+or skip it. Use draws three normal cards, Skip draws two, and unrelated card
+effects retain their own draw counts. The client only auto-submits `draw` when
+the authoritative current action still permits `draw`, while the server
+revalidates and claims every Yingzi transition once. Normal multiplayer and
+Quick Game share the same trigger projection.
+
+The next work is to keep the remaining Standard hero capability rounds scoped
+and update this handover after each validated functional change.
+
 ## Zhou Yu Fanjian correction — 2026-09-21
 
 Fanjian was corrected to the official Standard order. The initial semantic
@@ -99,7 +113,9 @@ heroes in normal multiplayer and Quick Test. Qixi uses a black hand card as
 Burning Bridges and preserves the existing Negation and target-card picker
 continuations. Keji skips only the over-limit Discard Phase when no Attack was
 used. Kurou loses 1 HP and draws 2, including the shared Dying/rescue boundary.
-Yingzi changes normal draw to three cards. Fanjian is now target-first: the
+Yingzi is an optional post-Judgement normal Draw Phase modifier: it draws three
+cards when accepted and two when declined, without changing unrelated draws.
+Fanjian is now target-first: the
 target chooses a suit, then chooses an opaque position in Zhou Yu's hand; the
 card is transferred and revealed only after that choice, and a wrong guess uses
 the shared sourced 1-damage transition. Wushuang changes the semantic response requirement to two Dodges
@@ -108,7 +124,7 @@ against Lü Bu's Attacks and two Attacks for his Duel opponents.
 No provider-specific HTTP action was added. The five skills use currentAction
 projections and the existing `trigger`, `decline_trigger`, `respond`, and
 `decline_response` protocol. Deterministic capability and metadata coverage was
-added; the full suite is now 95 tests.
+added; the full suite is now 97 tests.
 
 Known boundary: the remaining Standard heroes in the registry are still
 metadata-only and remain the next scoped work.

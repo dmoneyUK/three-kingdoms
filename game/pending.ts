@@ -90,6 +90,12 @@ export type TurnStartTriggerContinuation = {
   kind: "turn_start_event";
   playerId: string;
 };
+export type DrawPhaseTriggerContinuation = {
+  kind: "draw_phase_event";
+  playerId: string;
+  resumePhase: string;
+  additionalCards?: number;
+};
 export type JudgementResponseResume = {
   kind: "response";
   actorId: string;
@@ -119,7 +125,7 @@ export type HeroChoiceTriggerContinuation = {
   guess?: string;
   resumePhase: string;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | JudgementRevealedTriggerContinuation | HeroChoiceTriggerContinuation;
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | JudgementRevealedTriggerContinuation | HeroChoiceTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

@@ -9,8 +9,9 @@ import { simaYiGuicaiTrigger } from "./heroes/sima-yi-guicai";
 import { simaYiFankuiTrigger } from "./heroes/sima-yi-fankui";
 import { xiahouDunGanglieTrigger } from "./heroes/xiahou-dun-ganglie";
 import { caoCaoJianxiongTrigger } from "./heroes/cao-cao-jianxiong";
+import { zhouYuYingziTrigger } from "./heroes/zhou-yu-yingzi";
 
-export type TriggerEvent = "turn_start" | "judgement_revealed" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice";
+export type TriggerEvent = "turn_start" | "draw_phase" | "judgement_revealed" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice";
 /**
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
@@ -45,6 +46,7 @@ export type TriggerExecution =
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "gain_damage_cards"; targetId: string; cardIds: string[] } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_guess"; targetId: string; guess: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_card"; sourceId: string; targetId: string; targetCardKey: string } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "draw_phase_modifier"; amount: number } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "continue_event" } };
 export type TriggerPresentation = { label: string };
 export type TriggeredEffect = {
@@ -82,7 +84,7 @@ const zhouYuFanjianChoice: TriggeredEffect = {
   },
 };
 
-const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, simaYiFankuiTrigger, caoCaoJianxiongTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, simaYiFankuiTrigger, caoCaoJianxiongTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {

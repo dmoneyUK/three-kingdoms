@@ -16,7 +16,7 @@ import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../ga
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
-import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type DrawPhaseTriggerContinuation, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 
 export const runtime = "edge";
@@ -165,6 +165,10 @@ function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
     return source && target ? { event: pending.event, sourceId: source.id, sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []), targetId: target.id, targetHand: parse<Card[]>(target.hand_json, []), heroChoiceStage: continuation.stage, ...(continuation.guess ? { heroChoiceGuess: continuation.guess } : {}), playerId: target.id, hero: target.hero } : null;
   }
   if (continuation.kind === "turn_start_event") {
+    const player = players.find((candidate) => candidate.id === continuation.playerId);
+    return player ? { event: pending.event, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), playerId: player.id, hero: player.hero } : null;
+  }
+  if (continuation.kind === "draw_phase_event") {
     const player = players.find((candidate) => candidate.id === continuation.playerId);
     return player ? { event: pending.event, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), playerId: player.id, hero: player.hero } : null;
   }
@@ -388,6 +392,62 @@ function judgementPurposeForDelayed(card: Card): JudgementPurpose | null {
   return null;
 }
 
+function drawPhaseTriggerContext(player: PlayerRow) {
+  return { event: "draw_phase" as const, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), playerId: player.id, hero: player.hero };
+}
+
+/** Resolves only the normal Draw Phase draw; card effects use their own paths. */
+async function resolveNormalDrawPhase(room: RoomRow, target: PlayerRow, resumePhase: string, additionalCards: number, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
+  const flags = drawPhaseFlags(resumePhase);
+  let drawnCards: Card[] = [];
+  if (flags.skipDraw) {
+    log = addLog(log, `${target.name} skips the Draw Phase because of Rations Depleted.`);
+  } else {
+    const count = 2 + Math.max(0, additionalCards);
+    const draw = drawCards(deck, discard, count, log);
+    deck = draw.deck;
+    discard = draw.discard;
+    drawnCards = draw.drawn;
+    log = addHistory(draw.log, `${target.name} draws ${draw.drawn.length} cards.`, target.id);
+    const hand = [...parse<Card[]>(target.hand_json, []), ...draw.drawn];
+    writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id));
+  }
+  await db().batch([
+    ...writes,
+    db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+      .bind(flags.skipPlay ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id),
+  ]);
+  return drawnCards;
+}
+
+/** Opens optional Draw Phase capabilities after all required Judgements finish. */
+async function beginDrawPhaseDecision(room: RoomRow, target: PlayerRow, resumePhase: string, deck: Card[], discard: Card[], log: string[], additionalCards = 0, writes: D1PreparedStatement[] = []) {
+  const flags = drawPhaseFlags(resumePhase);
+  const options = flags.skipDraw ? [] : getTriggeredEffects(drawPhaseTriggerContext(target));
+  if (!options.length) return resolveNormalDrawPhase(room, target, resumePhase, additionalCards, deck, discard, log, writes);
+  const presentation = addLogWithId(log, `${target.name} may use Yingzi to draw one additional card this Draw Phase.`);
+  const continuation: DrawPhaseTriggerContinuation = {
+    kind: "draw_phase_event",
+    playerId: target.id,
+    resumePhase,
+    ...(additionalCards > 0 ? { additionalCards } : {}),
+  };
+  const pending: TriggerPending = withPresentationBarrier({
+    kind: "trigger",
+    event: "draw_phase",
+    actorId: target.id,
+    reason: `${target.name} may use Yingzi to draw one additional card this Draw Phase, or skip`,
+    deadline: nextResponseDeadline(target),
+    continuation,
+  }, presentation.log, presentation.eventId);
+  await db().batch([
+    ...writes,
+    db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+      .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log), room.id),
+  ]);
+  return [];
+}
+
 function judgementTriggerContext(player: PlayerRow, judgement: JudgementContinuation) {
   return {
     event: "judgement_revealed" as const,
@@ -597,15 +657,7 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
       await db().batch([...writes, db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(nextPhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
       return [];
     }
-    let drawnCards: Card[] = [];
-    if (skipDraw) log = addLog(log, `${target.name} skips the Draw Phase because of Rations Depleted.`);
-    else {
-      const draw = drawCards(deck, discard, 2, log); deck = draw.deck; discard = draw.discard; drawnCards = draw.drawn; log = addHistory(draw.log, `${target.name} draws ${draw.drawn.length === 2 ? "two cards" : `${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}`}.`, target.id);
-      const hand = [...parse<Card[]>(target.hand_json, []), ...draw.drawn];
-      writes.push(db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), target.id));
-    }
-    await db().batch([...writes, db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(skipPlay ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
-    return drawnCards;
+    return beginDrawPhaseDecision(room, target, nextPhase, deck, discard, log, 0, writes);
   }
 
   const responseResume = judgement.resume.kind === "response" ? judgement.resume : null;
@@ -811,6 +863,7 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
     const judgementResume = canonicalTrigger?.continuation.kind === "judgement_revealed_event" ? canonicalTrigger.continuation.judgement.resume : null;
     const expectedOwnerId = pending.kind === "dying" ? pending.resumePlayerId
       : canonicalTrigger?.continuation.kind === "turn_start_event" ? canonicalTrigger.continuation.playerId
+        : canonicalTrigger?.continuation.kind === "draw_phase_event" ? canonicalTrigger.continuation.playerId
         : canonicalTrigger?.continuation.kind === "judgement_revealed_event" ? judgementResume?.kind === "response" ? judgementResume.continuation.sourceId : judgementResume?.kind === "damage_suffered" ? judgementResume.continuation.sourceId : canonicalTrigger.continuation.judgement.targetId
         : canonicalTrigger?.continuation.kind === "attack_targeted_event" ? owner.id
         : canonicalTrigger?.continuation.kind === "damage_about_to_apply_event" ? canonicalTrigger.continuation.sourceId
@@ -2484,6 +2537,22 @@ export async function POST(request: Request) {
       }
       return json({ room: await roomState(code, token) });
     }
+    if (liveRoom && trigger && continuation?.kind === "draw_phase_event" && trigger.actorId === me.id) {
+      if (action === "apply_trigger" && triggerExecution?.outcome.kind !== "draw_phase_modifier") {
+        return json({ error: "That Draw Phase decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      }
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Draw Phase decision has already moved on.", stale: true, room: await roomState(code, token) }, 409);
+      const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+      const player = (rows.results ?? []).find((candidate) => candidate.id === continuation.playerId && candidate.alive);
+      if (!player) return json({ error: "The Draw Phase player is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      let log = parse<string[]>(liveRoom.log_json, []);
+      if (action === "apply_trigger") log = addTriggeredEffectNotice(log, player.name, triggerExecution?.presentation?.label ?? "Yingzi").log;
+      else log = addLog(log, `${player.name} declines Yingzi; normal Draw Phase draw continues.`);
+      const additionalCards = (continuation.additionalCards ?? 0) + (action === "apply_trigger" && triggerExecution?.outcome.kind === "draw_phase_modifier" ? triggerExecution.outcome.amount : 0);
+      const drawn = await resolveNormalDrawPhase(liveRoom, player, continuation.resumePhase, additionalCards, parse<Card[]>(liveRoom.deck_json, []), parse<Card[]>(liveRoom.discard_json, []), log);
+      return json({ room: await roomState(code, token), ...(drawn.length ? { drawnCards: drawn } : {}) });
+    }
     if (liveRoom && trigger && continuation?.kind === "turn_start_event" && trigger.actorId === me.id) {
       if (action === "apply_trigger" && triggerExecution?.outcome.kind !== "judgement") {
         return json({ error: "That turn-start effect is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -3212,9 +3281,7 @@ export async function POST(request: Request) {
         const delayedDrawn = await beginDelayedJudgement(liveRoom, me, players, selectedDelayed.delayed, selectedDelayed.remaining, deck, discard, log, liveRoom.phase ?? "draw", [db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(selectedDelayed.remaining), me.id)]);
         return json({ room: await roomState(code, token), ...(delayedDrawn?.length ? { drawnCards: delayedDrawn } : {}) });
       }
-      const drawCount = me.hero === "zhou-yu" ? 3 : 2;
-      const draw = drawCards(deck, discard, drawCount, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${me.name} draws ${draw.drawn.length} cards${me.hero === "zhou-yu" ? " with Yingzi" : ""}.`, me.id); hand.push(...draw.drawn); drawnCards = draw.drawn;
-      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.phase?.includes("skip-play") ? "discard" : "play", JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+      drawnCards = await beginDrawPhaseDecision(liveRoom, me, liveRoom.phase ?? "draw", deck, discard, log);
     } else if (action === "serpent_spear_attack") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before forming an Attack." }, 409);
       if (!canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, liveRoom.phase)) return json({ error: "You may use only one Attack per turn." }, 409);

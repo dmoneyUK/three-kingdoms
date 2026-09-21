@@ -84,10 +84,10 @@ test("normalized malformed and unknown response states render safely", () => {
   };
   const luoshenRoom = normalizeRoomData(luoshenPayload);
   const luoshenReadyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(luoshenReadyHtml, />Luoshen<\/button>/);
+  assert.match(luoshenReadyHtml, />Use Luoshen<\/button>/);
   assert.match(luoshenReadyHtml, />Skip reaction<\/button>/);
   const luoshenBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Luoshen<\/button>/);
+  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Use Luoshen<\/button>/);
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Skip reaction<\/button>/);
   assert.doesNotMatch(luoshenBusyHtml, /Resolving…|Skipping…/);
 

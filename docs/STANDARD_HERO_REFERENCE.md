@@ -395,10 +395,10 @@ The **engine shape** field is not a design mandate; it is a concise hint for fit
 - **Max HP:** 3
 - **Runtime roster status:** Present
 - **Skills:**
-  - **Yingzi 英姿:** During the Draw Phase, Zhou Yu draws one additional card.
+  - **Yingzi 英姿:** During the Draw Phase, Zhou Yu may draw one additional card.
   - **Fanjian 反间:** Once during the Play Phase, Zhou Yu challenges another character with a concealed/guessed hand-card suit interaction; a failed suit guess causes 1 damage. Exact reveal/obtain ordering must follow the official card text.
 - **Likely engine shape:** Draw Phase modifier; Play Phase active / hidden-information choice.
-- **Current implementation:** Yingzi draws three cards in the normal Draw Phase. Fanjian transfers a concealed card, projects a mandatory private suit choice to the target, and deals 1 damage on a wrong guess.
+- **Current implementation:** Yingzi opens an optional private Draw Phase decision after required Judgements; accepting draws three normal Draw Phase cards and declining draws two. It does not modify unrelated draws. Fanjian transfers a concealed card, projects a mandatory private suit choice to the target, and deals 1 damage on a wrong guess.
 
 ### Da Qiao (大乔)
 

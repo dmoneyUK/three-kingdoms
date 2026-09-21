@@ -1,5 +1,14 @@
 # Three Kingdoms
 
+## Zhou Yu Yingzi correction — 2026-09-21
+
+Yingzi now follows the optional WTK Standard wording: after required Draw
+Phase Judgements and before the normal draw, Zhou Yu privately chooses whether
+to draw one additional card. Use draws three normal Draw Phase cards; Skip
+draws two. The modifier is scoped to that canonical Draw Phase only, so card
+effects and other draws are unchanged. Multiplayer and Quick Game use the
+same private semantic trigger, with server-side stale-action protection.
+
 ## Zhou Yu Fanjian correction — 2026-09-21
 
 Fanjian now follows the WTK Standard sequence exactly: Zhou Yu selects only
@@ -13,7 +22,7 @@ The target projection exposes only the number of available hidden positions;
 card IDs, kinds, ranks, and suits are withheld until the reveal. Fanjian is
 marked used when committed, resets at Zhou Yu's next turn, and stale or
 duplicate submissions cannot repeat the transfer. The initial UI has no
-Fanjian hand-card selection step. Full Worker/D1 validation now passes 95 tests.
+Fanjian hand-card selection step. Full Worker/D1 validation now passes 97 tests.
 
 ## Quick Game shared-controller setup — 2026-09-21
 
@@ -38,7 +47,7 @@ logic.
 The current stage is Standard setup/privacy parity complete, with Quick Game
 now using one shared controller across four seats; the next milestone remains
 the next individually verified Standard hero capability. Full Worker/D1
-validation currently passes 95 tests.
+validation currently passes 97 tests.
 
 The next Wu/Qun hero batch is now playable: Gan Ning (Qixi), Lü Meng
 (Keji), Huang Gai (Kurou), Zhou Yu (Yingzi/Fanjian), and Lü Bu (Wushuang).

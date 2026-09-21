@@ -25,6 +25,9 @@ test("Wu and Qun hero capabilities project their private costs and Wushuang mult
   const fanjian = getActiveHeroSkillOptions({ playerId: "source", hero: "zhou-yu", hand: [black], livingTargetIds: targets, skillState: {} })[0];
   assert.equal(fanjian.effectId, "zhou_yu_fanjian"); assert.deepEqual(fanjian.selection, { type: "target", targetIds: targets });
   assert.deepEqual(resolveActiveHeroSkill("zhou_yu_fanjian", { playerId: "source", hero: "zhou-yu", hand: [black], livingTargetIds: targets, skillState: {} }, { targetId: "target" })?.outcome, { kind: "fanjian", sourceId: "source", targetId: "target" });
+  const yingziContext = { event: "draw_phase", sourceEquipment: [], sourceHand: [], playerId: "source", hero: "zhou-yu" };
+  assert.deepEqual(getTriggeredEffects(yingziContext), [{ effectId: "zhou_yu_yingzi", label: "Yingzi", description: "Draw one additional card this Draw Phase.", selection: null, allowDecline: true }]);
+  assert.deepEqual(resolveTriggeredEffect("zhou_yu_yingzi", yingziContext, {}).outcome, { kind: "draw_phase_modifier", amount: 1 });
   assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a"), card("Dodge", "dodge-b")], equipment: [], hero: null }, { kind: "dodge", count: 2 })[0].selection.min, 2);
   assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a")], equipment: [], hero: null }, { kind: "dodge", count: 2 }).length, 0);
 });
