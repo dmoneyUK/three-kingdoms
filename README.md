@@ -43,6 +43,11 @@ Worker/D1 lifecycle, `npm run test:all` runs the production build plus both
 suites, and `npm test` remains the complete alias. Both runners print elapsed
 timing; the API runner also prints its ten slowest tests.
 
+The API integration harness now lives in `tests/api/harness.mjs`, separate
+from the test cases in `tests/game-api.test.mjs`. It owns request/state
+helpers, fixture mutation and inspection, room setup, and shared response
+settlement helpers; the 98 API assertions remain unchanged.
+
 ## Negation reaction UX — 2026-09-21
 
 Stratagems now open a public Negation waiting state before their effects

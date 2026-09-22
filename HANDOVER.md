@@ -74,6 +74,11 @@ temporary Wrangler/D1 persistence directory, passes that location explicitly
 to the test-only inspection helper, and removes it after the run. The previous
 `.wrangler/test-state` directory is no longer reused by the API runner.
 
+The shared API test harness is now extracted to `tests/api/harness.mjs`.
+`tests/game-api.test.mjs` retains all 98 integration cases and imports the
+request/state, fixture, setup, and response-settlement helpers from that
+module. The extraction is test-only and does not change production behavior.
+
 ## Negation reaction UX — 2026-09-21
 
 Current Negation scheduling is capability-driven and privacy-safe. A
