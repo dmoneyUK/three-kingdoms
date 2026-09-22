@@ -2,126 +2,158 @@
 
 ## Purpose
 
-This document is the implementation brief for the next **presentation-only** refinement of the War of Three Kingdoms mobile game UI.
+This document is the **current and authoritative implementation brief** for the next presentation-only refinement of the War of Three Kingdoms mobile UI.
 
 Repository: `dmoneyUK/three-kingdoms`
 
-The current implementation already contains the major LocalPlayerDock redesign. **Do not throw it away or rebuild it from scratch.** Refine the current code so the deployed mobile UI matches the final agreed layout and behaviours described below.
+This file replaces the previous version of this task brief. Review the **current code first** and refine the existing implementation; do not rebuild the dock from scratch.
 
-The current dock implementation already has:
-
-- narrow Hero column
-- one permanent button per `hero.skills` entry
-- dynamic enable/disable of hero skill buttons
-- a Status panel
-- a combined Equipment/Judgement panel
-- measured Hand spacing using `ResizeObserver`
-- selected hand card rising in its original horizontal position
-- a separate Action/message panel
-- concise `Play`, `End`, `Skip` labels
-- shared `CardFace` artwork for equipment and judgement cards
-- LocalPlayerDock layout CSS consolidated in `app/sequence-overrides.css`
-
-The main current implementation is in:
-
+Primary files:
 - `app/page.tsx`
 - `app/sequence-overrides.css`
-- opponent player panel styles are still primarily in `app/globals.css`
+- opponent `.player-square` styles in `app/globals.css`
+- focused UI/render tests such as `tests/room-safety-render.test.mjs`
 
-Do not perform the parked test-suite refactor in this task.
+Do **not** perform the parked broad test-suite refactor in this task.
+
+---
+
+# Latest screenshot review — mandatory changes
+
+The latest deployed screenshot adds these requirements on top of the current dock work:
+
+1. The other 3 players must show information vertically:
+   - `HP x/x`
+   - heart icons
+   - `Hand cards: x`
+
+2. Other players' equipped cards must show:
+   - real compact card graphics
+   - suit/rank corner
+   - not plain/text-only rectangles
+
+3. Local Judgement panel must be smaller:
+   - visually sized for **2 compact cards**
+   - same card size as local Equipment cards
+   - no fake/fixed empty Judgement slots
+
+4. Local Status / HP / Role panel must be **wider than the current implementation** while remaining smaller than the Equipment panel.
+
+5. Play / Skip / End style action buttons should be **wider** for clearer touch targets.
+
+These items are mandatory and override older sizing assumptions.
 
 ---
 
 # Non-negotiable visual requirements
 
-This task is not complete unless **all** of the following are true:
+This task is complete only when all of these are true:
 
-1. Selecting a hand card reveals the **full card** in its original horizontal position and raises it above the upper dock panels.
-2. Equipment and Judgement are **two separate bordered panels**.
-3. Equipment has exactly **4 improved slots**:
+1. Selecting a Hand card reveals the **full card** at its original horizontal position.
+2. Selected Hand card rises above Status / Equipment / Judgement and is not cut by their borders/backgrounds.
+3. Equipment and Judgement are **separate bordered panels**.
+4. Equipment has exactly 4 improved slots:
    - Weapon
    - Armour
    - +1 Horse
    - -1 Horse
-   Empty slots show their label inside the slot and **do not show a + icon**.
-4. Judgement has **no fixed empty slots**. It is one dynamic area sized for approximately 2 compact cards:
-   - 1 card: natural placement
-   - 2 cards: evenly laid out
-   - 3+ cards: progressively overlap
-5. Status is narrow and vertically shows:
+5. Empty Equipment slots show their label **inside the slot** and show **no standalone + icon**.
+6. Judgement has **no fixed empty slots**.
+7. Judgement visually holds about 2 compact cards and dynamically overlaps 3+ cards.
+8. Status vertically shows:
    - HP
    - hearts
    - Role
-   It is the **same height as the Equipment and Judgement panels**.
-6. All 3 visible opponents use **portrait/card-shaped player panels**.
-7. Hand-card rank/suit corner component is visibly **smaller** than the current version.
+9. Status, Equipment and Judgement panels are the **same height**.
+10. Status is wider than the current deployed version.
+11. All 3 opponents use **portrait/card-shaped panels**.
+12. Opponent player info is vertical:
+   - HP
+   - hearts
+   - Hand cards
+13. Opponent Equipment uses real card artwork with suit/rank.
+14. Hand suit/rank corner is smaller.
+15. Play / Skip / End buttons are wider.
+16. Existing gameplay rules and semantic actions are unchanged.
 
 ---
 
-# Final mobile layout
+# Final mobile layout target
 
 At approximately 390px portrait:
 
 ```text
-┌───────────┬────────┬───────────────────────┬──────────────┐
-│           │ HP 5/5 │ Weapon Armour +1  -1 │ Judgement    │
-│           │ ♥♥♥♥♥  │ [   ][   ][   ][   ] │ [card][card] │
-│   HERO    │ LORD   │                       │              │
-│   CARD    ├────────┴───────────────────────┴──────────────┤
-│           │ HAND                                          │
-│Treachery  │ [card] [card] [selected] [card] [card]       │
-│Entourage  │                                               │
-├───────────┴───────────────────────────────────────────────┤
-│ Your action · choose a player...                 [Play][End]│
-└───────────────────────────────────────────────────────────┘
+┌───────────┬────────────┬─────────────────────────┬──────────────┐
+│           │ HP 4/4     │ Weapon Armour +1   -1  │ Judgement    │
+│           │ ♥♥♥♥       │ [   ] [   ] [   ] [   ]│ [card][card] │
+│   HERO    │ SPY        │                         │              │
+│   CARD    ├────────────┴─────────────────────────┴──────────────┤
+│           │ HAND                                                │
+│ God of War│ [card] [card] [selected] [card] [card]             │
+├───────────┴─────────────────────────────────────────────────────┤
+│ Your action · Play Phase                           [Play] [End] │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-The exact dimensions should respond to viewport width, but this structure must remain.
+Opponent target shape:
+
+```text
+┌──────────────┐
+│          ⓘ   │
+│ Test Player 3│
+│ Cao Cao      │
+│ HP 5/5       │
+│ ♥♥♥♥♥        │
+│ Hand cards: 4│
+│              │
+│ [mini equip] │
+└──────────────┘
+```
 
 ---
 
-# 1. Preserve the Hero panel
+# 1. Preserve the current Hero panel
 
-Keep the current Hero panel approach.
+Keep the current Hero panel structure and current skill logic.
 
-It contains only:
-
+Hero panel contains only:
 - Hero card
-- all hero skill buttons
+- all Hero skill buttons
 
-Do **not** put Role, HP, equipment, judgement, or player name back into the Hero panel.
+Do not place:
+- Role
+- HP
+- equipment
+- judgement
+- player name
 
-The Hero card remains tappable to open `HeroInfoDialog`.
+back into the Hero column.
 
-Keep the current metadata-driven skill solution:
+Keep current behaviour:
+- Hero card opens `HeroInfoDialog`
+- visible skill buttons come from `hero.skills`
+- unavailable/passive skills stay visible but disabled
+- existing semantic capability/provider state controls enablement
+- preserve current Guan Yu / Zhao Yun special behaviour
+- do not infer hero legality in React
 
-- button count/names come from `hero.skills`
-- every skill remains visible
-- passive/unavailable skills remain visible but disabled
-- existing semantic projected actions determine enablement
-- do not infer rule legality in React
-- preserve current Guan Yu / Zhao Yun state handling
-
-Do not regress back to a generic `Skill` button.
+Do not regress to a generic `Skill` button.
 
 ---
 
-# 2. Restructure the current right-top area
+# 2. Right-top dock must contain three sibling panels
 
-Current JSX is conceptually:
+Current code still conceptually has:
 
 ```text
 .local-dock-zones
   .local-status-panel
   .local-zone-panel
-    .local-zone-strip
-      .local-equipment-slots
-      .local-judgement-stack
+    .local-equipment-slots
+    .local-judgement-stack
 ```
 
-Current CSS vertically stacks Status and Zones.
-
-Replace this with three sibling panels in one horizontal row:
+Change it to:
 
 ```text
 .local-dock-zones
@@ -130,75 +162,56 @@ Replace this with three sibling panels in one horizontal row:
   .local-judgement-panel
 ```
 
-Suggested JSX shape:
+Suggested JSX:
 
 ```tsx
 <div className="local-dock-zones">
-  <div className="local-status-panel">
-    ...
-  </div>
-
-  <div className="local-equipment-panel" aria-label="Equipment">
-    ...
-  </div>
-
-  <div className="local-judgement-panel" aria-label="Judgement zone">
-    ...
-  </div>
+  <div className="local-status-panel">...</div>
+  <div className="local-equipment-panel" aria-label="Equipment">...</div>
+  <div className="local-judgement-panel" aria-label="Judgement zone">...</div>
 </div>
 ```
 
-Equipment and Judgement must not share one visual border.
+Equipment and Judgement must not share one border.
 
 ---
 
-# 3. All three top panels must be the same height
+# 3. Top-row panel heights must match
 
-Status, Equipment and Judgement must line up cleanly in one row.
+Status, Equipment and Judgement must share one aligned row and equal height.
 
-Use one row with:
+Suggested mobile height:
+- approximately 68–74px
 
+Use a single-row layout with:
 ```css
 align-items: stretch;
 ```
 
-Suggested mobile height: approximately 68–74px.
-
-Do not allow Status to be 30px high while Equipment/Judgement are taller.
-
-Explicit requirement:
-
-```text
-STATUS HEIGHT == EQUIPMENT HEIGHT == JUDGEMENT HEIGHT
-```
+Do not let Status return to the current ~30px short row while the card panels are taller.
 
 ---
 
-# 4. Make the Status panel narrow
+# 4. Status panel — wider and vertical
 
-Status contains only:
+The latest screenshot shows the Status panel is too narrow.
+
+Required content order:
 
 ```text
-HP 5/5
-♥♥♥♥♥
-LORD
+HP 4/4
+♥♥♥♥
+SPY
 ```
-
-Required vertical order:
-
-1. HP
-2. hearts
-3. Role
-
-Do not use the current horizontal presentation such as `LORD  HP 5/5 ♥♥♥♥♥`.
 
 Suggested width:
-
 ```css
---status-panel-width: clamp(56px, 15vw, 68px);
+--status-panel-width: clamp(72px, 19vw, 92px);
 ```
 
-Suggested structure:
+This is intentionally wider than the earlier narrow design.
+
+Suggested JSX:
 
 ```tsx
 <div className="local-status-panel">
@@ -208,16 +221,7 @@ Suggested structure:
 </div>
 ```
 
----
-
-# 5. Status typography and spacing must respond to viewport width
-
-Do not hardcode large fixed spacing.
-
-Use `clamp()` or equivalent responsive sizing.
-
-Example direction:
-
+Responsive spacing:
 ```css
 .local-status-panel {
   display: flex;
@@ -225,47 +229,35 @@ Example direction:
   justify-content: center;
   gap: clamp(2px, .8vw, 5px);
 }
-
-.local-status-hp {
-  font-size: clamp(7px, 2.1vw, 9px);
-}
-
-.local-status-hearts,
-.local-status-role {
-  font-size: clamp(7px, 2vw, 9px);
-}
 ```
 
-Make sure the panel remains readable at 320px.
+The panel still should not consume spare flex space unnecessarily.
 
 ---
 
-# 6. Equipment panel must be a separate bordered panel
+# 5. Equipment panel
 
-Create `.local-equipment-panel`.
+Create/preserve a distinct `.local-equipment-panel`.
 
 It must have:
-
 - complete border
-- dark panel background
-- compact internal padding
-- exactly four visual card spaces
+- dark background
+- compact padding
+- exactly 4 compact card spaces
 
 Required visual order:
-
 1. Weapon
 2. Armour
 3. +1 Horse
 4. -1 Horse
 
-Important: underlying game semantics remain:
-
+Important semantic mapping remains:
 - `defensiveHorse` = +1 Horse
 - `offensiveHorse` = -1 Horse
 
-Only presentation order changes if needed.
+Presentation order may change; game distance semantics must not.
 
-A safe presentation definition is:
+A safe presentation definition:
 
 ```ts
 [
@@ -276,39 +268,20 @@ A safe presentation definition is:
 ]
 ```
 
-Do not change game distance logic.
-
 ---
 
-# 7. Equipment slot labels go inside empty slots
+# 6. Equipment empty slot presentation
 
-Current empty equipment renders `+`.
+Remove the current standalone `+` placeholder.
 
-Remove that.
+Empty slot should render the slot name **inside the card-shaped slot**, preferably near the lower portion.
 
-An empty slot should show its label **inside the physical card-shaped slot**, preferably toward the lower part.
-
-Examples:
+Example:
 
 ```text
 ┌────────┐
 │        │
 │ Weapon │
-└────────┘
-
-┌────────┐
-│        │
-│ Armour │
-└────────┘
-
-┌────────┐
-│        │
-│+1 Horse│
-└────────┘
-
-┌────────┐
-│        │
-│-1 Horse│
 └────────┘
 ```
 
@@ -325,113 +298,101 @@ Suggested JSX:
 </span>
 ```
 
-There must be no visible standalone `+` glyph.
+There must be no visible standalone plus icon.
+
+`+1 Horse` text is of course valid.
 
 ---
 
-# 8. Occupied equipment must replace the placeholder label
+# 7. Occupied Equipment slots
 
-Do not layer real equipment on top of the empty-slot label.
+When Equipment is present:
+- render the real compact `CardFace`
+- do not render the empty-slot label underneath
+- keep suit/rank visible
+- keep artwork visible
 
-For an occupied slot render only the real `CardFace`.
+Preserve shared rendering:
+```tsx
+<CardFace card={card} />
+```
 
-Therefore:
-
-- empty slot: placeholder label
-- occupied slot: actual equipment card only
-
-Keep semantic `aria-label` naming on the slot container.
+Do not regress to plain/text-only Equipment cards.
 
 ---
 
-# 9. Equipment cards remain compact
+# 8. Compact Equipment/Judgement card sizing
 
-Use the same compact responsive card size for both Equipment and Judgement.
+Use one compact card size family for local Equipment and local Judgement.
 
-Suggested variables:
+Suggested:
 
 ```css
---zone-card-width: clamp(28px, 7.8vw, 34px);
+--zone-card-width: clamp(28px, 7.6vw, 34px);
 --zone-card-height: calc(var(--zone-card-width) * 1.5);
---zone-card-gap: clamp(3px, 1.1vw, 6px);
+--zone-card-gap: clamp(3px, 1vw, 6px);
 ```
 
-Maintain roughly 2:3 aspect ratio.
+Do not stretch cards using `1fr`.
 
-Do not make equipment as large as hand cards.
-
----
-
-# 10. Equipment panel has exactly four card spaces
-
-The panel is designed around four compact cards.
-
-Do not use `1fr` sizing that stretches the cards.
-
-Panel width should derive from:
-
+Equipment panel width should derive from:
 ```text
-4 × card width
-+ 3 × card gap
-+ panel padding
+4 × zone-card-width
++ 3 × zone-card-gap
++ internal padding
 ```
 
 ---
 
-# 11. Judgement is a separate panel
+# 9. Judgement panel must be smaller
 
-Create `.local-judgement-panel`.
+Create/preserve a separate `.local-judgement-panel`.
 
-It must have:
+Latest requirement:
+- smaller than the current implementation
+- sized for approximately **2 compact cards**
+- uses the same physical card size as Equipment cards
+- same panel height as Status/Equipment
 
-- separate complete border
-- separate background
-- same row height as Status/Equipment
-- visual capacity for approximately two compact zone cards
+Judgement panel width should derive from:
+```text
+2 × zone-card-width
++ 1 × zone-card-gap
++ internal padding
+```
 
-It is **not** a set of named slots.
+Do not let Judgement consume unnecessary empty width.
 
 ---
 
-# 12. Judgement panel must have no fake empty slots
+# 10. Judgement has no fixed empty slots
 
-When there are zero judgement cards:
-
-- panel stays empty
+When there are zero Judgement cards:
+- panel remains empty
+- no fake rectangles
 - no `+`
-- no empty card rectangles
-- no fake card backs
+- no card backs
 
-The panel itself is the reserved area.
+Only actual `player.judgementCards` render.
+
+Do not change the data model.
 
 ---
 
-# 13. Judgement layout is dynamic
+# 11. Judgement card spacing must be dynamic
 
-Desired behaviour:
+Required:
 
-- 0 cards: empty
-- 1 card: naturally centred/positioned
-- 2 cards: evenly laid out across the available area
+- 0 cards: empty panel
+- 1 card: natural/centred placement
+- 2 cards: evenly laid out
 - 3+ cards: progressively overlap
 
-Do not use the current fixed CSS offsets:
+Replace current fixed `nth-child` offsets with calculated spacing.
 
-```css
-:nth-child(2) { left: 3px; }
-:nth-child(3) { left: 6px; }
-:nth-child(n + 4) { left: 9px; }
-```
+Reuse/extract the same presentation idea used for Hand spacing if useful.
 
-Replace with calculated spacing similar to the Hand algorithm.
-
-The data model remains `player.judgementCards`; do not limit the array to 2 cards.
-
----
-
-# 14. Reuse the hand spacing idea for Judgement
-
-If useful, extract a presentation helper such as:
+Example helper:
 
 ```ts
 computeCardStep({
@@ -442,34 +403,18 @@ computeCardStep({
 })
 ```
 
-Judgement rules:
+For Judgement:
+- 1–2 cards: prefer natural spacing
+- 3+ cards: calculated overlap
+- minimum visible step around 10–14px is acceptable
 
-- 1–2 cards: prefer natural/even layout
-- 3+ cards: compute overlap
-- minimum visible step can be around 10–14px because zone cards are smaller
-- if unusually many cards exist, allow controlled overlap/overflow
-
-Do not change Judgement game rules.
+Do not alter Judgement rules.
 
 ---
 
-# 15. Equipment and Judgement must keep real CardFace artwork
+# 12. Hand panel remains full width
 
-Preserve:
-
-```tsx
-<CardFace card={card} />
-```
-
-Do not regress to:
-
-- plain cream rectangles
-- text-only mini cards
-- manually recreated card faces
-
----
-
-# 16. Keep the Hand panel full-width on the right side
+Keep the Hand panel across the full right side underneath Status + Equipment + Judgement.
 
 Conceptually:
 
@@ -478,39 +423,15 @@ Conceptually:
 |Hero|          HAND                 |
 ```
 
-The Hand panel spans under all three top-right panels.
+Keep current `ResizeObserver`/measured spacing.
 
-Do not restrict the Hand width to Equipment width.
-
----
-
-# 17. Keep current dynamic Hand distribution
-
-Current implementation already measures `handRailWidth` and calculates card spacing.
-
-Keep it.
-
-Do not restore fixed negative overlap such as:
-
-```css
-margin-left: -38px;
-```
-
-Small hands should spread naturally.
-Large hands should overlap only as much as needed.
+Do not restore fixed `margin-left: -38px`.
 
 ---
 
-# 18. Shrink the Hand suit/rank corner
+# 13. Smaller Hand suit/rank corner
 
-Current Hand corner is still approximately:
-
-- width: 21px
-- min-height: 29px
-- rank font: 10px
-- suit font: 9px
-
-Reduce it noticeably.
+Current Hand suit/rank corner is still too large.
 
 Suggested target:
 
@@ -527,140 +448,59 @@ Suggested target:
 }
 ```
 
-Scope this to Hand cards only.
-
-Do not globally shrink centre-reveal or discard-card markers.
+Scope to Hand cards only.
 
 ---
 
-# 19. Selected Hand card must show the full card
-
-This is a core requirement.
+# 14. Selected Hand card must reveal full card
 
 When one normal Hand card is selected:
-
-- the **full physical card** becomes visible
-- it stays at its original horizontal x-position
-- it rises upward
-- neighbouring cards do not dramatically reflow
-- dock height does not grow
+- show the full physical card
+- keep original horizontal position
+- raise upward
+- do not reflow neighbours dramatically
+- do not increase dock height
 - do not show a detached centre preview
 
-Preserve the existing full-card height behaviour, currently around 102px.
+Preserve current full-card height behaviour (around 102px).
 
 ---
 
-# 20. Selected card must paint above all top panels
+# 15. Selected card must be above all top panels
 
-When raised, a selected Hand card may overlap:
-
+Selected card may overlap:
 - Status
 - Equipment
 - Judgement
 
-It must render **above** all of them.
+It must paint **above** all of them.
 
-No top-panel background or border should cut across the selected card.
-
-Suggested stacking hierarchy:
+Suggested stacking:
 
 ```text
-top panels                z-index ~10
-normal hand               z-index ~20
-selected hand/card        z-index ~60–80
-action panel              z-index ~100
+top panels              z-index ~10
+normal Hand             z-index ~20
+selected card           z-index ~60–80
+Action panel            z-index ~100
 ```
 
-The Action panel must still stay above the selected card so the selected card can never cover the bottom controls.
+No top-panel border/background may visually cut across the selected card.
+
+Also review parent stacking contexts so a child z-index is not trapped below the top row.
 
 ---
 
-# 21. Avoid stacking-context traps
+# 16. Selected card info icon
 
-A high z-index on the child is useless if its parent is below another stacking context.
+Selected Hand card info icon must:
+- appear only when selected
+- move together with the selected card
+- be horizontally centred
+- appear below the card name
+- stay inside the card
+- not overlap suit/rank
 
-Review:
-
-- `.local-dock-zones`
-- `.local-status-panel`
-- `.local-equipment-panel`
-- `.local-judgement-panel`
-- `.local-hand-section`
-- `.local-hand`
-- `.local-hand-rail`
-
-Avoid accidental stacking contexts caused by unnecessary transforms/opacity.
-
-Recommended model:
-
-```css
-.local-dock-zones {
-  position: relative;
-  z-index: 10;
-}
-
-.local-hand-section {
-  position: relative;
-  z-index: 50;
-  overflow: visible;
-}
-
-.local-hand,
-.local-hand-rail {
-  overflow-y: visible;
-}
-
-.card-slot.single-selected {
-  z-index: 80;
-}
-
-.turn-controls {
-  z-index: 100;
-}
-```
-
-Test in actual mobile Safari-size rendering.
-
----
-
-# 22. Move selected Card and info icon as one visual unit
-
-Current code transforms the card and info button independently.
-
-For robustness, introduce a shared wrapper if practical:
-
-```text
-.card-slot
-  .hand-card-visual
-    button.game-card
-    button.card-info-button
-```
-
-Then transform `.hand-card-visual` once when selected.
-
-Do not nest one button inside another.
-
-Benefits:
-
-- info icon always travels with selected card
-- easier z-index handling
-- no duplicated transforms
-- easier relative positioning
-
----
-
-# 23. Selected Hand-card info icon position
-
-The selected card must show its info icon:
-
-- horizontally centred
-- beneath the card name
-- inside the card
-- not bottom-right
-- not overlapping rank/suit
-- hidden when the card is unselected
-
-Approved visual:
+Approved concept:
 
 ```text
 ┌───────────────┐
@@ -672,72 +512,69 @@ Approved visual:
 └───────────────┘
 ```
 
-Example positioning:
+If useful, wrap the physical card + info button in a non-button visual wrapper and transform that wrapper as one unit.
 
-```css
-.hand-card-visual {
-  position: relative;
-}
-
-.hand-card-visual .card-info-button {
-  position: absolute;
-  left: 50%;
-  top: 67%;
-  translate: -50% -50%;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.card-slot.single-selected .card-info-button {
-  opacity: 1;
-  pointer-events: auto;
-}
-```
-
-Tune `top` visually so it sits just below the card name.
+Do not nest a button inside another button.
 
 ---
 
-# 24. Selected card highlight remains border-only
+# 17. Selected card visual style
 
 Keep:
-
 - gold border
 - optional subtle outer glow
 
 Do not:
-
 - gold-fill the artwork
-- tint the whole card
-- obscure card art
-
-The card graphic must remain readable.
+- tint the full card
+- obscure artwork
 
 ---
 
-# 25. Selected card must not cover the Action panel
+# 18. Action panel remains separate
 
-Keep the existing bottom-gutter geometry.
+Keep:
+- message left
+- action buttons right
+- concise labels
+- clear separate border
+- action row tall enough for touch use
 
-Even though the selected card rises above top panels, it must remain above the Action boundary.
-
-The Action panel has the highest dock z-index.
-
-Verify at:
-
-- 320px
-- 390px
-- 430px
+Selected Hand card must never cover this area.
 
 ---
 
-# 26. Convert all three opponents to portrait/card-shaped panels
+# 19. Make Play / Skip / End buttons wider
 
-Current opponent `.player-square` is still a wide rectangular panel.
+Latest screenshot requirement: action buttons are still too narrow.
 
-Change it to a portrait/card-like shape.
+For short actions such as:
+- Play
+- Skip
+- End
 
-Suggested mobile target:
+target around:
+
+```css
+min-width: 78px;
+```
+
+For response buttons that need more room:
+- approximately 82–90px if required
+
+Do not make them so wide that normal 390px layout wraps unnecessarily.
+
+Keep concise text labels.
+
+---
+
+# 20. Opponent panels must be portrait/card-shaped
+
+Current opponent `.player-square` is too wide/rectangular.
+
+Convert all 3 visible opponents to portrait/card-like proportions.
+
+Suggested mobile direction:
 
 ```css
 .player-square {
@@ -747,368 +584,197 @@ Suggested mobile target:
 }
 ```
 
-Exact values can be adjusted for viewport fit.
+Exact values can be tuned for viewport fit.
 
-Keep:
+Do not move:
+- top opponent seat
+- left opponent seat
+- right opponent seat
 
-- player name
-- hero name
-- hearts/HP
-- hand count
-- info button
-- turn highlight
-- action highlight
-- selected-target highlight
-- defeated appearance
-
-Do not move the top/left/right seat positions.
+Keep target/turn/action/defeated highlighting.
 
 ---
 
-# 27. Opponent card content layout
+# 21. Opponent information layout must be vertical
 
-Inside each opponent card:
+For every other player, show:
+
+1. player name
+2. hero name
+3. `HP x/x`
+4. hearts
+5. `Hand cards: x`
+
+Example:
 
 ```text
-┌───────────┐
-│        ⓘ │
-│ Player 3  │
-│ Guo Jia   │
-│           │
-│ ♥♥♥       │
-│3/3 · 4    │
-│           │
-└───────────┘
+Test Player 3
+Cao Cao
+HP 5/5
+♥♥♥♥♥
+Hand cards: 4
 ```
 
-Typography should remain compact enough to fit.
+Do not use the current condensed:
+`♥♥♥ · 5/5 HP · 4 cards`
+
+Use a dedicated vertical layout.
+
+Info button stays at top-right.
 
 ---
 
-# 28. Opponent equipment/judgement must remain visible
+# 22. Opponent Equipment must show real graphics + suit/rank
 
-Opponent card shape must not break if opponent zone cards exist.
+Current screenshot shows opponent Equipment as a plain light/text rectangle.
 
-Do not simply let the portrait card grow indefinitely.
+Change it.
 
-If opponent has Equipment/Judgement:
+For opponent Equipment:
+- use real compact card artwork
+- show suit/rank corner
+- keep card name/art at compact scale
+- preserve info button
+- preserve `data-equipment-id` animation destination
 
-- render compact mini cards in a lower internal strip
-- or fan them compactly inside the panel
-
-Do not hide game information.
-
-No game-rule changes.
-
----
-
-# 29. Keep draw/discard unchanged
-
-Do not redesign:
-
-- draw pile
-- discard pile
-- deck count
-- discard-card rendering
-
-This task is focused on player/dock layout.
+Prefer reusing shared `CardFace` with a compact variant/scale rather than separate text-only markup.
 
 ---
 
-# 30. Keep current Hero-skill behaviour
+# 23. Opponent Judgement/Equipment must fit inside card shape
 
-Do not rewrite the existing `heroSkillButtons` logic.
+If opponent has zone cards:
+- keep overall portrait/card shape
+- use a compact internal strip/fan near the lower part
+- do not let the panel expand indefinitely
+- do not hide information
 
-Keep:
-
-- `hero.skills` determines visible buttons
-- semantic capability IDs determine enablement
-- Wusheng/Longdan special state remains intact
-- disabled passive skills stay visible
-
----
-
-# 31. Keep the Action panel
-
-Keep:
-
-- message on left
-- buttons on right
-- concise Play / End / Skip labels
-- wider button hit targets
-- separate bordered panel
-
-Do not shrink it back to the older cramped row.
+No gameplay changes.
 
 ---
 
-# 32. Responsive width strategy
+# 24. Keep Draw / Discard unchanged
 
-For approximately 390px portrait, after the Hero column:
+Do not redesign central Draw or Discard piles in this task.
+
+---
+
+# 25. Responsive strategy
+
+At ~390px after the Hero column:
 
 Suggested variables:
 
 ```css
---status-width: clamp(56px, 15vw, 68px);
---zone-card-width: clamp(28px, 7.8vw, 34px);
---zone-card-gap: clamp(3px, 1.1vw, 6px);
+--status-panel-width: clamp(72px, 19vw, 92px);
+--zone-card-width: clamp(28px, 7.6vw, 34px);
+--zone-card-gap: clamp(3px, 1vw, 6px);
 --top-panel-gap: 3px;
 ```
 
-Equipment width derives from:
+Desired relative sizing:
+- Status: wider than current, but still compact
+- Equipment: 4 cards
+- Judgement: 2 cards
 
-```text
-4 × zone-card-width
-+ 3 × zone-card-gap
-+ padding
-```
+At <=360px:
+- shrink Hero slightly if needed
+- shrink zone cards toward 28px
+- reduce gaps modestly
+- keep 4 Equipment positions
+- keep 2-card Judgement visual capacity
+- keep wider Action buttons usable
 
-Judgement width derives from:
-
-```text
-2 × zone-card-width
-+ zone-card-gap
-+ padding
-```
-
-Status should not absorb spare flex width.
+Avoid wrapping the top row unless absolutely unavoidable.
 
 ---
 
-# 33. <=360px fallback
+# 26. CSS ownership
 
-At 320–360px:
+LocalPlayerDock layout styles remain in:
+- `app/sequence-overrides.css`
 
-- Hero may shrink slightly
-- Status narrows
-- Zone cards shrink toward 28px
-- gaps shrink modestly
-- Equipment still shows four slots
-- Judgement still visually supports two cards
-- Action buttons remain usable
+Opponent `.player-square` canonical styles should be updated in:
+- `app/globals.css`
 
-Do not hide slots.
-
-Avoid wrapping Equipment to another line unless absolutely unavoidable.
+Do not create competing duplicate selector blocks.
 
 ---
 
-# 34. CSS ownership
+# 27. Focused tests
 
-Keep LocalPlayerDock layout rules in:
+Update UI/render tests to verify:
 
-`app/sequence-overrides.css`
+- `local-status-panel` exists
+- `local-equipment-panel` exists
+- `local-judgement-panel` exists
+- all three top panels use the same height rule
+- Status uses vertical HP/hearts/Role structure
+- exactly four Equipment slots render
+- no standalone `+` empty-slot placeholder
+- visual Equipment order is Weapon / Armour / +1 Horse / -1 Horse
+- underlying horse semantics remain unchanged
+- Judgement renders no fake empty slots
+- Judgement renders all actual cards
+- Hand selected card remains same physical card
+- selected card stacking is above top panel layer
+- Hand suit/rank corner is smaller
+- Action buttons use wider minimum width
+- opponent card panel uses portrait/card proportions
+- opponent info is vertical
+- opponent Equipment uses real graphic/card-face rendering
 
-Do not recreate duplicate LocalPlayerDock rules in `app/globals.css`.
-
-For opponent `.player-square`, edit its existing canonical style in `app/globals.css` rather than adding multiple competing override blocks.
-
-Search for duplicate/conflicting selectors before finishing.
-
----
-
-# 35. Required JSX direction
-
-Current:
-
-```tsx
-<div className="local-dock-zones">
-  <div className="local-status-panel">...</div>
-  <div className="local-zone-panel">
-    <div className="local-zone-strip">
-      <div className="local-equipment-slots">...</div>
-      <div className="local-judgement-stack">...</div>
-    </div>
-  </div>
-</div>
-```
-
-Target conceptually:
-
-```tsx
-<div className="local-dock-zones">
-
-  <div className="local-status-panel">
-    <span className="local-status-hp">
-      HP {hp}/{maxHp}
-    </span>
-    <span className="local-status-hearts">
-      {hpDisplay(hp)}
-    </span>
-    <strong className="local-status-role">
-      {role}
-    </strong>
-  </div>
-
-  <div className="local-equipment-panel" aria-label="Equipment">
-    <div className="local-equipment-slots">
-      ... four slots ...
-    </div>
-  </div>
-
-  <div className="local-judgement-panel" aria-label="Judgement zone">
-    <div className="local-judgement-cards">
-      ... only actual judgement cards ...
-    </div>
-  </div>
-
-</div>
-```
-
-Class names may vary slightly, but the semantic separation must exist.
+Do not add brittle pixel screenshot assertions.
 
 ---
 
-# 36. Focused tests to update
+# 28. Required manual UI review
 
-Update the relevant UI/render tests.
-
-Verify:
-
-- three top panels exist:
-  - `local-status-panel`
-  - `local-equipment-panel`
-  - `local-judgement-panel`
-- exactly four `local-equipment-slot` elements
-- empty equipment slots render the correct label
-- no standalone `+` placeholder for empty equipment
-- visual order is Weapon / Armour / +1 Horse / -1 Horse
-- underlying mapping remains `defensiveHorse = +1`, `offensiveHorse = -1`
-- Judgement renders only actual cards
-- multiple Judgement cards render
-- selected Hand card still uses the same physical `data-hand-card-id`
-- selected card wrapper can sit above the top-panel stacking layer
-- selected info icon is hidden when unselected
-- Hand corner CSS is smaller than the current 21×29px
-- opponent player panels use portrait/card proportions
-
-Do not add brittle screenshot-pixel assertions to the Node test suite.
-
----
-
-# 37. Required browser/UI review
-
-After implementation, test at approximately:
-
+After implementation test at approximately:
 - 320px
 - 390px
 - 430px
 
-Capture or inspect:
+Check:
 
-1. empty Equipment / no Judgement
+1. empty Equipment / empty Judgement
 2. one equipped card
-3. all four equipment cards
+3. all four equipped cards
 4. one Judgement card
 5. two Judgement cards
 6. three+ Judgement cards
-7. normal 5–6-card Hand
-8. selected Hand card
+7. normal 5–6 card Hand
+8. selected full Hand card
 9. selected card overlapping top panels
-10. response state
-11. card-shaped opponents
-12. opponent with Equipment/Judgement if practical
+10. response state with wider buttons
+11. all three portrait opponents
+12. opponent with Equipment
+13. opponent Equipment showing real art + suit/rank
 
 ---
 
-# 38. Critical acceptance: selected card
-
-PASS only if:
-
-- full card is visible
-- stays at original x-position
-- rises upward
-- paints above Status
-- paints above Equipment
-- paints above Judgement
-- no panel border/background cuts across it
-- artwork remains visible
-- selected highlight is border/glow only
-- info icon is centred below the card name
-- info icon travels with the selected card
-- selected card does not cover Action panel
-
----
-
-# 39. Critical acceptance: top panels
-
-At about 390px:
-
-Status:
-- narrow
-- same height as Equipment/Judgement
-- HP at top
-- hearts below HP
-- Role below hearts
-
-Equipment:
-- separate border
-- exactly 4 compact card slots
-- empty slots show labels inside
-- no plus icons
-- label disappears/replaced when actual equipment is present
-
-Judgement:
-- separate border
-- no fake slots
-- panel sized for about 2 zone cards
-- 1 card placed naturally
-- 2 cards evenly laid
-- 3+ cards dynamically overlap
-
----
-
-# 40. Critical acceptance: Hand
-
-Hand:
-
-- keeps measured responsive distribution
-- smaller suit/rank marker
-- unselected cards show no info icon
-- selected card shows full card
-- selected info icon is centred below the card name
-- selected card stays in place horizontally
-
----
-
-# 41. Critical acceptance: opponents
-
-All three opponents:
-
-- portrait/card-shaped
-- consistent proportions
-- existing seat positions unchanged
-- target interactions work
-- info buttons work
-- player/hero/HP/hand count remains readable
-- Equipment/Judgement information remains visible when present
-
----
-
-# 42. Do not change gameplay
+# 29. Do not change gameplay
 
 No changes to:
-
 - card legality
 - target calculation
 - distance calculation
-- +1/-1 Horse semantics
+- +1 / -1 Horse semantics
 - equipment ownership
 - judgement rules
-- multiple judgement card support
 - hero skill legality
 - role privacy
 - response flow
 - semantic action API
 - timeline/presentation events
 - Quick Test perspective
-- Dying/rescue
+- rescue/Dying
 - Negation
 - turn state
 
 ---
 
-# 43. Validation
+# 30. Validation
 
 Before completion run:
 
@@ -1119,41 +785,43 @@ npm run lint
 git diff --check
 ```
 
-Do not perform the parked test-suite refactor.
+Do not perform the broad test-suite refactor.
 
-Do not start the final graphic/art skin in this task.
+Do not start the final graphic/art-skin pass.
 
 ---
 
 # Definition of Done
 
-Do not mark the task complete unless every item below is true:
+Do not mark complete unless:
 
-- [ ] Hero card + all Hero skill buttons remain correct.
-- [ ] Status is narrow and vertically shows HP → hearts → Role.
-- [ ] Status, Equipment and Judgement panels have equal height.
-- [ ] Equipment is a separate bordered panel.
-- [ ] Equipment has exactly 4 physical card spaces.
-- [ ] Empty Equipment slots contain text labels.
-- [ ] Empty Equipment slots contain no plus icon.
-- [ ] Visual Equipment order is Weapon, Armour, +1 Horse, -1 Horse.
-- [ ] Underlying horse rules remain unchanged.
-- [ ] Judgement is a separate bordered panel.
-- [ ] Judgement has no fixed empty slots.
-- [ ] Judgement area naturally holds approximately 2 cards.
-- [ ] More than 2 Judgement cards overlap dynamically.
-- [ ] Equipment and Judgement cards use the same compact card dimensions.
+- [ ] Hero card + Hero skill buttons remain correct.
+- [ ] Status panel is wider than current.
+- [ ] Status vertically shows HP → hearts → Role.
+- [ ] Status, Equipment and Judgement have equal height.
+- [ ] Equipment is its own bordered panel.
+- [ ] Equipment has exactly 4 compact slots.
+- [ ] Empty Equipment slots show labels inside.
+- [ ] Empty Equipment slots show no standalone + icon.
+- [ ] Equipment order is Weapon / Armour / +1 Horse / -1 Horse.
+- [ ] Horse game semantics remain unchanged.
+- [ ] Judgement is its own bordered panel.
+- [ ] Judgement panel is smaller and sized for ~2 compact cards.
+- [ ] Judgement has no fake/fixed empty slots.
+- [ ] 3+ Judgement cards dynamically overlap.
+- [ ] Equipment and Judgement use the same compact card dimensions.
 - [ ] Hand suit/rank corner is smaller.
-- [ ] Hand dynamic distribution remains working.
-- [ ] Selecting one Hand card shows its full card.
-- [ ] Selected card stays in its original horizontal position.
-- [ ] Selected card is above all top panels.
-- [ ] No panel border/background covers selected card.
-- [ ] Selected card retains visible artwork with border-only highlight.
-- [ ] Selected card info icon is centred below its card name.
-- [ ] Unselected Hand cards have no visible info icon.
+- [ ] Hand measured/dynamic distribution still works.
+- [ ] Selected Hand card shows the full card.
+- [ ] Selected card stays at original x-position.
+- [ ] Selected card paints above all top panels.
+- [ ] Selected card artwork remains visible with border-only highlight.
+- [ ] Selected info icon is centred below the card name.
 - [ ] Selected card cannot cover the Action panel.
-- [ ] All three opponent panels are card-shaped.
-- [ ] Opponent targeting/info still works.
-- [ ] Draw/discard layout remains unchanged.
-- [ ] No gameplay rules changed.
+- [ ] Play / Skip / End style buttons are wider.
+- [ ] All 3 opponent panels are portrait/card-shaped.
+- [ ] Opponent info is vertical.
+- [ ] Opponent info includes HP x/x, hearts, Hand cards: x.
+- [ ] Opponent Equipment shows real artwork + suit/rank.
+- [ ] Draw/Discard remain unchanged.
+- [ ] No gameplay behaviour changes.
