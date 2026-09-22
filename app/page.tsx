@@ -358,9 +358,9 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
 
 const LOCAL_EQUIPMENT_SLOTS = [
   { key: "weapon", label: "Weapon" },
-  { key: "armor", label: "Armor" },
-  { key: "offensiveHorse", label: "-1 Horse" },
+  { key: "armor", label: "Armour" },
   { key: "defensiveHorse", label: "+1 Horse" },
+  { key: "offensiveHorse", label: "-1 Horse" },
 ] as const;
 type LocalEquipmentSlot = (typeof LOCAL_EQUIPMENT_SLOTS)[number]["key"];
 
@@ -402,12 +402,35 @@ type LocalPlayerDockProps = {
 };
 
 export function LocalPlayerDock({ player, hero, children, heroSkillControl, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set() }: LocalPlayerDockProps) {
+  const judgementRailRef = useRef<HTMLDivElement | null>(null);
+  const [judgementRailWidth, setJudgementRailWidth] = useState(0);
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player?.equipmentCards ?? []) {
     const slot = cardDefinition(equipment.kind).equipmentSlot;
     if (slot) equipmentBySlot.set(slot, equipment);
   }
   const slotLabel = (slot: LocalEquipmentSlot) => LOCAL_EQUIPMENT_SLOTS.find((entry) => entry.key === slot)?.label ?? slot;
+  const judgementCards = player?.judgementCards ?? [];
+  useLayoutEffect(() => {
+    const rail = judgementRailRef.current;
+    if (!rail) return;
+    const updateWidth = () => setJudgementRailWidth(rail.clientWidth);
+    updateWidth();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(rail);
+    return () => observer.disconnect();
+  }, [player?.id]);
+  const judgementCardLayout = useMemo(() => {
+    const cardWidth = 34;
+    const count = judgementCards.length;
+    if (count <= 1) return { step: cardWidth, measured: judgementRailWidth > 0 };
+    const naturalStep = (judgementRailWidth - cardWidth) / (count - 1);
+    return { step: naturalStep >= cardWidth ? naturalStep : Math.max(12, naturalStep), measured: judgementRailWidth > 0 };
+  }, [judgementCards.length, judgementRailWidth]);
   const fallbackSkills = hero?.skills?.length ? hero.skills : hero ? [{ name: hero.skill ?? "Hero Skill", description: hero.ability }] : [];
   const renderZoneCard = (card: Card, selected = false, selectable = false) => <div className={`local-zone-card ${suitColorClass(card.suit)} ${selected ? "selected-cost" : ""}`} key={card.id} data-equipment-id={cardDefinition(card.kind).equipmentSlot ? card.id : undefined} data-judgement-id={!cardDefinition(card.kind).equipmentSlot ? card.id : undefined} style={{ visibility: hiddenCardIds.has(card.id) ? "hidden" : "visible" }}>
     <CardFace card={card} />
@@ -420,11 +443,17 @@ export function LocalPlayerDock({ player, hero, children, heroSkillControl, onHe
       <div className="local-hero-skill">{heroSkillControl ?? <section className="hero-skills local-hero-skills" aria-label="Hero skills">{fallbackSkills.map((skill) => <button type="button" className="hero-skill-button" key={skill.name} title={skill.description} disabled>{skill.name}</button>)}</section>}</div>
     </div>
     <div className="local-dock-zones" aria-label="Your status and equipment zones">
-      <div className="local-status-panel"><strong>{player?.role ?? "Role pending"}</strong><span>HP {player?.hp ?? 0}/{player?.maxHp ?? 0} {hpDisplay(player?.hp ?? null)}</span></div>
-      <div className="local-zone-panel" aria-label="Equipment and judgement zones">
-        <div className="local-zone-strip">
-          <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key} aria-label={`${slotLabel(key)} slot`} role="group">{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}>+</span>}</div>; })}</div>
-          <div className="local-judgement-stack" data-slot="judgement" aria-label="Judgement zone" role="group"><div>{(player?.judgementCards ?? []).map((card) => renderZoneCard(card))}</div></div>
+      <div className="local-status-panel">
+        <span className="local-status-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span>
+        <span className="local-status-hearts">{hpDisplay(player?.hp ?? null)}</span>
+        <strong className="local-status-role">{player?.role ?? "Role pending"}</strong>
+      </div>
+      <div className="local-equipment-panel" aria-label="Equipment">
+        <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key} aria-label={`${slotLabel(key)} slot`} role="group">{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}><span className="local-zone-empty-label">{slotLabel(key)}</span></span>}</div>; })}</div>
+      </div>
+      <div className="local-judgement-panel" aria-label="Judgement zone">
+        <div ref={judgementRailRef} className="local-judgement-cards" data-judgement-layout={judgementCardLayout.measured ? "measured" : "pending"}>
+          {judgementCards.map((card, index) => <div className="local-judgement-card-slot" key={card.id} style={{ marginLeft: index === 0 ? 0 : `${judgementCardLayout.step - 34}px` }}>{renderZoneCard(card)}</div>)}
         </div>
       </div>
     </div>
@@ -623,6 +652,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
     const minStep = 30;
     const count = room.myHand.length;
     if (count <= 1) return { step: cardWidth, measured: handRailWidth > 0 };
+    if (handRailWidth <= 0) return { step: cardWidth, measured: false };
     const naturalStep = (handRailWidth - cardWidth) / (count - 1);
     return { step: naturalStep >= cardWidth ? naturalStep : Math.max(minStep, naturalStep), measured: handRailWidth > 0 };
   }, [handRailWidth, room.myHand.length]);

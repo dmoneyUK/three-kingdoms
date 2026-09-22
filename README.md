@@ -43,36 +43,40 @@ and 430px, followed by the final graphic/theme skin.
 
 ## Final mobile LocalPlayerDock structure — 2026-09-22
 
-The presentation-only dock refinement is complete. Mobile now has five
-independent bordered panels: a narrow Hero panel, separate Status and
-Equipment/Judgement panels, a full-width right-column Hand panel, and a taller
-full-width Action panel. The mobile grid uses a 90px hero column (88px at the
-smallest breakpoint), 92px for Status plus Zones, a 72px hand row, and a 54px
-action row.
+The presentation-only dock refinement is complete. Mobile keeps a narrow Hero
+column and a full-width right-side dock whose top row contains equal-height
+Status, Equipment, and Judgement panels; the Hand spans the right side below
+them and the Action panel remains full width. Status is responsive and ordered
+HP, hearts, Role. At <=480px the Hero column is 64px and the top panels use a
+responsive 56–68px Status width; below 360px the Hero is 58px and Status 52px.
 
 The Hero panel renders every name from `hero.skills`, including passive and
 currently unavailable skills as disabled buttons. Existing semantic trigger
 IDs and the Guan Yu/Zhao Yun response controls still own enablement and clicks;
-React does not infer hero legality. Status contains only role and HP. Zone
-labels are accessibility-only, the slot order remains Weapon, Armor, -1 Horse,
-+1 Horse, Judgement, and shared `CardFace` artwork remains in use.
+React does not infer hero legality. Equipment has exactly four compact slots in
+Weapon, Armour, +1 Horse, -1 Horse presentation order while retaining the
+`defensiveHorse`/`offensiveHorse` semantic mapping. Empty slots show their
+labels without a plus glyph; occupied slots show only the shared `CardFace`.
+Judgement is a separate dynamic area with no fake empty slots.
 
 Hand placement measures the actual rail with `ResizeObserver`, distributes
 cards across the available width when they fit, and applies only calculated
-overlap (with scrolling for larger hands). Selection keeps the same physical
-slot and rises without covering the Action panel. Hand corner markers are
-scoped smaller, and Action labels/buttons remain concise and touchable.
+overlap. Selection keeps the same physical slot, reveals the full card above
+the top panels, moves its centred info control with it, and remains below the
+Action panel. Hand corner markers are smaller, and all three visible opponent
+panels use a portrait/card silhouette without hiding their mini zones.
 
 All LocalPlayerDock geometry remains consolidated in
 `app/sequence-overrides.css`; no duplicate dock layout was restored to
-`app/globals.css`. Focused render coverage verifies skill counts/names,
-separate panels, accessibility labels, dynamic spacing, selected-card
-structure, and Quick Test perspective switching. Gameplay rules, semantic
+`app/globals.css`. Focused render coverage verifies skill counts/names, the
+three top panels, slot order/labels, dynamic Judgement spacing, selected-card
+structure, smaller corners, portrait opponents, and Quick Test perspective switching. Gameplay rules, semantic
 actions, private projections, equipment/Judgement behavior, and animation
 events are unchanged.
 
-Current stage: Stage 7 product polish, final dock structure complete. The next
-milestone is deployed mobile review followed by the final graphic/theme skin.
+Current stage: Stage 7 product polish, final dock structure and local responsive
+review complete. The next milestone is deployed mobile review followed by the
+final graphic/theme skin.
 
 ## Standard hero selection is implementation-gated — 2026-09-22
 

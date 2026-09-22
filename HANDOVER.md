@@ -60,11 +60,10 @@ final graphic/theme skin; do not broaden this UI pass into game logic.
 ## Final mobile LocalPlayerDock structure — 2026-09-22
 
 Implemented the final presentation-only dock structure in `app/page.tsx` and
-`app/sequence-overrides.css`. The mobile grid now has a narrow Hero panel, a
-separate Status panel, a separate Equipment/Judgement panel, a full-width
-right-column Hand panel, and a distinct 54px Action panel. Mobile geometry is
-90px + flexible columns, 92px Status/Zones, 72px Hand, and 54px Action, with
-an 88px hero column at <=360px.
+`app/sequence-overrides.css`. The mobile grid keeps the narrow Hero column and
+full-width right-side Hand/Action structure, while `.local-dock-zones` now
+contains equal-height Status, Equipment, and Judgement siblings. Status uses
+responsive width/typography and renders HP, hearts, then Role vertically.
 
 Hero buttons are built from `hero.skills` through a small presentation model.
 Stable capability/provider IDs (`effectId` and response provider IDs) attach
@@ -72,26 +71,30 @@ existing actions; missing mappings stay visible and disabled. God of War and
 Braveheart retain their established Wusheng/Longdan state and cancellation
 behavior. No provider-specific route or gameplay action was added.
 
-Equipment and Judgement slots keep their semantic keys and accessibility names
-without visible zone labels. The physical order remains Weapon, Armor, -1
-Horse, +1 Horse, Judgement, and multiple Judgement cards remain fanned in the
-same logical array using shared `CardFace` artwork.
+Equipment has exactly four compact visual slots in Weapon, Armour, +1 Horse,
+-1 Horse order. Empty slots contain their labels and no plus placeholder;
+occupied slots replace the placeholder with only the shared `CardFace`, while
+the semantic horse keys remain unchanged. Judgement is a separate bordered
+panel with no fake slots; its measured rail lays out one card naturally, two
+cards evenly, and progressively overlaps larger collections.
 
-The hand rail measures its actual width, spaces cards when `N * 68px` fits,
-otherwise clamps the calculated step to a 30px minimum and allows horizontal
-scrolling. Offsets depend only on measured width and hand count, so selection
-does not reflow cards; a selected card rises within the existing dock gutter.
-The smaller hand corner and wider concise Action controls are scoped to the
-LocalPlayerDock.
+The hand rail keeps its measured spacing and uses a neutral zero-width fallback
+until measurement is available, so it never emits a fixed negative overlap.
+Selected cards keep their physical slot, rise as full cards above the top-panel
+stacking layer, and carry a centred info icon below the card name; the Action
+panel remains above them. The hand corner is smaller and scoped to the dock.
+Opponent panels in `app/globals.css` now use a 2:3 portrait silhouette while
+retaining names, hero, HP, hand count, targeting, info buttons, and mini zones.
 
 Focused render coverage now verifies skill count/name/no-generic-fallback,
-separate panel containers, hidden visible labels with retained aria labels,
-dynamic hand spacing/ResizeObserver source, selected-card ownership, and Quick
-Test perspective switching. `npm run test:fast`, `npm run lint`, `npm run build`,
-and `git diff --check` are green. A local browser preview verified the
-separate-panel structure and even distribution for a four-card hand; the
-remaining release check is deployed review at 320px, 390px, and 430px,
-including selected/response/multiple-Judgement states.
+three top-panel containers, vertical Status markup, slot order and empty labels,
+dynamic Judgement spacing, private CardFace rendering, smaller hand corners,
+selected-card stacking/icon rules, portrait opponent CSS, and Quick Test
+perspective switching. The full local validation and deployed review at
+320px, 390px, and 430px is now green: `npm test` passes all 101 API tests and
+36 focused tests, lint/build/diff-check pass, and the local browser review
+confirmed the responsive dock geometry at all three widths. The live deployed
+review and final graphic/theme skin remain the next milestone.
 
 Known boundaries: this change does not alter rules, semantic actions, private
 projections, response legality, equipment/Judgement behavior, or animation

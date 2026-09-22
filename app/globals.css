@@ -876,3 +876,28 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .hero-role-banner{display:inline-flex;align-items:center;gap:12px;margin:2px 0 14px;padding:9px 16px;border:1px solid #c7a35d80;background:#151812c9;box-shadow:0 8px 20px #0004}.hero-role-banner span{font:9px Arial;letter-spacing:.16em;color:#9d9b8b;text-transform:uppercase}.hero-role-banner strong{font:16px Georgia,serif;letter-spacing:.08em;color:#e0c47d;text-transform:uppercase}
 
 /* Local dock layout lives in sequence-overrides.css. */
+
+/* Final mobile player panels: retain the existing seat grid and interactions,
+   but give every visible opponent the same portrait/card silhouette. */
+.player-square {
+  aspect-ratio: 2 / 3;
+  width: clamp(100px, 26vw, 112px);
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.player-square-target { flex: 1 1 auto; justify-content: center; min-height: 0; }
+.player-square-target strong,
+.player-square-target span,
+.player-square-target small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.square-zone { flex: 0 0 auto; min-width: 0; overflow: hidden; }
+.square-zone > div { flex-wrap: nowrap; overflow: hidden; }
+.mini-zone-card { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+
+@media (max-width: 700px) {
+  .player-square { width: clamp(92px, 26vw, 112px); }
+}
+
+@media (max-width: 480px) {
+  .player-square { width: clamp(82px, 26vw, 100px); }
+}
