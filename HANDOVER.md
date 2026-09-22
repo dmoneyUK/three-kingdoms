@@ -1,5 +1,38 @@
 # Three Kingdoms project handover
 
+## Compact General selection cards — 2026-09-22
+
+Implemented the presentation-only General Selection redesign in
+`app/page.tsx` and `app/globals.css`. Candidate buttons now sit inside
+`.hero-choice-wrap` portrait-card wrappers using the 108:154 ratio. Five-card
+Lord selections are explicitly five-up on desktop and become two columns with
+the odd final card centred below tablet width; three-card selections use the
+same compact grid. The former mobile horizontal profile-card rules and the
+duplicate hero selected transform in `app/sequence-overrides.css` were
+removed.
+
+Each candidate has a sibling circular `hero-info-button`, so the card selects
+without nesting buttons and the info control opens the existing
+`HeroInfoDialog`. The dialog continues to render the full hero metadata and
+all skills. The selected hero remains local React state, the confirm button
+still calls the existing `onChoose`/`choose_hero` flow, and waiting state,
+role privacy, candidate allocation, and multiplayer sequencing are unchanged.
+
+Render coverage now checks three-card and five-card projections, one info
+control per candidate, sibling-card markup, and dialog wiring. The live local
+Quick Test review verified the Lord flow, independent Liu Bei information
+viewing, selection persistence, and updated Confirm text. Build, lint, fast
+render tests, and `git diff --check` are green. API shards 2–4 also pass (73
+tests); the existing shard 1 equipment/judgement runner loses its local
+Wrangler server on port 3137 and its 28 tests fail with `ECONNREFUSED`, so the
+full API suite remains an environment blocker rather than a claimed green
+result.
+
+Known boundary: the current repository still uses its existing faction
+monogram presentation because no licensed General artwork is part of this
+change. The next recommended work remains the deployed mobile review and
+final graphic/theme skin; do not broaden this UI pass into game logic.
+
 ## Local dock panel separation — 2026-09-22
 
 The local player dock now has four real mobile panels: Hero, Status plus

@@ -21,6 +21,16 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(html, /YOUR SECRET ROLE/);
   assert.match(html, />Rebel<\/strong>/);
   assert.match(html, /aria-label="Your secret role is Rebel"/);
+  assert.equal((html.match(/class="hero-choice-wrap/g) ?? []).length, 3, "each private candidate has a card wrapper");
+  assert.equal((html.match(/class="hero-info-button"/g) ?? []).length, 3, "each private candidate has an information control");
+  assert.match(html, /aria-label="View Cao Cao information"/);
+  assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
+  assert.match(gameRoomSource, /className=\{`hero-choice-wrap \$\{effectiveSelected === hero\.id \? "selected" : ""\}`\}/);
+  assert.match(gameRoomSource, /onClick=\{\(\) => setInfoHero\(hero\)\}/);
+  assert.match(gameRoomSource, /\{infoHero && <HeroInfoDialog hero=\{infoHero\}/);
+  const lordHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myRole: "Lord", myHeroOptions: STANDARD_HEROES.slice(0, 5) }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
+  assert.match(lordHtml, /class="hero-choice-grid hero-choice-grid-5"/);
+  assert.equal((lordHtml.match(/class="hero-choice-wrap/g) ?? []).length, 5, "Lord receives five compact candidate cards");
 });
 
 test("the local player dock replaces the self battlefield square and follows Quick Test perspective", () => {

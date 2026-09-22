@@ -1,5 +1,24 @@
 # Three Kingdoms
 
+## Compact General selection cards — 2026-09-22
+
+The General Selection page now presents private candidates as compact portrait
+cards using the normal 108:154 card ratio. Lord selections use five cards on
+desktop and two columns with a centred final card on smaller screens; the
+three-card non-Lord layout follows the same responsive model. Each card keeps
+faction, portrait/monogram, name, HP, skill names, and SELECTED/CHOOSE state,
+with a separate circular information button for the existing full
+`HeroInfoDialog`.
+
+Card selection and information viewing are separate presentation actions, and
+confirmation still uses the unchanged `choose_hero` path. General allocation,
+role privacy, selector sequencing, waiting state, and multiplayer behaviour
+were not changed.
+
+Current stage: Stage 7 product polish, compact General selection pass complete.
+The next milestone remains deployed mobile review and the final graphic/theme
+skin.
+
 ## Local dock panel separation — 2026-09-22
 
 The mobile local dock now renders four complete visual regions: Hero, Status +

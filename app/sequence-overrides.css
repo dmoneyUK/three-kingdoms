@@ -1104,7 +1104,6 @@
 
 /* Make every committed selection unmistakable across cards, heroes, targets, and pickers. */
 .game-card.selected,
-.hero-choice.selected,
 .player-square.selected-target,
 .target-card-picker-card.selected,
 .hidden-card-picker button.selected,
@@ -1123,11 +1122,6 @@
 .game-card.selected {
   outline: 0;
   box-shadow: 0 0 0 2px #ffe28a, 0 0 10px #ffd15f99, 0 8px 16px #0009;
-}
-
-.hero-choice.selected {
-  background: linear-gradient(160deg, #66532a 0%, #252718 58%, #131611 100%);
-  transform: translateY(-10px) scale(1.015);
 }
 
 .player-square.selected-target {
@@ -1166,7 +1160,6 @@
 }
 
 .game-card.selected:focus-visible,
-.hero-choice.selected:focus-visible,
 .player-square.selected-target .player-square-target:focus-visible,
 .target-card-picker-card.selected:focus-visible,
 .hidden-card-picker button.selected:focus-visible,
