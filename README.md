@@ -1,5 +1,25 @@
 # Three Kingdoms
 
+## DOM-aligned card animations — 2026-09-22
+
+Step 3 aligns resolution presentation with the rendered game shell. The local
+dock, each visible opponent panel, the local hand, and the central draw and
+discard piles expose stable DOM anchors keyed by authoritative player/card
+IDs. `TableResolutionSequence` measures those anchors relative to the actual
+play table and uses them for card origins, player settlement stacks,
+equipment, Judgement, and direct-discard destinations.
+
+Measurements refresh through `ResizeObserver` for the table and active
+source/destination anchors, so responsive layout changes do not reuse stale
+page coordinates. The hidden circular Judgement/info overlays are removed;
+the visible opponent mini-cards are now the flight destinations. Gameplay
+state, event payloads, response logic, and Step 2 selection behavior are
+unchanged.
+
+The next milestone is Step 4: review the deployed mobile UI, then apply the
+final graphic/theme pass. No graphic skin or official artwork is included in
+this step.
+
 ## Compact local dock, peek hand, and centre piles — 2026-09-22
 
 Step 2 keeps the Step 1 controlled-seat dock and compresses it into one player
@@ -29,13 +49,8 @@ semantic actions, and privacy projections are unchanged. The decorative board
 ellipse was removed, while the central deck/discard play-center and existing
 resolution animation geometry remain unchanged for the next layout pass.
 
-Current stage: compact local dock and centre-pile presentation complete,
-including the Step 2 review fixes for duplicate-hand rendering, fixed-height
-selection overlays, and compact mobile clipping. The
-next milestone is Step 3: add actual rendered player/dock anchors to
-`TableResolutionSequence` and update card origin, destination, equipment flight,
-Judgement flight, and settled-card locations. Step 3 remains intentionally
-outstanding; this pass does not change its circular/trigonometric geometry.
+Current stage: Step 3 DOM-aligned card animations complete. Step 4 is next:
+review the deployed mobile UI, then implement the final graphic/theme pass.
 
 Test commands are split without reducing coverage: `npm run test:fast` runs
 pure/unit/render tests without Wrangler, `npm run test:api` owns the API

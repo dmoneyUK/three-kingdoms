@@ -25,8 +25,8 @@ test("hero selection shows the effective viewer's private role", () => {
 test("the local player dock replaces the self battlefield square and follows Quick Test perspective", () => {
   const players = [
     { id: "p1", name: "HOST", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 2, equipmentCards: [card("weapon", "BlueSteelSword"), card("armor", "NioShield"), card("offensive-horse", "RedHare"), card("defensive-horse", "Shadowrunner")], judgementCards: [card("lightning", "Lightning"), card("overindulgence", "Overindulgence")], attackRange: 2, distance: null, isHost: true, role: "Lord" },
-    { id: "p2", name: "ALICE", seat: 1, hero: "guan-yu", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
-    { id: "p3", name: "BOB", seat: 2, hero: "zhang-fei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Loyalist" },
+    { id: "p2", name: "ALICE", seat: 1, hero: "guan-yu", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [card("opponent-weapon", "BlueSteelSword")], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    { id: "p3", name: "BOB", seat: 2, hero: "zhang-fei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [card("opponent-judgement", "Lightning")], attackRange: 1, distance: 1, isHost: false, role: "Loyalist" },
     { id: "p4", name: "CAROL", seat: 3, hero: "zhen-ji", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
   ];
   const payload = {
@@ -38,6 +38,15 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.ok(room);
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((html.match(/class="player-square /g) ?? []).length, 3, "a four-player board renders only the three opponents");
+  assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 4, "every visible player has one authoritative DOM anchor");
+  assert.match(html, /class="local-player-dock"[^>]*data-player-anchor="p1"/);
+  assert.match(html, /class="player-square[^>]*data-player-anchor="p2"/);
+  assert.match(html, /class="player-square[^>]*data-player-anchor="p3"/);
+  assert.match(html, /class="mini-zone-card"[^>]*data-equipment-id="opponent-weapon"/);
+  assert.match(html, /class="mini-zone-card judgement-mini"[^>]*data-judgement-id="opponent-judgement"/);
+  assert.match(html, /class="local-hand"[^>]*data-card-origin-anchor="p1"/);
+  assert.match(html, /class="draw-stack"[^>]*data-draw-anchor="true"/);
+  assert.match(html, /class="discard-stack"[^>]*data-discard-anchor="true"/);
   assert.doesNotMatch(html, /class="player-square player-square-0/);
   assert.match(html, /class="local-player-dock"/);
   assert.match(html, /data-hero-id="cao-cao"/);
@@ -66,6 +75,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="discard-stack"[^>]*data-discard-kind="Dismantle"/);
   assert.doesNotMatch(html, /After you take damage/);
   assert.doesNotMatch(html, /private-opponent-card/);
+  const sequenceSource = gameRoomSource.slice(gameRoomSource.indexOf("function TableResolutionSequence"), gameRoomSource.indexOf("function CardFace"));
+  assert.doesNotMatch(sequenceSource, /Math\.(sin|cos)|activeAngle|activeRadians|--seat-[xy]/, "resolution placement is not circular seat geometry");
+  assert.match(sequenceSource, /centerRelativeToTable/);
 
   const switched = normalizeRoomData({ ...payload, code: "DOCK2", meId: "p3", myRole: "Loyalist", myHand: [card("switched-hand", "Dodge")], actionPlayerId: "p3", currentAction: { ...payload.currentAction, actorId: "p3" } });
   assert.ok(switched);

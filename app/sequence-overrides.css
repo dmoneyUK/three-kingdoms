@@ -32,6 +32,8 @@
 
 .active-table-reveal {
   --settle-scale: .4;
+  left: var(--origin-x, 50%);
+  top: var(--origin-y, 50%);
   animation: sequenceCardToOwner var(--played-card-display) ease-in-out both !important;
 }
 
@@ -48,12 +50,12 @@
   animation: judgementCardToZone var(--played-card-display) ease-in-out both !important;
 }
 @keyframes equipmentCardToSlot {
-  0% { left: var(--origin-x); top: var(--origin-y); opacity: .15; transform: scale(.25); }
+  0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
   10%, 72% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   100% { left: var(--equipment-x, 50%); top: var(--equipment-y, 50%); opacity: 1; transform: scale(var(--equipment-scale-x, .4), var(--equipment-scale-y, .4)); }
 }
 @keyframes judgementCardToZone {
-  0% { left: var(--origin-x); top: var(--origin-y); opacity: .15; transform: scale(.25); }
+  0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
   10%, 72% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   100% { left: var(--judgement-x, 50%); top: var(--judgement-y, 50%); opacity: 1; transform: scale(var(--judgement-scale-x, .32), var(--judgement-scale-y, .32)); }
 }
@@ -61,17 +63,17 @@
 /* Reach the owner early enough to remain visibly settled before React swaps in
    the small persistent copy. No frame in this animation targets the discard. */
 @keyframes sequenceCardToOwner {
-  0% { left: var(--origin-x); top: var(--origin-y); opacity: .15; transform: scale(.25); }
+  0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
   10% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   65% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
-  78%, 100% { left: var(--settle-x); top: var(--settle-y); opacity: 1; transform: scale(var(--settle-scale)); }
+  78%, 100% { left: var(--settle-x, 50%); top: var(--settle-y, 50%); opacity: 1; transform: scale(var(--settle-scale)); }
 }
 
 @keyframes revealedCardsToDiscard {
-  0% { left: var(--origin-x); top: var(--origin-y); opacity: .15; transform: scale(.25); }
+  0% { left: var(--origin-x, 50%); top: var(--origin-y, 50%); opacity: .15; transform: scale(.25); }
   10% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
   72% { left: 50%; top: 50%; opacity: 1; transform: scale(1); }
-  100% { left: calc(50% + 42px); top: 50%; opacity: 0; transform: scale(.12) rotate(3deg); }
+  100% { left: var(--discard-x, 50%); top: var(--discard-y, 50%); opacity: 0; transform: scale(.12) rotate(3deg); }
 }
 
 .active-table-reveal .played-card {
@@ -317,8 +319,8 @@
 }
 
 .table-resolution-layer .player-played-cards {
-  left: var(--seat-x);
-  top: var(--seat-y);
+  left: var(--settle-x, 50%);
+  top: var(--settle-y, 50%);
   transform: none;
 }
 
@@ -330,8 +332,14 @@
 }
 
 @keyframes sequenceCardsToDiscard {
-  0% { left: var(--seat-x); top: var(--seat-y); opacity: 1; transform: scale(1); }
-  100% { left: calc(50% + 42px); top: 50%; opacity: 0; transform: scale(.12) rotate(3deg); }
+  0% { left: var(--settle-x, 50%); top: var(--settle-y, 50%); opacity: 1; transform: scale(1); }
+  100% { left: var(--discard-x, 50%); top: var(--discard-y, 50%); opacity: 0; transform: scale(.12) rotate(3deg); }
+}
+
+/* The local hand sits below the table. Resolution cards must be able to leave
+   that real origin and travel across the board without being clipped. */
+.game-shell .play-table {
+  overflow: visible;
 }
 
 @media (max-width: 700px) {
@@ -342,37 +350,10 @@
   .active-table-reveal { --settle-scale: .426; }
   .play-seat > .visible-countdown { min-width: 50px; }
 }
-/* Four equipment slots remain inside a two-column rack at every seat. */
-.player-equipment-zone { width: 118px; }
-.player-equipment-zone > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; min-height: 148px; }
-.player-equipment-card { width: 100%; min-width: 0; }
-.player-judgement-zone { --judgement-radius: min(19vw, 225px); position: absolute; left: 50%; top: 50%; z-index: 18; width: 96px; translate: -50% -50%; transform: rotate(var(--angle)) translateY(calc(var(--judgement-radius) * -1)) rotate(calc(var(--angle) * -1)); padding: 4px; border: 1px solid #9c7548; background: #151812e8; }
-.player-judgement-zone > span { display: block; margin-bottom: 3px; color: #d8bd7a; font: 6px Arial; letter-spacing: .12em; text-transform: uppercase; }
-.player-judgement-zone > div { display: flex; justify-content: center; gap: 3px; min-height: 54px; }
-.player-judgement-card { width: 38px; }
-.player-judgement-card .played-card { width: 38px; height: 54px; padding: 3px 2px; animation: none; box-shadow: 0 3px 8px #000b; }
-.player-judgement-card .played-card > i { left: 3px; top: 2px; font-size: 7px; }
-.player-judgement-card .played-card > i small { font-size: 6px; }
-.player-judgement-card .played-card .card-name-mark { font-size: 6px; }
-.player-judgement-card .played-card > strong { font-size: 3px; }
 .table-hidden-card-picker.target-card-picker { position: fixed; max-height: 85dvh; overflow-y: auto; }
 .target-picker-actions { width: 100%; position: sticky; bottom: 0; padding-top: 12px; background: #151812; }
 .target-card-picker .target-picker-actions button { width: 100%; min-height: 44px; height: auto; padding: 12px; background: #b8934b; color: #17160f; font: bold 12px Arial; }
 .target-card-picker .target-picker-actions button:disabled { opacity: .45; }
-@media (max-width: 800px) {
-  .player-equipment-zone { width: 104px; }
-  .player-equipment-zone > div { min-height: 132px; }
-}
-@media (max-width: 520px) {
-  .player-equipment-zone { width: 86px; }
-  .player-equipment-zone > div { gap: 3px; min-height: 117px; }
-  .player-equipment-card { width: 100%; min-width: 0; }
-  .player-judgement-zone { --judgement-radius: 27vw; width: 80px; }
-  .player-judgement-card { width: 32px; }
-  .player-judgement-card .played-card { width: 32px; height: 46px; }
-  .player-judgement-card .played-card .card-name-mark { font-size: 5px; }
-}
-
 /* Step 2: the local seat is a compact dock and the hand is a layered peek
    rail. These rules intentionally do not change the table-resolution anchors. */
 .game-shell {

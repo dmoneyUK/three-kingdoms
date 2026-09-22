@@ -1,5 +1,39 @@
 # Three Kingdoms project handover
 
+## DOM-aligned card animations — 2026-09-22
+
+Step 3 is implemented as a presentation-only update. `LocalPlayerDock`, every
+visible opponent `player-square`, the local hand, and the central piles expose
+stable DOM anchors. Equipment and Judgement mini-cards carry their physical
+card IDs, and the resolution layer measures those visible elements relative to
+`.play-table` through one shared `centerRelativeToTable` helper.
+
+Normal cards now originate from the local hand or source player panel and
+settle near the measured source player's actual panel. Equipment and
+Judgement flights target the visible local or opponent card slot. Direct
+discard and concluding settled-card animations target the measured central
+discard pile. `ResizeObserver` watches the table plus active source,
+destination, player, and discard anchors so responsive changes recalculate
+positions.
+
+The old hidden circular Judgement/info overlays are removed. The active
+game-shell no longer uses circular seat geometry for resolution origins,
+settlement, equipment flight, Judgement flight, or discard movement. The
+target-card picker retains its separate interaction positioning. No gameplay
+rules, event payloads, semantic actions, targeting, privacy, Quick Test
+control, or Step 2 selection state changed.
+
+Structural render regressions cover authoritative player anchors, local hand
+origin, visible equipment/Judgement destinations, draw/discard anchors, and
+the absence of trigonometric placement inside `TableResolutionSequence`.
+The next recommended work is Step 4: review the deployed mobile UI, then add
+the final graphic/theme skin; do not begin that skin in this step.
+
+Validation for Step 3: `npm test` passes 134 / 134, `npm run lint` passes,
+the production build completes, and `git diff --check` passes. The local
+browser sanity check reached the lobby successfully; full in-game visual
+review remains part of the deployed Step 4 review.
+
 ## Compact local dock, peek hand, and centre piles — 2026-09-22
 
 Step 1 remains intact and Step 2 is implemented. `GameRoom` filters
@@ -20,9 +54,7 @@ positions for opponents, with side seats explicitly translated lower than the
 top seat, and `.play-table:before` was removed without adding another emblem
 or ellipse.
 
-This pass deliberately does not modify `TableResolutionSequence`; its
-animation geometry still uses the previous seat layout and is the known next
-boundary for Step 3. The dock is now a compact flex-height footer on mobile.
+The dock is now a compact flex-height footer on mobile.
 The Step 2 review fix removed the old ordinary `.play-hand` renderer, leaving
 exactly one private hand rail under `LocalPlayerDock`. Its identity, four
 equipment slots, and Judgement stack share the top line; the hand is a
@@ -43,12 +75,10 @@ are explicitly below opponent panels, settled cards, active reveals, and modal
 pickers. The shell uses `100dvh` flex sizing so the saved footer height returns
 to the battlefield without changing resolution geometry.
 
-Known boundary: `TableResolutionSequence` still uses its previous circular /
-trigonometric animation anchors. Recommended next work is Step 3 dock-aware
-resolution geometry and manual visual verification at 320, 390, 430, tablet,
-and desktop widths. No gameplay rules, semantic actions, targeting, privacy,
-seat calculations, equipment logic, Judgement logic, or hero skills changed in
-this pass.
+The prior Step 2 boundary around circular resolution geometry is closed by the
+Step 3 section above. No gameplay rules, semantic actions, targeting, privacy,
+seat calculations, equipment logic, Judgement logic, or hero skills changed
+in Step 2 or Step 3.
 
 Validation for this Step 2 final review: `npm test` passes 134 / 134, including the
 focused SSR render regressions; `npm run lint` passes; and the production build
