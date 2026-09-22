@@ -49,6 +49,17 @@ single-selection cards can rise into the equipment row, but their transformed
 bottom remains above the action row. Render checks cover the distinct regions,
 mobile hand height, upward selected-card transform, and action-row stacking.
 
+The latest layout pass removes the wasted hero-driven equipment row height by
+making `.local-dock-identity` span the first two mobile rows:
+`identity/zones`, then `identity/hand`, followed by full-width actions. The
+zone strip is a fixed-width five-position row, with compact Judgement cards
+overlapping when necessary. The hand is confined to the right column with
+56px of normal rail content inside its 58px bordered region; six cards fit at
+390px through controlled overlap and larger hands can scroll horizontally.
+The selected slot stays 56px tall while its 102px card transforms upward,
+keeping the action row at the bottom of the dock. A <=360px variant keeps the
+same structure while scaling the small zones to avoid clipping at 320px.
+
 Focused render assertions prove there is no legacy selected-preview renderer,
 the rail uses one physical instance per hand card, single selection is marked
 in-place, and multi-select mode remains distinct. A fresh 390px local browser

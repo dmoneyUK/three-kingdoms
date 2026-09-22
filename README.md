@@ -40,6 +40,15 @@ single selected card may rise into the equipment row, but its bottom remains
 above the action region, so selecting a card cannot cover the prompt or
 buttons.
 
+The mobile dock now uses a three-row, two-column structure in which the
+identity column spans the zone and hand rows. The right column reserves a
+56px compact five-slot equipment/Judgement strip above a 58px hand window;
+the action row remains a 30px full-width region. Hand cards overlap
+horizontally within the right column, larger hands scroll in the rail, and a
+single selected card paints upward without enlarging its layout slot. A
+narrower <=360px breakpoint scales only the compact zones and overlap so the
+320px layout remains contained.
+
 ## DOM-aligned card animations — 2026-09-22
 
 Step 3 aligns resolution presentation with the rendered game shell. The local

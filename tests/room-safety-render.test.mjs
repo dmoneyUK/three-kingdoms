@@ -88,9 +88,15 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(sequenceSource, /Math\.(sin|cos)|activeAngle|activeRadians|--seat-[xy]/, "resolution placement is not circular seat geometry");
   assert.match(sequenceSource, /centerRelativeToTable/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: 80px[\s\S]*border-top: 1px[\s\S]*border-bottom: 1px/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*grid-template-areas: "identity zones" "identity hand" "actions actions"/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*grid-template-columns: 132px minmax\(0, 1fr\)/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-dock-zones\s*\{[\s\S]*display: flex[\s\S]*gap: 3px/);
   assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-hand-section\s*\{[\s\S]*height: 58px[\s\S]*min-height: 58px/);
-  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*z-index: 30[\s\S]*background: #11150f/);
-  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.game-card\s*\{[\s\S]*transform: translateY\(-52px\)/);
+  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*z-index: 40[\s\S]*background: #11150f/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-hand-rail\s*\{[\s\S]*top: 1px[\s\S]*height: 56px/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-hand-rail \.card-slot\s*\{[\s\S]*margin-left: -38px/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-hand-rail \.card-slot\.single-selected \.game-card\s*\{[\s\S]*transform: translateY\(-46px\)/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 120px minmax\(0, 1fr\)[\s\S]*grid-template-columns: repeat\(4, 30px\)/);
 
   const switched = normalizeRoomData({ ...payload, code: "DOCK2", meId: "p3", myRole: "Loyalist", myHand: [card("switched-hand", "Dodge")], actionPlayerId: "p3", currentAction: { ...payload.currentAction, actorId: "p3" } });
   assert.ok(switched);

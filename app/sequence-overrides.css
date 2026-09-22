@@ -360,6 +360,7 @@
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .game-shell .play-table {
@@ -462,13 +463,13 @@
   overflow: visible;
   border-top: 1px solid #765f3c99;
   border-bottom: 1px solid #765f3c99;
-  z-index: 5;
+  z-index: 25;
 }
 
 .local-player-dock .turn-controls {
   position: relative;
   grid-area: actions;
-  z-index: 30;
+  z-index: 40;
   min-height: 0;
   height: auto;
   box-sizing: border-box;
@@ -763,16 +764,26 @@
   }
 
   .local-player-dock {
-    grid-template-columns: minmax(142px, 42%) minmax(0, 1fr);
-    grid-template-rows: auto 58px auto;
-    grid-template-areas: "identity zones" "hand hand" "actions actions";
-    gap: 3px;
+    grid-template-columns: 132px minmax(0, 1fr);
+    grid-template-rows: 56px 58px auto;
+    grid-template-areas: "identity zones" "identity hand" "actions actions";
+    column-gap: 4px;
+    row-gap: 2px;
     padding-top: 2px;
+  }
+
+  .local-player-dock .local-dock-identity {
+    height: 100%;
+    min-height: 0;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
   }
 
   .local-hand-section {
     height: 58px;
     min-height: 58px;
+    padding: 0;
   }
 
   .local-dock-identity {
@@ -807,7 +818,135 @@
   }
 
   .local-dock-zones {
-    grid-template-columns: minmax(0, 1fr) 42px;
+    display: flex;
+    align-items: flex-start;
+    gap: 3px;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .local-equipment-slots {
+    display: grid;
+    grid-template-columns: repeat(4, 34px);
+    flex: 0 0 auto;
+    gap: 3px;
+    width: 145px;
+    justify-content: start;
+  }
+
+  .local-equipment-slot,
+  .local-judgement-stack {
+    flex: 0 0 34px;
+    width: 34px;
+    min-width: 34px;
+  }
+
+  .local-judgement-stack {
+    position: relative;
+    height: 56px;
+  }
+
+  .local-judgement-stack > div {
+    position: relative;
+    width: 34px;
+    height: 51px;
+    overflow: visible;
+  }
+
+  .local-judgement-stack .local-zone-card {
+    position: absolute;
+    top: 0;
+    left: 0;
+    flex: none;
+    width: 34px;
+    height: 51px;
+  }
+
+  .local-judgement-stack .local-zone-card:nth-child(2) {
+    left: 3px;
+  }
+
+  .local-judgement-stack .local-zone-card:nth-child(3) {
+    left: 6px;
+  }
+
+  .local-judgement-stack .local-zone-card:nth-child(n + 4) {
+    left: 9px;
+  }
+
+  .local-hand,
+  .local-hand-rail {
+    height: 56px;
+  }
+
+  .local-hand-rail {
+    top: 1px;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    justify-content: flex-start;
+    height: 56px;
+    padding: 0 0 0 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .local-hand-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .local-hand-rail .card-slot {
+    flex-basis: 68px;
+    width: 68px;
+    height: 56px;
+    margin-left: -38px;
+  }
+
+  .local-hand-rail .card-slot:first-child {
+    margin-left: 0;
+  }
+
+  .local-hand-rail .card-slot.single-selected {
+    height: 56px;
+    overflow: visible;
+  }
+
+  .local-hand-rail .card-slot .game-card {
+    height: 102px;
+  }
+
+  .local-hand-rail:has(.card-slot.single-selected) {
+    overflow: visible;
+  }
+
+  .local-hand-rail .card-slot.single-selected .game-card {
+    transform: translateY(-46px);
+  }
+
+  .local-hand-rail .card-slot.single-selected .card-info-button {
+    bottom: -24px;
+    translate: 0 0 !important;
+    transform: translateY(-46px);
+  }
+
+  .local-player-dock .turn-controls {
+    min-height: 30px;
+    padding-top: 2px;
+    z-index: 40;
+  }
+
+  .local-player-dock .turn-controls > div {
+    align-items: center;
+  }
+
+  .local-player-dock .turn-controls button {
+    min-height: 26px;
+    padding: 4px 7px;
+  }
+
+  .local-dock-zones {
     gap: 3px;
   }
 
@@ -854,65 +993,56 @@
     height: 51px;
   }
 
-  .local-hand-rail {
-    justify-content: center;
-    height: 58px;
-    padding: 8px 4px 0;
-  }
-
-  .local-hand {
-    height: 58px;
-  }
-
-  .local-hand-rail .card-slot {
-    flex-basis: 68px;
-    width: 68px;
-    height: 58px;
-    margin-left: -12px;
-  }
-
-  .local-hand-rail .card-slot .game-card {
-    height: 102px;
-  }
-
-  .local-hand-rail .card-slot.single-selected {
-    height: 102px;
-  }
-
-  .local-hand-rail .card-slot.single-selected .game-card {
-    transform: translateY(-52px);
-  }
-
-  .local-hand-rail .card-slot.single-selected .card-info-button {
-    translate: 0 0 !important;
-    transform: translateY(-52px);
-  }
-
-  .local-hero-card {
-    flex-basis: 62px;
-    width: 62px;
-    height: 93px;
-  }
-
-  .local-player-dock .turn-controls {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 3px;
-  }
-
-  .local-player-dock .turn-controls > div {
-    justify-content: flex-end;
-    align-items: center;
-  }
-
-  .local-player-dock .turn-controls button {
-    min-height: 26px;
-    padding: 4px 7px;
-  }
-
   .discard-stack .played-card {
     width: 48px;
     height: 68px;
+  }
+}
+
+@media (max-width: 360px) {
+  .local-player-dock {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+
+  .local-equipment-slots {
+    grid-template-columns: repeat(4, 30px);
+    width: 126px;
+    gap: 2px;
+  }
+
+  .local-equipment-slot,
+  .local-judgement-stack {
+    flex-basis: 30px;
+    width: 30px;
+    min-width: 30px;
+  }
+
+  .local-zone-card,
+  .local-zone-empty,
+  .local-judgement-stack .local-zone-card {
+    width: 30px;
+    height: 45px;
+  }
+
+  .local-judgement-stack > div {
+    width: 30px;
+    height: 45px;
+  }
+
+  .local-judgement-stack .local-zone-card:nth-child(2) {
+    left: 2px;
+  }
+
+  .local-judgement-stack .local-zone-card:nth-child(3) {
+    left: 4px;
+  }
+
+  .local-judgement-stack .local-zone-card:nth-child(n + 4) {
+    left: 6px;
+  }
+
+  .local-hand-rail .card-slot {
+    margin-left: -34px;
   }
 }
 
