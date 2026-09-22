@@ -74,10 +74,24 @@ temporary Wrangler/D1 persistence directory, passes that location explicitly
 to the test-only inspection helper, and removes it after the run. The previous
 `.wrangler/test-state` directory is no longer reused by the API runner.
 
-The shared API test harness is now extracted to `tests/api/harness.mjs`.
-`tests/game-api.test.mjs` retains all 98 integration cases and imports the
-request/state, fixture, setup, and response-settlement helpers from that
-module. The extraction is test-only and does not change production behavior.
+The shared API test harness is now extracted to `tests/api/harness.mjs`, and
+the 98 integration cases are split across eight concern-focused files under
+`tests/api/`. The old monolithic `tests/game-api.test.mjs` is retired; the API
+runner discovers every `.test.mjs` file in that directory and reports the
+eight-file timing total. Assertions and test count are unchanged.
+
+Ordinary scenarios now use the test-only typed `seedPlayingGame` Worker
+fixture, while dedicated lobby/start/hero-selection tests retain the real
+HTTP setup workflow. The harness distinguishes strict one-request `request`
+from explicit `requestAndSettle`, which owns provider inference, empty private
+decision advancement, and refreshed state reads.
+
+Fixture SQL inspection/mutation no longer spawns `sqlite3` for every helper
+call. The API harness keeps one in-process Node `DatabaseSync` connection to
+the isolated D1 file with a five-second busy timeout. No arbitrary-SQL HTTP
+endpoint was added and no production gameplay behavior changed. The API suite
+now measures about 62.6 seconds locally (98 / 98), compared with the roughly
+255-second CI observation before optimization; fast tests remain 36 / 36.
 
 ## Negation reaction UX — 2026-09-21
 

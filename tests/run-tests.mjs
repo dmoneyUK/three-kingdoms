@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -10,6 +10,10 @@ const url = `http://localhost:${port}`;
 let server = null;
 let output = "";
 const testStatePath = mkdtempSync(join(tmpdir(), "three-kingdoms-test-state-"));
+const apiTestFiles = readdirSync(new URL("./api/", import.meta.url))
+  .filter((file) => file.endsWith(".test.mjs"))
+  .sort()
+  .map((file) => `tests/api/${file}`);
 
 // Apply the same tracked migrations the production deploy uses before the API
 // suite creates a room. Every run gets a fresh OS temp directory and never
@@ -37,14 +41,14 @@ async function waitForServer() {
 try {
   await waitForServer();
   const startedAt = performance.now();
-  const tests = spawn(process.execPath, ["--import", "tsx", "--test", "--test-concurrency=1", "tests/game-api.test.mjs"], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_URL: url, GAME_TEST_STATE_PATH: testStatePath }, stdio: ["ignore", "pipe", "pipe"] });
+  const tests = spawn(process.execPath, ["--import", "tsx", "--test", "--test-concurrency=1", ...apiTestFiles], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_URL: url, GAME_TEST_STATE_PATH: testStatePath }, stdio: ["ignore", "pipe", "pipe"] });
   let testOutput = "";
   for (const stream of [tests.stdout, tests.stderr]) stream.on("data", (chunk) => { const text = chunk.toString(); testOutput += text; process.stdout.write(text); });
   process.exitCode = await new Promise((resolve) => tests.on("exit", resolve)) ?? 1;
   const durationMs = performance.now() - startedAt;
   const timings = [...testOutput.matchAll(/✔ (.+?) \(([\d.]+)ms\)/g)].map(([, name, duration]) => ({ name, duration: Number(duration) })).sort((a, b) => b.duration - a.duration);
   const testCount = Number(testOutput.match(/ℹ tests (\d+)/)?.[1] ?? 0);
-  console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=1`);
+  console.log(`\nTiming: API tests=${testCount}, duration=${(durationMs / 1000).toFixed(2)}s, files=${apiTestFiles.length}`);
   console.log("Top 10 slowest API tests:");
   for (const entry of timings.slice(0, 10)) console.log(`  ${(entry.duration / 1000).toFixed(2)}s  ${entry.name}`);
   if (process.exitCode !== 0) process.stderr.write(`\nTest server output:\n${output}\n`);

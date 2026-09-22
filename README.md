@@ -44,9 +44,16 @@ suites, and `npm test` remains the complete alias. Both runners print elapsed
 timing; the API runner also prints its ten slowest tests.
 
 The API integration harness now lives in `tests/api/harness.mjs`, separate
-from the test cases in `tests/game-api.test.mjs`. It owns request/state
-helpers, fixture mutation and inspection, room setup, and shared response
-settlement helpers; the 98 API assertions remain unchanged.
+from the eight concern-focused API test files under `tests/api/`. It owns
+request/state helpers, fixture mutation and inspection, room setup, and
+shared response settlement helpers; the 98 API assertions remain unchanged.
+
+Ordinary API scenarios use the test-only, typed `seedPlayingGame` Worker
+fixture instead of replaying lobby setup. Dedicated lobby, readiness, hero
+selection, privacy, and persistence cases still exercise the real setup
+workflow. `request` performs one action request; callers that intentionally
+want provider inference or empty-decision progression use the explicit
+`requestAndSettle` helper.
 
 ## Negation reaction UX — 2026-09-21
 

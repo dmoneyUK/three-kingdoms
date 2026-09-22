@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 
 export const baseUrl = process.env.GAME_TEST_URL ?? "http://localhost:3137";
@@ -33,44 +33,13 @@ export async function drainEmptyPrivateDecisions(code, fallbackToken) {
 }
 
 export async function request(action, values = {}) {
-  const preserveResponse = Boolean(values.preserveResponse);
-  if (preserveResponse) { values = { ...values }; delete values.preserveResponse; }
-  // The browser explicitly passes zero-option semantic responses and empty
-  // Peach rescue decisions. Older scenario tests often submit the next
-  // domain action directly, so mirror that client behavior here without
-  // skipping any private option that the acting player could actually use.
-  if (values.code && !preserveResponse && !["respond", "decline_response", "trigger", "decline_trigger", "skip_rescue", "start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) await drainEmptyPrivateDecisions(values.code, values.token);
-  const handBeforeAction = values.code && values.token && ["play_card", "draw"].includes(action)
-    ? ((await state(values.code, values.token)).data.myHand ?? [])
-    : null;
-  if ((action === "respond" || action === "trigger") && values.providerId === undefined) {
-    const preview = await state(values.code, values.token);
-    const options = action === "respond" ? preview.data.currentAction?.options ?? [] : preview.data.currentAction?.triggerOptions ?? [];
-    const selected = options.find((option) => {
-      const selection = option.selection;
-      if (!selection) return true;
-      const ids = Array.isArray(values.cardIds) ? values.cardIds : values.cardId ? [values.cardId] : [];
-      const eligible = selection.eligibleCardIds ?? [];
-      return ids.length >= selection.min && ids.length <= selection.max && ids.every((id) => eligible.includes(id));
-    }) ?? options[0];
-    if (selected) values = { ...values, providerId: action === "respond" ? selected.providerId : selected.effectId };
-  }
+  if (values.preserveResponse) { values = { ...values }; delete values.preserveResponse; }
   for (let attempt = 0; attempt < 3; attempt++) {
     const response = await fetch(`${baseUrl}/api/rooms`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...values }) });
     const text = await response.text();
     if (text) {
       try {
         const result = { status: response.status, data: JSON.parse(text) };
-        if (values.code && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
-          await drainEmptyPrivateDecisions(values.code, values.token);
-          const refreshed = await state(values.code, values.token);
-          result.data = { ...result.data, room: refreshed.data };
-          if (result.data.drawnCards === undefined && handBeforeAction && Array.isArray(refreshed.data.myHand)) {
-            const beforeIds = new Set(handBeforeAction.map((card) => card.id));
-            const drawnCards = refreshed.data.myHand.filter((card) => !beforeIds.has(card.id));
-            if (drawnCards.length) result.data.drawnCards = drawnCards;
-          }
-        }
         return result;
       }
       catch {
@@ -80,6 +49,39 @@ export async function request(action, values = {}) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`${action} did not return a response`);
+}
+
+export async function requestAndSettle(action, values = {}) {
+  const preserveResponse = Boolean(values.preserveResponse);
+  if (values.code && !preserveResponse && !["respond", "decline_response", "trigger", "decline_trigger", "skip_rescue", "start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) await drainEmptyPrivateDecisions(values.code, values.token);
+  const handBeforeAction = values.code && values.token && ["play_card", "draw"].includes(action)
+    ? ((await state(values.code, values.token)).data.myHand ?? [])
+    : null;
+  let actionValues = values;
+  if ((action === "respond" || action === "trigger") && actionValues.providerId === undefined) {
+    const preview = await state(actionValues.code, actionValues.token);
+    const options = action === "respond" ? preview.data.currentAction?.options ?? [] : preview.data.currentAction?.triggerOptions ?? [];
+    const selected = options.find((option) => {
+      const selection = option.selection;
+      if (!selection) return true;
+      const ids = Array.isArray(actionValues.cardIds) ? actionValues.cardIds : actionValues.cardId ? [actionValues.cardId] : [];
+      const eligible = selection.eligibleCardIds ?? [];
+      return ids.length >= selection.min && ids.length <= selection.max && ids.every((id) => eligible.includes(id));
+    }) ?? options[0];
+    if (selected) actionValues = { ...actionValues, providerId: action === "respond" ? selected.providerId : selected.effectId };
+  }
+  const result = await request(action, actionValues);
+  if (actionValues.code && !preserveResponse && !["start_response_timer", "start_rescue_timer", "advance_timers"].includes(action)) {
+    await drainEmptyPrivateDecisions(actionValues.code, actionValues.token);
+    const refreshed = await state(actionValues.code, actionValues.token);
+    result.data = { ...result.data, room: refreshed.data };
+    if (result.data.drawnCards === undefined && handBeforeAction && Array.isArray(refreshed.data.myHand)) {
+      const beforeIds = new Set(handBeforeAction.map((card) => card.id));
+      const drawnCards = refreshed.data.myHand.filter((card) => !beforeIds.has(card.id));
+      if (drawnCards.length) result.data.drawnCards = drawnCards;
+    }
+  }
+  return result;
 }
 
 export async function state(code, token, audit = false) {
@@ -97,10 +99,23 @@ export async function state(code, token, audit = false) {
   throw new Error("room state did not return a response");
 }
 
+export async function seedPlayingGame(input = {}) {
+  const response = await fetch(`${baseUrl}/__test/seed-playing-game`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const data = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(data));
+  const members = data.players.map((player) => ({ name: player.name, token: player.token }));
+  membersByCode.set(data.code, members);
+  return { code: data.code, members, room: (await state(data.code, members[0].token)).data, fixture: data };
+}
+
 export async function takeDamageIfPending(code, token) {
   const current = await state(code, token);
-  if (current.data.pendingAttack && current.data.actionPlayerId === current.data.meId) return request("decline_response", { code, token });
-  if (current.data.currentAction?.kind === "trigger" && current.data.actionPlayerId === current.data.meId) return request("decline_trigger", { code, token });
+  if (current.data.pendingAttack && current.data.actionPlayerId === current.data.meId) return requestAndSettle("decline_response", { code, token });
+  if (current.data.currentAction?.kind === "trigger" && current.data.actionPlayerId === current.data.meId) return requestAndSettle("decline_trigger", { code, token });
   return { status: 200, data: { room: current.data } };
 }
 
@@ -114,7 +129,7 @@ export async function waitForState(code, token, predicate) {
     const pendingJson = query(`SELECT pending_json FROM rooms WHERE code=${quote(code)}`);
     const pending = pendingJson ? JSON.parse(pendingJson) : null;
     const deadline = pending?.completeAt ?? pending?.deadline ?? 0;
-    if (deadline > 0 && deadline <= Date.now()) await request("advance_timers", { code, token });
+    if (deadline > 0 && deadline <= Date.now()) await requestAndSettle("advance_timers", { code, token });
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.fail("room state did not reach the expected condition");
@@ -126,9 +141,19 @@ export function databasePath() {
   return join(d1Directory.pathname, file);
 }
 
-export function sql(statement) { const result = spawnSync("sqlite3", ["-cmd", ".timeout 5000", databasePath(), statement], { encoding: "utf8" }); assert.equal(result.status, 0, result.stderr); }
+let fixtureDatabase;
+function database() {
+  fixtureDatabase ??= new DatabaseSync(databasePath());
+  fixtureDatabase.exec("PRAGMA busy_timeout = 5000");
+  return fixtureDatabase;
+}
 
-export function query(statement) { const result = spawnSync("sqlite3", ["-cmd", ".timeout 5000", databasePath(), statement], { encoding: "utf8" }); assert.equal(result.status, 0, result.stderr); return result.stdout.trim(); }
+export function sql(statement) { database().exec(statement); }
+
+export function query(statement) {
+  const rows = database().prepare(statement).all();
+  return rows.map((row) => String(Object.values(row)[0] ?? "")).join("\n");
+}
 
 export function quote(value) { return `'${String(value).replaceAll("'", "''")}'`; }
 
@@ -154,7 +179,7 @@ export function roomCardCount(roomCode, cardId) {
 
 export async function markReady(code, members) {
   for (const member of members) {
-    const result = await request("set_ready", { code, token: member.token, ready: true });
+    const result = await requestAndSettle("set_ready", { code, token: member.token, ready: true });
     assert.equal(result.status, 200, JSON.stringify(result.data));
   }
 }
@@ -165,7 +190,7 @@ export async function passNegationWindows(code, members) {
     for (const member of members) {
       const view = (await state(code, member.token)).data;
       if (view.isMyAction && view.currentAction?.kind === "response" && view.currentAction.requirement === "negate" && view.currentAction.legalActions?.includes("decline_response")) {
-        const declined = await request("decline_response", { code, token: member.token, preserveResponse: true });
+        const declined = await requestAndSettle("decline_response", { code, token: member.token, preserveResponse: true });
         assert.equal(declined.status, 200, JSON.stringify(declined.data));
         passed = true;
         break;
@@ -177,17 +202,17 @@ export async function passNegationWindows(code, members) {
 }
 
 export async function createTestLobby() {
-  const created = await request("create", { name: "Host" });
+  const created = await requestAndSettle("create", { name: "Host" });
   assert.equal(created.status, 201, JSON.stringify(created.data));
   const code = created.data.room.code;
-  const added = await request("add_test_players", { code, token: created.data.token, name: "Host" });
+  const added = await requestAndSettle("add_test_players", { code, token: created.data.token, name: "Host" });
   assert.equal(added.status, 200, JSON.stringify(added.data));
   assert.equal(added.data.room.players.length, 4);
   assert.deepEqual(added.data.room.players.map((player) => player.name), ["Host", "Test Player 2", "Test Player 3", "Test Player 4"]);
   assert.ok(added.data.room.players.slice(1).every((player) => player.ready), "generated test seats are ready immediately");
-  const ready = await request("set_ready", { code, token: created.data.token, name: "Host", ready: true });
+  const ready = await requestAndSettle("set_ready", { code, token: created.data.token, name: "Host", ready: true });
   assert.equal(ready.status, 200, JSON.stringify(ready.data));
-  const started = await request("start", { code, token: created.data.token, name: "Host" });
+  const started = await requestAndSettle("start", { code, token: created.data.token, name: "Host" });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   membersByCode.set(code, [{ token: created.data.token }]);
   return { ...created, data: { ...created.data, room: started.data.room } };
@@ -201,7 +226,7 @@ export async function createTestGame() {
     assert.ok(actor, "host test session projects the next controlled seat");
     const chosen = room.myHeroOptions[0];
     assert.ok(chosen, `host test session exposes a selectable hero for ${actor.name}`);
-    const result = await request("choose_hero", { code: room.code, token: created.data.token, heroId: chosen.id });
+    const result = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: chosen.id });
     assert.equal(result.status, 200, JSON.stringify(result.data));
     room = result.data.room;
   }
@@ -216,18 +241,18 @@ export async function createTestGame() {
 }
 
 export async function createHumanSetupGame() {
-  const created = await request("create", { name: "Host" });
+  const created = await requestAndSettle("create", { name: "Host" });
   assert.equal(created.status, 201);
   const code = created.data.room.code;
   const members = [{ name: "Host", token: created.data.token }];
   for (const name of ["Alice", "Bob", "Carol"]) {
-    const joined = await request("join", { code, name });
+    const joined = await requestAndSettle("join", { code, name });
     assert.equal(joined.status, 201);
     members.push({ name, token: joined.data.token });
   }
   await markReady(code, members);
   membersByCode.set(code, members);
-  const started = await request("start", { code, token: created.data.token, name: "Host" });
+  const started = await requestAndSettle("start", { code, token: created.data.token, name: "Host" });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const views = await Promise.all(members.map((member) => state(code, member.token)));
   return { code, members, views: views.map((view) => view.data) };
@@ -261,10 +286,10 @@ export async function openGuoDamage({ amount = 1, deckCards = [] } = {}) {
   if (amount === 2) sql(`UPDATE rooms SET skill_state_json=${quote(JSON.stringify({ turnPlayerId: source.id, baredBodiedActive: true }))} WHERE code=${quote(game.code)}`);
   setDeck(game.code, deckCards);
   setTurn(game.code, source.seat, "play");
-  const played = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: guo.id, preserveResponse: true });
+  const played = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: guo.id, preserveResponse: true });
   assert.equal(played.status, 200, JSON.stringify(played.data));
   if (played.data.room.currentAction?.kind === "response") {
-    const declined = await request("decline_response", { code: game.code, token: guoMember.token });
+    const declined = await requestAndSettle("decline_response", { code: game.code, token: guoMember.token });
     assert.equal(declined.status, 200, JSON.stringify(declined.data));
   }
   const guoView = (await state(game.code, guoMember.token)).data;
@@ -277,41 +302,29 @@ export async function distributeLegacy(opened, recipientId) {
   const view = (await state(opened.game.code, opened.guoMember.token)).data;
   const cards = view.currentAction.distribution.cards;
   assert.equal(cards.length, 2);
-  const submitted = await request("trigger", { code: opened.game.code, token: opened.guoMember.token, providerId: "private_card_distribution", assignments: cards.map((held) => ({ cardId: held.id, recipientId })) });
+  const submitted = await requestAndSettle("trigger", { code: opened.game.code, token: opened.guoMember.token, providerId: "private_card_distribution", assignments: cards.map((held) => ({ cardId: held.id, recipientId })) });
   assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
   return { cards, room: submitted.data.room };
 }
 
 export async function createHumanGame() {
-  const created = await request("create", { name: "Host" });
-  assert.equal(created.status, 201);
-  const code = created.data.room.code;
-  const members = [{ name: "Host", token: created.data.token }];
-  for (const name of ["Alice", "Bob", "Carol"]) { const joined = await request("join", { code, name }); assert.equal(joined.status, 201); members.push({ name, token: joined.data.token }); }
-  membersByCode.set(code, members);
-  await markReady(code, members);
-  assert.equal((await request("start", { code, token: members[0].token, name: "Host" })).status, 200);
-  let setup = (await state(code, members[0].token)).data;
-  while (setup.status === "heroes") {
-    const actorMember = members.find((member) => setup.players.some((player) => player.id === setup.actionPlayerId && player.name === member.name));
-    assert.ok(actorMember, "the authoritative setup actor has a matching human seat");
-    const actorView = (await state(code, actorMember.token)).data;
-    const chosen = await request("choose_hero", { code, token: actorMember.token, heroId: actorView.myHeroOptions[0].id });
-    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
-    setup = chosen.data.room;
-  }
-  const started = (await state(code, members[0].token)).data; const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(code)}`) || "[]");
-  for (const player of started.players) {
-    const hand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`) || "[]");
-    for (let index = 0; index < hand.length; index++) if (hand[index].kind === "Negation") { const replacementIndex = deck.findIndex((held) => held.kind !== "Negation"); const [replacement] = deck.splice(replacementIndex, 1); deck.push(hand[index]); hand[index] = replacement; }
-    sql(`UPDATE players SET hand_json=${quote(JSON.stringify(hand))} WHERE id=${quote(player.id)}`);
-  }
-  for (const player of started.players) {
-    const hp = 4 + (player.role === "Lord" ? 1 : 0);
-    sql(`UPDATE players SET hero='yue-jin', hp=${hp}, max_hp=${hp}, hero_options_json='[]' WHERE id=${quote(player.id)}`);
-  }
-  sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify(deck))} WHERE code=${quote(code)}`);
-  return { code, members, room: (await state(code, members[0].token)).data };
+  return seedPlayingGame({
+    players: ["Host", "Alice", "Bob", "Carol"].map((name, index) => ({
+      name,
+      role: ["Rebel", "Loyalist", "Lord", "Renegade"][index],
+      hero: "yue-jin",
+      hp: 4,
+      maxHp: 4,
+      hand: [
+        card("DrawTwo", `fixture-${index}-a`),
+        card("DrawTwo", `fixture-${index}-b`),
+        card("DrawTwo", `fixture-${index}-c`),
+        card("DrawTwo", `fixture-${index}-d`),
+      ],
+    })),
+    turnSeat: 0,
+    phase: "play",
+  });
 }
 
 export async function openHujiaScenario({ delegateHero, delegateCards = [], thirdHero = null, thirdCards = [], caoCards = [] }) {
@@ -330,7 +343,7 @@ export async function openHujiaScenario({ delegateHero, delegateCards = [], thir
   setEquipment(cao.id, {});
   setHand(source.id, [attack], 4, 4); setHand(cao.id, caoCards, 4, 4); setHand(delegate.id, delegateCards, 4, 4); setHand(third.id, thirdCards, 4, 4);
   setTurn(game.code, source.seat);
-  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: cao.id });
+  const opened = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: cao.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
   const caoView = await state(game.code, caoMember.token);
   assert.ok(caoView.data.currentAction.options.some((option) => option.providerId === "cao_cao_hujia"), JSON.stringify(caoView.data));
@@ -350,10 +363,10 @@ export async function openGanglieAttack({ judge, sourceCards = [card("Attack", "
   setHand(target.id, [], 3, 3);
   setTurn(game.code, source.seat);
   setDeck(game.code, [judge]);
-  const attack = await request("play_card", { code: game.code, token: sourceMember.token, cardId: sourceCards[0].id, targetId: target.id });
+  const attack = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: sourceCards[0].id, targetId: target.id });
   assert.equal(attack.status, 200, JSON.stringify(attack.data));
   if (attack.data.room.currentAction?.kind === "response") {
-    const declined = await request("decline_response", { code: game.code, token: targetMember.token });
+    const declined = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token });
     assert.equal(declined.status, 200, JSON.stringify(declined.data));
   }
   const settled = (await state(game.code, sourceMember.token)).data;
@@ -377,10 +390,10 @@ export async function openFankuiAttack({ sourceCards = [card("Attack", "fankui-a
   setEquipment(source.id, sourceEquipment);
   setJudgement(source.id, sourceJudgement);
   setTurn(game.code, source.seat);
-  const attack = await request("play_card", { code: game.code, token: sourceMember.token, cardId: sourceCards[0].id, targetId: target.id });
+  const attack = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: sourceCards[0].id, targetId: target.id });
   assert.equal(attack.status, 200, JSON.stringify(attack.data));
   if (attack.data.room.currentAction?.kind === "response") {
-    const declined = await request("decline_response", { code: game.code, token: targetMember.token });
+    const declined = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token });
     assert.equal(declined.status, 200, JSON.stringify(declined.data));
   }
   if (expectReaction) {
@@ -407,7 +420,7 @@ export async function openGanglieGroup({ kind, judge, suffix }) {
   setHand(carol.id, [card(required, `${suffix}-carol`)], 4, 4);
   setTurn(game.code, source.seat);
   setDeck(game.code, [judge]);
-  const started = await request("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source` });
+  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source` });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   await passNegationWindows(game.code, game.members);
   const settled = await state(game.code, sourceMember.token);
@@ -429,11 +442,9 @@ export async function openBorrowedSwordScenario({ attack = true, weaponKind = "G
   const weapon = card(weaponKind, `weapon-${scenarioId}`);
   const attackCard = attack ? card("Attack", `attack-${scenarioId}`) : null;
   setHand(source.id, [borrowed], 4, 5); setHand(holder.id, attackCard ? [attackCard] : [], 4, 4); setHand(target.id, [], 4, 4); setEquipment(holder.id, { weapon }); setTurn(game.code, source.seat);
-  assert.equal((await request("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id })).status, 200);
+  assert.equal((await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id })).status, 200);
   const stage1 = (await state(game.code, host.token)).data;
   assert.equal(stage1.currentAction.actorId, source.id); assert.deepEqual(stage1.currentAction.legalActions, ["choose_borrowed_sword_target"]);
-  if (choose) assert.equal((await request("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: target.id })).status, 200);
+  if (choose) assert.equal((await requestAndSettle("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: target.id })).status, 200);
   return { game, host, alice, source, holder, target, weapon, attackId: attackCard?.id, stage1Revision: stage1.actionRevision };
 }
-
-

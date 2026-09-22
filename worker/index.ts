@@ -1,6 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { seedPlayingGame, type SeedPlayingGameInput } from "./test-playing-game";
 
 interface Env {
   ASSETS: Fetcher;
@@ -46,6 +47,14 @@ const worker = {
       testCapabilityCleanup = null;
       testCapabilitySetup = null;
       return new Response("ok");
+    }
+    if (url.pathname === "/__test/seed-playing-game" && env.WTK_TEST_CAPABILITIES === "1" && request.method === "POST") {
+      const body = await request.json<SeedPlayingGameInput>().catch(() => ({}));
+      try {
+        return Response.json(await seedPlayingGame(env.DB, body));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "Invalid test fixture." }, { status: 400 });
+      }
     }
     await setupTestCapabilities(env);
 
