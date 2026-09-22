@@ -57,6 +57,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /data-slot="defensiveHorse"[^>]*>[\s\S]*>\+1 Horse<\/span>/);
   assert.match(html, />Weapon<\/span>/); assert.match(html, />Armor<\/span>/);
   assert.match(html, /aria-label="Explain Blue Steel Sword"/); assert.match(html, /aria-label="Explain Lightning"/);
+  assert.match(html, /data-equipment-id="weapon"[\s\S]*class="played-card bluesteelsword black-suit/);
+  assert.match(html, /data-judgement-id="lightning"[\s\S]*class="played-card lightning black-suit/);
+  assert.match(gameRoomSource, /const renderZoneCard[\s\S]*<CardFace card=\{card\}/, "local zones reuse the shared card artwork renderer");
   assert.match(html, /class="local-hand"/); assert.match(html, /class="local-hand-rail"/);
   const railStart = html.indexOf('class="local-hand-rail"');
   const railEnd = html.indexOf('</div></div>', railStart);

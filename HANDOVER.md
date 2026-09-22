@@ -23,14 +23,16 @@ Serpent Spear, active-skill costs, semantic response costs, rescue Peach, and
 other multi-select modes remain compact in the rail with modest lift and the
 existing selection state.
 
-Hand-card information buttons are now top-right within each physical card
-slot and stop propagation as before, leaving the rank/suit corner visible.
-They follow the same in-place transform as a rising selected card rather than
-living in a detached overlay. Selected hand and equipment cost states use a
-gold border/glow without tinting the card face. The compact action row keeps
-the current prompt on the left and relevant buttons on the right. The central
-discard CardFace uses a smaller embedded top-left suit/rank shield consistent
-with the shared card language.
+Hand-card information buttons remain inside each physical card slot and stop
+propagation as before, leaving the rank/suit corner visible. They are hidden
+on unselected peek cards and follow the same in-place transform into the lower
+half of a rising selected card rather than living in a detached overlay.
+Selected hand and equipment cost states use a gold border/glow without tinting
+the card face. Local equipment and Judgement cards reuse the shared CardFace
+artwork at the compact zone scale. The compact action row keeps the current
+prompt on the left and relevant buttons on the right. The central discard
+CardFace uses a smaller embedded top-left suit/rank shield consistent with the
+shared card language.
 
 Focused render assertions prove there is no legacy selected-preview renderer,
 the rail uses one physical instance per hand card, single selection is marked

@@ -14,10 +14,11 @@ The hand now renders each physical card once. Unselected cards retain their
 full aspect ratio while their slot clips the lower half; a single selected
 card stays in its original rail slot and rises to full height in place. Multi-
 select modes remain compact and raised only modestly. Each info button belongs
-to its own card slot and follows the card when it rises, while staying away
-from the rank/suit corner. Selected card faces keep their normal surface with
-a gold border/glow only. The contextual prompt and buttons share a compact
-two-column action row.
+to its own card slot, is hidden on an unselected peek card, and follows the
+card into its lower half when it rises. Selected card faces keep their normal
+surface with a gold border/glow only. Local equipment and Judgement slots now
+reuse the shared CardFace artwork at the compact zone scale, while the
+contextual prompt and buttons share a compact two-column action row.
 
 The shared CardFace corner marker is also scaled down for the central discard
 pile, keeping the same embedded top-left language without dominating the
