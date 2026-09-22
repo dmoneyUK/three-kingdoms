@@ -305,6 +305,9 @@ export function HeroInfoDialog({ hero, onClose }: { hero: Hero; onClose: () => v
 function heroName(id?: string | null) { return id ? id.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") : "Unknown"; }
 function heroSkillNames(hero: Pick<Hero, "id" | "skills">) { return hero.skills?.map((skill) => skill.name) ?? [heroSkillName(hero.id) ?? "Hero"]; }
 function heroSkillName(id?: string | null) { return id ? HEROES.find((hero) => hero.id === id)?.skills[0]?.name ?? null : null; }
+function conciseActionLabel(label: string) {
+  return ({ "Play Attack": "Attack", "Play Dodge": "Dodge", "Play Negation": "Negate", "Use Serpent Spear": "Spear" } as Record<string, string>)[label] ?? label;
+}
 function heroDefinition(id?: string | null): Hero | null {
   const hero = HEROES.find((candidate) => candidate.id === id);
   return hero ? { id: hero.id, name: hero.name, faction: hero.faction, hp: hero.hp, ability: hero.ability, skills: hero.skills, skill: heroSkillName(hero.id) ?? undefined } : null;
@@ -361,6 +364,32 @@ const LOCAL_EQUIPMENT_SLOTS = [
 ] as const;
 type LocalEquipmentSlot = (typeof LOCAL_EQUIPMENT_SLOTS)[number]["key"];
 
+type HeroSkillButtonModel = {
+  name: string;
+  description: string;
+  enabled: boolean;
+  active: boolean;
+  onClick?: () => void;
+};
+
+// These are stable semantic capability IDs, not display-label matches. A
+// missing entry intentionally leaves the metadata-backed skill visible but
+// disabled until its existing projected capability is available.
+const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly string[]>> = {
+  "cao-cao": { Treachery: ["cao_cao_jianxiong"], Entourage: ["cao_cao_hujia"] },
+  simayi: { Retaliation: ["sima_yi_fankui"], Necromancy: ["sima_yi_guicai"] },
+  "xiahou-dun": { Stauchness: ["xiahou_dun_ganglie"] },
+  "zhang-liao": { Assault: ["zhang_liao_assault"] },
+  "xu-chu": { "Bared Bodied": ["xu_chu_bared_bodied"] },
+  "guo-jia": { "Jealousy of God": ["guo_jia_jealousy_of_god"], Legacy: ["guo_jia_legacy"] },
+  "liu-bei": { Benevolence: ["liu_bei_rende"], Influencing: ["liu_bei_jijiang"] },
+  "sun-quan": { Equilibrium: ["sun_quan_zhiheng"], Deliverance: ["sun_quan_jiuyuan"] },
+  "gan-ning": { Ambushment: ["gan_ning_qixi"] },
+  "lu-meng": { Composure: ["lu_meng_keji"] },
+  "zhou-yu": { Heroic: ["zhou_yu_yingzi"] },
+  "lu-xun": { "Second Wind": ["lu_xun_second_wind"] },
+};
+
 type LocalPlayerDockProps = {
   player: Player | null;
   hero: Hero | null;
@@ -379,6 +408,7 @@ export function LocalPlayerDock({ player, hero, children, heroSkillControl, onHe
     if (slot) equipmentBySlot.set(slot, equipment);
   }
   const slotLabel = (slot: LocalEquipmentSlot) => LOCAL_EQUIPMENT_SLOTS.find((entry) => entry.key === slot)?.label ?? slot;
+  const fallbackSkills = hero?.skills?.length ? hero.skills : hero ? [{ name: hero.skill ?? "Hero Skill", description: hero.ability }] : [];
   const renderZoneCard = (card: Card, selected = false, selectable = false) => <div className={`local-zone-card ${suitColorClass(card.suit)} ${selected ? "selected-cost" : ""}`} key={card.id} data-equipment-id={cardDefinition(card.kind).equipmentSlot ? card.id : undefined} data-judgement-id={!cardDefinition(card.kind).equipmentSlot ? card.id : undefined} style={{ visibility: hiddenCardIds.has(card.id) ? "hidden" : "visible" }}>
     <CardFace card={card} />
     {selectable ? <button type="button" className="local-zone-card-button" aria-label={`Select ${cardDefinition(card.kind).name}`} disabled={!equipmentSelection || equipmentSelection.disabled || !equipmentSelection.eligibleIds.includes(card.id)} onClick={() => equipmentSelection?.onToggle(card.id)} /> : <button type="button" className="local-zone-card-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={() => onInfoCard(card)} />}
@@ -387,13 +417,15 @@ export function LocalPlayerDock({ player, hero, children, heroSkillControl, onHe
   return <section className="local-player-dock" data-player-anchor={player?.id ?? undefined} aria-label="Your player area">
     <div className="local-dock-identity">
       {hero ? <button type="button" className="local-hero-card" aria-label={`Explain ${hero.name}`} onClick={() => onHeroInfo(hero)}><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><span>{hero.name}</span></span></button> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span>HERO</span></span></div>}
-      <div className="local-hero-skill">{heroSkillControl ?? <button type="button" className="hero-skill-button" disabled>Skill</button>}</div>
+      <div className="local-hero-skill">{heroSkillControl ?? <section className="hero-skills local-hero-skills" aria-label="Hero skills">{fallbackSkills.map((skill) => <button type="button" className="hero-skill-button" key={skill.name} title={skill.description} disabled>{skill.name}</button>)}</section>}</div>
     </div>
-    <div className="local-dock-zones" aria-label="Your equipment and judgement zones">
-      <div className="local-dock-status"><strong>{player?.role ?? "Role pending"}</strong><span>HP {player?.hp ?? 0}/{player?.maxHp ?? 0} {hpDisplay(player?.hp ?? null)}</span></div>
-      <div className="local-zone-strip">
-        <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key}><span className="local-zone-label">{slotLabel(key)}</span>{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}>+</span>}</div>; })}</div>
-        <div className="local-judgement-stack"><span className="local-zone-label">Judgement</span><div>{(player?.judgementCards ?? []).map((card) => renderZoneCard(card))}</div></div>
+    <div className="local-dock-zones" aria-label="Your status and equipment zones">
+      <div className="local-status-panel"><strong>{player?.role ?? "Role pending"}</strong><span>HP {player?.hp ?? 0}/{player?.maxHp ?? 0} {hpDisplay(player?.hp ?? null)}</span></div>
+      <div className="local-zone-panel" aria-label="Equipment and judgement zones">
+        <div className="local-zone-strip">
+          <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key} aria-label={`${slotLabel(key)} slot`} role="group">{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}>+</span>}</div>; })}</div>
+          <div className="local-judgement-stack" data-slot="judgement" aria-label="Judgement zone" role="group"><div>{(player?.judgementCards ?? []).map((card) => renderZoneCard(card))}</div></div>
+        </div>
       </div>
     </div>
     {children}
@@ -404,6 +436,8 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
   const [selected, setSelected] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const target = targetIds[0] ?? "";
+  const handRailRef = useRef<HTMLDivElement | null>(null);
+  const [handRailWidth, setHandRailWidth] = useState(0);
   const [harvestSelected, setHarvestSelected] = useState("");
   const queuedHarvestPreview = useRef<string | null>(null); const harvestPreviewInFlight = useRef(false);
   const [harvestSubmitting, setHarvestSubmitting] = useState<{ cardId: string; playerId: string; playerName: string } | null>(null);
@@ -447,7 +481,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const [visibleDiscardTop, setVisibleDiscardTop] = useState<Card | null>(() => room.discardTop && initialHeldCardIds.has(room.discardTop.id) ? null : room.discardTop);
   const latestDiscardTop = useRef(room.discardTop);
   const [processedTimelineKey, setProcessedTimelineKey] = useState(() => room.timeline.map((event) => event.id).join("|"));
-  const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const actor = room.pendingNegation ? room.isMyAction ? room.players.find((player) => player.id === room.actionPlayerId) : undefined : room.players.find((player) => player.id === room.actionPlayerId); const me = room.players.find((player) => player.id === room.meId); const targetPlayer = room.players.find((player) => player.id === target); const pendingTargetPlayer = room.players.find((player) => player.id === room.pendingTargetCard?.targetId); const pickerTarget = pendingTargetPlayer ?? targetPlayer;
+  const card = room.myHand.find((item) => item.id === selected); const current = room.players.find((player) => player.seat === room.turnSeat); const actor = room.pendingNegation ? room.isMyAction ? room.players.find((player) => player.id === room.actionPlayerId) : undefined : room.players.find((player) => player.id === room.actionPlayerId); const me = room.players.find((player) => player.id === room.meId); const localHero = heroDefinition(me?.hero); const targetPlayer = room.players.find((player) => player.id === target); const pendingTargetPlayer = room.players.find((player) => player.id === room.pendingTargetCard?.targetId); const pickerTarget = pendingTargetPlayer ?? targetPlayer;
   const excessCards = Math.max(0, room.myHand.length - (me?.hp ?? 0));
   const myTableIndex = Math.max(0, room.players.findIndex((player) => player.id === room.meId));
   const targetTableIndex = pickerTarget ? room.players.findIndex((player) => player.id === pickerTarget.id) : -1;
@@ -526,7 +560,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const responseCardAllowed = (item: Card) => selectedResponseProvider?.selection?.type === "cards"
     ? selectedResponseProvider.selection.eligibleCardIds.includes(item.id)
     : triggerCardOption?.selection?.type === "cards" && triggerCardOption.selection.eligibleCardIds.includes(item.id);
-  const genericResponseOptions = semanticResponseOptions.filter((option) => option.activation === "explicit" && !(me?.hero === "guan-yu" && option.providerId === "guan_yu_red_card_attack") && !(me?.hero === "zhao-yun" && (option.providerId === "zhao_yun_dodge_as_attack" || option.providerId === "zhao_yun_attack_as_dodge")));
+  const genericResponseOptions = semanticResponseOptions.filter((option) => option.activation === "explicit" && !(me?.hero === "guan-yu" && option.providerId === "guan_yu_red_card_attack") && !(me?.hero === "zhao-yun" && (option.providerId === "zhao_yun_dodge_as_attack" || option.providerId === "zhao_yun_attack_as_dodge"))).map((option) => ({ ...option, label: conciseActionLabel(option.label) }));
   const responseDamageAction = canUseAction(room.currentAction, "decline_response") ? "decline_response" as GameplayAction : canUseAction(room.currentAction, "decline_trigger") ? "decline_trigger" as GameplayAction : null;
   const triggerDeclineAction = canUseAction(room.currentAction, "decline_trigger");
   const hasSerpentSpear = getResponseOptions({ hand: room.myHand, equipment: me?.equipmentCards ?? [], hero: me?.hero }, { kind: "attack" }).some((option) => option.providerId === "serpent_spear_attack");
@@ -571,6 +605,27 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const timelineKey = room.timeline.map((event) => event.id).join("|");
   const hasUnseenPresentations = room.timeline.some((event) => event.type !== "message" && event.presentation !== false && !presentedEventIds.has(event.id));
   const presentationBusy = Boolean(optimisticPlay || activeEvent || eventQueue.length || resolutionClosing || turnNotice || privateDrawCards.length || hasUnseenPresentations);
+  useLayoutEffect(() => {
+    const rail = handRailRef.current;
+    if (!rail) return;
+    const updateWidth = () => setHandRailWidth(rail.clientWidth);
+    updateWidth();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(rail);
+    return () => observer.disconnect();
+  }, [room.meId]);
+  const handCardLayout = useMemo(() => {
+    const cardWidth = 68;
+    const minStep = 30;
+    const count = room.myHand.length;
+    if (count <= 1) return { step: cardWidth, measured: handRailWidth > 0 };
+    const naturalStep = (handRailWidth - cardWidth) / (count - 1);
+    return { step: naturalStep >= cardWidth ? naturalStep : Math.max(minStep, naturalStep), measured: handRailWidth > 0 };
+  }, [handRailWidth, room.myHand.length]);
   const gameMessages = useMemo(() => latestPublicMessages(room.timeline, describeEvent), [room.timeline]);
   // A response is one decision, even when it has several providers.  Do not
   // expose (or start timing) one provider before the preceding public effect
@@ -591,6 +646,49 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const canUseLongdanInResponse = Boolean(me?.hero === "zhao-yun" && responseDecisionReady && longdanResponseOptions.length > 0);
   const wushengButtonDisabled = busy || wushengMode === null && (!canUseWushengInPlay && !(responseDecisionReady && canUseWushengInResponse) || canUseWushengInPlay && presentationBusy);
   const longdanButtonDisabled = busy || longdanMode === null && (!canUseLongdanInPlay && !(responseDecisionReady && canUseLongdanInResponse) || canUseLongdanInPlay && presentationBusy);
+  const heroSkillButtons: HeroSkillButtonModel[] = (localHero?.skills ?? []).map((skill) => {
+    if (me?.hero === "guan-yu" && skill.name === "God of War") return {
+      name: skill.name,
+      description: skill.description,
+      enabled: !wushengButtonDisabled || Boolean(wushengMode),
+      active: Boolean(wushengMode),
+      onClick: () => {
+        if (wushengMode === "play") { setWushengMode(null); setSelected(""); setTargetIds([]); return; }
+        if (wushengMode === "response") { setWushengMode(null); setResponseProviderId(""); setSelected(""); setSerpentSelected([]); return; }
+        if (canUseWushengInPlay) { setWushengMode("play"); setSerpentMode(false); setSelected(""); setTargetIds([]); return; }
+        if (canUseWushengInResponse && wushengResponseOption) { setWushengMode("response"); setResponseProviderId(wushengResponseOption.providerId); setSelected(""); setSerpentSelected([]); }
+      },
+    };
+    if (me?.hero === "zhao-yun" && skill.name === "Braveheart") return {
+      name: skill.name,
+      description: skill.description,
+      enabled: !longdanButtonDisabled || Boolean(longdanMode),
+      active: Boolean(longdanMode),
+      onClick: () => {
+        if (longdanMode === "play") { setLongdanMode(null); setSelected(""); setTargetIds([]); return; }
+        if (longdanMode === "response") { setLongdanMode(null); setResponseProviderId(""); setSelected(""); setSerpentSelected([]); return; }
+        if (canUseLongdanInPlay) { setLongdanMode("play"); setWushengMode(null); setSerpentMode(false); setSelected(""); setTargetIds([]); return; }
+        if (canUseLongdanInResponse && longdanResponseOption) { setLongdanMode("response"); setResponseProviderId(longdanResponseOption.providerId); setSelected(""); setSerpentSelected([]); }
+      },
+    };
+    const effectIds = HERO_SKILL_EFFECT_IDS[me?.hero ?? ""]?.[skill.name] ?? [];
+    const option = activeSkillOptions.find((candidate) => effectIds.includes(candidate.effectId));
+    const active = Boolean(option && kingSkillId === option.effectId);
+    return {
+      name: skill.name,
+      description: skill.description,
+      enabled: Boolean(option),
+      active,
+      onClick: option ? () => {
+        if (option.selection?.type === "cards" || option.selection?.type === "target") {
+          const activating = kingSkillId !== option.effectId;
+          setKingSkillId(activating ? option.effectId : "");
+          setActiveSkillSelectionState(activating ? { revision: activeActionRevision, effectId: option.effectId, cardIds: [], targetIds: [] } : null);
+          setSerpentSelected([]); setSelected(""); setTargetIds([]);
+        } else void onAction("trigger", { providerId: option.effectId });
+      } : undefined,
+    };
+  });
   const responseControlsDisabled = busy || !responseDecisionReady;
   const rescueDecisionReady = canRescue && !presentationBusy;
   const drawWaitingForPresentation = room.isMyTurn && Boolean(room.phase?.startsWith("draw")) && presentationBusy;
@@ -781,27 +879,14 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
       {seatCountdown && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={heroDefinition(me?.hero)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight}
+    <LocalPlayerDock player={me} hero={localHero} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
-          {activeSkillOptions.map((option) => <button type="button" key={option.effectId} className={`hero-skill-button ${kingSkillId === option.effectId ? "active" : ""}`} disabled={busy || presentationBusy} onClick={() => { if (option.selection?.type === "cards" || option.selection?.type === "target") { const activating = kingSkillId !== option.effectId; setKingSkillId(activating ? option.effectId : ""); setActiveSkillSelectionState(activating ? { revision: activeActionRevision, effectId: option.effectId, cardIds: [], targetIds: [] } : null); setSerpentSelected([]); setSelected(""); setTargetIds([]); } else void onAction("trigger", { providerId: option.effectId }); }}>{kingSkillId === option.effectId ? `Cancel ${option.label}` : option.label}</button>)}
-          {me?.hero === "guan-yu" && <button type="button" className={`hero-skill-button ${wushengMode ? "active" : ""}`} disabled={wushengButtonDisabled} onClick={() => {
-            if (wushengMode === "play") { setWushengMode(null); setSelected(""); setTargetIds([]); return; }
-            if (wushengMode === "response") { setWushengMode(null); setResponseProviderId(""); setSelected(""); setSerpentSelected([]); return; }
-            if (canUseWushengInPlay) { setWushengMode("play"); setSerpentMode(false); setSelected(""); setTargetIds([]); return; }
-            if (canUseWushengInResponse && wushengResponseOption) { setWushengMode("response"); setResponseProviderId(wushengResponseOption.providerId); setSelected(""); setSerpentSelected([]); }
-          }}>{wushengMode ? "Cancel God of War" : "God of War"}</button>}
-          {me?.hero === "zhao-yun" && <button type="button" className={`hero-skill-button ${longdanMode ? "active" : ""}`} disabled={longdanButtonDisabled} onClick={() => {
-            if (longdanMode === "play") { setLongdanMode(null); setSelected(""); setTargetIds([]); return; }
-            if (longdanMode === "response") { setLongdanMode(null); setResponseProviderId(""); setSelected(""); setSerpentSelected([]); return; }
-            if (canUseLongdanInPlay) { setLongdanMode("play"); setWushengMode(null); setSerpentMode(false); setSelected(""); setTargetIds([]); return; }
-            if (canUseLongdanInResponse && longdanResponseOption) { setLongdanMode("response"); setResponseProviderId(longdanResponseOption.providerId); setSelected(""); setSerpentSelected([]); }
-          }}>{longdanMode ? "Cancel Braveheart" : "Braveheart"}</button>}
-          {activeSkillOptions.length === 0 && me?.hero !== "guan-yu" && me?.hero !== "zhao-yun" && <button type="button" className="hero-skill-button" disabled>Skill</button>}
+          {heroSkillButtons.map((skill) => <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} title={skill.description} disabled={!skill.enabled || busy || presentationBusy && !skill.active} onClick={() => skill.onClick?.()}>{skill.active && (me?.hero === "guan-yu" || me?.hero === "zhao-yun") ? `Cancel ${skill.name}` : skill.name}</button>)}
         </section>
       }>
         <div className="local-hand-section">
-          <div className="local-hand" data-card-origin-anchor={room.meId} aria-label="Your hand">{(() => { const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1); const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2; const toggleHandCard = (item: Card) => { const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; if (room.phase === "discard") setDiscardSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < excessCards ? [...ids, item.id] : ids); else if (activeSkillSelection) setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(item.id) ? { ...state, cardIds: validIds.filter((id) => id !== item.id) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, item.id] } : { ...state, cardIds: validIds }; }); else if (costSelection) setSerpentSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < responseSelectionLimit ? [...ids, item.id] : ids); else { setSelected((id) => id === item.id ? "" : item.id); setTarget(""); } setTargetCardIndex(null); }; const renderHandCard = (item: Card) => { const definition = cardDefinition(item.kind); const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; const isSelected = room.phase === "discard" ? discardSelected.includes(item.id) : activeSkillSelection ? activeSkillSelectedCardIds.includes(item.id) : costSelection ? serpentSelected.includes(item.id) : selected === item.id; const singleSelected = !multiSelectMode && isSelected; const maySelect = (room.isMyTurn && (canPlay || room.phase === "discard")) || responseDecisionReady || rescueDecisionReady; const skillModeCardDisabled = Boolean(activeSkillTargetSelection || wushengMode && !wushengEligibleCardIds.has(item.id) || longdanMode && !longdanEligibleCardIds.has(item.id) || activeSkillSelection && !activeSkillSelection.eligibleCardIds.includes(item.id)); const skillModeEligible = wushengMode && wushengEligibleCardIds.has(item.id) || longdanMode && longdanEligibleCardIds.has(item.id) || activeSkillSelection?.eligibleCardIds.includes(item.id) === true; return <div className={`card-slot ${singleSelected ? "single-selected" : ""}`} data-hand-card-id={item.id} key={`rail-${item.id}`}><button disabled={!maySelect || skillModeCardDisabled || (responseDecisionReady && (canRespond || triggerResponse) && !responseCardAllowed(item)) || (rescueDecisionReady && item.kind !== "Peach")} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}><span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong></button><button type="button" className="card-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); setInfoCard(item); }}>i</button></div>; }; return <div className="local-hand-rail" aria-label="Peek hand cards">{room.myHand.map((item) => renderHandCard(item))}</div>; })()}</div>
+          <div className="local-hand" data-card-origin-anchor={room.meId} aria-label="Your hand">{(() => { const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1); const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2; const toggleHandCard = (item: Card) => { const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; if (room.phase === "discard") setDiscardSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < excessCards ? [...ids, item.id] : ids); else if (activeSkillSelection) setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(item.id) ? { ...state, cardIds: validIds.filter((id) => id !== item.id) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, item.id] } : { ...state, cardIds: validIds }; }); else if (costSelection) setSerpentSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < responseSelectionLimit ? [...ids, item.id] : ids); else { setSelected((id) => id === item.id ? "" : item.id); setTarget(""); } setTargetCardIndex(null); }; const renderHandCard = (item: Card, index: number) => { const definition = cardDefinition(item.kind); const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; const isSelected = room.phase === "discard" ? discardSelected.includes(item.id) : activeSkillSelection ? activeSkillSelectedCardIds.includes(item.id) : costSelection ? serpentSelected.includes(item.id) : selected === item.id; const singleSelected = !multiSelectMode && isSelected; const maySelect = (room.isMyTurn && (canPlay || room.phase === "discard")) || responseDecisionReady || rescueDecisionReady; const skillModeCardDisabled = Boolean(activeSkillTargetSelection || wushengMode && !wushengEligibleCardIds.has(item.id) || longdanMode && !longdanEligibleCardIds.has(item.id) || activeSkillSelection && !activeSkillSelection.eligibleCardIds.includes(item.id)); const skillModeEligible = wushengMode && wushengEligibleCardIds.has(item.id) || longdanMode && longdanEligibleCardIds.has(item.id) || activeSkillSelection?.eligibleCardIds.includes(item.id) === true; return <div className={`card-slot ${singleSelected ? "single-selected" : ""}`} data-hand-card-id={item.id} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px` }}><button disabled={!maySelect || skillModeCardDisabled || (responseDecisionReady && (canRespond || triggerResponse) && !responseCardAllowed(item)) || (rescueDecisionReady && item.kind !== "Peach")} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}><span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong></button><button type="button" className="card-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); setInfoCard(item); }}>i</button></div>; }; return <div ref={handRailRef} className="local-hand-rail" data-hand-layout={handCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: room.myHand.length === 1 ? "center" : "flex-start" }} aria-label="Peek hand cards">{room.myHand.map((item, index) => renderHandCard(item, index))}</div>; })()}</div>
         </div>
       <div className="turn-controls">
         <span>{commandPrompt}</span>

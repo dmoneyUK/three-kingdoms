@@ -2,16 +2,16 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
-## Stage 7 maintenance — local dock panel separation — 2026-09-22
+## Stage 7 maintenance — final LocalPlayerDock structure — 2026-09-22
 
 Complete for this presentation-only pass. The mobile LocalPlayerDock now has
-independent Hero, Status + Equipment/Judgement, Hand, and Action panels. The
-92px + flexible grid, 68px hand panel, 50px hand peek rail, 48px selected rise,
-10px geometry invariant, and 46px action row are consolidated in one CSS
-section. Live 390px review verified normal, selected, six-card, and populated
-equipment states; deterministic render coverage protects the structure. The
-next Stage 7 milestone remains deployed mobile review followed by the final
-graphic/theme skin.
+independent Hero, Status, Equipment/Judgement, Hand, and Action panels. The
+90px + flexible grid, 92px Status/Zones region, 72px hand panel, 54px action
+panel, 48px selected rise, 10px bottom gutter, metadata-backed skill buttons,
+and measured hand spacing are consolidated in one CSS section. Focused render
+coverage protects the structure, accessibility contract, dynamic spacing, and
+Quick Test perspective. The next Stage 7 milestone remains deployed mobile
+review followed by the final graphic/theme skin.
 
 Stage 6 cleanup is canonical-only: response/trigger commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported; and `currentAction` is authoritative. Future cards/heroes must not add provider-specific HTTP actions. Wusheng requires explicit `playAs: "attack"`, with native card play as the default. The three faction lords now use this contract for both active Play Phase skills and delegated lord responses.
 

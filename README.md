@@ -19,31 +19,38 @@ Current stage: Stage 7 product polish, compact General selection pass complete.
 The next milestone remains deployed mobile review and the final graphic/theme
 skin.
 
-## Local dock panel separation — 2026-09-22
+## Final mobile LocalPlayerDock structure — 2026-09-22
 
-The mobile local dock now renders four complete visual regions: Hero, Status +
-Equipment/Judgement, Hand, and Action. The narrow layout uses a 92px hero
-column, a flexible right column, 68px status/hand rows, a 46px action row,
-and 4px gaps. Each region has its own bordered dark panel with internal
-padding, so cards cannot visually erase the Hand/Action separation.
+The presentation-only dock refinement is complete. Mobile now has five
+independent bordered panels: a narrow Hero panel, separate Status and
+Equipment/Judgement panels, a full-width right-column Hand panel, and a taller
+full-width Action panel. The mobile grid uses a 90px hero column (88px at the
+smallest breakpoint), 92px for Status plus Zones, a 72px hand row, and a 54px
+action row.
 
-The hero panel contains only the tappable hero card and an always-visible,
-muted-or-enabled Hero Skill button. Role and HP lead the right-top panel. The
-hand keeps a fixed 50px peek rail inside a 68px panel; a selected 102px card
-rises 48px while retaining a 9px measured lower gutter. Horizontal overlap and
-scrolling keep larger hands contained. Action labels are compact (`Play`,
-`End`, `Skip`, and `Spear`).
+The Hero panel renders every name from `hero.skills`, including passive and
+currently unavailable skills as disabled buttons. Existing semantic trigger
+IDs and the Guan Yu/Zhao Yun response controls still own enablement and clicks;
+React does not infer hero legality. Status contains only role and HP. Zone
+labels are accessibility-only, the slot order remains Weapon, Armor, -1 Horse,
++1 Horse, Judgement, and shared `CardFace` artwork remains in use.
 
-All final LocalPlayerDock geometry now lives in
-`app/sequence-overrides.css`; obsolete duplicate dock rules were removed from
-`app/globals.css`. The 390px browser review verified a six-card hand, selected
-card containment, separate action/message panel, and populated Serpent Spear
-equipment. Render tests cover the new structure and geometry. This remains a
-presentation-only refinement; semantic actions, private projections, and
-gameplay rules are unchanged.
+Hand placement measures the actual rail with `ResizeObserver`, distributes
+cards across the available width when they fit, and applies only calculated
+overlap (with scrolling for larger hands). Selection keeps the same physical
+slot and rises without covering the Action panel. Hand corner markers are
+scoped smaller, and Action labels/buttons remain concise and touchable.
 
-Current stage: Stage 7 product polish, mobile dock clarity pass complete. The
-next milestone is the deployed mobile review and final graphic/theme skin.
+All LocalPlayerDock geometry remains consolidated in
+`app/sequence-overrides.css`; no duplicate dock layout was restored to
+`app/globals.css`. Focused render coverage verifies skill counts/names,
+separate panels, accessibility labels, dynamic spacing, selected-card
+structure, and Quick Test perspective switching. Gameplay rules, semantic
+actions, private projections, equipment/Judgement behavior, and animation
+events are unchanged.
+
+Current stage: Stage 7 product polish, final dock structure complete. The next
+milestone is deployed mobile review followed by the final graphic/theme skin.
 
 ## Standard hero selection is implementation-gated — 2026-09-22
 

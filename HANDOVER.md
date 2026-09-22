@@ -33,39 +33,46 @@ monogram presentation because no licensed General artwork is part of this
 change. The next recommended work remains the deployed mobile review and
 final graphic/theme skin; do not broaden this UI pass into game logic.
 
-## Local dock panel separation — 2026-09-22
+## Final mobile LocalPlayerDock structure — 2026-09-22
 
-The local player dock now has four real mobile panels: Hero, Status plus
-Equipment/Judgement, Hand, and Action. At the narrow-mobile breakpoint it uses
-a 92px hero column, a flexible right column, 68px zone/hand rows, a 46px
-action row, and 4px grid gaps. Each panel owns its border, dark background,
-padding, and `box-sizing`; the hand/action divider is no longer a shared
-border or stacking workaround.
+Implemented the final presentation-only dock structure in `app/page.tsx` and
+`app/sequence-overrides.css`. The mobile grid now has a narrow Hero panel, a
+separate Status panel, a separate Equipment/Judgement panel, a full-width
+right-column Hand panel, and a distinct 54px Action panel. Mobile geometry is
+90px + flexible columns, 92px Status/Zones, 72px Hand, and 54px Action, with
+an 88px hero column at <=360px.
 
-The hero column contains only the tappable hero card and an always-visible
-Hero Skill control. Role and HP now lead the right-top panel, above the
-equipment and Judgement cards. The hand rail uses the shared geometry
-variables (`--hand-panel-height`, `--hand-peek-height`, `--hand-card-height`,
-`--hand-top-inset`, `--selected-rise`, and `--hand-bottom-gutter`). A selected
-102px card rises 48px and preserves a measured 9px lower gap inside the 68px
-hand panel; larger hands remain horizontally scrollable without increasing
-dock height. Action labels are compact (`Play`, `End`, `Skip`, and `Spear`).
+Hero buttons are built from `hero.skills` through a small presentation model.
+Stable capability/provider IDs (`effectId` and response provider IDs) attach
+existing actions; missing mappings stay visible and disabled. God of War and
+Braveheart retain their established Wusheng/Longdan state and cancellation
+behavior. No provider-specific route or gameplay action was added.
 
-The final dock layout is consolidated in `app/sequence-overrides.css`; the
-older LocalPlayerDock rules were removed from `app/globals.css`. The live
-390px browser review covered a six-card hand, a selected card, and a real
-Serpent Spear equipment card. SSR/render regressions cover the panel structure,
-mobile geometry, CSS invariants, and perspective switching. Response-state and
-hero-skill behavior remain on the existing semantic/currentAction paths.
+Equipment and Judgement slots keep their semantic keys and accessibility names
+without visible zone labels. The physical order remains Weapon, Armor, -1
+Horse, +1 Horse, Judgement, and multiple Judgement cards remain fanned in the
+same logical array using shared `CardFace` artwork.
 
-Known boundary: the live review room used the normal Quick Test opening and
-populated equipment, but did not force a Judgement card or an active hero-skill
-eligibility window; those states remain governed by the existing projected
-game contract and render coverage.
+The hand rail measures its actual width, spaces cards when `N * 68px` fits,
+otherwise clamps the calculated step to a 30px minimum and allows horizontal
+scrolling. Offsets depend only on measured width and hand count, so selection
+does not reflow cards; a selected card rises within the existing dock gutter.
+The smaller hand corner and wider concise Action controls are scoped to the
+LocalPlayerDock.
 
-The next recommended work remains the deployed mobile review and final
-graphic/theme skin; do not expand this presentation-only pass into gameplay
-changes.
+Focused render coverage now verifies skill count/name/no-generic-fallback,
+separate panel containers, hidden visible labels with retained aria labels,
+dynamic hand spacing/ResizeObserver source, selected-card ownership, and Quick
+Test perspective switching. `npm run test:fast`, `npm run lint`, `npm run build`,
+and `git diff --check` are green. A local browser preview verified the
+separate-panel structure and even distribution for a four-card hand; the
+remaining release check is deployed review at 320px, 390px, and 430px,
+including selected/response/multiple-Judgement states.
+
+Known boundaries: this change does not alter rules, semantic actions, private
+projections, response legality, equipment/Judgement behavior, or animation
+events. The next recommended work is the deployed mobile review and final
+graphic/theme skin; do not expand this pass into gameplay changes.
 
 ## Standard hero selection is implementation-gated — 2026-09-22
 
