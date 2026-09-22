@@ -34,6 +34,13 @@ prompt on the left and relevant buttons on the right. The central discard
 CardFace uses a smaller embedded top-left suit/rank shield consistent with the
 shared card language.
 
+The final polish removes the duplicate identity/zones divider, reduces the
+visible local equipment information mark to 10px while retaining a larger
+transparent touch target, and removes the selected-cost background replacement
+so equipment artwork remains unchanged under its gold border/glow. The
+selected hand card still rises over the zone row without increasing the dock
+or reaching the action row.
+
 Focused render assertions prove there is no legacy selected-preview renderer,
 the rail uses one physical instance per hand card, single selection is marked
 in-place, and multi-select mode remains distinct. A fresh 390px local browser

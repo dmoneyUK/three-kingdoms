@@ -26,6 +26,12 @@ small pile card. No gameplay, animation, response, equipment, Judgement, or
 test-harness behavior changed. The next milestone remains Step 4: review the
 deployed mobile UI before applying the final graphic/theme pass.
 
+The final dock polish uses one identity/zones divider, keeps the equipment
+information control visually small while retaining a touch-safe hit area, and
+uses the same artwork-preserving gold-border selection language for equipment
+costs. Selected-hand overlap remains bounded above the action row and does not
+add dock height.
+
 ## DOM-aligned card animations — 2026-09-22
 
 Step 3 aligns resolution presentation with the rendered game shell. The local

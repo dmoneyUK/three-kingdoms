@@ -448,7 +448,7 @@
 
 .local-player-dock .local-dock-zones {
   padding-left: 6px;
-  border-left: 1px solid #765f3c99;
+  border-left: 0;
 }
 
 .local-player-dock .local-dock-content {
@@ -702,6 +702,30 @@
 
 .local-zone-card .zone-info-button {
   z-index: 2;
+  right: -1px;
+  top: -1px;
+  translate: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 0;
+  display: grid;
+  place-items: center;
+}
+
+.local-zone-card .zone-info-button::after {
+  content: "i";
+  display: grid;
+  place-items: center;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #8e7548;
+  border-radius: 50%;
+  background: #f5ead4;
+  color: #493f31;
+  font: bold italic 7px/1 Georgia, serif;
 }
 
 .local-zone-card-button b {
@@ -715,7 +739,6 @@
 }
 
 .local-zone-card.selected-cost {
-  background: #e9dfca;
   color: inherit;
   border: 2px solid #ffe28a;
   translate: 0 -3px;
@@ -826,9 +849,9 @@
   }
 
   .local-zone-card .zone-info-button {
-    width: 12px;
-    height: 12px;
-    font-size: 6px;
+    width: 22px;
+    height: 22px;
+    font-size: 0;
   }
 
   .local-judgement-stack .local-zone-card {
