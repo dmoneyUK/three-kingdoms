@@ -59,6 +59,16 @@ regression. The live browser capture could not be completed because the
 connected Mac was locked. `git diff --check` remains the final local gate before
 commit and push.
 
+## Test-suite optimisation — Phase 1
+
+The complete 134-test suite remains unchanged in coverage. The commands now
+separate pure/unit/render work (`npm run test:fast`) from the Wrangler/D1 API
+integration suite (`npm run test:api`); `npm run test:all` builds and runs both,
+and `npm test` remains the complete alias. The runners report elapsed duration,
+test count, and API top-ten slowest tests. Baseline before optimisation was
+134 / 134 locally in 368.19 seconds, with the API suite accounting for nearly
+all runtime. No production game behavior changed.
+
 ## Negation reaction UX — 2026-09-21
 
 Current Negation scheduling is capability-driven and privacy-safe. A

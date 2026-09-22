@@ -37,6 +37,12 @@ next milestone is Step 3: add actual rendered player/dock anchors to
 Judgement flight, and settled-card locations. Step 3 remains intentionally
 outstanding; this pass does not change its circular/trigonometric geometry.
 
+Test commands are split without reducing coverage: `npm run test:fast` runs
+pure/unit/render tests without Wrangler, `npm run test:api` owns the API
+Worker/D1 lifecycle, `npm run test:all` runs the production build plus both
+suites, and `npm test` remains the complete alias. Both runners print elapsed
+timing; the API runner also prints its ten slowest tests.
+
 ## Negation reaction UX — 2026-09-21
 
 Stratagems now open a public Negation waiting state before their effects
