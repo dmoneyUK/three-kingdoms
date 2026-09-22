@@ -90,8 +90,11 @@ Fixture SQL inspection/mutation no longer spawns `sqlite3` for every helper
 call. The API harness keeps one in-process Node `DatabaseSync` connection to
 the isolated D1 file with a five-second busy timeout. No arbitrary-SQL HTTP
 endpoint was added and no production gameplay behavior changed. The API suite
-now measures about 62.6 seconds locally (98 / 98), compared with the roughly
-255-second CI observation before optimization; fast tests remain 36 / 36.
+now runs four balanced shards, each with its own Wrangler process, port, and
+temporary D1 directory; its aggregate timing is printed by the suite runner.
+The latest full run was 134 / 134: fast tests 36 / 36 in 2.37 seconds and API
+tests 98 / 98 in 29.87 seconds. This compares with the pre-optimization
+134 / 134 run at 368.19 seconds; no flakes were observed in validation runs.
 
 ## Negation reaction UX — 2026-09-21
 

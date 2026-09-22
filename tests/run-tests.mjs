@@ -5,15 +5,18 @@ import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const port = 3137;
-const url = `http://localhost:${port}`;
+const port = Number(process.env.GAME_TEST_PORT ?? 3137);
+const inspectorPort = Number(process.env.GAME_TEST_INSPECTOR_PORT ?? (port + 6000));
+const url = process.env.GAME_TEST_URL ?? `http://localhost:${port}`;
 let server = null;
 let output = "";
 const testStatePath = mkdtempSync(join(tmpdir(), "three-kingdoms-test-state-"));
-const apiTestFiles = readdirSync(new URL("./api/", import.meta.url))
+const discoveredApiTestFiles = readdirSync(new URL("./api/", import.meta.url))
   .filter((file) => file.endsWith(".test.mjs"))
   .sort()
   .map((file) => `tests/api/${file}`);
+const requestedApiTestFiles = process.env.GAME_TEST_FILES?.split(",").filter(Boolean);
+const apiTestFiles = requestedApiTestFiles?.length ? requestedApiTestFiles : discoveredApiTestFiles;
 
 // Apply the same tracked migrations the production deploy uses before the API
 // suite creates a room. Every run gets a fresh OS temp directory and never
@@ -24,7 +27,7 @@ if (migration.status !== 0) {
   throw new Error(`Failed to initialize local D1 for tests.\n${migration.stdout}\n${migration.stderr}`);
 }
 
-server = spawn("npx", ["wrangler", "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", String(port), "--local", "--persist-to", testStatePath, "--var", "WTK_TEST_CAPABILITIES:1", "--show-interactive-dev-session=false"], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_STATE_PATH: testStatePath }, stdio: ["ignore", "pipe", "pipe"] });
+server = spawn("npx", ["wrangler", "dev", "-c", "dist/server/wrangler.json", "--assets", "dist/client", "--port", String(port), "--inspector-port", String(inspectorPort), "--local", "--persist-to", testStatePath, "--var", "WTK_TEST_CAPABILITIES:1", "--show-interactive-dev-session=false"], { cwd: new URL("../", import.meta.url), env: { ...process.env, GAME_TEST_STATE_PATH: testStatePath }, stdio: ["ignore", "pipe", "pipe"] });
 server.stdout.on("data", (chunk) => { output += chunk; });
 server.stderr.on("data", (chunk) => { output += chunk; });
 

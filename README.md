@@ -53,7 +53,8 @@ fixture instead of replaying lobby setup. Dedicated lobby, readiness, hero
 selection, privacy, and persistence cases still exercise the real setup
 workflow. `request` performs one action request; callers that intentionally
 want provider inference or empty-decision progression use the explicit
-`requestAndSettle` helper.
+`requestAndSettle` helper. The API suite runs four balanced, isolated shards;
+each shard owns a Wrangler process, port, and temporary D1 directory.
 
 ## Negation reaction UX — 2026-09-21
 
