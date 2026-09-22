@@ -1,5 +1,26 @@
 # Three Kingdoms project handover
 
+## Compact mobile Home and Waiting Room viewport fit — 2026-09-22
+
+Implemented a presentation-only responsive pass in `app/globals.css` for the
+Home page and Waiting Room. The mobile Home shell uses `100dvh`, a 60px brand
+bar, compact hero typography, one-row role cards, and compressed form controls
+so player name, Host Game, room code, and Join Game remain visible together.
+
+The mobile Waiting Room uses a 58px single-row top bar, compact heading and
+copy-code block, three seat columns, 78px seat cards, and a compact action row.
+The JSX still uses `Array.from({ length: room.maxPlayers })`, and the existing
+Ready, add-test-player, start/need-more, leave, polling, and room-state logic
+was not changed. The final two seats are centred when a three-column grid has
+two remaining cells; widths below 340px use a smaller two-column fallback.
+Normal content can still scroll for errors, short viewports, or an open mobile
+keyboard; no required controls are hidden with overflow clipping.
+
+Validation boundary: this pass is CSS-only and still needs deployed visual
+review at 360px, 375px, 390px, 393px, and 430px, including an eight-seat room.
+Recommended next work is that viewport review, followed by the existing final
+graphic/theme skin milestone. Do not broaden this pass into game logic.
+
 ## Compact three-column General selection cards — 2026-09-22
 
 Refined the presentation-only General Selection redesign in

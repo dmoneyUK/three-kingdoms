@@ -1,5 +1,25 @@
 # Three Kingdoms
 
+## Compact mobile home and waiting-room viewport pass — 2026-09-22
+
+The Home page and Waiting Room now use a deliberate compact mobile layout that
+targets one normal iPhone portrait viewport. Mobile shells use `100dvh`, the
+landing navigation is reduced to 60px, the Home hero and entry form use tighter
+spacing and controls, and the four role cards remain on one row. The Waiting
+Room uses a compact 58px top bar, a three-column seat grid that still renders
+every `room.maxPlayers` seat, and a shared-width action row for Ready, test
+players, and Start/Need-more states. A two-column seat fallback is limited to
+very narrow widths below 340px, and error states remain allowed to grow.
+
+This is presentation-only: player/session state, room limits, seat rendering,
+clipboard behavior, readiness, add-test-player behavior, start guards, polling,
+and all backend/game logic are unchanged. The compact rules are consolidated in
+the existing responsive CSS instead of using a second override layer.
+
+Current stage: Stage 7 product polish, mobile Home and Waiting Room viewport
+fit complete. The next milestone is deployed review at 360px, 375px, 390px,
+393px, and 430px, including the eight-seat lobby and short/keyboard states.
+
 ## Compact three-column General selection cards — 2026-09-22
 
 The General Selection page now presents private candidates as compact portrait
