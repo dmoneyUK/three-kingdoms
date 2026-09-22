@@ -92,6 +92,108 @@ test("host test flow accepts only one competing response submission", { timeout:
   assert.equal(settled.data.pendingGroup, null); assert.equal(settled.data.phase, "play"); assert.equal(settled.data.meId, me.id);
 });
 
+test("Barbarian Invasion continues after Cao Cao obtains the staged AOE card with Treachery", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, caoMember, bobMember, carolMember] = game.members;
+  const source = game.room.players.find((player) => player.name === "Host");
+  const cao = game.room.players.find((player) => player.name === "Alice");
+  const bob = game.room.players.find((player) => player.name === "Bob");
+  const carol = game.room.players.find((player) => player.name === "Carol");
+  assert.ok(source && cao && bob && carol);
+  const invasion = card("BarbarianInvasion", "jianxiong-staged");
+  const bobAttack = card("Attack", "jianxiong-staged-bob");
+  const carolAttack = card("Attack", "jianxiong-staged-carol");
+  sql(`UPDATE players SET hero=NULL WHERE id IN (${[source.id, bob.id, carol.id].map(quote).join(",")})`);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(cao.id)}`);
+  for (const player of game.room.players) setEquipment(player.id, {});
+  setHand(source.id, [invasion], 4, 4);
+  setHand(cao.id, [], 4, 4);
+  setHand(bob.id, [bobAttack], 4, 4);
+  setHand(carol.id, [carolAttack], 4, 4);
+  setTurn(game.code, source.seat, "play");
+
+  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: invasion.id, preserveResponse: true });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  await passNegationWindows(game.code, game.members);
+  const firstTarget = (await state(game.code, caoMember.token)).data;
+  assert.equal(firstTarget.currentAction.actorId, cao.id);
+  assert.equal(firstTarget.currentAction.requirement, "attack");
+  assert.deepEqual(discardIds(game.code), [], "Barbarian Invasion remains staged during the AOE");
+
+  const damaged = await requestAndSettle("decline_response", { code: game.code, token: caoMember.token });
+  assert.equal(damaged.status, 200, JSON.stringify(damaged.data));
+  assert.equal(damaged.data.room.players.find((player) => player.id === cao.id).hp, 3);
+  assert.equal(damaged.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.ok(damaged.data.room.currentAction.triggerOptions.some((option) => option.effectId === "cao_cao_jianxiong"));
+  const pendingBeforeGain = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(pendingBeforeGain.continuation.resumeGroup.continuation.heldCards.map((held) => held.id), [invasion.id]);
+
+  const gained = await requestAndSettle("trigger", { code: game.code, token: caoMember.token, providerId: "cao_cao_jianxiong" });
+  assert.equal(gained.status, 200, JSON.stringify(gained.data));
+  assert.ok(gained.data.room.myHand.some((held) => held.id === invasion.id), "Treachery transfers the physical AOE card to Cao Cao");
+  assert.equal(gained.data.room.currentAction.actorId, bob.id, "the AOE advances immediately after Treachery");
+  assert.equal((await state(game.code, bobMember.token)).data.currentAction.requirement, "attack");
+  assert.equal(gained.data.room.pendingGroup.cardKind, "BarbarianInvasion");
+  const pendingAfterGain = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.deepEqual(pendingAfterGain.continuation.heldCards, [], "the obtained AOE card is removed from physical staging");
+  assert.equal(pendingAfterGain.continuation.sequenceStartCardId, invasion.id, "logical AOE identity survives physical card transfer");
+  assert.deepEqual(discardIds(game.code), [], "Treachery does not put the still-resolving AOE into discard");
+
+  const bobAnswered = await requestAndSettle("respond", { code: game.code, token: bobMember.token, cardId: bobAttack.id });
+  assert.equal(bobAnswered.status, 200, JSON.stringify(bobAnswered.data));
+  assert.equal(bobAnswered.data.room.currentAction.actorId, carol.id);
+  assert.equal((await state(game.code, carolMember.token)).data.currentAction.requirement, "attack");
+  const finished = await requestAndSettle("respond", { code: game.code, token: carolMember.token, cardId: carolAttack.id });
+  assert.equal(finished.status, 200, JSON.stringify(finished.data));
+  const sourceFinal = (await state(game.code, sourceMember.token)).data;
+  const caoFinal = (await state(game.code, caoMember.token)).data;
+  assert.equal(sourceFinal.phase, "play");
+  assert.equal(sourceFinal.actionPlayerId, source.id);
+  assert.equal(sourceFinal.pendingGroup, null);
+  assert.equal(sourceFinal.currentAction?.triggerEvent, undefined);
+  assert.ok(caoFinal.myHand.some((held) => held.id === invasion.id));
+  assert.equal(discardIds(game.code).includes(invasion.id), false, "the obtained AOE card is never committed to discard");
+  assert.equal(roomCardCount(game.code, invasion.id), 1, "the AOE card remains conserved exactly once");
+});
+
+test("an unavailable Treachery damage card cannot strand the response room in resolving", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, caoMember] = game.members;
+  const source = game.room.players.find((player) => player.name === "Host");
+  const cao = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(source && cao);
+  const attack = card("Attack", "jianxiong-stale");
+  sql(`UPDATE players SET hero=NULL WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(cao.id)}`);
+  setEquipment(source.id, {}); setEquipment(cao.id, {});
+  setHand(source.id, [attack], 4, 4); setHand(cao.id, [], 4, 4);
+  setTurn(game.code, source.seat, "play");
+
+  let damaged = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetId: cao.id, preserveResponse: true });
+  assert.equal(damaged.status, 200, JSON.stringify(damaged.data));
+  if (damaged.data.room.currentAction?.kind === "response") {
+    damaged = await requestAndSettle("decline_response", { code: game.code, token: caoMember.token, preserveResponse: true });
+  }
+  assert.equal(damaged.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.ok(damaged.data.room.currentAction.triggerOptions.some((option) => option.effectId === "cao_cao_jianxiong"));
+  const pendingBefore = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
+  sql(`UPDATE rooms SET discard_json='[]' WHERE code=${quote(game.code)}`);
+  assert.equal(discardIds(game.code).includes(attack.id), false);
+
+  const rejected = await requestAndSettle("trigger", { code: game.code, token: caoMember.token, providerId: "cao_cao_jianxiong" });
+  assert.equal(rejected.status, 409, JSON.stringify(rejected.data));
+  const afterRejected = await state(game.code, caoMember.token);
+  assert.equal(afterRejected.data.phase, "response");
+  assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), pendingBefore, "a failed ownership validation leaves the exact active decision intact");
+  assert.equal(afterRejected.data.currentAction.triggerEvent, "damage_suffered");
+
+  const declined = await requestAndSettle("decline_trigger", { code: game.code, token: caoMember.token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  assert.ok(["play", "play-struck"].includes(declined.data.room.phase));
+  assert.equal(declined.data.room.pending, null);
+  assert.equal(declined.data.room.pendingGroup, null);
+});
+
 test("Negation cancels a stratagem and a counter-Negation restores it in ordered response", { timeout: 30_000 }, async () => {
   const game = await createHumanGame(); const [host, alice] = game.members;
   const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alicePlayer = game.room.players.find((player) => player.name === "Alice");
@@ -627,5 +729,3 @@ test("Rations Depleted targets at distance 1 and skips only a failed target's Dr
 
 
 });
-
-

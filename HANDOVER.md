@@ -1,5 +1,28 @@
 # Three Kingdoms project handover
 
+## Cao Cao Treachery during staged AOE — 2026-09-22
+
+The Treachery damage-card path is now location-aware. It can take a damage
+card from `discard_json` or from the nested `resumeGroup.continuation.heldCards`
+used by Barbarian Invasion/Raining Arrows, removing staged cards before the
+group commits its remaining physical cards. The enclosing GroupContinuation
+keeps a stable `sequenceStartCardId`, so logical AOE identity survives that
+physical transfer and the remaining targets continue normally.
+
+The `damage_suffered` route branch now validates Treachery, Retaliation,
+Legacy, and Stauchness selections before its response CAS claim wherever a
+selection can be stale. A rejected unavailable-card request leaves phase
+`response` and the exact pending decision intact. New API regressions cover
+the nested AOE transfer, subsequent Negation/Attack flow, final source-turn
+resumption, exact card conservation, and safe decline after a rejected stale
+Treachery action.
+
+Known boundary: the physical AOE card may leave `heldCards` before the group
+finishes; `heldCards` must therefore never again be used as the sole logical
+resolution identity. The next recommended work remains the next individually
+verified Standard hero capability; preserve the semantic `currentAction`
+protocol and Quick Test privacy when extending the ruleset.
+
 ## Local dock refinement — 2026-09-22
 
 The focused mobile dock pass is complete and remains presentation-only. The

@@ -1,5 +1,22 @@
 # Three Kingdoms
 
+## Cao Cao Treachery during staged AOE — 2026-09-22
+
+Cao Cao's Treachery now obtains damage-causing cards from either the discard
+pile or an in-progress Group/AOE continuation. When the card is still staged,
+it is removed from `heldCards` and added to Cao Cao's hand without cancelling
+the remaining Barbarian Invasion or duplicating the card into discard.
+
+Group resolutions now carry a stable `sequenceStartCardId` independent of
+physical staging, and `damage_suffered` validates card ownership and other
+semantic selections before claiming the response. An invalid/stale Treachery
+submission therefore leaves the exact response decision available for a
+successful decline. Integration coverage includes the full four-player
+Barbarian Invasion continuation, card conservation, normal Attack windows,
+and the no-stranded-`resolving` safety case. The current stage remains Stage 6
+hero-capability execution active; the next milestone is the next individually
+verified missing Standard hero capability.
+
 ## Local dock refinement — 2026-09-22
 
 The focused dock refinement keeps the hero identity visually primary while
