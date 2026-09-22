@@ -57,7 +57,7 @@ monogram presentation because no licensed General artwork is part of this
 change. The next recommended work remains the deployed mobile review and
 final graphic/theme skin; do not broaden this UI pass into game logic.
 
-## Final mobile LocalPlayerDock structure — 2026-09-22
+## Final mobile LocalPlayerDock structure — 2026-09-23
 
 Implemented the final presentation-only dock structure in `app/page.tsx` and
 `app/sequence-overrides.css`. The mobile grid keeps the narrow Hero column and
@@ -81,10 +81,11 @@ cards evenly, and progressively overlaps larger collections.
 The hand rail keeps its measured spacing and uses a neutral zero-width fallback
 until measurement is available, so it never emits a fixed negative overlap.
 Selected cards keep their physical slot, rise as full cards above the top-panel
-stacking layer, and carry a centred info icon below the card name; the Action
-panel remains above them. The hand corner is smaller and scoped to the dock.
-Opponent panels in `app/globals.css` now use a 2:3 portrait silhouette while
-retaining names, hero, HP, hand count, targeting, info buttons, and mini zones.
+stacking layer, and move with their centred info icon below the card name as
+one `.hand-card-visual` unit; the Action panel remains above them. The hand
+corner is smaller and scoped to the dock. The canonical opponent rules in
+`app/globals.css` now use a 2:3 portrait silhouette while retaining names,
+hero, HP, hand count, targeting, info buttons, and mini zones.
 
 Focused render coverage now verifies skill count/name/no-generic-fallback,
 three top-panel containers, vertical Status markup, slot order and empty labels,

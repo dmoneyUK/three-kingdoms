@@ -2,13 +2,14 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
-## Stage 7 maintenance — final LocalPlayerDock structure — 2026-09-22
+## Stage 7 maintenance — final LocalPlayerDock structure — 2026-09-23
 
 Complete for this presentation-only pass. The mobile LocalPlayerDock now has
 independent Hero, Status, Equipment, Judgement, Hand, and Action regions. The
 responsive top row keeps Status, Equipment, and Judgement equal in height;
 Equipment uses four labelled compact slots, Judgement uses measured dynamic
-spacing, and selected Hand cards paint above the top panels but below Actions.
+spacing, and selected Hand cards move as one visual unit above the top panels
+but below Actions.
 Smaller hand corners and portrait opponent panels are scoped to presentation.
 Focused render coverage protects the direct panel structure, slot semantics,
 dynamic spacing, stacking, and Quick Test perspective. The next Stage 7

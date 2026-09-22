@@ -598,10 +598,11 @@
 .local-hand-rail::-webkit-scrollbar { display: none; }
 .local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 68px; width: 68px; height: var(--hand-peek-height); overflow: hidden; }
 .local-hand-rail .card-slot.single-selected { z-index: 80; height: var(--hand-peek-height); overflow: visible; }
+.local-hand-rail .hand-card-visual { position: relative; width: 100%; height: var(--hand-card-height); }
 .local-hand-rail .card-slot .game-card { width: 100%; height: var(--hand-card-height); margin-left: 0; padding: 8px 5px; }
-.local-hand-rail .card-slot.single-selected .game-card { transform: translateY(calc(-1 * var(--selected-rise))); }
+.local-hand-rail .card-slot.single-selected .hand-card-visual { transform: translateY(calc(-1 * var(--selected-rise))); }
 .local-hand-rail .card-info-button { left: 50%; top: calc(var(--hand-card-height) * .67); right: auto; bottom: auto; z-index: 6; opacity: 0; pointer-events: none; width: 16px; height: 16px; font-size: 9px; translate: -50% -50%; transform: none; }
-.local-hand-rail .card-slot.single-selected .card-info-button { opacity: 1; pointer-events: auto; transform: translate(-50%, calc(-50% - var(--selected-rise))); translate: none; }
+.local-hand-rail .card-slot.single-selected .card-info-button { opacity: 1; pointer-events: auto; translate: -50% -50%; }
 .local-hand-rail .card-slot:not(.single-selected) .game-card.selected { transform: translateY(-5px); }
 .local-hand-rail .game-card .card-name-mark { max-width: 92%; font-size: clamp(10px, 3vw, 13px) !important; line-height: .95; }
 .local-hand-rail .game-card > strong { font-size: 5px; letter-spacing: .06em; }

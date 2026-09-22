@@ -41,7 +41,7 @@ Current stage: Stage 7 product polish, compact General selection sizing pass
 complete. The next milestone remains deployed mobile review at 320px, 390px,
 and 430px, followed by the final graphic/theme skin.
 
-## Final mobile LocalPlayerDock structure — 2026-09-22
+## Final mobile LocalPlayerDock structure — 2026-09-23
 
 The presentation-only dock refinement is complete. Mobile keeps a narrow Hero
 column and a full-width right-side dock whose top row contains equal-height
@@ -62,9 +62,10 @@ Judgement is a separate dynamic area with no fake empty slots.
 Hand placement measures the actual rail with `ResizeObserver`, distributes
 cards across the available width when they fit, and applies only calculated
 overlap. Selection keeps the same physical slot, reveals the full card above
-the top panels, moves its centred info control with it, and remains below the
-Action panel. Hand corner markers are smaller, and all three visible opponent
-panels use a portrait/card silhouette without hiding their mini zones.
+the top panels, and moves the card plus centred info control as one visual
+unit while remaining below the Action panel. Hand corner markers are smaller,
+and all three visible opponent panels use a canonical portrait/card silhouette
+without hiding their mini zones.
 
 All LocalPlayerDock geometry remains consolidated in
 `app/sequence-overrides.css`; no duplicate dock layout was restored to
