@@ -11,9 +11,12 @@ Equipment uses four labelled compact slots, Judgement uses measured dynamic
 spacing, and selected Hand cards move as one visual unit above the top panels
 but below Actions.
 Smaller hand corners and portrait opponent panels are scoped to presentation.
-Focused render coverage protects the direct panel structure, slot semantics,
-dynamic spacing, stacking, and Quick Test perspective. The next Stage 7
-milestone remains deployed review followed by the final graphic/theme skin.
+The latest screenshot review also requires vertical opponent HP/hearts/hand
+summaries, real compact opponent equipment graphics, a wider Status panel,
+two-card Judgement capacity, and wider action controls. Focused render coverage
+protects the direct panel structure, slot semantics, dynamic spacing, stacking,
+and Quick Test perspective. The next Stage 7 milestone remains deployed review
+followed by the final graphic/theme skin.
 
 Stage 6 cleanup is canonical-only: response/trigger commands are `respond`, `decline_response`, `trigger`, and `decline_trigger`; old clients and persisted in-progress legacy decisions are unsupported; and `currentAction` is authoritative. Future cards/heroes must not add provider-specific HTTP actions. Wusheng requires explicit `playAs: "attack"`, with native card play as the default. The three faction lords now use this contract for both active Play Phase skills and delegated lord responses.
 

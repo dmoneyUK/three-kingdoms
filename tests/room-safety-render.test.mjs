@@ -59,7 +59,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="local-player-dock"[^>]*data-player-anchor="p1"/);
   assert.match(html, /class="player-square[^>]*data-player-anchor="p2"/);
   assert.match(html, /class="player-square[^>]*data-player-anchor="p3"/);
-  assert.match(html, /class="mini-zone-card"[^>]*data-equipment-id="opponent-weapon"/);
+  assert.match(html, /class="mini-zone-card mini-equipment-card"[^>]*data-equipment-id="opponent-weapon"/);
+  assert.match(html, /class="player-hp">HP 3\/4<\/span>[\s\S]*class="player-hearts">♥♥♥<\/span>[\s\S]*class="player-hand-count">Hand cards: 4<\/small>/);
+  assert.match(html, /class="mini-zone-card mini-equipment-card"[^>]*data-equipment-id="opponent-weapon"[\s\S]*class="played-card bluesteelsword black-suit/);
   assert.match(html, /class="mini-zone-card judgement-mini"[^>]*data-judgement-id="opponent-judgement"/);
   assert.match(html, /class="local-hand"[^>]*data-card-origin-anchor="p1"/);
   assert.match(html, /class="draw-stack"[^>]*data-draw-anchor="true"/);
@@ -127,7 +129,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /--hand-panel-height: 72px[\s\S]*--hand-peek-height: 56px[\s\S]*--hand-card-height: 102px[\s\S]*--hand-top-inset: 4px[\s\S]*--selected-rise: 48px[\s\S]*--hand-bottom-gutter: 10px/);
   assert.match(sequenceStyleSource, /hand-top-inset - selected-rise \+ hand-card-height[\s\S]*hand-panel-height - hand-bottom-gutter/);
   assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\)[\s\S]*grid-template-rows: auto var\(--hand-panel-height\) 40px/);
-  assert.match(sequenceStyleSource, /\.local-dock-zones\s*\{[\s\S]*grid-template-columns: clamp\(56px, 15vw, 68px\) max-content minmax\(0, 1fr\)/);
+  assert.match(sequenceStyleSource, /--status-panel-width: clamp\(72px, 19vw, 92px\)[\s\S]*--zone-card-width: clamp\(28px, 7\.6vw, 34px\)/);
+  assert.match(sequenceStyleSource, /\.local-dock-zones\s*\{[\s\S]*grid-template-columns: var\(--status-panel-width\) max-content calc\(var\(--zone-card-width\) \+ var\(--zone-card-width\) \+ var\(--zone-card-gap\) \+ 8px\)/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
   assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-judgement-panel,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
   assert.match(sequenceStyleSource, /\.local-hand-rail\s*\{[\s\S]*top: 0[\s\S]*height: var\(--hand-peek-height\)[\s\S]*overflow: visible/);
@@ -144,7 +147,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(globalStyleSource, /Final mobile player panels/);
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*min-height: 54px[\s\S]*padding: 7px 8px/);
-  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls button\s*\{[\s\S]*min-width: 68px/);
+  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls button\s*\{[\s\S]*min-width: 78px/);
+  assert.match(globalStyleSource, /\.player-hp[\s\S]*\.player-hearts[\s\S]*\.player-hand-count/);
+  assert.match(globalStyleSource, /\.mini-equipment-card \.mini-equipment-button > \.played-card[\s\S]*width: 100%[\s\S]*height: 100%/);
   assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 58px minmax\(0, 1fr\)/);
 
   const switched = normalizeRoomData({ ...payload, code: "DOCK2", meId: "p3", myRole: "Loyalist", myHand: [card("switched-hand", "Dodge")], actionPlayerId: "p3", currentAction: { ...payload.currentAction, actorId: "p3" } });

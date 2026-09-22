@@ -436,9 +436,10 @@
   --hand-top-inset: 4px;
   --selected-rise: 48px;
   --hand-bottom-gutter: 10px;
-  --zone-card-width: clamp(28px, 7.8vw, 34px);
+  --status-panel-width: clamp(72px, 19vw, 92px);
+  --zone-card-width: clamp(28px, 7.6vw, 34px);
   --zone-card-height: calc(var(--zone-card-width) * 1.5);
-  --zone-card-gap: clamp(3px, 1.1vw, 6px);
+  --zone-card-gap: clamp(3px, 1vw, 6px);
   --top-panel-gap: 3px;
   position: relative;
   display: grid;
@@ -515,7 +516,7 @@
 .local-dock-zones {
   grid-area: zones;
   display: grid;
-  grid-template-columns: clamp(56px, 15vw, 68px) max-content minmax(0, 1fr);
+  grid-template-columns: var(--status-panel-width) max-content calc(var(--zone-card-width) + var(--zone-card-width) + var(--zone-card-gap) + 8px);
   align-items: stretch;
   gap: var(--top-panel-gap);
   min-width: 0;
@@ -612,7 +613,7 @@
 .local-player-dock .turn-controls { position: relative; grid-area: actions; z-index: 100; min-height: 54px; height: 54px; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
 .local-player-dock .turn-controls > span { min-width: 0; overflow: hidden; white-space: normal; }
 .local-player-dock .turn-controls > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
-.local-player-dock .turn-controls button { min-width: 68px; min-height: 32px; padding: 5px 8px; font-size: 8px; }
+.local-player-dock .turn-controls button { min-width: 78px; min-height: 32px; padding: 5px 8px; font-size: 8px; }
 
 @media (max-width: 700px) {
   .local-player-dock { grid-template-columns: 110px minmax(0, 1fr); grid-template-rows: auto var(--hand-panel-height) 52px; }
@@ -626,18 +627,18 @@
   .local-dock-identity { gap: 2px; padding: 3px; }
   .local-hero-skills { gap: 2px; }
   .local-hero-skills .hero-skill-button { min-height: 18px; padding: 3px 2px; font-size: 6px; }
-  .local-dock-zones { grid-template-columns: clamp(56px, 15vw, 68px) max-content minmax(0, 1fr); }
+  .local-dock-zones { grid-template-columns: var(--status-panel-width) max-content calc(var(--zone-card-width) + var(--zone-card-width) + var(--zone-card-gap) + 8px); }
   .local-status-panel,
   .local-equipment-panel,
   .local-judgement-panel { padding: 3px; }
   .local-player-dock .turn-controls { min-height: 40px; height: 40px; padding: 4px 5px; gap: 4px; }
-  .local-player-dock .turn-controls button { min-width: 48px; min-height: 28px; padding: 4px 5px; font-size: 7px; }
+  .local-player-dock .turn-controls button { min-width: 78px; min-height: 28px; padding: 4px 5px; font-size: 7px; }
 }
 
 @media (max-width: 360px) {
   .local-player-dock { grid-template-columns: 58px minmax(0, 1fr); }
   .local-hero-card { width: 50px; height: 75px; flex-basis: 75px; }
-  .local-dock-zones { grid-template-columns: 52px max-content minmax(0, 1fr); gap: 2px; }
+  .local-dock-zones { grid-template-columns: 64px max-content calc(var(--zone-card-width) + var(--zone-card-width) + var(--zone-card-gap) + 4px); gap: 2px; }
   .local-equipment-panel,
   .local-judgement-panel { padding: 2px; }
 }

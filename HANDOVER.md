@@ -63,7 +63,12 @@ Implemented the final presentation-only dock structure in `app/page.tsx` and
 `app/sequence-overrides.css`. The mobile grid keeps the narrow Hero column and
 full-width right-side Hand/Action structure, while `.local-dock-zones` now
 contains equal-height Status, Equipment, and Judgement siblings. Status uses
-responsive width/typography and renders HP, hearts, then Role vertically.
+responsive width/typography and renders HP, hearts, then Role vertically. Each
+opponent summary now renders vertical `HP x/x`, heart icons, and `Hand cards: x`
+lines, while equipped opponent cards use the shared compact `CardFace` graphic.
+The local Status panel is wider than before, Judgement is sized for two compact
+cards without fake slots, and the Play/Skip/End controls have wider touch
+targets.
 
 Hero buttons are built from `hero.skills` through a small presentation model.
 Stable capability/provider IDs (`effectId` and response provider IDs) attach
@@ -88,14 +93,14 @@ corner is smaller and scoped to the dock. The canonical opponent rules in
 hero, HP, hand count, targeting, info buttons, and mini zones.
 
 Focused render coverage now verifies skill count/name/no-generic-fallback,
-three top-panel containers, vertical Status markup, slot order and empty labels,
-dynamic Judgement spacing, private CardFace rendering, smaller hand corners,
-selected-card stacking/icon rules, portrait opponent CSS, and Quick Test
-perspective switching. The full local validation and deployed review at
-320px, 390px, and 430px is now green: `npm test` passes all 101 API tests and
-36 focused tests, lint/build/diff-check pass, and the local browser review
-confirmed the responsive dock geometry at all three widths. The live deployed
-review and final graphic/theme skin remain the next milestone.
+three top-panel containers, vertical Status markup, vertical opponent summaries,
+compact opponent CardFace rendering, slot order and empty labels, dynamic
+Judgement spacing, smaller hand corners, selected-card stacking/icon rules,
+portrait opponent CSS, and Quick Test perspective switching. Re-run the full
+local validation and local browser review at 320px, 390px, and 430px after this
+latest screenshot-review update: `npm test` should pass all 101 API tests and
+36 focused tests, with lint/build/diff-check also green. The live deployed review
+and final graphic/theme skin remain the next milestone.
 
 Known boundaries: this change does not alter rules, semantic actions, private
 projections, response legality, equipment/Judgement behavior, or animation

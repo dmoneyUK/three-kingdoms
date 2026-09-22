@@ -876,3 +876,18 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .hero-role-banner{display:inline-flex;align-items:center;gap:12px;margin:2px 0 14px;padding:9px 16px;border:1px solid #c7a35d80;background:#151812c9;box-shadow:0 8px 20px #0004}.hero-role-banner span{font:9px Arial;letter-spacing:.16em;color:#9d9b8b;text-transform:uppercase}.hero-role-banner strong{font:16px Georgia,serif;letter-spacing:.08em;color:#e0c47d;text-transform:uppercase}
 
 /* Local dock layout lives in sequence-overrides.css. */
+
+/* Compact opponent zones retain real CardFace artwork while fitting inside
+   the portrait player panels. */
+.player-hp,
+.player-hearts,
+.player-hand-count { display: block; }
+.player-hp { margin-top: 4px; color: #e1c77f; font: 8px Arial; }
+.player-hearts { margin-top: 2px; color: #f0d28c; font: 9px Arial; }
+.player-hand-count { margin-top: 3px; color: #e1c77f; font: 8px Arial; }
+.mini-equipment-card .mini-equipment-button { display: block; width: 100%; height: 100%; padding: 0; overflow: hidden; }
+.mini-equipment-card .mini-equipment-button > .played-card { width: 100%; height: 100%; padding: 2px 1px; border: 0; border-radius: 0; box-shadow: none; animation: none; pointer-events: none; }
+.mini-equipment-card .played-card > i { left: 0; top: 0; width: 12px !important; min-height: 17px !important; padding: 1px !important; border-width: 1px; font-size: 6px !important; line-height: 1; }
+.mini-equipment-card .played-card > i small { font-size: 5px !important; }
+.mini-equipment-card .played-card .card-name-mark { max-width: 92%; font-size: 5px !important; line-height: .95; }
+.mini-equipment-card .played-card > strong { margin-top: 2px; font-size: 3px !important; letter-spacing: .03em; }

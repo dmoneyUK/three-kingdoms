@@ -48,7 +48,7 @@ column and a full-width right-side dock whose top row contains equal-height
 Status, Equipment, and Judgement panels; the Hand spans the right side below
 them and the Action panel remains full width. Status is responsive and ordered
 HP, hearts, Role. At <=480px the Hero column is 64px and the top panels use a
-responsive 56–68px Status width; below 360px the Hero is 58px and Status 52px.
+responsive 72–92px Status width; below 360px the Hero is 58px and Status 64px.
 
 The Hero panel renders every name from `hero.skills`, including passive and
 currently unavailable skills as disabled buttons. Existing semantic trigger
@@ -59,7 +59,11 @@ Weapon, Armour, +1 Horse, -1 Horse presentation order while retaining the
 labels without a plus glyph; occupied slots show only the shared `CardFace`.
 Judgement is a separate dynamic area with no fake empty slots.
 
-Hand placement measures the actual rail with `ResizeObserver`, distributes
+Opponent summaries now show vertical `HP x/x`, heart icons, and `Hand cards: x`
+lines; their equipped cards use the shared compact `CardFace` with suit/rank
+graphics. The local Status panel is wider than before, Judgement reserves room
+for two compact cards without fake slots, and Play/Skip/End controls use wider
+touch targets. Hand placement measures the actual rail with `ResizeObserver`, distributes
 cards across the available width when they fit, and applies only calculated
 overlap. Selection keeps the same physical slot, reveals the full card above
 the top panels, and moves the card plus centred info control as one visual
