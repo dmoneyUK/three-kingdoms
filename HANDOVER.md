@@ -15,9 +15,12 @@ Serpent Spear, active-skill costs, semantic response costs, rescue Peach, and
 other multi-select modes remain compact in the rail with modest lift and the
 existing selection state.
 
-Hand-card information buttons are now top-right and stop propagation as
-before, leaving the rank/suit corner visible. Selected hand and equipment
-cost states use a gold border/glow without tinting the card face. The central
+Hand-card information buttons are now top-right within each physical card
+slot and stop propagation as before, leaving the rank/suit corner visible.
+They follow the same in-place transform as a rising selected card rather than
+living in a detached overlay. Selected hand and equipment cost states use a
+gold border/glow without tinting the card face. The compact action row keeps
+the current prompt on the left and relevant buttons on the right. The central
 discard CardFace uses a smaller embedded top-left suit/rank shield consistent
 with the shared card language.
 

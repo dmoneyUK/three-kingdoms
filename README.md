@@ -10,9 +10,11 @@ all five zone types remain visible on one row.
 The hand now renders each physical card once. Unselected cards retain their
 full aspect ratio while their slot clips the lower half; a single selected
 card stays in its original rail slot and rises to full height in place. Multi-
-select modes remain compact and raised only modestly. The info button sits at
-the top-right so the rank/suit corner remains readable, and selected card
-faces keep their normal surface with a gold border/glow only.
+select modes remain compact and raised only modestly. Each info button belongs
+to its own card slot and follows the card when it rises, while staying away
+from the rank/suit corner. Selected card faces keep their normal surface with
+a gold border/glow only. The contextual prompt and buttons share a compact
+two-column action row.
 
 The shared CardFace corner marker is also scaled down for the central discard
 pile, keeping the same embedded top-left language without dominating the

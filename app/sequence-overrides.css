@@ -499,6 +499,7 @@
   margin-left: -14px;
   overflow: hidden;
   position: relative;
+  z-index: 1;
 }
 
 .local-hand-rail .card-slot:first-child {
@@ -520,17 +521,28 @@
 
 .local-hand-rail .card-info-button {
   left: auto;
-  right: 4px;
+  right: 10px;
   top: 4px;
   bottom: auto;
   translate: none;
-  width: 18px;
-  height: 18px;
-  font-size: 10px;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
 }
 
 .local-hand-rail .card-slot.single-selected .game-card {
   transform: translateY(-32px);
+}
+
+.local-hand-rail .card-slot.single-selected .card-info-button {
+  translate: 0 0 !important;
+  transform: translateY(-32px);
+  z-index: 6;
+}
+
+.local-hand-rail .card-slot:not(.single-selected):has(.game-card.selected) .card-info-button {
+  translate: 0 0 !important;
+  transform: translateY(-5px);
 }
 
 .local-hand-rail .card-slot:not(.single-selected) .game-card.selected {
@@ -657,17 +669,17 @@
   }
 
   .local-dock-zones {
-    grid-template-columns: minmax(0, 1fr) 52px;
-    gap: 4px;
+    grid-template-columns: minmax(0, 1fr) 42px;
+    gap: 3px;
   }
 
   .local-equipment-slots {
-    gap: 2px;
+    gap: 1px;
   }
 
   .local-zone-label {
     margin-bottom: 1px;
-    font-size: 5px;
+    font-size: 4px;
   }
 
   .local-zone-card-button {
@@ -677,22 +689,22 @@
   .local-zone-card-button small {
     left: 2px;
     top: 2px;
-    font-size: 5px;
+    font-size: 4px;
   }
 
   .local-zone-card-button b {
-    font-size: 5px;
+    font-size: 4px;
   }
 
   .local-zone-card .zone-info-button {
-    width: 10px;
-    height: 10px;
-    font-size: 6px;
+    width: 8px;
+    height: 8px;
+    font-size: 5px;
   }
 
   .local-judgement-stack .local-zone-card {
-    flex-basis: 25px;
-    width: 25px;
+    flex-basis: 21px;
+    width: 21px;
   }
 
   .local-hand-rail {
@@ -724,6 +736,11 @@
     transform: translateY(-44px);
   }
 
+  .local-hand-rail .card-slot.single-selected .card-info-button {
+    translate: 0 0 !important;
+    transform: translateY(-44px);
+  }
+
   .local-hero-card {
     flex-basis: 62px;
     width: 62px;
@@ -731,13 +748,14 @@
   }
 
   .local-player-dock .turn-controls {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
     gap: 3px;
   }
 
   .local-player-dock .turn-controls > div {
-    justify-content: flex-start;
+    justify-content: flex-end;
+    align-items: center;
   }
 
   .local-player-dock .turn-controls button {
@@ -780,8 +798,6 @@
 }
 
 .game-card.selected {
-  background: #eee4ce;
-  color: #25231e;
   outline: 0;
   box-shadow: 0 0 0 2px #ffe28a, 0 0 10px #ffd15f99, 0 8px 16px #0009;
 }

@@ -62,13 +62,16 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const railEnd = html.indexOf('</div></div>', railStart);
   assert.ok(railStart >= 0 && railEnd > railStart, "the local hand has a bounded rail presentation");
   const railHtml = html.slice(railStart, railEnd);
+  assert.equal((railHtml.match(/class="card-slot/g) ?? []).length, 4, "the rail has one slot per physical hand card");
   assert.equal((railHtml.match(/data-hand-card-id="/g) ?? []).length, 4, "the compact rail keeps exactly four physical hand cards");
+  assert.equal((railHtml.match(/class="card-info-button"/g) ?? []).length, 4, "each physical hand card owns one information control");
   assert.doesNotMatch(html, /class="play-hand"/, "the legacy private play-hand renderer is removed");
   assert.match(html, /class="local-hand"[\s\S]*class="local-hand-rail"/);
   assert.ok(html.indexOf('class="local-hand"') < html.indexOf('class="turn-controls"'), "the hand precedes contextual controls in the DOM");
   assert.match(gameRoomSource, /const multiSelectMode = room\.phase === "discard"/);
   assert.match(gameRoomSource, /const singleSelected = !multiSelectMode && isSelected/);
   assert.match(gameRoomSource, /singleSelected \? "single-selected"/);
+  assert.match(gameRoomSource, /data-hand-card-id=\{item\.id\}[\s\S]*className="card-info-button"/);
   assert.doesNotMatch(gameRoomSource, /local-selected-card-preview|selectedPreviewCard/);
   assert.match(gameRoomSource, /key={`rail-\$\{item\.id\}`}/);
   assert.match(html, /class="discard-stack"[^>]*data-discard-kind="Dismantle"/);
