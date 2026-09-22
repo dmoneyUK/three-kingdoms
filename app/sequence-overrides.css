@@ -432,6 +432,21 @@
   gap: 4px;
 }
 
+/* The hand is the compact visual bridge between the dock identity row and
+   the contextual controls. Keep the order presentation-only; all action
+   eligibility still comes from the existing currentAction state. */
+.local-dock-actions > .local-hand {
+  order: 1;
+}
+
+.local-dock-actions > .turn-controls {
+  order: 2;
+}
+
+.local-dock-actions > .play-error {
+  order: 3;
+}
+
 .local-player-dock .turn-controls {
   min-height: 0;
   height: auto;
@@ -473,12 +488,14 @@
 
 .local-hand {
   position: relative;
+  height: 80px;
   min-width: 0;
   overflow: visible;
 }
 
 .local-hand-rail {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
   display: flex;
   justify-content: center;
@@ -514,7 +531,7 @@
 }
 
 .local-hand-rail .game-card.selected {
-  transform: translateY(-7px);
+  transform: translateY(-5px);
 }
 
 .local-hand-rail .card-info-button {
@@ -532,11 +549,15 @@
 }
 
 .local-selected-card-preview {
-  position: relative;
-  z-index: 10;
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  z-index: 20;
   display: flex;
   justify-content: center;
-  height: 146px;
+  width: 100%;
+  height: 140px;
+  transform: translateX(-50%);
   pointer-events: none;
 }
 
@@ -554,7 +575,7 @@
 }
 
 .local-selected-card-preview .card-slot:has(.game-card.selected) .card-info-button {
-  translate: 0 -17px;
+  translate: -50% -17px;
 }
 
 .local-dock-actions > .active-skill-equipment {
@@ -582,9 +603,6 @@
     justify-content: flex-start;
   }
 
-  .local-selected-card-preview {
-    height: 138px;
-  }
 }
 
 @media (max-width: 480px) {
@@ -671,8 +689,12 @@
 
   .local-hand-rail {
     justify-content: center;
-    height: 72px;
-    padding: 6px 4px 0;
+    height: 58px;
+    padding: 8px 4px 0;
+  }
+
+  .local-hand {
+    height: 58px;
   }
 
   .local-hand-rail .card-slot {
@@ -687,7 +709,7 @@
   }
 
   .local-selected-card-preview {
-    height: 138px;
+    height: 134px;
   }
 
   .local-selected-card-preview .card-slot,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -7,6 +8,7 @@ import { STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
+const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 
 test("hero selection shows the effective viewer's private role", () => {
   const room = {
@@ -47,7 +49,19 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, />Weapon<\/span>/); assert.match(html, />Armor<\/span>/);
   assert.match(html, /aria-label="Explain Blue Steel Sword"/); assert.match(html, /aria-label="Explain Lightning"/);
   assert.match(html, /class="local-hand"/); assert.match(html, /class="local-hand-rail"/);
-  assert.equal((html.match(/data-hand-card-id="/g) ?? []).length, 4, "the compact rail keeps all four physical hand cards");
+  const railStart = html.indexOf('class="local-hand-rail"');
+  const railEnd = html.indexOf('</div></div>', railStart);
+  assert.ok(railStart >= 0 && railEnd > railStart, "the local hand has a bounded rail presentation");
+  const railHtml = html.slice(railStart, railEnd);
+  assert.equal((railHtml.match(/data-hand-card-id="/g) ?? []).length, 4, "the compact rail keeps exactly four physical hand cards");
+  assert.doesNotMatch(html, /class="play-hand"/, "the legacy private play-hand renderer is removed");
+  assert.match(html, /class="local-hand"[\s\S]*class="local-hand-rail"/);
+  assert.match(gameRoomSource, /selectedPreviewCard && <div className="local-selected-card-preview" data-selected-card-id=/);
+  assert.match(gameRoomSource, /const multiSelectMode = room\.phase === "discard"/);
+  assert.match(gameRoomSource, /const selectedPreviewCard = !multiSelectMode && selected/);
+  assert.match(gameRoomSource, /data-selected-card-id=\{selectedPreviewCard\.id\}/);
+  assert.match(gameRoomSource, /selectedPreviewCard\?\.id === item\.id \? "peek-card-previewed"/);
+  assert.match(gameRoomSource, /preview \? "preview-" : "rail-"/);
   assert.match(html, /class="discard-stack"[^>]*data-discard-kind="Dismantle"/);
   assert.doesNotMatch(html, /After you take damage/);
   assert.doesNotMatch(html, /private-opponent-card/);

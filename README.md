@@ -4,11 +4,14 @@
 
 Step 2 keeps the Step 1 controlled-seat dock and compresses it into one player
 area on portrait mobile. The hero/name/role/HP line shares space with the four
-portrait-shaped equipment slots and Judgement stack, while the hand uses a
-layered peek rail: the physical card remains full aspect ratio, only its top
-half is exposed by default, and the selected single card gets a full-size
-preview above the rail. Discard and semantic/hero selection modes retain their
-existing state and controls; multi-select cards remain raised only slightly.
+portrait-shaped equipment slots and Judgement stack. There is exactly one
+private hand presentation: a layered peek rail keeps each physical card at its
+normal aspect ratio while exposing roughly its top half; a selected single card
+uses an absolute full-size preview above the rail without changing dock height.
+The contextual action row is presented below the hand. Discard and
+semantic/hero selection modes retain their existing state and controls;
+multi-select cards remain in the rail with a modest lift and visible selection
+state.
 
 The central draw pile remains count-backed by `room.deckCount`. The discard pile
 now uses the existing static `CardFace` for `visibleDiscardTop`, with no invented
@@ -25,7 +28,9 @@ semantic actions, and privacy projections are unchanged. The decorative board
 ellipse was removed, while the central deck/discard play-center and existing
 resolution animation geometry remain unchanged for the next layout pass.
 
-Current stage: compact local dock and centre-pile presentation complete. The
+Current stage: compact local dock and centre-pile presentation complete,
+including the Step 2 review fixes for duplicate-hand rendering, fixed-height
+selection overlays, and compact mobile clipping. The
 next milestone is Step 3: add actual rendered player/dock anchors to
 `TableResolutionSequence` and update card origin, destination, equipment flight,
 Judgement flight, and settled-card locations. Step 3 remains intentionally

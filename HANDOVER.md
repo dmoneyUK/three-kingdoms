@@ -23,9 +23,13 @@ or ellipse.
 This pass deliberately does not modify `TableResolutionSequence`; its
 animation geometry still uses the previous seat layout and is the known next
 boundary for Step 3. The dock is now a compact flex-height footer on mobile.
-Its identity, four equipment slots, and Judgement stack share the top line; the
-hand is a full-aspect-ratio peek rail with a separate full-size selected-card
-preview for single selection. Discard, Serpent Spear, active skill card costs,
+The Step 2 review fix removed the old ordinary `.play-hand` renderer, leaving
+exactly one private hand rail under `LocalPlayerDock`. Its identity, four
+equipment slots, and Judgement stack share the top line; the hand is a
+full-aspect-ratio peek rail with a separate full-size selected-card preview for
+single selection. The preview is absolute and clickable, so selection does not
+increase footer height. The contextual prompt and buttons are presented below
+the rail. Discard, Serpent Spear, active skill card costs,
 semantic response selection, rescue Peach, and equipment selection keep their
 existing state variables and submission branches. The card information action
 remains a separate stop-propagating button in both peek and selected
@@ -45,12 +49,11 @@ and desktop widths. No gameplay rules, semantic actions, targeting, privacy,
 seat calculations, equipment logic, Judgement logic, or hero skills changed in
 this pass.
 
-Validation for this pass: build, lint, `git diff --check`, and the focused SSR
-render suite pass. A clean full `npm test` run reached 131 passing tests; three
-unrelated server-game scenarios still fail in the existing API suite
-(`Stauchness` take-damage, repeated turn engine, and classic role-death
-cleanup), and the same three fail in isolation against a fresh Worker/D1 state.
-Manual browser capture was not possible because the connected Mac was locked.
+Validation for this review fix: `npm test` passes 134 / 134, including the
+focused SSR render regressions; `npm run lint` passes; and the production build
+completes successfully. The live browser capture could not be completed because
+the connected Mac was locked. `git diff --check` remains the final local gate
+before commit and push.
 
 ## Negation reaction UX — 2026-09-21
 
