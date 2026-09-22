@@ -432,21 +432,6 @@
   gap: 4px;
 }
 
-/* The hand is the compact visual bridge between the dock identity row and
-   the contextual controls. Keep the order presentation-only; all action
-   eligibility still comes from the existing currentAction state. */
-.local-dock-actions > .local-hand {
-  order: 1;
-}
-
-.local-dock-actions > .turn-controls {
-  order: 2;
-}
-
-.local-dock-actions > .play-error {
-  order: 3;
-}
-
 .local-player-dock .turn-controls {
   min-height: 0;
   height: auto;
@@ -575,7 +560,7 @@
 }
 
 .local-selected-card-preview .card-slot:has(.game-card.selected) .card-info-button {
-  translate: -50% -17px;
+  translate: 0 -17px;
 }
 
 .local-dock-actions > .active-skill-equipment {

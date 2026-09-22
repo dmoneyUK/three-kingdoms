@@ -28,8 +28,9 @@ exactly one private hand rail under `LocalPlayerDock`. Its identity, four
 equipment slots, and Judgement stack share the top line; the hand is a
 full-aspect-ratio peek rail with a separate full-size selected-card preview for
 single selection. The preview is absolute and clickable, so selection does not
-increase footer height. The contextual prompt and buttons are presented below
-the rail. Discard, Serpent Spear, active skill card costs,
+increase footer height. The JSX order now matches the visual and accessibility
+order: hand rail, then contextual prompt and buttons. Discard, Serpent Spear,
+active skill card costs,
 semantic response selection, rescue Peach, and equipment selection keep their
 existing state variables and submission branches. The card information action
 remains a separate stop-propagating button in both peek and selected
@@ -49,11 +50,14 @@ and desktop widths. No gameplay rules, semantic actions, targeting, privacy,
 seat calculations, equipment logic, Judgement logic, or hero skills changed in
 this pass.
 
-Validation for this review fix: `npm test` passes 134 / 134, including the
+Validation for this Step 2 final review: `npm test` passes 134 / 134, including the
 focused SSR render regressions; `npm run lint` passes; and the production build
-completes successfully. The live browser capture could not be completed because
-the connected Mac was locked. `git diff --check` remains the final local gate
-before commit and push.
+completes successfully. A fresh D1 test-state reproduction also passes the
+previously reported Dying rescue test; the CI-only generated-card mismatch was
+transient local/isolated test-state contamination, not a confirmed gameplay
+regression. The live browser capture could not be completed because the
+connected Mac was locked. `git diff --check` remains the final local gate before
+commit and push.
 
 ## Negation reaction UX — 2026-09-21
 

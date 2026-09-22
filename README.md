@@ -8,7 +8,8 @@ portrait-shaped equipment slots and Judgement stack. There is exactly one
 private hand presentation: a layered peek rail keeps each physical card at its
 normal aspect ratio while exposing roughly its top half; a selected single card
 uses an absolute full-size preview above the rail without changing dock height.
-The contextual action row is presented below the hand. Discard and
+The JSX, keyboard, and screen-reader order is hand rail followed by the
+contextual action row. Discard and
 semantic/hero selection modes retain their existing state and controls;
 multi-select cards remain in the rail with a modest lift and visible selection
 state.

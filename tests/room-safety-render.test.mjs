@@ -56,6 +56,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.equal((railHtml.match(/data-hand-card-id="/g) ?? []).length, 4, "the compact rail keeps exactly four physical hand cards");
   assert.doesNotMatch(html, /class="play-hand"/, "the legacy private play-hand renderer is removed");
   assert.match(html, /class="local-hand"[\s\S]*class="local-hand-rail"/);
+  assert.ok(html.indexOf('class="local-hand"') < html.indexOf('class="turn-controls"'), "the hand precedes contextual controls in the DOM");
   assert.match(gameRoomSource, /selectedPreviewCard && <div className="local-selected-card-preview" data-selected-card-id=/);
   assert.match(gameRoomSource, /const multiSelectMode = room\.phase === "discard"/);
   assert.match(gameRoomSource, /const selectedPreviewCard = !multiSelectMode && selected/);
