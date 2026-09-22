@@ -8,14 +8,17 @@ seat-relative calculations, targeting, distance logic, and Quick Test
 perspective unchanged. The controlled player is rendered in
 `LocalPlayerDock`, which contains an image-ready neutral hero placeholder,
 hero name, private role, HP, hand, contextual controls, explicit Weapon,
-Armor, +1 Horse, and -1 Horse slots, plus a persistent Judgement stack.
+Armor, -1 Horse, and +1 Horse slots, plus a persistent Judgement stack.
+Horse labels follow the existing outgoing/incoming distance semantics, and
+empty equipment slots preserve the portrait/card shape.
 
 Equipment and Judgement cards retain their existing information-dialog action;
 equipment selection remains available through the dock during semantic skill
 and trigger choices. No official artwork was added and no hero description is
 shown permanently. The battlefield uses the requested four-seat fallback
-positions for opponents, and `.play-table:before` was removed without adding
-another emblem or ellipse.
+positions for opponents, with side seats explicitly translated lower than the
+top seat, and `.play-table:before` was removed without adding another emblem
+or ellipse.
 
 This pass deliberately does not modify `TableResolutionSequence`; its
 animation geometry still uses the previous seat layout and is the known next

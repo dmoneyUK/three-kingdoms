@@ -355,8 +355,8 @@ function Countdown({ durationMs, deadline = 0, visibleAt = 0, label = "Continuin
 const LOCAL_EQUIPMENT_SLOTS = [
   { key: "weapon", label: "Weapon" },
   { key: "armor", label: "Armor" },
-  { key: "offensiveHorse", label: "+1 Horse" },
-  { key: "defensiveHorse", label: "-1 Horse" },
+  { key: "offensiveHorse", label: "-1 Horse" },
+  { key: "defensiveHorse", label: "+1 Horse" },
 ] as const;
 type LocalEquipmentSlot = (typeof LOCAL_EQUIPMENT_SLOTS)[number]["key"];
 
@@ -386,7 +386,7 @@ export function LocalPlayerDock({ player, hero, children, onHeroInfo, onInfoCard
       <div className="local-dock-meta"><strong>{player?.name ?? "You"}</strong><span>{hero?.name ?? "Hero not selected"}</span><em>{player?.role ?? "Role pending"}</em><small>{hpDisplay(player?.hp ?? null)} · {player?.hp ?? 0}/{player?.maxHp ?? 0} HP</small></div>
     </div>
     <div className="local-dock-zones" aria-label="Your equipment and judgement zones">
-      <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key}><span className="local-zone-label">{slotLabel(key)}</span>{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}>—</span>}</div>; })}</div>
+      <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key}><span className="local-zone-label">{slotLabel(key)}</span>{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}>+</span>}</div>; })}</div>
       <div className="local-judgement-stack"><span className="local-zone-label">Judgement</span><div>{(player?.judgementCards ?? []).map((card) => renderZoneCard(card))}</div></div>
     </div>
     <div className="local-dock-content">{children}</div>

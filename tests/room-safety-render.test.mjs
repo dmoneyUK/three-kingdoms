@@ -42,7 +42,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, />Lord<\/em>/);
   assert.match(html, /4\/4 HP/);
   assert.equal((html.match(/class="local-equipment-slot"/g) ?? []).length, 4);
-  assert.match(html, />Weapon<\/span>/); assert.match(html, />Armor<\/span>/); assert.match(html, />\+1 Horse<\/span>/); assert.match(html, />-1 Horse<\/span>/);
+  assert.match(html, /data-slot="offensiveHorse"[^>]*>[\s\S]*>-1 Horse<\/span>/);
+  assert.match(html, /data-slot="defensiveHorse"[^>]*>[\s\S]*>\+1 Horse<\/span>/);
+  assert.match(html, />Weapon<\/span>/); assert.match(html, />Armor<\/span>/);
   assert.match(html, /aria-label="Explain Blue Steel Sword"/); assert.match(html, /aria-label="Explain Lightning"/);
   assert.doesNotMatch(html, /After you take damage/);
   assert.doesNotMatch(html, /private-opponent-card/);

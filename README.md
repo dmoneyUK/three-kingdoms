@@ -5,13 +5,15 @@
 The first static-layout pass moves the controlled seat out of the battlefield
 player-square grid and into a compact local-player dock. The dock keeps the
 current hero/general, private role, HP, hand, contextual controls, four
-portrait-shaped equipment slots, and a multi-card Judgement stack together.
+portrait-shaped equipment slots (including correctly labelled -1 and +1 Horse
+slots), and a multi-card Judgement stack together. Empty equipment slots retain
+the same portrait/card shape.
 The hero portrait is an image-ready neutral placeholder rather than official
 card artwork; tapping it opens the existing private Hero Information dialog.
 
 The board now shows the three opponents for a four-player room: relative seat
-2 is high at the top, while relative seats 1 and 3 sit lower on the left and
-right. Targeting, distances, `myTableIndex`, Quick Test perspective switching,
+2 is high at the top, while relative seats 1 and 3 are explicitly translated
+lower on the left and right. Targeting, distances, `myTableIndex`, Quick Test perspective switching,
 semantic actions, and privacy projections are unchanged. The decorative board
 ellipse was removed, while the central deck/discard play-center and existing
 resolution animation geometry remain unchanged for the next layout pass.
