@@ -69,6 +69,11 @@ test count, and API top-ten slowest tests. Baseline before optimisation was
 134 / 134 locally in 368.19 seconds, with the API suite accounting for nearly
 all runtime. No production game behavior changed.
 
+Test-state isolation is also complete: each `test:api` run creates a fresh
+temporary Wrangler/D1 persistence directory, passes that location explicitly
+to the test-only inspection helper, and removes it after the run. The previous
+`.wrangler/test-state` directory is no longer reused by the API runner.
+
 ## Negation reaction UX — 2026-09-21
 
 Current Negation scheduling is capability-driven and privacy-safe. A

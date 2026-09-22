@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { normalizeRoomData } from "../game/room-safety.js";
 
 const baseUrl = process.env.GAME_TEST_URL ?? "http://localhost:3137";
-const d1Directory = new URL("../.wrangler/test-state/v3/d1/miniflare-D1DatabaseObject/", import.meta.url);
+const testStatePath = process.env.GAME_TEST_STATE_PATH ?? resolve(new URL("../", import.meta.url).pathname, ".wrangler/test-state");
+const d1Directory = pathToFileURL(join(testStatePath, "v3/d1/miniflare-D1DatabaseObject/"));
 const membersByCode = new Map();
 
 async function drainEmptyPrivateDecisions(code, fallbackToken) {
