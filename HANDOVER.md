@@ -7,6 +7,12 @@ hero identity card is larger and the equipment/Judgement zone row is smaller,
 with Weapon, Armor, -1 Horse, +1 Horse, and Judgement still visible without a
 semantic or eligibility change.
 
+At the narrow-mobile breakpoint, equipment and Judgement visuals use fixed
+34×51px portrait cards against the 68×102px hand cards. The four equipment
+columns are controlled-width and left-aligned instead of stretching to fill
+the row; slightly wider breakpoints scale them only modestly. Labels, corner
+text, titles, and info controls scale with the compact cards.
+
 The private hand no longer renders a detached selected-card preview. Each
 physical hand card is rendered once in `local-hand-rail`; unselected slots
 clip the lower half of their full-aspect-ratio card, while the single

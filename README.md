@@ -4,8 +4,9 @@
 
 The focused dock refinement keeps the hero identity visually primary while
 compacting the four equipment slots and Judgement row. On narrow mobile
-layouts the hero card is larger, the zone cards and labels are smaller, and
-all five zone types remain visible on one row.
+layouts the hero card is larger, the zone cards are fixed at 34×51px (half the
+68×102px hand-card footprint), labels are smaller, and all five zone types
+remain visible on one row without stretching across the dock.
 
 The hand now renders each physical card once. Unselected cards retain their
 full aspect ratio while their slot clips the lower half; a single selected

@@ -583,7 +583,17 @@
 }
 
 .local-equipment-slots {
+  grid-template-columns: repeat(4, 42px);
   gap: 4px;
+  justify-content: start;
+}
+
+.local-zone-card,
+.local-zone-empty {
+  width: 42px;
+  height: 63px;
+  aspect-ratio: 2 / 3;
+  box-sizing: border-box;
 }
 
 .local-zone-label {
@@ -606,8 +616,9 @@
 }
 
 .local-judgement-stack .local-zone-card {
-  flex-basis: 36px;
-  width: 36px;
+  flex-basis: 42px;
+  width: 42px;
+  height: 63px;
 }
 
 .local-zone-card.selected-cost {
@@ -619,6 +630,23 @@
 }
 
 @media (max-width: 700px) {
+  .local-equipment-slots {
+    grid-template-columns: repeat(4, 38px);
+    gap: 3px;
+  }
+
+  .local-zone-card,
+  .local-zone-empty {
+    width: 38px;
+    height: 57px;
+  }
+
+  .local-judgement-stack .local-zone-card {
+    flex-basis: 38px;
+    width: 38px;
+    height: 57px;
+  }
+
   .local-hand-rail {
     justify-content: flex-start;
   }
@@ -674,7 +702,15 @@
   }
 
   .local-equipment-slots {
-    gap: 1px;
+    grid-template-columns: repeat(4, 34px);
+    gap: 3px;
+    justify-content: start;
+  }
+
+  .local-zone-card,
+  .local-zone-empty {
+    width: 34px;
+    height: 51px;
   }
 
   .local-zone-label {
@@ -703,8 +739,9 @@
   }
 
   .local-judgement-stack .local-zone-card {
-    flex-basis: 21px;
-    width: 21px;
+    flex-basis: 34px;
+    width: 34px;
+    height: 51px;
   }
 
   .local-hand-rail {
