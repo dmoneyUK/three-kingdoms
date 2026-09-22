@@ -96,11 +96,12 @@ Focused render coverage now verifies skill count/name/no-generic-fallback,
 three top-panel containers, vertical Status markup, vertical opponent summaries,
 compact opponent CardFace rendering, slot order and empty labels, dynamic
 Judgement spacing, smaller hand corners, selected-card stacking/icon rules,
-portrait opponent CSS, and Quick Test perspective switching. Re-run the full
-local validation and local browser review at 320px, 390px, and 430px after this
-latest screenshot-review update: `npm test` should pass all 101 API tests and
-36 focused tests, with lint/build/diff-check also green. The live deployed review
-and final graphic/theme skin remain the next milestone.
+portrait opponent CSS, and Quick Test perspective switching. Full local
+validation is green after this screenshot-review update: `npm test` passes all
+101 API tests and 36 focused tests, lint/build/diff-check pass, and the local
+browser smoke review confirms the responsive dock geometry at 320px, 390px,
+and 430px. The live deployed review and final graphic/theme skin remain the
+next milestone.
 
 Known boundaries: this change does not alter rules, semantic actions, private
 projections, response legality, equipment/Judgement behavior, or animation
