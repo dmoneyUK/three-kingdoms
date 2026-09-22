@@ -41,6 +41,14 @@ so equipment artwork remains unchanged under its gold border/glow. The
 selected hand card still rises over the zone row without increasing the dock
 or reaching the action row.
 
+The follow-up containment pass makes the hand and action row explicit sibling
+regions rather than placing them inside a shared content wrapper. The mobile
+dock uses three grid rows, with a bounded 58px hand zone carrying its own top
+and bottom separators. The action row has an opaque higher stacking layer;
+single-selection cards can rise into the equipment row, but their transformed
+bottom remains above the action row. Render checks cover the distinct regions,
+mobile hand height, upward selected-card transform, and action-row stacking.
+
 Focused render assertions prove there is no legacy selected-preview renderer,
 the rail uses one physical instance per hand card, single selection is marked
 in-place, and multi-select mode remains distinct. A fresh 390px local browser

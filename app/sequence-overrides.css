@@ -427,14 +427,14 @@
   line-height: 1;
 }
 
-.local-dock-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
 .local-player-dock {
   position: relative;
+  grid-template-rows: auto 80px auto;
+  grid-template-areas:
+    "identity zones"
+    "hand hand"
+    "actions actions";
+  gap: 3px;
   padding: 4px 6px 0;
   border: 1px solid #76633f;
   border-radius: 4px;
@@ -451,21 +451,29 @@
   border-left: 0;
 }
 
-.local-player-dock .local-dock-content {
-  padding-top: 3px;
-  border-top: 1px solid #765f3c99;
-}
-
 .local-hand-section {
+  position: relative;
+  grid-area: hand;
+  height: 80px;
+  min-height: 80px;
   min-width: 0;
+  box-sizing: border-box;
+  padding: 0 4px;
   overflow: visible;
+  border-top: 1px solid #765f3c99;
   border-bottom: 1px solid #765f3c99;
+  z-index: 5;
 }
 
 .local-player-dock .turn-controls {
+  position: relative;
+  grid-area: actions;
+  z-index: 30;
   min-height: 0;
   height: auto;
-  padding-top: 3px;
+  box-sizing: border-box;
+  padding: 3px 4px 0;
+  background: #11150f;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -512,7 +520,7 @@
 .local-hand-rail {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 5;
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -546,7 +554,7 @@
 .local-hand-rail .card-slot.single-selected {
   height: 112px;
   overflow: visible;
-  z-index: 5;
+  z-index: 20;
 }
 
 .local-hand-rail .card-info-button {
@@ -626,26 +634,6 @@
   margin-top: 3px;
   font-size: 3px;
   letter-spacing: .04em;
-}
-
-.local-dock-actions > .active-skill-equipment {
-  height: 78px;
-  padding-top: 3px;
-  justify-content: center;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.local-dock-actions > .active-skill-equipment .game-card {
-  flex: 0 0 64px;
-  width: 64px;
-  height: 92px;
-  margin-left: -8px;
-  padding: 6px 4px;
-}
-
-.local-dock-actions > .active-skill-equipment .game-card:first-child {
-  margin-left: 0;
 }
 
 /* Keep the four zones visually secondary to the identity card while retaining
@@ -776,9 +764,15 @@
 
   .local-player-dock {
     grid-template-columns: minmax(142px, 42%) minmax(0, 1fr);
-    grid-template-areas: "identity zones" "content content";
-    gap: 4px;
+    grid-template-rows: auto 58px auto;
+    grid-template-areas: "identity zones" "hand hand" "actions actions";
+    gap: 3px;
     padding-top: 2px;
+  }
+
+  .local-hand-section {
+    height: 58px;
+    min-height: 58px;
   }
 
   .local-dock-identity {
@@ -914,16 +908,6 @@
   .local-player-dock .turn-controls button {
     min-height: 26px;
     padding: 4px 7px;
-  }
-
-  .local-dock-actions > .active-skill-equipment {
-    height: 70px;
-  }
-
-  .local-dock-actions > .active-skill-equipment .game-card {
-    flex-basis: 58px;
-    width: 58px;
-    height: 84px;
   }
 
   .discard-stack .played-card {

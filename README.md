@@ -32,6 +32,14 @@ uses the same artwork-preserving gold-border selection language for equipment
 costs. Selected-hand overlap remains bounded above the action row and does not
 add dock height.
 
+The hand and action controls now occupy explicit sibling regions in a
+three-row dock grid. The hand has its own bounded, top-and-bottom-lined rail
+(58px at the narrow-mobile breakpoint), while the opaque action row sits above
+hand painting in the stack and keeps prompt text and buttons independent. A
+single selected card may rise into the equipment row, but its bottom remains
+above the action region, so selecting a card cannot cover the prompt or
+buttons.
+
 ## DOM-aligned card animations — 2026-09-22
 
 Step 3 aligns resolution presentation with the rendered game shell. The local

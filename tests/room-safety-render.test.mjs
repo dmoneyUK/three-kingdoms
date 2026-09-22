@@ -9,6 +9,7 @@ import { normalizeRoomData } from "../game/room-safety.js";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
 test("hero selection shows the effective viewer's private role", () => {
   const room = {
@@ -61,6 +62,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /data-judgement-id="lightning"[\s\S]*class="played-card lightning black-suit/);
   assert.match(gameRoomSource, /const renderZoneCard[\s\S]*<CardFace card=\{card\}/, "local zones reuse the shared card artwork renderer");
   assert.match(html, /class="local-hand"/); assert.match(html, /class="local-hand-rail"/);
+  assert.equal((html.match(/class="local-hand-section"/g) ?? []).length, 1, "the hand is a distinct dock layout region");
+  assert.equal((html.match(/class="turn-controls"/g) ?? []).length, 1, "the action row is a distinct dock layout region");
+  assert.doesNotMatch(html, /local-dock-content|local-dock-actions/, "hand and actions are not hidden inside a generic content wrapper");
   const railStart = html.indexOf('class="local-hand-rail"');
   const railEnd = html.indexOf('</div></div>', railStart);
   assert.ok(railStart >= 0 && railEnd > railStart, "the local hand has a bounded rail presentation");
@@ -83,6 +87,10 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const sequenceSource = gameRoomSource.slice(gameRoomSource.indexOf("function TableResolutionSequence"), gameRoomSource.indexOf("function CardFace"));
   assert.doesNotMatch(sequenceSource, /Math\.(sin|cos)|activeAngle|activeRadians|--seat-[xy]/, "resolution placement is not circular seat geometry");
   assert.match(sequenceSource, /centerRelativeToTable/);
+  assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: 80px[\s\S]*border-top: 1px[\s\S]*border-bottom: 1px/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-hand-section\s*\{[\s\S]*height: 58px[\s\S]*min-height: 58px/);
+  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*z-index: 30[\s\S]*background: #11150f/);
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.game-card\s*\{[\s\S]*transform: translateY\(-52px\)/);
 
   const switched = normalizeRoomData({ ...payload, code: "DOCK2", meId: "p3", myRole: "Loyalist", myHand: [card("switched-hand", "Dodge")], actionPlayerId: "p3", currentAction: { ...payload.currentAction, actorId: "p3" } });
   assert.ok(switched);
