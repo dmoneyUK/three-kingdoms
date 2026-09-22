@@ -7,6 +7,8 @@ compacting the four equipment slots and Judgement row. On narrow mobile
 layouts the hero card is larger, the zone cards are fixed at 34×51px (half the
 68×102px hand-card footprint), labels are smaller, and all five zone types
 remain visible on one row without stretching across the dock.
+The compact card buttons keep a small transparent hit-area expansion beyond
+the visible face for mobile tapping.
 
 The hand now renders each physical card once. Unselected cards retain their
 full aspect ratio while their slot clips the lower half; a single selected

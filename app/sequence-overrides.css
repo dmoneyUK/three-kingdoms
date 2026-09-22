@@ -596,19 +596,33 @@
   box-sizing: border-box;
 }
 
+.local-zone-card {
+  overflow: visible;
+}
+
 .local-zone-label {
   margin-bottom: 2px;
   font-size: 5px;
 }
 
 .local-zone-card-button {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
   padding: 3px 2px;
+  z-index: 1;
 }
 
 .local-zone-card-button small {
-  left: 2px;
-  top: 2px;
+  left: 4px;
+  top: 4px;
   font-size: 7px;
+}
+
+.local-zone-card .zone-info-button {
+  z-index: 2;
 }
 
 .local-zone-card-button b {
@@ -719,12 +733,12 @@
   }
 
   .local-zone-card-button {
-    padding: 2px 1px;
+    padding: 4px 3px 6px;
   }
 
   .local-zone-card-button small {
-    left: 2px;
-    top: 2px;
+    left: 4px;
+    top: 4px;
     font-size: 4px;
   }
 
@@ -733,9 +747,9 @@
   }
 
   .local-zone-card .zone-info-button {
-    width: 8px;
-    height: 8px;
-    font-size: 5px;
+    width: 12px;
+    height: 12px;
+    font-size: 6px;
   }
 
   .local-judgement-stack .local-zone-card {
