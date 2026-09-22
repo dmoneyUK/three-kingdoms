@@ -373,6 +373,360 @@
   .player-judgement-card .played-card .card-name-mark { font-size: 5px; }
 }
 
+/* Step 2: the local seat is a compact dock and the hand is a layered peek
+   rail. These rules intentionally do not change the table-resolution anchors. */
+.game-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.game-shell .play-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.game-shell .play-command {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 7px clamp(8px, 2vw, 24px);
+}
+
+.play-center {
+  z-index: 2;
+}
+
+.discard-stack .played-card {
+  width: 54px;
+  height: 76px;
+  border-width: 1px;
+  border-radius: 3px;
+  box-shadow: 0 5px 12px #0008;
+  animation: none;
+}
+
+.discard-stack .played-card > i {
+  left: 4px;
+  top: 3px;
+  font-size: 9px;
+}
+
+.discard-stack .played-card > i small {
+  font-size: 8px;
+}
+
+.discard-stack .played-card .card-name-mark {
+  max-width: 90%;
+  font-size: 9px;
+}
+
+.discard-stack .played-card > strong {
+  font-size: 4px;
+  margin-top: 4px;
+}
+
+.local-dock-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.local-player-dock .turn-controls {
+  min-height: 0;
+  height: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.local-player-dock .turn-controls > span {
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.local-player-dock .turn-controls > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.local-player-dock .turn-controls button {
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 8px;
+}
+
+.local-player-dock .hero-skills {
+  display: contents;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.local-player-dock .hero-skills > span {
+  display: none;
+}
+
+.local-hand {
+  position: relative;
+  min-width: 0;
+  overflow: visible;
+}
+
+.local-hand-rail {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  height: 80px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 7px 10px 0 18px;
+  scrollbar-width: thin;
+}
+
+.local-hand-rail .card-slot {
+  flex: 0 0 76px;
+  width: 76px;
+  height: 112px;
+  margin-left: -14px;
+}
+
+.local-hand-rail .card-slot:first-child {
+  margin-left: 0;
+}
+
+.local-hand-rail .card-slot .game-card {
+  width: 100%;
+  height: 112px;
+  margin-left: 0;
+  padding: 8px 5px;
+}
+
+.local-hand-rail .card-slot.peek-card-previewed {
+  visibility: hidden;
+}
+
+.local-hand-rail .game-card.selected {
+  transform: translateY(-7px);
+}
+
+.local-hand-rail .card-info-button {
+  left: 4px;
+  top: 4px;
+  bottom: auto;
+  translate: none;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+
+.local-hand-rail .card-slot:has(.game-card.selected) .card-info-button {
+  translate: none;
+}
+
+.local-selected-card-preview {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  height: 146px;
+  pointer-events: none;
+}
+
+.local-selected-card-preview .card-slot {
+  flex: 0 0 98px;
+  width: 98px;
+  height: 140px;
+  pointer-events: auto;
+}
+
+.local-selected-card-preview .card-slot .game-card {
+  width: 98px;
+  height: 140px;
+  margin-left: 0;
+}
+
+.local-selected-card-preview .card-slot:has(.game-card.selected) .card-info-button {
+  translate: 0 -17px;
+}
+
+.local-dock-actions > .active-skill-equipment {
+  height: 78px;
+  padding-top: 3px;
+  justify-content: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.local-dock-actions > .active-skill-equipment .game-card {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 92px;
+  margin-left: -8px;
+  padding: 6px 4px;
+}
+
+.local-dock-actions > .active-skill-equipment .game-card:first-child {
+  margin-left: 0;
+}
+
+@media (max-width: 700px) {
+  .local-hand-rail {
+    justify-content: flex-start;
+  }
+
+  .local-selected-card-preview {
+    height: 138px;
+  }
+}
+
+@media (max-width: 480px) {
+  .game-shell .play-command {
+    padding: 4px 6px 5px;
+  }
+
+  .local-player-dock {
+    grid-template-columns: minmax(106px, 34%) minmax(0, 1fr);
+    grid-template-areas: "identity zones" "content content";
+    gap: 4px;
+    padding-top: 2px;
+  }
+
+  .local-dock-identity {
+    gap: 5px;
+  }
+
+  .local-hero-card {
+    flex-basis: 44px;
+    width: 44px;
+    height: 66px;
+  }
+
+  .local-hero-portrait {
+    padding: 5px 2px;
+  }
+
+  .local-dock-meta {
+    gap: 1px;
+  }
+
+  .local-dock-meta strong {
+    font-size: 10px;
+  }
+
+  .local-dock-meta span {
+    font-size: 8px;
+  }
+
+  .local-dock-meta em,
+  .local-dock-meta small {
+    font-size: 7px;
+  }
+
+  .local-dock-zones {
+    grid-template-columns: minmax(0, 1fr) 58px;
+    gap: 4px;
+  }
+
+  .local-equipment-slots {
+    gap: 2px;
+  }
+
+  .local-zone-label {
+    margin-bottom: 1px;
+    font-size: 5px;
+  }
+
+  .local-zone-card-button {
+    padding: 2px 1px;
+  }
+
+  .local-zone-card-button small {
+    left: 2px;
+    top: 2px;
+    font-size: 5px;
+  }
+
+  .local-zone-card-button b {
+    font-size: 5px;
+  }
+
+  .local-zone-card .zone-info-button {
+    width: 10px;
+    height: 10px;
+    font-size: 6px;
+  }
+
+  .local-judgement-stack .local-zone-card {
+    flex-basis: 28px;
+    width: 28px;
+  }
+
+  .local-hand-rail {
+    justify-content: center;
+    height: 72px;
+    padding: 6px 4px 0;
+  }
+
+  .local-hand-rail .card-slot {
+    flex-basis: 68px;
+    width: 68px;
+    height: 102px;
+    margin-left: -12px;
+  }
+
+  .local-hand-rail .card-slot .game-card {
+    height: 102px;
+  }
+
+  .local-selected-card-preview {
+    height: 138px;
+  }
+
+  .local-selected-card-preview .card-slot,
+  .local-selected-card-preview .card-slot .game-card {
+    width: 94px;
+    height: 134px;
+  }
+
+  .local-player-dock .turn-controls {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 3px;
+  }
+
+  .local-player-dock .turn-controls > div {
+    justify-content: flex-start;
+  }
+
+  .local-player-dock .turn-controls button {
+    min-height: 26px;
+    padding: 4px 7px;
+  }
+
+  .local-dock-actions > .active-skill-equipment {
+    height: 70px;
+  }
+
+  .local-dock-actions > .active-skill-equipment .game-card {
+    flex-basis: 58px;
+    width: 58px;
+    height: 84px;
+  }
+
+  .discard-stack .played-card {
+    width: 48px;
+    height: 68px;
+  }
+}
+
 /* Make every committed selection unmistakable across cards, heroes, targets, and pickers. */
 .game-card.selected,
 .hero-choice.selected,

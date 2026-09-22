@@ -1,8 +1,8 @@
 # Three Kingdoms project handover
 
-## Compact local-player dock — 2026-09-22
+## Compact local dock, peek hand, and centre piles — 2026-09-22
 
-Step 1 of the static layout work is implemented. `GameRoom` filters
+Step 1 remains intact and Step 2 is implemented. `GameRoom` filters
 `room.meId` out of the battlefield player-square map and keeps the original
 seat-relative calculations, targeting, distance logic, and Quick Test
 perspective unchanged. The controlled player is rendered in
@@ -22,10 +22,35 @@ or ellipse.
 
 This pass deliberately does not modify `TableResolutionSequence`; its
 animation geometry still uses the previous seat layout and is the known next
-boundary for Step 3. SSR regressions cover three opponent squares, dock hero/
-role/HP, equipment/Judgement presentation, Quick Test seat switching, and
-private-information boundaries. Recommended next work is Step 2/3 dock-aware
-resolution geometry and mobile visual verification.
+boundary for Step 3. The dock is now a compact flex-height footer on mobile.
+Its identity, four equipment slots, and Judgement stack share the top line; the
+hand is a full-aspect-ratio peek rail with a separate full-size selected-card
+preview for single selection. Discard, Serpent Spear, active skill card costs,
+semantic response selection, rescue Peach, and equipment selection keep their
+existing state variables and submission branches. The card information action
+remains a separate stop-propagating button in both peek and selected
+presentations.
+
+The centre discard pile renders `visibleDiscardTop` through the existing
+`CardFace`; the empty state is safe and no discard count is inferred from the
+timeline. Draw count still comes only from `room.deckCount`. The centre piles
+are explicitly below opponent panels, settled cards, active reveals, and modal
+pickers. The shell uses `100dvh` flex sizing so the saved footer height returns
+to the battlefield without changing resolution geometry.
+
+Known boundary: `TableResolutionSequence` still uses its previous circular /
+trigonometric animation anchors. Recommended next work is Step 3 dock-aware
+resolution geometry and manual visual verification at 320, 390, 430, tablet,
+and desktop widths. No gameplay rules, semantic actions, targeting, privacy,
+seat calculations, equipment logic, Judgement logic, or hero skills changed in
+this pass.
+
+Validation for this pass: build, lint, `git diff --check`, and the focused SSR
+render suite pass. A clean full `npm test` run reached 131 passing tests; three
+unrelated server-game scenarios still fail in the existing API suite
+(`Stauchness` take-damage, repeated turn engine, and classic role-death
+cleanup), and the same three fail in isolation against a fresh Worker/D1 state.
+Manual browser capture was not possible because the connected Mac was locked.
 
 ## Negation reaction UX — 2026-09-21
 

@@ -29,7 +29,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   ];
   const payload = {
     code: "DOCK1", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [], players,
-    myHand: [card("private-hand", "Peach")], turnSeat: 0, phase: "play", deckCount: 40, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+    myHand: [card("private-hand", "Peach"), card("private-attack", "Attack"), card("private-dodge", "Dodge"), card("private-dismantle", "Dismantle")], turnSeat: 0, phase: "play", deckCount: 40, discardTop: card("visible-discard", "Dismantle"), log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
     currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [] },
   };
   const room = normalizeRoomData(payload);
@@ -46,6 +46,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /data-slot="defensiveHorse"[^>]*>[\s\S]*>\+1 Horse<\/span>/);
   assert.match(html, />Weapon<\/span>/); assert.match(html, />Armor<\/span>/);
   assert.match(html, /aria-label="Explain Blue Steel Sword"/); assert.match(html, /aria-label="Explain Lightning"/);
+  assert.match(html, /class="local-hand"/); assert.match(html, /class="local-hand-rail"/);
+  assert.equal((html.match(/data-hand-card-id="/g) ?? []).length, 4, "the compact rail keeps all four physical hand cards");
+  assert.match(html, /class="discard-stack"[^>]*data-discard-kind="Dismantle"/);
   assert.doesNotMatch(html, /After you take damage/);
   assert.doesNotMatch(html, /private-opponent-card/);
 
@@ -115,6 +118,7 @@ test("normalized malformed and unknown response states render safely", () => {
   });
   assert.ok(waitingRoom);
   const waitingHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: waitingRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(waitingHtml, /class="discard-empty"/, "an empty discard pile renders safely");
   assert.doesNotMatch(waitingHtml, /Skip · take 1 damage/);
   assert.match(waitingHtml, /Waiting for the latest response state/);
 

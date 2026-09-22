@@ -1,13 +1,20 @@
 # Three Kingdoms
 
-## Compact local-player dock — 2026-09-22
+## Compact local dock, peek hand, and centre piles — 2026-09-22
 
-The first static-layout pass moves the controlled seat out of the battlefield
-player-square grid and into a compact local-player dock. The dock keeps the
-current hero/general, private role, HP, hand, contextual controls, four
-portrait-shaped equipment slots (including correctly labelled -1 and +1 Horse
-slots), and a multi-card Judgement stack together. Empty equipment slots retain
-the same portrait/card shape.
+Step 2 keeps the Step 1 controlled-seat dock and compresses it into one player
+area on portrait mobile. The hero/name/role/HP line shares space with the four
+portrait-shaped equipment slots and Judgement stack, while the hand uses a
+layered peek rail: the physical card remains full aspect ratio, only its top
+half is exposed by default, and the selected single card gets a full-size
+preview above the rail. Discard and semantic/hero selection modes retain their
+existing state and controls; multi-select cards remain raised only slightly.
+
+The central draw pile remains count-backed by `room.deckCount`. The discard pile
+now uses the existing static `CardFace` for `visibleDiscardTop`, with no invented
+discard count and a safe empty state. The pile z-order remains below opponent
+panels, settled cards, active reveals, and dialogs.
+
 The hero portrait is an image-ready neutral placeholder rather than official
 card artwork; tapping it opens the existing private Hero Information dialog.
 
@@ -18,9 +25,11 @@ semantic actions, and privacy projections are unchanged. The decorative board
 ellipse was removed, while the central deck/discard play-center and existing
 resolution animation geometry remain unchanged for the next layout pass.
 
-Current stage: static local-dock layout complete. Next milestone: update the
-resolution sequence origin and settlement geometry to match the new dock in
-Step 3, followed by visual mobile verification.
+Current stage: compact local dock and centre-pile presentation complete. The
+next milestone is Step 3: add actual rendered player/dock anchors to
+`TableResolutionSequence` and update card origin, destination, equipment flight,
+Judgement flight, and settled-card locations. Step 3 remains intentionally
+outstanding; this pass does not change its circular/trigonometric geometry.
 
 ## Negation reaction UX — 2026-09-21
 
