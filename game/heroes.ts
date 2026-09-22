@@ -39,6 +39,17 @@ export const STANDARD_HEROES: readonly HeroDefinition[] = [
   standard("pan-feng","Pan Feng","Qun",4,"Passive: Limited to once per Play Phase, after your [Attack] deals damage to another character: if that character's HP is lesser than you, you draw 2 cards; if that character's HP is greater/equal than you, you lose 1 HP.","male", [{ name: "Axe of Insanity", description: "Passive: Limited to once per Play Phase, after your [Attack] deals damage to another character: if that character's HP is lesser than you, you draw 2 cards; if that character's HP is greater/equal than you, you lose 1 HP." }]),
 ];
 
+// This allow-list follows the fully implemented heroes marked
+// "Implementation status: Implemented" in docs/STANDARD_HERO_REFERENCE.md.
+// Metadata for the remaining Standard roster stays available for reference,
+// but those heroes must not enter a playable Standard hero-selection flow.
+export const IMPLEMENTED_STANDARD_HERO_IDS: ReadonlySet<string> = new Set([
+  "cao-cao", "simayi", "xiahou-dun", "zhang-liao", "xu-chu", "guo-jia", "zhen-ji",
+  "liu-bei", "guan-yu", "zhang-fei", "zhao-yun",
+  "sun-quan", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lu-xun", "lü-bu",
+]);
+export const IMPLEMENTED_STANDARD_HEROES: readonly HeroDefinition[] = STANDARD_HEROES.filter((hero) => IMPLEMENTED_STANDARD_HERO_IDS.has(hero.id));
+
 // These heroes are retained only so saved rooms can continue to decode and
 // project their persisted state. They are never selected for new Standard games.
 export const LEGACY_HEROES: readonly HeroDefinition[] = [

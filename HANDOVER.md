@@ -1,5 +1,17 @@
 # Three Kingdoms project handover
 
+## Standard hero selection is implementation-gated — 2026-09-22
+
+The Standard hero reference is now the selection boundary: only its 18
+heroes marked **Implemented** are generated into new-game candidates and
+accepted by `choose_hero`. `game/heroes.ts` owns the matching runtime
+allow-list, while the complete Standard metadata remains readable for
+persisted-room compatibility. API coverage verifies both normal projections
+and rejection of an injected stale unimplemented candidate.
+
+The next recommended work remains implementing the next missing Standard hero
+skill, then moving that hero into the allow-list and updating the reference.
+
 ## Cao Cao Treachery during staged AOE — 2026-09-22
 
 The Treachery damage-card path is now location-aware. It can take a damage

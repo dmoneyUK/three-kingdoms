@@ -1,5 +1,13 @@
 # Three Kingdoms
 
+## Standard hero selection is implementation-gated — 2026-09-22
+
+Hero selection now follows the implementation statuses in
+`docs/STANDARD_HERO_REFERENCE.md`. New Standard games show and accept only
+the 18 heroes whose complete skill sets are implemented. The full metadata
+roster remains available for saved-room readability, but stale or forged
+candidate lists cannot make an unimplemented hero selectable.
+
 ## Cao Cao Treachery during staged AOE — 2026-09-22
 
 Cao Cao's Treachery now obtains damage-causing cards from either the discard

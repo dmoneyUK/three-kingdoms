@@ -29,6 +29,11 @@ Implementation status means the hero's printed Standard skill set has a live gam
 
 **Maintenance rule:** whenever a hero implementation is completed or materially changed, update this progress summary, the Master Standard roster status, and that hero's detailed implementation status in the same change.
 
+**Selection rule:** new Standard games expose and accept only heroes marked
+**Implemented** in this reference. The runtime allow-list is kept in
+`game/heroes.ts`; the complete Standard roster remains readable for metadata
+and saved-room compatibility, but metadata-only heroes cannot be selected.
+
 ## Official printed skill text
 
 The following skill names and descriptions are transcribed from owner-supplied

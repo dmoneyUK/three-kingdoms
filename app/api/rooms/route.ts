@@ -8,7 +8,7 @@ import { responseDecisionFor, resolveResponseDecision } from "../../../game/resp
 import { responseCostActor, semanticResponseActor } from "../../../game/response-identity";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
 import { getTriggeredEffects, resolveTriggeredEffect, triggerAllowsDecline } from "../../../game/capabilities/triggers";
-import { STANDARD_HEROES, heroGender, type HeroDefinition } from "../../../game/heroes";
+import { IMPLEMENTED_STANDARD_HEROES, STANDARD_HEROES, heroGender, type HeroDefinition } from "../../../game/heroes";
 import { continueTriggerEvent, resumeTriggerContinuation } from "../../../game/decisions/triggers";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../../../game/decisions/responses";
 import { applySuccessfulNegation } from "../../../game/decisions/negation";
@@ -81,7 +81,7 @@ function currentHeroOptions(value: string | null): Hero[] {
       : candidate && typeof candidate === "object" && "id" in candidate && typeof candidate.id === "string"
         ? candidate.id
         : null;
-    const hero = id ? STANDARD_HEROES.find((definition) => definition.id === id) : null;
+    const hero = id ? IMPLEMENTED_STANDARD_HEROES.find((definition) => definition.id === id) : null;
     return hero ? [hero] : [];
   });
 }
@@ -100,15 +100,32 @@ function nextGeneralSelector(players: PlayerRow[]) {
 
 async function beginStandardHeroSelection(roomId: string, players: PlayerRow[]) {
   const roles = shuffle([...(ROLE_SETS[players.length] ?? [])]);
-  const rulers = STANDARD_HEROES.filter((hero) => LORD_GENERAL_IDS.has(hero.id));
-  const shuffledGenerals = shuffle(STANDARD_HEROES.filter((hero) => !LORD_GENERAL_IDS.has(hero.id)));
-  let generalCursor = 0;
-  const assigned = players.map((player, index) => {
-    const role = roles[index];
-    const options = role === "Lord" ? [...rulers, ...shuffledGenerals.slice(generalCursor, generalCursor + 2)] : shuffledGenerals.slice(generalCursor, generalCursor + 3);
-    generalCursor += role === "Lord" ? 2 : 3;
-    return { player, role, options };
+  const rulers = IMPLEMENTED_STANDARD_HEROES.filter((hero) => LORD_GENERAL_IDS.has(hero.id));
+  const shuffledGenerals = shuffle(IMPLEMENTED_STANDARD_HEROES.filter((hero) => !LORD_GENERAL_IDS.has(hero.id)));
+  const rolesByPlayerId = new Map(players.map((player, index) => [player.id, roles[index]]));
+  const selectionOrder = [...players].sort((left, right) => {
+    const leftRole = rolesByPlayerId.get(left.id); const rightRole = rolesByPlayerId.get(right.id);
+    if (leftRole === "Lord" && rightRole !== "Lord") return -1;
+    if (leftRole !== "Lord" && rightRole === "Lord") return 1;
+    return left.seat - right.seat;
   });
+  let generalCursor = 0;
+  let remainingNonLordPlayers = selectionOrder.filter((player) => rolesByPlayerId.get(player.id) !== "Lord").length;
+  const optionsByPlayerId = new Map<string, HeroDefinition[]>();
+  for (const player of selectionOrder) {
+    const role = rolesByPlayerId.get(player.id);
+    if (role === "Lord") {
+      optionsByPlayerId.set(player.id, [...rulers, ...shuffledGenerals.slice(generalCursor, generalCursor + 2)]);
+      generalCursor += 2;
+      continue;
+    }
+    const available = shuffledGenerals.length - generalCursor;
+    const optionCount = Math.min(3, Math.max(1, available - Math.max(0, remainingNonLordPlayers - 1)));
+    optionsByPlayerId.set(player.id, shuffledGenerals.slice(generalCursor, generalCursor + optionCount));
+    generalCursor += optionCount;
+    remainingNonLordPlayers -= 1;
+  }
+  const assigned = players.map((player, index) => ({ player, role: roles[index], options: optionsByPlayerId.get(player.id) ?? [] }));
   await db().batch([
     ...assigned.map(({ player, role, options }) => db().prepare("UPDATE players SET role = ?, hero = NULL, hp = NULL, max_hp = NULL, hero_options_json = ? WHERE id = ?").bind(role, JSON.stringify(options), player.id)),
     db().prepare("UPDATE rooms SET status = 'heroes', turn_seat = NULL, phase = NULL, pending_json = NULL WHERE id = ?").bind(roomId),

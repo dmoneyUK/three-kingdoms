@@ -11,15 +11,20 @@ test("host test seats use one controller across four seats with a normal shuffle
   assert.equal(created.data.room.players.length, 4);
   assert.equal(created.data.room.myHeroOptions.length, 5);
   assert.equal(created.data.room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false);
+  const unimplementedStandardIds = new Set(["yue-jin", "zhuge-liang", "ma-chao", "huang-yueying", "lady-gan", "daqiao", "sun-shangxiang", "hua-tuo", "diao-chan", "huaxiong", "gongsun-zan", "pan-feng"]);
+  assert.equal(created.data.room.myHeroOptions.some((hero) => unimplementedStandardIds.has(hero.id)), false, "hero candidates only include heroes with implemented skills");
   assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
   const lordId = created.data.room.meId;
   const storedOptions = query(`SELECT hero_options_json FROM players WHERE id=${quote(lordId)}`);
-  const staleOptions = JSON.parse(storedOptions).map((hero) => ({ ...hero, name: "Old name", skills: [{ name: "Old skill", description: "Old description" }] }));
+  const staleOptions = [...JSON.parse(storedOptions), { id: "yue-jin", name: "Unavailable Yue Jin", skills: [] }].map((hero) => ({ ...hero, name: "Old name", skills: [{ name: "Old skill", description: "Old description" }] }));
   sql(`UPDATE players SET hero_options_json=${quote(JSON.stringify(staleOptions))} WHERE id=${quote(lordId)}`);
   const refreshedOptions = (await state(created.data.room.code, created.data.token)).data.myHeroOptions;
   const refreshedCao = refreshedOptions.find((hero) => hero.id === "cao-cao");
+  assert.equal(refreshedOptions.some((hero) => hero.id === "yue-jin"), false, "stale unimplemented candidates are not projected");
   assert.deepEqual(refreshedCao?.skills.map((skill) => skill.name), ["Treachery", "Entourage"], "persisted hero candidates rehydrate current skill names");
   assert.match(refreshedCao?.skills[1].description ?? "", /characters from the Wei kingdom/);
+  const unavailableChoice = await requestAndSettle("choose_hero", { code: created.data.room.code, token: created.data.token, heroId: "yue-jin" });
+  assert.equal(unavailableChoice.status, 400, "the server rejects an unimplemented hero even if stale state injects it");
   sql(`UPDATE players SET hero_options_json=${quote(storedOptions)} WHERE id=${quote(lordId)}`);
   assert.equal(created.data.room.players.filter((player) => player.role === "Lord").length, 1);
   assert.equal(created.data.room.players.filter((player) => player.role === null).length, 3);
@@ -475,5 +480,4 @@ test("Lü Bu Wushuang requires two Dodges for an Attack", async () => {
   const opened = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data)); const response = await state(game.code, game.members[1].token); assert.equal(response.data.currentAction.requirement, "dodge"); assert.equal(response.data.currentAction.options.find((option) => option.providerId === "card").selection.min, 2);
   const blocked = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardIds: dodges.map((item) => item.id) }); assert.equal(blocked.status, 200, JSON.stringify(blocked.data)); assert.equal(blocked.data.room.players.find((player) => player.id === target.id).hp, 4);
 });
-
 
