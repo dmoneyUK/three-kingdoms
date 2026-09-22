@@ -7,6 +7,14 @@ pile or an in-progress Group/AOE continuation. When the card is still staged,
 it is removed from `heldCards` and added to Cao Cao's hand without cancelling
 the remaining Barbarian Invasion or duplicating the card into discard.
 
+Group continuations now separate `damageCards` (the physical card(s) that
+caused the damage) from accumulating `heldCards` (the AOE card plus staged
+Attack, Dodge, or Negation responses). Treachery therefore cannot take an
+earlier response card. Regression coverage reproduces an earlier successful
+Attack before Cao Cao and separately covers an earlier successful Negation;
+both assert exact card conservation and normal completion of the remaining
+AOE targets.
+
 Group resolutions now carry a stable `sequenceStartCardId` independent of
 physical staging, and `damage_suffered` validates card ownership and other
 semantic selections before claiming the response. An invalid/stale Treachery

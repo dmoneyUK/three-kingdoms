@@ -9,6 +9,14 @@ group commits its remaining physical cards. The enclosing GroupContinuation
 keeps a stable `sequenceStartCardId`, so logical AOE identity survives that
 physical transfer and the remaining targets continue normally.
 
+GroupContinuation now also persists explicit `damageCards`. This causal list
+contains only the original AOE or group Attack card(s); the broader
+`heldCards` list may additionally contain earlier Attack, Dodge, or Negation
+responses. The Treachery transfer removes only the selected causal card from
+physical staging. Regressions cover the reported earlier-Attack order and a
+successful earlier-Negation variant, including final discard/card-conservation
+assertions.
+
 The `damage_suffered` route branch now validates Treachery, Retaliation,
 Legacy, and Stauchness selections before its response CAS claim wherever a
 selection can be stale. A rejected unavailable-card request leaves phase
