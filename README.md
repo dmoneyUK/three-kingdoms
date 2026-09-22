@@ -1,23 +1,25 @@
 # Three Kingdoms
 
-## Compact General selection cards — 2026-09-22
+## Compact three-column General selection cards — 2026-09-22
 
 The General Selection page now presents private candidates as compact portrait
-cards using the normal 108:154 card ratio. Lord selections use five cards on
-desktop and two columns with a centred final card on smaller screens; the
-three-card non-Lord layout follows the same responsive model. Each card keeps
-faction, portrait/monogram, name, HP, skill names, and SELECTED/CHOOSE state,
-with a separate circular information button for the existing full
-`HeroInfoDialog`.
+cards using the normal 108:154 card ratio. On phone widths the grid uses three
+normal-sized cards per row, so non-Lord selections fit on one row and Lord
+selections use three cards plus a centred pair on the second row. Tablet cards
+remain compact and centred, while desktop cards retain the larger card scale.
+Each card keeps faction, portrait/monogram, name, HP, skill names, and
+SELECTED/CHOOSE state, with a separate circular information button for the
+existing full `HeroInfoDialog`.
 
 Card selection and information viewing are separate presentation actions, and
 confirmation still uses the unchanged `choose_hero` path. General allocation,
 role privacy, selector sequencing, waiting state, and multiplayer behaviour
-were not changed.
+were not changed. The mobile confirm control is now in normal document flow so
+it cannot cover the final candidate row.
 
-Current stage: Stage 7 product polish, compact General selection pass complete.
-The next milestone remains deployed mobile review and the final graphic/theme
-skin.
+Current stage: Stage 7 product polish, compact General selection sizing pass
+complete. The next milestone remains deployed mobile review at 320px, 390px,
+and 430px, followed by the final graphic/theme skin.
 
 ## Final mobile LocalPlayerDock structure — 2026-09-22
 

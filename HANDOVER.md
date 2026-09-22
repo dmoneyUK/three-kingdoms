@@ -1,15 +1,15 @@
 # Three Kingdoms project handover
 
-## Compact General selection cards — 2026-09-22
+## Compact three-column General selection cards — 2026-09-22
 
-Implemented the presentation-only General Selection redesign in
-`app/page.tsx` and `app/globals.css`. Candidate buttons now sit inside
-`.hero-choice-wrap` portrait-card wrappers using the 108:154 ratio. Five-card
-Lord selections are explicitly five-up on desktop and become two columns with
-the odd final card centred below tablet width; three-card selections use the
-same compact grid. The former mobile horizontal profile-card rules and the
-duplicate hero selected transform in `app/sequence-overrides.css` were
-removed.
+Refined the presentation-only General Selection redesign in
+`app/globals.css`. Candidate buttons remain inside `.hero-choice-wrap`
+portrait-card wrappers using the 108:154 ratio. At phone widths, six equal
+grid tracks let each card span two tracks: three-card selections are one row,
+and five-card Lord selections are three cards plus a centred pair. Cards scale
+from about 93px wide at 320px viewports to about 109px wide at 390px and
+remain about 140px wide on tablet. The old two-column mobile rule and
+oversized odd-card exception are gone.
 
 Each candidate has a sibling circular `hero-info-button`, so the card selects
 without nesting buttons and the info control opens the existing
@@ -17,16 +17,19 @@ without nesting buttons and the info control opens the existing
 all skills. The selected hero remains local React state, the confirm button
 still calls the existing `onChoose`/`choose_hero` flow, and waiting state,
 role privacy, candidate allocation, and multiplayer sequencing are unchanged.
+The mobile confirm control is in normal flow rather than sticky, so it cannot
+cover the final card row. Mobile typography, portrait height, info-control
+size, and selected lift were reduced together to keep content inside the
+normal-sized cards.
 
 Render coverage now checks three-card and five-card projections, one info
-control per candidate, sibling-card markup, and dialog wiring. The live local
-Quick Test review verified the Lord flow, independent Liu Bei information
-viewing, selection persistence, and updated Confirm text. Build, lint, fast
-render tests, and `git diff --check` are green. API shards 2–4 also pass (73
-tests); the existing shard 1 equipment/judgement runner loses its local
-Wrangler server on port 3137 and its 28 tests fail with `ECONNREFUSED`, so the
-full API suite remains an environment blocker rather than a claimed green
-result.
+control per candidate, sibling-card markup, dialog wiring, and the compact
+responsive CSS model. Live local Quick Test review at 390px verified the
+five-card 3+2 layout, normal card dimensions, no horizontal overflow, natural
+confirm placement, independent Liu Bei selection, Cao Cao information viewing,
+and selection persistence after dialog close. Build, lint, fast render tests,
+full API coverage (101 tests across four shards), and `git diff --check` are
+green.
 
 Known boundary: the current repository still uses its existing faction
 monogram presentation because no licensed General artwork is part of this
