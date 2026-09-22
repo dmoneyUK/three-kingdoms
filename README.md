@@ -1,5 +1,25 @@
 # Three Kingdoms
 
+## Local dock refinement — 2026-09-22
+
+The focused dock refinement keeps the hero identity visually primary while
+compacting the four equipment slots and Judgement row. On narrow mobile
+layouts the hero card is larger, the zone cards and labels are smaller, and
+all five zone types remain visible on one row.
+
+The hand now renders each physical card once. Unselected cards retain their
+full aspect ratio while their slot clips the lower half; a single selected
+card stays in its original rail slot and rises to full height in place. Multi-
+select modes remain compact and raised only modestly. The info button sits at
+the top-right so the rank/suit corner remains readable, and selected card
+faces keep their normal surface with a gold border/glow only.
+
+The shared CardFace corner marker is also scaled down for the central discard
+pile, keeping the same embedded top-left language without dominating the
+small pile card. No gameplay, animation, response, equipment, Judgement, or
+test-harness behavior changed. The next milestone remains Step 4: review the
+deployed mobile UI before applying the final graphic/theme pass.
+
 ## DOM-aligned card animations — 2026-09-22
 
 Step 3 aligns resolution presentation with the rendered game shell. The local
@@ -27,7 +47,8 @@ area on portrait mobile. The hero/name/role/HP line shares space with the four
 portrait-shaped equipment slots and Judgement stack. There is exactly one
 private hand presentation: a layered peek rail keeps each physical card at its
 normal aspect ratio while exposing roughly its top half; a selected single card
-uses an absolute full-size preview above the rail without changing dock height.
+stays in its original rail slot and rises to full height without changing dock
+height.
 The JSX, keyboard, and screen-reader order is hand rail followed by the
 contextual action row. Discard and
 semantic/hero selection modes retain their existing state and controls;
@@ -49,8 +70,9 @@ semantic actions, and privacy projections are unchanged. The decorative board
 ellipse was removed, while the central deck/discard play-center and existing
 resolution animation geometry remain unchanged for the next layout pass.
 
-Current stage: Step 3 DOM-aligned card animations complete. Step 4 is next:
-review the deployed mobile UI, then implement the final graphic/theme pass.
+Current stage: Step 3 plus the focused local dock refinement are complete.
+Step 4 is next: review the deployed mobile UI, then implement the final
+graphic/theme pass.
 
 Test commands are split without reducing coverage: `npm run test:fast` runs
 pure/unit/render tests without Wrangler, `npm run test:api` owns the API

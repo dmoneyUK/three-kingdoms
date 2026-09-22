@@ -66,12 +66,11 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(html, /class="play-hand"/, "the legacy private play-hand renderer is removed");
   assert.match(html, /class="local-hand"[\s\S]*class="local-hand-rail"/);
   assert.ok(html.indexOf('class="local-hand"') < html.indexOf('class="turn-controls"'), "the hand precedes contextual controls in the DOM");
-  assert.match(gameRoomSource, /selectedPreviewCard && <div className="local-selected-card-preview" data-selected-card-id=/);
   assert.match(gameRoomSource, /const multiSelectMode = room\.phase === "discard"/);
-  assert.match(gameRoomSource, /const selectedPreviewCard = !multiSelectMode && selected/);
-  assert.match(gameRoomSource, /data-selected-card-id=\{selectedPreviewCard\.id\}/);
-  assert.match(gameRoomSource, /selectedPreviewCard\?\.id === item\.id \? "peek-card-previewed"/);
-  assert.match(gameRoomSource, /preview \? "preview-" : "rail-"/);
+  assert.match(gameRoomSource, /const singleSelected = !multiSelectMode && isSelected/);
+  assert.match(gameRoomSource, /singleSelected \? "single-selected"/);
+  assert.doesNotMatch(gameRoomSource, /local-selected-card-preview|selectedPreviewCard/);
+  assert.match(gameRoomSource, /key={`rail-\$\{item\.id\}`}/);
   assert.match(html, /class="discard-stack"[^>]*data-discard-kind="Dismantle"/);
   assert.doesNotMatch(html, /After you take damage/);
   assert.doesNotMatch(html, /private-opponent-card/);

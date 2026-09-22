@@ -407,6 +407,26 @@
   margin-top: 4px;
 }
 
+/* The centre discard uses the same corner shield as a normal CardFace, scaled
+   to the small pile card rather than inheriting the full-size reveal marker. */
+.discard-stack .played-card > i {
+  left: -1px;
+  top: -1px;
+  width: 17px;
+  min-height: 24px;
+  padding: 1px 1px 3px;
+  border-width: 1px;
+  border-radius: 0 0 4px 0;
+  font-size: 7px;
+  line-height: .9;
+}
+
+.discard-stack .played-card > i small {
+  margin-top: 0;
+  font-size: 5px;
+  line-height: 1;
+}
+
 .local-dock-actions {
   display: flex;
   flex-direction: column;
@@ -468,17 +488,17 @@
   align-items: flex-start;
   height: 80px;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   padding: 7px 10px 0 18px;
-  scrollbar-width: thin;
 }
 
 .local-hand-rail .card-slot {
   flex: 0 0 76px;
   width: 76px;
-  height: 112px;
+  height: 80px;
   margin-left: -14px;
+  overflow: hidden;
+  position: relative;
 }
 
 .local-hand-rail .card-slot:first-child {
@@ -492,16 +512,15 @@
   padding: 8px 5px;
 }
 
-.local-hand-rail .card-slot.peek-card-previewed {
-  visibility: hidden;
-}
-
-.local-hand-rail .game-card.selected {
-  transform: translateY(-5px);
+.local-hand-rail .card-slot.single-selected {
+  height: 112px;
+  overflow: visible;
+  z-index: 5;
 }
 
 .local-hand-rail .card-info-button {
-  left: 4px;
+  left: auto;
+  right: 4px;
   top: 4px;
   bottom: auto;
   translate: none;
@@ -510,38 +529,12 @@
   font-size: 10px;
 }
 
-.local-hand-rail .card-slot:has(.game-card.selected) .card-info-button {
-  translate: none;
+.local-hand-rail .card-slot.single-selected .game-card {
+  transform: translateY(-32px);
 }
 
-.local-selected-card-preview {
-  position: absolute;
-  left: 50%;
-  bottom: 100%;
-  z-index: 20;
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  height: 140px;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-.local-selected-card-preview .card-slot {
-  flex: 0 0 98px;
-  width: 98px;
-  height: 140px;
-  pointer-events: auto;
-}
-
-.local-selected-card-preview .card-slot .game-card {
-  width: 98px;
-  height: 140px;
-  margin-left: 0;
-}
-
-.local-selected-card-preview .card-slot:has(.game-card.selected) .card-info-button {
-  translate: 0 -17px;
+.local-hand-rail .card-slot:not(.single-selected) .game-card.selected {
+  transform: translateY(-5px);
 }
 
 .local-dock-actions > .active-skill-equipment {
@@ -564,6 +557,55 @@
   margin-left: 0;
 }
 
+/* Keep the four zones visually secondary to the identity card while retaining
+   their physical card proportions and one-row layout. */
+.local-hero-card {
+  flex-basis: 76px;
+  width: 76px;
+  height: 114px;
+}
+
+.local-dock-zones {
+  grid-template-columns: minmax(0, 1fr) minmax(62px, 96px);
+  gap: 6px;
+}
+
+.local-equipment-slots {
+  gap: 4px;
+}
+
+.local-zone-label {
+  margin-bottom: 2px;
+  font-size: 5px;
+}
+
+.local-zone-card-button {
+  padding: 3px 2px;
+}
+
+.local-zone-card-button small {
+  left: 2px;
+  top: 2px;
+  font-size: 7px;
+}
+
+.local-zone-card-button b {
+  font-size: 6px;
+}
+
+.local-judgement-stack .local-zone-card {
+  flex-basis: 36px;
+  width: 36px;
+}
+
+.local-zone-card.selected-cost {
+  background: #e9dfca;
+  color: inherit;
+  border: 2px solid #ffe28a;
+  translate: 0 -3px;
+  box-shadow: 0 0 0 2px #ffe28a, 0 0 10px #ffd15f99, 0 7px 14px #000b;
+}
+
 @media (max-width: 700px) {
   .local-hand-rail {
     justify-content: flex-start;
@@ -577,7 +619,7 @@
   }
 
   .local-player-dock {
-    grid-template-columns: minmax(106px, 34%) minmax(0, 1fr);
+    grid-template-columns: minmax(142px, 42%) minmax(0, 1fr);
     grid-template-areas: "identity zones" "content content";
     gap: 4px;
     padding-top: 2px;
@@ -588,9 +630,9 @@
   }
 
   .local-hero-card {
-    flex-basis: 44px;
-    width: 44px;
-    height: 66px;
+    flex-basis: 62px;
+    width: 62px;
+    height: 93px;
   }
 
   .local-hero-portrait {
@@ -615,7 +657,7 @@
   }
 
   .local-dock-zones {
-    grid-template-columns: minmax(0, 1fr) 58px;
+    grid-template-columns: minmax(0, 1fr) 52px;
     gap: 4px;
   }
 
@@ -649,8 +691,8 @@
   }
 
   .local-judgement-stack .local-zone-card {
-    flex-basis: 28px;
-    width: 28px;
+    flex-basis: 25px;
+    width: 25px;
   }
 
   .local-hand-rail {
@@ -666,7 +708,7 @@
   .local-hand-rail .card-slot {
     flex-basis: 68px;
     width: 68px;
-    height: 102px;
+    height: 58px;
     margin-left: -12px;
   }
 
@@ -674,14 +716,18 @@
     height: 102px;
   }
 
-  .local-selected-card-preview {
-    height: 134px;
+  .local-hand-rail .card-slot.single-selected {
+    height: 102px;
   }
 
-  .local-selected-card-preview .card-slot,
-  .local-selected-card-preview .card-slot .game-card {
-    width: 94px;
-    height: 134px;
+  .local-hand-rail .card-slot.single-selected .game-card {
+    transform: translateY(-44px);
+  }
+
+  .local-hero-card {
+    flex-basis: 62px;
+    width: 62px;
+    height: 93px;
   }
 
   .local-player-dock .turn-controls {
@@ -734,9 +780,10 @@
 }
 
 .game-card.selected {
-  background: linear-gradient(160deg, #fff0b0 0%, #d8ad52 34%, #eee4ce 100%);
-  color: #19160e;
-  transform: translateY(-19px) scale(1.02);
+  background: #eee4ce;
+  color: #25231e;
+  outline: 0;
+  box-shadow: 0 0 0 2px #ffe28a, 0 0 10px #ffd15f99, 0 8px 16px #0009;
 }
 
 .hero-choice.selected {
@@ -758,18 +805,19 @@
 }
 
 .player-equipment-card.selected-cost {
-  background: #f4d889;
-  color: #19160e;
+  background: inherit;
   filter: none;
-  transform: translateY(-9px) scale(1.04);
+  transform: translateY(-4px);
+  box-shadow: 0 0 0 2px #ffe28a, 0 0 10px #ffd15f99, 0 7px 14px #000b;
 }
 
 .mini-equipment-button.selected-cost {
-  background: #f4d889;
-  border: 2px solid #ffe28a;
-  color: #19160e;
-  box-shadow: inset 0 0 0 1px #6d5120, 0 0 14px #ffd15faa;
-  transform: translateY(-3px) scale(1.04);
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  outline: 0;
+  box-shadow: 0 0 0 2px #ffe28a, 0 0 10px #ffd15f99;
+  transform: translateY(-3px);
 }
 
 .harvest-card-choice.pending-choice .played-card {

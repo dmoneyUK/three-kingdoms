@@ -1,5 +1,33 @@
 # Three Kingdoms project handover
 
+## Local dock refinement — 2026-09-22
+
+The focused mobile dock pass is complete and remains presentation-only. The
+hero identity card is larger and the equipment/Judgement zone row is smaller,
+with Weapon, Armor, -1 Horse, +1 Horse, and Judgement still visible without a
+semantic or eligibility change.
+
+The private hand no longer renders a detached selected-card preview. Each
+physical hand card is rendered once in `local-hand-rail`; unselected slots
+clip the lower half of their full-aspect-ratio card, while the single
+selected slot keeps its original x-position and rises to full height. Discard,
+Serpent Spear, active-skill costs, semantic response costs, rescue Peach, and
+other multi-select modes remain compact in the rail with modest lift and the
+existing selection state.
+
+Hand-card information buttons are now top-right and stop propagation as
+before, leaving the rank/suit corner visible. Selected hand and equipment
+cost states use a gold border/glow without tinting the card face. The central
+discard CardFace uses a smaller embedded top-left suit/rank shield consistent
+with the shared card language.
+
+Focused render assertions prove there is no legacy selected-preview renderer,
+the rail uses one physical instance per hand card, single selection is marked
+in-place, and multi-select mode remains distinct. A fresh 390px local browser
+capture verified the larger hero, compact zones, in-place selected card, clear
+info icon, and border-only selection. The next recommended work is Step 4:
+review the deployed mobile UI, then apply the final graphic/theme skin.
+
 ## DOM-aligned card animations — 2026-09-22
 
 Step 3 is implemented as a presentation-only update. `LocalPlayerDock`, every
@@ -58,15 +86,14 @@ The dock is now a compact flex-height footer on mobile.
 The Step 2 review fix removed the old ordinary `.play-hand` renderer, leaving
 exactly one private hand rail under `LocalPlayerDock`. Its identity, four
 equipment slots, and Judgement stack share the top line; the hand is a
-full-aspect-ratio peek rail with a separate full-size selected-card preview for
-single selection. The preview is absolute and clickable, so selection does not
-increase footer height. The JSX order now matches the visual and accessibility
-order: hand rail, then contextual prompt and buttons. Discard, Serpent Spear,
+full-aspect-ratio peek rail with an in-place full-size selected card for single
+selection, so selection does not increase footer height. The JSX order now
+matches the visual and accessibility order: hand rail, then contextual prompt
+and buttons. Discard, Serpent Spear,
 active skill card costs,
 semantic response selection, rescue Peach, and equipment selection keep their
 existing state variables and submission branches. The card information action
-remains a separate stop-propagating button in both peek and selected
-presentations.
+remains a separate stop-propagating button in the rail.
 
 The centre discard pile renders `visibleDiscardTop` through the existing
 `CardFace`; the empty state is safe and no discard count is inferred from the
