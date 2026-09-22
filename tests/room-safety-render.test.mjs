@@ -20,6 +20,42 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(html, /aria-label="Your secret role is Rebel"/);
 });
 
+test("the local player dock replaces the self battlefield square and follows Quick Test perspective", () => {
+  const players = [
+    { id: "p1", name: "HOST", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 2, equipmentCards: [card("weapon", "BlueSteelSword"), card("armor", "NioShield"), card("offensive-horse", "RedHare"), card("defensive-horse", "Shadowrunner")], judgementCards: [card("lightning", "Lightning"), card("overindulgence", "Overindulgence")], attackRange: 2, distance: null, isHost: true, role: "Lord" },
+    { id: "p2", name: "ALICE", seat: 1, hero: "guan-yu", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    { id: "p3", name: "BOB", seat: 2, hero: "zhang-fei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Loyalist" },
+    { id: "p4", name: "CAROL", seat: 3, hero: "zhen-ji", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
+  ];
+  const payload = {
+    code: "DOCK1", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [], players,
+    myHand: [card("private-hand", "Peach")], turnSeat: 0, phase: "play", deckCount: 40, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [] },
+  };
+  const room = normalizeRoomData(payload);
+  assert.ok(room);
+  const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.equal((html.match(/class="player-square /g) ?? []).length, 3, "a four-player board renders only the three opponents");
+  assert.doesNotMatch(html, /class="player-square player-square-0/);
+  assert.match(html, /class="local-player-dock"/);
+  assert.match(html, /data-hero-id="cao-cao"/);
+  assert.match(html, />Lord<\/em>/);
+  assert.match(html, /4\/4 HP/);
+  assert.equal((html.match(/class="local-equipment-slot"/g) ?? []).length, 4);
+  assert.match(html, />Weapon<\/span>/); assert.match(html, />Armor<\/span>/); assert.match(html, />\+1 Horse<\/span>/); assert.match(html, />-1 Horse<\/span>/);
+  assert.match(html, /aria-label="Explain Blue Steel Sword"/); assert.match(html, /aria-label="Explain Lightning"/);
+  assert.doesNotMatch(html, /After you take damage/);
+  assert.doesNotMatch(html, /private-opponent-card/);
+
+  const switched = normalizeRoomData({ ...payload, code: "DOCK2", meId: "p3", myRole: "Loyalist", myHand: [card("switched-hand", "Dodge")], actionPlayerId: "p3", currentAction: { ...payload.currentAction, actorId: "p3" } });
+  assert.ok(switched);
+  const switchedHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: switched, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.equal((switchedHtml.match(/class="player-square /g) ?? []).length, 3, "switching the controlled seat keeps three opponents on the board");
+  assert.match(switchedHtml, /data-hero-id="zhang-fei"/);
+  assert.match(switchedHtml, />Loyalist<\/em>/);
+  assert.match(switchedHtml, /Dodge/);
+});
+
 test("normalized malformed and unknown response states render safely", () => {
   const room = normalizeRoomData({
     code: "SAFE1", status: "playing", maxPlayers: 4, isHost: true, isTestController: false, meId: "p1", myRole: "Lord", myHeroOptions: null,
@@ -32,7 +68,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.ok(room);
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(html, /game-exit/);
-  assert.match(html, /class="player-hero-card"/);
+  assert.match(html, /class="local-player-dock"/);
   assert.match(html, /aria-label="Explain Sima Yi"/);
   assert.doesNotMatch(html, />Necromancy<\/em>/);
   const heroInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "simayi", name: "Sima Yi", faction: "Wei", hp: 3, skills: [{ name: "Retaliation", description: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, { name: "Necromancy", description: "After a Judgement card is flipped, you may discard 1 card from your hand. The discarded card then becomes the new Judgement card." }], ability: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, onClose: () => {} }));
@@ -66,10 +102,8 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(html, /Attack/);
   assert.match(html, /class="game-card attack black-suit/);
   assert.match(html, /class="game-card attack red-suit/);
-  assert.match(html, /class="played-card dodge red-suit/);
-  assert.match(html, /class="played-card peach red-suit/);
-  assert.match(html, /class="played-card dodge black-suit/);
-  assert.match(html, /class="played-card peach black-suit/);
+  assert.equal((html.match(/class="local-zone-card red-suit/g) ?? []).length, 2);
+  assert.equal((html.match(/class="local-zone-card black-suit/g) ?? []).length, 2);
   assert.doesNotMatch(html, /Cannot read properties of null/);
   const waitingRoom = normalizeRoomData({
     code: "SAFE2", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],

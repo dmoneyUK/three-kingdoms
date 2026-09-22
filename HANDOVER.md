@@ -1,5 +1,29 @@
 # Three Kingdoms project handover
 
+## Compact local-player dock — 2026-09-22
+
+Step 1 of the static layout work is implemented. `GameRoom` filters
+`room.meId` out of the battlefield player-square map and keeps the original
+seat-relative calculations, targeting, distance logic, and Quick Test
+perspective unchanged. The controlled player is rendered in
+`LocalPlayerDock`, which contains an image-ready neutral hero placeholder,
+hero name, private role, HP, hand, contextual controls, explicit Weapon,
+Armor, +1 Horse, and -1 Horse slots, plus a persistent Judgement stack.
+
+Equipment and Judgement cards retain their existing information-dialog action;
+equipment selection remains available through the dock during semantic skill
+and trigger choices. No official artwork was added and no hero description is
+shown permanently. The battlefield uses the requested four-seat fallback
+positions for opponents, and `.play-table:before` was removed without adding
+another emblem or ellipse.
+
+This pass deliberately does not modify `TableResolutionSequence`; its
+animation geometry still uses the previous seat layout and is the known next
+boundary for Step 3. SSR regressions cover three opponent squares, dock hero/
+role/HP, equipment/Judgement presentation, Quick Test seat switching, and
+private-information boundaries. Recommended next work is Step 2/3 dock-aware
+resolution geometry and mobile visual verification.
+
 ## Negation reaction UX — 2026-09-21
 
 Current Negation scheduling is capability-driven and privacy-safe. A
