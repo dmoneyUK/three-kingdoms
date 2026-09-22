@@ -1,5 +1,31 @@
 # Three Kingdoms
 
+## Local dock panel separation — 2026-09-22
+
+The mobile local dock now renders four complete visual regions: Hero, Status +
+Equipment/Judgement, Hand, and Action. The narrow layout uses a 92px hero
+column, a flexible right column, 68px status/hand rows, a 46px action row,
+and 4px gaps. Each region has its own bordered dark panel with internal
+padding, so cards cannot visually erase the Hand/Action separation.
+
+The hero panel contains only the tappable hero card and an always-visible,
+muted-or-enabled Hero Skill button. Role and HP lead the right-top panel. The
+hand keeps a fixed 50px peek rail inside a 68px panel; a selected 102px card
+rises 48px while retaining a 9px measured lower gutter. Horizontal overlap and
+scrolling keep larger hands contained. Action labels are compact (`Play`,
+`End`, `Skip`, and `Spear`).
+
+All final LocalPlayerDock geometry now lives in
+`app/sequence-overrides.css`; obsolete duplicate dock rules were removed from
+`app/globals.css`. The 390px browser review verified a six-card hand, selected
+card containment, separate action/message panel, and populated Serpent Spear
+equipment. Render tests cover the new structure and geometry. This remains a
+presentation-only refinement; semantic actions, private projections, and
+gameplay rules are unchanged.
+
+Current stage: Stage 7 product polish, mobile dock clarity pass complete. The
+next milestone is the deployed mobile review and final graphic/theme skin.
+
 ## Standard hero selection is implementation-gated — 2026-09-22
 
 Hero selection now follows the implementation statuses in

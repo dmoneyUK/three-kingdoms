@@ -428,177 +428,318 @@
   line-height: 1;
 }
 
+/* LocalPlayerDock layout. Keep all dock geometry in this section so the
+   hand, zones, hero, and action panels share one readable contract. */
 .local-player-dock {
+  --hand-panel-height: 68px;
+  --hand-peek-height: 50px;
+  --hand-card-height: 102px;
+  --hand-top-inset: 4px;
+  --selected-rise: 48px;
+  --hand-bottom-gutter: 10px;
   position: relative;
-  grid-template-rows: auto 80px auto;
+  display: grid;
+  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
+  grid-template-rows: auto var(--hand-panel-height) 50px;
   grid-template-areas:
     "identity zones"
     "hand hand"
     "actions actions";
-  gap: 3px;
-  padding: 4px 6px 0;
-  border: 1px solid #76633f;
-  border-radius: 4px;
-  background: #11150f99;
-}
-
-.local-player-dock .local-dock-identity {
-  padding-right: 8px;
-  border-right: 1px solid #765f3c99;
-}
-
-.local-player-dock .local-dock-zones {
-  padding-left: 6px;
-  border-left: 0;
-}
-
-.local-hand-section {
-  position: relative;
-  grid-area: hand;
-  height: 80px;
-  min-height: 80px;
-  min-width: 0;
+  column-gap: 8px;
+  row-gap: 6px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 8px 6px 0;
+  color: #eee2ca;
   box-sizing: border-box;
-  padding: 0 4px;
-  overflow: visible;
-  border-top: 1px solid #765f3c99;
-  border-bottom: 1px solid #765f3c99;
-  z-index: 25;
 }
 
+/* Invariant: hand-top-inset - selected-rise + hand-card-height is no greater
+   than hand-panel-height - hand-bottom-gutter. */
+.local-dock-identity,
+.local-dock-zones,
+.local-hand-section,
 .local-player-dock .turn-controls {
-  position: relative;
-  grid-area: actions;
-  z-index: 40;
-  min-height: 0;
-  height: auto;
   box-sizing: border-box;
-  padding: 3px 4px 0;
-  background: #11150f;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
+  border: 1px solid #765f3c99;
+  background: #0e120dcc;
 }
 
-.local-player-dock .turn-controls > span {
-  min-width: 0;
-  line-height: 1.2;
-}
-
-.local-player-dock .turn-controls > div {
+.local-dock-identity {
+  grid-area: identity;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: center;
   gap: 4px;
   min-width: 0;
+  padding: 5px;
+  overflow: visible;
 }
 
-.local-player-dock .turn-controls button {
-  min-height: 28px;
-  padding: 5px 8px;
-  font-size: 8px;
+.local-hero-card {
+  flex: 0 0 102px;
+  width: 70px;
+  height: 102px;
+  aspect-ratio: 2 / 3;
+  padding: 0;
+  border: 1px solid #c5a45f;
+  background: #141812;
+  box-shadow: 0 5px 14px #0009;
+  cursor: pointer;
+  overflow: hidden;
 }
 
-.local-player-dock .hero-skills {
-  display: contents;
+.local-hero-card-empty {
+  cursor: default;
+}
+
+.local-hero-portrait {
+  display: grid;
+  place-items: end center;
+  width: 100%;
+  height: 100%;
+  padding: 8px 4px;
+  background: linear-gradient(155deg, #263b3b 0%, #17231d 46%, #0b0e0b 100%);
+  color: #e6cc8c;
+  text-align: center;
+}
+
+.local-hero-portrait span {
+  font: 700 8px/1.15 Georgia, serif;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.local-hero-skill {
+  width: 100%;
+  min-width: 0;
+}
+
+.local-hero-skills {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
 }
 
-.local-player-dock .hero-skills > span {
-  display: none;
-}
-
-.local-hand {
-  position: relative;
-  height: 80px;
-  min-width: 0;
-  overflow: visible;
-}
-
-.local-hand-rail {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  height: 80px;
-  min-width: 0;
-  overflow: visible;
-  padding: 7px 10px 0 18px;
-}
-
-.local-hand-rail .card-slot {
-  flex: 0 0 76px;
-  width: 76px;
-  height: 80px;
-  margin-left: -14px;
-  overflow: hidden;
-  position: relative;
-  z-index: 1;
-}
-
-.local-hand-rail .card-slot:first-child {
-  margin-left: 0;
-}
-
-.local-hand-rail .card-slot .game-card {
+.local-hero-skills .hero-skill-button {
   width: 100%;
-  height: 112px;
-  margin-left: 0;
-  padding: 8px 5px;
+  min-height: 22px;
+  padding: 4px 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 7px;
 }
 
-.local-hand-rail .card-slot.single-selected {
-  height: 112px;
+.local-dock-zones {
+  grid-area: zones;
+  display: grid;
+  grid-template-rows: 12px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  padding: 4px;
   overflow: visible;
-  z-index: 20;
 }
 
-.local-hand-rail .card-info-button {
-  left: auto;
-  right: 10px;
-  top: auto;
-  bottom: 6px;
-  translate: 0 0 !important;
-  transform: none;
-  opacity: 0;
-  pointer-events: none;
-  width: 16px;
-  height: 16px;
-  font-size: 9px;
+.local-dock-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: #e5d19b;
+  font: 700 8px/1 Arial, sans-serif;
+  letter-spacing: .05em;
+  text-transform: uppercase;
 }
 
-.local-hand-rail .card-slot.single-selected .card-info-button {
+.local-dock-status strong,
+.local-dock-status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-dock-status strong {
+  color: #f0d28c;
+}
+
+.local-dock-status span {
+  color: #d8c18b;
+  letter-spacing: .03em;
+  text-transform: none;
+}
+
+.local-zone-strip {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
+.local-equipment-slots {
+  display: grid;
+  grid-template-columns: repeat(4, 38px);
+  gap: 3px;
+  min-width: 0;
+  align-items: end;
+}
+
+.local-equipment-slot,
+.local-judgement-stack {
+  display: grid;
+  grid-template-rows: 6px 1fr;
+  flex: 0 0 38px;
+  width: 38px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.local-zone-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #a58e5d;
+  font: 5px/1 Arial, sans-serif;
+  letter-spacing: .08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.local-zone-empty,
+.local-zone-card {
+  width: 38px;
+  height: 43px;
+  box-sizing: border-box;
+  aspect-ratio: 2 / 3;
+}
+
+.local-zone-empty {
+  display: grid;
+  place-items: center;
+  border: 1px solid #765f3c99;
+  background: #0e120dcc;
+  color: #8f794c;
+  font: 12px Arial, sans-serif;
+}
+
+.local-zone-card {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border: 1px solid #bda574;
+  background: #e9dfca;
+  color: #29251e;
+  box-shadow: 0 3px 8px #0008;
+}
+
+.local-zone-card.red-suit {
+  color: #a52b35;
+}
+
+.local-zone-card.black-suit {
+  color: #26221e;
+}
+
+.local-zone-card-button {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  padding: 3px 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.local-zone-card-button:disabled {
+  cursor: default;
   opacity: 1;
-  pointer-events: auto;
-  transform: translateY(-32px);
 }
 
-.local-hand-rail .card-slot.single-selected .game-card {
-  transform: translateY(-32px);
+.local-zone-card-button small {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  font: bold 6px/1 Arial, sans-serif;
 }
 
-.local-hand-rail .card-slot.single-selected .card-info-button {
-  z-index: 6;
+.local-zone-card-button b {
+  display: block;
+  overflow: hidden;
+  font: 700 5px/1.1 Arial, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.local-hand-rail .card-slot:not(.single-selected) .game-card.selected {
-  transform: translateY(-5px);
+.local-zone-card .zone-info-button {
+  right: -1px;
+  top: -1px;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 0;
+  translate: none;
 }
 
-.local-hand-rail .game-card .card-name-mark {
-  max-width: 92%;
-  font-size: clamp(10px, 3vw, 13px) !important;
-  line-height: .95;
+.local-zone-card .zone-info-button::after {
+  content: "i";
+  display: grid;
+  place-items: center;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #8e7548;
+  border-radius: 50%;
+  background: #f5ead4;
+  color: #493f31;
+  font: bold italic 6px/1 Georgia, serif;
 }
 
-.local-hand-rail .game-card > strong {
-  font-size: 5px;
-  letter-spacing: .06em;
+.local-judgement-stack > div {
+  position: relative;
+  width: 38px;
+  height: 43px;
+  min-height: 0;
+  overflow: visible;
+}
+
+.local-judgement-stack .local-zone-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 38px;
+  height: 43px;
+}
+
+.local-judgement-stack .local-zone-card:nth-child(2) {
+  left: 3px;
+}
+
+.local-judgement-stack .local-zone-card:nth-child(3) {
+  left: 6px;
+}
+
+.local-judgement-stack .local-zone-card:nth-child(n + 4) {
+  left: 9px;
 }
 
 .local-zone-card > .played-card {
@@ -617,6 +758,7 @@
   width: 12px !important;
   min-height: 17px !important;
   padding: 1px !important;
+  border-width: 1px;
   font-size: 6px !important;
   line-height: 1;
 }
@@ -637,125 +779,198 @@
   letter-spacing: .04em;
 }
 
-/* Keep the four zones visually secondary to the identity card while retaining
-   their physical card proportions and one-row layout. */
-.local-hero-card {
-  flex-basis: 76px;
-  width: 76px;
-  height: 114px;
-}
-
-.local-dock-zones {
-  grid-template-columns: minmax(0, 1fr) minmax(62px, 96px);
-  gap: 6px;
-}
-
-.local-equipment-slots {
-  grid-template-columns: repeat(4, 42px);
-  gap: 4px;
-  justify-content: start;
-}
-
-.local-zone-card,
-.local-zone-empty {
-  width: 42px;
-  height: 63px;
-  aspect-ratio: 2 / 3;
-  box-sizing: border-box;
-}
-
-.local-zone-card {
-  overflow: visible;
-}
-
-.local-zone-label {
-  margin-bottom: 2px;
-  font-size: 5px;
-}
-
-.local-zone-card-button {
-  position: absolute;
-  left: -2px;
-  top: -2px;
-  width: calc(100% + 4px);
-  height: calc(100% + 4px);
-  padding: 3px 2px;
-  z-index: 1;
-}
-
-.local-zone-card-button small {
-  left: 4px;
-  top: 4px;
-  font-size: 7px;
-}
-
-.local-zone-card .zone-info-button {
-  z-index: 2;
-  right: -1px;
-  top: -1px;
-  translate: none;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-size: 0;
-  display: grid;
-  place-items: center;
-}
-
-.local-zone-card .zone-info-button::after {
-  content: "i";
-  display: grid;
-  place-items: center;
-  width: 10px;
-  height: 10px;
-  border: 1px solid #8e7548;
-  border-radius: 50%;
-  background: #f5ead4;
-  color: #493f31;
-  font: bold italic 7px/1 Georgia, serif;
-}
-
-.local-zone-card-button b {
-  font-size: 6px;
-}
-
-.local-judgement-stack .local-zone-card {
-  flex-basis: 42px;
-  width: 42px;
-  height: 63px;
-}
-
 .local-zone-card.selected-cost {
   color: inherit;
   border: 2px solid #ffe28a;
-  translate: 0 -3px;
   box-shadow: 0 0 0 2px #ffe28a, 0 0 10px #ffd15f99, 0 7px 14px #000b;
+  translate: 0 -3px;
+}
+
+.local-hand-section {
+  position: relative;
+  grid-area: hand;
+  height: var(--hand-panel-height);
+  min-height: var(--hand-panel-height);
+  min-width: 0;
+  padding: var(--hand-top-inset) 4px var(--hand-bottom-gutter);
+  overflow: visible;
+  z-index: 20;
+}
+
+.local-hand {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.local-hand-rail {
+  position: absolute;
+  /* The parent hand already begins at the panel's top inset. */
+  top: 0;
+  right: 4px;
+  left: 4px;
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: auto;
+  height: var(--hand-peek-height);
+  min-width: 0;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.local-hand-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.local-hand-rail:has(.card-slot.single-selected) {
+  overflow: visible;
+}
+
+.local-hand-rail .card-slot {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 68px;
+  width: 68px;
+  height: var(--hand-peek-height);
+  margin-left: -38px;
+  overflow: hidden;
+}
+
+.local-hand-rail .card-slot:first-child {
+  margin-left: 0;
+}
+
+.local-hand-rail .card-slot.single-selected {
+  z-index: 20;
+  height: var(--hand-peek-height);
+  overflow: visible;
+}
+
+.local-hand-rail .card-slot .game-card {
+  width: 100%;
+  height: var(--hand-card-height);
+  margin-left: 0;
+  padding: 8px 5px;
+}
+
+.local-hand-rail .card-slot.single-selected .game-card {
+  transform: translateY(calc(-1 * var(--selected-rise)));
+}
+
+.local-hand-rail .card-slot.single-selected .card-info-button {
+  z-index: 6;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(calc(-1 * var(--selected-rise)));
+  translate: 0 0 !important;
+}
+
+.local-hand-rail .card-info-button {
+  right: 8px;
+  bottom: 6px;
+  left: auto;
+  top: auto;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+  translate: 0 0 !important;
+  transform: none;
+}
+
+.local-hand-rail .card-slot:not(.single-selected) .game-card.selected {
+  transform: translateY(-5px);
+}
+
+.local-hand-rail .game-card .card-name-mark {
+  max-width: 92%;
+  font-size: clamp(10px, 3vw, 13px) !important;
+  line-height: .95;
+}
+
+.local-hand-rail .game-card > strong {
+  font-size: 5px;
+  letter-spacing: .06em;
+}
+
+.local-player-dock .turn-controls {
+  position: relative;
+  grid-area: actions;
+  z-index: 40;
+  min-height: 46px;
+  height: 46px;
+  padding: 6px 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: #c8b487;
+  font: 10px/1.2 Arial, sans-serif;
+}
+
+.local-player-dock .turn-controls > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-player-dock .turn-controls > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.local-player-dock .turn-controls button {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 8px;
 }
 
 @media (max-width: 700px) {
-  .local-equipment-slots {
-    grid-template-columns: repeat(4, 38px);
-    gap: 3px;
+  .local-player-dock {
+    grid-template-columns: 110px minmax(0, 1fr);
+    column-gap: 4px;
+    row-gap: 4px;
   }
 
+  .local-hero-card {
+    width: 70px;
+  }
+
+  .local-zone-empty,
   .local-zone-card,
-  .local-zone-empty {
-    width: 38px;
-    height: 57px;
+  .local-judgement-stack .local-zone-card {
+    width: 34px;
+  }
+
+  .local-equipment-slots {
+    grid-template-columns: repeat(4, 34px);
+  }
+
+  .local-equipment-slot,
+  .local-judgement-stack {
+    flex-basis: 34px;
+    width: 34px;
+  }
+
+  .local-judgement-stack > div {
+    width: 34px;
   }
 
   .local-judgement-stack .local-zone-card {
-    flex-basis: 38px;
-    width: 38px;
-    height: 57px;
+    width: 34px;
   }
-
-  .local-hand-rail {
-    justify-content: flex-start;
-  }
-
 }
 
 @media (max-width: 480px) {
@@ -764,103 +979,60 @@
   }
 
   .local-player-dock {
-    grid-template-columns: 132px minmax(0, 1fr);
-    grid-template-rows: 56px 58px auto;
-    grid-template-areas: "identity zones" "identity hand" "actions actions";
+    grid-template-columns: 92px minmax(0, 1fr);
+    grid-template-rows: 68px 68px 46px;
+    grid-template-areas:
+      "identity zones"
+      "identity hand"
+      "actions actions";
     column-gap: 4px;
-    row-gap: 2px;
-    padding-top: 2px;
-  }
-
-  .local-player-dock .local-dock-identity {
-    height: 100%;
-    min-height: 0;
-    align-self: stretch;
-    display: flex;
-    align-items: center;
-  }
-
-  .local-hand-section {
-    height: 58px;
-    min-height: 58px;
+    row-gap: 4px;
     padding: 0;
   }
 
   .local-dock-identity {
-    gap: 5px;
+    grid-row: span 2;
+  }
+
+  .local-dock-zones {
+    padding: 4px;
   }
 
   .local-hero-card {
-    flex-basis: 62px;
-    width: 62px;
-    height: 93px;
+    flex-basis: 102px;
+    width: 70px;
+    height: 102px;
   }
 
   .local-hero-portrait {
     padding: 5px 2px;
   }
 
-  .local-dock-meta {
-    gap: 1px;
-  }
-
-  .local-dock-meta strong {
-    font-size: 10px;
-  }
-
-  .local-dock-meta span {
-    font-size: 8px;
-  }
-
-  .local-dock-meta em,
-  .local-dock-meta small {
-    font-size: 7px;
-  }
-
-  .local-dock-zones {
-    display: flex;
-    align-items: flex-start;
+  .local-zone-strip {
     gap: 3px;
-    min-height: 0;
-    padding: 0;
-    overflow: visible;
   }
 
   .local-equipment-slots {
-    display: grid;
     grid-template-columns: repeat(4, 34px);
-    flex: 0 0 auto;
     gap: 3px;
-    width: 145px;
-    justify-content: start;
   }
 
   .local-equipment-slot,
   .local-judgement-stack {
-    flex: 0 0 34px;
+    flex-basis: 34px;
     width: 34px;
-    min-width: 34px;
   }
 
-  .local-judgement-stack {
-    position: relative;
-    height: 56px;
+  .local-zone-empty,
+  .local-zone-card,
+  .local-judgement-stack .local-zone-card {
+    width: 34px;
+    height: 43px;
   }
 
   .local-judgement-stack > div {
-    position: relative;
     width: 34px;
-    height: 51px;
-    overflow: visible;
-  }
-
-  .local-judgement-stack .local-zone-card {
-    position: absolute;
-    top: 0;
-    left: 0;
-    flex: none;
-    width: 34px;
-    height: 51px;
+    height: 43px;
   }
 
   .local-judgement-stack .local-zone-card:nth-child(2) {
@@ -875,32 +1047,10 @@
     left: 9px;
   }
 
-  .local-hand,
-  .local-hand-rail {
-    height: 56px;
-  }
-
-  .local-hand-rail {
-    top: 1px;
-    right: 0;
-    bottom: auto;
-    left: 0;
-    justify-content: flex-start;
-    height: 56px;
-    padding: 0 0 0 4px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-  }
-
-  .local-hand-rail::-webkit-scrollbar {
-    display: none;
-  }
-
   .local-hand-rail .card-slot {
     flex-basis: 68px;
     width: 68px;
-    height: 56px;
+    height: var(--hand-peek-height);
     margin-left: -38px;
   }
 
@@ -908,143 +1058,49 @@
     margin-left: 0;
   }
 
-  .local-hand-rail .card-slot.single-selected {
-    height: 56px;
-    overflow: visible;
-  }
-
-  .local-hand-rail .card-slot .game-card {
-    height: 102px;
-  }
-
-  .local-hand-rail:has(.card-slot.single-selected) {
-    overflow: visible;
-  }
-
-  .local-hand-rail .card-slot.single-selected .game-card {
-    transform: translateY(-46px);
-  }
-
-  .local-hand-rail .card-slot.single-selected .card-info-button {
-    bottom: -24px;
-    translate: 0 0 !important;
-    transform: translateY(-46px);
-  }
-
   .local-player-dock .turn-controls {
-    min-height: 30px;
-    padding-top: 2px;
-    z-index: 40;
-  }
-
-  .local-player-dock .turn-controls > div {
-    align-items: center;
+    min-height: 46px;
+    height: 46px;
+    padding: 6px 8px;
   }
 
   .local-player-dock .turn-controls button {
-    min-height: 26px;
-    padding: 4px 7px;
-  }
-
-  .local-dock-zones {
-    gap: 3px;
-  }
-
-  .local-equipment-slots {
-    grid-template-columns: repeat(4, 34px);
-    gap: 3px;
-    justify-content: start;
-  }
-
-  .local-zone-card,
-  .local-zone-empty {
-    width: 34px;
-    height: 51px;
-  }
-
-  .local-zone-label {
-    margin-bottom: 1px;
-    font-size: 4px;
-  }
-
-  .local-zone-card-button {
-    padding: 4px 3px 6px;
-  }
-
-  .local-zone-card-button small {
-    left: 4px;
-    top: 4px;
-    font-size: 4px;
-  }
-
-  .local-zone-card-button b {
-    font-size: 4px;
-  }
-
-  .local-zone-card .zone-info-button {
-    width: 22px;
-    height: 22px;
-    font-size: 0;
-  }
-
-  .local-judgement-stack .local-zone-card {
-    flex-basis: 34px;
-    width: 34px;
-    height: 51px;
-  }
-
-  .discard-stack .played-card {
-    width: 48px;
-    height: 68px;
+    min-height: 30px;
+    padding: 5px 7px;
   }
 }
 
 @media (max-width: 360px) {
   .local-player-dock {
-    grid-template-columns: 120px minmax(0, 1fr);
+    grid-template-columns: 88px minmax(0, 1fr);
   }
 
   .local-equipment-slots {
-    grid-template-columns: repeat(4, 30px);
-    width: 126px;
+    grid-template-columns: repeat(4, 28px);
     gap: 2px;
   }
 
   .local-equipment-slot,
   .local-judgement-stack {
-    flex-basis: 30px;
-    width: 30px;
-    min-width: 30px;
+    flex-basis: 28px;
+    width: 28px;
   }
 
-  .local-zone-card,
   .local-zone-empty,
+  .local-zone-card,
   .local-judgement-stack .local-zone-card {
-    width: 30px;
-    height: 45px;
+    width: 28px;
   }
 
   .local-judgement-stack > div {
-    width: 30px;
-    height: 45px;
-  }
-
-  .local-judgement-stack .local-zone-card:nth-child(2) {
-    left: 2px;
-  }
-
-  .local-judgement-stack .local-zone-card:nth-child(3) {
-    left: 4px;
-  }
-
-  .local-judgement-stack .local-zone-card:nth-child(n + 4) {
-    left: 6px;
+    width: 28px;
   }
 
   .local-hand-rail .card-slot {
     margin-left: -34px;
   }
 }
+
 
 /* Make every committed selection unmistakable across cards, heroes, targets, and pickers. */
 .game-card.selected,

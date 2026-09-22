@@ -51,8 +51,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(html, /class="player-square player-square-0/);
   assert.match(html, /class="local-player-dock"/);
   assert.match(html, /data-hero-id="cao-cao"/);
-  assert.match(html, />Lord<\/em>/);
-  assert.match(html, /4\/4 HP/);
+  assert.match(html, /class="local-dock-status"[\s\S]*<strong>Lord<\/strong><span>HP 4\/4/);
+  assert.match(html, /class="local-hero-skill"[\s\S]*class="hero-skill-button" disabled/);
+  assert.doesNotMatch(html, /local-dock-meta/);
   assert.equal((html.match(/class="local-equipment-slot"/g) ?? []).length, 4);
   assert.match(html, /data-slot="offensiveHorse"[^>]*>[\s\S]*>-1 Horse<\/span>/);
   assert.match(html, /data-slot="defensiveHorse"[^>]*>[\s\S]*>\+1 Horse<\/span>/);
@@ -87,23 +88,24 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const sequenceSource = gameRoomSource.slice(gameRoomSource.indexOf("function TableResolutionSequence"), gameRoomSource.indexOf("function CardFace"));
   assert.doesNotMatch(sequenceSource, /Math\.(sin|cos)|activeAngle|activeRadians|--seat-[xy]/, "resolution placement is not circular seat geometry");
   assert.match(sequenceSource, /centerRelativeToTable/);
-  assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: 80px[\s\S]*border-top: 1px[\s\S]*border-bottom: 1px/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*grid-template-areas: "identity zones" "identity hand" "actions actions"/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*grid-template-columns: 132px minmax\(0, 1fr\)/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-dock-zones\s*\{[\s\S]*display: flex[\s\S]*gap: 3px/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-hand-section\s*\{[\s\S]*height: 58px[\s\S]*min-height: 58px/);
-  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*z-index: 40[\s\S]*background: #11150f/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-hand-rail\s*\{[\s\S]*top: 1px[\s\S]*height: 56px/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-hand-rail \.card-slot\s*\{[\s\S]*margin-left: -38px/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*\.local-hand-rail \.card-slot\.single-selected \.game-card\s*\{[\s\S]*transform: translateY\(-46px\)/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 120px minmax\(0, 1fr\)[\s\S]*grid-template-columns: repeat\(4, 30px\)/);
+  assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
+  assert.match(sequenceStyleSource, /--hand-panel-height: 68px[\s\S]*--hand-peek-height: 50px[\s\S]*--hand-card-height: 102px[\s\S]*--hand-top-inset: 4px[\s\S]*--selected-rise: 48px[\s\S]*--hand-bottom-gutter: 10px/);
+  assert.match(sequenceStyleSource, /hand-top-inset - selected-rise \+ hand-card-height[\s\S]*hand-panel-height - hand-bottom-gutter/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*grid-template-columns: 92px minmax\(0, 1fr\)[\s\S]*grid-template-rows: 68px 68px 46px/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*grid-template-areas:[\s\S]*"identity zones"[\s\S]*"identity hand"[\s\S]*"actions actions"/);
+  assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
+  assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
+  assert.match(sequenceStyleSource, /\.local-hand-rail\s*\{[\s\S]*top: 0[\s\S]*height: var\(--hand-peek-height\)/);
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.game-card\s*\{[\s\S]*transform: translateY\(calc\(-1 \* var\(--selected-rise\)\)\)/);
+  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*min-height: 46px[\s\S]*padding: 6px 8px/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 88px minmax\(0, 1fr\)/);
 
   const switched = normalizeRoomData({ ...payload, code: "DOCK2", meId: "p3", myRole: "Loyalist", myHand: [card("switched-hand", "Dodge")], actionPlayerId: "p3", currentAction: { ...payload.currentAction, actorId: "p3" } });
   assert.ok(switched);
   const switchedHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: switched, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((switchedHtml.match(/class="player-square /g) ?? []).length, 3, "switching the controlled seat keeps three opponents on the board");
   assert.match(switchedHtml, /data-hero-id="zhang-fei"/);
-  assert.match(switchedHtml, />Loyalist<\/em>/);
+  assert.match(switchedHtml, /class="local-dock-status"[\s\S]*<strong>Loyalist<\/strong>/);
   assert.match(switchedHtml, /Dodge/);
 });
 
@@ -198,10 +200,10 @@ test("normalized malformed and unknown response states render safely", () => {
   const luoshenRoom = normalizeRoomData(luoshenPayload);
   const luoshenReadyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(luoshenReadyHtml, />Use Godess of Luo River<\/button>/);
-  assert.match(luoshenReadyHtml, />Skip reaction<\/button>/);
+  assert.match(luoshenReadyHtml, />Skip<\/button>/);
   const luoshenBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Use Godess of Luo River<\/button>/);
-  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Skip reaction<\/button>/);
+  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
   assert.doesNotMatch(luoshenBusyHtml, /Resolving…|Skipping…/);
 
   const pickerRoom = normalizeRoomData({
@@ -221,7 +223,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(pickerHtml, /aria-label="Nio Shield/);
   assert.doesNotMatch(pickerHtml, /aria-label="not-eligible"/);
   const pickerBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: pickerRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Skip reaction<\/button>/);
+  assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
   assert.match(pickerBusyHtml, /<button[^>]*disabled=""[^>]*>Use Frost Sword<\/button>/);
   assert.doesNotMatch(pickerBusyHtml, /Resolving…|Skipping…/);
 
@@ -243,7 +245,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.match(choiceHtml, /Keep hand — attacker draws 1 card/);
   assert.doesNotMatch(choiceHtml, /aria-label="Hidden hand card \d+"/, "hand cards stay hidden until discard is chosen");
   assert.doesNotMatch(choiceHtml, />Yin-Yang Swords<\/button>/, "mandatory choices open without a trigger activation button");
-  assert.doesNotMatch(choiceHtml, /Skip reaction/, "mandatory Yin-Yang choice has no Skip reaction");
+  assert.doesNotMatch(choiceHtml, /Skip/, "mandatory Yin-Yang choice has no Skip action");
   const choiceBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: choiceRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(choiceBusyHtml, /<button[^>]*disabled=""[^>]*>Confirm choice<\/button>/);
   assert.doesNotMatch(choiceBusyHtml, /Resolving…|Skipping…/);
@@ -328,6 +330,6 @@ test("a normalized Negation response retains its legal controls", () => {
   assert.ok(room?.pendingNegation, "the normalizer must keep a valid public Negation DTO");
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(html, /Play Negation/);
-  assert.match(html, /Skip response/);
+  assert.match(html, />Skip<\/button>/);
   assert.doesNotMatch(html, /Waiting for the latest response state/);
 });

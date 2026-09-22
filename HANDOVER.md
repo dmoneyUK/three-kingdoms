@@ -1,5 +1,39 @@
 # Three Kingdoms project handover
 
+## Local dock panel separation — 2026-09-22
+
+The local player dock now has four real mobile panels: Hero, Status plus
+Equipment/Judgement, Hand, and Action. At the narrow-mobile breakpoint it uses
+a 92px hero column, a flexible right column, 68px zone/hand rows, a 46px
+action row, and 4px grid gaps. Each panel owns its border, dark background,
+padding, and `box-sizing`; the hand/action divider is no longer a shared
+border or stacking workaround.
+
+The hero column contains only the tappable hero card and an always-visible
+Hero Skill control. Role and HP now lead the right-top panel, above the
+equipment and Judgement cards. The hand rail uses the shared geometry
+variables (`--hand-panel-height`, `--hand-peek-height`, `--hand-card-height`,
+`--hand-top-inset`, `--selected-rise`, and `--hand-bottom-gutter`). A selected
+102px card rises 48px and preserves a measured 9px lower gap inside the 68px
+hand panel; larger hands remain horizontally scrollable without increasing
+dock height. Action labels are compact (`Play`, `End`, `Skip`, and `Spear`).
+
+The final dock layout is consolidated in `app/sequence-overrides.css`; the
+older LocalPlayerDock rules were removed from `app/globals.css`. The live
+390px browser review covered a six-card hand, a selected card, and a real
+Serpent Spear equipment card. SSR/render regressions cover the panel structure,
+mobile geometry, CSS invariants, and perspective switching. Response-state and
+hero-skill behavior remain on the existing semantic/currentAction paths.
+
+Known boundary: the live review room used the normal Quick Test opening and
+populated equipment, but did not force a Judgement card or an active hero-skill
+eligibility window; those states remain governed by the existing projected
+game contract and render coverage.
+
+The next recommended work remains the deployed mobile review and final
+graphic/theme skin; do not expand this presentation-only pass into gameplay
+changes.
+
 ## Standard hero selection is implementation-gated — 2026-09-22
 
 The Standard hero reference is now the selection boundary: only its 18
