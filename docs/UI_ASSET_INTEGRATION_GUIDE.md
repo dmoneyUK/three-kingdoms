@@ -50,6 +50,7 @@ public/assets/ui/
   local-player-frame-ornate-reference.webp
   local-player-frame.webp
   button-primary.webp
+  button-secondary.webp
 ```
 
 Naming rule: lowercase kebab-case, named by UI function rather than generation prompt.
@@ -720,7 +721,61 @@ The source artwork is wider and more ornate than some current mobile buttons. Th
 
 ---
 
-# 8. Responsive and performance rules
+# 8. Secondary button
+
+## 8.1 `button-secondary.webp`
+
+### Purpose
+Production reusable visual skin for **secondary / lower-priority actions**.
+
+Use it for actions such as:
+- Skip,
+- Cancel,
+- Back,
+- Pass,
+- Close when Close is not destructive.
+
+The image is decoration only. The application must keep the real semantic `<button>`, live label, event handlers, keyboard support, disabled state, focus behavior and game logic.
+
+### Required implementation model
+
+```tsx
+<button className="game-button game-button--secondary">
+  <img
+    className="game-button-art"
+    src="/assets/ui/button-secondary.webp"
+    alt=""
+    aria-hidden="true"
+  />
+  <span className="game-button-label">{label}</span>
+</button>
+```
+
+Reuse the same shared `.game-button`, `.game-button-art`, and `.game-button-label` structure described for the primary button.
+
+### Visual hierarchy
+
+The secondary style must remain visibly quieter than the primary style.
+
+The coding agent may use CSS to reduce prominence, for example:
+- slightly lower brightness/saturation,
+- weaker glow,
+- less pronounced hover lift.
+
+Do not create separate images just for hover, pressed, focus or disabled states.
+
+### Hard rules
+- never bake `SKIP`, `CANCEL`, `BACK`, `PASS`, or `CLOSE` into the asset,
+- `button-secondary.webp` must use `pointer-events: none`,
+- preserve the existing button dimensions and mobile touch target,
+- do not enlarge the HUD to preserve every decorative cloud/mountain detail,
+- the actual button element retains all accessibility and action behavior,
+- do not use this style for the main positive action when a primary action is present,
+- do not use this style for destructive / dangerous actions if a dedicated destructive style is later added.
+
+---
+
+# 9. Responsive and performance rules
 
 The game is used on mobile as well as desktop.
 
@@ -738,7 +793,7 @@ Do not change gameplay spacing merely to make decoration look perfect. Decoratio
 
 ---
 
-# 9. Screens affected in the final integration
+# 10. Screens affected in the final integration
 
 The board assets are intended for the actual game screen containing:
 - other players,
@@ -763,7 +818,7 @@ The reusable card frame can eventually appear anywhere the standard game-card co
 
 ---
 
-# 10. Coding-agent constraints
+# 11. Coding-agent constraints
 
 When the user eventually asks for the complete asset implementation:
 
@@ -782,7 +837,7 @@ When the user eventually asks for the complete asset implementation:
 
 ---
 
-# 11. Assets still to be designed
+# 12. Assets still to be designed
 
 Do not invent missing assets.
 
@@ -790,14 +845,14 @@ Expected future items:
 - equipment-slot treatment,
 - judgement-area treatment,
 - deck/discard presentation treatment if needed,
-- secondary / destructive button system,
+- destructive button style if needed,
 - generic panel frame,
 - modal / response-window frame,
 - small ornamental separators if needed.
 
 ---
 
-# 12. Update protocol
+# 13. Update protocol
 
 Every approved future asset must update this same file.
 
@@ -816,7 +871,7 @@ Do not create competing implementation-guide files for the same asset set.
 
 ---
 
-# 13. Change log
+# 14. Change log
 
 ## 2026-09-23 — board foundation
 
@@ -886,6 +941,20 @@ Decisions:
 - do not enlarge the gameplay HUD just to preserve every ornament detail,
 - reserve secondary / destructive actions for later dedicated styles.
 
+## 2026-09-23 — secondary action button
+
+Added:
+- `public/assets/ui/button-secondary.webp`
+
+Decisions:
+- use this for secondary / lower-priority actions such as Skip, Cancel, Back and Pass,
+- keep button labels and behavior live in HTML/React,
+- share the same semantic button structure as the primary style,
+- keep hover / pressed / focus / disabled states CSS-driven,
+- keep secondary actions visually quieter than primary actions,
+- preserve existing dimensions and touch targets,
+- reserve destructive actions for a later dedicated style if required.
+
 ## 2026-09-23 — generic card back and reusable card frame
 
 Added:
@@ -902,7 +971,7 @@ Decisions:
 
 ---
 
-# 14. Final asset-pass instruction
+# 15. Final asset-pass instruction
 
 **Do not perform the broad visual rewrite yet.**
 
