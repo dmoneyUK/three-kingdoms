@@ -29,9 +29,17 @@ four-seat selection loop. Explicit Yue Jin skill behavior remains covered by
 the isolated Dauntless API tests, so no production selection rule was changed.
 The required local build, full test suite, lint, and `git diff --check` pass.
 
-The remaining release step is the deployed mobile review at approximately
-320px, 390px, and 430px, followed by final graphic polish and approved artwork
-intake for the remaining fallback heroes.
+Production review is complete at approximately 320px, 390px, and 430px. A
+four-seat deployed Quick Test review showed Sima Yi, Zhen Ji, Zhang Fei, and
+Cao Cao artwork; all opponent panels kept player name, hero name, HP, hearts,
+and hand-card counts visible, the info button opened its dialog, and the
+unmapped Lv Bu initials fallback remained readable. The shared portrait regions
+were equal at each width, with no page or opponent-panel overflow. GitHub
+Actions run 35897749357 completed successfully: both `build-and-test` and the
+non-skipped `deploy` job passed.
+
+Recommended next work is final graphic polish and approved artwork intake for
+the remaining fallback heroes.
 
 ## Final hero selection card correction — 2026-09-23
 

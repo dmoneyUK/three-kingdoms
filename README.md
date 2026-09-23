@@ -24,9 +24,13 @@ covered by the isolated Dauntless API tests; no production selection or
 gameplay rule changed. Local build, full tests, lint, and diff-check all pass.
 
 Current stage: Stage 7 product polish, opponent hero artwork repair complete.
-The next milestone is the required deployed mobile review at 320px, 390px, and
-430px, followed by final graphic/theme polish and separately approved artwork
-intake for any remaining fallback heroes.
+Production review is complete at approximately 320px, 390px, and 430px. The
+mapped Sima Yi, Zhen Ji, Zhang Fei, and Cao Cao views render correctly, the
+unmapped initials fallback remains readable, and no horizontal or opponent
+panel overflow was observed. GitHub Actions run 35897749357 passed both
+build-and-test and the Deploy to Cloudflare job. The next milestone is final
+graphic/theme polish and separately approved artwork intake for any remaining
+fallback heroes.
 
 ## Final hero selection card correction — 2026-09-23
 
