@@ -44,7 +44,7 @@ export const STANDARD_HEROES: readonly HeroDefinition[] = [
 // Metadata for the remaining Standard roster stays available for reference,
 // but those heroes must not enter a playable Standard hero-selection flow.
 export const IMPLEMENTED_STANDARD_HERO_IDS: ReadonlySet<string> = new Set([
-  "cao-cao", "simayi", "xiahou-dun", "zhang-liao", "xu-chu", "guo-jia", "zhen-ji",
+  "cao-cao", "simayi", "xiahou-dun", "zhang-liao", "xu-chu", "guo-jia", "zhen-ji", "yue-jin",
   "liu-bei", "guan-yu", "zhang-fei", "zhao-yun",
   "sun-quan", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lu-xun", "lü-bu",
 ]);

@@ -20,21 +20,17 @@ test("host test seats use one controller across four seats with a normal shuffle
   sql(`UPDATE players SET hero_options_json=${quote(JSON.stringify(staleOptions))} WHERE id=${quote(lordId)}`);
   const refreshedOptions = (await state(created.data.room.code, created.data.token)).data.myHeroOptions;
   const refreshedCao = refreshedOptions.find((hero) => hero.id === "cao-cao");
-  assert.equal(refreshedOptions.some((hero) => hero.id === "yue-jin"), false, "stale unimplemented candidates are not projected");
+  const refreshedYueJin = refreshedOptions.find((hero) => hero.id === "yue-jin");
+  assert.deepEqual(refreshedYueJin?.skills.map((skill) => skill.name), ["Dauntless"], "Yue Jin is projected from the current implemented catalogue");
   assert.deepEqual(refreshedCao?.skills.map((skill) => skill.name), ["Treachery", "Entourage"], "persisted hero candidates rehydrate current skill names");
   assert.match(refreshedCao?.skills[1].description ?? "", /characters from the Wei kingdom/);
-  const unavailableChoice = await requestAndSettle("choose_hero", { code: created.data.room.code, token: created.data.token, heroId: "yue-jin" });
-  assert.equal(unavailableChoice.status, 400, "the server rejects an unimplemented hero even if stale state injects it");
-  sql(`UPDATE players SET hero_options_json=${quote(storedOptions)} WHERE id=${quote(lordId)}`);
+  const yueJinChoice = await requestAndSettle("choose_hero", { code: created.data.room.code, token: created.data.token, heroId: "yue-jin" });
+  assert.equal(yueJinChoice.status, 200, JSON.stringify(yueJinChoice.data));
   assert.equal(created.data.room.players.filter((player) => player.role === "Lord").length, 1);
   assert.equal(created.data.room.players.filter((player) => player.role === null).length, 3);
-  let room = created.data.room;
+  let room = yueJinChoice.data.room;
   const lord = room.players.find((player) => player.role === "Lord");
-  assert.equal(room.meId, lord.id, "the host test session starts on the Lord seat");
-  const lordChoice = room.myHeroOptions[0].id;
-  const lordResult = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: lordChoice });
-  assert.equal(lordResult.status, 200, JSON.stringify(lordResult.data));
-  room = lordResult.data.room;
+  assert.equal(lord.hero, "yue-jin", "the implemented Yue Jin can be selected for the Lord seat");
   while (room.status === "heroes") {
     const actor = room.players.find((player) => player.id === room.meId);
     const chosen = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: room.myHeroOptions[0].id });

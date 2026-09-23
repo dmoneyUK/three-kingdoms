@@ -21,7 +21,8 @@ mobile review, followed by final graphic/theme polish.
 
 ## Yue Jin — Dauntless — 2026-09-23
 
-Implemented Yue Jin through the generic semantic `turn_end` lifecycle. Normal
+Implemented and enabled Yue Jin in the playable Standard candidate allow-list
+through the generic semantic `turn_end` lifecycle. Normal
 Play completion, Discard completion, and Lu Meng Composure now converge on a
 persisted turn-end continuation; the next living seat is selected only after
 all end-of-turn effects and nested damage/Dying resolution finish.

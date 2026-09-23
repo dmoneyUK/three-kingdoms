@@ -19,7 +19,8 @@ polish.
 
 ## Yue Jin — Dauntless — 2026-09-23
 
-Yue Jin is now implemented through the canonical semantic `turn_end` event.
+Yue Jin is now implemented and included in the playable Standard hero
+candidate allow-list through the canonical semantic `turn_end` event.
 Normal Play completion, Discard completion, and Lu Meng Composure all enter
 the same persisted turn-end continuation before the next living seat is
 calculated. Dauntless privately offers Yue Jin exactly one eligible Basic card
