@@ -1,5 +1,29 @@
 # Three Kingdoms project handover
 
+## UI asset staging audit and integration contract — 2026-09-23
+
+The staged graphic-skin repository contract has been corrected before runtime
+integration. `docs/UI_ASSET_INTEGRATION_GUIDE.md` now has an explicit
+production/reference/blocked manifest and exact integration targets for
+`LocalPlayerDock`, `.player-board` / `.player-square-${relativeIndex}`,
+`.play-center`, `.draw-stack`, `.discard-stack`, local `.game-card`
+rendering, and shared `CardFace` / `.played-card` rendering.
+
+The incorrect `public/assets/ui/button-primary.webp` was removed after the
+audit showed it was byte-for-byte identical to `local-player-frame.webp`.
+The incorrect local-player ornate reference was also removed because it was
+identical to `other-player-frame-asymmetric-reference.webp`. Reference-only
+files are now forbidden from runtime imports. Primary buttons retain current
+`.primary` CSS until a valid replacement is approved; `.end` also retains
+its current destructive/end styling. `deck-panel-concept-reference.webp`
+remains reference-only and a production deck-panel frame is still missing.
+
+No game behavior or production UI code changed in this pass. Recommended next
+work is continued asset generation/approval; only after the blocked production
+assets are resolved should the final visual integration pass run the guide's
+mobile/desktop, Quick Test, multiplayer, animation-anchor, build, test, lint,
+and diff-check validation list.
+
 ## Hero-selection live-selector fix — 2026-09-23
 
 The `choose_hero` route now treats the freshly loaded `nextGeneralSelector`
