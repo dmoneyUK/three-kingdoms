@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -41,13 +41,22 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.equal((html.match(/class="hero-choice-wrap/g) ?? []).length, 3, "each private candidate has a card wrapper");
   assert.equal((html.match(/class="hero-info-button"/g) ?? []).length, 3, "each private candidate has an information control");
   assert.match(html, /aria-label="View Cao Cao information"/);
+  assert.match(html, /data-hero-art-id="cao-cao"/);
+  assert.match(html, /data-hero-art-id="simayi"/);
+  assert.match(html, /data-hero-art-id="xiahou-dun"/);
+  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg"]) {
+    assert.ok(existsSync(new URL(`../public/${asset}`, import.meta.url)), `${asset} is checked in`);
+  }
   assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
   assert.match(gameRoomSource, /className=\{`hero-choice-wrap \$\{effectiveSelected === hero\.id \? "selected" : ""\}`\}/);
   assert.match(gameRoomSource, /onClick=\{\(\) => setInfoHero\(hero\)\}/);
   assert.match(gameRoomSource, /\{infoHero && <HeroInfoDialog hero=\{infoHero\}/);
-  const lordHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myRole: "Lord", myHeroOptions: STANDARD_HEROES.slice(0, 5) }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
+  const artHeroes = ["cao-cao", "liu-bei", "sun-quan", "simayi", "xiahou-dun"].map((id) => STANDARD_HEROES.find((hero) => hero.id === id));
+  assert.ok(artHeroes.every(Boolean));
+  const lordHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myRole: "Lord", myHeroOptions: artHeroes }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
   assert.match(lordHtml, /class="hero-choice-grid hero-choice-grid-5"/);
   assert.equal((lordHtml.match(/class="hero-choice-wrap/g) ?? []).length, 5, "Lord receives five compact candidate cards");
+  for (const id of ["cao-cao", "liu-bei", "sun-quan", "simayi", "xiahou-dun"]) assert.match(lordHtml, new RegExp(`data-hero-art-id="${id}"`));
   assert.match(globalStyleSource, /@media \(max-width: 520px\)[\s\S]*?\.hero-choice-grid,[\s\S]*?grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/, "mobile hero selection keeps three card tracks");
   assert.match(globalStyleSource, /\.hero-choice-grid-5 > \.hero-choice-wrap:nth-child\(4\)\s*\{\s*grid-column: 2 \/ span 2;/, "Lord's fourth card starts the centred second row");
   assert.match(globalStyleSource, /\.hero-choice-grid-5 > \.hero-choice-wrap:nth-child\(5\)\s*\{\s*grid-column: 4 \/ span 2;/, "Lord's fifth card completes the centred second row");
@@ -58,9 +67,9 @@ test("hero selection shows the effective viewer's private role", () => {
 test("the local player dock replaces the self battlefield square and follows Quick Test perspective", () => {
   const players = [
     { id: "p1", name: "HOST", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 2, equipmentCards: [card("weapon", "BlueSteelSword"), card("armor", "NioShield"), card("offensive-horse", "RedHare"), card("defensive-horse", "Shadowrunner")], judgementCards: [card("lightning", "Lightning"), card("overindulgence", "Overindulgence")], attackRange: 2, distance: null, isHost: true, role: "Lord" },
-    { id: "p2", name: "ALICE", seat: 1, hero: "guan-yu", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [card("opponent-weapon", "BlueSteelSword")], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    { id: "p2", name: "ALICE", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [card("opponent-weapon", "BlueSteelSword")], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     { id: "p3", name: "BOB", seat: 2, hero: "zhang-fei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [card("opponent-judgement", "Lightning")], attackRange: 1, distance: 1, isHost: false, role: "Loyalist" },
-    { id: "p4", name: "CAROL", seat: 3, hero: "zhen-ji", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
+    { id: "p4", name: "CAROL", seat: 3, hero: "xiahou-dun", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 4, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
   ];
   const payload = {
     code: "DOCK1", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [], players,
@@ -85,6 +94,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(html, /class="player-square player-square-0/);
   assert.match(html, /class="local-player-dock"/);
   assert.match(html, /data-hero-id="cao-cao"/);
+  assert.match(html, /class="player-square-portrait" data-hero-id="liu-bei"[\s\S]*data-hero-art-id="liu-bei"/);
+  assert.match(html, /data-hero-art-id="xiahou-dun"/);
   assert.match(html, /class="local-status-panel"[\s\S]*class="local-status-hp">HP 4\/4<\/span>[\s\S]*class="local-status-hearts">♥♥♥♥<\/span>[\s\S]*class="local-status-role">Lord<\/strong>/);
   assert.equal((html.match(/class="hero-skill-button/g) ?? []).length, 2, "Cao Cao exposes one button per metadata skill");
   assert.match(html, />Treachery<\/button>[\s\S]*>Entourage<\/button>/);

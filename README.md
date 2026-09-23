@@ -1,5 +1,22 @@
 # Three Kingdoms
 
+## Supplied hero artwork skin — 2026-09-23
+
+The five supplied hero images are now the shared artwork for Cao Cao, Liu Bei,
+Sun Quan, Sima Yi, and Xiahou Dun. The same public assets render in private
+General Selection cards, the locked-in selection state, the local hero card,
+and opponent hero cards on the game board. Heroes without supplied artwork
+retain the initials fallback, while the centre draw pile remains the ordinary
+108-card game deck.
+
+This is presentation-only: hero IDs, private projections, selection rules,
+board targeting, and card-deck logic are unchanged. Render coverage checks the
+asset files and cross-surface hero artwork paths.
+
+Current stage: Stage 7 product polish, supplied hero artwork skin complete. The
+next milestone is deployed mobile review, followed by final graphic/theme
+polish.
+
 ## Lobby start flow — 2026-09-23
 
 Waiting Room no longer asks players to set a lobby-ready state. The host can

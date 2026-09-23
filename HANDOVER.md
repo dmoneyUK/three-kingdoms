@@ -1,5 +1,24 @@
 # Three Kingdoms project handover
 
+## Supplied hero artwork skin — 2026-09-23
+
+Added the supplied public artwork for Cao Cao, Liu Bei, Sun Quan, Sima Yi, and
+Xiahou Dun. `app/page.tsx` now resolves those stable hero IDs through one shared
+portrait helper, so General Selection cards, the locked-in selection state, the
+local player dock, and opponent player cards all use the same image mapping.
+The remaining heroes keep the existing initials fallback. The centre DECK
+display was intentionally left as the ordinary game-card draw pile because no
+hero cards are drawn there.
+
+This is presentation-only. It does not change hero selection, private viewer
+projection, board targeting, card conservation, or the semantic gameplay
+protocol. `tests/room-safety-render.test.mjs` verifies all five checked-in
+assets and representative selection/local/opponent render paths.
+
+Validation boundary: focused render coverage is green; full build, test, lint,
+and diff-check remain the release gates. Recommended next work is deployed
+mobile review, followed by final graphic/theme polish.
+
 ## Waiting Room no-readiness start flow — 2026-09-23
 
 Removed the lobby Ready button, Ready/Not Ready seat labels, and readiness

@@ -502,13 +502,18 @@
   place-items: end center;
   width: 100%;
   height: 100%;
-  padding: 8px 4px;
+  position: relative;
+  padding: 0;
+  overflow: hidden;
   background: linear-gradient(155deg, #263b3b 0%, #17231d 46%, #0b0e0b 100%);
   color: #e6cc8c;
   text-align: center;
 }
 
 .local-hero-portrait span { font: 700 8px/1.15 Georgia, serif; letter-spacing: .04em; text-transform: uppercase; }
+.local-hero-portrait > .hero-art-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.local-hero-portrait > .hero-art-fallback { position: absolute; inset: 0; display: grid; place-items: center; }
+.local-hero-portrait > .local-hero-label { position: absolute; inset: auto 0 0; z-index: 1; }
 .local-hero-skill { width: 100%; min-width: 0; }
 .local-hero-skills { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; }
 .local-hero-skills .hero-skill-button { width: 100%; min-height: 22px; padding: 4px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 7px; }
