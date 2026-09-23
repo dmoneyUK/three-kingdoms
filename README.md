@@ -1,5 +1,12 @@
 # Three Kingdoms
 
+## Hero selection artwork sizing fix — 2026-09-23
+
+Corrected the supplied hero artwork sizing in General Selection cards. The
+image now anchors to the full portrait container instead of rendering only its
+intrinsic-height strip. This is presentation-only; hero selection and artwork
+mapping are unchanged.
+
 ## Supplied hero artwork skin — 2026-09-23
 
 The five supplied hero images are now the shared artwork for Cao Cao, Liu Bei,

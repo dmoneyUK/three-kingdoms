@@ -1,5 +1,14 @@
 # Three Kingdoms project handover
 
+## Hero selection artwork sizing fix — 2026-09-23
+
+The supplied artwork in General Selection cards now uses absolute inset sizing
+inside the portrait container. This fixes the mobile view where the images
+loaded but appeared only as a thin horizontal strip. Local hero and opponent
+card sizing remains unchanged.
+
+Focused render coverage asserts the selection artwork fills its container.
+
 ## Supplied hero artwork skin — 2026-09-23
 
 Added the supplied public artwork for Cao Cao, Liu Bei, Sun Quan, Sima Yi, and

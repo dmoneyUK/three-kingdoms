@@ -463,6 +463,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 }
 
 .hero-art-image { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.hero-monogram > .hero-art-image { position: absolute; inset: 0; }
 .hero-art-fallback { display: grid; place-items: center; width: 100%; height: 100%; color: #e3c888; }
 .chosen-hero-art { width: 88px; height: 118px; margin: 0 auto 14px; overflow: hidden; border: 1px solid #b79552; box-shadow: 0 8px 20px #0008; }
 .chosen-hero-art .hero-art-image { object-position: center; }

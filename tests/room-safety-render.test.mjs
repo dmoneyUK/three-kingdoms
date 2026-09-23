@@ -57,6 +57,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(lordHtml, /class="hero-choice-grid hero-choice-grid-5"/);
   assert.equal((lordHtml.match(/class="hero-choice-wrap/g) ?? []).length, 5, "Lord receives five compact candidate cards");
   for (const id of ["cao-cao", "liu-bei", "sun-quan", "simayi", "xiahou-dun"]) assert.match(lordHtml, new RegExp(`data-hero-art-id="${id}"`));
+  assert.match(globalStyleSource, /\.hero-monogram > \.hero-art-image\s*\{[^}]*position: absolute;[^}]*inset: 0;/, "selection artwork fills the portrait container");
   assert.match(globalStyleSource, /@media \(max-width: 520px\)[\s\S]*?\.hero-choice-grid,[\s\S]*?grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/, "mobile hero selection keeps three card tracks");
   assert.match(globalStyleSource, /\.hero-choice-grid-5 > \.hero-choice-wrap:nth-child\(4\)\s*\{\s*grid-column: 2 \/ span 2;/, "Lord's fourth card starts the centred second row");
   assert.match(globalStyleSource, /\.hero-choice-grid-5 > \.hero-choice-wrap:nth-child\(5\)\s*\{\s*grid-column: 4 \/ span 2;/, "Lord's fifth card completes the centred second row");
