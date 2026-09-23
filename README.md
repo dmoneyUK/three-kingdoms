@@ -4,17 +4,18 @@
 
 Repaired the missing opponent artwork path without changing gameplay. The
 checked-in Zhang Liao portrait was an undecodable JPEG; it is now a valid
-2:3 portrait and continues to resolve through the single shared
-`HERO_ART_BY_ID` / `HeroPortrait` renderer. All 19 implemented Standard hero
-IDs are now covered by an explicit render audit: six have approved checked-in
-artwork and the other 13 retain the intentional initials fallback until
-approved assets exist.
+2:3 portrait, and original project artwork now covers Zhang Fei and Zhen Ji.
+All 19 implemented Standard hero IDs are covered by an explicit render audit:
+eight have checked-in artwork and the other 11 retain the intentional initials
+fallback until approved assets exist. Every mapped hero continues to resolve
+through the single shared `HERO_ART_BY_ID` / `HeroPortrait` renderer.
 
 Opponent portrait sizing no longer collapses into the shallow mobile track.
-The shared opponent portrait container keeps a stable 68–92px mobile height,
-so mapped artwork remains visible without changing player state, targeting,
-projection, or any gameplay action contract. Render coverage also protects
-the mapping boundary, checked-in assets, fallback behavior, and mobile CSS.
+The shared opponent portrait container uses a non-shrinking 4:3 artwork region
+that is about 65–78px high at the target mobile width, so mapped artwork
+remains visible without changing player state, targeting, projection, or any
+gameplay action contract. Render coverage also protects the mapping boundary,
+checked-in assets, fallback behavior, shared rendering, and mobile CSS.
 
 Current stage: Stage 7 product polish, opponent hero artwork repair complete.
 The next milestone is deployed review at 390px, 430px, and 768px, followed by

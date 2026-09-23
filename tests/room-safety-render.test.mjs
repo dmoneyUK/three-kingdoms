@@ -44,7 +44,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(html, /data-hero-art-id="cao-cao"/);
   assert.match(html, /data-hero-art-id="simayi"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
-  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.jpg"]) {
+  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.jpg", "hero-zhang-fei.jpg", "hero-zhen-ji.jpg"]) {
     assert.ok(existsSync(new URL(`../public/${asset}`, import.meta.url)), `${asset} is checked in`);
   }
   assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
@@ -60,6 +60,13 @@ test("hero selection shows the effective viewer's private role", () => {
   const zhouYuHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myHeroOptions: [zhouYu] }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
   assert.match(gameRoomSource, /"zhang-liao": "\/hero-zhang-liao\.jpg"/);
   assert.match(zhangLiaoHtml, /data-hero-art-id="zhang-liao"/);
+  const zhangFei = STANDARD_HEROES.find((hero) => hero.id === "zhang-fei");
+  const zhenJi = STANDARD_HEROES.find((hero) => hero.id === "zhen-ji");
+  assert.ok(zhangFei && zhenJi);
+  const zhangFeiHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myHeroOptions: [zhangFei] }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
+  const zhenJiHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myHeroOptions: [zhenJi] }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
+  assert.match(zhangFeiHtml, /data-hero-art-id="zhang-fei"/);
+  assert.match(zhenJiHtml, /data-hero-art-id="zhen-ji"/);
   assert.match(zhouYuHtml, /class="hero-art-fallback" data-hero-art-id="zhou-yu"[^>]*>ZY<\/span>/, "heroes without checked-in artwork keep the initials fallback");
   const lordHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myRole: "Lord", myHeroOptions: artHeroes }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
   assert.match(lordHtml, /class="hero-choice-grid hero-choice-grid-5"/);
@@ -105,7 +112,7 @@ test("every implemented Standard hero is audited through the shared portrait ren
       assert.match(html, /class="hero-art-fallback"/, `${id} keeps the intentional initials fallback until approved artwork exists`);
     }
   }
-  assert.deepEqual(unmappedIds, ["xu-chu", "guo-jia", "zhen-ji", "yue-jin", "guan-yu", "zhang-fei", "zhao-yun", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lu-xun", "lü-bu"]);
+  assert.deepEqual(unmappedIds, ["xu-chu", "guo-jia", "yue-jin", "guan-yu", "zhao-yun", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lu-xun", "lü-bu"]);
 });
 
 test("the local player dock replaces the self battlefield square and follows Quick Test perspective", () => {
@@ -140,8 +147,10 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /data-hero-id="cao-cao"/);
   assert.match(html, /class="player-square-portrait" data-hero-id="liu-bei"[\s\S]*data-hero-art-id="liu-bei"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
-  assert.match(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(68px, 18vw, 92px\);[^}]*flex: 0 0 auto;/, "mobile opponent portraits keep a readable fixed-height track");
-  assert.doesNotMatch(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(44px, 8vw, 92px\)/, "opponent portraits do not regress to the shallow mobile track");
+  assert.match(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*width: 100%; aspect-ratio: 4 \/ 3; height: auto; flex: 0 0 auto;/, "opponent portraits use a consistent aspect-ratio-driven region");
+  assert.match(globalStyleSource, /\.player-square-target \.player-square-portrait \.hero-art-image \{[^}]*object-fit: cover; object-position: center top;/, "opponent artwork crops toward the useful upper body");
+  assert.doesNotMatch(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(44px, 8vw, 92px\)/, "opponent portraits do not regress to the shallow mobile rule");
+  assert.match(gameRoomSource, /<HeroPortrait hero=\{playerHero\} \/>/, "opponents use the shared HeroPortrait renderer");
   assert.match(html, /class="local-status-panel"[\s\S]*class="local-status-hp">HP 4\/4<\/span>[\s\S]*class="local-status-hearts">♥♥♥♥<\/span>[\s\S]*class="local-status-role">Lord<\/strong>/);
   assert.equal((html.match(/class="hero-skill-button/g) ?? []).length, 2, "Cao Cao exposes one button per metadata skill");
   assert.match(html, />Treachery<\/button>[\s\S]*>Entourage<\/button>/);

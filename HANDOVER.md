@@ -4,19 +4,21 @@
 
 The opponent artwork regression is fixed at its source. The committed Zhang
 Liao JPEG could not be decoded by image tooling or the browser asset path, so
-it was replaced with a valid 2:3 portrait while preserving the stable
-`zhang-liao` ID and the shared `HeroPortrait` renderer. `HERO_ART_BY_ID` and
-the renderer are exported only to make the presentation contract directly
-testable; no per-surface renderer or gameplay route was added.
+it was replaced with a valid 2:3 portrait; original project artwork was also
+added for Zhang Fei and Zhen Ji. Stable IDs and the shared `HeroPortrait`
+renderer are preserved. `HERO_ART_BY_ID` and the renderer are exported only
+to make the presentation contract directly testable; no per-surface renderer
+or gameplay route was added.
 
-The render suite audits every ID in `IMPLEMENTED_STANDARD_HERO_IDS`. Six
-implemented heroes have checked-in artwork and 13 remain explicit initials
+The render suite audits every ID in `IMPLEMENTED_STANDARD_HERO_IDS`. Eight
+implemented heroes have checked-in artwork and 11 remain explicit initials
 fallbacks because no approved asset exists for them. The audit rejects mapping
 unknown/unimplemented IDs and verifies every mapped public asset exists.
 
-Opponent portrait CSS now uses a non-shrinking 68–92px mobile track instead of
-the previous 44px-minimum flex track. This fixes the shallow/cropped board
-portrait while retaining the existing local-player and selection framing.
+Opponent portrait CSS now uses a non-shrinking 4:3 region instead of the
+previous 44px-minimum flex track. This gives a useful roughly 65–78px mobile
+artwork height, fixes the shallow/cropped board portrait, and retains the
+existing local-player and selection framing.
 No gameplay logic, room projection, privacy boundary, targeting behavior, or
 action contract changed.
 

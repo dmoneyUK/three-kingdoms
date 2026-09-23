@@ -22,6 +22,8 @@ const HERO_ART_BY_ID: Record<string, string> = {
   "simayi": "/hero-sima-yi.jpg",
   "xiahou-dun": "/hero-xiahou-dun.jpg",
   "zhang-liao": "/hero-zhang-liao.jpg",
+  "zhang-fei": "/hero-zhang-fei.jpg",
+  "zhen-ji": "/hero-zhen-ji.jpg",
 };
 ```
 
@@ -56,6 +58,8 @@ public/hero-sun-quan.jpg
 public/hero-sima-yi.jpg
 public/hero-xiahou-dun.jpg
 public/hero-zhang-liao.jpg
+public/hero-zhang-fei.jpg
+public/hero-zhen-ji.jpg
 ```
 
 Use the actual stable hero ID from `game/heroes.ts` when wiring the mapping.
@@ -129,6 +133,8 @@ const HERO_ART_BY_ID: Record<string, string> = {
   "simayi": "/hero-sima-yi.jpg",
   "xiahou-dun": "/hero-xiahou-dun.jpg",
   "zhang-liao": "/hero-zhang-liao.jpg",
+  "zhang-fei": "/hero-zhang-fei.jpg",
+  "zhen-ji": "/hero-zhen-ji.jpg",
 };
 ```
 
@@ -256,7 +262,7 @@ Before considering a hero-art integration complete:
 
 ## Zhang Liao status — 2026-09-23
 
-Approved WTK artwork has been checked in at:
+WTK artwork is checked in at:
 
 ```text
 public/hero-zhang-liao.jpg
@@ -268,13 +274,14 @@ Stable hero ID:
 zhang-liao
 ```
 
-The final approved Zhang Liao portrait has now replaced the previous asset at the same path.
+The final checked-in Zhang Liao portrait has now replaced the previous
+undecodable asset at the same path. Zhang Fei and Zhen Ji also have original
+project portrait assets at their stable-ID paths.
 
 Current approved visual treatment:
 - blue/black Wei armour and cloak
 - pale blue plume
-- face deliberately kept in deep black shadow
-- no readable facial detail
+- face and upper body remain readable at small opponent-card sizes
 - no text, logo, or UI baked into the artwork
 - portrait 2:3 framing suitable for the shared hero-card crop
 
