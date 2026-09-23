@@ -16,8 +16,9 @@ playing, and mixed real-player/Test Controller authorization. Local validation
 passes: 38 fast tests, 106 API tests, build, lint, and diff check.
 
 Current stage: Stage 7 product polish, hero-selection reliability fix complete.
-The next milestone is the GitHub Actions validation and Cloudflare deployment
-of this server-side correction.
+GitHub Actions run 35901386654 passed both build-and-test and the Cloudflare
+deployment job for this correction. The next milestone is final graphic/theme
+polish and the next scoped product improvement.
 
 ## Opponent hero artwork and mobile portrait repair — 2026-09-23
 

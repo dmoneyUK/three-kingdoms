@@ -17,8 +17,9 @@ controlled seat, forged unavailable IDs without mutation, mixed real-player
 authorization, and completion of the four-seat game into `playing`.
 
 Local validation is complete: 38 fast tests, 106 API tests, build, lint, and
-`git diff --check` pass. The remaining release step is the GitHub Actions
-validation and Cloudflare deployment of this server-side correction.
+`git diff --check` pass. GitHub Actions run 35901386654 also passed both
+`build-and-test` and the non-skipped Cloudflare `deploy` job. The next work is
+final graphic polish and the next scoped product improvement.
 
 ## Opponent hero artwork and mobile portrait repair — 2026-09-23
 
