@@ -33,7 +33,7 @@ At phone widths (`<=480px`):
 - Judgement is the final/rightmost top-row panel.
 - Top Skills / Equipment / Judgement row: `58px`
 - Hand panel: `108px`
-- Hand visible/peek height: `84px`
+- Hand visible/peek height target: `102px`
 - Physical hand-card height remains `102px`
 - Mobile action/message row: `48px`
 - Opponent panels, board geometry, Draw pile and Discard pile must remain unchanged.
@@ -44,9 +44,61 @@ Relevant files:
 - `app/sequence-overrides.css`
 - `tests/room-safety-render.test.mjs`
 
-## Required follow-up
+## Required follow-up 1 — Use the full Hand panel height
 
-There is one responsive Judgement spacing issue still to fix.
+The deployed screenshot shows an unnecessary black strip below the normal hand cards.
+
+Current CSS:
+
+```css
+--hand-panel-height: 108px;
+--hand-peek-height: 84px;
+--hand-card-height: 102px;
+```
+
+The physical cards are already `102px` tall, but normal `.card-slot` elements use `--hand-peek-height` with `overflow: hidden`, so only 84px of each 102px card is shown.
+
+Do not enlarge the cards and do not increase the Hand panel.
+
+Change only:
+
+```css
+--hand-peek-height: 102px;
+```
+
+Keep:
+
+```css
+--hand-panel-height: 108px;
+--hand-card-height: 102px;
+```
+
+The intent is to use the existing black/empty space to reveal the already-existing full physical card height.
+
+Verify:
+
+- normal hand cards show their full `102px` height
+- physical card size does not change
+- Hand panel remains `108px`
+- selected-card rise still works
+- selected card does not cover the action row
+- card info button remains usable
+- horizontal card compression/distribution remains unchanged
+- no new overflow appears
+
+Update tests that currently expect:
+
+```text
+--hand-peek-height: 84px
+```
+
+to expect:
+
+```text
+--hand-peek-height: 102px
+```
+
+## Required follow-up 2 — Fix responsive Judgement spacing
 
 Current code in `LocalPlayerDock` uses a hard-coded card width:
 
@@ -90,18 +142,21 @@ Review approximately:
 
 Confirm:
 
-1. One Judgement card centres correctly.
-2. Two Judgement cards fit naturally in the fixed Judgement panel.
-3. Three or more Judgement cards overlap correctly.
+1. Hero card remains 2:3 and is not stretched.
+2. Skills remain vertically stacked.
+3. Equipment remains directly to the left of Judgement.
 4. Judgement remains flush with the right edge.
-5. Equipment remains directly to the left of Judgement.
-6. Hero card remains 2:3 and is not stretched.
-7. Skills remain vertically stacked.
-8. Hand area remains +50% from the old production layout, not doubled.
-9. Physical hand cards are not enlarged.
-10. Action row remains 48px on mobile.
-11. No horizontal page overflow.
-12. Opponents, board, Draw and Discard remain unchanged.
+5. One Judgement card centres correctly.
+6. Two Judgement cards fit naturally in the fixed Judgement panel.
+7. Three or more Judgement cards overlap correctly.
+8. Hand panel remains `108px`.
+9. Normal hand cards use the full existing `102px` card height.
+10. The previous black strip below normal hand cards is removed or reduced to panel padding/border only.
+11. Physical hand cards are not enlarged.
+12. Selected hand card behaviour still works.
+13. Action row remains `48px` on mobile.
+14. No horizontal page overflow.
+15. Opponents, board, Draw and Discard remain unchanged.
 
 ## Validation required before completion
 
@@ -119,6 +174,7 @@ Do not mark this task complete unless all four pass.
 After validation, report:
 
 - files changed
+- exact Hand peek-height change
 - exact Judgement spacing fix
 - build result
 - test result
