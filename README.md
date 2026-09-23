@@ -1,5 +1,20 @@
 # Three Kingdoms
 
+## Hero selection portrait redesign — 2026-09-23
+
+The mobile General Selection page now gives each hero a proper portrait-card
+silhouette with a substantially larger artwork area. Selection artwork uses
+its own non-destructive framing rule, so the supplied character illustrations
+remain recognisable instead of being compressed into a shallow 54px strip.
+The Lord layout remains three cards plus a centred pair, the grid uses more of
+the available phone width, and normal vertical scrolling is allowed when the
+larger cards need more room. Selection state, private candidate data,
+information dialogs, and the existing `choose_hero` contract are unchanged.
+
+Current stage: Stage 7 product polish, mobile hero-selection portrait redesign
+complete. The next milestone is deployed review at 390px, 430px, and 768px,
+followed by final graphic/theme polish.
+
 ## Hero selection artwork sizing fix — 2026-09-23
 
 Corrected the supplied hero artwork sizing in General Selection cards. The

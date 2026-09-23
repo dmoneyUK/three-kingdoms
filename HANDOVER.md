@@ -1,5 +1,26 @@
 # Three Kingdoms project handover
 
+## Hero selection portrait redesign — 2026-09-23
+
+The mobile General Selection cards now use a taller portrait-card proportion
+and an artwork area sized with `clamp(68px, 21vw, 90px)` instead of the old
+54px banner. The selection-only image rule uses `object-fit: contain` and
+`object-position: center top`, keeping supplied hero heads and upper-body
+silhouettes readable without changing the shared local/opponent portrait
+renderer. The phone grid uses the available content width, retains the
+centred 3+2 Lord arrangement, and can scroll vertically so the confirm action
+is not forced over the cards.
+
+This remains presentation-only. Hero allocation, role privacy, candidate
+counts, selection state, information dialogs, Quick Test perspective, and the
+`choose_hero` action are unchanged. Focused render coverage now protects the
+portrait ratio, removal of the 54px bottleneck, viewport width, and
+selection-scoped image framing.
+
+Validation boundary: focused tests, full API tests, lint, build, and diff-check
+remain required before commit/push. Recommended next work is deployed review
+at 390px, 430px, and 768px, followed by final graphic/theme polish.
+
 ## Hero selection artwork sizing fix — 2026-09-23
 
 The supplied artwork in General Selection cards now uses absolute inset sizing

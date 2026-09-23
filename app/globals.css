@@ -464,6 +464,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 
 .hero-art-image { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .hero-monogram > .hero-art-image { position: absolute; inset: 0; }
+.hero-choice .hero-monogram > .hero-art-image { object-fit: contain; object-position: center top; background: #131611; }
 .hero-art-fallback { display: grid; place-items: center; width: 100%; height: 100%; color: #e3c888; }
 .chosen-hero-art { width: 88px; height: 118px; margin: 0 auto 14px; overflow: hidden; border: 1px solid #b79552; box-shadow: 0 8px 20px #0008; }
 .chosen-hero-art .hero-art-image { object-position: center; }
@@ -676,7 +677,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
   .hero-choice-grid,
   .hero-choice-grid-5 {
     grid-template-columns: repeat(6, minmax(0, 1fr));
-    width: min(100%, 344px);
+    width: min(100%, 392px);
     max-width: none;
     gap: 8px;
     margin: 12px auto 14px;
@@ -694,9 +695,13 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
     padding: 5px 5px 5px;
   }
 
+  .hero-choice-wrap {
+    aspect-ratio: 108 / 180;
+  }
+
   .hero-monogram {
     flex: none;
-    height: 54px;
+    height: clamp(68px, 21vw, 90px);
     margin: 15px 0 3px;
     font-size: 18px;
   }

@@ -61,7 +61,11 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(globalStyleSource, /@media \(max-width: 520px\)[\s\S]*?\.hero-choice-grid,[\s\S]*?grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/, "mobile hero selection keeps three card tracks");
   assert.match(globalStyleSource, /\.hero-choice-grid-5 > \.hero-choice-wrap:nth-child\(4\)\s*\{\s*grid-column: 2 \/ span 2;/, "Lord's fourth card starts the centred second row");
   assert.match(globalStyleSource, /\.hero-choice-grid-5 > \.hero-choice-wrap:nth-child\(5\)\s*\{\s*grid-column: 4 \/ span 2;/, "Lord's fifth card completes the centred second row");
-  assert.match(globalStyleSource, /\.hero-choice-grid,[\s\S]*?width: min\(100%, 344px\)/, "mobile hero grid has a compact viewport-safe width");
+  assert.match(globalStyleSource, /\.hero-choice-grid,[\s\S]*?width: min\(100%, 392px\)/, "mobile hero grid uses the available viewport width");
+  assert.match(globalStyleSource, /\.hero-choice-wrap\s*\{\s*aspect-ratio: 108 \/ 180;/, "mobile hero cards remain portrait-shaped while allowing vertical scrolling");
+  assert.match(globalStyleSource, /\.hero-monogram\s*\{\s*flex: none;\s*height: clamp\(68px, 21vw, 90px\)/, "mobile hero artwork is substantially taller than the old strip");
+  assert.doesNotMatch(globalStyleSource, /@media \(max-width: 520px\)[\s\S]*?\.hero-monogram\s*\{[^}]*height: 54px;/, "mobile hero artwork has no 54px bottleneck");
+  assert.match(globalStyleSource, /\.hero-choice \.hero-monogram > \.hero-art-image\s*\{[^}]*object-fit: contain;[^}]*object-position: center top;/, "selection artwork uses selection-scoped non-destructive framing");
   assert.doesNotMatch(globalStyleSource, /\.hero-choice-grid\s*\{\s*grid-template-columns: repeat\(2/, "mobile hero selection does not regress to two flexible columns");
 });
 
