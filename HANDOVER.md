@@ -226,6 +226,23 @@ PLAY | END
 
 This response simplification applies only to contextual response decisions.
 
+This is a **global Hero Skill UI rule**, not a Zhen Ji-specific fix.
+
+For ALL heroes:
+
+1. If a hero skill is currently legally usable, its button in the Hero Skills panel must become enabled from the canonical projected capability.
+2. Clicking an active/optional hero skill starts that skill's interaction mode.
+3. Any required card, target, or choice is then selected in the normal hand/board UI.
+4. For contextual decisions, the bottom row is only `CONFIRM | SKIP`.
+5. Do not duplicate the same hero skill as another activation button in the bottom action row.
+6. Passive skills remain visible but do not become clickable unless they actually require a player decision.
+7. Trigger skills enable only during their legal trigger window; if they require a follow-up selection, use `CONFIRM | SKIP` after selection.
+8. Play Phase skills activate from the Hero Skills panel; normal Play Phase bottom controls remain `PLAY | END`.
+9. Response skills activate from the Hero Skills panel; normal physical response cards are selected directly from hand; bottom controls are `CONFIRM | SKIP`.
+
+Apply this consistently to all implemented heroes, not only Zhen Ji, Guan Yu, Zhao Yun, Cao Cao, or Liu Bei.
+
+
 Prefer deriving hero skill availability from the canonical projected capabilities for the current action (`currentAction.options` / `triggerOptions`) rather than maintaining a separate UI-only availability model that can drift from the server projection.
 
 Review the same pattern for other response-capable skills/providers, especially:
@@ -251,6 +268,12 @@ Required regression coverage:
 - `SKIP` still performs the existing decline action.
 - Play Phase still renders `PLAY` / `END`.
 - Hero skill buttons are disabled when their canonical capability is not currently legal.
+- Add representative coverage for the architecture, not only Zhen Ji:
+  - at least one response skill
+  - at least one trigger skill
+  - at least one Play Phase skill
+  - at least one passive skill
+- The representative tests should prove that skill availability comes from the current canonical projected capability and that passive skills do not become interactive accidentally.
 
 ## Required visual checks
 
