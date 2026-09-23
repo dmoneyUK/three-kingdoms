@@ -88,17 +88,21 @@ Relevant files:
 
 ## Required follow-up 1 — Use the full Hand panel height
 
+Status: implemented — review requested.
+
 The deployed screenshot shows an unnecessary black strip below the normal hand cards.
 
 Current CSS:
 
 ```css
 --hand-panel-height: 108px;
---hand-peek-height: 84px;
+--hand-peek-height: 102px;
 --hand-card-height: 102px;
 ```
 
-The physical cards are already `102px` tall, but normal `.card-slot` elements use `--hand-peek-height` with `overflow: hidden`, so only 84px of each 102px card is shown.
+The physical cards are already `102px` tall, and normal `.card-slot` elements
+now use the full `--hand-peek-height` with `overflow: hidden`, so the existing
+102px cards are fully revealed.
 
 Do not enlarge the cards and do not increase the Hand panel.
 
@@ -128,21 +132,15 @@ Verify:
 - horizontal card compression/distribution remains unchanged
 - no new overflow appears
 
-Update tests that currently expect:
-
-```text
---hand-peek-height: 84px
-```
-
-to expect:
-
 ```text
 --hand-peek-height: 102px
 ```
 
 ## Required follow-up 2 — Fix responsive Judgement spacing
 
-Current code in `LocalPlayerDock` uses a hard-coded card width:
+Status: implemented — review requested.
+
+The previous code in `LocalPlayerDock` used a hard-coded card width:
 
 ```tsx
 style={{
@@ -173,6 +171,13 @@ style={{
 ```
 
 Do not otherwise redesign the approved LocalPlayerDock.
+
+Review result — 2026-09-24: the live responsive review passed at approximately
+320px, 390px, and 430px. The hero stayed 2:3, the Hand panel stayed `108px`,
+physical hand cards stayed `102px`, the action row stayed `48px`, and document
+width matched the viewport. One Judgement card centered correctly, two fit
+naturally, and three overlapped within the fixed panel using the measured card
+width. No remaining visual issue was found for these follow-ups.
 
 ## Required follow-up 3 — Hero skill response UI uses Skills panel + Confirm / Skip
 

@@ -29,6 +29,22 @@ graphic/theme polish and approved artwork intake for remaining fallback heroes.
 
 ## Local player panel resize — 2026-09-23
 
+### Follow-up review queue — 2026-09-24
+
+Follow-up 1 is implemented and marked for review: the mobile hand rail now
+reveals the existing full 102px physical card height by using a 102px peek
+height. The Hand panel remains 108px, physical card sizing is unchanged, and
+the selected-card rise and info-button geometry remain covered by the existing
+render assertions. Follow-up 2 is also implemented and marked for review:
+Judgement overlap spacing now subtracts the measured responsive card width
+instead of a fixed 34px value.
+
+The live responsive review passed at approximately 320px, 390px, and 430px:
+the hero remained 2:3, the Hand panel remained 108px, physical hand cards
+remained 102px, the action row remained 48px, and document width matched the
+viewport. One Judgement card centered correctly, two fit naturally, and three
+overlapped within the fixed panel using the measured card width.
+
 Refined the existing LocalPlayerDock presentation without changing gameplay.
 The phone hero column is about 10% wider, the hero card fills its available
 column while preserving a 2:3 ratio, and the hero card now carries the hero
@@ -37,7 +53,7 @@ buttons remain the same semantic controls but now occupy the flexible Skills
 panel between the hero and Equipment.
 
 Equipment remains four compact slots immediately left of the compact,
-right-edge Judgement panel. The hand panel is now 108px tall with an 84px
+right-edge Judgement panel. The hand panel is now 108px tall with a 102px
 peek rail while physical hand cards remain 102px; the mobile action row is
 48px. The mobile Skills/Equipment/Judgement row is 58px, so the 2:3 hero
 card can span the top and hand rows without making the dock consume half the

@@ -431,7 +431,7 @@
 /* LocalPlayerDock layout. Each visible region owns its complete panel border. */
 .local-player-dock {
   --hand-panel-height: 108px;
-  --hand-peek-height: 84px;
+  --hand-peek-height: 102px;
   --hand-card-height: 102px;
   --hand-top-inset: 4px;
   --selected-rise: 48px;

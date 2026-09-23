@@ -547,7 +547,7 @@ export function LocalPlayerDock({ player, hero, children, heroSkillControl, onHe
       </div>
       <div className="local-judgement-panel" aria-label="Judgement zone">
         <div ref={judgementRailRef} className="local-judgement-cards" data-judgement-layout={judgementCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: judgementCards.length === 1 ? "center" : "flex-start" }}>
-          {judgementCards.map((card, index) => <div className="local-judgement-card-slot" key={card.id} style={{ marginLeft: index === 0 ? 0 : `${judgementCardLayout.step - 34}px` }}>{renderZoneCard(card)}</div>)}
+          {judgementCards.map((card, index) => <div className="local-judgement-card-slot" key={card.id} style={{ marginLeft: index === 0 ? 0 : `${judgementCardLayout.step - judgementCardWidth}px` }}>{renderZoneCard(card)}</div>)}
         </div>
       </div>
     </div>
