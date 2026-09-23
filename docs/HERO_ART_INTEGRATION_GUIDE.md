@@ -262,7 +262,7 @@ Before considering a hero-art integration complete:
 
 ## Zhang Liao status — 2026-09-23
 
-WTK artwork is checked in at:
+The final approved WTK Zhang Liao artwork is checked in at:
 
 ```text
 public/hero-zhang-liao.jpg
@@ -274,21 +274,13 @@ Stable hero ID:
 zhang-liao
 ```
 
-The final checked-in Zhang Liao portrait has now replaced the previous
-undecodable asset at the same path. Zhang Fei and Zhen Ji also have original
-project portrait assets at their stable-ID paths.
+Approved visual treatment:
+- blue / black Wei armour
+- pale-blue plume
+- face kept completely in deep black shadow
+- dark ink-fantasy atmosphere
+- no text, logo, or UI baked into the image
 
-Current approved visual treatment:
-- blue/black Wei armour and cloak
-- pale blue plume
-- face and upper body remain readable at small opponent-card sizes
-- no text, logo, or UI baked into the artwork
-- portrait 2:3 framing suitable for the shared hero-card crop
+Zhang Liao is already wired through the shared `HERO_ART_BY_ID` / `HeroPortrait` path in `app/page.tsx`. Render coverage already checks `hero-zhang-liao.jpg` and `data-hero-art-id="zhang-liao"`.
 
-The hero is already wired through the existing shared `HERO_ART_BY_ID` / `HeroPortrait` path:
-
-```ts
-"zhang-liao": "/hero-zhang-liao.jpg",
-```
-
-For future Zhang Liao art revisions, replace `public/hero-zhang-liao.jpg` in place unless the stable hero ID or asset naming convention intentionally changes. Do not redesign the hero-card component for an art-only replacement.
+Future Zhang Liao art revisions should overwrite this same stable asset path. Do not create a second mapping or hero-specific rendering component.
