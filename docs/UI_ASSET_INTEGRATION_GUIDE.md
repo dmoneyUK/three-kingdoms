@@ -49,6 +49,7 @@ public/assets/ui/
   other-player-frame-asymmetric-reference.webp
   local-player-frame-ornate-reference.webp
   local-player-frame.webp
+  button-primary.webp
 ```
 
 Naming rule: lowercase kebab-case, named by UI function rather than generation prompt.
@@ -610,7 +611,116 @@ On mobile portrait and desktop:
 
 ---
 
-# 7. Responsive and performance rules
+# 7. Primary button
+
+## 7.1 `button-primary.webp`
+
+### Purpose
+Production reusable visual skin for the game's **primary / positive action button**.
+
+Use it for the highest-priority positive action in a context, for example:
+- Play,
+- Confirm,
+- OK / Continue,
+- Use,
+- Select.
+
+The image contains decoration only. Button text, click handling, disabled state, focus semantics and game logic remain live HTML/CSS/React behavior.
+
+### Required implementation model
+
+Do not replace a real `<button>` with an image.
+
+Recommended structure:
+
+```tsx
+<button className="game-button game-button--primary">
+  <img
+    className="game-button-art"
+    src="/assets/ui/button-primary.webp"
+    alt=""
+    aria-hidden="true"
+  />
+
+  <span className="game-button-label">
+    {label}
+  </span>
+</button>
+```
+
+Recommended CSS concept:
+
+```css
+.game-button {
+  position: relative;
+  border: 0;
+  background: transparent;
+  min-height: 44px;
+}
+
+.game-button-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.game-button-label {
+  position: relative;
+  z-index: 1;
+}
+```
+
+### Important behavior rules
+
+The real button element must continue to own:
+- click / tap handling,
+- keyboard activation,
+- focus state,
+- disabled state,
+- ARIA semantics,
+- game action dispatch,
+- tooltip behavior where applicable.
+
+Do not bake labels such as `PLAY`, `CONFIRM`, `OK`, `USE`, or `SELECT` into the image.
+
+### State styling
+
+Reuse the same asset for normal button states. Keep state differences CSS-driven.
+
+Examples:
+- hover: subtle brightness / glow,
+- pressed: small scale or inset effect,
+- focus-visible: accessible outline outside the decorative artwork,
+- disabled: reduced opacity / saturation and disabled cursor.
+
+Do not generate separate bitmap assets merely for hover, pressed or disabled states.
+
+### Sizing / responsive constraints
+
+The existing gameplay button size and touch target remain authoritative.
+
+The source artwork is wider and more ornate than some current mobile buttons. Therefore:
+- do not make the UI wider just to preserve all decorative detail,
+- do not shrink the live label until it becomes hard to read,
+- keep a practical minimum touch target,
+- fit/crop the decorative art to the existing button container,
+- if the side ornament becomes too dense at very small sizes, prefer a later simplified small-button asset rather than changing gameplay layout.
+
+### Do not use this asset for
+
+- destructive / end-turn styling when a dedicated destructive style exists,
+- Skip / Cancel when a secondary style exists,
+- static labels,
+- generic panels,
+- player frames.
+
+---
+
+# 8. Responsive and performance rules
 
 The game is used on mobile as well as desktop.
 
@@ -628,7 +738,7 @@ Do not change gameplay spacing merely to make decoration look perfect. Decoratio
 
 ---
 
-# 8. Screens affected in the final integration
+# 9. Screens affected in the final integration
 
 The board assets are intended for the actual game screen containing:
 - other players,
@@ -653,7 +763,7 @@ The reusable card frame can eventually appear anywhere the standard game-card co
 
 ---
 
-# 9. Coding-agent constraints
+# 10. Coding-agent constraints
 
 When the user eventually asks for the complete asset implementation:
 
@@ -672,7 +782,7 @@ When the user eventually asks for the complete asset implementation:
 
 ---
 
-# 10. Assets still to be designed
+# 11. Assets still to be designed
 
 Do not invent missing assets.
 
@@ -680,14 +790,14 @@ Expected future items:
 - equipment-slot treatment,
 - judgement-area treatment,
 - deck/discard presentation treatment if needed,
-- primary / secondary / destructive button system,
+- secondary / destructive button system,
 - generic panel frame,
 - modal / response-window frame,
 - small ornamental separators if needed.
 
 ---
 
-# 11. Update protocol
+# 12. Update protocol
 
 Every approved future asset must update this same file.
 
@@ -706,7 +816,7 @@ Do not create competing implementation-guide files for the same asset set.
 
 ---
 
-# 12. Change log
+# 13. Change log
 
 ## 2026-09-23 — board foundation
 
@@ -761,6 +871,21 @@ Decisions:
 - keep `local-player-frame-ornate-reference.webp` as reference-only,
 - verify mobile portrait and desktop behavior before finalizing the integration.
 
+## 2026-09-23 — primary action button
+
+Added:
+- `public/assets/ui/button-primary.webp`
+
+Decisions:
+- use this as the production skin for primary / positive actions,
+- button labels remain live HTML rather than image content,
+- preserve semantic `<button>` behavior and all existing handlers,
+- hover / pressed / focus / disabled states remain CSS-driven,
+- decorative artwork must use `pointer-events: none`,
+- existing button dimensions and touch targets remain authoritative,
+- do not enlarge the gameplay HUD just to preserve every ornament detail,
+- reserve secondary / destructive actions for later dedicated styles.
+
 ## 2026-09-23 — generic card back and reusable card frame
 
 Added:
@@ -777,7 +902,7 @@ Decisions:
 
 ---
 
-# 13. Final asset-pass instruction
+# 14. Final asset-pass instruction
 
 **Do not perform the broad visual rewrite yet.**
 
