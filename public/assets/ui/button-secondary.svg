@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-hidden="true">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0d18a"/>
+      <stop offset=".25" stop-color="#b88636"/>
+      <stop offset=".55" stop-color="#e2bd6a"/>
+      <stop offset="1" stop-color="#6e481b"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101b17"/>
+      <stop offset=".55" stop-color="#07110e"/>
+      <stop offset="1" stop-color="#0b1612"/>
+    </linearGradient>
+    <filter id="softGlow" x="-20%" y="-30%" width="140%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grain" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M1 8l6-6m2 13l6-6M-3 15l6-6" stroke="#b48a46" stroke-opacity=".08" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <!-- transparent exterior -->
+  <path d="M90 42h420l18-18h144l18 18h420l50 44v128l-50 44H690l-18 18H528l-18-18H90L40 214V86z"
+        fill="url(#panel)" stroke="#1b1207" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M92 50h422l18-18h136l18 18h422l42 38v124l-42 38H686l-18 18H532l-18-18H92l-42-38V88z"
+        fill="url(#grain)" stroke="url(#gold)" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M112 68h408l16-16h128l16 16h408l28 26v112l-28 26H680l-16 16H536l-16-16H112l-28-26V94z"
+        fill="none" stroke="#e5bf6a" stroke-opacity=".85" stroke-width="3"/>
+
+  <!-- subdued mountain/ink corners -->
+  <g fill="#13211b" stroke="#a97b33" stroke-width="3" opacity=".95">
+    <path d="M82 205l38-53 26 34 31-49 44 68z"/>
+    <path d="M1118 205l-38-53-26 34-31-49-44 68z"/>
+  </g>
+
+  <!-- restrained cloud curls -->
+  <g fill="none" stroke="url(#gold)" stroke-width="12" stroke-linecap="round">
+    <path d="M63 117c-34-14-39 27-9 28 16 1 25-11 17-21M61 185c-38-2-37 36-7 31 18-3 22-16 12-22"/>
+    <path d="M1137 117c34-14 39 27 9 28-16 1-25-11-17-21M1139 185c38-2 37 36 7 31-18-3-22-16-12-22"/>
+  </g>
+
+  <!-- gold flecks -->
+  <g fill="#c69a4a" opacity=".55">
+    <circle cx="155" cy="105" r="3"/><circle cx="178" cy="93" r="2"/><circle cx="205" cy="113" r="2.5"/>
+    <circle cx="1045" cy="105" r="3"/><circle cx="1022" cy="93" r="2"/><circle cx="995" cy="113" r="2.5"/>
+  </g>
+
+  <!-- top and bottom knot diamonds -->
+  <g filter="url(#softGlow)">
+    <g transform="translate(600 38) rotate(45)">
+      <rect x="-24" y="-24" width="48" height="48" rx="3" fill="#0a120f" stroke="url(#gold)" stroke-width="6"/>
+      <path d="M-10-4h20M-10 4h20M-4-10v20M4-10v20" stroke="#d7aa53" stroke-width="3"/>
+    </g>
+    <g transform="translate(600 262) rotate(45)">
+      <rect x="-21" y="-21" width="42" height="42" rx="3" fill="#0a120f" stroke="url(#gold)" stroke-width="5"/>
+      <path d="M-9-4h18M-9 4h18M-4-9v18M4-9v18" stroke="#d7aa53" stroke-width="3"/>
+    </g>
+  </g>
+</svg>
