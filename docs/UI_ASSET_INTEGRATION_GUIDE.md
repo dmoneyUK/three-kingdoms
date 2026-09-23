@@ -47,6 +47,7 @@ public/assets/ui/
   other-player-frame-asymmetric.webp
   other-player-frame-symmetric.webp
   other-player-frame-asymmetric-reference.webp
+  local-player-frame-ornate-reference.webp
 ```
 
 Naming rule: lowercase kebab-case, named by UI function rather than generation prompt.
@@ -452,7 +453,78 @@ The same player component should select only the decorative frame variant from s
 
 ---
 
-# 6. Responsive and performance rules
+# 6. Local-player / bottom-area frame reference
+
+## 6.1 `local-player-frame-ornate-reference.webp`
+
+### Purpose
+Staged ornate reference for the local player's bottom control area.
+
+### Status
+**REFERENCE / DRAFT — do not render directly in the final game unless the user later promotes it to production.**
+
+This asset explores how the dark-green / antique-gold / ink-cloud visual language can wrap the local player's bottom section.
+
+### Why it is not currently the production frame
+The current bottom area is a wide functional layout containing:
+- hero panel,
+- HP / role panel,
+- equipment,
+- judgement,
+- hand cards,
+- action/status bar,
+- Play / End controls.
+
+The source artwork is substantially taller and more decorative than the existing bottom layout. The coding agent must **not rebuild or enlarge the live bottom UI to fit this artwork**.
+
+### If this design is later promoted
+Use it only as a non-interactive decorative layer around the existing local-player content:
+
+```tsx
+<div className="local-player-area">
+  <img
+    className="local-player-frame-art"
+    src="/assets/ui/local-player-frame-ornate-reference.webp"
+    alt=""
+    aria-hidden="true"
+  />
+  <div className="local-player-content">
+    {/* existing hero / HP / equips / judgement / hand / action UI */}
+  </div>
+</div>
+```
+
+```css
+.local-player-area {
+  position: relative;
+}
+
+.local-player-frame-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.local-player-content {
+  position: relative;
+  z-index: 1;
+}
+```
+
+### Hard constraints
+- do not bake hero name, HP, role, equipment, judgement, hand cards, action text or buttons into the image,
+- do not let the decorative frame capture pointer/touch events,
+- do not move or resize gameplay regions solely to match the source image,
+- preserve current mobile portrait behavior,
+- preserve current bottom-panel touch targets,
+- if a dedicated production local-player frame is generated later, prefer that production asset and keep this file as visual reference only.
+
+---
+
+# 7. Responsive and performance rules
 
 The game is used on mobile as well as desktop.
 
@@ -470,7 +542,7 @@ Do not change gameplay spacing merely to make decoration look perfect. Decoratio
 
 ---
 
-# 7. Screens affected in the final integration
+# 8. Screens affected in the final integration
 
 The board assets are intended for the actual game screen containing:
 - other players,
@@ -495,7 +567,7 @@ The reusable card frame can eventually appear anywhere the standard game-card co
 
 ---
 
-# 8. Coding-agent constraints
+# 9. Coding-agent constraints
 
 When the user eventually asks for the complete asset implementation:
 
@@ -514,12 +586,12 @@ When the user eventually asks for the complete asset implementation:
 
 ---
 
-# 9. Assets still to be designed
+# 10. Assets still to be designed
 
 Do not invent missing assets.
 
 Expected future items:
-- local-player / bottom panel frame,
+- production local-player / bottom panel frame,
 - equipment-slot treatment,
 - judgement-area treatment,
 - deck/discard presentation treatment if needed,
@@ -530,7 +602,7 @@ Expected future items:
 
 ---
 
-# 10. Update protocol
+# 11. Update protocol
 
 Every approved future asset must update this same file.
 
@@ -549,7 +621,7 @@ Do not create competing implementation-guide files for the same asset set.
 
 ---
 
-# 11. Change log
+# 12. Change log
 
 ## 2026-09-23 — board foundation
 
@@ -578,6 +650,19 @@ Decisions:
 - decorative frames use transparent centers and `pointer-events: none`,
 - do not resize the gameplay layout merely to match the source artwork proportions.
 
+## 2026-09-23 — local-player ornate reference
+
+Added:
+- `public/assets/ui/local-player-frame-ornate-reference.webp`
+
+Decisions:
+- retain the generated ornate bottom-area frame as a repository reference,
+- do not treat it as the production bottom-panel frame yet,
+- the existing local-player layout remains authoritative,
+- hero/HP/role/equipment/judgement/hand/action controls remain live UI,
+- do not enlarge or restructure the bottom player area to fit the reference artwork,
+- a later dedicated production asset may replace this reference.
+
 ## 2026-09-23 — generic card back and reusable card frame
 
 Added:
@@ -594,7 +679,7 @@ Decisions:
 
 ---
 
-# 12. Final asset-pass instruction
+# 13. Final asset-pass instruction
 
 **Do not perform the broad visual rewrite yet.**
 
