@@ -50,7 +50,7 @@ public/assets/ui/
   local-player-frame-ornate-reference.webp
   local-player-frame.webp
   button-primary.webp
-  button-secondary.webp
+  button-secondary.svg
 ```
 
 Naming rule: lowercase kebab-case, named by UI function rather than generation prompt.
@@ -723,10 +723,10 @@ The source artwork is wider and more ornate than some current mobile buttons. Th
 
 # 8. Secondary button
 
-## 8.1 `button-secondary.webp`
+## 8.1 `button-secondary.svg`
 
 ### Purpose
-Production reusable visual skin for **secondary / lower-priority actions**.
+Production reusable **scalable SVG** visual skin for **secondary / lower-priority actions**. It is the implementation-ready vector version of the approved secondary-button design.
 
 Use it for actions such as:
 - Skip,
@@ -743,7 +743,7 @@ The image is decoration only. The application must keep the real semantic `<butt
 <button className="game-button game-button--secondary">
   <img
     className="game-button-art"
-    src="/assets/ui/button-secondary.webp"
+    src="/assets/ui/button-secondary.svg"
     alt=""
     aria-hidden="true"
   />
@@ -766,7 +766,7 @@ Do not create separate images just for hover, pressed, focus or disabled states.
 
 ### Hard rules
 - never bake `SKIP`, `CANCEL`, `BACK`, `PASS`, or `CLOSE` into the asset,
-- `button-secondary.webp` must use `pointer-events: none`,
+- `button-secondary.svg` must use `pointer-events: none`,
 - preserve the existing button dimensions and mobile touch target,
 - do not enlarge the HUD to preserve every decorative cloud/mountain detail,
 - the actual button element retains all accessibility and action behavior,
@@ -944,7 +944,7 @@ Decisions:
 ## 2026-09-23 — secondary action button
 
 Added:
-- `public/assets/ui/button-secondary.webp`
+- `public/assets/ui/button-secondary.svg`
 
 Decisions:
 - use this for secondary / lower-priority actions such as Skip, Cancel, Back and Pass,
@@ -952,6 +952,7 @@ Decisions:
 - share the same semantic button structure as the primary style,
 - keep hover / pressed / focus / disabled states CSS-driven,
 - keep secondary actions visually quieter than primary actions,
+- use the scalable SVG production asset so the frame stays crisp across mobile and desktop button sizes,
 - preserve existing dimensions and touch targets,
 - reserve destructive actions for a later dedicated style if required.
 
