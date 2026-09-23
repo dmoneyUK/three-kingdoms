@@ -1,607 +1,543 @@
 # Hero Selection Page UI Redesign Task
 
-Status: **ready for implementation**  
+Status: **follow-up correction required — current implementation is not final**  
+Last reviewed: **2026-09-23**  
 Scope: **Hero / General Selection page only**  
-Primary files expected: `app/page.tsx`, `app/globals.css`, `tests/room-safety-render.test.mjs`  
-Reference architecture: `docs/HERO_ART_INTEGRATION_GUIDE.md`
+Primary files: `app/page.tsx`, `app/globals.css`, `tests/room-safety-render.test.mjs`  
+Reference: `docs/HERO_ART_INTEGRATION_GUIDE.md`, `WTK_CG_STYLE_GUIDE.md`
 
 ---
 
-## 1. Goal
+## 1. Current state
 
-Redesign the **Choose your general** page so the hero cards match the approved visual direction and, most importantly, the hero artwork is actually readable on a phone.
+The first redesign pass improved the original mobile problem, but the deployed result is still not the approved final design.
 
-The current mobile UI compresses each hero portrait into a very shallow strip. The screenshot that triggered this task shows the problem clearly: the layout technically contains five cards, but the character artwork is too short and heavily cropped to function as the main visual element.
+The current implementation already gets several things right:
 
-The new page should keep the existing dark Three Kingdoms / antique-gold styling, but the hero card itself must become the focus of the screen.
+- Lord layout is still **3 + 2** on mobile/tablet.
+- The second row is centred.
+- The hero grid uses more of the phone width.
+- The selected card has a clear gold treatment.
+- The separate information button is preserved.
+- Hero-selection privacy and gameplay behaviour are unchanged.
 
-### Approved visual result
+However, the current implementation still has four visible design problems and one missing asset mapping:
 
-The intended portrait/mobile hierarchy is:
+1. hero artwork is still too small relative to the card,
+2. `object-fit: contain` creates visible dark side bars,
+3. the mobile card is too tall for its content and leaves too much empty lower space,
+4. the confirmation area is narrower than the hero-card group,
+5. Zhang Liao's checked-in artwork is not mapped, so the page incorrectly falls back to `ZL`.
 
-```text
-┌──────────────────────────────────────────┐
-│ WTK / THREE KINGDOMS   ROOM CODE   EXIT  │
-├──────────────────────────────────────────┤
-│             GENERAL SELECTION            │
-│                                          │
-│           Choose your general            │
-│                                          │
-│     YOUR SECRET ROLE      [ LORD ]        │
-│                                          │
-│   As Lord, choose from five generals.    │
-│                                          │
-│     ┌────────┐ ┌────────┐ ┌────────┐     │
-│     │ HERO 1 │ │ HERO 2 │ │ HERO 3 │     │
-│     │ LARGE  │ │ LARGE  │ │ LARGE  │     │
-│     │  ART   │ │  ART   │ │  ART   │     │
-│     │  NAME  │ │  NAME  │ │  NAME  │     │
-│     └────────┘ └────────┘ └────────┘     │
-│                                          │
-│          ┌────────┐ ┌────────┐           │
-│          │ HERO 4 │ │ HERO 5 │           │
-│          │ LARGE  │ │ LARGE  │           │
-│          │  ART   │ │  ART   │           │
-│          │  NAME  │ │  NAME  │           │
-│          └────────┘ └────────┘           │
-│                                          │
-│          [ CONFIRM <HERO NAME> ]         │
-└──────────────────────────────────────────┘
-```
-
-For a normal non-Lord player with three candidates, render one centred row of three cards.
-
-The page **may scroll vertically on mobile**. Do not squash the hero cards merely to force the entire selection screen into one viewport.
+This document supersedes the intermediate CSS values introduced by the first pass.
 
 ---
 
-## 2. Current implementation reviewed
+## 2. Goal
 
-The current page is implemented in `HeroSelection` in:
+The final Hero Selection page should look like a proper character-selection screen:
+
+- dark green / charcoal Three Kingdoms theme,
+- antique-gold card chrome,
+- compact header and role section,
+- large readable hero artwork,
+- clear name, HP, skill names, and selection state,
+- Lord layout of three cards followed by a centred pair,
+- normal vertical scrolling on mobile rather than shrinking the cards.
+
+The hero artwork must be the dominant visual element.
+
+The most important acceptance rule is:
+
+> **On a phone, each candidate must look like a hero portrait card, not a small information tile with a narrow image window.**
+
+---
+
+## 3. Preserve all gameplay behaviour
+
+This is a presentation/layout correction plus one missing artwork mapping.
+
+Do **not** change:
+
+- room creation,
+- role allocation,
+- hero candidate allocation,
+- number of candidates,
+- hero IDs,
+- HP,
+- faction,
+- skill metadata,
+- role privacy,
+- candidate privacy,
+- `choose_hero` API behaviour,
+- Quick Test controller behaviour,
+- waiting / locked-in semantics,
+- hero information dialog behaviour,
+- current selection state handling.
+
+Keep using the existing shared:
 
 ```text
-app/page.tsx
+HERO_ART_BY_ID
+HeroPortrait
 ```
 
-The existing structure is already correct from a gameplay perspective:
+Do not create a second artwork renderer or mapping.
 
-- private role banner,
-- Lord receives five candidates,
-- other roles receive three private candidates,
-- first valid candidate is selected by default,
-- clicking a hero changes the local selection,
-- selected hero has a visual selected state,
-- each card has an information button,
-- information dialog remains private,
-- confirm calls the existing `onChoose(heroId)`,
-- waiting / locked-in state is separate,
-- selection choices remain private until the match begins.
+---
 
-**Do not rewrite this gameplay flow.**
+## 4. Current implementation problems to fix
 
-The current hero artwork is rendered through the shared `HeroPortrait` / `HERO_ART_BY_ID` path. Keep using that shared renderer.
+### 4.1 Hero portrait is still too small
 
-### Root cause of the visual problem
-
-The main problem is in `app/globals.css`.
-
-At the mobile breakpoint the current CSS contains:
+Current mobile CSS:
 
 ```css
 .hero-monogram {
   flex: none;
-  height: 54px;
-  ...
+  height: clamp(68px, 21vw, 90px);
 }
 ```
 
-This forces the hero artwork into only a 54px-high strip.
+This is better than the old 54px strip, but it is still visually too small.
 
-The shared image rule is also:
+In the current deployed screenshot, the artwork occupies only around 40–45% of the card and the lower half contains too much unused dark space.
+
+### Required correction
+
+At phone widths, the artwork should occupy roughly **55–65% of the useful card body**.
+
+Use a substantially taller portrait area. A good starting point is:
 
 ```css
-.hero-art-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.hero-monogram {
+  height: clamp(108px, 29vw, 124px);
 }
 ```
 
-A shallow 54px container plus `object-fit: cover` means the source portrait is aggressively cropped.
+The exact values may be tuned after rendering, but the result must satisfy the visual acceptance criteria below.
 
-The current mobile grid is also capped at only `344px`, leaving useful phone width unused.
+Do not reduce the artwork simply to fit the whole page inside one viewport.
 
-The redesign must fix the layout rather than modifying individual hero source images to compensate.
-
----
-
-## 3. Non-negotiable behaviour
-
-This is a **presentation / responsive-layout change**.
-
-Do not change:
-
-- room creation,
-- room projection,
-- role allocation,
-- hero allocation,
-- number of hero choices,
-- hero IDs,
-- hero HP,
-- faction,
-- skill metadata,
-- selection privacy,
-- turn/action ownership,
-- `choose_hero` API behaviour,
-- locked-in/waiting semantics,
-- Quick Test controller semantics,
-- hero information dialog content,
-- the shared artwork mapping architecture.
-
-Do not introduce a second hero-art mapping.
-
-Do not hard-code Cao Cao, Liu Bei, Sun Quan, Zhou Yu, Zhang Liao, or any other specific hero into the layout.
-
-The component must work for whichever heroes are provided by `room.myHeroOptions`.
+Vertical scrolling is allowed and preferred.
 
 ---
 
-## 4. Hero card visual contract
+### 4.2 Remove `object-fit: contain` black-side-bar effect
 
-Each candidate must look like a proper hero card rather than a small information tile.
+Current selection-specific rule:
 
-### Card proportions
+```css
+.hero-choice .hero-monogram > .hero-art-image {
+  object-fit: contain;
+  object-position: center top;
+  background: #131611;
+}
+```
 
-Use a normal portrait-card silhouette, approximately **2:3**.
+This creates obvious dark side areas around narrower source portraits.
 
-The card may be slightly taller if required by text, but do not make it short and wide.
+### Required correction
 
-On a typical 390–430px-wide phone:
+After increasing the portrait container height, use:
 
-- three cards must fit in the first row,
-- each card should use almost all available width allocated to its grid track,
-- gaps should be small but deliberate,
-- the second row of a five-card Lord selection must be centred,
-- cards must not overflow the viewport.
+```css
+.hero-choice .hero-monogram > .hero-art-image {
+  object-fit: cover;
+  object-position: center top;
+}
+```
 
-Do **not** preserve the current “make everything tiny so it fits on one screen” behaviour.
+Important:
 
-### Internal order
+- scope this to Hero Selection only,
+- do not globally change `.hero-art-image`,
+- do not alter local-player or opponent-player portrait framing,
+- do not add hero-specific positioning rules.
 
-Each card should visually read from top to bottom as:
-
-1. faction label,
-2. information icon,
-3. **large hero portrait**,
-4. hero name,
-5. HP hearts,
-6. skill names,
-7. selected / choose state.
-
-Use the existing content and wording unless a small markup wrapper is required for styling.
-
-### Hero artwork is the priority
-
-The artwork must become the dominant area of the card.
-
-On mobile, the portrait area should occupy roughly **55–65% of the useful card body**, not a fixed 54px strip.
+The container must be tall enough that `cover` does not turn the image into a face-only crop.
 
 Acceptance target:
 
-- head is visible,
-- upper body / armour / primary silhouette is visible,
-- the image no longer looks like a narrow banner,
-- different source portraits remain recognisable,
-- the image is not distorted.
-
-Do not stretch hero artwork.
-
-For the **hero-selection portrait only**, use a fit/framing strategy that prevents destructive cropping. Prefer:
-
-```css
-object-position: center top;
-```
-
-and use `object-fit: contain` when that is required to keep the character visible.
-
-If `cover` is retained, the portrait container must be tall enough that the head and upper body are still clearly visible. Do not use a face-only crop.
-
-Important: do **not** globally change `.hero-art-image` if that would alter the local-player or opponent-player portraits. Scope selection-specific image fitting to the hero-selection container.
-
-### Recommended implementation direction
-
-The existing `.hero-monogram` can remain the portrait container, but it must stop being treated as a 54px mobile banner.
-
-A good implementation is:
-
-- give `.hero-choice-wrap` a real portrait-card proportion,
-- give `.hero-monogram` a substantial explicit share of card height,
-- keep it `position: relative` + `overflow: hidden`,
-- keep `HeroPortrait` filling that container,
-- apply selection-specific image framing,
-- keep the faction/info controls above the image with the correct z-index.
-
-Do not create hero-specific CSS such as `.cao-cao-image`, `.liu-bei-image`, etc.
+- head visible,
+- upper body / armour visible,
+- main silhouette readable,
+- no distortion,
+- no black side bars.
 
 ---
 
-## 5. Mobile layout: highest priority
+### 4.3 Correct the mobile card proportion
 
-The user reported this issue from a portrait phone, so mobile is the acceptance baseline.
+Current mobile rule:
 
-### Width range to validate
+```css
+.hero-choice-wrap {
+  aspect-ratio: 108 / 180;
+}
+```
 
-Manually inspect at least:
+That is taller than necessary and contributes to the large blank area under the hero details.
 
-- 390px wide,
-- 430px wide,
-- 768px wide.
+### Required correction
 
-### Five-candidate Lord layout
+Use a normal portrait-card proportion around:
 
-Keep the good existing 3 + 2 pattern:
+```css
+.hero-choice-wrap {
+  aspect-ratio: 2 / 3;
+}
+```
+
+A very small adjustment is acceptable if text requires it, but the card must not become a long empty column.
+
+The card should visually allocate space in this order:
+
+1. faction / info controls,
+2. large hero artwork,
+3. hero name,
+4. HP hearts,
+5. skill names,
+6. SELECTED / CHOOSE state.
+
+There should not be a large unused gap between skill text and the bottom state.
+
+---
+
+### 4.4 Align the Confirm section with the hero grid
+
+Current mobile hero grid:
+
+```css
+width: min(100%, 392px);
+```
+
+but the confirmation section still uses:
+
+```css
+.hero-confirm {
+  max-width: 344px;
+}
+```
+
+This makes the separator and confirm button visibly narrower than the hero-card group.
+
+### Required correction
+
+Use the same mobile width contract as the card grid, for example:
+
+```css
+.hero-confirm {
+  width: min(100%, 392px);
+  max-width: none;
+}
+```
+
+Keep:
+
+```css
+.hero-confirm .gold-button {
+  width: 100%;
+}
+```
+
+The separator and confirm button should visually align with the outer hero grid.
+
+---
+
+### 4.5 Fix Zhang Liao artwork mapping
+
+The repository already contains:
+
+```text
+public/hero-zhang-liao.jpg
+```
+
+but `HERO_ART_BY_ID` currently omits it.
+
+Add:
+
+```ts
+"zhang-liao": "/hero-zhang-liao.jpg",
+```
+
+to the existing shared mapping in `app/page.tsx`.
+
+Do not add a special-case renderer.
+
+### Zhou Yu
+
+There is currently no checked-in Zhou Yu hero artwork in `public/`.
+
+Therefore:
+
+- keep the initials fallback for Zhou Yu,
+- do not substitute another image,
+- do not generate or invent an asset in this task.
+
+---
+
+## 5. Mobile layout contract
+
+Mobile is the acceptance baseline.
+
+Validate at approximately:
+
+- 390px,
+- 430px,
+- 768px.
+
+### Lord: five candidates
+
+Keep:
 
 ```text
 [ 1 ][ 2 ][ 3 ]
    [ 4 ][ 5 ]
 ```
 
-The second row must be visually centred.
+The existing six-track approach is acceptable:
 
-The current six-track CSS technique is acceptable:
+- each candidate spans two tracks,
+- fourth candidate starts at track 2,
+- fifth candidate starts at track 4.
 
-- each card spans two tracks,
-- card 4 starts at track 2,
-- card 5 starts at track 4.
-
-However, use more of the available phone width. The current hard cap of `344px` is too conservative for the approved design.
-
-Use a viewport-safe width close to the available content width, for example a `min(100%, ...)` value in the high 300px range, while still avoiding horizontal overflow on narrower devices.
-
-Do not change the 3 + 2 layout into:
+Do not change this into:
 
 - two columns,
 - a horizontal carousel,
-- horizontally scrolling cards,
+- horizontal card scrolling,
 - five tiny cards in one row.
 
-### Three-candidate layout
+### Non-Lord: three candidates
 
-For normal roles:
+Keep:
 
 ```text
 [ 1 ][ 2 ][ 3 ]
 ```
 
-Keep them centred and equal sized.
+All three cards should remain equal-sized and centred.
 
-### Vertical scrolling is allowed
+### Scrolling
 
-If the larger cards mean the confirmation button sits below the initial viewport, that is acceptable.
+The page may and should scroll vertically if necessary.
 
-Preferred behaviour:
+Do not compress the hero artwork just to fit:
 
-- page scrolls normally,
-- top section remains compact,
-- cards stay readable,
-- confirm button follows the cards in normal document flow.
+- title,
+- role banner,
+- two hero rows,
+- confirm button,
 
-Do not set a fixed page height that clips the second row or confirm control.
+inside one phone viewport.
 
-Do not use `overflow: hidden` on the page to conceal content.
-
-Use `min-height: 100dvh` where appropriate for modern mobile viewport handling.
+Do not introduce horizontal page scrolling.
 
 ---
 
-## 6. Header and title area
+## 6. Card visual contract
 
-Keep the same information hierarchy as the approved mock-up:
+Each hero candidate must retain:
 
-### Top bar
+- faction label at upper-left,
+- round information button at upper-right,
+- large hero portrait,
+- hero name,
+- red HP hearts,
+- skill names,
+- SELECTED or CHOOSE label.
 
-- brand left,
-- room status/code centred,
-- Exit right,
-- dark translucent background,
-- thin antique-gold separation line,
-- compact height.
-
-Do not allow the header to consume a large fraction of mobile height.
-
-### Main heading
+### Selected state
 
 Keep:
-
-```text
-GENERAL SELECTION
-Choose your general
-```
-
-The heading should be elegant and visible, but it should not steal space from the cards.
-
-On mobile, keep the current idea of a smaller responsive title, roughly in the low/mid-30px range.
-
-### Secret role banner
-
-Keep this visually prominent:
-
-```text
-YOUR SECRET ROLE    LORD
-```
-
-It should remain centred, compact, and clearly separate from the instruction text.
-
-Do not reveal any other player's role.
-
-### Instruction copy
-
-Keep the existing conditional text:
-
-For Lord:
-
-```text
-As Lord, choose from five generals. Your identity will be visible at the table.
-```
-
-For other roles:
-
-```text
-Choose one of your three private candidates.
-```
-
----
-
-## 7. Card chrome and states
-
-Preserve the current visual language:
-
-- dark charcoal / deep green base,
-- muted antique-gold border,
-- light parchment text,
-- red HP hearts,
-- faction tint can remain subtle,
-- restrained shadow.
-
-### Selected card
-
-The selected card should be unmistakable but not dramatically larger than its neighbours.
-
-Keep / improve:
 
 - gold border,
-- soft gold outer glow,
-- subtle warmer selected background,
-- `SELECTED` label in gold.
+- restrained gold glow,
+- warmer selected background,
+- gold SELECTED text.
 
-Do not scale the selected card enough to cause grid reflow or overlap.
+Do not scale the selected card enough to cause reflow or overlap.
 
-### Unselected card
+### Info control
 
-Keep:
+Keep the information button separate from the card-selection button.
 
-```text
-CHOOSE
-```
+Do not create nested buttons.
 
-as the bottom action-state label.
-
-The entire hero card remains clickable using the current button behaviour.
-
-### Information control
-
-Keep the round `i` control at the upper-right.
-
-It must:
-
-- remain visually separate from the main card-selection action,
-- continue opening `HeroInfoDialog`,
-- remain above the artwork,
-- not obscure the hero's face,
-- keep an accessible label such as `View Cao Cao information`.
-
-On mobile, a visual size around the current small circular-control scale is fine, but position it so it does not consume portrait space.
-
----
-
-## 8. Text sizing inside cards
-
-The card should prioritise image > name > HP > skills > state.
-
-On phones:
-
-- name must remain readable without wrapping where practical,
-- hearts must remain clearly visible,
-- skill names may use a smaller font,
-- skill text must not force the artwork back down to a tiny strip,
-- selection-state text stays compact.
-
-Do not make every text element large.
-
-If space is tight, reduce skill/status text before reducing the hero artwork.
-
-Use ellipsis only when genuinely necessary. The standard hero names should fit.
-
----
-
-## 9. Desktop / tablet behaviour
-
-Do not damage the current desktop experience.
-
-Suggested responsive behaviour:
-
-### Wide desktop (> 900px)
-
-- five Lord candidates may remain in one centred row,
-- cards can use the existing approximately 160–190px width range,
-- hero portraits must still be large and readable,
-- three-candidate selections remain centred.
-
-### Tablet / narrow desktop (<= 900px)
-
-Use the same centred 3 + 2 layout used by mobile.
-
-The responsive transition must not produce awkward partially filled rows.
-
----
-
-## 10. Markup guidance
-
-Avoid a large component rewrite.
-
-The existing structure in `HeroSelection` is close to what we need.
-
-Small semantic wrappers are acceptable if they make CSS much clearer, for example:
-
-```tsx
-<button className="hero-choice ...">
-  <span className="faction">...</span>
-
-  <div className="hero-monogram">
-    <HeroPortrait hero={hero} />
-  </div>
-
-  <div className="hero-choice-details">
-    <h2>...</h2>
-    <span className="hero-hp">...</span>
-    <p>...</p>
-  </div>
-
-  <i>...</i>
-</button>
-```
-
-This is only an example. Adapt the current component rather than copying blindly.
-
-Do not move the info button inside the main selection button if that creates invalid nested-button markup. The current wrapper + separate info button pattern is valid and should be preserved.
-
----
-
-## 11. Waiting / locked-in state
-
-The current `chosen-wait` flow is functional and is not the main target of this task.
-
-Do not remove it.
-
-At minimum verify:
-
-- chosen hero artwork still renders,
-- waiting message remains correct,
-- ready count remains correct,
-- the redesign CSS does not accidentally inherit candidate-card dimensions.
-
-A small visual alignment update is acceptable, but do not turn this task into a waiting-screen rewrite.
-
----
-
-## 12. Tests to update
-
-Review:
+The current accessible label pattern must remain:
 
 ```text
-tests/room-safety-render.test.mjs
+View <hero name> information
 ```
 
-There is already focused hero-selection coverage.
-
-Preserve assertions for:
-
-- private role display,
-- three candidate wrappers for normal roles,
-- five candidate wrappers for Lord,
-- one info button per candidate,
-- hero art IDs,
-- 3 + 2 centred Lord layout,
-- no regression to two flexible mobile columns.
-
-### Remove / update brittle assumptions from the old compact design
-
-The current test explicitly expects the mobile grid to use a compact `344px` width. That expectation belongs to the old compressed layout and should be updated.
-
-The redesigned tests should verify the **invariants**, not the old exact compression numbers:
-
-- mobile still has three card tracks,
-- Lord card 4 and card 5 remain centred on row 2,
-- selection artwork fills the portrait container,
-- mobile portrait is no longer capped to `54px`,
-- the selection page has a selection-specific image framing rule,
-- cards remain portrait shaped,
-- hero info controls remain separate,
-- no nested interactive controls are introduced.
-
-Do not weaken the existing privacy / hero-count assertions.
+Position the info button so it does not obscure the important part of the hero portrait.
 
 ---
 
-## 13. Files the coding agent should inspect before editing
+## 7. Text hierarchy
 
-Read these first:
+On mobile, prioritise:
+
+```text
+artwork > hero name > HP > skills > selection state
+```
+
+If space is tight:
+
+- reduce skill/status font sizing before reducing artwork,
+- keep hero name readable,
+- keep hearts readable,
+- keep SELECTED / CHOOSE compact.
+
+Do not let metadata force the portrait back into a small strip.
+
+---
+
+## 8. Desktop and tablet
+
+Do not regress desktop.
+
+### > 900px
+
+Five Lord candidates may remain in one centred row.
+
+Cards should remain balanced and artwork should still be readable.
+
+### <= 900px
+
+Use the centred 3 + 2 layout.
+
+Do not create awkward partial rows.
+
+---
+
+## 9. Implementation guidance
+
+Review before editing:
 
 ```text
 AGENTS.md
 app/page.tsx
 app/globals.css
+app/sequence-overrides.css
 tests/room-safety-render.test.mjs
 docs/HERO_ART_INTEGRATION_GUIDE.md
 WTK_CG_STYLE_GUIDE.md
 ```
 
-Also check `app/sequence-overrides.css` for selectors that could unintentionally override shared `.hero-art-image` behaviour on the actual game board.
+Avoid a large component rewrite.
 
-Do not modify unrelated game-board UI while doing this task.
+The existing `HeroSelection` structure is already functionally correct.
+
+Prefer focused CSS changes plus the Zhang Liao mapping.
+
+Do not modify unrelated game-board UI.
 
 ---
 
-## 14. Implementation order
+## 10. Tests
 
-### Step 1 — preserve behaviour
+Update:
 
-Read `HeroSelection` and identify the existing state / click / confirm / waiting paths.
+```text
+tests/room-safety-render.test.mjs
+```
+
+The current tests freeze intermediate implementation details that are no longer desired:
+
+- `aspect-ratio: 108 / 180`,
+- `height: clamp(68px, 21vw, 90px)`,
+- `object-fit: contain`.
+
+Replace those expectations with the corrected design.
+
+Keep coverage for:
+
+- private role display,
+- 3 candidates for normal roles,
+- 5 candidates for Lord,
+- separate info control per candidate,
+- 3 + 2 Lord layout,
+- centred fourth/fifth Lord cards,
+- no two-column regression,
+- no old 54px portrait regression,
+- portrait-style card proportion,
+- selection-specific image framing,
+- Zhang Liao artwork mapping,
+- checked-in Zhang Liao asset,
+- initials fallback for heroes without artwork,
+- no nested interactive controls,
+- unchanged privacy behaviour.
+
+Do not weaken privacy or candidate-count tests.
+
+---
+
+## 11. Required implementation sequence
+
+### Step 1 — inspect current code
+
+Confirm the existing state and action flow in `HeroSelection`.
 
 Do not change the action contract.
 
-### Step 2 — fix the card layout
+### Step 2 — correct card proportions
 
-Update the candidate-card CSS so:
+Change mobile candidate cards away from the current `108 / 180` ratio toward approximately `2 / 3`.
 
-- cards are real portrait cards,
-- mobile uses available width,
-- five-card Lord layout is 3 + 2,
-- cards are not vertically compressed.
+### Step 3 — enlarge artwork
 
-### Step 3 — fix the artwork area
+Replace the current 68–90px portrait range with a substantially larger portrait area.
 
-Remove the mobile `54px` portrait bottleneck.
+Start around:
 
-Give the portrait a large predictable area.
+```css
+height: clamp(108px, 29vw, 124px);
+```
 
-Apply selection-scoped image fitting / positioning so the character is visible without distorting or destructively cropping the source image.
+Tune visually if required.
 
-### Step 4 — rebalance card metadata
+### Step 4 — switch selection artwork to `cover`
 
-Fit hero name, HP, skills and SELECTED/CHOOSE underneath the larger image.
+Use:
 
-Keep the artwork dominant.
+```css
+object-fit: cover;
+object-position: center top;
+```
 
-### Step 5 — verify top section and confirmation
+only for Hero Selection candidate artwork.
 
-Make sure the larger cards work with:
+### Step 5 — rebalance metadata
 
-- title,
-- role banner,
-- instruction text,
-- confirmation button,
-- mobile vertical scrolling.
+Remove excessive empty space while preserving name, HP, skills, and state.
 
-### Step 6 — update tests
+### Step 6 — align confirmation width
 
-Update the hero-selection render/CSS assertions to represent the new invariants.
+Make the confirmation separator/button use the same mobile width contract as the hero grid.
 
-### Step 7 — validate
+### Step 7 — map Zhang Liao
 
-Run the repository-required checks from `AGENTS.md`.
+Add:
 
-At minimum:
+```ts
+"zhang-liao": "/hero-zhang-liao.jpg",
+```
+
+to `HERO_ART_BY_ID`.
+
+Leave Zhou Yu on initials fallback until an approved asset exists.
+
+### Step 8 — update tests
+
+Remove assertions that protect the intermediate 68–90px / contain / 108:180 implementation.
+
+Protect the corrected invariants instead.
+
+### Step 9 — validate
+
+Run the project-required checks from `AGENTS.md`, including:
 
 ```text
 npm test
@@ -610,94 +546,90 @@ npm run build
 git diff --check
 ```
 
-Use the exact package scripts present in `package.json` if their names differ.
+Use the exact package scripts in `package.json` if names differ.
 
-### Step 8 — repository documentation
+### Step 10 — update project docs
 
-Because this is a functional UI change, update:
+Because the implementation itself is a functional UI correction, update:
 
 ```text
 README.md
 HANDOVER.md
 ```
 
-Document:
-
-- hero-selection mobile card redesign,
-- portrait no longer compressed to 54px,
-- 3 + 2 Lord layout retained,
-- vertical scrolling intentionally allowed to protect artwork readability.
+Record the final deployed behaviour rather than the superseded intermediate values.
 
 ---
 
-## 15. Manual acceptance checklist
-
-Do not mark the task complete until all of these are true.
+## 12. Manual acceptance checklist
 
 ### Mobile
 
-- [ ] At ~390px width, three hero cards fit without horizontal overflow.
-- [ ] At ~430px width, cards scale cleanly and use the available width.
-- [ ] A Lord sees 3 cards on the first row and 2 centred on the second.
-- [ ] A non-Lord sees 3 centred cards.
-- [ ] Hero art is substantially taller than the old 54px strip.
-- [ ] Hero head and upper-body silhouette are clearly visible.
+- [ ] At ~390px, three cards fit without horizontal overflow.
+- [ ] At ~430px, cards use the available width cleanly.
+- [ ] Lord layout is 3 + 2.
+- [ ] Second row is centred.
+- [ ] Non-Lord layout is one centred row of three.
+- [ ] Portrait occupies roughly 55–65% of the useful card body.
+- [ ] Portrait is clearly larger than the current 68–90px implementation.
+- [ ] Head and upper body are visible.
+- [ ] No black side bars caused by `object-fit: contain`.
 - [ ] Artwork is not stretched.
-- [ ] Faction label does not cover the face.
-- [ ] Info icon does not cover the face.
-- [ ] Hero name remains readable.
-- [ ] HP hearts remain readable.
-- [ ] Skill names remain readable.
-- [ ] Selected state is clear.
-- [ ] Confirm button is reachable.
-- [ ] Page can scroll vertically when needed.
-- [ ] No horizontal page scroll appears.
+- [ ] No large unused lower section in the card.
+- [ ] Hero name is readable.
+- [ ] HP hearts are readable.
+- [ ] Skill names are readable.
+- [ ] Selected state is obvious.
+- [ ] Info button remains usable and does not obscure the face.
+- [ ] Confirm separator/button aligns with hero-grid width.
+- [ ] Zhang Liao uses `hero-zhang-liao.jpg`.
+- [ ] Zhou Yu remains initials fallback if no asset exists.
+- [ ] Vertical scrolling works normally.
+- [ ] No horizontal page scroll.
 
-### Desktop / tablet
+### Tablet / desktop
 
-- [ ] Five-card desktop row still looks balanced.
-- [ ] <=900px layout becomes 3 + 2 cleanly.
-- [ ] Three-card selection remains centred.
-- [ ] No giant or distorted hero images.
-- [ ] Info dialog still opens correctly.
+- [ ] <=900px keeps 3 + 2.
+- [ ] >900px five-card row remains balanced.
+- [ ] Hero artwork remains readable.
+- [ ] No distorted portraits.
+- [ ] Info dialog still works.
 
 ### Behaviour
 
-- [ ] Selecting a candidate changes only local selection state.
-- [ ] Confirm sends the same selected hero ID as before.
+- [ ] Selecting a candidate changes only local selection.
+- [ ] Confirm submits the same hero ID contract as before.
 - [ ] Role privacy is unchanged.
 - [ ] Candidate privacy is unchanged.
-- [ ] Waiting/locked-in state still works.
-- [ ] Quick Test perspective still works.
-- [ ] No game rules or API behaviour changed.
+- [ ] Waiting / locked-in state still works.
+- [ ] Quick Test still works.
+- [ ] No gameplay rules or API semantics changed.
 
 ---
 
-## 16. Things NOT to do
+## 13. Do not do these
 
 Do not:
 
-- shrink the hero artwork to make the page fit one screen,
-- keep the 54px mobile portrait height,
-- switch to a two-column layout,
-- switch to a horizontal carousel,
-- add hero-specific CSS,
-- crop / edit each hero asset as a workaround for layout,
-- replace `HeroPortrait`,
+- shrink the artwork to force everything into one viewport,
+- restore a 54px-style portrait strip,
+- keep the intermediate `object-fit: contain` black-bar treatment,
+- keep the intermediate `108 / 180` ratio if it leaves empty space,
+- create hero-specific CSS,
+- edit each source portrait as a layout workaround,
 - duplicate `HERO_ART_BY_ID`,
-- add gameplay logic to the presentation component,
-- reveal other players' role or candidate data,
-- redesign the whole game board,
-- apply `docs/UI_ASSET_INTEGRATION_GUIDE.md` board assets to this screen unless separately requested.
+- replace `HeroPortrait`,
+- hard-code hero names into layout logic,
+- expose private candidate/role information,
+- redesign the game board as part of this task,
+- invent a Zhou Yu asset.
 
 ---
 
-## 17. Definition of done
+## 14. Definition of done
 
-The task is complete when the Hero Selection page visually matches the approved direction:
+The task is complete when the deployed mobile page visually matches the approved direction:
 
-> a dark, elegant Three Kingdoms selection screen with a compact header and role panel, five properly proportioned hero cards in a centred 3 + 2 mobile layout, large readable character artwork, clear name/HP/skills, a strong gold selected state, and a full-width confirmation action — with normal vertical scrolling preferred over compressing the artwork.
+> A dark, elegant Three Kingdoms hero-selection screen where each candidate is a proper portrait card, the hero artwork is the dominant part of the card, the Lord layout remains centred 3 + 2, card metadata is compact and readable, the Confirm action aligns with the card group, Zhang Liao displays his checked-in artwork, and the page scrolls vertically instead of sacrificing portrait quality.
 
-The most important regression check is simple:
-
-> **On a phone, a hero must look like a hero portrait card, not a 54px image strip.**
+The current intermediate implementation should **not** be considered complete until these corrections are applied.
