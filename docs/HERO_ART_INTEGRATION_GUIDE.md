@@ -21,6 +21,7 @@ const HERO_ART_BY_ID: Record<string, string> = {
   "sun-quan": "/hero-sun-quan.jpg",
   "simayi": "/hero-sima-yi.jpg",
   "xiahou-dun": "/hero-xiahou-dun.jpg",
+  "zhang-liao": "/hero-zhang-liao.jpg",
 };
 ```
 
@@ -84,7 +85,9 @@ Preferred hero-card source:
 
 Large source images may be compressed for the web as long as the card-sized result remains visually clean.
 
-Do not change game-card art, deck art, or the centre draw pile when adding a hero portrait.
+When replacing an already-wired hero image and keeping the same filename, normally **do not change UI code**. Replace the asset in `public/`, keep the existing stable ID mapping, and rerun the focused render/build checks.
+
+Do not change game-card art, deck art, or the centre draw pile when adding or replacing a hero portrait.
 
 ---
 
@@ -265,4 +268,20 @@ Stable hero ID:
 zhang-liao
 ```
 
-The coding task is to wire that file through the existing shared `HERO_ART_BY_ID` / `HeroPortrait` path and update render coverage. Do not redesign the hero-card component for this image.
+The final approved Zhang Liao portrait has now replaced the previous asset at the same path.
+
+Current approved visual treatment:
+- blue/black Wei armour and cloak
+- pale blue plume
+- face deliberately kept in deep black shadow
+- no readable facial detail
+- no text, logo, or UI baked into the artwork
+- portrait 2:3 framing suitable for the shared hero-card crop
+
+The hero is already wired through the existing shared `HERO_ART_BY_ID` / `HeroPortrait` path:
+
+```ts
+"zhang-liao": "/hero-zhang-liao.jpg",
+```
+
+For future Zhang Liao art revisions, replace `public/hero-zhang-liao.jpg` in place unless the stable hero ID or asset naming convention intentionally changes. Do not redesign the hero-card component for an art-only replacement.
