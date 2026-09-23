@@ -24,6 +24,30 @@ assets are resolved should the final visual integration pass run the guide's
 mobile/desktop, Quick Test, multiplayer, animation-anchor, build, test, lint,
 and diff-check validation list.
 
+## Mobile game-table spacing and turn-owner review — 2026-09-23
+
+The existing game-table composition is preserved. At phone widths the lower
+empty board grid track has less weight, reducing the unused vertical tail and
+moving the side opponents modestly closer to the local dock without changing
+the three opponent seats, centred piles, bottom dock, equipment row, fitted
+hand, Play/End controls, or safe-area handling. Opponent names now remove the
+mobile info-button padding and use a responsive 9–11px range with a wider text
+box before ellipsis; the full “Test Player N” names fit at 320px.
+
+The “Test Player 2 begins the match.” versus “Your action · Play Phase” report
+was a projection check, not a game-state bug. `beginMatch` logs the Lord and
+sets `turnSeat` to that same Lord; in a Test Controller room the local
+projection selects the controlled `turnSeat`, so the Cao Cao prompt is the
+same current turn when Cao Cao is the Lord seat. The API regression now checks
+the opening message, `turnSeat`, `meId`, and `isMyTurn` together. No gameplay
+logic was changed.
+
+Validation is complete: focused API coverage, full fast/API tests, build,
+lint, and `git diff --check` pass. The mobile review was checked at the
+requested phone widths plus desktop/tablet geometry; no opponent/table or
+local-dock overflow was introduced. The next work is final graphic/theme
+polish and approved artwork intake for remaining fallback heroes.
+
 ## Hero-selection live-selector fix — 2026-09-23
 
 The `choose_hero` route now treats the freshly loaded `nextGeneralSelector`

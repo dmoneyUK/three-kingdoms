@@ -621,6 +621,10 @@
 .local-player-dock .turn-controls button { min-width: 78px; min-height: 32px; padding: 5px 8px; font-size: 8px; }
 
 @media (max-width: 700px) {
+  /* Keep the table proportionate above the dock on phone heights. The board
+     still owns the centred piles and all four player slots; the lower empty
+     track is simply smaller so the side seats do not float too far above the
+     local dock. */
   .local-player-dock { grid-template-columns: 110px minmax(0, 1fr); grid-template-rows: auto var(--hand-panel-height) 52px; }
 }
 
@@ -633,6 +637,10 @@
   .local-hero-skills { gap: 2px; }
   .local-hero-skills .hero-skill-button { min-height: 18px; padding: 3px 2px; font-size: 6px; }
   .local-dock-zones { grid-template-columns: var(--status-panel-width) max-content calc(var(--zone-card-width) + var(--zone-card-width) + var(--zone-card-gap) + 8px); }
+  .player-board { grid-template-rows: minmax(100px, 1fr) auto minmax(70px, .35fr); }
+  .player-square-target,
+  .player-hero-card .player-square-target { padding-inline: 0; padding-right: 0; }
+  .player-square-target strong { display: block; width: calc(100% + 4px); max-width: calc(100% + 4px); font-size: clamp(9px, 2.75vw, 11px); letter-spacing: -.02em; }
   .local-status-panel,
   .local-equipment-panel,
   .local-judgement-panel { padding: 3px; }

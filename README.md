@@ -21,6 +21,27 @@ Current stage: Stage 7 product polish, UI asset staging contract cleaned and
 safe for continued asset intake. Full visual integration remains intentionally
 blocked until the remaining production assets are approved.
 
+## Mobile game-table spacing and turn-owner review — 2026-09-23
+
+Applied a small presentation-only mobile refinement to the existing game
+table. Phone layouts now give the lower empty board track less weight, moving
+the side opponents modestly closer to the local-player dock while preserving
+the three opponents, centred deck/discard, equipment row, fitted hand, action
+controls, and existing safe-area behavior. Opponent names receive a little
+more usable width and a responsive 9–11px range before the existing ellipsis
+fallback.
+
+The opening timeline and local action prompt were also traced through the
+server projection. `beginMatch` names the Lord in “begins the match.” and sets
+that same Lord seat as `turnSeat`; the Test Controller projects that seat as
+`me`, so “Your action · Play Phase” is the same current turn when the local
+seat is the starter. A regression assertion now protects this relationship;
+no gameplay state or timeline logic was changed.
+
+Current stage: Stage 7 product polish, mobile game-table refinement complete.
+The next milestone is final graphic/theme polish and approved artwork intake
+for remaining fallback heroes.
+
 ## Hero-selection live-selector fix — 2026-09-23
 
 Fixed the Test Controller/Lord selection path so `choose_hero` authorizes the

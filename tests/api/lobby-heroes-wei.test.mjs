@@ -93,6 +93,10 @@ test("host test seats use one controller across four seats with a normal shuffle
   assert.ok(room.players.every((player) => player.hero));
   assert.ok(room.players.every((player) => player.hp === player.maxHp));
   assert.equal(room.turnSeat, lord.seat);
+  const openingTurnPlayer = room.players.find((player) => player.seat === room.turnSeat);
+  assert.equal(openingTurnPlayer?.id, room.meId, "the Test Controller projects the opening Lord turn locally");
+  assert.equal(room.isMyTurn, true, "the local action prompt belongs to the player named as the match starter");
+  assert.ok(room.log.includes(`${openingTurnPlayer.name} begins the match.`), "the opening timeline message names the current turn owner");
   assert.equal(room.deckCount, 92);
   const openingHands = room.players.map((player) => JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`)));
   const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(room.code)}`));

@@ -233,6 +233,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(globalStyleSource, /\.player-hp[\s\S]*\.player-hearts[\s\S]*\.player-hand-count/);
   assert.match(globalStyleSource, /\.mini-equipment-card \.mini-equipment-button > \.played-card[\s\S]*width: 100%[\s\S]*height: 100%/);
   assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 58px minmax\(0, 1fr\)/);
+  assert.match(sequenceStyleSource, /\.player-board \{ grid-template-rows: minmax\(100px, 1fr\) auto minmax\(70px, \.35fr\); \}/, "mobile board gives less unused space below the side opponents");
+  assert.match(sequenceStyleSource, /\.player-hero-card \.player-square-target \{ padding-inline: 0; padding-right: 0; \}/, "mobile opponent names can use the width reserved from the desktop info button");
+  assert.match(sequenceStyleSource, /\.player-square-target strong \{ display: block; width: calc\(100% \+ 4px\); max-width: calc\(100% \+ 4px\); font-size: clamp\(9px, 2\.75vw, 11px\);/, "mobile opponent names get responsive width and sizing before ellipsis");
 
   const switched = normalizeRoomData({ ...payload, code: "DOCK2", meId: "p3", myRole: "Loyalist", myHand: [card("switched-hand", "Dodge")], actionPlayerId: "p3", currentAction: { ...payload.currentAction, actorId: "p3" } });
   assert.ok(switched);
