@@ -21,7 +21,7 @@ const HERO_ART_BY_ID: Record<string, string> = {
   "sun-quan": "/hero-sun-quan.jpg",
   "simayi": "/hero-sima-yi.jpg",
   "xiahou-dun": "/hero-xiahou-dun.jpg",
-  "zhang-liao": "/hero-zhang-liao.jpg",
+  "zhang-liao": "/hero-zhang-liao.avif",
   "zhang-fei": "/hero-zhang-fei.jpg",
   "zhen-ji": "/hero-zhen-ji.jpg",
 };
@@ -57,7 +57,7 @@ public/hero-liu-bei.jpg
 public/hero-sun-quan.jpg
 public/hero-sima-yi.jpg
 public/hero-xiahou-dun.jpg
-public/hero-zhang-liao.jpg
+public/hero-zhang-liao.avif
 public/hero-zhang-fei.jpg
 public/hero-zhen-ji.jpg
 ```
@@ -114,7 +114,7 @@ Never infer the ID only from the English display name.
 Example:
 
 ```text
-public/hero-zhang-liao.jpg
+public/hero-zhang-liao.avif
 ```
 
 The file must be committed to the repository. Do not point production UI at a temporary ChatGPT attachment, external CDN, local filesystem path, or generated-session URL.
@@ -132,7 +132,7 @@ const HERO_ART_BY_ID: Record<string, string> = {
   "sun-quan": "/hero-sun-quan.jpg",
   "simayi": "/hero-sima-yi.jpg",
   "xiahou-dun": "/hero-xiahou-dun.jpg",
-  "zhang-liao": "/hero-zhang-liao.jpg",
+  "zhang-liao": "/hero-zhang-liao.avif",
   "zhang-fei": "/hero-zhang-fei.jpg",
   "zhen-ji": "/hero-zhen-ji.jpg",
 };
@@ -180,7 +180,7 @@ When adding an asset:
 For Zhang Liao, the asset list should include:
 
 ```text
-hero-zhang-liao.jpg
+hero-zhang-liao.avif
 ```
 
 A useful focused assertion is that a rendered Zhang Liao portrait contains:
@@ -192,7 +192,7 @@ data-hero-art-id="zhang-liao"
 or that the shared source mapping contains:
 
 ```text
-"zhang-liao": "/hero-zhang-liao.jpg"
+"zhang-liao": "/hero-zhang-liao.avif"
 ```
 
 Prefer a real render assertion when practical.
@@ -265,7 +265,7 @@ Before considering a hero-art integration complete:
 The final approved WTK Zhang Liao artwork is checked in at:
 
 ```text
-public/hero-zhang-liao.jpg
+public/hero-zhang-liao.avif
 ```
 
 Stable hero ID:
@@ -283,6 +283,10 @@ Approved source requirements:
 - dark ink-fantasy atmosphere
 - no text, logo, or UI baked into the image
 
-Zhang Liao is wired through the shared `HERO_ART_BY_ID` / `HeroPortrait` path in `app/page.tsx`. Render coverage checks `hero-zhang-liao.jpg` and `data-hero-art-id="zhang-liao"`.
+Zhang Liao is wired through the shared `HERO_ART_BY_ID` / `HeroPortrait` path in `app/page.tsx`. Render coverage checks `hero-zhang-liao.avif` and `data-hero-art-id="zhang-liao"`.
 
 Future Zhang Liao art revisions must overwrite this same stable asset path and preserve a high-resolution source suitable for `object-fit: cover`. Do not create a second mapping or hero-specific rendering component.
+
+
+### Zhang Liao asset quality note — 2026-09-24
+The game now uses `public/hero-zhang-liao.avif`, a 512 × 768 AVIF derived from the approved 1024 × 1536 source. This replaces the previously over-compressed JPEG that appeared blurry in game. Keep future replacements at least this sharp and do not substitute thumbnails.

@@ -44,7 +44,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(html, /data-hero-art-id="cao-cao"/);
   assert.match(html, /data-hero-art-id="simayi"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
-  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.jpg", "hero-zhang-fei.jpg", "hero-zhen-ji.jpg"]) {
+  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.avif", "hero-zhang-fei.jpg", "hero-zhen-ji.jpg"]) {
     assert.ok(existsSync(new URL(`../public/${asset}`, import.meta.url)), `${asset} is checked in`);
   }
   assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
@@ -58,7 +58,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.ok(zhangLiao && zhouYu);
   const zhangLiaoHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myHeroOptions: [zhangLiao] }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
   const zhouYuHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myHeroOptions: [zhouYu] }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
-  assert.match(gameRoomSource, /"zhang-liao": "\/hero-zhang-liao\.jpg"/);
+  assert.match(gameRoomSource, /"zhang-liao": "\/hero-zhang-liao\.avif"/);
   assert.match(zhangLiaoHtml, /data-hero-art-id="zhang-liao"/);
   const zhangFei = STANDARD_HEROES.find((hero) => hero.id === "zhang-fei");
   const zhenJi = STANDARD_HEROES.find((hero) => hero.id === "zhen-ji");
