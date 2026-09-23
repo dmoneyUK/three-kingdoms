@@ -45,6 +45,24 @@ remained 102px, the action row remained 48px, and document width matched the
 viewport. One Judgement card centered correctly, two fit naturally, and three
 overlapped within the fixed panel using the measured card width.
 
+### Follow-up 3 review queue — 2026-09-24
+
+Follow-up 3 is implemented and marked for review. Legal hero response
+providers now activate from the projected `currentAction.options` through the
+Skills panel for Empress Dowager, Entourage, Influencing, God of War, and
+Braveheart. Physical response cards remain selectable directly from the hand,
+and response footers use only the generic Confirm/Skip controls for the hero
+response path. Optional turn triggers such as Godess of Luo River remain
+enabled only when their projected trigger option is legal. No gameplay or
+backend projection code changed.
+
+Rendered response coverage passed for Zhen Ji, Zhao Yun, Cao Cao/Liu Bei
+mappings, physical Dodge selection, and the optional Luo River trigger. A live
+Quick Test review confirmed the Skills-panel trigger state and that no
+duplicate provider activation appears in the trigger footer. Follow-ups 1–3
+are implemented and marked for review; final graphic/theme polish and approved
+artwork intake for remaining fallback heroes remain the next milestone.
+
 Refined the existing LocalPlayerDock presentation without changing gameplay.
 The phone hero column is about 10% wider, the hero card fills its available
 column while preserving a 2:3 ratio, and the hero card now carries the hero
@@ -65,9 +83,9 @@ skills panel, responsive column math, 2:3 hero sizing, hand dimensions, and
 showed no horizontal overflow, a right-edge Judgement panel, and no half-width
 local player column.
 
-Current stage: Stage 7 product polish, local player panel resize complete.
-The next milestone is final graphic/theme polish and approved artwork intake
-for remaining fallback heroes.
+Current stage: Stage 7 product polish, local player panel and hero response UI
+follow-ups implemented pending review. The next milestone is final
+graphic/theme polish and approved artwork intake for remaining fallback heroes.
 
 ## Zhou Yu Sowing Distrust UI regression — 2026-09-23
 

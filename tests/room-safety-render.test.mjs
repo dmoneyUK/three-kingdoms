@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
+import { GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
@@ -390,13 +390,36 @@ test("normalized malformed and unknown response states render safely", () => {
 
   const longdanResponseRoom = normalizeRoomData({
     code: "SAFE-LONGDAN-RESPONSE", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
-    players: [{ id: "p1", name: "ME", seat: 0, hero: "zhao-yun", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" }],
-    myHand: [card("longdan-response-attack", "Attack")], turnSeat: null, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Dodge or take damage", isMyAction: true,
-    pending: { kind: "response" }, currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Dodge or take damage", legalActions: ["respond", "decline_response"], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: null }, { providerId: "zhao_yun_attack_as_dodge", satisfies: "dodge", activation: "explicit", label: "Use Braveheart as Dodge", playedAs: "dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["longdan-response-attack"] } }] },
+    players: [{ id: "p1", name: "ME", seat: 0, hero: "zhao-yun", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 2, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" }],
+    myHand: [card("longdan-response-attack", "Attack"), card("longdan-response-dodge", "Dodge")], turnSeat: null, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Dodge or take damage", isMyAction: true,
+    pending: { kind: "response" }, currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Dodge or take damage", legalActions: ["respond", "decline_response"], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["longdan-response-dodge"] } }, { providerId: "zhao_yun_attack_as_dodge", satisfies: "dodge", activation: "explicit", label: "Use Braveheart as Dodge", playedAs: "dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["longdan-response-attack"] } }] },
   });
   const longdanResponseHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: longdanResponseRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(longdanResponseHtml, />Braveheart<\/button>/);
   assert.doesNotMatch(longdanResponseHtml, /Use Braveheart as Dodge/);
+  assert.match(longdanResponseHtml, />Confirm<\/button>/, "response providers use one generic confirmation control");
+  assert.match(longdanResponseHtml, />Skip<\/button>/, "response decline remains available");
+  assert.doesNotMatch(longdanResponseHtml, />Play Dodge<\/button>/, "the physical response is selected from the hand");
+
+  const zhenResponseRoom = normalizeRoomData({
+    code: "SAFE-ZHEN-RESPONSE", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [{ id: "p1", name: "ME", seat: 0, hero: "zhen-ji", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 2, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" }],
+    myHand: [{ ...card("zhen-black", "Dodge"), suit: "♠" }, { ...card("zhen-red", "Dodge"), suit: "♥" }], turnSeat: null, phase: "response", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Dodge or take damage", isMyAction: true,
+    pending: { kind: "response" }, currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Dodge or take damage", legalActions: ["respond", "decline_response"], requirement: "dodge", options: [{ providerId: "card", satisfies: "dodge", activation: "implicit", label: "Play Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["zhen-black", "zhen-red"] } }, { providerId: "zhen_ji_black_card_dodge", satisfies: "dodge", activation: "explicit", label: "Use Empress Dowager as Dodge", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["zhen-black"] } }] },
+  });
+  const zhenResponseHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: zhenResponseRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const empressButton = zhenResponseHtml.match(/<button[^>]*aria-label="Empress Dowager"[^>]*>Empress Dowager<\/button>/)?.[0];
+  assert.ok(empressButton, "Empress Dowager remains visible in the Skills panel");
+  assert.doesNotMatch(empressButton, /disabled=""/, "Empress Dowager is enabled from its projected response option");
+  assert.match(zhenResponseHtml, />Confirm<\/button>/, "Zhen Ji's response waits for a card selection before confirming");
+  assert.match(zhenResponseHtml, />Skip<\/button>/, "Zhen Ji can decline the Dodge response");
+  assert.doesNotMatch(zhenResponseHtml, /Use Empress Dowager as Dodge|>Play Dodge<\/button>/, "provider activation is not duplicated in the response footer");
+  assert.deepEqual(HERO_SKILL_RESPONSE_IDS["cao-cao"].Entourage, ["cao_cao_hujia"]);
+  assert.deepEqual(HERO_SKILL_RESPONSE_IDS["liu-bei"].Influencing, ["liu_bei_jijiang"]);
+  assert.deepEqual(HERO_SKILL_RESPONSE_IDS["guan-yu"]["God of War"], ["guan_yu_red_card_attack"]);
+  assert.deepEqual(HERO_SKILL_RESPONSE_IDS["zhao-yun"].Braveheart, ["zhao_yun_dodge_as_attack", "zhao_yun_attack_as_dodge"]);
+  assert.deepEqual(HERO_SKILL_RESPONSE_IDS["zhen-ji"]["Empress Dowager"], ["zhen_ji_black_card_dodge"]);
+  assert.match(gameRoomSource, /setResponseProviderId\(selecting \? responseOption\?\.providerId/);
 
   const luoshenPayload = {
     code: "SAFE-LUOSHEN-BUSY", status: "playing", maxPlayers: 4, isHost: false, isTestController: true, meId: "p1", myRole: "Rebel", myHeroOptions: [],
@@ -407,10 +430,13 @@ test("normalized malformed and unknown response states render safely", () => {
   };
   const luoshenRoom = normalizeRoomData(luoshenPayload);
   const luoshenReadyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(luoshenReadyHtml, />Use Godess of Luo River<\/button>/);
+  const luoshenButton = luoshenReadyHtml.match(/<button[^>]*aria-label="Godess of Luo River"[^>]*>Godess of Luo River<\/button>/)?.[0];
+  assert.ok(luoshenButton, "Godess of Luo River remains in the Skills panel");
+  assert.doesNotMatch(luoshenButton, /disabled=""/, "a legal turn trigger enables its Skills panel button");
+  assert.doesNotMatch(luoshenReadyHtml, />Use Godess of Luo River<\/button>/);
   assert.match(luoshenReadyHtml, />Skip<\/button>/);
   const luoshenBusyHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: luoshenRoom, busy: true, error: "", onAction: async () => true, onLeave: () => {} }));
-  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Use Godess of Luo River<\/button>/);
+  assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Godess of Luo River<\/button>/);
   assert.match(luoshenBusyHtml, /<button[^>]*disabled=""[^>]*>Skip<\/button>/);
   assert.doesNotMatch(luoshenBusyHtml, /Resolving…|Skipping…/);
 

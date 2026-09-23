@@ -475,6 +475,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "zhang-liao": { Assault: ["zhang_liao_assault"] },
   "xu-chu": { "Bared Bodied": ["xu_chu_bared_bodied"] },
   "guo-jia": { "Jealousy of God": ["guo_jia_jealousy_of_god"], Legacy: ["guo_jia_legacy"] },
+  "zhen-ji": { "Godess of Luo River": ["zhen_ji_luoshen"] },
   "liu-bei": { Benevolence: ["liu_bei_rende"], Influencing: ["liu_bei_jijiang"] },
   "sun-quan": { Equilibrium: ["sun_quan_zhiheng"], Deliverance: ["sun_quan_jiuyuan"] },
   "gan-ning": { Ambushment: ["gan_ning_qixi"] },
@@ -482,6 +483,18 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "yue-jin": { Dauntless: ["yue_jin_dauntless"] },
   "zhou-yu": { Heroic: ["zhou_yu_yingzi"], "Sowing Distrust": ["zhou_yu_fanjian"] },
   "lu-xun": { "Second Wind": ["lu_xun_second_wind"] },
+};
+
+// Response capabilities are projected in currentAction.options rather than
+// turn triggerOptions. Keep their stable provider IDs separate from the
+// turn-skill map so the Skills panel can activate the legal response path
+// without making the client infer capability legality.
+export const HERO_SKILL_RESPONSE_IDS: Record<string, Record<string, readonly string[]>> = {
+  "cao-cao": { Entourage: ["cao_cao_hujia"] },
+  "liu-bei": { Influencing: ["liu_bei_jijiang"] },
+  "zhen-ji": { "Empress Dowager": ["zhen_ji_black_card_dodge"] },
+  "guan-yu": { "God of War": ["guan_yu_red_card_attack"] },
+  "zhao-yun": { Braveheart: ["zhao_yun_dodge_as_attack", "zhao_yun_attack_as_dodge"] },
 };
 
 type LocalPlayerDockProps = {
@@ -647,12 +660,17 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const responseSelectionUsesCards = responseSelection?.type === "cards";
   const responseSelectionMax = responseSelectionUsesCards ? responseSelection.max : 0;
   const responseSelectedCardIds = responseSelectionMax === 1 ? selected ? [selected] : [] : serpentSelected;
-  const responseSelectionComplete = Boolean(responseSelectionUsesCards && responseSelectedCardIds.length >= responseSelection.min && responseSelectedCardIds.length <= responseSelection.max);
+  const responseSelectionComplete = Boolean(selectedResponseProvider && (responseSelectionUsesCards
+    ? responseSelectedCardIds.length >= responseSelection.min && responseSelectedCardIds.length <= responseSelection.max
+    : selectedResponseProvider.activation === "explicit" && responseProviderId === selectedResponseProvider.providerId));
   const requiredResponseKind = room.currentAction?.requirement === "negate" ? "Negation" : room.currentAction?.requirement === "attack" ? "Attack" : room.currentAction?.requirement === "dodge" ? "Dodge" : negationResponse ? "Negation" : duelResponse || room.pendingGroup?.requiredKind === "Attack" ? "Attack" : responseType ? "Dodge" : null;
   const triggerOptions = room.currentAction?.triggerOptions ?? [];
   const privateDistribution = room.currentAction?.kind === "card_distribution" && room.isMyAction ? room.currentAction.distribution ?? null : null;
-  const activeSkillOptions = room.currentAction?.kind === "turn" && room.isMyAction ? triggerOptions : [];
+  const activeSkillOptions = (room.currentAction?.kind === "turn" || room.currentAction?.kind === "trigger") && room.isMyAction
+    ? triggerOptions.filter((option) => option.selection?.type !== "choice")
+    : [];
   const activeSkillOption = activeSkillOptions.find((option) => option.effectId === kingSkillId) ?? null;
+  const heroTriggerEffectIds = new Set(activeSkillOptions.map((option) => option.effectId));
   const activeSkillSelection = activeSkillOption?.selection?.type === "cards" ? activeSkillOption.selection : null;
   const activeSkillTargetSelection = activeSkillOption?.selection?.type === "target" ? activeSkillOption.selection : null;
   const activeActionRevision = room.actionRevision ?? "";
@@ -684,7 +702,8 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const responseCardAllowed = (item: Card) => selectedResponseProvider?.selection?.type === "cards"
     ? selectedResponseProvider.selection.eligibleCardIds.includes(item.id)
     : triggerCardOption?.selection?.type === "cards" && triggerCardOption.selection.eligibleCardIds.includes(item.id);
-  const genericResponseOptions = semanticResponseOptions.filter((option) => option.activation === "explicit" && !(me?.hero === "guan-yu" && option.providerId === "guan_yu_red_card_attack") && !(me?.hero === "zhao-yun" && (option.providerId === "zhao_yun_dodge_as_attack" || option.providerId === "zhao_yun_attack_as_dodge"))).map((option) => ({ ...option, label: conciseActionLabel(option.label) }));
+  const heroResponseEffectIds = new Set(Object.values(HERO_SKILL_RESPONSE_IDS[me?.hero ?? ""] ?? {}).flat());
+  const genericResponseOptions = semanticResponseOptions.filter((option) => option.activation === "explicit" && !heroResponseEffectIds.has(option.providerId)).map((option) => ({ ...option, label: conciseActionLabel(option.label) }));
   const responseDamageAction = canUseAction(room.currentAction, "decline_response") ? "decline_response" as GameplayAction : canUseAction(room.currentAction, "decline_trigger") ? "decline_trigger" as GameplayAction : null;
   const triggerDeclineAction = canUseAction(room.currentAction, "decline_trigger");
   const hasSerpentSpear = getResponseOptions({ hand: room.myHand, equipment: me?.equipmentCards ?? [], hero: me?.hero }, { kind: "attack" }).some((option) => option.providerId === "serpent_spear_attack");
@@ -800,6 +819,22 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
         if (canUseLongdanInResponse && longdanResponseOption) { setLongdanMode("response"); setResponseProviderId(longdanResponseOption.providerId); setSelected(""); setSerpentSelected([]); }
       },
     };
+    const responseEffectIds = HERO_SKILL_RESPONSE_IDS[me?.hero ?? ""]?.[skill.name] ?? [];
+    const responseOption = responseDecisionReady ? semanticResponseOptions.find((option) => responseEffectIds.includes(option.providerId)) ?? null : null;
+    if (responseOption) {
+      const active = Boolean(responseOption && responseProviderId === responseOption.providerId);
+      return {
+        name: skill.name,
+        description: skill.description,
+        enabled: Boolean(responseOption) || active,
+        active,
+        onClick: () => {
+          const selecting = Boolean(responseOption && responseProviderId !== responseOption.providerId);
+          setResponseProviderId(selecting ? responseOption?.providerId ?? "" : "");
+          setSelected(""); setSerpentSelected([]); setTargetIds([]); setSerpentMode(false); setWushengMode(null); setLongdanMode(null);
+        },
+      };
+    }
     const effectIds = HERO_SKILL_EFFECT_IDS[me?.hero ?? ""]?.[skill.name] ?? [];
     const option = activeSkillOptions.find((candidate) => effectIds.includes(candidate.effectId));
     const active = Boolean(option && kingSkillId === option.effectId);
@@ -1024,9 +1059,9 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
 
           {rescueDecisionReady && <><button className="primary" disabled={busy || card?.kind !== "Peach"} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button><button className="end" disabled={busy} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button></>}
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
-          {triggerResponse && <>{triggerOptions.map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; setResponseProviderId(active ? "" : option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="primary" disabled={responseControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}{selectedTriggerOption?.selection?.type === "cards" && <button className="primary" disabled={responseControlsDisabled || !triggerSelectionComplete} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, ...(triggerSelectedCardIds.length === 1 ? { cardId: triggerSelectedCardIds[0] } : { cardIds: triggerSelectedCardIds }) })}>{`Use ${selectedTriggerOption.label}`}</button>}{triggerTargetSelection && <button className="primary" disabled={responseControlsDisabled || !triggerTargetComplete} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, targetIds })}>{`Use ${selectedTriggerOption.label}`}</button>}{triggerDeclineAction && !targetCardPickerOption && <button className="end" disabled={responseControlsDisabled} onClick={() => onAction("decline_trigger")}>Skip</button>}</>}
+          {triggerResponse && <>{triggerOptions.filter((option) => !heroTriggerEffectIds.has(option.effectId) || option.selection?.type === "choice").map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; setResponseProviderId(active ? "" : option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="primary" disabled={responseControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}{selectedTriggerOption?.selection?.type === "cards" && <button className="primary" disabled={responseControlsDisabled || !triggerSelectionComplete} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, ...(triggerSelectedCardIds.length === 1 ? { cardId: triggerSelectedCardIds[0] } : { cardIds: triggerSelectedCardIds }) })}>Confirm</button>}{triggerTargetSelection && <button className="primary" disabled={responseControlsDisabled || !triggerTargetComplete} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, targetIds })}>Confirm</button>}{triggerDeclineAction && !targetCardPickerOption && <button className="end" disabled={responseControlsDisabled} onClick={() => onAction("decline_trigger")}>Skip</button>}</>}
           {(activeSkillSelection || activeSkillTargetSelection) && <button className="primary" disabled={busy || presentationBusy || !activeSkillComplete || !activeSkillSubmission} onClick={() => activeSkillSubmission && onAction("trigger", activeSkillSubmission)}>{`Use ${activeSkillOption?.label}`}</button>}
-          {canRespond && <>{genericResponse && semanticResponseOptions.length > 0 && <>{genericResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${responseProviderId === option.providerId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{responseProviderId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="primary" disabled={responseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>)}{selectedResponseProvider?.selection && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete} onClick={() => submitResponseProvider()}>{busy ? "Playing…" : selectedResponseProvider.activation === "implicit" ? selectedResponseProvider.label : `Use ${selectedResponseProvider.label}`}</button>}</>}<button className="end" disabled={responseControlsDisabled || !responseDamageAction} onClick={() => responseDamageAction && onAction(responseDamageAction)}>Skip</button></>}
+          {canRespond && <>{genericResponse && semanticResponseOptions.length > 0 && <>{genericResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${responseProviderId === option.providerId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{responseProviderId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="primary" disabled={responseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>)}{selectedResponseProvider && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}</>}<button className="end" disabled={responseControlsDisabled || !responseDamageAction} onClick={() => responseDamageAction && onAction(responseDamageAction)}>Skip</button></>}
           {room.isMyTurn && room.phase === "discard" && <button className="end" disabled={busy || discardSelected.length !== excessCards} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
           {room.isMyTurn && canPlay && <>{canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Normal" : "Spear"}</button>}<button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid : busy || presentationBusy || !card || selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid) || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted"].includes(card.kind) && !target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation")} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : "Play"}</button><button className="end" disabled={busy || presentationBusy} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "End"}</button></>}
         </div>

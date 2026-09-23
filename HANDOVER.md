@@ -181,6 +181,8 @@ width. No remaining visual issue was found for these follow-ups.
 
 ## Required follow-up 3 — Hero skill response UI uses Skills panel + Confirm / Skip
 
+Status: implemented — review requested.
+
 The deployed Zhen Ji Dodge-response screenshot exposes an inconsistent UI path:
 
 - The Skills panel shows `Empress Dowager` and `Godess of Luo River`, but they are disabled.
@@ -220,6 +222,23 @@ Remove duplicate provider-activation buttons from the bottom response row, inclu
 - `Play Dodge`
 - `Use Braveheart as Dodge`
 - equivalent response-provider activation buttons
+
+Implementation result — the shared UI now maps legal response providers from
+`currentAction.options` into the existing Skills panel for Empress Dowager,
+Entourage, Influencing, God of War, and Braveheart. Physical responses remain
+selected directly from the projected hand cards. The bottom response row uses
+the generic `Confirm` and `Skip` controls, while optional turn triggers such as
+Godess of Luo River continue to use the same projected trigger capability in
+the Skills panel. No gameplay, route, or backend projection code changed.
+
+Review result — 2026-09-24: rendered regressions passed for Zhen Ji's legal
+Empress Dowager response, physical Dodge selection, Zhao Yun's Braveheart
+response, Cao Cao/Liu Bei response mappings, and Zhen Ji's optional Luo River
+trigger. The live Quick Test review showed Godess of Luo River enabled only
+when its trigger was projected, Empress Dowager disabled outside a Dodge
+response, and the trigger footer reduced to `Skip`; response render coverage
+confirmed `Confirm`/`Skip` with no duplicate `Use Empress Dowager as Dodge` or
+`Play Dodge` controls.
 
 The bottom row should not decide the provider. It should only complete or decline the already selected response.
 
