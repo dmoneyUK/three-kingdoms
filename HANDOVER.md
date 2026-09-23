@@ -1,5 +1,32 @@
 # Three Kingdoms project handover
 
+## Final hero selection card correction — 2026-09-23
+
+The follow-up mobile redesign is now implemented as a content-first card
+layout. Through the 900px breakpoint, candidate wrappers use `aspect-ratio:
+2 / 3` with a content-safe minimum height; the card uses explicit portrait and
+metadata rows, and the portrait track grows before the name, HP, skills, and
+SELECTED/CHOOSE rows. The previous `margin-top: auto` state gap is removed, so
+the card does not end in an unused dark section.
+
+Selection artwork is scoped to the candidate card and uses `cover` plus
+`center top`; local-player and opponent portrait framing remains unchanged.
+The confirmation rail matches the 392px phone grid and 440px tablet grid.
+Zhang Liao is mapped through the single shared `HERO_ART_BY_ID` table and
+renders `public/hero-zhang-liao.jpg`; Zhou Yu remains the tested initials
+fallback.
+
+Focused render coverage protects the private role and candidate counts, the
+centred 3+2 row placement, content-first card CSS, selection-only cover
+framing, aligned confirmation widths, checked-in Zhang Liao art, Zhou Yu
+fallback, and sibling information controls. No gameplay, projection, Quick
+Test, waiting-state, or `choose_hero` behavior changed.
+
+Validation boundary: browser review passed at 390px, 430px, and 768px with no
+horizontal overflow; focused tests, full API tests, lint, build, and
+`git diff --check` remain required before push. Recommended next work is the
+deployed review at those widths, followed by final graphic/theme polish.
+
 ## Hero selection portrait readability refinement — 2026-09-23
 
 Follow-up to the earlier mobile portrait pass after deployed screenshot review.

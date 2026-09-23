@@ -28,6 +28,7 @@ const HERO_ART_BY_ID: Record<string, string> = {
   "sun-quan": "/hero-sun-quan.jpg",
   "simayi": "/hero-sima-yi.jpg",
   "xiahou-dun": "/hero-xiahou-dun.jpg",
+  "zhang-liao": "/hero-zhang-liao.jpg",
 };
 
 function HeroPortrait({ hero }: { hero: Pick<Hero, "id" | "name"> }) {

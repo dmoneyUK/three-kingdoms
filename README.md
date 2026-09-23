@@ -1,5 +1,25 @@
 # Three Kingdoms
 
+## Final hero selection card correction — 2026-09-23
+
+Completed the follow-up General Selection correction from the replaced mobile
+specification. Candidate cards now use a content-first responsive layout with a
+near-2:3 portrait proportion, a growing artwork track, compact name/HP/skill
+rows, and no auto-margin gap before the SELECTED/CHOOSE state. Selection-only
+artwork uses `object-fit: cover` with top framing, so portraits fill the card
+without the dark side bars from the intermediate `contain` treatment.
+
+The mobile and tablet confirmation rail now matches the hero grid width, the
+centred 3+2 Lord layout remains intact, normal vertical scrolling is allowed,
+and Zhang Liao now resolves through the shared `HeroPortrait` mapping. Zhou Yu
+continues to use the initials fallback until an approved asset exists. Role
+privacy, candidate allocation, Quick Test behavior, information dialogs, and
+the existing `choose_hero` contract are unchanged.
+
+Current stage: Stage 7 product polish, final hero-selection card correction
+complete. The next milestone is deployed review at 390px, 430px, and 768px,
+followed by final graphic/theme polish.
+
 ## Hero selection portrait readability refinement — 2026-09-23
 
 Refined the mobile General Selection redesign after deployed review. Candidate

@@ -44,7 +44,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(html, /data-hero-art-id="cao-cao"/);
   assert.match(html, /data-hero-art-id="simayi"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
-  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg"]) {
+  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.jpg"]) {
     assert.ok(existsSync(new URL(`../public/${asset}`, import.meta.url)), `${asset} is checked in`);
   }
   assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
@@ -53,6 +53,14 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(gameRoomSource, /\{infoHero && <HeroInfoDialog hero=\{infoHero\}/);
   const artHeroes = ["cao-cao", "liu-bei", "sun-quan", "simayi", "xiahou-dun"].map((id) => STANDARD_HEROES.find((hero) => hero.id === id));
   assert.ok(artHeroes.every(Boolean));
+  const zhangLiao = STANDARD_HEROES.find((hero) => hero.id === "zhang-liao");
+  const zhouYu = STANDARD_HEROES.find((hero) => hero.id === "zhou-yu");
+  assert.ok(zhangLiao && zhouYu);
+  const zhangLiaoHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myHeroOptions: [zhangLiao] }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
+  const zhouYuHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myHeroOptions: [zhouYu] }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
+  assert.match(gameRoomSource, /"zhang-liao": "\/hero-zhang-liao\.jpg"/);
+  assert.match(zhangLiaoHtml, /data-hero-art-id="zhang-liao"/);
+  assert.match(zhouYuHtml, /class="hero-art-fallback" data-hero-art-id="zhou-yu"[^>]*>ZY<\/span>/, "heroes without checked-in artwork keep the initials fallback");
   const lordHtml = renderToStaticMarkup(React.createElement(HeroSelection, { room: { ...room, myRole: "Lord", myHeroOptions: artHeroes }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
   assert.match(lordHtml, /class="hero-choice-grid hero-choice-grid-5"/);
   assert.equal((lordHtml.match(/class="hero-choice-wrap/g) ?? []).length, 5, "Lord receives five portrait candidate cards");
@@ -61,13 +69,17 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(globalStyleSource, /@media \(max-width: 520px\)[\s\S]*?\.hero-choice-grid,[\s\S]*?grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/, "mobile hero selection keeps three card tracks");
   assert.match(globalStyleSource, /\.hero-choice-grid-5 > \.hero-choice-wrap:nth-child\(4\)\s*\{\s*grid-column: 2 \/ span 2;/, "Lord's fourth card starts the centred second row");
   assert.match(globalStyleSource, /\.hero-choice-grid-5 > \.hero-choice-wrap:nth-child\(5\)\s*\{\s*grid-column: 4 \/ span 2;/, "Lord's fifth card completes the centred second row");
-  assert.match(globalStyleSource, /@media \(max-width: 900px\)[\s\S]*?\.hero-choice-wrap\s*\{\s*grid-column: span 2;\s*aspect-ratio: 108 \/ 180;/, "tablet hero cards keep the portrait proportion");
-  assert.match(globalStyleSource, /@media \(max-width: 900px\)[\s\S]*?\.hero-monogram\s*\{\s*flex: none;\s*height: clamp\(94px, 14vw, 116px\)/, "tablet hero artwork cannot collapse under card metadata");
+  assert.match(globalStyleSource, /@media \(max-width: 900px\)[\s\S]*?\.hero-choice-wrap\s*\{\s*grid-column: span 2;\s*aspect-ratio: 2 \/ 3;\s*min-height: clamp\(184px, 48\.5vw, 210px\)/, "tablet hero cards use a compact portrait proportion with content-safe height");
+  assert.match(globalStyleSource, /@media \(max-width: 900px\)[\s\S]*?\.hero-choice\s*\{\s*display: grid;\s*grid-template-rows: minmax\(clamp\(108px, 29vw, 124px\), 1fr\) auto auto auto;\s*align-content: start;\s*align-items: stretch;/, "hero card layout gives the portrait a growing track before compact metadata");
   assert.match(globalStyleSource, /\.hero-choice-grid,[\s\S]*?width: min\(100%, 392px\)/, "mobile hero grid uses the available viewport width");
-  assert.match(globalStyleSource, /\.hero-choice-wrap\s*\{\s*aspect-ratio: 108 \/ 180;/, "mobile hero cards remain portrait-shaped while allowing vertical scrolling");
-  assert.match(globalStyleSource, /\.hero-monogram\s*\{\s*flex: none;\s*height: clamp\(94px, 25vw, 108px\);\s*margin: 28px 0 4px;/, "mobile hero artwork gets a readable portrait area below the controls");
+  assert.match(globalStyleSource, /@media \(max-width: 520px\)[\s\S]*?\.hero-choice-wrap\s*\{\s*aspect-ratio: 2 \/ 3;/, "mobile hero cards use the normal portrait proportion");
+  assert.match(globalStyleSource, /@media \(max-width: 520px\)[\s\S]*?\.hero-monogram\s*\{\s*flex: none;\s*height: auto;\s*margin: 14px 0 3px;/, "mobile hero artwork participates in the content-first card layout");
+  assert.match(globalStyleSource, /@media \(max-width: 520px\)[\s\S]*?\.hero-confirm\s*\{\s*width: min\(100%, 392px\);\s*max-width: none;/, "mobile confirmation aligns with the hero grid");
+  assert.match(globalStyleSource, /@media \(max-width: 900px\)[\s\S]*?\.hero-confirm\s*\{\s*width: min\(100%, 440px\);\s*max-width: none;/, "tablet confirmation aligns with the tablet hero grid");
   assert.doesNotMatch(globalStyleSource, /@media \(max-width: 520px\)[\s\S]*?\.hero-monogram\s*\{[^}]*height: 54px;/, "mobile hero artwork has no 54px bottleneck");
-  assert.match(globalStyleSource, /\.hero-choice \.hero-monogram > \.hero-art-image\s*\{[^}]*object-fit: contain;[^}]*object-position: center top;/, "selection artwork uses selection-scoped non-destructive framing");
+  assert.match(globalStyleSource, /\.hero-choice \.hero-monogram > \.hero-art-image\s*\{[^}]*object-fit: cover;[^}]*object-position: center top;/, "selection artwork uses selection-scoped cover framing");
+  assert.doesNotMatch(globalStyleSource, /\.hero-choice \.hero-monogram > \.hero-art-image\s*\{[^}]*object-fit: contain;/, "selection artwork does not retain the side-bar framing");
+  assert.doesNotMatch(globalStyleSource, /\.hero-choice i\s*\{[^}]*margin-top: auto;/, "selection state follows skills without an empty flex tail");
   assert.match(globalStyleSource, /\.hero-shell\s*\{\s*min-height: 100dvh;/, "selection page uses the dynamic mobile viewport height");
   assert.match(lordHtml, /class="hero-choice [^"]*"[\s\S]*?<\/button><button type="button" class="hero-info-button"/, "information controls remain sibling buttons rather than nested controls");
   assert.doesNotMatch(globalStyleSource, /\.hero-choice-grid\s*\{\s*grid-template-columns: repeat\(2/, "mobile hero selection does not regress to two flexible columns");
