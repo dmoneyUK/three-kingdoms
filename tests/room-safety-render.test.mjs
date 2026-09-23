@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GameRoom, HERO_ART_BY_ID, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
+import { GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
@@ -246,6 +246,51 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(switchedHtml, /data-hero-id="zhang-fei"/);
   assert.match(switchedHtml, /class="local-status-panel"[\s\S]*class="local-status-role">Loyalist<\/strong>/);
   assert.match(switchedHtml, /Dodge/);
+});
+
+test("Zhou Yu renders Sowing Distrust from its projected semantic capability", () => {
+  assert.deepEqual(HERO_SKILL_EFFECT_IDS["zhou-yu"], {
+    Heroic: ["zhou_yu_yingzi"],
+    "Sowing Distrust": ["zhou_yu_fanjian"],
+  });
+
+  const fanjianOption = {
+    effectId: "zhou_yu_fanjian",
+    label: "Sowing Distrust",
+    selection: { type: "target", targetIds: ["p2"], min: 1, max: 1 },
+  };
+  const payload = {
+    code: "FANJIAN-UI", status: "playing", maxPlayers: 4, isHost: true, isTestController: true,
+    meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "ZHOU YU", seat: 0, hero: "zhou-yu", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "OPPONENT", seat: 1, hero: "sun-quan", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 2, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [card("zhou-yu-hand", "Attack")], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null,
+    log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], triggerOptions: [fanjianOption] },
+    pendingAttack: null, pendingGreenDragon: null, pendingRockCleaving: null, pendingFrostSword: null, pendingDuel: null,
+    pendingGroup: null, pendingNegation: null, pendingHarvest: null, pendingTargetCard: null, pendingBorrowedSword: null, pendingDying: null,
+  };
+  const room = normalizeRoomData(payload);
+  assert.ok(room);
+  const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(html, />Heroic<\/button>/, "metadata-backed Heroic remains rendered");
+  const fanjianButton = html.match(/<button[^>]*aria-label="Sowing Distrust"[^>]*>Sowing Distrust<\/button>/)?.[0];
+  assert.ok(fanjianButton, "metadata-backed Sowing Distrust is rendered");
+  assert.doesNotMatch(fanjianButton, /disabled=""/, "Sowing Distrust is enabled when zhou_yu_fanjian is projected");
+  assert.match(html, /data-player-anchor="p2"/, "the projected eligible opponent is rendered");
+  assert.match(gameRoomSource, /activeSkillTargetIds\.includes\(player\.id\) && canPlay/, "activated target skills make projected opponents selectable");
+  assert.match(gameRoomSource, /setActiveSkillSelectionState\(\(state\) => state \? \{ \.\.\.state, targetIds: \[playerId\] \}/, "target selection stores the chosen opponent in the active skill state");
+  assert.match(gameRoomSource, /onAction\("trigger", activeSkillSubmission\)/, "active skills use the generic trigger action");
+  assert.match(gameRoomSource, /activeSkillSubmission = .*providerId: activeSkillOption\.effectId[\s\S]*targetId: activeSkillTargetId/, "the generic trigger payload carries providerId and targetId");
+
+  const unavailableRoom = normalizeRoomData({ ...payload, code: "FANJIAN-UI-OFF", currentAction: { ...payload.currentAction, triggerOptions: [] } });
+  assert.ok(unavailableRoom);
+  const unavailableHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: unavailableRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  const unavailableButton = unavailableHtml.match(/<button[^>]*aria-label="Sowing Distrust"[^>]*>Sowing Distrust<\/button>/)?.[0];
+  assert.ok(unavailableButton, "Sowing Distrust remains visible when unavailable");
+  assert.match(unavailableButton, /disabled=""/, "Sowing Distrust is disabled without its projected capability");
 });
 
 test("normalized malformed and unknown response states render safely", () => {

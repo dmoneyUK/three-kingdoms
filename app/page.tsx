@@ -447,7 +447,7 @@ type HeroSkillButtonModel = {
 // These are stable semantic capability IDs, not display-label matches. A
 // missing entry intentionally leaves the metadata-backed skill visible but
 // disabled until its existing projected capability is available.
-const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly string[]>> = {
+export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly string[]>> = {
   "cao-cao": { Treachery: ["cao_cao_jianxiong"], Entourage: ["cao_cao_hujia"] },
   simayi: { Retaliation: ["sima_yi_fankui"], Necromancy: ["sima_yi_guicai"] },
   "xiahou-dun": { Stauchness: ["xiahou_dun_ganglie"] },
@@ -459,7 +459,7 @@ const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly string[]>> =
   "gan-ning": { Ambushment: ["gan_ning_qixi"] },
   "lu-meng": { Composure: ["lu_meng_keji"] },
   "yue-jin": { Dauntless: ["yue_jin_dauntless"] },
-  "zhou-yu": { Heroic: ["zhou_yu_yingzi"] },
+  "zhou-yu": { Heroic: ["zhou_yu_yingzi"], "Sowing Distrust": ["zhou_yu_fanjian"] },
   "lu-xun": { "Second Wind": ["lu_xun_second_wind"] },
 };
 

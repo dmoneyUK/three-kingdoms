@@ -1,5 +1,23 @@
 # Three Kingdoms project handover
 
+## Zhou Yu Sowing Distrust UI regression — 2026-09-23
+
+The LocalPlayerDock mapping now associates Zhou Yu's metadata skill
+`Sowing Distrust` with the semantic effect ID `zhou_yu_fanjian`, alongside the
+existing Heroic mapping. This keeps the skill visible but disabled when the
+server does not project the capability, and enables the normal generic target
+selection when a legal Play Phase trigger is projected. The existing client
+path stores the selected opponent and submits `action: "trigger"` with
+`providerId: "zhou_yu_fanjian"` and `targetId`; no backend Fanjian behavior was
+changed.
+
+`tests/room-safety-render.test.mjs` covers the rendered enabled and unavailable
+states, Heroic/Sowing Distrust visibility, the projected opponent, and the
+generic target-trigger contract. Backend Fanjian sequence coverage remains in
+the existing API tests. Full test, lint, build, and diff-check validation now
+passes. Recommended next work is final graphic/theme polish and approved
+artwork intake for the remaining fallback heroes.
+
 ## Opponent hero-card table redesign — 2026-09-23
 
 Implemented `OpponentPlayerCard` in `app/page.tsx` and scoped its portrait

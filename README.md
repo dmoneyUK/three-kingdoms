@@ -1,5 +1,22 @@
 # Three Kingdoms
 
+## Zhou Yu Sowing Distrust UI regression — 2026-09-23
+
+Fixed the LocalPlayerDock semantic mapping so Zhou Yu's printed Sowing Distrust
+skill resolves to the existing `zhou_yu_fanjian` projected capability. Heroic
+and Sowing Distrust remain metadata-rendered; Sowing Distrust is enabled only
+when the server projects its legal turn trigger option, and the existing
+generic target-selection flow submits `trigger` with the provider and selected
+target. No backend Fanjian rules changed.
+
+Added rendered regression coverage for the enabled and unavailable states,
+projected opponent targeting, and the generic provider/target submission
+contract. The next milestone remains final graphic/theme polish and approved
+artwork intake for remaining fallback heroes.
+
+Current stage: Stage 7 product polish, Zhou Yu Sowing Distrust UI regression
+complete.
+
 ## Opponent hero-card table redesign — 2026-09-23
 
 Redesigned the three non-local player panels as one reusable portrait-oriented
