@@ -174,6 +174,84 @@ style={{
 
 Do not otherwise redesign the approved LocalPlayerDock.
 
+## Required follow-up 3 — Hero skill response UI uses Skills panel + Confirm / Skip
+
+The deployed Zhen Ji Dodge-response screenshot exposes an inconsistent UI path:
+
+- The Skills panel shows `Empress Dowager` and `Godess of Luo River`, but they are disabled.
+- The bottom response row separately shows provider-specific actions such as `Use Empress Dowager as Dodge` and `Play Dodge`.
+
+This happens because the Skills panel is driven by `heroSkillButtons`, which currently resolves most generic skills through `HERO_SKILL_EFFECT_IDS` + Play Phase `activeSkillOptions`. Zhen Ji is not mapped there. Empress Dowager is instead implemented as the explicit response provider `zhen_ji_black_card_dodge` and is projected through `currentAction.options`, so only the bottom response controls currently see it.
+
+The approved interaction model is:
+
+```text
+Hero Skills panel / hand = choose HOW to respond
+Bottom response row      = CONFIRM | SKIP
+```
+
+During a Dodge response:
+
+- A legal hero response skill becomes enabled in the Skills panel.
+- Tapping the skill selects/activates that response provider.
+- The active skill button is visually highlighted.
+- The player selects the required eligible card(s) from hand if the provider needs a card cost.
+- A normal physical Dodge is selected directly from the hand without a separate `Play Dodge` button.
+- The bottom response row contains only `CONFIRM` and `SKIP`.
+- `CONFIRM` is disabled until the selected response path is complete and legal.
+- `SKIP` declines the response where decline is legal.
+
+For Zhen Ji specifically:
+
+- Enable `Empress Dowager` when `currentAction.options` contains provider `zhen_ji_black_card_dodge`.
+- Tapping `Empress Dowager` should set/select that provider using the existing `responseProviderId` state.
+- Only eligible black cards may then be selected.
+- Tapping the active skill again should cancel that provider and clear incompatible provider-specific selection.
+- `Godess of Luo River` remains disabled unless its own trigger is currently legal.
+
+Remove duplicate provider-activation buttons from the bottom response row, including examples such as:
+
+- `Use Empress Dowager as Dodge`
+- `Play Dodge`
+- `Use Braveheart as Dodge`
+- equivalent response-provider activation buttons
+
+The bottom row should not decide the provider. It should only complete or decline the already selected response.
+
+Preserve the normal Play Phase controls:
+
+```text
+PLAY | END
+```
+
+This response simplification applies only to contextual response decisions.
+
+Prefer deriving hero skill availability from the canonical projected capabilities for the current action (`currentAction.options` / `triggerOptions`) rather than maintaining a separate UI-only availability model that can drift from the server projection.
+
+Review the same pattern for other response-capable skills/providers, especially:
+
+- Zhen Ji — Empress Dowager
+- Guan Yu — God of War
+- Zhao Yun — Braveheart
+- Cao Cao / Liu Bei lord-response skills where applicable
+
+Do not change gameplay semantics or backend rules unless a missing capability projection is actually discovered.
+
+Required regression coverage:
+
+- Empress Dowager Skills-panel button enables during a legal Dodge response.
+- Clicking it selects `zhen_ji_black_card_dodge`.
+- The button shows an active state.
+- Only eligible black cards can be selected for that provider.
+- Normal Dodge card selection still works.
+- Bottom response UI contains only `CONFIRM` and `SKIP`.
+- No duplicate provider-specific activation button is rendered.
+- `CONFIRM` is disabled until the selected response is complete.
+- Switching between a hero-skill provider and a physical response clears incompatible stale selection.
+- `SKIP` still performs the existing decline action.
+- Play Phase still renders `PLAY` / `END`.
+- Hero skill buttons are disabled when their canonical capability is not currently legal.
+
 ## Required visual checks
 
 Review approximately:
@@ -199,6 +277,10 @@ Confirm:
 13. Action row remains `48px` on mobile.
 14. No horizontal page overflow.
 15. Opponents, board, Draw and Discard remain unchanged.
+16. Legal response hero skills enable in the Skills panel.
+17. Response bottom row shows only `CONFIRM` and `SKIP`.
+18. `CONFIRM` enables only for a complete legal response selection.
+19. Normal Play Phase still shows `PLAY` and `END`.
 
 ## Validation required before completion
 
@@ -218,6 +300,8 @@ After validation, report:
 - files changed
 - exact Hand peek-height change
 - exact Judgement spacing fix
+- hero-skill response wiring changes
+- response bottom-row simplification to `CONFIRM` / `SKIP`
 - build result
 - test result
 - lint result
