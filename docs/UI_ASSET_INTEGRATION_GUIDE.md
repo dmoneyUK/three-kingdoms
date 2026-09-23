@@ -34,11 +34,13 @@ Do **not** use concept/mock-up sheets directly. Only isolated production assets 
 
 All staged UI assets belong under:
 
-`public/assets/ui/`
+\`public/assets/ui/\`
 
-Current approved asset set:
+The asset list is deliberately split into **production**, **reference-only**, and **blocked** groups. Coding agents must not infer status from filenames alone.
 
-```text
+### 2.1 Production assets — allowed in runtime UI
+
+\`\`\`text
 public/assets/ui/
   game-board-bg.webp
   game-board-frame.svg
@@ -46,27 +48,109 @@ public/assets/ui/
   card-frame-gold.svg
   other-player-frame-asymmetric.webp
   other-player-frame-symmetric.webp
-  other-player-frame-asymmetric-reference.webp
-  local-player-frame-ornate-reference.webp
   local-player-frame.webp
-  button-primary.webp
   button-secondary.svg
+\`\`\`
+
+These are the only assets currently approved for direct runtime use.
+
+### 2.2 Reference-only assets — NEVER import into runtime UI
+
+\`\`\`text
+public/assets/ui/
+  other-player-frame-asymmetric-reference.webp
   deck-panel-concept-reference.webp
-```
+\`\`\`
 
-Naming rule: lowercase kebab-case, named by UI function rather than generation prompt.
+Reference assets exist only to communicate visual intent. They may contain baked text, baked state, a non-transparent background, or proportions unsuitable for direct rendering.
 
-### Why frames are SVG
+**Hard rule:** no production component may reference a filename containing \`-reference\`.
 
-The board and card frames are deliberately separate scalable SVG overlays instead of being baked into the background images. This allows:
+### 2.3 Blocked / missing production assets
+
+Do not invent or substitute these:
+
+\`\`\`text
+button-primary            BLOCKED — prior file was an accidental duplicate and has been removed
+deck-panel-frame          MISSING — concept reference exists, production frame does not
+discard-panel treatment   NOT YET APPROVED
+destructive/end button    NOT YET APPROVED
+\`\`\`
+
+Until a blocked asset is supplied:
+- keep the existing CSS presentation for that UI element,
+- do not reuse another asset merely because it looks similar,
+- do not crop a concept/reference image into a substitute,
+- do not claim the full visual integration complete.
+
+### 2.4 Naming rule
+
+Use lowercase kebab-case and name assets by UI function rather than generation prompt.
+
+### 2.5 Why frames are SVG when practical
+
+Scalable frames are preferred where the artwork is mostly border/ornament because this gives:
 - crisp rendering at different sizes,
 - easier responsive adjustment,
-- reuse of the same card frame for front and back,
-- independent replacement of artwork and frame,
-- no need to generate a separate framed bitmap for every card.
+- reuse across front/back card surfaces,
+- independent replacement of artwork and frame.
+
+### 2.6 Exact runtime integration map
+
+The current game implementation is concentrated in these files:
+
+\`\`\`text
+app/page.tsx
+app/globals.css
+app/sequence-overrides.css
+\`\`\`
+
+Use the current components/classes rather than creating a parallel UI.
+
+Current integration targets:
+
+\`\`\`text
+Main board
+  -> existing .play-table / game-shell play surface
+
+Opponent players
+  -> .player-board
+  -> .player-square-\${relativeIndex}
+
+Deck / discard
+  -> .play-center
+  -> .draw-stack
+  -> .discard-stack
+
+Local player HUD
+  -> LocalPlayerDock
+  -> .local-player-dock
+
+Hand cards
+  -> .game-card
+
+Visible table / discard / equipment / judgement cards
+  -> CardFace
+  -> .played-card
+
+Primary action buttons
+  -> existing .primary
+  -> keep current styling until a valid production primary-button asset exists
+
+Secondary neutral actions
+  -> existing neutral/decline controls where semantically appropriate
+  -> button-secondary.svg
+
+Destructive / end-turn actions
+  -> existing .end
+  -> keep current styling until a dedicated asset is approved
+\`\`\`
+
+Do not change game-state logic, response flow, information visibility, or animation anchors as part of asset integration.
 
 ---
 
+# 3. Main game board
 # 3. Main game board
 
 ## 3.1 `game-board-bg.webp`
@@ -282,6 +366,29 @@ Scaled-down contexts may need a simplified CSS treatment if the decorative corne
 
 ---
 
+## 4.3.1 Current card render paths — BOTH must be handled
+
+The current UI does not have only one visual card path.
+
+\`\`\`text
+Local hand cards
+  -> .game-card
+
+Visible table/discard/equipment/judgement cards
+  -> CardFace
+  -> .played-card
+\`\`\`
+
+The final card skin is incomplete if only \`.game-card\` is updated.
+
+When applying \`card-frame-gold.svg\`:
+- integrate it with the existing hand-card structure,
+- integrate it with \`CardFace\` / \`.played-card\`,
+- preserve \`CardFace\` sizing used by discard, equipment and judgement,
+- do not break animation classes or settlement/landing calculations in \`app/sequence-overrides.css\`.
+
+---
+
 ## 4.4 Suit/rank priority
 
 The current game renders suit/rank in the upper-left area. Gameplay information has priority over ornament.
@@ -437,6 +544,16 @@ If the asset details become visually dense at the smallest mobile size, reduce t
 
 ## 5.6 Positional mapping
 
+The current implementation renders opponents as \`.player-square-\${relativeIndex}\` inside \`.player-board\`.
+
+For a normal four-player table:
+
+\`\`\`text
+.player-square-1 -> left opponent
+.player-square-2 -> top opponent
+.player-square-3 -> right opponent
+\`\`\`
+
 For the current three-opponent board:
 
 ```text
@@ -457,102 +574,31 @@ The same player component should select only the decorative frame variant from s
 
 ---
 
-# 6. Local-player / bottom-area frame reference
+# 6. Local-player / bottom HUD frame
 
-## 6.1 `local-player-frame-ornate-reference.webp`
-
-### Purpose
-Staged ornate reference for the local player's bottom control area.
+## 6.1 \`local-player-frame.webp\`
 
 ### Status
-**REFERENCE / DRAFT — do not render directly in the final game unless the user later promotes it to production.**
+**PRODUCTION — approved for runtime use.**
 
-This asset explores how the dark-green / antique-gold / ink-cloud visual language can wrap the local player's bottom section.
+### Purpose
+Decorative outer frame for the existing \`LocalPlayerDock\` / \`.local-player-dock\`.
 
-### Why it is not currently the production frame
-The current bottom area is a wide functional layout containing:
-- hero panel,
-- HP / role panel,
+The existing bottom HUD structure remains authoritative. The frame is presentation only.
+
+### Existing live regions that must remain code-driven
+- hero card and hero info,
+- HP / role / status,
 - equipment,
 - judgement,
 - hand cards,
-- action/status bar,
-- Play / End controls.
+- action / phase text,
+- Play / End / response controls.
 
-The source artwork is substantially taller and more decorative than the existing bottom layout. The coding agent must **not rebuild or enlarge the live bottom UI to fit this artwork**.
+### Required implementation model
 
-### If this design is later promoted
-Use it only as a non-interactive decorative layer around the existing local-player content:
-
-```tsx
-<div className="local-player-area">
-  <img
-    className="local-player-frame-art"
-    src="/assets/ui/local-player-frame-ornate-reference.webp"
-    alt=""
-    aria-hidden="true"
-  />
-  <div className="local-player-content">
-    {/* existing hero / HP / equips / judgement / hand / action UI */}
-  </div>
-</div>
-```
-
-```css
-.local-player-area {
-  position: relative;
-}
-
-.local-player-frame-art {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.local-player-content {
-  position: relative;
-  z-index: 1;
-}
-```
-
-### Hard constraints
-- do not bake hero name, HP, role, equipment, judgement, hand cards, action text or buttons into the image,
-- do not let the decorative frame capture pointer/touch events,
-- do not move or resize gameplay regions solely to match the source image,
-- preserve current mobile portrait behavior,
-- preserve current bottom-panel touch targets,
-- prefer the production asset below for the final implementation; keep this ornate file as visual reference only.
-
----
-
-## 6.2 `local-player-frame.webp`
-
-### Purpose
-**Production local-player / bottom-HUD decorative frame.**
-
-This is the approved wide, shallow frame intended to wrap the existing local-player area without changing its gameplay structure.
-
-### Asset characteristics
-- transparent center and transparent exterior,
-- wide horizontal proportion suitable for the existing bottom HUD,
-- dark green / black textured rails,
-- antique-gold border treatment,
-- restrained geometric corner details,
-- cloud and mountain ornament concentrated near edges,
-- small central lower emblem,
-- no text,
-- no hero portrait,
-- no baked HP/role/equipment/judgement/card/button content.
-
-### Required integration model
-
-The existing bottom player UI remains authoritative. Add this asset only as a decorative layer:
-
-```tsx
-<div className="local-player-area">
+\`\`\`tsx
+<section className="local-player-dock">
   <img
     className="local-player-frame-art"
     src="/assets/ui/local-player-frame.webp"
@@ -560,16 +606,16 @@ The existing bottom player UI remains authoritative. Add this asset only as a de
     aria-hidden="true"
   />
 
-  <div className="local-player-content">
-    {/* existing hero / HP / role / equipment / judgement / hand / action UI */}
-  </div>
-</div>
-```
+  {/* existing LocalPlayerDock content stays intact */}
+</section>
+\`\`\`
 
-Recommended CSS concept:
+Adapt this idea to the current component rather than wrapping it in a second competing dock implementation.
 
-```css
-.local-player-area {
+Recommended CSS principles:
+
+\`\`\`css
+.local-player-dock {
   position: relative;
 }
 
@@ -582,146 +628,50 @@ Recommended CSS concept:
   pointer-events: none;
   z-index: 0;
 }
+\`\`\`
 
-.local-player-content {
-  position: relative;
-  z-index: 1;
-}
-```
+Existing interactive/live content must remain above the decorative layer.
 
-### Coding-agent rules
-- keep the current hero block,
-- keep the current HP / role panel,
-- keep equipment and judgement as separate live regions,
-- keep hand-card rendering unchanged except for later approved card-frame styling,
-- keep current phase/action text and Play/End controls live,
-- do not put the action buttons inside the image,
-- do not move controls to match decorative ornament,
-- do not derive spacing from the source image dimensions,
-- fit the decoration to the existing bottom HUD,
-- if needed, tune only safe internal padding so ornament does not overlap live content,
-- all pointer/touch interaction belongs to the current UI, never the frame asset.
-
-### Responsive acceptance criteria
-On mobile portrait and desktop:
-- the outer frame follows the existing local-player region,
-- no page-level horizontal overflow is introduced,
-- hero/HP/equipment/judgement/hand/action controls remain readable,
-- no decorative mountain/cloud/medallion covers cards or buttons,
-- existing touch targets remain the same or larger,
-- frame does not distort gameplay layout.
+### Hard constraints
+- do not change the current \`LocalPlayerDock\` grid just to match the source artwork,
+- do not change hand-card interaction or selected-rise behavior,
+- do not move equipment/judgement landing anchors,
+- do not bake hero/HP/role/equipment/judgement/hand/button content into the frame,
+- preserve mobile portrait behavior and current touch targets,
+- decoration must never capture pointer events.
 
 ---
 
 # 7. Primary button
 
-## 7.1 `button-primary.webp`
+## 7.1 Status
 
-### Purpose
-Production reusable visual skin for the game's **primary / positive action button**.
+**BLOCKED — no valid production primary-button asset is currently present.**
 
-Use it for the highest-priority positive action in a context, for example:
+The previous \`button-primary.webp\` was byte-for-byte identical to \`local-player-frame.webp\`, proving it was an accidental duplicate rather than a valid primary button asset. The invalid file has been removed from the repository.
+
+### Current coding-agent rule
+
+Keep existing \`.primary\` button styling until a new primary-button asset is explicitly approved.
+
+Do not:
+- substitute \`local-player-frame.webp\`,
+- use \`button-secondary.svg\` as the primary style,
+- crop a reference image,
+- create a guessed production asset during the integration pass.
+
+When a valid primary asset is later added, the intended semantics remain:
 - Play,
 - Confirm,
 - OK / Continue,
 - Use,
 - Select.
 
-The image contains decoration only. Button text, click handling, disabled state, focus semantics and game logic remain live HTML/CSS/React behavior.
-
-### Required implementation model
-
-Do not replace a real `<button>` with an image.
-
-Recommended structure:
-
-```tsx
-<button className="game-button game-button--primary">
-  <img
-    className="game-button-art"
-    src="/assets/ui/button-primary.webp"
-    alt=""
-    aria-hidden="true"
-  />
-
-  <span className="game-button-label">
-    {label}
-  </span>
-</button>
-```
-
-Recommended CSS concept:
-
-```css
-.game-button {
-  position: relative;
-  border: 0;
-  background: transparent;
-  min-height: 44px;
-}
-
-.game-button-art {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: fill;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.game-button-label {
-  position: relative;
-  z-index: 1;
-}
-```
-
-### Important behavior rules
-
-The real button element must continue to own:
-- click / tap handling,
-- keyboard activation,
-- focus state,
-- disabled state,
-- ARIA semantics,
-- game action dispatch,
-- tooltip behavior where applicable.
-
-Do not bake labels such as `PLAY`, `CONFIRM`, `OK`, `USE`, or `SELECT` into the image.
-
-### State styling
-
-Reuse the same asset for normal button states. Keep state differences CSS-driven.
-
-Examples:
-- hover: subtle brightness / glow,
-- pressed: small scale or inset effect,
-- focus-visible: accessible outline outside the decorative artwork,
-- disabled: reduced opacity / saturation and disabled cursor.
-
-Do not generate separate bitmap assets merely for hover, pressed or disabled states.
-
-### Sizing / responsive constraints
-
-The existing gameplay button size and touch target remain authoritative.
-
-The source artwork is wider and more ornate than some current mobile buttons. Therefore:
-- do not make the UI wider just to preserve all decorative detail,
-- do not shrink the live label until it becomes hard to read,
-- keep a practical minimum touch target,
-- fit/crop the decorative art to the existing button container,
-- if the side ornament becomes too dense at very small sizes, prefer a later simplified small-button asset rather than changing gameplay layout.
-
-### Do not use this asset for
-
-- destructive / end-turn styling when a dedicated destructive style exists,
-- Skip / Cancel when a secondary style exists,
-- static labels,
-- generic panels,
-- player frames.
+Text, click handling, disabled state, focus behavior, ARIA semantics and game action dispatch must remain on the real HTML \`<button>\`.
 
 ---
 
+# 8. Secondary button
 # 8. Secondary button
 
 ## 8.1 `button-secondary.svg`
@@ -921,22 +871,34 @@ When the user eventually asks for the complete asset implementation:
 
 ---
 
-# 13. Assets still to be designed
+# 13. Assets still to be designed / resolved
 
-Do not invent missing assets.
+The final visual pass remains blocked on the following decisions/assets:
 
-Expected future items:
-- equipment-slot treatment,
-- judgement-area treatment,
-- production deck-panel frame,
-- discard presentation treatment if needed,
-- destructive button style if needed,
-- generic panel frame,
-- modal / response-window frame,
-- small ornamental separators if needed.
+\`\`\`text
+1. Primary button production asset
+   - invalid duplicate removed
+   - must be regenerated/re-approved
+
+2. Deck panel production frame
+   - deck-panel-concept-reference.webp is reference-only
+   - production frame must contain no baked card, count, or DECK text
+
+3. Discard treatment
+   - decide whether a dedicated frame is needed or current CardFace treatment is sufficient
+
+4. Destructive / end-turn button treatment
+   - current .end CSS remains authoritative until approved
+
+5. Optional suit/status icon refinements
+   - only if they improve readability without replacing live game state
+\`\`\`
+
+Do not invent missing production assets during the implementation pass.
 
 ---
 
+# 14. Update protocol
 # 14. Update protocol
 
 Every approved future asset must update this same file.
@@ -1072,6 +1034,87 @@ Decisions:
 
 # 16. Final asset-pass instruction
 
-**Do not perform the broad visual rewrite yet.**
+## 16.1 Execution gate
 
-Continue staging approved assets and updating this guide. When the user explicitly says the asset set is ready and asks the coding agent to apply it, use this document as the implementation contract and perform one coherent integration pass.
+Do **not** begin the full visual integration while any item in section 2.3 or section 13 is still required for the user's intended final look.
+
+When the user explicitly says the asset set is complete and requests integration, first re-read this guide and verify the production manifest against \`public/assets/ui/\`.
+
+Reference-only files must never be imported.
+
+## 16.2 Required implementation order
+
+\`\`\`text
+1. Main board background + board frame
+2. Opponent decorative frames
+3. LocalPlayerDock decorative frame
+4. Shared card frame on BOTH .game-card and CardFace/.played-card paths
+5. Secondary button skin
+6. Newly approved primary/deck/discard/destructive assets, if present
+7. Responsive and animation-anchor regression pass
+\`\`\`
+
+## 16.3 Exact code boundaries to preserve
+
+Do not rewrite or fork:
+- \`LocalPlayerDock\`,
+- opponent/player state rendering,
+- \`CardFace\`,
+- deck/discard state,
+- response/trigger flows,
+- hidden-information rules,
+- card-flight, judgement, equipment or discard animation anchors.
+
+Decoration adapts to these structures.
+
+## 16.4 Final validation checklist
+
+Before declaring the final visual pass complete, verify:
+
+\`\`\`text
+[ ] production manifest matches files in public/assets/ui
+[ ] no runtime import contains "-reference"
+[ ] no blocked asset was substituted with another asset
+
+[ ] game-board-bg applied
+[ ] game-board-frame applied
+[ ] left opponent uses asymmetric frame
+[ ] top opponent uses symmetric frame
+[ ] right opponent uses asymmetric frame, decoration mirrored only if needed
+[ ] LocalPlayerDock frame applied without changing its grid
+
+[ ] .game-card path styled
+[ ] CardFace/.played-card path styled
+[ ] discard CardFace still readable
+[ ] equipment mini-card presentations still readable
+[ ] judgement presentations still readable
+[ ] suit/rank remains readable
+
+[ ] primary buttons remain on existing CSS if no approved primary asset exists
+[ ] secondary button asset used only for neutral/secondary semantics
+[ ] .end styling remains intact unless a destructive asset is approved
+
+[ ] mobile portrait checked
+[ ] desktop checked
+[ ] Quick Test checked
+[ ] human multiplayer checked
+[ ] left/top/right opponents checked
+[ ] hand cards checked
+[ ] selected/playable/disabled card states checked
+[ ] target highlights checked
+[ ] deck/discard checked
+[ ] response dialogs checked
+
+[ ] no decorative layer captures pointer/touch events
+[ ] no hidden information is exposed
+[ ] no page-level horizontal overflow introduced
+[ ] card/equipment/judgement/discard animation anchors still land correctly
+
+[ ] npm build passes
+[ ] full tests pass
+[ ] lint passes
+[ ] git diff --check passes
+\`\`\`
+
+If a validation fails, fix the visual integration without changing game rules or protocol behavior.
+
