@@ -430,21 +430,22 @@
 
 /* LocalPlayerDock layout. Each visible region owns its complete panel border. */
 .local-player-dock {
-  --hand-panel-height: 72px;
-  --hand-peek-height: 56px;
+  --hand-panel-height: 108px;
+  --hand-peek-height: 84px;
   --hand-card-height: 102px;
   --hand-top-inset: 4px;
   --selected-rise: 48px;
   --hand-bottom-gutter: 10px;
-  --status-panel-width: clamp(72px, 19vw, 92px);
+  --top-panel-height: 124px;
   --zone-card-width: clamp(28px, 7.6vw, 34px);
   --zone-card-height: calc(var(--zone-card-width) * 1.5);
   --zone-card-gap: clamp(3px, 1vw, 6px);
+  --judgement-panel-width: calc(var(--zone-card-width) + var(--zone-card-width) + var(--zone-card-gap) + 8px);
   --top-panel-gap: 3px;
   position: relative;
   display: grid;
-  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
-  grid-template-rows: auto var(--hand-panel-height) 54px;
+  grid-template-columns: minmax(198px, 253px) minmax(0, 1fr);
+  grid-template-rows: var(--top-panel-height) var(--hand-panel-height) 65px;
   grid-template-areas:
     "identity zones"
     "identity hand"
@@ -483,9 +484,9 @@
 }
 
 .local-hero-card {
-  flex: 0 0 108px;
-  width: 72px;
-  height: 108px;
+  flex: 0 0 auto;
+  width: min(100%, 72px);
+  height: auto;
   aspect-ratio: 2 / 3;
   padding: 0;
   border: 1px solid #c5a45f;
@@ -513,19 +514,29 @@
 .local-hero-portrait span { font: 700 8px/1.15 Georgia, serif; letter-spacing: .04em; text-transform: uppercase; }
 .local-hero-portrait > .hero-art-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .local-hero-portrait > .hero-art-fallback { position: absolute; inset: 0; display: grid; place-items: center; }
-.local-hero-portrait > .local-hero-label { position: absolute; inset: auto 0 0; z-index: 1; }
-.local-hero-skill { width: 100%; min-width: 0; }
+.local-hero-overlay { position: absolute; inset: auto 0 0; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 14px 3px 3px; background: linear-gradient(180deg, transparent 0%, #080b09df 38%, #080b09f2 100%); }
+.local-hero-vitals { display: flex; flex-direction: column; align-items: center; gap: 1px; width: 100%; }
+.local-hero-label,
+.local-hero-vitals,
+.local-hero-hp,
+.local-hero-hearts,
+.local-hero-role { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-hero-label { position: static; color: #f4e6bd; font: 700 clamp(7px, 2vw, 10px)/1.1 Georgia, serif !important; letter-spacing: .02em !important; }
+.local-hero-hp { color: #ead6a1; font: 700 clamp(6px, 1.8vw, 9px)/1 Arial, sans-serif; letter-spacing: .02em; }
+.local-hero-hearts { color: #f0d28c; font: clamp(6px, 1.8vw, 9px)/1 Arial, sans-serif; letter-spacing: .01em; }
+.local-hero-role { color: #fff0b4; font: 800 clamp(8px, 2.4vw, 12px)/1 Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; text-shadow: 0 1px 3px #000; }
 .local-hero-skills { display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0; padding: 0; border: 0; background: transparent; }
-.local-hero-skills .hero-skill-button { width: 100%; min-height: 22px; padding: 4px 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 7px; }
+.local-hero-skills .hero-skill-button { width: 100%; min-height: 24px; padding: 4px 3px; overflow: hidden; text-overflow: ellipsis; white-space: normal; font-size: clamp(6px, 1.8vw, 9px); line-height: 1.05; }
 
 .local-dock-zones {
   grid-area: zones;
   display: grid;
-  grid-template-columns: var(--status-panel-width) max-content calc(var(--zone-card-width) + var(--zone-card-width) + var(--zone-card-gap) + 8px);
+  grid-template-columns: minmax(0, 1fr) max-content var(--judgement-panel-width);
   align-items: stretch;
   gap: var(--top-panel-gap);
   min-width: 0;
   min-height: 0;
+  height: var(--top-panel-height);
   position: relative;
   z-index: 10;
 }
@@ -541,25 +552,17 @@
 
 .local-status-panel {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: clamp(2px, .8vw, 5px);
+  gap: 0;
   min-width: 0;
   padding: 4px;
-  overflow: hidden;
+  overflow: visible;
   color: #e5d19b;
   text-align: center;
   letter-spacing: .05em;
   text-transform: uppercase;
 }
-
-.local-status-hp,
-.local-status-hearts,
-.local-status-role { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.local-status-hp { color: #d8c18b; font: 700 clamp(7px, 2.1vw, 9px)/1 Arial, sans-serif; letter-spacing: .03em; text-transform: none; }
-.local-status-hearts { color: #f0d28c; font: clamp(7px, 2vw, 9px)/1 Arial, sans-serif; letter-spacing: .02em; }
-.local-status-role { color: #f0d28c; font: 700 clamp(7px, 2vw, 9px)/1 Arial, sans-serif; letter-spacing: .05em; }
 
 .local-equipment-panel,
 .local-judgement-panel {
@@ -572,7 +575,7 @@
 .local-equipment-slot,
 .local-judgement-card-slot { display: block; position: relative; flex: 0 0 var(--zone-card-width); width: var(--zone-card-width); height: var(--zone-card-height); min-width: 0; min-height: 0; }
 
-.local-judgement-panel { overflow: hidden; }
+.local-judgement-panel { width: var(--judgement-panel-width); overflow: hidden; }
 .local-judgement-cards { display: flex; align-items: center; width: 100%; height: 100%; min-width: 0; overflow: visible; }
 .local-judgement-card-slot { flex-basis: var(--zone-card-width); width: var(--zone-card-width); height: var(--zone-card-height); }
 
@@ -615,7 +618,7 @@
 .local-hand-rail .game-card .corner { width: 17px; min-height: 23px; padding: 1px 1px 4px; border-width: 1px; border-radius: 0 0 5px 0; font-size: 8px; }
 .local-hand-rail .game-card .corner i { font-size: 7px; }
 
-.local-player-dock .turn-controls { position: relative; grid-area: actions; z-index: 100; min-height: 54px; height: 54px; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
+.local-player-dock .turn-controls { position: relative; grid-area: actions; z-index: 100; min-height: 65px; height: 65px; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
 .local-player-dock .turn-controls > span { min-width: 0; overflow: hidden; white-space: normal; }
 .local-player-dock .turn-controls > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
 .local-player-dock .turn-controls button { min-width: 78px; min-height: 32px; padding: 5px 8px; font-size: 8px; }
@@ -625,18 +628,17 @@
      still owns the centred piles and all four player slots; the lower empty
      track is simply smaller so the side seats do not float too far above the
      local dock. */
-  .local-player-dock { grid-template-columns: 110px minmax(0, 1fr); grid-template-rows: auto var(--hand-panel-height) 52px; }
+  .local-player-dock { --top-panel-height: 116px; grid-template-columns: 121px minmax(0, 1fr); grid-template-rows: var(--top-panel-height) var(--hand-panel-height) 62px; }
 }
 
 @media (max-width: 480px) {
   .game-shell .play-command { padding: 4px 6px 5px; }
-  .local-player-dock { grid-template-columns: 64px minmax(0, 1fr); grid-template-rows: auto var(--hand-panel-height) 40px; padding: 0; }
-  .local-dock-identity { grid-row: span 2; }
-  .local-hero-card { flex-basis: 78px; width: 52px; height: 78px; }
+  .local-player-dock { --top-panel-height: 58px; grid-template-columns: 70px minmax(0, 1fr); grid-template-rows: var(--top-panel-height) var(--hand-panel-height) 48px; padding: 0; }
+  .local-dock-identity { grid-row: span 2; align-items: stretch; }
+  .local-hero-card { flex-basis: auto; width: 100%; max-width: 72px; height: auto; }
   .local-dock-identity { gap: 2px; padding: 3px; }
   .local-hero-skills { gap: 2px; }
-  .local-hero-skills .hero-skill-button { min-height: 18px; padding: 3px 2px; font-size: 6px; }
-  .local-dock-zones { grid-template-columns: var(--status-panel-width) max-content calc(var(--zone-card-width) + var(--zone-card-width) + var(--zone-card-gap) + 8px); }
+  .local-hero-skills .hero-skill-button { min-height: 22px; padding: 3px 2px; font-size: clamp(6px, 1.8vw, 8px); }
   .player-board { grid-template-rows: minmax(100px, 1fr) auto minmax(70px, .35fr); }
   .player-square-target,
   .player-hero-card .player-square-target { padding-inline: 0; padding-right: 0; }
@@ -644,14 +646,13 @@
   .local-status-panel,
   .local-equipment-panel,
   .local-judgement-panel { padding: 3px; }
-  .local-player-dock .turn-controls { min-height: 40px; height: 40px; padding: 4px 5px; gap: 4px; }
+  .local-player-dock .turn-controls { min-height: 48px; height: 48px; padding: 5px; gap: 4px; }
   .local-player-dock .turn-controls button { min-width: 78px; min-height: 28px; padding: 4px 5px; font-size: 7px; }
 }
 
 @media (max-width: 360px) {
-  .local-player-dock { grid-template-columns: 58px minmax(0, 1fr); }
-  .local-hero-card { width: 50px; height: 75px; flex-basis: 75px; }
-  .local-dock-zones { grid-template-columns: 64px max-content calc(var(--zone-card-width) + var(--zone-card-width) + var(--zone-card-gap) + 4px); gap: 2px; }
+  .local-player-dock { grid-template-columns: 64px minmax(0, 1fr); }
+  .local-dock-zones { gap: 2px; }
   .local-equipment-panel,
   .local-judgement-panel { padding: 2px; }
 }

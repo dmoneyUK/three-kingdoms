@@ -1,5 +1,31 @@
 # Three Kingdoms
 
+## Local player panel resize — 2026-09-23
+
+Refined the existing LocalPlayerDock presentation without changing gameplay.
+The phone hero column is about 10% wider, the hero card fills its available
+column while preserving a 2:3 ratio, and the hero card now carries the hero
+name, HP, hearts, and a more prominent role label. Projected hero skill
+buttons remain the same semantic controls but now occupy the flexible Skills
+panel between the hero and Equipment.
+
+Equipment remains four compact slots immediately left of the compact,
+right-edge Judgement panel. The hand panel is now 108px tall with an 84px
+peek rail while physical hand cards remain 102px; the mobile action row is
+48px. The mobile Skills/Equipment/Judgement row is 58px, so the 2:3 hero
+card can span the top and hand rows without making the dock consume half the
+screen. Opponent panels, board piles, and all rules/actions are unchanged.
+
+Render coverage now protects the hero-card metadata relocation, vertical
+skills panel, responsive column math, 2:3 hero sizing, hand dimensions, and
+48px mobile actions. Live review at approximately 320px, 390px, and 430px
+showed no horizontal overflow, a right-edge Judgement panel, and no half-width
+local player column.
+
+Current stage: Stage 7 product polish, local player panel resize complete.
+The next milestone is final graphic/theme polish and approved artwork intake
+for remaining fallback heroes.
+
 ## Zhou Yu Sowing Distrust UI regression — 2026-09-23
 
 Fixed the LocalPlayerDock semantic mapping so Zhou Yu's printed Sowing Distrust

@@ -153,7 +153,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \.hero-art-image \{[^}]*object-fit: cover; object-position: center top;/, "opponent artwork uses cover framing");
   assert.doesNotMatch(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(44px, 8vw, 92px\)/, "opponent portraits do not regress to the shallow mobile rule");
   assert.match(gameRoomSource, /<HeroPortrait hero=\{playerHero\} \/>/, "opponents use the shared HeroPortrait renderer");
-  assert.match(html, /class="local-status-panel"[\s\S]*class="local-status-hp">HP 4\/4<\/span>[\s\S]*class="local-status-hearts">♥♥♥♥<\/span>[\s\S]*class="local-status-role">Lord<\/strong>/);
+  assert.match(html, /class="local-hero-card"[\s\S]*class="local-hero-hp">HP 4\/4<\/span>[\s\S]*class="local-hero-hearts">♥♥♥♥<\/span>[\s\S]*class="local-hero-role">Lord<\/strong>[\s\S]*class="local-hero-label">Cao Cao<\/span>/, "local hero card owns HP, hearts, role, and name");
+  assert.match(html, /class="local-status-panel"[\s\S]*class="hero-skills local-hero-skills"[\s\S]*>Treachery<\/button>[\s\S]*>Entourage<\/button>/, "local skills move into the flexible top panel");
+  assert.doesNotMatch(html, /class="local-status-panel"[\s\S]*local-status-hp|class="local-status-panel"[\s\S]*local-status-hearts|class="local-status-panel"[\s\S]*local-status-role/);
   assert.equal((html.match(/class="hero-skill-button/g) ?? []).length, 2, "Cao Cao exposes one button per metadata skill");
   assert.match(html, />Treachery<\/button>[\s\S]*>Entourage<\/button>/);
   assert.doesNotMatch(html, />Skill<\/button>/, "known hero skills never fall back to a generic label");
@@ -210,11 +212,12 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(sequenceSource, /Math\.(sin|cos)|activeAngle|activeRadians|--seat-[xy]/, "resolution placement is not circular seat geometry");
   assert.match(sequenceSource, /centerRelativeToTable/);
   assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-judgement-panel,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
-  assert.match(sequenceStyleSource, /--hand-panel-height: 72px[\s\S]*--hand-peek-height: 56px[\s\S]*--hand-card-height: 102px[\s\S]*--hand-top-inset: 4px[\s\S]*--selected-rise: 48px[\s\S]*--hand-bottom-gutter: 10px/);
+  assert.match(sequenceStyleSource, /--hand-panel-height: 108px[\s\S]*--hand-peek-height: 84px[\s\S]*--hand-card-height: 102px[\s\S]*--hand-top-inset: 4px[\s\S]*--selected-rise: 48px[\s\S]*--hand-bottom-gutter: 10px/);
   assert.match(sequenceStyleSource, /hand-top-inset - selected-rise \+ hand-card-height[\s\S]*hand-panel-height - hand-bottom-gutter/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\)[\s\S]*grid-template-rows: auto var\(--hand-panel-height\) 40px/);
-  assert.match(sequenceStyleSource, /--status-panel-width: clamp\(72px, 19vw, 92px\)[\s\S]*--zone-card-width: clamp\(28px, 7\.6vw, 34px\)/);
-  assert.match(sequenceStyleSource, /\.local-dock-zones\s*\{[\s\S]*grid-template-columns: var\(--status-panel-width\) max-content calc\(var\(--zone-card-width\) \+ var\(--zone-card-width\) \+ var\(--zone-card-gap\) \+ 8px\)/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*--top-panel-height: 58px[\s\S]*grid-template-columns: 70px minmax\(0, 1fr\)[\s\S]*grid-template-rows: var\(--top-panel-height\) var\(--hand-panel-height\) 48px/);
+  assert.match(sequenceStyleSource, /--top-panel-height: 124px[\s\S]*--zone-card-width: clamp\(28px, 7\.6vw, 34px\)/);
+  assert.match(sequenceStyleSource, /\.local-dock-zones\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\) max-content var\(--judgement-panel-width\)[\s\S]*height: var\(--top-panel-height\)/);
+  assert.match(sequenceStyleSource, /--judgement-panel-width: calc\(var\(--zone-card-width\) \+ var\(--zone-card-width\) \+ var\(--zone-card-gap\) \+ 8px\)/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
   assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-judgement-panel,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
   assert.match(sequenceStyleSource, /\.local-hand-rail\s*\{[\s\S]*top: 0[\s\S]*height: var\(--hand-peek-height\)[\s\S]*overflow: visible/);
@@ -230,11 +233,16 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(globalStyleSource, /\.player-square\{[\s\S]*aspect-ratio:2 \/ 3[\s\S]*width:100%[\s\S]*@media\(max-width:700px\)[\s\S]*\.player-square\{width:clamp\(92px,26vw,112px\)/);
   assert.doesNotMatch(globalStyleSource, /Final mobile player panels/);
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
-  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*min-height: 54px[\s\S]*padding: 7px 8px/);
+  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls\s*\{[\s\S]*min-height: 65px[\s\S]*padding: 7px 8px/);
   assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls button\s*\{[\s\S]*min-width: 78px/);
   assert.match(globalStyleSource, /\.player-hp[\s\S]*\.player-hearts[\s\S]*\.player-hand-count/);
   assert.match(globalStyleSource, /\.mini-equipment-card \.mini-equipment-button > \.played-card[\s\S]*width: 100%[\s\S]*height: 100%/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 58px minmax\(0, 1fr\)/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 360px\)[\s\S]*grid-template-columns: 64px minmax\(0, 1fr\)/);
+  assert.match(sequenceStyleSource, /\.local-hero-card\s*\{[\s\S]*width: min\(100%, 72px\)[\s\S]*height: auto[\s\S]*aspect-ratio: 2 \/ 3/);
+  assert.match(sequenceStyleSource, /\.local-hero-overlay\s*\{[\s\S]*background: linear-gradient/);
+  assert.match(sequenceStyleSource, /\.local-hero-vitals\s*\{[\s\S]*flex-direction: column/);
+  assert.match(sequenceStyleSource, /\.local-status-panel\s*\{[\s\S]*align-items: stretch[\s\S]*overflow: visible/);
+  assert.match(sequenceStyleSource, /\.local-hero-skills\s*\{[\s\S]*flex-direction: column/);
   assert.match(sequenceStyleSource, /\.player-board \{ grid-template-rows: minmax\(100px, 1fr\) auto minmax\(70px, \.35fr\); \}/, "mobile board gives less unused space below the side opponents");
   assert.match(sequenceStyleSource, /\.player-hero-card \.player-square-target \{ padding-inline: 0; padding-right: 0; \}/, "mobile opponent names can use the width reserved from the desktop info button");
   assert.match(sequenceStyleSource, /\.player-square-target strong \{ display: block; width: calc\(100% \+ 4px\); max-width: calc\(100% \+ 4px\); font-size: clamp\(9px, 2\.75vw, 11px\);/, "mobile opponent names get responsive width and sizing before ellipsis");
@@ -244,7 +252,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const switchedHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: switched, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((switchedHtml.match(/class="player-square opponent-player-card/g) ?? []).length, 3, "switching the controlled seat keeps three opponents on the board");
   assert.match(switchedHtml, /data-hero-id="zhang-fei"/);
-  assert.match(switchedHtml, /class="local-status-panel"[\s\S]*class="local-status-role">Loyalist<\/strong>/);
+  assert.match(switchedHtml, /class="local-hero-card"[\s\S]*class="local-hero-role">Loyalist<\/strong>/);
   assert.match(switchedHtml, /Dodge/);
 });
 

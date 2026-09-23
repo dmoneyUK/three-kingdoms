@@ -1,5 +1,36 @@
 # Three Kingdoms project handover
 
+## Local player panel resize — 2026-09-23
+
+The existing LocalPlayerDock was refined in place. At phone breakpoints the
+hero column grows from 64px to 70px (and from 58px to 64px at <=360px), while
+the hero card uses the available content width with an intrinsic 2:3 aspect
+ratio. Hero name, HP, hearts, and role now render in the hero-card overlay;
+the role receives the strongest metadata emphasis. The previous status
+metadata rows were removed from the DOM.
+
+The projected `heroSkillButtons` control now renders in the old status panel,
+stacked vertically, and that panel is the flexible track between the hero and
+the fixed four-slot Equipment panel. Equipment remains immediately left of a
+fixed two-card-capacity Judgement panel that reaches the dock's right edge.
+The top row remains aligned and is approximately 15% taller than the prior
+mobile treatment at 58px. The 2:3 hero card spans the top and hand rows, while
+the dock total remains about 222px at phone widths. Hand sizing is 108px
+panel / 84px peek / 102px physical cards, and the mobile action row is 48px;
+selected-card transforms and z-index behavior remain unchanged.
+
+`tests/room-safety-render.test.mjs` covers the relocated metadata, skill-panel
+markup, 2:3 hero sizing, responsive grid values, unchanged equipment ordering,
+hand sizing, and action-row height. Browser geometry was checked at roughly
+320px, 390px, and 430px: the local dock did not approach half the viewport,
+the hero stayed 2:3, Judgement reached the right edge, and document width did
+not overflow. No opponent, board, deck/discard, rules, or semantic action
+logic changed.
+
+Local validation is still required before commit/push: build, full test suite,
+lint, and `git diff --check`. The next work is final graphic/theme polish and
+approved artwork intake for remaining fallback heroes.
+
 ## Zhou Yu Sowing Distrust UI regression — 2026-09-23
 
 The LocalPlayerDock mapping now associates Zhou Yu's metadata skill

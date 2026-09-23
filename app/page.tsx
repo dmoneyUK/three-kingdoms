@@ -517,15 +517,10 @@ export function LocalPlayerDock({ player, hero, children, heroSkillControl, onHe
   </div>;
   return <section className="local-player-dock" data-player-anchor={player?.id ?? undefined} aria-label="Your player area">
     <div className="local-dock-identity">
-      {hero ? <button type="button" className="local-hero-card" aria-label={`Explain ${hero.name}`} onClick={() => onHeroInfo(hero)}><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-label">{hero.name}</span></span></button> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
-      <div className="local-hero-skill">{heroSkillControl ?? <section className="hero-skills local-hero-skills" aria-label="Hero skills">{fallbackSkills.map((skill) => <button type="button" className="hero-skill-button" key={skill.name} title={skill.description} disabled>{skill.name}</button>)}</section>}</div>
+      {hero ? <button type="button" className="local-hero-card" aria-label={`Explain ${hero.name}`} onClick={() => onHeroInfo(hero)}><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-overlay"><span className="local-hero-vitals"><span className="local-hero-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span><span className="local-hero-hearts">{hpDisplay(player?.hp ?? null)}</span><strong className="local-hero-role">{player?.role ?? "Role pending"}</strong></span><span className="local-hero-label">{hero.name}</span></span></span></button> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
     </div>
     <div className="local-dock-zones" aria-label="Your status and equipment zones">
-      <div className="local-status-panel">
-        <span className="local-status-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span>
-        <span className="local-status-hearts">{hpDisplay(player?.hp ?? null)}</span>
-        <strong className="local-status-role">{player?.role ?? "Role pending"}</strong>
-      </div>
+      <div className="local-status-panel" aria-label="Hero skills">{heroSkillControl ?? <section className="hero-skills local-hero-skills" aria-label="Hero skills">{fallbackSkills.map((skill) => <button type="button" className="hero-skill-button" key={skill.name} title={skill.description} disabled>{skill.name}</button>)}</section>}</div>
       <div className="local-equipment-panel" aria-label="Equipment">
         <div className="local-equipment-slots">{LOCAL_EQUIPMENT_SLOTS.map(({ key }) => { const card = equipmentBySlot.get(key); const selectable = Boolean(card && equipmentSelection); return <div className="local-equipment-slot" key={key} data-slot={key} aria-label={`${slotLabel(key)} slot`} role="group">{card ? renderZoneCard(card, equipmentSelection?.selectedIds.includes(card.id), selectable) : <span className="local-zone-empty" aria-label={`${slotLabel(key)} empty`}><span className="local-zone-empty-label">{slotLabel(key)}</span></span>}</div>; })}</div>
       </div>
