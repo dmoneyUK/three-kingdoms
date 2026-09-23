@@ -1,5 +1,47 @@
 # Three Kingdoms project handover
 
+## Opponent board arc, unclipped zones, and inspection — 2026-09-24
+
+The mobile opponent board remains driven by the existing `relativeIndex`
+mapping in `app/page.tsx` (`1=left`, `2=top`, `3=right`). The appended table
+rules in `app/sequence-overrides.css` convert those seats to one responsive
+absolute arc: shared `--opponent-seat-x`, `--top-seat-y`, and `--side-seat-y`
+variables keep left/right symmetric, while the centred `.play-center` uses a
+lower `clamp(290px, 66%, 520px)` anchor. The local player dock and its CSS were
+not changed.
+
+The previous compact-card clipping came from the opponent card/hero wrapper,
+zone row, and child row combining `overflow: hidden` with a `max-height: 34%`
+constraint. The public zone override permits visible height and wrapping, so
+multiple miniature Equipment/Judgement cards retain their 2:3 shape instead
+of being cropped or laid over one another.
+
+`expandedOpponentId` is presentation-only React state. An opponent hero tap
+opens one bounded battlefield inspection layer; its hero tap closes it, and
+the layer shows full `CardFace` cards in separately labelled Equipment and
+Judgement Zone sections. Compact and expanded card info controls stop event
+propagation. `targetSelectionActive` is computed from the existing selected
+card/skill/trigger state, so target clicks continue to call `onTarget`; the
+inspection handler is used only when no target-selection mode is active. Any
+inspection is cleared when target selection begins, and the layer is bounded
+to the table so it cannot cover the local action dock or leave a hitbox behind.
+
+`tests/room-safety-render.test.mjs` now protects the seat variables, pile
+anchor, public-zone overflow/wrapping rules, inspection state and markup,
+info-button propagation, and target-selection priority. The live browser
+review at 390px, 393px, 402px, and 430px was attempted but was blocked by the
+shared Mac lock; those viewport-specific visual checks remain recommended on
+an unlocked device. Other player counts retain the same relative seat classes
+and no server/rules/projection code was changed.
+
+Validation status for this pass: build passed; fast render/regression tests
+passed 39/39; all 106 API tests passed across four shards; lint and
+`git diff --check` passed. An earlier API attempt hit a temporary Wrangler
+inspector-port collision from the dev server, then the full suite passed after
+that server was stopped. Recommended next work is unlocked-device visual
+review and final graphic/theme polish with approved artwork intake for
+remaining fallback heroes.
+
 ## Current focus — LocalPlayerDock final follow-up
 
 Repository: `dmoneyUK/three-kingdoms`

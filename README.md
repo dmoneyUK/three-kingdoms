@@ -1,5 +1,32 @@
 # Three Kingdoms
 
+## Opponent board arc and inspection — 2026-09-24
+
+Refined the presentation-only mobile table layout while preserving the
+existing relative seat mapping: the top opponent remains centred, side
+opponents share one lower vertical anchor, and the Deck / Discard group moves
+to the lower-middle battlefield. Shared responsive CSS variables keep the
+left/right spacing mirrored and leave the local player dock unchanged.
+
+Compact public Equipment and Judgement cards now wrap without the old zone
+`max-height` and overflow clipping. Opponent taps outside an active target
+selection open one local inspection view showing the hero, HP/hearts,
+Equipment, and Judgement Zone with complete card proportions. A second tap on
+the enlarged hero closes it; info buttons stop propagation and retain their
+existing dialogs. Target-selection mode still owns opponent-card clicks, and
+opening target mode closes any inspection.
+
+Render regressions cover the shared seat variables, lower pile anchor,
+unclipped/wrapping public zones, local inspection state, info-button handling,
+and target-selection priority. The required live browser review was attempted
+but could not run because the shared Mac was locked; deterministic render
+coverage and the repository validation suite are the available evidence for
+this change.
+
+Current stage: Stage 7 product polish, opponent board layout and inspection
+complete pending unlocked-device visual review. The next milestone is final
+graphic/theme polish and approved artwork intake for remaining fallback heroes.
+
 ## Local player panel resize — 2026-09-23
 
 Refined the existing LocalPlayerDock presentation without changing gameplay.

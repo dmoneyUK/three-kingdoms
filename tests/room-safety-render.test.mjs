@@ -148,6 +148,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /data-hero-id="cao-cao"/);
   assert.match(html, /class="player-square-portrait opponent-hero-portrait" data-hero-id="liu-bei"[\s\S]*data-hero-art-id="liu-bei"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
+  assert.match(html, /aria-label="Inspect ALICE"/, "opponent heroes are inspectable when no target is active");
   assert.match(sequenceStyleSource, /\.opponent-player-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "opponents use portrait hero cards");
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \{[\s\S]*height: 100% !important;/, "opponent artwork fills the hero region");
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \.hero-art-image \{[^}]*object-fit: cover; object-position: center top;/, "opponent artwork uses cover framing");
@@ -246,6 +247,19 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.player-board \{ grid-template-rows: minmax\(100px, 1fr\) auto minmax\(70px, \.35fr\); \}/, "mobile board gives less unused space below the side opponents");
   assert.match(sequenceStyleSource, /\.player-hero-card \.player-square-target \{ padding-inline: 0; padding-right: 0; \}/, "mobile opponent names can use the width reserved from the desktop info button");
   assert.match(sequenceStyleSource, /\.player-square-target strong \{ display: block; width: calc\(100% \+ 4px\); max-width: calc\(100% \+ 4px\); font-size: clamp\(9px, 2\.75vw, 11px\);/, "mobile opponent names get responsive width and sizing before ellipsis");
+  assert.match(sequenceStyleSource, /--top-seat-y: clamp\([\s\S]*--side-seat-y: clamp\([\s\S]*--opponent-seat-x: clamp\(/, "opponent seats use shared responsive position variables");
+  assert.match(sequenceStyleSource, /player-square-1 \{[\s\S]*left: var\(--opponent-seat-x\);[\s\S]*top: var\(--side-seat-y\)/, "left opponent uses the shared side seat");
+  assert.match(sequenceStyleSource, /player-square-2 \{[\s\S]*left: 50%;[\s\S]*top: var\(--top-seat-y\)/, "top opponent remains centred");
+  assert.match(sequenceStyleSource, /player-square-3 \{[\s\S]*right: var\(--opponent-seat-x\);[\s\S]*top: var\(--side-seat-y\)/, "right opponent mirrors the left seat");
+  assert.match(sequenceStyleSource, /\.game-shell \.play-center \{[\s\S]*top: clamp\(290px, 66%, 520px\)/, "piles use the lower-middle board anchor");
+  assert.match(sequenceStyleSource, /\.opponent-card-zones \{[\s\S]*max-height: none;[\s\S]*overflow: visible;/, "compact public zones are not clipped by a max-height");
+  assert.match(sequenceStyleSource, /\.opponent-card-zones \.square-zone > div \{[\s\S]*flex-wrap: wrap;[\s\S]*overflow: visible;/, "multiple compact cards wrap instead of covering one another");
+  assert.match(gameRoomSource, /const \[expandedOpponentId, setExpandedOpponentId\] = useState<string \| null>\(null\)/, "inspection is presentation-local state");
+  assert.match(gameRoomSource, /targetSelectionActive \? onTarget : onInspect/, "target selection takes priority over inspection");
+  assert.match(gameRoomSource, /expandedOpponentId && \(\(\) => \{[\s\S]*OpponentInspectionOverlay/, "expanded inspection reuses projected opponent data");
+  assert.match(gameRoomSource, /onClick=\{\(event\) => \{ event\.stopPropagation\(\); onHeroInfo\(playerHero\); \}\}/, "inspection info buttons do not toggle inspection");
+  assert.match(sequenceStyleSource, /\.opponent-inspection-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "expanded public cards preserve aspect ratio");
+  assert.match(sequenceStyleSource, /\.opponent-inspection-card-row \{[\s\S]*flex-wrap: wrap;/, "expanded public cards wrap instead of overlapping");
 
   const switched = normalizeRoomData({ ...payload, code: "DOCK2", meId: "p3", myRole: "Loyalist", myHand: [card("switched-hand", "Dodge")], actionPlayerId: "p3", currentAction: { ...payload.currentAction, actorId: "p3" } });
   assert.ok(switched);

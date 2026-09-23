@@ -340,9 +340,10 @@ type OpponentPlayerCardProps = {
   isTurn: boolean;
   isActionPlayer: boolean;
   isSelectedTarget: boolean;
-  targetInteraction: boolean;
+  targetSelectionActive: boolean;
   targetablePlayer: boolean;
   onTarget: () => void;
+  onInspect: () => void;
   onHeroInfo: (hero: Hero) => void;
   onInfoCard: (card: Card) => void;
   judgementInFlight: ReadonlySet<string>;
@@ -354,18 +355,19 @@ type OpponentPlayerCardProps = {
   onToggleEquipment: (cardId: string) => void;
 };
 
-function OpponentPlayerCard({ player, viewerId, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, targetInteraction, targetablePlayer, onTarget, onHeroInfo, onInfoCard, judgementInFlight, serpentSelected, triggerResponse, triggerSelectionUsesCards, responseDecisionReady, triggerCardOption, onToggleEquipment }: OpponentPlayerCardProps) {
+function OpponentPlayerCard({ player, viewerId, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, targetSelectionActive, targetablePlayer, onTarget, onInspect, onHeroInfo, onInfoCard, judgementInFlight, serpentSelected, triggerResponse, triggerSelectionUsesCards, responseDecisionReady, triggerCardOption, onToggleEquipment }: OpponentPlayerCardProps) {
   const miniEquipment = player.equipmentCards.map((equipment) => <span className="mini-zone-card mini-equipment-card" data-equipment-id={equipment.id} key={equipment.id}>
     <button type="button" className={`mini-equipment-button ${serpentSelected.includes(equipment.id) ? "selected-cost" : ""}`} disabled={!(triggerResponse && triggerSelectionUsesCards) || !responseDecisionReady || player.id !== viewerId || Boolean(triggerCardOption && triggerCardOption.selection?.type === "cards" && !triggerCardOption.selection.eligibleCardIds.includes(equipment.id))} onClick={() => onToggleEquipment(equipment.id)}><CardFace card={equipment} /></button>
     <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(equipment.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(equipment); }}>i</button>
   </span>);
   const miniJudgement = player.judgementCards.map((judgement) => <span className="mini-zone-card judgement-mini" data-judgement-id={judgement.id} key={judgement.id} style={{ visibility: judgementInFlight.has(judgement.id) ? "hidden" : "visible" }}>
     <span><small>{judgement.rank}{judgement.suit}</small><b>{cardDefinition(judgement.kind).name}</b></span>
-    <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(judgement.kind).name}`} onClick={() => onInfoCard(judgement)}>i</button>
+    <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(judgement.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(judgement); }}>i</button>
   </span>);
+  const targetButtonDisabled = targetSelectionActive && (!targetablePlayer || !player.alive);
   return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isActionPlayer ? "action-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${!player.alive ? "defeated-square" : ""}`} data-player-anchor={player.id}>
     <div className="player-hero-card opponent-hero-card">
-      <button type="button" className="player-square-target opponent-hero-target" disabled={!targetInteraction || !player.alive || !targetablePlayer} onClick={onTarget}>
+      <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={`${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`} onClick={targetSelectionActive ? onTarget : onInspect}>
         {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id}><HeroPortrait hero={playerHero} /></span>}
         <span className="opponent-hero-overlay">
           <span className="opponent-player-name">{player.name}</span>
@@ -382,6 +384,25 @@ function OpponentPlayerCard({ player, viewerId, playerHero, relativeIndex, isTur
     </div>
     <div className="opponent-hand-footer"><span className="player-hand-label">Hand cards</span><strong className="player-hand-count">{player.handCount}</strong></div>
   </article>;
+}
+
+function OpponentInspectionOverlay({ player, playerHero, judgementInFlight, onClose, onHeroInfo, onInfoCard }: { player: Player; playerHero: Hero | null; judgementInFlight: ReadonlySet<string>; onClose: () => void; onHeroInfo: (hero: Hero) => void; onInfoCard: (card: Card) => void }) {
+  const renderInspectionCard = (card: Card, hidden = false) => <button type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(card); }}><CardFace card={card} /></button>;
+  return <div className="opponent-inspection-layer" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="opponent-inspection-panel" role="dialog" aria-modal="true" aria-label={`${player.name} opponent inspection`}>
+      <div className="opponent-inspection-hero-shell">
+        <button type="button" className="opponent-inspection-hero" aria-label={`Close ${player.name} inspection`} onClick={onClose}>
+          {playerHero && <span className="opponent-inspection-portrait"><HeroPortrait hero={playerHero} /></span>}
+          <span className="opponent-inspection-hero-overlay"><span>{player.name}</span><strong>{playerHero?.name ?? heroName(player.hero)}</strong><small>HP {player.hp ?? 0}/{player.maxHp ?? 0}</small><b>{hpDisplay(player.hp)}</b></span>
+        </button>
+        {playerHero && <button type="button" className="hero-card-info-button opponent-inspection-info" aria-label={`Explain ${playerHero.name}`} onClick={(event) => { event.stopPropagation(); onHeroInfo(playerHero); }}>i</button>}
+      </div>
+      <div className="opponent-inspection-zones">
+        <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{player.equipmentCards.length ? player.equipmentCards.map((card) => renderInspectionCard(card)) : <span className="opponent-inspection-empty">None</span>}</div></section>
+        <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{player.judgementCards.length ? player.judgementCards.map((card) => renderInspectionCard(card, judgementInFlight.has(card.id))) : <span className="opponent-inspection-empty">None</span>}</div></section>
+      </div>
+    </section>
+  </div>;
 }
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
@@ -565,6 +586,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const [effectNotice, setEffectNotice] = useState<string | null>(null);
   const [infoCard, setInfoCard] = useState<Card | null>(null);
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
+  const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
   const automaticResponseTimeout = useRef("");
   const automaticRescueSkip = useRef("");
   const [turnNotice, setTurnNotice] = useState(""); const onActionRef = useRef(onAction);
@@ -745,10 +767,14 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const triggerTargetMin = triggerTargetSelection?.min ?? 1;
   const triggerTargetMax = triggerTargetSelection?.max ?? 1;
   const triggerTargetMode = Boolean(triggerResponse && responseDecisionReady && triggerTargetSelection && responseProviderId === selectedTriggerOption?.effectId);
+  const targetSelectionActive = Boolean(triggerTargetMode || room.isMyTurn && canPlay && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind) || activeSkillTargetSelection));
   const triggerTargetComplete = Boolean(triggerTargetMode && targetIds.length >= triggerTargetMin && targetIds.length <= triggerTargetMax);
   const canUseLongdanInResponse = Boolean(me?.hero === "zhao-yun" && responseDecisionReady && longdanResponseOptions.length > 0);
   const wushengButtonDisabled = busy || wushengMode === null && (!canUseWushengInPlay && !(responseDecisionReady && canUseWushengInResponse) || canUseWushengInPlay && presentationBusy);
   const longdanButtonDisabled = busy || longdanMode === null && (!canUseLongdanInPlay && !(responseDecisionReady && canUseLongdanInResponse) || canUseLongdanInPlay && presentationBusy);
+  useEffect(() => {
+    if (targetSelectionActive) setExpandedOpponentId(null);
+  }, [targetSelectionActive]);
   const heroSkillButtons: HeroSkillButtonModel[] = (localHero?.skills ?? []).map((skill) => {
     if (me?.hero === "guan-yu" && skill.name === "God of War") return {
       name: skill.name,
@@ -978,7 +1004,8 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
       {triggerResponse && responseDecisionReady && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && <TargetCardPicker option={targetCardPickerOption} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={responseControlsDisabled} canDecline={triggerDeclineAction} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={(keys) => onAction("trigger", { providerId: targetCardPickerOption.effectId, cardKeys: keys })} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && mandatoryChoiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={mandatoryChoiceTriggerOption} selection={mandatoryChoiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={responseControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => mandatoryChoiceTriggerOption.selection?.type === "choice" && mandatoryChoiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = mandatoryChoiceTriggerOption.selection?.type === "choice" ? mandatoryChoiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys; })} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: mandatoryChoiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
-      <div className="player-board" aria-label="Players">{room.players.filter((player) => player.id !== room.meId).map((player) => { const index = room.players.findIndex((candidate) => candidate.id === player.id); const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind; const cardTargetLegal = Boolean(card && selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, cardKind: selectedTargetCardKind })); const targetablePlayer = Boolean((activeSkillTargetIds.includes(player.id) && canPlay) || (triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode) || (serpentMode && canPlay) || (card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"))); const targetInteraction = (room.isMyTurn && canPlay) || triggerTargetMode; return <OpponentPlayerCard key={`square-${player.id}`} player={player} viewerId={room.meId} playerHero={heroDefinition(player.hero)} relativeIndex={relativeIndex} isTurn={player.seat === room.turnSeat} isActionPlayer={player.id === room.actionPlayerId} isSelectedTarget={targetIds.includes(player.id)} targetInteraction={targetInteraction} targetablePlayer={targetablePlayer} onTarget={() => { setTarget(player.id); setTargetCardIndex(null); }} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} judgementInFlight={judgementInFlight} serpentSelected={serpentSelected} triggerResponse={triggerResponse} triggerSelectionUsesCards={triggerSelectionUsesCards} responseDecisionReady={responseDecisionReady} triggerCardOption={triggerCardOption} onToggleEquipment={(cardId) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < (triggerResponse && triggerSelectionUsesCards ? triggerSelectionMax : 2) ? [...ids, cardId] : ids)} />; })}</div>
+      <div className="player-board" aria-label="Players">{room.players.filter((player) => player.id !== room.meId).map((player) => { const index = room.players.findIndex((candidate) => candidate.id === player.id); const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind; const cardTargetLegal = Boolean(card && selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, cardKind: selectedTargetCardKind })); const targetablePlayer = Boolean((activeSkillTargetIds.includes(player.id) && canPlay) || (triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode) || (serpentMode && canPlay) || (card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"))); return <OpponentPlayerCard key={`square-${player.id}`} player={player} viewerId={room.meId} playerHero={heroDefinition(player.hero)} relativeIndex={relativeIndex} isTurn={player.seat === room.turnSeat} isActionPlayer={player.id === room.actionPlayerId} isSelectedTarget={targetIds.includes(player.id)} targetSelectionActive={targetSelectionActive} targetablePlayer={targetablePlayer} onTarget={() => { setTarget(player.id); setTargetCardIndex(null); }} onInspect={() => setExpandedOpponentId((currentId) => currentId === player.id ? null : player.id)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} judgementInFlight={judgementInFlight} serpentSelected={serpentSelected} triggerResponse={triggerResponse} triggerSelectionUsesCards={triggerSelectionUsesCards} responseDecisionReady={responseDecisionReady} triggerCardOption={triggerCardOption} onToggleEquipment={(cardId) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < (triggerResponse && triggerSelectionUsesCards ? triggerSelectionMax : 2) ? [...ids, cardId] : ids)} />; })}</div>
+      {!targetSelectionActive && expandedOpponentId && (() => { const expandedOpponent = room.players.find((player) => player.id === expandedOpponentId && player.id !== room.meId); if (!expandedOpponent) return null; return <OpponentInspectionOverlay player={expandedOpponent} playerHero={heroDefinition(expandedOpponent.hero)} judgementInFlight={judgementInFlight} onClose={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />; })()}
       {seatCountdown && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
     <footer className="play-command">
