@@ -3646,20 +3646,19 @@ export async function POST(request: Request) {
   }
 
   if (action === "choose_hero") {
-    if (!me) return json({ error: "Your player session is no longer valid." }, 403);
     if (room.status !== "heroes") return json({ error: "Hero selection is not active." }, 409);
-    if (me.hero) return json({ error: "Your hero is already locked in." }, 409);
     const livePlayers = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
     const selector = nextGeneralSelector(livePlayers);
-    if (!selector || selector.id !== me.id) return json({ error: "Wait for the current seat to choose its general." }, 409);
+    if (!selector || selector.token_hash !== tokenHash) return json({ error: "Wait for the current seat to choose its general.", stale: true, room: await roomState(code, token) }, 409);
+    if (selector.hero) return json({ error: "Your hero is already locked in.", stale: true, room: await roomState(code, token) }, 409);
     const heroId = String(body.heroId ?? "");
-    const options = currentHeroOptions(me.hero_options_json);
+    const options = currentHeroOptions(selector.hero_options_json);
     const hero = options.find((item) => item.id === heroId);
     if (!hero) return json({ error: "That hero is not one of your choices." }, 400);
     const taken = await db.prepare("SELECT 1 FROM players WHERE room_id = ? AND hero = ?").bind(room.id, hero.id).first();
-    if (taken) return json({ error: "That hero was just selected. Choose another." }, 409);
-    const locked = await db.prepare("UPDATE players SET hero = ?, hp = NULL, max_hp = NULL WHERE id = ? AND hero IS NULL").bind(hero.id, me.id).run();
-    if ((locked.meta.changes ?? 0) <= 0) return json({ error: "That general choice is stale. Refresh the table and try again." }, 409);
+    if (taken) return json({ error: "That hero was just selected. Choose another.", stale: true, room: await roomState(code, token) }, 409);
+    const locked = await db.prepare("UPDATE players SET hero = ?, hp = NULL, max_hp = NULL WHERE id = ? AND hero IS NULL").bind(hero.id, selector.id).run();
+    if ((locked.meta.changes ?? 0) <= 0) return json({ error: "That general choice is stale. Refresh the table and try again.", stale: true, room: await roomState(code, token) }, 409);
     const remaining = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND hero IS NULL").bind(room.id).first<{ count: number }>();
     if ((remaining?.count ?? 0) === 0) {
       const ready = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();

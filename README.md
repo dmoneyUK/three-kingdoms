@@ -1,5 +1,24 @@
 # Three Kingdoms
 
+## Hero-selection live-selector fix — 2026-09-23
+
+Fixed the Test Controller/Lord selection path so `choose_hero` authorizes the
+freshly loaded current selector and reads and locks that same player's current
+candidate pool. This accepts any hero in the current selector's displayed
+options, including Liu Bei, without consulting the complete hero catalogue or
+changing hero allocation, role privacy, or gameplay rules. Stale and race
+failures now return a fresh room projection where applicable; the client action
+context was intentionally left unchanged.
+
+API coverage now selects displayed Liu Bei, displayed last candidates, and
+unavailable candidates, verifies private non-Lord projections, completion into
+playing, and mixed real-player/Test Controller authorization. Local validation
+passes: 38 fast tests, 106 API tests, build, lint, and diff check.
+
+Current stage: Stage 7 product polish, hero-selection reliability fix complete.
+The next milestone is the GitHub Actions validation and Cloudflare deployment
+of this server-side correction.
+
 ## Opponent hero artwork and mobile portrait repair — 2026-09-23
 
 Repaired the missing opponent artwork path without changing gameplay. The

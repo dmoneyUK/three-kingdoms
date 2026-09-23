@@ -1,5 +1,25 @@
 # Three Kingdoms project handover
 
+## Hero-selection live-selector fix — 2026-09-23
+
+The `choose_hero` route now treats the freshly loaded `nextGeneralSelector`
+row as authoritative. It validates `selector.token_hash === tokenHash`, reads
+`selector.hero_options_json`, checks the submitted ID only against that
+persisted candidate pool, preserves the duplicate-hero guard, and locks
+`selector.id`. It no longer mixes the earlier projected `me` snapshot into
+hero-selection validation or mutation. Stale selector, duplicate-selection,
+and lock-race failures return a fresh room projection where practical.
+
+The client `choose_hero` action-context exclusion was deliberately unchanged.
+The new Test Controller regressions cover displayed Lord Liu Bei, non-first and
+last candidates, private non-Lord selection results, advancement to each
+controlled seat, forged unavailable IDs without mutation, mixed real-player
+authorization, and completion of the four-seat game into `playing`.
+
+Local validation is complete: 38 fast tests, 106 API tests, build, lint, and
+`git diff --check` pass. The remaining release step is the GitHub Actions
+validation and Cloudflare deployment of this server-side correction.
+
 ## Opponent hero artwork and mobile portrait repair — 2026-09-23
 
 The opponent artwork regression is fixed at its source. The committed Zhang

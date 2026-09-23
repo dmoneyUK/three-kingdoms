@@ -4,6 +4,57 @@ import {
   assert, card, createHumanGame, createHumanSetupGame, createTestGame, createTestLobby, discardIds, distributeLegacy, drainEmptyPrivateDecisions, markReady, normalizeRoomData, openBorrowedSwordScenario, openFankuiAttack, openGanglieAttack, openGanglieGroup, openGuoDamage, openHujiaScenario, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, roomCardCount, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state, takeDamageIfPending, waitForState,
 } from "./test-support.mjs";
 
+test("test controller accepts displayed Lord and non-first candidates through the normal selection flow", async () => {
+  const created = await createTestLobby();
+  let room = created.data.room;
+  const lordId = room.meId;
+  const liuBei = room.myHeroOptions.find((hero) => hero.id === "liu-bei");
+  assert.ok(liuBei, "Liu Bei is present in the displayed Lord candidates");
+
+  const forged = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: "zhuge-liang" });
+  assert.equal(forged.status, 400, JSON.stringify(forged.data));
+  assert.equal(room.players.find((player) => player.id === lordId).hero, null, "an unavailable candidate cannot mutate the Lord");
+
+  let chosen = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: liuBei.id });
+  assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+  const selectedLord = chosen.data.room.players.find((player) => player.id === lordId);
+  assert.equal(selectedLord.hero, "liu-bei");
+  assert.equal(selectedLord.generalReady, true);
+  room = chosen.data.room;
+  assert.equal(room.status, "heroes");
+  assert.notEqual(room.meId, lordId, "selection advances to the next controlled seat");
+  assert.equal(room.myHeroOptions.length, 3, "the next seat receives its own private candidate pool");
+
+  const nextSeatId = room.meId;
+  const lastCandidate = room.myHeroOptions.at(-1);
+  assert.ok(lastCandidate, "the next seat has a displayed last candidate");
+  chosen = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: lastCandidate.id });
+  assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+  const selectedNext = chosen.data.room.players.find((player) => player.id === nextSeatId);
+  assert.equal(query(`SELECT hero FROM players WHERE id=${quote(nextSeatId)}`), lastCandidate.id, "the selected non-Lord hero is persisted even though it stays private");
+  assert.equal(selectedNext.hero, null, "the controller does not receive another non-Lord's selected hero");
+  assert.equal(selectedNext.generalReady, true);
+
+  room = chosen.data.room;
+  while (room.status === "heroes") {
+    const actor = room.players.find((player) => player.id === room.meId);
+    assert.ok(actor, "the current Test Controller seat is projected");
+    assert.ok(room.myHeroOptions.length > 0, "the current seat receives private candidates");
+    const finalCandidate = room.myHeroOptions.at(-1);
+    assert.ok(finalCandidate, "the current seat has a displayed last candidate");
+    chosen = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: finalCandidate.id });
+    assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+    const selected = chosen.data.room.players.find((player) => player.id === actor.id);
+    assert.equal(query(`SELECT hero FROM players WHERE id=${quote(actor.id)}`), finalCandidate.id, "the selected non-Lord hero is persisted while remaining private");
+    if (chosen.data.room.status === "heroes") assert.equal(selected.hero, null, "the controller does not receive another non-Lord's selected hero");
+    else assert.equal(selected.hero, finalCandidate.id, "completed selection reveals heroes when the game begins");
+    assert.equal(selected.generalReady, true);
+    room = chosen.data.room;
+  }
+  assert.equal(room.status, "playing");
+  assert.ok(room.players.every((player) => player.hero));
+});
+
 test("host test seats use one controller across four seats with a normal shuffled opening deal", async () => {
   const created = await createTestLobby();
   assert.equal(created.data.room.status, "heroes");
@@ -286,6 +337,10 @@ test("host test seats remain controllable without exposing a mixed human seat", 
       assert.equal(hostView.isMyAction, false);
       assert.equal(hostView.players.find((player) => player.id === aliceId).hero, null, "Alice's hero stays private from the host");
       assert.deepEqual(hostView.myHand, [], "the host view never switches to Alice's private hand");
+      const controllerAttempt = await requestAndSettle("choose_hero", { code, token: created.data.token, heroId: chosen.id });
+      assert.equal(controllerAttempt.status, 409, "the Test Controller cannot choose for the real player");
+      assert.equal(controllerAttempt.data.stale, true);
+      assert.equal(controllerAttempt.data.room.players.find((player) => player.id === aliceId).hero, null, "a rejected controller attempt does not mutate the real player");
     }
     const result = await requestAndSettle("choose_hero", { code, token: actorToken, heroId: chosen.id });
     assert.equal(result.status, 200, JSON.stringify(result.data));
