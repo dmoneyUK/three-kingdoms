@@ -3,8 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GameRoom, HeroInfoDialog, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
-import { STANDARD_HEROES } from "../game/heroes.ts";
+import { GameRoom, HERO_ART_BY_ID, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
+import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
@@ -85,6 +85,29 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.doesNotMatch(globalStyleSource, /\.hero-choice-grid\s*\{\s*grid-template-columns: repeat\(2/, "mobile hero selection does not regress to two flexible columns");
 });
 
+test("every implemented Standard hero is audited through the shared portrait renderer", () => {
+  const implementedIds = [...IMPLEMENTED_STANDARD_HERO_IDS];
+  const mappedIds = Object.keys(HERO_ART_BY_ID);
+  assert.ok(mappedIds.every((id) => IMPLEMENTED_STANDARD_HERO_IDS.has(id)), "art mapping must not point at non-Standard or unimplemented heroes");
+  for (const id of mappedIds) {
+    assert.ok(existsSync(new URL(`../public/${HERO_ART_BY_ID[id].replace(/^\//, "")}`, import.meta.url)), `${id} artwork is checked in`);
+  }
+
+  const unmappedIds = implementedIds.filter((id) => !HERO_ART_BY_ID[id]);
+  for (const id of implementedIds) {
+    const hero = STANDARD_HEROES.find((candidate) => candidate.id === id);
+    assert.ok(hero, `${id} is in the Standard roster`);
+    const html = renderToStaticMarkup(React.createElement(HeroPortrait, { hero }));
+    assert.match(html, new RegExp(`data-hero-art-id="${id}"`));
+    if (HERO_ART_BY_ID[id]) {
+      assert.match(html, /class="hero-art-image"/);
+    } else {
+      assert.match(html, /class="hero-art-fallback"/, `${id} keeps the intentional initials fallback until approved artwork exists`);
+    }
+  }
+  assert.deepEqual(unmappedIds, ["xu-chu", "guo-jia", "zhen-ji", "yue-jin", "guan-yu", "zhang-fei", "zhao-yun", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lu-xun", "lü-bu"]);
+});
+
 test("the local player dock replaces the self battlefield square and follows Quick Test perspective", () => {
   const players = [
     { id: "p1", name: "HOST", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 2, equipmentCards: [card("weapon", "BlueSteelSword"), card("armor", "NioShield"), card("offensive-horse", "RedHare"), card("defensive-horse", "Shadowrunner")], judgementCards: [card("lightning", "Lightning"), card("overindulgence", "Overindulgence")], attackRange: 2, distance: null, isHost: true, role: "Lord" },
@@ -117,6 +140,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /data-hero-id="cao-cao"/);
   assert.match(html, /class="player-square-portrait" data-hero-id="liu-bei"[\s\S]*data-hero-art-id="liu-bei"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
+  assert.match(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(68px, 18vw, 92px\);[^}]*flex: 0 0 auto;/, "mobile opponent portraits keep a readable fixed-height track");
+  assert.doesNotMatch(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(44px, 8vw, 92px\)/, "opponent portraits do not regress to the shallow mobile track");
   assert.match(html, /class="local-status-panel"[\s\S]*class="local-status-hp">HP 4\/4<\/span>[\s\S]*class="local-status-hearts">♥♥♥♥<\/span>[\s\S]*class="local-status-role">Lord<\/strong>/);
   assert.equal((html.match(/class="hero-skill-button/g) ?? []).length, 2, "Cao Cao exposes one button per metadata skill");
   assert.match(html, />Treachery<\/button>[\s\S]*>Entourage<\/button>/);

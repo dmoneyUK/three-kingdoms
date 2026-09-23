@@ -993,7 +993,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .mini-equipment-card .played-card > i small { font-size: 5px !important; }
 .mini-equipment-card .played-card .card-name-mark { max-width: 92%; font-size: 5px !important; line-height: .95; }
 .mini-equipment-card .played-card > strong { margin-top: 2px; font-size: 3px !important; letter-spacing: .03em; }
-.player-square-target .player-square-portrait { width: min(100%, 106px); height: clamp(44px, 8vw, 92px); flex: 1 1 auto; min-height: 0; margin: 0 0 2px; overflow: hidden; background: #24251f; border: 1px solid #9b8050; }
+.player-square-target .player-square-portrait { width: min(100%, 106px); height: clamp(68px, 18vw, 92px); flex: 0 0 auto; min-height: 0; margin: 0 0 2px; overflow: hidden; background: #24251f; border: 1px solid #9b8050; }
 .player-square-target .player-square-portrait .hero-art-image { display: block; width: 100%; height: 100%; object-fit: cover; }
 .player-square-target .player-square-portrait .hero-art-fallback { color: #e0c98e; font: 700 17px Georgia, serif; }
 .local-hero-portrait { position: relative; overflow: hidden; padding: 0; background: #17231d; }

@@ -1,5 +1,26 @@
 # Three Kingdoms
 
+## Opponent hero artwork and mobile portrait repair — 2026-09-23
+
+Repaired the missing opponent artwork path without changing gameplay. The
+checked-in Zhang Liao portrait was an undecodable JPEG; it is now a valid
+2:3 portrait and continues to resolve through the single shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer. All 19 implemented Standard hero
+IDs are now covered by an explicit render audit: six have approved checked-in
+artwork and the other 13 retain the intentional initials fallback until
+approved assets exist.
+
+Opponent portrait sizing no longer collapses into the shallow mobile track.
+The shared opponent portrait container keeps a stable 68–92px mobile height,
+so mapped artwork remains visible without changing player state, targeting,
+projection, or any gameplay action contract. Render coverage also protects
+the mapping boundary, checked-in assets, fallback behavior, and mobile CSS.
+
+Current stage: Stage 7 product polish, opponent hero artwork repair complete.
+The next milestone is deployed review at 390px, 430px, and 768px, followed by
+final graphic/theme polish and separately approved artwork intake for any
+remaining fallback heroes.
+
 ## Final hero selection card correction — 2026-09-23
 
 Completed the follow-up General Selection correction from the replaced mobile
