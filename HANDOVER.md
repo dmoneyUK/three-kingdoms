@@ -22,10 +22,16 @@ existing local-player and selection framing.
 No gameplay logic, room projection, privacy boundary, targeting behavior, or
 action contract changed.
 
-Validation completed for the focused render suite; full build, full tests,
-lint, and `git diff --check` remain the release gates before push. Recommended
-next work is deployed review at 390px, 430px, and 768px, then final graphic
-polish and approved artwork intake for the remaining fallback heroes.
+The CI regression in `lobby-heroes-wei.test.mjs` is fixed narrowly. The test
+still asserts current Yue Jin metadata after stale candidate rehydration, then
+restores the Lord's original legal candidate JSON before running the normal
+four-seat selection loop. Explicit Yue Jin skill behavior remains covered by
+the isolated Dauntless API tests, so no production selection rule was changed.
+The required local build, full test suite, lint, and `git diff --check` pass.
+
+The remaining release step is the deployed mobile review at approximately
+320px, 390px, and 430px, followed by final graphic polish and approved artwork
+intake for the remaining fallback heroes.
 
 ## Final hero selection card correction — 2026-09-23
 

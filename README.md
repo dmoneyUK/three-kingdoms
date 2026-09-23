@@ -17,10 +17,16 @@ remains visible without changing player state, targeting, projection, or any
 gameplay action contract. Render coverage also protects the mapping boundary,
 checked-in assets, fallback behavior, shared rendering, and mobile CSS.
 
+The host-seat API regression is deterministic again: its temporary Yue Jin
+metadata rehydration mutation is restored to the original Lord candidate pool
+before the normal four-seat selection flow continues. Yue Jin gameplay remains
+covered by the isolated Dauntless API tests; no production selection or
+gameplay rule changed. Local build, full tests, lint, and diff-check all pass.
+
 Current stage: Stage 7 product polish, opponent hero artwork repair complete.
-The next milestone is deployed review at 390px, 430px, and 768px, followed by
-final graphic/theme polish and separately approved artwork intake for any
-remaining fallback heroes.
+The next milestone is the required deployed mobile review at 320px, 390px, and
+430px, followed by final graphic/theme polish and separately approved artwork
+intake for any remaining fallback heroes.
 
 ## Final hero selection card correction — 2026-09-23
 

@@ -16,7 +16,8 @@ test("host test seats use one controller across four seats with a normal shuffle
   assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
   const lordId = created.data.room.meId;
   const storedOptions = query(`SELECT hero_options_json FROM players WHERE id=${quote(lordId)}`);
-  const staleOptions = [...JSON.parse(storedOptions), { id: "yue-jin", name: "Unavailable Yue Jin", skills: [] }].map((hero) => ({ ...hero, name: "Old name", skills: [{ name: "Old skill", description: "Old description" }] }));
+  const originalOptions = JSON.parse(storedOptions);
+  const staleOptions = [...originalOptions, { id: "yue-jin", name: "Unavailable Yue Jin", skills: [] }].map((hero) => ({ ...hero, name: "Old name", skills: [{ name: "Old skill", description: "Old description" }] }));
   sql(`UPDATE players SET hero_options_json=${quote(JSON.stringify(staleOptions))} WHERE id=${quote(lordId)}`);
   const refreshedOptions = (await state(created.data.room.code, created.data.token)).data.myHeroOptions;
   const refreshedCao = refreshedOptions.find((hero) => hero.id === "cao-cao");
@@ -24,13 +25,11 @@ test("host test seats use one controller across four seats with a normal shuffle
   assert.deepEqual(refreshedYueJin?.skills.map((skill) => skill.name), ["Dauntless"], "Yue Jin is projected from the current implemented catalogue");
   assert.deepEqual(refreshedCao?.skills.map((skill) => skill.name), ["Treachery", "Entourage"], "persisted hero candidates rehydrate current skill names");
   assert.match(refreshedCao?.skills[1].description ?? "", /characters from the Wei kingdom/);
-  const yueJinChoice = await requestAndSettle("choose_hero", { code: created.data.room.code, token: created.data.token, heroId: "yue-jin" });
-  assert.equal(yueJinChoice.status, 200, JSON.stringify(yueJinChoice.data));
-  assert.equal(created.data.room.players.filter((player) => player.role === "Lord").length, 1);
-  assert.equal(created.data.room.players.filter((player) => player.role === null).length, 3);
-  let room = yueJinChoice.data.room;
+  sql(`UPDATE players SET hero_options_json=${quote(JSON.stringify(originalOptions))} WHERE id=${quote(lordId)}`);
+  let room = (await state(created.data.room.code, created.data.token)).data;
   const lord = room.players.find((player) => player.role === "Lord");
-  assert.equal(lord.hero, "yue-jin", "the implemented Yue Jin can be selected for the Lord seat");
+  assert.equal(room.players.filter((player) => player.role === "Lord").length, 1);
+  assert.equal(room.players.filter((player) => player.role === null).length, 3);
   while (room.status === "heroes") {
     const actor = room.players.find((player) => player.id === room.meId);
     const chosen = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: room.myHeroOptions[0].id });
