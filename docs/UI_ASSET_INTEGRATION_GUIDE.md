@@ -46,6 +46,7 @@ public/assets/ui/
   card-frame-gold.svg
   other-player-frame-asymmetric.webp
   other-player-frame-symmetric.webp
+  other-player-frame-asymmetric-reference.webp
 ```
 
 Naming rule: lowercase kebab-case, named by UI function rather than generation prompt.
@@ -355,7 +356,25 @@ Use for the **top-center opponent** so the top opponent does not inherit a left/
 
 ---
 
-## 5.3 Required live content inside player frames
+## 5.3 `other-player-frame-asymmetric-reference.webp`
+
+### Purpose
+Exact uploaded reference render of the ornate asymmetric player-frame design.
+
+### Important implementation note
+This file is intentionally retained as a **visual reference asset**, not the layer that should be rendered directly in the game.
+
+The uploaded reference has a solid light/white background and therefore is not appropriate as an in-game overlay. If used directly, it would cover the board behind the opponent panel.
+
+When implementing this design, use:
+- `other-player-frame-asymmetric.webp` as the production transparent overlay,
+- `other-player-frame-asymmetric-reference.webp` only to compare proportions, ornament placement and overall visual intent.
+
+Do not attempt to chroma-key or CSS-blend the white background at runtime.
+
+---
+
+## 5.4 Required live content inside player frames
 
 The frame assets must never replace the real player information.
 
@@ -394,7 +413,7 @@ Both frame images must use `pointer-events: none`.
 
 ---
 
-## 5.4 Preserve the existing other-player layout
+## 5.5 Preserve the existing other-player layout
 
 Do **not** rebuild the player card around the artwork's native image proportions.
 
@@ -411,7 +430,7 @@ If the asset details become visually dense at the smallest mobile size, reduce t
 
 ---
 
-## 5.5 Positional mapping
+## 5.6 Positional mapping
 
 For the current three-opponent board:
 
@@ -500,7 +519,6 @@ When the user eventually asks for the complete asset implementation:
 Do not invent missing assets.
 
 Expected future items:
-- other-player frame,
 - local-player / bottom panel frame,
 - equipment-slot treatment,
 - judgement-area treatment,
@@ -547,9 +565,11 @@ Decision:
 Added:
 - `public/assets/ui/other-player-frame-asymmetric.webp`
 - `public/assets/ui/other-player-frame-symmetric.webp`
+- `public/assets/ui/other-player-frame-asymmetric-reference.webp`
 
 Decisions:
 - both generated player-frame designs are retained as approved production assets,
+- the exact user-uploaded asymmetric render is retained as a reference file only; its white background must not be used as the live overlay,
 - use the symmetric variant for the top-center opponent,
 - use the asymmetric variant for side opponents,
 - horizontally mirror only the asymmetric decorative image for the right-side opponent when needed,
