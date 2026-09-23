@@ -260,7 +260,7 @@ Before considering a hero-art integration complete:
 
 ---
 
-## Zhang Liao status — 2026-09-23
+## Zhang Liao status — 2026-09-24
 
 The final approved WTK Zhang Liao artwork is checked in at:
 
@@ -274,13 +274,15 @@ Stable hero ID:
 zhang-liao
 ```
 
-Approved visual treatment:
+Approved source requirements:
+- use the full-resolution 1024 × 1536 portrait source
+- do not substitute a thumbnail or heavily downscaled derivative
 - blue / black Wei armour
 - pale-blue plume
 - face kept completely in deep black shadow
 - dark ink-fantasy atmosphere
 - no text, logo, or UI baked into the image
 
-Zhang Liao is already wired through the shared `HERO_ART_BY_ID` / `HeroPortrait` path in `app/page.tsx`. Render coverage already checks `hero-zhang-liao.jpg` and `data-hero-art-id="zhang-liao"`.
+Zhang Liao is wired through the shared `HERO_ART_BY_ID` / `HeroPortrait` path in `app/page.tsx`. Render coverage checks `hero-zhang-liao.jpg` and `data-hero-art-id="zhang-liao"`.
 
-Future Zhang Liao art revisions should overwrite this same stable asset path. Do not create a second mapping or hero-specific rendering component.
+Future Zhang Liao art revisions must overwrite this same stable asset path and preserve a high-resolution source suitable for `object-fit: cover`. Do not create a second mapping or hero-specific rendering component.
