@@ -51,6 +51,7 @@ public/assets/ui/
   local-player-frame.webp
   button-primary.webp
   button-secondary.svg
+  deck-panel-concept-reference.webp
 ```
 
 Naming rule: lowercase kebab-case, named by UI function rather than generation prompt.
@@ -775,7 +776,90 @@ Do not create separate images just for hover, pressed, focus or disabled states.
 
 ---
 
-# 9. Responsive and performance rules
+# 9. Deck-area concept reference
+
+## 9.1 `deck-panel-concept-reference.webp`
+
+### Purpose
+Visual reference for the deck-area composition shown during asset design.
+
+### Status
+**REFERENCE ONLY — do not render this file directly in production.**
+
+The concept intentionally demonstrates the desired visual grouping of:
+- deck ornament / panel styling,
+- a face-down card,
+- a deck-count badge,
+- live `DECK` labeling.
+
+However, this concept image bakes together several elements that must remain separate in the actual game:
+- face-down card artwork,
+- the example number `108`,
+- the word `DECK`,
+- decorative panel artwork.
+
+The coding agent must not hardcode or render those baked values.
+
+### Correct production architecture
+
+The actual deck area should be composed from independent layers:
+
+```text
+Deck component
+  ├─ future deck-panel-frame production asset
+  ├─ face-down card
+  │    ├─ card-back-bg.webp
+  │    └─ card-frame-gold.svg
+  └─ live UI
+       ├─ current deck count from game state
+       └─ DECK label rendered by code
+```
+
+Conceptual implementation:
+
+```tsx
+<div className="deck-panel">
+  <img
+    className="deck-panel-art"
+    src="/assets/ui/deck-panel-frame.webp"
+    alt=""
+    aria-hidden="true"
+  />
+
+  <div className="deck-card">
+    {/* existing face-down card component using approved card assets */}
+  </div>
+
+  <div className="deck-info">
+    <strong>{deckCount}</strong>
+    <span>DECK</span>
+  </div>
+</div>
+```
+
+### Hard rules
+- do not render `deck-panel-concept-reference.webp` in the game,
+- do not hardcode `108`,
+- do not bake the word `DECK` into a production image,
+- do not bake the face-down card into the production deck-panel frame,
+- reuse `card-back-bg.webp` and `card-frame-gold.svg`,
+- keep the deck count live from game state,
+- preserve the current deck position and interaction behavior,
+- decorative layers use `pointer-events: none`,
+- do not enlarge or reposition the center board merely to match the reference artwork.
+
+### Production asset still required
+Create a separate future asset:
+
+```text
+public/assets/ui/deck-panel-frame.webp
+```
+
+That production frame should contain only the decorative dark-green / antique-gold deck-panel treatment, with no card, no number and no text.
+
+---
+
+# 10. Responsive and performance rules
 
 The game is used on mobile as well as desktop.
 
@@ -793,7 +877,7 @@ Do not change gameplay spacing merely to make decoration look perfect. Decoratio
 
 ---
 
-# 10. Screens affected in the final integration
+# 11. Screens affected in the final integration
 
 The board assets are intended for the actual game screen containing:
 - other players,
@@ -818,7 +902,7 @@ The reusable card frame can eventually appear anywhere the standard game-card co
 
 ---
 
-# 11. Coding-agent constraints
+# 12. Coding-agent constraints
 
 When the user eventually asks for the complete asset implementation:
 
@@ -837,14 +921,15 @@ When the user eventually asks for the complete asset implementation:
 
 ---
 
-# 12. Assets still to be designed
+# 13. Assets still to be designed
 
 Do not invent missing assets.
 
 Expected future items:
 - equipment-slot treatment,
 - judgement-area treatment,
-- deck/discard presentation treatment if needed,
+- production deck-panel frame,
+- discard presentation treatment if needed,
 - destructive button style if needed,
 - generic panel frame,
 - modal / response-window frame,
@@ -852,7 +937,7 @@ Expected future items:
 
 ---
 
-# 13. Update protocol
+# 14. Update protocol
 
 Every approved future asset must update this same file.
 
@@ -871,7 +956,7 @@ Do not create competing implementation-guide files for the same asset set.
 
 ---
 
-# 14. Change log
+# 15. Change log
 
 ## 2026-09-23 — board foundation
 
@@ -956,6 +1041,19 @@ Decisions:
 - preserve existing dimensions and touch targets,
 - reserve destructive actions for a later dedicated style if required.
 
+## 2026-09-23 — deck-area concept reference
+
+Added:
+- `public/assets/ui/deck-panel-concept-reference.webp`
+
+Decisions:
+- retain the approved deck-area composition as a visual reference only,
+- do not render the reference file in production because it contains a baked face-down card, example count `108`, and `DECK` text,
+- production deck UI must reuse the existing face-down card component with `card-back-bg.webp` and `card-frame-gold.svg`,
+- deck count and `DECK` remain live UI,
+- a dedicated `deck-panel-frame.webp` production asset is still required,
+- preserve current deck position, logic and interaction behavior.
+
 ## 2026-09-23 — generic card back and reusable card frame
 
 Added:
@@ -972,7 +1070,7 @@ Decisions:
 
 ---
 
-# 15. Final asset-pass instruction
+# 16. Final asset-pass instruction
 
 **Do not perform the broad visual rewrite yet.**
 
