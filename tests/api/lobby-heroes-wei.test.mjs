@@ -214,7 +214,7 @@ test("source-less Lightning damage can open three independent Legacy opportuniti
   void source;
 });
 
-test("normal multiplayer lobby requires named ready players and keeps roles private", async () => {
+test("normal multiplayer lobby starts after four named players join and keeps roles private", async () => {
   const created = await requestAndSettle("create", { name: "Host" });
   assert.equal(created.status, 201, JSON.stringify(created.data));
   assert.equal(created.data.room.status, "lobby");
@@ -232,17 +232,11 @@ test("normal multiplayer lobby requires named ready players and keeps roles priv
   }
   assert.deepEqual((await state(created.data.room.code, created.data.token)).data.players.map((player) => player.seat), [0, 1, 2]);
   assert.equal((await requestAndSettle("start", { code: created.data.room.code, token: created.data.token })).status, 409, "a host cannot start below four players");
-  assert.equal((await requestAndSettle("set_ready", { code: created.data.room.code, token: members[0].token, ready: true })).status, 200);
-  assert.equal((await requestAndSettle("start", { code: created.data.room.code, token: members[0].token })).status, 409, "all current players must be ready");
 
   const fourth = await requestAndSettle("join", { code: created.data.room.code, name: "Carol" });
   assert.equal(fourth.status, 201);
   assert.equal(fourth.data.room.players.find((player) => player.name === "Carol").ready, false, "a joining seat never inherits another player's readiness");
   members.push({ name: "Carol", token: fourth.data.token });
-  for (const member of members.slice(1)) {
-    const ready = await requestAndSettle("set_ready", { code: created.data.room.code, token: member.token, ready: true });
-    assert.equal(ready.status, 200, JSON.stringify(ready.data));
-  }
   assert.equal((await requestAndSettle("start", { code: created.data.room.code, token: members[1].token })).status, 403, "only the host can start");
   const started = await requestAndSettle("start", { code: created.data.room.code, token: members[0].token });
   assert.equal(started.status, 200, JSON.stringify(started.data));
@@ -273,7 +267,6 @@ test("host test seats remain controllable without exposing a mixed human seat", 
   assert.deepEqual(added.data.room.players.map((player) => player.name), ["Host", "Alice", "Test Player 3", "Test Player 4"]);
   assert.equal(added.data.room.isTestController, true);
   assert.ok(added.data.room.players.slice(2).every((player) => player.ready));
-  await markReady(code, [{ name: "Host", token: created.data.token }, { name: "Alice", token: joined.data.token }]);
   const started = await requestAndSettle("start", { code, token: created.data.token, name: "Host" });
   assert.equal(started.status, 200, JSON.stringify(started.data));
 
@@ -337,7 +330,6 @@ test("normal role allocation preserves the exact Standard sets for four through 
       members.push({ name: `Player${count}-${seat}`, token: joined.data.token });
     }
     if (count === 8) assert.equal((await requestAndSettle("join", { code: created.data.room.code, name: "TooMany" })).status, 409, "room maximum remains eight");
-    await markReady(created.data.room.code, members);
     const started = await requestAndSettle("start", { code: created.data.room.code, token: members[0].token });
     assert.equal(started.status, 200, JSON.stringify(started.data));
     const views = await Promise.all(members.map((member) => state(created.data.room.code, member.token)));
@@ -480,4 +472,3 @@ test("Lü Bu Wushuang requires two Dodges for an Attack", async () => {
   const opened = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data)); const response = await state(game.code, game.members[1].token); assert.equal(response.data.currentAction.requirement, "dodge"); assert.equal(response.data.currentAction.options.find((option) => option.providerId === "card").selection.min, 2);
   const blocked = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardIds: dodges.map((item) => item.id) }); assert.equal(blocked.status, 200, JSON.stringify(blocked.data)); assert.equal(blocked.data.room.players.find((player) => player.id === target.id).hp, 4);
 });
-

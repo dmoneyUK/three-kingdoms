@@ -3464,7 +3464,6 @@ export async function POST(request: Request) {
     const result = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const players = result.results ?? [];
     if (players.length < 4 || players.length > room.max_players) return json({ error: "Classic mode needs 4–8 players." }, 409);
-    if (!players.every((player) => Boolean(player.ready))) return json({ error: "Every player must be ready before the host can start." }, 409);
     await resetAudit(room.id);
     await recordAuditAction(room, me, name, action);
     await beginStandardHeroSelection(room.id, players);

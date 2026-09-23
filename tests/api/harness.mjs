@@ -209,9 +209,6 @@ export async function createTestLobby() {
   assert.equal(added.status, 200, JSON.stringify(added.data));
   assert.equal(added.data.room.players.length, 4);
   assert.deepEqual(added.data.room.players.map((player) => player.name), ["Host", "Test Player 2", "Test Player 3", "Test Player 4"]);
-  assert.ok(added.data.room.players.slice(1).every((player) => player.ready), "generated test seats are ready immediately");
-  const ready = await requestAndSettle("set_ready", { code, token: created.data.token, name: "Host", ready: true });
-  assert.equal(ready.status, 200, JSON.stringify(ready.data));
   const started = await requestAndSettle("start", { code, token: created.data.token, name: "Host" });
   assert.equal(started.status, 200, JSON.stringify(started.data));
   membersByCode.set(code, [{ token: created.data.token }]);
@@ -250,7 +247,6 @@ export async function createHumanSetupGame() {
     assert.equal(joined.status, 201);
     members.push({ name, token: joined.data.token });
   }
-  await markReady(code, members);
   membersByCode.set(code, members);
   const started = await requestAndSettle("start", { code, token: created.data.token, name: "Host" });
   assert.equal(started.status, 200, JSON.stringify(started.data));

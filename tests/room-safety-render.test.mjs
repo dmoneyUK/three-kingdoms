@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GameRoom, HeroInfoDialog, HeroSelection, MandatoryChoiceDialog } from "../app/page.tsx";
+import { GameRoom, HeroInfoDialog, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
 import { STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
@@ -11,6 +11,22 @@ const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
+
+test("waiting room starts without lobby readiness controls", () => {
+  const room = normalizeRoomData({
+    code: "WAIT1", status: "lobby", maxPlayers: 4, isHost: true, meId: "p1", players: [
+      { id: "p1", name: "HOST", seat: 0, isHost: true, ready: false },
+      { id: "p2", name: "ALICE", seat: 1, isHost: false, ready: false },
+      { id: "p3", name: "BOB", seat: 2, isHost: false, ready: false },
+      { id: "p4", name: "CAROL", seat: 3, isHost: false, ready: false },
+    ],
+  });
+  const html = renderToStaticMarkup(React.createElement(WaitingRoom, { room, busy: false, error: "", onStart: () => {}, onAddTestPlayers: () => {}, onLeave: () => {} }));
+  assert.match(html, />Start game<\/button>/);
+  assert.doesNotMatch(html, />Ready<\/button>/);
+  assert.doesNotMatch(html, /NOT READY|ready<\/span>|everybody is ready/i);
+  assert.doesNotMatch(gameRoomSource, /set_ready/);
+});
 
 test("hero selection shows the effective viewer's private role", () => {
   const room = {

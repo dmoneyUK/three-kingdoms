@@ -159,7 +159,7 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [roomCode, token, busy, pageVisible, fetchRoom, room?.phase]);
 
-  async function send(action: "create" | "join" | "start" | "set_ready" | "add_test_players" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
+  async function send(action: "create" | "join" | "start" | "add_test_players" | "choose_hero" | "heartbeat" | "expire_inactive_room" | GameplayAction, extra: Record<string, unknown> = {}) {
     const backgroundPreview = action === "preview_harvest" || action === "heartbeat";
     const nonBlocking = backgroundPreview;
     const mutationKey = `${action}:${room?.actionRevision ?? room?.phase ?? "landing"}`;
@@ -176,7 +176,7 @@ export default function Home() {
           if (session?.code === code && session.token && await fetchRoom(code, session.token, true)) return true;
         } catch { localStorage.removeItem("three-realms-session"); }
       }
-      const context = room && !["create", "join", "start", "set_ready", "add_test_players", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId } : undefined;
+      const context = room && !["create", "join", "start", "add_test_players", "choose_hero", "heartbeat"].includes(action) ? { actionRevision: room.actionRevision ?? "", meId: room.meId, phase: room.phase, pendingKind: pendingKind(room), actorId: room.actionPlayerId } : undefined;
       const response = await fetch("/api/rooms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, code, token, ...(context ? { context } : {}), ...extra }) });
       const rawData = await readApiJson<{ error?: string; token?: string; room?: unknown }>(response);
       const data = { ...rawData, room: normalizeRoomData(rawData.room) as Room | null };
@@ -235,7 +235,7 @@ export default function Home() {
 
   if (room?.status === "started" || room?.status === "playing" || room?.status === "finished") return <GameRoomErrorBoundary room={room} onRecover={leave}><GameRoom room={room} busy={busy} error={error} onAction={send} onLeave={leave} /></GameRoomErrorBoundary>;
   if (room?.status === "heroes") return <HeroSelection room={room} busy={busy} error={error} onChoose={(heroId) => send("choose_hero", { heroId })} onLeave={leave} />;
-  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onReady={(ready) => send("set_ready", { ready })} onAddTestPlayers={() => send("add_test_players")} onLeave={leave} />;
+  if (room) return <WaitingRoom room={room} busy={busy} error={error} onStart={() => send("start")} onAddTestPlayers={() => send("add_test_players")} onLeave={leave} />;
 
   return (
     <main className="landing-shell">
@@ -269,15 +269,13 @@ export default function Home() {
 function Brand() { return <div className="brand"><span className="brand-mark">三</span><div><strong>Three Kingdoms</strong><small>Classic card game</small></div></div>; }
 function Role({ title, glyph }: { title: string; glyph: string }) { return <div className="mini-role"><b>{glyph}</b><span>{title}</span></div>; }
 
-function WaitingRoom({ room, busy, error, onStart, onReady, onAddTestPlayers, onLeave }: { room: Room; busy: boolean; error: string; onStart: () => void; onReady: (ready: boolean) => void; onAddTestPlayers: () => void; onLeave: () => void }) {
+export function WaitingRoom({ room, busy, error, onStart, onAddTestPlayers, onLeave }: { room: Room; busy: boolean; error: string; onStart: () => void; onAddTestPlayers: () => void; onLeave: () => void }) {
   const share = async () => { await navigator.clipboard?.writeText(room.code); };
-  const me = room.players.find((player) => player.id === room.meId);
-  const readyCount = room.players.filter((player) => player.ready).length;
-  const canStart = room.players.length >= 4 && room.players.length <= room.maxPlayers && readyCount === room.players.length;
+  const canStart = room.players.length >= 4 && room.players.length <= room.maxPlayers;
   return <main className="lobby-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><button className="text-button" onClick={onLeave}>Leave room</button></header>
-    <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1><p>Share this code with your friends. The match begins when 4–8 players have joined and everyone is ready.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
-      <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isHost ? "HOST" : "PLAYER"} · {player.ready ? "READY" : "NOT READY"}</small></> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
-      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players · {readyCount} ready</span><div className="host-actions">{me && <button className="outline-button" disabled={busy} onClick={() => onReady(!me.ready)}>{me.ready ? "Mark not ready" : "Ready"}</button>}{room.isHost && <>{room.players.length < 4 && <button className="test-button" disabled={busy} onClick={onAddTestPlayers}>+ Add {4 - room.players.length} Test Player{4 - room.players.length === 1 ? "" : "s"}</button>}<button className="gold-button" disabled={busy || !canStart} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : readyCount < room.players.length ? "Waiting for ready" : "Start match"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>{error && <p className="error" role="alert">{error}</p>}</section></main>;
+      <section className="lobby-content"><div className="lobby-heading"><span className="eyebrow">THE GENERALS ASSEMBLE</span><h1>Waiting room</h1><p>Share this code with your friends. The game can start when 4–8 players have joined.</p><button className="copy-code" onClick={share}><span>{room.code}</span><small>Tap to copy room code</small></button></div>
+      <div className="seat-grid">{Array.from({ length: room.maxPlayers }, (_, seat) => { const player = room.players.find((item) => item.seat === seat); return <div className={`seat ${player ? "filled" : ""}`} key={seat}>{player ? <><span className="seat-number">{seat + 1}</span><div className="seal">{player.name[0].toUpperCase()}</div><b>{player.name}</b><small>{player.isHost ? "HOST" : "PLAYER"}</small></> : <><span className="seat-number">{seat + 1}</span><div className="empty-seal">+</div><b>Open seat</b><small>WAITING FOR PLAYER</small></>}</div>; })}</div>
+      <div className="lobby-actions"><span>{room.players.length} / {room.maxPlayers} players</span><div className="host-actions">{room.isHost && <>{room.players.length < 4 && <button className="test-button" disabled={busy} onClick={onAddTestPlayers}>+ Add {4 - room.players.length} Test Player{4 - room.players.length === 1 ? "" : "s"}</button>}<button className="gold-button" disabled={busy || !canStart} onClick={onStart}>{busy ? "Preparing…" : room.players.length < 4 ? `Need ${4 - room.players.length} more` : "Start game"}</button></>}{!room.isHost && <p>Waiting for the host to start…</p>}</div></div>{error && <p className="error" role="alert">{error}</p>}</section></main>;
 }
 
 export function HeroSelection({ room, busy, error, onChoose, onLeave }: { room: Room; busy: boolean; error: string; onChoose: (heroId: string) => void; onLeave: () => void }) {

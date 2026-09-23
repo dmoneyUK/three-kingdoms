@@ -1,5 +1,23 @@
 # Three Kingdoms project handover
 
+## Waiting Room no-readiness start flow — 2026-09-23
+
+Removed the lobby Ready button, Ready/Not Ready seat labels, and readiness
+count from `WaitingRoom`. The copy now says the game can start when 4–8
+players have joined, and the host control is `Start game`. The client no longer
+sends `set_ready` from the lobby.
+
+The Worker start action remains host-only, keeps the 4–8 player guard, and now
+enters Standard general selection without checking `players.ready`. The
+legacy readiness column/projection and `set_ready` action remain available for
+persisted-room and old-client compatibility, but readiness no longer gates a
+new game. API and render regressions cover starting with all players still
+unready and the absence of lobby readiness controls.
+
+Validation boundary: focused render and lobby API coverage must remain green,
+followed by the full build/test/lint/diff-check release gates. Recommended next
+work is deployed mobile review, then the final graphic/theme skin.
+
 ## Compact mobile Home and Waiting Room viewport fit — 2026-09-22
 
 Implemented a presentation-only responsive pass in `app/globals.css` for the
@@ -9,9 +27,9 @@ so player name, Host Game, room code, and Join Game remain visible together.
 
 The mobile Waiting Room uses a 58px single-row top bar, compact heading and
 copy-code block, three seat columns, 78px seat cards, and a compact action row.
-The JSX still uses `Array.from({ length: room.maxPlayers })`, and the existing
-Ready, add-test-player, start/need-more, leave, polling, and room-state logic
-was not changed. The final two seats are centred when a three-column grid has
+The JSX still uses `Array.from({ length: room.maxPlayers })`; the current
+no-readiness start flow, add-test-player, start/need-more, leave, polling, and
+room-state logic remain responsive to the same room state. The final two seats are centred when a three-column grid has
 two remaining cells; widths below 340px use a smaller two-column fallback.
 Normal content can still scroll for errors, short viewports, or an open mobile
 keyboard; no required controls are hidden with overflow clipping.
@@ -547,13 +565,13 @@ new join request.
 
 The intended product paths are now:
 
-- Normal game: Host Game → lobby → real players Join Game → Ready → Start.
-- Test game: Host Game → lobby → Add Test Players → Ready → Start.
+- Normal game: Host Game → lobby → real players Join Game → Start Game.
+- Test game: Host Game → lobby → Add Test Players → Start Game.
 
 `add_test_players` remains host-only and lobby-only, fills the room to four
 seats, names generated seats `Test Player 2`, `Test Player 3`, and so on by
-seat, and marks them ready. The production `quickStart` create branch was
-removed. Shared control now means that a host token may control its own seat
+seat, and lets the host start without a readiness step. The production
+`quickStart` create branch was removed. Shared control now means that a host token may control its own seat
 and generated seats associated with that token. In a mixed room, if the live
 actor belongs to another human token, the host view falls back to the host
 seat instead of projecting that human's private hand, role, hero choice, or
@@ -604,23 +622,21 @@ added. Future active skills must continue to use semantic `currentAction` and
 the canonical `trigger` path. Recommended next work remains the next
 individually verified Standard hero capability.
 
-## Normal human multiplayer lobby repair — 2026-09-21
+## Normal human multiplayer lobby foundation — 2026-09-21, updated 2026-09-23
 
 Normal multiplayer has a real landing-page entry flow: a named player can host
 a lobby, receive a five-character share code, or join an existing lobby with
 that code. Host testing uses the same lobby through `Add Test Players`; there
 is no separate landing-page game mode.
 
-Lobby readiness is persistent in `players.ready` (default false). The
-authenticated `set_ready` action can change only the caller's own readiness
-while the room is in `lobby`; the projection exposes readiness without
-exposing any role. The host is seat 0 but has no role advantage. Start is
-host-only, requires 4–8 current players, requires every player to be ready,
-and returns 409 unless the room is still in `lobby`, preventing stale Starts
-from resetting hero selection or an active match. New seats default to not
-ready, so joining or replacement cannot inherit another player's state.
+The legacy `players.ready` column and authenticated `set_ready` action remain
+available for old sessions, but they are no longer part of the active lobby
+contract. The host is seat 0 but has no role advantage. Start is host-only,
+requires 4–8 current players, and returns 409 unless the room is still in
+`lobby`, preventing stale Starts from resetting hero selection or an active
+match. The host can start immediately after the fourth player joins.
 
-Waiting Room labels are now `HOST` / `PLAYER` plus `READY` / `NOT READY`; no
+Waiting Room labels are `HOST` / `PLAYER` with no readiness controls; no
 identity is shown before allocation. Standard role allocation remains shuffled
 independently of seat and uses the existing one-Spy default sets for 4–8
 players. User-facing `Renegade` compatibility values project as `Spy`, while
@@ -629,8 +645,8 @@ Lord-first General selection, private 5/3 candidates, `generalReady`, automatic
 Playing transition after the final confirmation, Lord +1 HP, and Lord-first
 turn order remain unchanged.
 
-Regression coverage now includes named host creation, seats 1–N, lobby-ready
-gating, host-only/stale Start guards, the eight-player maximum, exact default
+Regression coverage now includes named host creation, seats 1–N, no-readiness
+start, host-only/stale Start guards, the eight-player maximum, exact default
 role counts, host non-forcing, role privacy, private non-Lord Generals, and
 automatic match start. Alternative selectable two-Spy 6/8-player variants are
 not implemented in this round.

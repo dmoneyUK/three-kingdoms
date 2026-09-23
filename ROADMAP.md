@@ -2,6 +2,14 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+## Stage 7 maintenance — Waiting Room start flow — 2026-09-23
+
+Complete. Lobby readiness is no longer a product step: once 4–8 players have
+joined, the host can use `Start game`. The UI no longer renders or submits
+lobby readiness controls, while the legacy storage/action compatibility remains
+non-gating. The next milestone is deployed mobile review, followed by the
+final graphic/theme skin.
+
 ## Stage 7 maintenance — final LocalPlayerDock structure — 2026-09-23
 
 Complete for this presentation-only pass. The mobile LocalPlayerDock now has

@@ -1,5 +1,17 @@
 # Three Kingdoms
 
+## Lobby start flow — 2026-09-23
+
+Waiting Room no longer asks players to set a lobby-ready state. The host can
+start the game as soon as 4–8 players have joined; the host-only start guard,
+room limit, and below-four-player state remain unchanged. The Ready button and
+Ready/Not Ready seat labels are removed, and the start control now says
+`Start game`.
+
+Current stage: Stage 7 product polish, lobby start-flow simplification
+complete. The next milestone is deployed mobile review, followed by the final
+graphic/theme skin.
+
 ## Compact mobile home and waiting-room viewport pass — 2026-09-22
 
 The Home page and Waiting Room now use a deliberate compact mobile layout that
@@ -7,13 +19,13 @@ targets one normal iPhone portrait viewport. Mobile shells use `100dvh`, the
 landing navigation is reduced to 60px, the Home hero and entry form use tighter
 spacing and controls, and the four role cards remain on one row. The Waiting
 Room uses a compact 58px top bar, a three-column seat grid that still renders
-every `room.maxPlayers` seat, and a shared-width action row for Ready, test
-players, and Start/Need-more states. A two-column seat fallback is limited to
+every `room.maxPlayers` seat, and a shared-width action row for test players
+and Start/Need-more states. A two-column seat fallback is limited to
 very narrow widths below 340px, and error states remain allowed to grow.
 
 This is presentation-only: player/session state, room limits, seat rendering,
-clipboard behavior, readiness, add-test-player behavior, start guards, polling,
-and all backend/game logic are unchanged. The compact rules are consolidated in
+clipboard behavior, add-test-player behavior, start guards, polling, and all
+other backend/game logic are unchanged. The compact rules are consolidated in
 the existing responsive CSS instead of using a second override layer.
 
 Current stage: Stage 7 product polish, mobile Home and Waiting Room viewport
@@ -377,10 +389,10 @@ automatically when valid, while a stale session is cleared and returns to the
 normal landing form; submitting Join Game for that same saved room also tries
 the existing session before creating a new seat.
 
-Normal game flow is Host Game → lobby → real players Join Game → Ready → Start.
-Test game flow is Host Game → lobby → Add Test Players → Ready → Start. The
-host-only test-player action fills the room to four seats, names generated
-seats by position, and marks them ready. The shared-controller implementation
+Normal game flow is Host Game → lobby → real players Join Game → Start Game.
+Test game flow is Host Game → lobby → Add Test Players → Start Game. The
+host-only test-player action fills the room to four seats and names generated
+seats by position. The shared-controller implementation
 remains available only for seats owned by the host token, including mixed
 human/test rooms; another human's private hand, role, hero choice, and action
 are never projected through the host view. Production no longer accepts the
@@ -595,8 +607,8 @@ Fanjian hand-card selection step. Full Worker/D1 validation now passes 97 tests.
 ## Hosted test-seat shared-controller setup — 2026-09-21
 
 The former single-player Quick Game setup is now reached through the hosted
-lobby: the host creates a normal room, adds test players, marks the host ready,
-and starts through the same `beginMatch()` path as multiplayer. Generated
+lobby: the host creates a normal room, adds test players, and starts through
+the same `beginMatch()` path as multiplayer. Generated
 seats share the host token and retain normal Lord-first hero selection and
 shuffled Standard opening hands. This exercises the same setup path as a
 hosted multiplayer game, with deterministic hero/card fixtures confined to
@@ -850,10 +862,9 @@ An English online implementation of WTK Standard, the classic hidden-role Three 
 
 Normal human multiplayer now starts from a named host or a five-character room
 code join flow. The host becomes seat 0 and receives the shareable room code,
-but roles remain unassigned until Start Match. The Waiting Room persists a
-per-player Ready / Not Ready state and enables the host's Start Match only for
-4–8 players when every current player is ready. Stale Starts after the lobby
-return HTTP 409, and new seats default to not ready.
+but roles remain unassigned until Start Game. The Waiting Room enables the
+host's Start Game for 4–8 joined players without a readiness step. Stale Starts
+after the lobby return HTTP 409.
 
 Role allocation remains shuffled independently of host or seat with the
 existing one-Spy Standard sets for 4, 5, 6, 7, and 8 players. Before and during
