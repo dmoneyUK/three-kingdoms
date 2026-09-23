@@ -343,7 +343,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 }
 
 .hero-shell {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: radial-gradient(circle at 50% 20%, #46543d, #20271d 42%, #0e110c 82%);
 }
 
@@ -634,6 +634,39 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 
   .hero-choice-wrap {
     grid-column: span 2;
+    aspect-ratio: 108 / 180;
+  }
+
+  .hero-choice {
+    padding: 7px 7px 6px;
+  }
+
+  .hero-monogram {
+    flex: none;
+    height: clamp(94px, 14vw, 116px);
+    margin: 28px 0 4px;
+  }
+
+  .hero-choice h2 {
+    margin: 1px 0 2px;
+    font-size: 15px;
+  }
+
+  .hero-hp {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  .hero-choice p {
+    min-height: 2.4em;
+    margin: 4px 0 5px;
+    font-size: 8px;
+    line-height: 1.2;
+  }
+
+  .hero-choice i {
+    padding-top: 5px;
+    font-size: 8px;
   }
 
   .hero-choice-grid-5 > .hero-choice-wrap:nth-child(4) {
@@ -646,6 +679,47 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 }
 
 @media (max-width: 520px) {
+  .hero-shell .topbar {
+    height: 58px;
+    min-height: 58px;
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .hero-shell .topbar .brand {
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .hero-shell .topbar .brand-mark {
+    width: 30px;
+    height: 30px;
+    font-size: 16px;
+  }
+
+  .hero-shell .topbar .brand strong {
+    font-size: 13px;
+    letter-spacing: .05em;
+  }
+
+  .hero-shell .topbar .brand small {
+    display: none;
+  }
+
+  .hero-shell .room {
+    gap: 5px;
+    font-size: 8px;
+    letter-spacing: .08em;
+    white-space: nowrap;
+  }
+
+  .hero-shell .text-button {
+    padding: 4px 0;
+    font-size: 8px;
+    letter-spacing: .08em;
+    white-space: nowrap;
+  }
+
   .hero-stage {
     padding: 14px 12px 20px;
   }
@@ -701,8 +775,8 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 
   .hero-monogram {
     flex: none;
-    height: clamp(68px, 21vw, 90px);
-    margin: 15px 0 3px;
+    height: clamp(94px, 25vw, 108px);
+    margin: 28px 0 4px;
     font-size: 18px;
   }
 

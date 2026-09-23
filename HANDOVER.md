@@ -1,5 +1,28 @@
 # Three Kingdoms project handover
 
+## Hero selection portrait readability refinement — 2026-09-23
+
+Follow-up to the earlier mobile portrait pass after deployed screenshot review.
+The selection-only `.hero-monogram` now uses a `clamp(94px, 25vw, 108px)` art
+area on phones and an explicit `clamp(94px, 14vw, 116px)` area through the
+tablet breakpoint, with enough top separation for the faction label and sibling
+information button. The selection shell uses `100dvh`, while the existing
+available-width six-track grid preserves three cards per row and the centred
+3+2 Lord layout. The confirm action remains in normal document flow, so the
+larger portrait cards can extend the page vertically without clipping or
+horizontal overflow.
+
+Focused render coverage continues to protect private role/candidate counts,
+shared hero-art IDs, centred row placement, portrait sizing, dynamic viewport
+height, selection-scoped non-destructive image framing, and sibling (not
+nested) information controls. Gameplay, projections, Quick Test semantics,
+waiting state, hero metadata, and `choose_hero` are unchanged.
+
+Validation boundary: focused render tests, full API tests, lint, build, and
+`git diff --check` remain required before commit/push. Recommended next work is
+deployed review at 390px, 430px, and 768px, followed by final graphic/theme
+polish.
+
 ## Hero selection portrait redesign — 2026-09-23
 
 The mobile General Selection cards now use a taller portrait-card proportion

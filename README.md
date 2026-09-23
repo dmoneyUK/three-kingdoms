@@ -1,5 +1,24 @@
 # Three Kingdoms
 
+## Hero selection portrait readability refinement — 2026-09-23
+
+Refined the mobile General Selection redesign after deployed review. Candidate
+cards now reserve a larger selection-only portrait area, keep the faction and
+information controls clear of the artwork, and use the dynamic mobile viewport
+height. The <=900px breakpoint also gives the portrait an explicit height so
+tablet card metadata cannot collapse it. The available-width six-track grid
+still renders three cards per row, centres the Lord's second pair, and leaves
+confirmation in normal vertical flow so readable artwork is preferred over
+compressing the page.
+
+This remains presentation-only: hero allocation, role privacy, candidate
+counts, information dialogs, Quick Test perspective, shared `HeroPortrait`
+mapping, and the existing `choose_hero` contract are unchanged.
+
+Current stage: Stage 7 product polish, mobile hero-selection portrait
+readability refinement complete. The next milestone is deployed review at
+390px, 430px, and 768px, followed by final graphic/theme polish.
+
 ## Hero selection portrait redesign — 2026-09-23
 
 The mobile General Selection page now gives each hero a proper portrait-card
