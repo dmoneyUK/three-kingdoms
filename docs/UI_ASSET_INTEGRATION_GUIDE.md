@@ -44,6 +44,8 @@ public/assets/ui/
   game-board-frame.svg
   card-back-bg.webp
   card-frame-gold.svg
+  other-player-frame-asymmetric.webp
+  other-player-frame-symmetric.webp
 ```
 
 Naming rule: lowercase kebab-case, named by UI function rather than generation prompt.
@@ -302,7 +304,136 @@ Keep those CSS/state-driven so every card can share the same assets.
 
 ---
 
-# 5. Responsive and performance rules
+# 5. Other-player frame variants
+
+Two transparent opponent/player-frame assets are now approved and staged. They are decorative overlays only; all player information remains live UI.
+
+## 5.1 `other-player-frame-asymmetric.webp`
+
+### Purpose
+Ornate asymmetric frame for the side opponent positions.
+
+### Visual characteristics
+- antique-gold and dark-green styling,
+- open transparent center,
+- stronger ornament/medallion emphasis toward one upper side,
+- decorative lower rail and cloud/mountain elements,
+- no player name, HP, hand count, role, equipment text, or hero portrait baked into the asset.
+
+### Intended positioning
+Use for the **left and right side opponents** on the main game board.
+
+For the right-side opponent, the coding agent may horizontally mirror the decorative frame with CSS so the visual weight faces inward toward the board center. Mirror **only the decorative image layer**, never the live text, portrait, equipment icons, suit/rank, or controls.
+
+Example concept:
+
+```css
+.other-player-frame--right .other-player-frame-art {
+  transform: scaleX(-1);
+}
+```
+
+Do not mirror the actual player panel DOM.
+
+---
+
+## 5.2 `other-player-frame-symmetric.webp`
+
+### Purpose
+Symmetrical ornate frame for the top-center opponent position.
+
+### Visual characteristics
+- centered circular ornament,
+- balanced left/right pillars,
+- transparent central content area,
+- dark-green / antique-gold styling,
+- decorative lower name/stat rail,
+- no text or player data baked into the image.
+
+### Intended positioning
+Use for the **top-center opponent** so the top opponent does not inherit a left/right directional bias.
+
+---
+
+## 5.3 Required live content inside player frames
+
+The frame assets must never replace the real player information.
+
+Keep the current data-driven UI for:
+- player name,
+- info/details button,
+- `HP x/x`,
+- heart icons,
+- `Hand cards: x`,
+- hero/general portrait if currently shown,
+- equipment mini-cards,
+- judgement mini-cards,
+- role/faction information where rules permit,
+- active/targetable/selected indicators.
+
+The visual frame is a non-interactive layer around this content.
+
+Suggested structure:
+
+```tsx
+<div className="other-player">
+  <img
+    className="other-player-frame-art"
+    src={frameAsset}
+    alt=""
+    aria-hidden="true"
+  />
+
+  <div className="other-player-content">
+    {/* existing player UI */}
+  </div>
+</div>
+```
+
+Both frame images must use `pointer-events: none`.
+
+---
+
+## 5.4 Preserve the existing other-player layout
+
+Do **not** rebuild the player card around the artwork's native image proportions.
+
+The existing game layout and touch targets have priority. The coding agent should fit the decorative layer to the existing opponent panel container and tune internal padding so the live information remains readable.
+
+Important:
+- do not enlarge opponent panels enough to crowd the deck/discard area,
+- do not allow ornament to cover HP/hearts/hand count,
+- do not move the info button into the decorative medallion,
+- do not embed equipment or judgement cards into the frame artwork,
+- do not hide or truncate more player information than the existing UI already does.
+
+If the asset details become visually dense at the smallest mobile size, reduce the decorative layer's visual prominence with CSS rather than removing live player data.
+
+---
+
+## 5.5 Positional mapping
+
+For the current three-opponent board:
+
+```text
+Top-center opponent
+  -> other-player-frame-symmetric.webp
+
+Left opponent
+  -> other-player-frame-asymmetric.webp
+
+Right opponent
+  -> other-player-frame-asymmetric.webp
+     mirrored on the decorative image layer only
+```
+
+This mapping uses both approved assets while keeping the gameplay component shared.
+
+The same player component should select only the decorative frame variant from seat/layout position. Do not fork game logic or player-state rendering.
+
+---
+
+# 6. Responsive and performance rules
 
 The game is used on mobile as well as desktop.
 
@@ -320,7 +451,7 @@ Do not change gameplay spacing merely to make decoration look perfect. Decoratio
 
 ---
 
-# 6. Screens affected in the final integration
+# 7. Screens affected in the final integration
 
 The board assets are intended for the actual game screen containing:
 - other players,
@@ -345,7 +476,7 @@ The reusable card frame can eventually appear anywhere the standard game-card co
 
 ---
 
-# 7. Coding-agent constraints
+# 8. Coding-agent constraints
 
 When the user eventually asks for the complete asset implementation:
 
@@ -364,7 +495,7 @@ When the user eventually asks for the complete asset implementation:
 
 ---
 
-# 8. Assets still to be designed
+# 9. Assets still to be designed
 
 Do not invent missing assets.
 
@@ -381,7 +512,7 @@ Expected future items:
 
 ---
 
-# 9. Update protocol
+# 10. Update protocol
 
 Every approved future asset must update this same file.
 
@@ -400,7 +531,7 @@ Do not create competing implementation-guide files for the same asset set.
 
 ---
 
-# 10. Change log
+# 11. Change log
 
 ## 2026-09-23 — board foundation
 
@@ -410,6 +541,22 @@ Added:
 
 Decision:
 - use separate board artwork and scalable frame overlay.
+
+## 2026-09-23 — player frame variants
+
+Added:
+- `public/assets/ui/other-player-frame-asymmetric.webp`
+- `public/assets/ui/other-player-frame-symmetric.webp`
+
+Decisions:
+- both generated player-frame designs are retained as approved production assets,
+- use the symmetric variant for the top-center opponent,
+- use the asymmetric variant for side opponents,
+- horizontally mirror only the asymmetric decorative image for the right-side opponent when needed,
+- preserve existing player information, interactions and component logic,
+- player name, HP, hearts, hand count, equipment, judgement, info controls and other state remain live UI,
+- decorative frames use transparent centers and `pointer-events: none`,
+- do not resize the gameplay layout merely to match the source artwork proportions.
 
 ## 2026-09-23 — generic card back and reusable card frame
 
@@ -427,7 +574,7 @@ Decisions:
 
 ---
 
-# 11. Final asset-pass instruction
+# 12. Final asset-pass instruction
 
 **Do not perform the broad visual rewrite yet.**
 
