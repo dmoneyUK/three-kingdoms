@@ -1,5 +1,27 @@
 # Three Kingdoms
 
+## Opponent hero-card table redesign — 2026-09-23
+
+Redesigned the three non-local player panels as one reusable portrait-oriented
+hero-card component. Existing top, left, and right seat placement still comes
+from the relative table index, while each card now gives the artwork the full
+hero region, renders player/hero name plus dynamic HP and hearts in a readable
+gradient overlay, and uses a prominent hand-card footer. Equipment and
+judgement indicators remain available in a compact overlay rail with their
+existing information controls; targeting, turn/action highlights, selected
+targets, and defeated state are unchanged.
+
+The local-player dock, hand, deck/discard area, rules, state projection, and
+networking were not changed. The new render assertions protect the shared
+opponent component, overlay content, footer hierarchy, artwork cover framing,
+and Quick Test perspective switching. Desktop review and a 390px mobile
+geometry check show 2:3 cards, no horizontal overflow, and the local dock
+remaining below the table.
+
+Current stage: Stage 7 product polish, opponent hero-card redesign complete.
+The next milestone is final graphic/theme polish and approved artwork intake
+for remaining fallback heroes.
+
 ## UI asset staging audit and integration contract — 2026-09-23
 
 Audited the staged UI asset set against the actual render paths in

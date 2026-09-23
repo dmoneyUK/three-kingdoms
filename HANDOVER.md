@@ -1,5 +1,33 @@
 # Three Kingdoms project handover
 
+## Opponent hero-card table redesign — 2026-09-23
+
+Implemented `OpponentPlayerCard` in `app/page.tsx` and scoped its portrait
+card treatment in `app/sequence-overrides.css`. All non-local seats still use
+the same `player-board` mapping and relative-index positions: top centre,
+left, and right. The hero artwork now fills the card region with
+`object-fit: cover`; account name is secondary, hero name/HP/hearts are
+dynamic HTML in a gradient overlay, and the hand-card footer gives the count
+the strongest visual weight.
+
+Equipment and judgement mini-zones remain rendered and their card/hero info
+buttons remain tappable. Turn, action, selected-target, defeated, targeting,
+and Quick Test perspective behavior are preserved. The local-player dock and
+its hand/action layout were intentionally left untouched. This is a
+presentation-only change with no rules, route, projection, or networking
+changes.
+
+`tests/room-safety-render.test.mjs` now checks the shared opponent-card
+markup, overlay values, footer hierarchy, portrait-card CSS, cover framing,
+and seat switching. Browser review passed on desktop and at 390×844; the
+three cards measured at approximately 101×152 (2:3), `scrollWidth` matched
+the viewport, and the local dock remained below the table.
+
+Validation is complete: build, 38 fast render/regression tests, 106 API tests
+across four shards, lint, and `git diff --check` all pass. Recommended next
+work is final graphic/theme polish and approved artwork intake for remaining
+fallback heroes.
+
 ## UI asset staging audit and integration contract — 2026-09-23
 
 The staged graphic-skin repository contract has been corrected before runtime
