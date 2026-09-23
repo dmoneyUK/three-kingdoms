@@ -48,6 +48,7 @@ public/assets/ui/
   other-player-frame-symmetric.webp
   other-player-frame-asymmetric-reference.webp
   local-player-frame-ornate-reference.webp
+  local-player-frame.webp
 ```
 
 Naming rule: lowercase kebab-case, named by UI function rather than generation prompt.
@@ -520,7 +521,92 @@ Use it only as a non-interactive decorative layer around the existing local-play
 - do not move or resize gameplay regions solely to match the source image,
 - preserve current mobile portrait behavior,
 - preserve current bottom-panel touch targets,
-- if a dedicated production local-player frame is generated later, prefer that production asset and keep this file as visual reference only.
+- prefer the production asset below for the final implementation; keep this ornate file as visual reference only.
+
+---
+
+## 6.2 `local-player-frame.webp`
+
+### Purpose
+**Production local-player / bottom-HUD decorative frame.**
+
+This is the approved wide, shallow frame intended to wrap the existing local-player area without changing its gameplay structure.
+
+### Asset characteristics
+- transparent center and transparent exterior,
+- wide horizontal proportion suitable for the existing bottom HUD,
+- dark green / black textured rails,
+- antique-gold border treatment,
+- restrained geometric corner details,
+- cloud and mountain ornament concentrated near edges,
+- small central lower emblem,
+- no text,
+- no hero portrait,
+- no baked HP/role/equipment/judgement/card/button content.
+
+### Required integration model
+
+The existing bottom player UI remains authoritative. Add this asset only as a decorative layer:
+
+```tsx
+<div className="local-player-area">
+  <img
+    className="local-player-frame-art"
+    src="/assets/ui/local-player-frame.webp"
+    alt=""
+    aria-hidden="true"
+  />
+
+  <div className="local-player-content">
+    {/* existing hero / HP / role / equipment / judgement / hand / action UI */}
+  </div>
+</div>
+```
+
+Recommended CSS concept:
+
+```css
+.local-player-area {
+  position: relative;
+}
+
+.local-player-frame-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.local-player-content {
+  position: relative;
+  z-index: 1;
+}
+```
+
+### Coding-agent rules
+- keep the current hero block,
+- keep the current HP / role panel,
+- keep equipment and judgement as separate live regions,
+- keep hand-card rendering unchanged except for later approved card-frame styling,
+- keep current phase/action text and Play/End controls live,
+- do not put the action buttons inside the image,
+- do not move controls to match decorative ornament,
+- do not derive spacing from the source image dimensions,
+- fit the decoration to the existing bottom HUD,
+- if needed, tune only safe internal padding so ornament does not overlap live content,
+- all pointer/touch interaction belongs to the current UI, never the frame asset.
+
+### Responsive acceptance criteria
+On mobile portrait and desktop:
+- the outer frame follows the existing local-player region,
+- no page-level horizontal overflow is introduced,
+- hero/HP/equipment/judgement/hand/action controls remain readable,
+- no decorative mountain/cloud/medallion covers cards or buttons,
+- existing touch targets remain the same or larger,
+- frame does not distort gameplay layout.
 
 ---
 
@@ -591,7 +677,6 @@ When the user eventually asks for the complete asset implementation:
 Do not invent missing assets.
 
 Expected future items:
-- production local-player / bottom panel frame,
 - equipment-slot treatment,
 - judgement-area treatment,
 - deck/discard presentation treatment if needed,
@@ -662,6 +747,19 @@ Decisions:
 - hero/HP/role/equipment/judgement/hand/action controls remain live UI,
 - do not enlarge or restructure the bottom player area to fit the reference artwork,
 - a later dedicated production asset may replace this reference.
+
+## 2026-09-23 — production local-player frame
+
+Added:
+- `public/assets/ui/local-player-frame.webp`
+
+Decisions:
+- this wide transparent asset is the production decorative frame for the local player's bottom HUD,
+- render it as a non-interactive overlay around the existing bottom-player UI,
+- preserve hero, HP/role, equipment, judgement, hand, phase text and Play/End controls as live UI,
+- do not resize or restructure the gameplay layout to match the asset's native dimensions,
+- keep `local-player-frame-ornate-reference.webp` as reference-only,
+- verify mobile portrait and desktop behavior before finalizing the integration.
 
 ## 2026-09-23 — generic card back and reusable card frame
 
