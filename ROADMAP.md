@@ -2,6 +2,17 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+## Stage 6 hero capability — Yue Jin / Dauntless — 2026-09-23
+
+Complete. The canonical `turn_end` lifecycle now owns all normal turn-ending
+paths and persists its continuation through Dauntless activation, target-owned
+Equipment selection, sourced damage, nested reactions, Dying/rescue, and
+defeat. Yue Jin's Basic-card cost is private and catalogue-driven; Equipment
+selection is mandatory and target-owned; damage fallback carries no physical
+damage card. Worker/D1 coverage includes reload, stale submissions, nested
+Sima Yi/Xiahou Dun/Guo Jia/Cao Cao behavior, and exact card conservation.
+The next milestone is the next individually verified missing Standard hero.
+
 ## Stage 7 maintenance — Waiting Room start flow — 2026-09-23
 
 Complete. Lobby readiness is no longer a product step: once 4–8 players have

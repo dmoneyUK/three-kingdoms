@@ -19,6 +19,32 @@ Validation boundary: focused render coverage is green; full build, test, lint,
 and diff-check remain the release gates. Recommended next work is deployed
 mobile review, followed by final graphic/theme polish.
 
+## Yue Jin — Dauntless — 2026-09-23
+
+Implemented Yue Jin through the generic semantic `turn_end` lifecycle. Normal
+Play completion, Discard completion, and Lu Meng Composure now converge on a
+persisted turn-end continuation; the next living seat is selected only after
+all end-of-turn effects and nested damage/Dying resolution finish.
+
+Dauntless privately projects only Yue Jin's hand cards whose semantic catalogue
+category is `basic`, discards exactly one selected cost, and automatically
+targets the character whose turn ended. When that character has Equipment, the
+target owns a mandatory public one-card Equipment selection. Otherwise the
+shared sourced-damage pipeline deals 1 damage from Yue Jin with
+`damageCards: []`, keeping Cao Cao Treachery from obtaining the cost card while
+preserving Sima Yi Retaliation, Xiahou Dun Stauchness, Guo Jia Legacy, Dying,
+rescue, defeat, and return-to-turn-end continuations.
+
+Regression coverage is in `tests/api/yue-jin-dauntless.test.mjs` and includes
+private projections, own-turn/no-Basic/decline behavior, Equipment choice,
+damage fallback, nested hero reactions, Dying rescue/defeat, reload, stale
+CAS, and cost/card conservation. The generic human-game fixture now uses Zhao
+Yun as its neutral hero because Yue Jin is no longer metadata-only.
+
+Validation boundary: focused Dauntless API coverage is green; rerun the full
+build, tests, lint, and diff-check before commit/push. Recommended next work
+is the next individually verified missing Standard hero.
+
 ## Waiting Room no-readiness start flow — 2026-09-23
 
 Removed the lobby Ready button, Ready/Not Ready seat labels, and readiness

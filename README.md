@@ -17,6 +17,23 @@ Current stage: Stage 7 product polish, supplied hero artwork skin complete. The
 next milestone is deployed mobile review, followed by final graphic/theme
 polish.
 
+## Yue Jin — Dauntless — 2026-09-23
+
+Yue Jin is now implemented through the canonical semantic `turn_end` event.
+Normal Play completion, Discard completion, and Lu Meng Composure all enter
+the same persisted turn-end continuation before the next living seat is
+calculated. Dauntless privately offers Yue Jin exactly one eligible Basic card
+from hand; the ending character is the automatic target and must choose one
+equipped card when Equipment exists. Without Equipment, the cost is discarded
+as a skill cost and the shared sourced-damage pipeline deals 1 damage with no
+physical damage card. Nested Retaliation, Stauchness, Legacy, Treachery
+exclusion, Dying/rescue, reload, stale CAS, and physical card conservation are
+covered by Worker/D1 regressions.
+
+Current stage: Stage 6 hero-capability execution — Yue Jin / Dauntless
+complete. The next milestone is the next individually verified missing
+Standard hero.
+
 ## Lobby start flow — 2026-09-23
 
 Waiting Room no longer asks players to set a lobby-ready state. The host can
@@ -116,7 +133,7 @@ final graphic/theme skin.
 
 Hero selection now follows the implementation statuses in
 `docs/STANDARD_HERO_REFERENCE.md`. New Standard games show and accept only
-the 18 heroes whose complete skill sets are implemented. The full metadata
+the 19 heroes whose complete skill sets are implemented. The full metadata
 roster remains available for saved-room readability, but stale or forged
 candidate lists cannot make an unimplemented hero selectable.
 

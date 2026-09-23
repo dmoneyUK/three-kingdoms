@@ -14,7 +14,7 @@ const shardGroups = [
   ["tests/api/equipment.test.mjs", "tests/api/judgement.test.mjs"],
   ["tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs"],
   ["tests/api/stratagems.test.mjs", "tests/api/borrowed-sword.test.mjs"],
-  ["tests/api/lobby-heroes-wei.test.mjs", "tests/api/concurrency.test.mjs"],
+  ["tests/api/lobby-heroes-wei.test.mjs", "tests/api/concurrency.test.mjs", "tests/api/yue-jin-dauntless.test.mjs"],
 ];
 const assigned = shardGroups.flat();
 if (assigned.length !== files.length || new Set(assigned).size !== files.length || files.some((file) => !assigned.includes(file))) {

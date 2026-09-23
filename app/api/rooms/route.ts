@@ -17,7 +17,7 @@ import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../ga
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
-import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type DrawPhaseTriggerContinuation, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending } from "../../../game/pending";
+import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type DrawPhaseTriggerContinuation, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
@@ -164,6 +164,21 @@ function damageSufferedTriggerContext(source: PlayerRow | null, target: PlayerRo
     ...(judgementCard ? { judgementCard, judgementPurpose: "ganglie" as const } : {}),
   };
 }
+function turnEndTriggerContext(actor: PlayerRow, endingPlayer: PlayerRow, stage: TurnEndTriggerContinuation["stage"], source?: PlayerRow | null) {
+  return {
+    event: "turn_end" as const,
+    sourceId: source?.id ?? actor.id,
+    sourceEquipment: equipmentCards(source ?? actor),
+    sourceHand: parse<Card[]>(source?.hand_json ?? actor.hand_json, []),
+    targetId: endingPlayer.id,
+    targetHand: parse<Card[]>(endingPlayer.hand_json, []),
+    targetEquipment: equipmentCards(endingPlayer),
+    playerId: actor.id,
+    hero: actor.hero,
+    targetHero: endingPlayer.hero,
+    turnEndStage: stage,
+  };
+}
 function damageTriggerOptions(source?: PlayerRow | null, target?: PlayerRow | null) {
   return source && target ? getTriggeredEffects(damageTriggerContext(source, target)) : [];
 }
@@ -181,14 +196,14 @@ function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase:
   };
   return readyAfterEventId ? withPresentationBarrier(pending, [], readyAfterEventId) : pending;
 }
-function damageSufferedTriggerPending(source: PlayerRow | null, target: PlayerRow, amount: number, resumePhase: string, sequenceStartCardId: string, readyAfterEventId: string | undefined, origin?: AttackOrigin, resumePlayerId?: string, resumeGroup?: GroupResponsePending, resumeDamageSuffered?: DamageSufferedTriggerContinuation, damageCards: Card[] = []): TriggerPending {
+function damageSufferedTriggerPending(source: PlayerRow | null, target: PlayerRow, amount: number, resumePhase: string, sequenceStartCardId: string, readyAfterEventId: string | undefined, origin?: AttackOrigin, resumePlayerId?: string, resumeGroup?: GroupResponsePending, resumeDamageSuffered?: DamageSufferedTriggerContinuation, damageCards: Card[] = [], resumeTurnEnd?: TurnEndTriggerContinuation): TriggerPending {
   const pending: TriggerPending = {
     kind: "trigger",
     event: "damage_suffered",
     actorId: target.id,
     reason: `${target.name} may use an optional post-damage reaction, or skip`,
     deadline: nextResponseDeadline(target),
-    continuation: { kind: "damage_suffered_event", ...(source ? { sourceId: source.id } : {}), targetId: target.id, amount, damagePointIndex: 0, damagePointCount: amount, resumePhase, sequenceStartCardId, stage: "reaction", resolvedEffectIds: [], resolvedDamagePointEffectIds: [], ...(damageCards.length ? { damageCards } : {}), ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}), ...(resumeGroup ? { resumeGroup } : {}), ...(resumeDamageSuffered ? { resumeDamageSuffered } : {}) },
+    continuation: { kind: "damage_suffered_event", ...(source ? { sourceId: source.id } : {}), targetId: target.id, amount, damagePointIndex: 0, damagePointCount: amount, resumePhase, sequenceStartCardId, stage: "reaction", resolvedEffectIds: [], resolvedDamagePointEffectIds: [], ...(damageCards.length ? { damageCards } : {}), ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}), ...(resumeGroup ? { resumeGroup } : {}), ...(resumeDamageSuffered ? { resumeDamageSuffered } : {}), ...(resumeTurnEnd ? { resumeTurnEnd } : {}) },
   };
   return readyAfterEventId ? withPresentationBarrier(pending, [], readyAfterEventId) : pending;
 }
@@ -210,6 +225,16 @@ function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
   if (continuation.kind === "discard_phase_event") {
     const player = players.find((candidate) => candidate.id === continuation.playerId);
     return player ? { event: pending.event, sourceEquipment: equipmentCards(player), sourceHand: parse<Card[]>(player.hand_json, []), playerId: player.id, hero: player.hero, attackUsed: continuation.attackUsed } : null;
+  }
+  if (continuation.kind === "turn_end_event") {
+    const endingPlayer = players.find((candidate) => candidate.id === continuation.endingPlayerId) ?? null;
+    if (!endingPlayer) return null;
+    if (continuation.stage === "equipment") {
+      const source = continuation.sourceId ? players.find((candidate) => candidate.id === continuation.sourceId && candidate.alive) ?? null : null;
+      return source ? turnEndTriggerContext(endingPlayer, endingPlayer, "equipment", source) : null;
+    }
+    const actor = players.find((candidate) => candidate.id === pending.actorId && candidate.alive);
+    return actor && endingPlayer.alive ? turnEndTriggerContext(actor, endingPlayer, "activation") : null;
   }
   if (continuation.kind === "hand_loss_event") {
     const player = players.find((candidate) => candidate.id === continuation.playerId);
@@ -677,6 +702,10 @@ async function finishDamageSufferedEvent(room: RoomRow, continuation: DamageSuff
     await continueDamageSufferedEvent(room, continuation.resumeDamageSuffered, players, deck, discard, log);
     return;
   }
+  if (continuation.resumeTurnEnd) {
+    await continueTurnEndEvent({ ...room, phase: "resolving", pending_json: null }, continuation.resumeTurnEnd, players, deck, discard, log);
+    return;
+  }
   if (continuation.resumeGroup) {
     const group = continuation.resumeGroup;
     await finishGroupStep({ ...room, phase: "response", pending_json: serializePending(group) }, group, group.continuation, players, discard, addLog(log, `${players.find((player) => player.id === continuation.targetId)?.name ?? "The damaged character"}'s post-damage reaction ends. The group card continues.`));
@@ -1063,6 +1092,51 @@ async function beginTurnStart(roomId: string, turnSeat: number) {
     .bind(turnSeat, serializePending(pending), JSON.stringify(presentation.log), skillState, roomId).run();
 }
 
+function turnEndContinuation(endingPlayer: PlayerRow): TurnEndTriggerContinuation {
+  return { kind: "turn_end_event", endingPlayerId: endingPlayer.id, endingSeat: endingPlayer.seat, stage: "activation", resolvedEffectIds: [] };
+}
+
+/** Finds turn-end providers, then advances only after the persisted event is exhausted. */
+async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerContinuation, players: PlayerRow[], deck: Card[], discard: Card[], log: string[]) {
+  const endingPlayer = players.find((player) => player.id === continuation.endingPlayerId) ?? null;
+  if (endingPlayer?.alive) {
+    const resolved = continuation.resolvedEffectIds ?? [];
+    for (const actor of playersInTurnOrder(players, continuation.endingSeat).filter((player) => player.id !== endingPlayer.id)) {
+      const options = getTriggeredEffects(turnEndTriggerContext(actor, endingPlayer, "activation"), resolved);
+      if (!options.length) continue;
+      const presentation = addLogWithId(log, `${actor.name} may use Dauntless at the end of ${endingPlayer.name}'s turn.`);
+      const pending: TriggerPending = withPresentationBarrier({
+        kind: "trigger",
+        event: "turn_end",
+        actorId: actor.id,
+        reason: `${actor.name} may use Dauntless on ${endingPlayer.name}, or decline`,
+        deadline: nextResponseDeadline(actor),
+        resolvedEffectIds: resolved,
+        continuation: { ...continuation, stage: "activation" },
+      }, presentation.log, presentation.eventId);
+      await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+        .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log), room.id).run();
+      return;
+    }
+  }
+  if (await finishIfWon(room.id)) return;
+  const currentRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+  const currentPlayers = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
+  if (!currentRoom || currentRoom.status !== "playing") return;
+  const next = nextAliveSeat(currentPlayers, continuation.endingSeat);
+  const nextLog = addLog(log, `${endingPlayer?.name ?? "The ending character"}'s turn-end effects finish; the next living character begins.`);
+  await db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'resolving', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ? AND status = 'playing'")
+    .bind(next, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextLog), room.id).run();
+  await beginTurnStart(room.id, next);
+}
+
+async function beginTurnEnd(roomId: string, endingPlayer: PlayerRow) {
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  if (!room) return;
+  const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+  await continueTurnEndEvent(room, turnEndContinuation(endingPlayer), players, parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
+}
+
 async function beginMatch(roomId: string, players: PlayerRow[]) {
   const deck = makeDeck();
   const openingHands = players.map((player) => ({ player, cards: [] as Card[] }));
@@ -1175,6 +1249,7 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
       : canonicalTrigger?.continuation.kind === "turn_start_event" ? canonicalTrigger.continuation.playerId
         : canonicalTrigger?.continuation.kind === "draw_phase_event" ? canonicalTrigger.continuation.playerId
         : canonicalTrigger?.continuation.kind === "discard_phase_event" ? canonicalTrigger.continuation.playerId
+        : canonicalTrigger?.continuation.kind === "turn_end_event" ? canonicalTrigger.continuation.endingPlayerId
         : canonicalTrigger?.continuation.kind === "judgement_revealed_event" ? judgementResume?.kind === "response" ? judgementResume.continuation.sourceId : judgementResume?.kind === "damage_suffered" ? judgementResume.continuation.sourceId : canonicalTrigger.continuation.judgement.targetId
         : canonicalTrigger?.continuation.kind === "judgement_effective_event" ? canonicalTrigger.continuation.judgement.targetId
         : canonicalTrigger?.continuation.kind === "attack_targeted_event" ? owner.id
@@ -1191,7 +1266,8 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
     const privateDistributionActor = pending.kind === "card_distribution" && pending.actorId === actor.id;
     const heroChoiceTarget = canonicalTrigger?.continuation.kind === "hero_choice_event" && pending.actorId === canonicalTrigger.continuation.targetId;
     const handLossActor = canonicalTrigger?.continuation.kind === "hand_loss_event" && pending.actorId === canonicalTrigger.continuation.playerId;
-    if (owner.id !== expectedOwnerId && !borrowedContinuationAttack && !borrowedTriggerContinuation && !postDamageTargetContinuation && !privateDistributionActor && !heroChoiceTarget && !handLossActor) return "The pending action does not belong to the current turn owner.";
+    const turnEndActor = canonicalTrigger?.continuation.kind === "turn_end_event" && owner.id === canonicalTrigger.continuation.endingPlayerId;
+    if (owner.id !== expectedOwnerId && !borrowedContinuationAttack && !borrowedTriggerContinuation && !postDamageTargetContinuation && !privateDistributionActor && !heroChoiceTarget && !handLossActor && !turnEndActor) return "The pending action does not belong to the current turn owner.";
   } else if (room.phase !== "resolving" && pending) {
     return `The ${room.phase ?? "unknown"} phase contains an unexpected pending action.`;
   }
@@ -1222,6 +1298,11 @@ async function continueAfterDefeat(roomId: string, pending: DyingPending) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   if (!room) return;
+  if (pending.resumeTrigger?.resumeTurnEnd) {
+    const current = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+    if (current) await continueDamageSufferedEvent(current, pending.resumeTrigger, rows.results ?? [], parse<Card[]>(current.deck_json, []), parse<Card[]>(current.discard_json, []), parse<string[]>(current.log_json, []));
+    return;
+  }
   const decision = determineDefeatContinuation({ players: rows.results ?? [], turnSeat: room.turn_seat, resumePlayerId: pending.resumePlayerId, hasGroupContinuation: Boolean(pending.resumePending) });
   if (decision.kind === "finish") { await finishIfWon(roomId); return; }
   if (decision.kind === "resume_group") { await advanceGroup(roomId); return; }
@@ -1812,11 +1893,12 @@ type SourcedDamageTransition = {
   resumeGroup?: GroupResponsePending;
   resumePending?: GroupResponsePending;
   resumeDamageSuffered?: DamageSufferedTriggerContinuation;
+  resumeTurnEnd?: TurnEndTriggerContinuation;
   onDamageApplied?: (hp: number) => Promise<void> | void;
 };
 
 /** Applies sourced damage, then discovers the generic post-damage event. */
-async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], origin, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumePending, resumeDamageSuffered, onDamageApplied }: SourcedDamageTransition): Promise<AttackDamageResult> {
+async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], origin, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied }: SourcedDamageTransition): Promise<AttackDamageResult> {
   const finalAmount = resolveDamageModifiers({ sourceId: source?.id, sourceHero: source?.hero, cause, baseAmount: amount, turnState: parse<KingSkillState>(room.skill_state_json, {}) });
   const hp = applyDamage(target.hp ?? 1, finalAmount);
   const description = typeof damageDescription === "function" ? damageDescription(finalAmount) : damageDescription ?? `${target.name} takes ${finalAmount} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
@@ -1838,6 +1920,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     resolvedDamagePointEffectIds: [],
     ...(resumeGroup ? { resumeGroup } : {}),
     ...(resumeDamageSuffered ? { resumeDamageSuffered } : {}),
+    ...(resumeTurnEnd ? { resumeTurnEnd } : {}),
   };
   if (isDying(hp)) {
     const resumePlayer = players.find((player) => player.id === (resumePlayerId ?? source?.id)) ?? source ?? target;
@@ -1846,7 +1929,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     const pendingPostDamageOptions = target.alive
       ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards)
       : [];
-    const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(resumeGroup || resumeDamageSuffered);
+    const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(resumeGroup || resumeDamageSuffered || resumeTurnEnd);
     await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, resumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined);
     return { kind: "dying" };
   }
@@ -1857,7 +1940,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const postDamageOptions = target.alive ? damageSufferedTriggerOptions(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, undefined, [], damageCards) : [];
   if (postDamageOptions.length) {
     const presentation = addLogWithId(damageLog, `${target.name} may use a post-damage reaction, or skip.`);
-    const pending = damageSufferedTriggerPending(source, updatedTarget, finalAmount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, resumeGroup, resumeDamageSuffered, damageCards);
+    const pending = damageSufferedTriggerPending(source, updatedTarget, finalAmount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, resumeGroup, resumeDamageSuffered, damageCards, resumeTurnEnd);
     await db().batch([
       ...writes,
       db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id),
@@ -1869,6 +1952,12 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   if (resumeDamageSuffered) {
     await db().batch([...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id)]);
     await continueDamageSufferedEvent({ ...room, phase: "resolving", pending_json: null }, resumeDamageSuffered, updatedPlayers, deck, discard, damageLog);
+    return { kind: "damage_applied", hp, log: damageLog };
+  }
+  if (resumeTurnEnd) {
+    await db().batch([...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id), db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(damageLog), room.id)]);
+    const updatedPlayers = players.map((player) => player.id === target.id ? updatedTarget : player);
+    await continueTurnEndEvent({ ...room, phase: "resolving", pending_json: null }, resumeTurnEnd, updatedPlayers, deck, discard, damageLog);
     return { kind: "damage_applied", hp, log: damageLog };
   }
   if (resumeGroup) {
@@ -2924,6 +3013,94 @@ export async function POST(request: Request) {
     const stored = parse<Pending | null>(liveRoom?.pending_json ?? null, null);
     const trigger = asTriggerPending(stored);
     const continuation = trigger?.continuation;
+    if (liveRoom && trigger && continuation?.kind === "turn_end_event" && trigger.actorId === me.id) {
+      const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+      const players = rows.results ?? [];
+      const endingPlayer = players.find((player) => player.id === continuation.endingPlayerId) ?? null;
+      const source = continuation.stage === "equipment"
+        ? players.find((player) => player.id === continuation.sourceId && player.alive) ?? null
+        : players.find((player) => player.id === trigger.actorId && player.alive) ?? null;
+      if (!endingPlayer || !source || (continuation.stage === "activation" && source.id === endingPlayer.id)) return json({ error: "That turn-end decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      const context = triggerContextFor(trigger, players);
+      const available = context ? getTriggeredEffects(context, trigger.resolvedEffectIds) : [];
+      if (action === "apply_trigger" && (!triggerExecution || !available.some((option) => option.effectId === triggerExecution.effectId))) return json({ error: "That Dauntless decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (action === "apply_trigger" && continuation.stage === "activation" && (triggerExecution.outcome.kind !== "discard_cards" || triggerExecution.outcome.targetId !== source.id || triggerExecution.outcome.targetCardIds.length !== 1)) return json({ error: "Select exactly 1 Basic card for Dauntless.", stale: true, room: await roomState(code, token) }, 409);
+      if (action === "apply_trigger" && continuation.stage === "equipment" && (triggerExecution.outcome.kind !== "target_discard" || !equipmentCards(endingPlayer).some((card) => card.id === triggerExecution.outcome.targetCardId))) return json({ error: "Select exactly 1 equipped card for Dauntless.", stale: true, room: await roomState(code, token) }, 409);
+      if (action === "apply_trigger" && continuation.stage === "activation") {
+        const requestedCostId = (triggerExecution.outcome as { kind: "discard_cards"; targetCardIds: string[] }).targetCardIds[0];
+        const requestedCost = parse<Card[]>(source.hand_json, []).find((card) => card.id === requestedCostId);
+        if (!requestedCost || cardDefinition(requestedCost.kind).category !== "basic") return json({ error: "The Dauntless cost must be exactly 1 Basic card from Yue Jin's hand.", stale: true, room: await roomState(code, token) }, 409);
+      }
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That turn-end decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      const discard = parse<Card[]>(liveRoom.discard_json, []);
+      let log = parse<string[]>(liveRoom.log_json, []);
+      if (action === "decline_trigger_effect") {
+        const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), ...available.map((option) => option.effectId)])] } satisfies TurnEndTriggerContinuation;
+        await continueTurnEndEvent({ ...liveRoom, phase: "resolving", pending_json: null }, resolved, players, parse<Card[]>(liveRoom.deck_json, []), discard, addLog(log, `${source.name} declines Dauntless; the turn-end event continues.`));
+        return json({ room: await roomState(code, token) });
+      }
+      if (continuation.stage === "equipment") {
+        const selectedId = (triggerExecution.outcome as { kind: "target_discard"; targetCardId: string }).targetCardId;
+        const equipment = equipmentZone(endingPlayer);
+        const slot = (Object.keys(equipment) as Array<keyof EquipmentZone>).find((key) => equipment[key]?.id === selectedId);
+        const selected = slot ? equipment[slot] : undefined;
+        if (!slot || !selected) return json({ error: "The selected Equipment is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+        delete equipment[slot];
+        discard.push(selected);
+        log = addDiscardEvent(log, endingPlayer.name, [selected]);
+        log = addLog(log, `${endingPlayer.name} discards Equipment with Dauntless; no damage is dealt.`);
+        const resolved = { ...continuation, stage: "activation" as const, sourceId: undefined, targetId: undefined, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), "yue_jin_dauntless"])] } satisfies TurnEndTriggerContinuation;
+        const updatedPlayers = players.map((player) => player.id === endingPlayer.id ? { ...player, equipment_json: JSON.stringify(equipment) } : player);
+        await db.batch([
+          db.prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(JSON.stringify(equipment), endingPlayer.id),
+          db.prepare("UPDATE rooms SET deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(liveRoom.deck_json, JSON.stringify(discard), JSON.stringify(log), room.id),
+        ]);
+        await continueTurnEndEvent({ ...liveRoom, phase: "resolving", pending_json: null }, resolved, updatedPlayers, parse<Card[]>(liveRoom.deck_json, []), discard, log);
+        return json({ room: await roomState(code, token) });
+      }
+      const costId = (triggerExecution.outcome as { kind: "discard_cards"; targetCardIds: string[] }).targetCardIds[0];
+      const hand = parse<Card[]>(source.hand_json, []);
+      const cost = hand.find((card) => card.id === costId);
+      if (!cost || cardDefinition(cost.kind).category !== "basic") return json({ error: "The Dauntless cost must be exactly 1 Basic card from Yue Jin's hand.", stale: true, room: await roomState(code, token) }, 409);
+      const nextHand = hand.filter((card) => card.id !== cost.id);
+      discard.push(cost);
+      log = addDiscardEvent(log, source.name, [cost]);
+      log = addTriggeredEffectNotice(log, source.name, "Dauntless").log;
+      const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), "yue_jin_dauntless"])], sourceId: source.id, targetId: endingPlayer.id } satisfies TurnEndTriggerContinuation;
+      if (equipmentCards(endingPlayer).length > 0) {
+        const presentation = addLogWithId(log, `${endingPlayer.name} must choose 1 Equipment card to discard for Dauntless.`);
+        const pending: TriggerPending = withPresentationBarrier({
+          kind: "trigger", event: "turn_end", actorId: endingPlayer.id,
+          reason: `${endingPlayer.name} must discard 1 Equipment card for Dauntless`, deadline: nextResponseDeadline(endingPlayer),
+          continuation: { ...resolved, stage: "equipment", resolvedEffectIds: continuation.resolvedEffectIds ?? [] },
+        }, presentation.log, presentation.eventId);
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), source.id),
+          db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id),
+        ]);
+        return json({ room: await roomState(code, token) });
+      }
+      const updatedSource = { ...source, hand_json: JSON.stringify(nextHand) } satisfies PlayerRow;
+      await resolveSourcedDamage({
+        room: liveRoom,
+        source: updatedSource,
+        target: endingPlayer,
+        players: players.map((player) => player.id === source.id ? updatedSource : player),
+        amount: 1,
+        discard,
+        log,
+        resumePhase: "resolving",
+        resumePlayerId: endingPlayer.id,
+        sequenceStartCardId: `turn-end-${endingPlayer.id}`,
+        damageCards: [],
+        label: "Dauntless",
+        damageDescription: `${endingPlayer.name} takes 1 damage from ${source.name} with Dauntless`,
+        resumeTurnEnd: resolved,
+        writes: [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), source.id)],
+      });
+      return json({ room: await roomState(code, token) });
+    }
     if (liveRoom && trigger && continuation?.kind === "discard_phase_event" && trigger.actorId === me.id) {
       if (action === "apply_trigger" && triggerExecution?.outcome.kind !== "skip_discard") {
         return json({ error: "That Composure decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
@@ -2943,10 +3120,8 @@ export async function POST(request: Request) {
       if (action === "decline_trigger_effect" && hand.length > Math.max(0, player.hp ?? 0)) {
         await db.prepare("UPDATE rooms SET phase = 'discard', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(addLog(log, `${player.name} enters Discard. Keep at most ${player.hp ?? 0} cards.`)), room.id).run();
       } else {
-        const players = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
-        const next = nextAliveSeat(players, player.seat);
-        await db.prepare("UPDATE rooms SET turn_seat = ?, phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(next, JSON.stringify(addLog(log, `${player.name} skips Discard with Composure; Ending passes and their turn ends.`)), room.id).run();
-        await beginTurnStart(room.id, next);
+        await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(addLog(log, `${player.name} skips Discard with Composure; the turn-end event begins.`)), room.id).run();
+        await beginTurnEnd(room.id, player);
       }
       return json({ room: await roomState(code, token) });
     }
@@ -4166,10 +4341,8 @@ export async function POST(request: Request) {
       if (hand.length > Math.max(0, me.hp ?? 0)) {
         await db.prepare("UPDATE rooms SET phase = 'discard', log_json = ? WHERE id = ?").bind(JSON.stringify(addLog(log, `${me.name} finishes Play and enters Discard. Keep at most ${me.hp ?? 0} cards.`)), room.id).run();
       } else {
-        const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const next = nextAliveSeat(rows.results ?? [], me.seat);
-        const nextLog = addLog(log, `${me.name} finishes Play; Ending passes and their turn ends.`);
-        await db.prepare("UPDATE rooms SET turn_seat = ?, phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(next, JSON.stringify(nextLog), room.id).run();
-        await beginTurnStart(room.id, next);
+        await db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(addLog(log, `${me.name} finishes Play; the turn-end event begins.`)), room.id).run();
+        await beginTurnEnd(room.id, me);
         await maybeOpenHandLossTrigger(room.id, me.id, handBeforeAction);
         const immediateRoom = await roomState(code, token); return json({ room: immediateRoom });
       }
@@ -4186,7 +4359,7 @@ export async function POST(request: Request) {
     const selectedCards = requested.map((id) => hand.find((card) => card.id === id)).filter((card): card is Card => Boolean(card)); if (selectedCards.length !== required) return json({ error: "One of those cards is no longer in your hand." }, 409);
     if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
     const selectedIds = new Set(requested); hand = hand.filter((card) => !selectedIds.has(card.id)); const discard = [...parse<Card[]>(liveRoom.discard_json, []), ...selectedCards]; let log = addDiscardEvent(parse<string[]>(liveRoom.log_json, []), me.name, selectedCards); log = addLog(log, `${me.name} discards ${selectedCards.length} selected card${selectedCards.length === 1 ? "" : "s"}.`);
-    const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const next = nextAliveSeat(rows.results ?? [], me.seat); log = addLog(log, `${me.name} completes Discard; Ending passes and their turn ends.`); await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET turn_seat = ?, phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(next, JSON.stringify(discard), JSON.stringify(log), room.id)]); await beginTurnStart(room.id, next);
+    log = addLog(log, `${me.name} completes Discard; the turn-end event begins.`); await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(log), room.id)]); await beginTurnEnd(room.id, me);
     await maybeOpenHandLossTrigger(room.id, me.id, handBeforeDiscard);
     const immediateRoom = await roomState(code, token);
     return json({ room: immediateRoom });

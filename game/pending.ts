@@ -89,6 +89,8 @@ export type DamageSufferedTriggerContinuation = {
   resumeGroup?: GroupResponsePending;
   /** Resume an enclosing sourced-damage event after nested damage resolves. */
   resumeDamageSuffered?: DamageSufferedTriggerContinuation;
+  /** Resume the persisted turn-end lifecycle after all damage reactions settle. */
+  resumeTurnEnd?: TurnEndTriggerContinuation;
   judgementCard?: Card;
   resolutionId?: string;
 };
@@ -116,6 +118,15 @@ export type DiscardPhaseTriggerContinuation = {
   kind: "discard_phase_event";
   playerId: string;
   attackUsed: boolean;
+};
+export type TurnEndTriggerContinuation = {
+  kind: "turn_end_event";
+  endingPlayerId: string;
+  endingSeat: number;
+  stage: "activation" | "equipment";
+  sourceId?: string;
+  targetId?: string;
+  resolvedEffectIds?: string[];
 };
 export type JudgementResponseResume = {
   kind: "response";
@@ -160,7 +171,7 @@ export type HandLossTriggerContinuation = {
   resumeTurnSeat: number | null;
   resumePending?: Pending;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation;
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | TurnEndTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

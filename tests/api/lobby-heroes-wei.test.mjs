@@ -11,7 +11,7 @@ test("host test seats use one controller across four seats with a normal shuffle
   assert.equal(created.data.room.players.length, 4);
   assert.equal(created.data.room.myHeroOptions.length, 5);
   assert.equal(created.data.room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false);
-  const unimplementedStandardIds = new Set(["yue-jin", "zhuge-liang", "ma-chao", "huang-yueying", "lady-gan", "daqiao", "sun-shangxiang", "hua-tuo", "diao-chan", "huaxiong", "gongsun-zan", "pan-feng"]);
+  const unimplementedStandardIds = new Set(["zhuge-liang", "ma-chao", "huang-yueying", "lady-gan", "daqiao", "sun-shangxiang", "hua-tuo", "diao-chan", "huaxiong", "gongsun-zan", "pan-feng"]);
   assert.equal(created.data.room.myHeroOptions.some((hero) => unimplementedStandardIds.has(hero.id)), false, "hero candidates only include heroes with implemented skills");
   assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
   const lordId = created.data.room.meId;

@@ -274,7 +274,7 @@ test("turn engine completes repeated rounds, rejects duplicate actions, and skip
     }
   }
 
-  const [, playerOne, defeated, playerThree] = membersBySeat;
+  const [playerOne, defeated, playerThree] = membersBySeat;
   sql(`UPDATE players SET alive=0, hp=0 WHERE id=${quote(defeated.player.id)}`);
   for (const { player } of membersBySeat) if (player.id !== defeated.player.id) setHand(player.id, [], 10, 10);
   setTurn(game.code, playerOne.player.seat, "play");
@@ -286,5 +286,4 @@ test("turn engine completes repeated rounds, rejects duplicate actions, and skip
   const invalidState = await requestAndSettle("draw", { code: game.code, token: defeated.member.token });
   assert.equal(invalidState.status, 409); assert.match(invalidState.data.error, /Game state check failed: The active turn does not belong to a living player/);
 });
-
 

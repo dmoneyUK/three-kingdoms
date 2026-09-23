@@ -18,12 +18,12 @@
 
 Audited against `main` at `65ae08708854801c32e61591adcc52b666be6ba6` on 2026-09-22.
 
-- **Implemented:** 18 / 30 heroes
+- **Implemented:** 19 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 12 / 30 heroes
-- **Implemented skills:** 26 / 46
+- **Not implemented:** 11 / 30 heroes
+- **Implemented skills:** 27 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 20 / 46
+- **Not implemented skills:** 19 / 46
 
 Implementation status means the hero's printed Standard skill set has a live gameplay implementation on the audited baseline. Runtime metadata alone does not count as implementation.
 
@@ -88,7 +88,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Wei | `xu-chu` | Xu Zhu | 许褚 | Male | 4 | Bared Bodied | Present | Implemented |
 | Wei | `guo-jia` | Guo Jia | 郭嘉 | Male | 3 | Jealousy of God<br>Legacy | Present | Implemented |
 | Wei | `zhen-ji` | Zhen Ji | 甄姬 | Female | 3 | Empress Dowager<br>Godess of Luo River | Present | Implemented |
-| Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Dauntless | Present | Not implemented |
+| Wei | `yue-jin` | Yue Jin | 乐进 | Male | 4 | Dauntless | Present | Implemented |
 | Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Benevolence<br>Influencing | Present | Implemented |
 | Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | God of War | Present | Implemented |
 | Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Battle Cry | Present | Implemented |
@@ -183,11 +183,11 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Yue Jin (乐进)
 
 - **Runtime ID:** `yue-jin`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **WEI 016**, printed title **The Indomitable Spirit**.
 - **Implementation interpretation:** At the end of another character's turn, Yue Jin may discard one Basic card and target that character. The target must discard one Equipment card if able/required by settlement; otherwise Yue Jin deals 1 damage to that character.
 - **Likely engine shape:** other-player turn-end trigger; Basic-card cost; forced Equipment discard-or-damage settlement.
-- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skill is not implemented.
+- **Current implementation:** Dauntless is a generic semantic `turn_end` trigger. The shared turn-ending lifecycle is entered by normal Play completion, Discard completion, and Lu Meng Composure; it persists the ending player, trigger stage, resolved providers, and nested damage continuation before calculating the next living seat. Yue Jin privately receives only hand cards whose catalogue category is `basic`; the ending character is the automatic target. If that target has Equipment, the target receives a mandatory public Equipment-card selection. Otherwise the Basic cost is discarded as a skill cost and Yue Jin's sourced 1 damage uses an empty `damageCards` list, so Sima Yi Retaliation, Xiahou Dun Stauchness, Guo Jia Legacy, Dying/rescue, and other nested effects resume the same persisted turn-end event without allowing Cao Cao Treachery to obtain the cost card.
 
 ## Shu
 

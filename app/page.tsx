@@ -402,6 +402,7 @@ const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly string[]>> =
   "sun-quan": { Equilibrium: ["sun_quan_zhiheng"], Deliverance: ["sun_quan_jiuyuan"] },
   "gan-ning": { Ambushment: ["gan_ning_qixi"] },
   "lu-meng": { Composure: ["lu_meng_keji"] },
+  "yue-jin": { Dauntless: ["yue_jin_dauntless"] },
   "zhou-yu": { Heroic: ["zhou_yu_yingzi"] },
   "lu-xun": { "Second Wind": ["lu_xun_second_wind"] },
 };

@@ -308,7 +308,9 @@ export async function createHumanGame() {
     players: ["Host", "Alice", "Bob", "Carol"].map((name, index) => ({
       name,
       role: ["Rebel", "Loyalist", "Lord", "Renegade"][index],
-      hero: "yue-jin",
+      // Keep the generic fixture away from Yue Jin's turn-end trigger; hero-
+      // specific tests opt into their intended heroes explicitly.
+      hero: "zhao-yun",
       hp: 4,
       maxHp: 4,
       hand: [
