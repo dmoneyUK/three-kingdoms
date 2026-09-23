@@ -1,5 +1,26 @@
 # Three Kingdoms
 
+## UI asset staging audit and integration contract — 2026-09-23
+
+Audited the staged UI asset set against the actual render paths in
+`app/page.tsx`, `app/globals.css`, and `app/sequence-overrides.css`.
+The integration guide now separates production assets from reference-only
+artwork, maps each asset to the existing runtime components/classes, documents
+the four-seat opponent frame mapping, and explicitly requires both local
+`.game-card` and shared `CardFace` / `.played-card` paths to be covered.
+
+Two invalid duplicate assets were removed: the previous
+`button-primary.webp` was byte-for-byte identical to
+`local-player-frame.webp`, and the previous local-player ornate reference was
+identical to the asymmetric opponent reference. Primary buttons therefore keep
+their existing CSS until a new approved asset exists. The deck concept remains
+reference-only; a production deck panel frame is still required. No gameplay,
+layout logic, hidden-information behavior, or animation anchors were changed.
+
+Current stage: Stage 7 product polish, UI asset staging contract cleaned and
+safe for continued asset intake. Full visual integration remains intentionally
+blocked until the remaining production assets are approved.
+
 ## Hero-selection live-selector fix — 2026-09-23
 
 Fixed the Test Controller/Lord selection path so `choose_hero` authorizes the
