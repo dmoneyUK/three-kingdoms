@@ -1,0 +1,41 @@
+name: Assemble Liu Bei redesign asset
+
+on:
+  push:
+    branches:
+      - asset-upload-liu-bei-bright
+    paths:
+      - .asset-upload/liu-bei/READY
+
+permissions:
+  contents: write
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out upload branch
+        uses: actions/checkout@v4
+        with:
+          ref: asset-upload-liu-bei-bright
+
+      - name: Assemble and validate AVIF
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p graphic-design/new-hero-design/liu-bei
+          cat .asset-upload/liu-bei/0*.txt | base64 -d > graphic-design/new-hero-design/liu-bei/liu-bei-new-design.avif
+          test "$(stat -c%s graphic-design/new-hero-design/liu-bei/liu-bei-new-design.avif)" = "57497"
+          file graphic-design/new-hero-design/liu-bei/liu-bei-new-design.avif
+          rm -f graphic-design/new-hero-design/liu-bei/liu-bei-new-design.webp
+
+      - name: Commit assembled redesign asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add graphic-design/new-hero-design/liu-bei/liu-bei-new-design.avif
+          git add -u graphic-design/new-hero-design/liu-bei
+          git commit -m "art: assemble Liu Bei bright redesign asset"
+          git push origin HEAD:asset-upload-liu-bei-bright
