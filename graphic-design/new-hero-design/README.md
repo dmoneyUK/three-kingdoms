@@ -16,4 +16,28 @@ Do not replace or rewire the current files under `public/hero-*` until the compl
 
 ## Current candidates
 
-- Liu Bei — bright Shu green / ivory / gold, masked, facing direction intentionally different from Cao Cao
+### Liu Bei
+
+Asset:
+
+```text
+graphic-design/new-hero-design/liu-bei/liu-bei-new-design.avif
+```
+
+Approved direction:
+
+- bright Shu green / ivory / gold
+- face hidden by a decorative mask
+- character facing direction intentionally different from Cao Cao
+- hero-only artwork; no card UI or text baked into the image
+- staged as a redesign candidate only; not wired into production
+
+### Cao Cao
+
+Approved design exists in the design workflow and will be stored separately here before the final coordinated asset switch.
+
+## Integration rule
+
+Do not change the current `public/hero-*` mappings while the redesign set is incomplete.
+
+When the full redesigned hero/card set is approved, update production assets together rather than mixing old dark-theme heroes with the new bright-theme heroes.
