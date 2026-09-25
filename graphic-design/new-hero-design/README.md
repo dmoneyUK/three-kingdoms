@@ -22,7 +22,7 @@ Do not replace or rewire the current files under `public/hero-*` until the compl
 Asset:
 
 ```text
-graphic-design/new-hero-design/liu-bei/liu-bei-new-design.avif
+graphic-design/new-hero-design/liu-bei-new-design.avif
 ```
 
 Approved direction:
@@ -48,7 +48,7 @@ Approved design exists in the design workflow and will be stored separately here
 Asset:
 
 ```text
-graphic-design/new-hero-design/sun-quan/sun-quan-new-design.avif
+graphic-design/new-hero-design/sun-quan-new-design.avif
 ```
 
 Approved direction:
@@ -71,7 +71,7 @@ Approved direction:
 Asset:
 
 ```text
-graphic-design/new-hero-design/sima-yi/sima-yi-new-design.avif
+graphic-design/new-hero-design/sima-yi-new-design.avif
 ```
 
 Approved direction:

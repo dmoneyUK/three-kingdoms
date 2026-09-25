@@ -356,15 +356,15 @@ Do **not** replace the production hero immediately.
 Store it under:
 
 ```text
-graphic-design/new-hero-design/<hero-slug>/<hero-slug>-new-design.avif
+graphic-design/new-hero-design/<hero-slug>-new-design.avif
 ```
 
 Examples:
 
 ```text
-graphic-design/new-hero-design/cao-cao/cao-cao-new-design.avif
-graphic-design/new-hero-design/liu-bei/liu-bei-new-design.avif
-graphic-design/new-hero-design/sun-quan/sun-quan-new-design.avif
+graphic-design/new-hero-design/cao-cao-new-design.avif
+graphic-design/new-hero-design/liu-bei-new-design.avif
+graphic-design/new-hero-design/sun-quan-new-design.avif
 ```
 
 ## 13. Production asset safety
@@ -401,7 +401,7 @@ Preferred process:
 3. Create/upload the binary Git blob.
 4. Add it to:
    ```text
-   graphic-design/new-hero-design/<hero-slug>/
+   graphic-design/new-hero-design/<hero-slug>-new-design.avif
    ```
 5. Update:
    ```text
