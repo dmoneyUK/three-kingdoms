@@ -13,7 +13,7 @@ Do not replace or rewire the current files under `public/hero-*` until the compl
 - masked / obscured faces where approved
 - hero-focused artwork without card UI baked into the image
 - coordinated faction colour identity
-- deliberate diversity in pose, facing direction, weapon use, composition, setting and action
+- deliberate diversity in pose, facing direction, action, weapon use, composition, background and mounts
 
 ## Current candidates
 
@@ -28,16 +28,16 @@ graphic-design/new-hero-design/liu-bei/liu-bei-new-design.avif
 Approved direction:
 
 - faction: Shu
-- palette: jade green / ivory / gold
-- orientation: profile / three-quarter, intentionally different from Cao Cao
-- face: decorative ivory-and-gold mask
+- palette: jade / ivory / gold
+- orientation: profile / three-quarter facing opposite Cao Cao
+- face: ivory-and-gold decorative mask
 - weapon: sword
 - action: open-hand leadership gesture
-- background: bright Shu battlefield with banners
+- background: bright Shu battlefield / banners
 - lighting: clear daylight
 - mount: none
 - hero-only artwork; no card UI or text baked into the image
-- staged as a redesign candidate only; not wired into production
+- staged redesign candidate only; not wired into production
 
 ### Cao Cao
 
@@ -54,18 +54,17 @@ graphic-design/new-hero-design/sun-quan/sun-quan-new-design.avif
 Approved direction:
 
 - faction: Wu
-- palette: crimson red / teal / white / gold
-- orientation: profile / three-quarter facing viewer-left
-- face: ornate gold-and-dark decorative mask
+- palette: crimson red / turquoise / ivory / gold
+- orientation: three-quarter / profile facing viewer-left
+- face: ornate gold mask
 - weapon: none
-- action: both arms extended in a commanding naval-ruler gesture
-- composition: full-body, dynamic flowing robes and banners
-- background: Wu river armada with warships, red dragon banners and a distant fortress
-- lighting: bright daylight with warm sunlight
+- action: open-arm naval command / fleet-rallying gesture
+- background: Wu fleet, red dragon banners, sunlit river/sea and distant fortified city
+- lighting: bright daylight with warm golden highlights
 - mount: none
-- intentionally avoids the previous right-facing composition and adds pose/background diversity
+- composition deliberately differs from Cao Cao and Liu Bei
 - hero-only artwork; no card UI or text baked into the image
-- staged as a redesign candidate only; not wired into production
+- staged redesign candidate only; not wired into production
 
 ## Integration rule
 
