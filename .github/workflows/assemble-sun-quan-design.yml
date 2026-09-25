@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p graphic-design/new-hero-design/sun-quan
-          cat .asset-upload/sun-quan/0*.txt | base64 -d > graphic-design/new-hero-design/sun-quan/sun-quan-new-design.avif
+          cat .asset-upload/sun-quan/0*.txt .asset-upload/sun-quan/10.txt | base64 -d > graphic-design/new-hero-design/sun-quan/sun-quan-new-design.avif
           test "$(stat -c%s graphic-design/new-hero-design/sun-quan/sun-quan-new-design.avif)" = "65861"
           file graphic-design/new-hero-design/sun-quan/sun-quan-new-design.avif
 
