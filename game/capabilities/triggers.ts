@@ -15,13 +15,14 @@ import { luMengComposureTrigger } from "./heroes/lu-meng-composure";
 import { zhangLiaoAssaultTrigger } from "./heroes/zhang-liao-assault";
 import { xuChuBaredBodiedTrigger } from "./heroes/xu-chu-bared-bodied";
 import { guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger } from "./heroes/guo-jia";
+import { maChaoCavalryTrigger } from "./heroes/ma-chao-cavalry";
 
 export type TriggerEvent = "turn_start" | "turn_end" | "draw_phase" | "discard_phase" | "judgement_revealed" | "judgement_effective" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice" | "hand_lost";
 /**
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
  */
-export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; lostCards?: Card[]; attackUsed?: boolean; targetId?: string; targetIds?: string[]; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie"; heroChoiceStage?: "suit" | "card"; heroChoiceGuess?: string; turnEndStage?: "activation" | "equipment" };
+export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; lostCards?: Card[]; attackUsed?: boolean; targetId?: string; targetIds?: string[]; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie" | "cavalry"; heroChoiceStage?: "suit" | "card"; heroChoiceGuess?: string; turnEndStage?: "activation" | "equipment" };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown; targetId?: unknown; targetIds?: unknown; choice?: unknown };
 export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[]; targetIds?: string[] }
@@ -64,6 +65,8 @@ export type TriggeredEffect = {
   event: TriggerEvent;
   getOption: (context: TriggerContext) => TriggerOption | null;
   resolve: (context: TriggerContext, selection: TriggerSelection) => TriggerExecution | null;
+  /** The player who owns this event option; omitted when the event actor is the owner. */
+  getActorId?: (context: TriggerContext) => string | null | undefined;
   /** A provider with this flag may be offered once for each point of one damage event. */
   repeatPerDamagePoint?: boolean;
 };
@@ -98,7 +101,7 @@ const zhouYuFanjianChoice: TriggeredEffect = {
 
 import { yueJinDauntlessTrigger } from "./heroes/yue-jin-dauntless";
 
-const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, maChaoCavalryTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {
@@ -122,4 +125,10 @@ export function resolveTriggeredEffect(effectId: unknown, context: TriggerContex
   const trigger = triggers.find((candidate) => candidate.id === effectId && candidate.event === context.event);
   if (!trigger || !trigger.getOption(context)) return null;
   return trigger.resolve(context, selection);
+}
+
+/** Resolves event ownership without exposing provider-specific routing to the API. */
+export function triggerActorId(effectId: string, context: TriggerContext) {
+  const trigger = triggers.find((candidate) => candidate.id === effectId && candidate.event === context.event);
+  return trigger?.getActorId?.(context) ?? null;
 }

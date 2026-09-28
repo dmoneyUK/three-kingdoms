@@ -55,6 +55,33 @@ test("effective distance clamps at 1 and preserves dead-player sentinel", () => 
   assert.equal(distance(players, "gongsun", "target", equipment), 99, "dead targets retain the existing sentinel");
 });
 
+test("self-distance stays zero after every effective-distance provider", () => {
+  const maChao = player("ma-chao", 0, "ma-chao", 4);
+  const players = [maChao, player("target", 1)];
+  const equipment = new Map([["ma-chao", [{ kind: "RedHare" }]]]);
+  assert.equal(distanceBetween(players, "ma-chao", "ma-chao"), 0);
+  assert.equal(distance(players, "ma-chao", "ma-chao", equipment), 0);
+});
+
+test("Horse Riding is outbound, clamps, and composes with horses and Militia", () => {
+  const maChao = player("ma-chao", 0, "ma-chao", 4);
+  const target = player("target", 2);
+  const players = [maChao, player("left", 1), target, player("right", 3)];
+  const equipment = new Map([
+    ["ma-chao", [{ kind: "FerganaSteed" }]],
+    ["target", [{ kind: "Shadowrunner" }]],
+  ]);
+
+  assert.equal(distance(players, "ma-chao", "target", equipment), 1, "Horse Riding and offensive Mount compose and clamp");
+  assert.equal(distance(players, "target", "ma-chao", equipment), 2, "Horse Riding is not inbound");
+
+  const gongsun = player("gongsun", 2, "gongsun-zan", 4);
+  const gongsunPlayers = [maChao, player("left", 1), gongsun, player("right", 3)];
+  assert.equal(distance(gongsunPlayers, "ma-chao", "gongsun"), 1, "Ma Chao outbound reduction composes with healthy Gongsun");
+  gongsun.hp = 2;
+  assert.equal(distance(gongsunPlayers, "ma-chao", "gongsun"), 2, "low-HP Gongsun inbound protection composes with Horse Riding");
+});
+
 test("Militia composes with offensive and defensive horses", () => {
   const gongsun = player("gongsun", 0, "gongsun-zan", 4);
   const target = player("target", 2);

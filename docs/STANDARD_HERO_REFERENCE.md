@@ -19,15 +19,15 @@
 Re-audited on 2026-09-28 from the pre-round `main` baseline at
 `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`; this round completes Gongsun Zan.
 
-- **Implemented:** 20 / 30 heroes
+- **Implemented:** 21 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 10 / 30 heroes
-- **Implemented skills:** 28 / 46
+- **Not implemented:** 9 / 30 heroes
+- **Implemented skills:** 30 / 46
 - **Partial skills:** 0 / 46
 - **Not implemented skills:** 18 / 46
 
 **2026-09-28 implementation note:** `game/heroes.ts` now allow-lists exactly
-these 20 implemented Standard heroes, including Gongsun Zan. The 10 remaining
+these 21 implemented Standard heroes, including Gongsun Zan and Ma Chao. The 9 remaining
 generals are present as Standard roster metadata but are excluded from
 `IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
 Militia uses the generic server-owned effective-distance capability and is
@@ -102,7 +102,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Battle Cry | Present | Implemented |
 | Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Stargazing<br>Empty Fortress Strategem | Present | Not implemented |
 | Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Braveheart | Present | Implemented |
-| Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Horse Riding<br>Cavalry | Present | Not implemented |
+| Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Horse Riding<br>Cavalry | Present | Implemented |
 | Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Cultivation<br>Wizardry | Present | Not implemented |
 | Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Divine Wisdom<br>Prudence | Present | Not implemented |
 | Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Equilibrium<br>Deliverance | Present | Implemented |
@@ -228,7 +228,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Zhuge Liang (诸葛亮)
 
 - **Runtime ID:** `zhuge-liang`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **SHU 004**, printed title **The Prime Minister who is Past his Prime**.
 - **Implementation interpretation:** Stargazing uses the number of characters in the game, capped at 5, not the number of currently living characters unless the official rules separately define otherwise. Empty Fortress Strategem is a targeting prohibition: while Zhuge Liang has zero hand cards, [Attack] and [Duel] cannot select him as a target.
 - **Likely engine shape:** Preparation Phase deck-ordering decision; passive target-legality modifier.
@@ -248,7 +248,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **SHU 006**, printed title **A Thousand Calvaries**.
 - **Implementation interpretation:** Horse Riding modifies distance from Ma Chao to other characters by -1. Cavalry is optional for an [Attack] target; a Red Judgement result prevents that target from using [Dodge] against the relevant [Attack].
 - **Likely engine shape:** outbound distance modifier; attack-targeted optional Judgement and Dodge prohibition.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Horse Riding reuses the generic effective-distance capability as an outbound -1 provider. Cavalry is a source-owned optional `attack_targeted` trigger that enters the shared Judgement continuation; Red Heart/Diamond results suppress Dodge for the current target, while the ordinary Attack damage/reaction pipeline remains intact. Multi-target Halberd Attacks open Cavalry independently per target.
 
 ### Huang Yueying (黄月英)
 
@@ -418,11 +418,7 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 The player-facing Standard metadata and implemented-hero allow-list are aligned
 with this reference. Resume implementation one General at a time in this order:
 
-1. **Ma Chao / Horse Riding + Cavalry** — reuse the outbound-distance primitive;
-   implement Cavalry through the existing `attack_targeted` and Judgement
-   continuation architecture so a successful Red Judgement suppresses the
-   relevant Dodge opportunity without a provider-specific HTTP action.
-2. **Da Qiao / Captivating + Deflection** — reuse delayed-Stratagem settlement
+1. **Da Qiao / Captivating + Deflection** — reuse delayed-Stratagem settlement
    for Diamond-as-Overindulgence and add a generic target-shift/redirect semantic
    outcome for `attack_targeted` before wiring the hero provider.
 

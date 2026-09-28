@@ -4,6 +4,7 @@ const id = "yin_yang_swords_attack_targeted";
 export const yinYangSwordsAttackTargeted = {
   id,
   event: "attack_targeted" as const,
+  getActorId: (context: TriggerContext) => context.targetId,
   getOption(context: TriggerContext): TriggerOption | null {
     if (context.event !== "attack_targeted" || !context.sourceEquipment.some((card) => card.kind === "YinYangSwords")) return null;
     if (!context.sourceGender || !context.targetGender || context.sourceGender === context.targetGender) return null;

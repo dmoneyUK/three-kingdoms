@@ -11,11 +11,11 @@ latest gameplay hero change remains Yue Jin / Dauntless (implemented by
 The 2026-09-25 commits after that are hero-art/design asset work and do not
 change gameplay capability counts.
 
-- Stage 6 is at **20 / 30 Standard heroes implemented** and **28 / 46 printed
+- Stage 6 is at **21 / 30 Standard heroes implemented** and **30 / 46 printed
   skills implemented**.
-- The remaining metadata-only Standard heroes are **Zhuge Liang, Ma Chao,
-  Huang Yueying, Lady Gan, Da Qiao, Sun Shangxiang, Hua Tuo, Diao Chan,
-  Hua Xiong, and Pan Feng**.
+- The remaining metadata-only Standard heroes are **Zhuge Liang, Huang
+  Yueying, Lady Gan, Da Qiao, Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong,
+  and Pan Feng**.
 - The Step 1 UI handover is complete. Stage 7's remaining work is final
   graphic/theme polish and separately approved artwork intake.
 - The semantic response/trigger architecture is **complete**. Do not restart or
@@ -26,9 +26,7 @@ change gameplay capability counts.
 
 1. Keep the completed Step 1 UI handover closed; do not mix presentation work
    into the next rules round.
-2. Implement **Ma Chao / Horse Riding + Cavalry** on the shared outbound-distance
-   primitive and the existing `attack_targeted` + Judgement architecture.
-3. Reassess before **Da Qiao**. Deflection should extend `attack_targeted` with
+2. Implement **Da Qiao / Captivating + Deflection**. Deflection should extend `attack_targeted` with
    a generic target-shift/redirect semantic outcome rather than add a
    Da-Qiao-specific route action.
 
@@ -49,7 +47,24 @@ Attack legality, Steal, and Rations Depleted. Pure capability tests cover all HP
 boundaries, transitions, directionality, clamping, composition, and non-Gongsun
 regressions; Worker/D1 tests cover Attack legality and Quick Test selection.
 
-The next Stage 6 hero is **Ma Chao / Horse Riding + Cavalry**.
+This was the completed Stage 6 checkpoint before Ma Chao; see the Ma Chao
+section below for the current latest hero and next milestone.
+
+## Stage 6 hero capability — Ma Chao / Horse Riding + Cavalry — 2026-09-28
+
+Complete. The shared effective-distance primitive now preserves self-distance
+at zero and uses a static bounded provider registry. Ma Chao's Horse Riding is
+an outbound -1 provider that composes with offensive/defensive Mount effects and
+Gongsun Zan's directional Militia.
+
+Cavalry is a source-owned optional `attack_targeted` trigger using the existing
+Judgement continuation. Red Heart/Diamond results suppress Dodge for the current
+Attack target only; Black results continue through the ordinary Dodge response.
+The original Attack declaration and normal damage/reaction pipeline are
+preserved, including virtual Attacks and independent Sky Piercing Halberd
+targets. Ma Chao is now enabled for Standard selection.
+
+The next Stage 6 hero is **Da Qiao / Captivating + Deflection**.
 
 ## Stage 6 hero capability — Yue Jin / Dauntless — 2026-09-23
 
@@ -216,7 +231,7 @@ registry.
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 20 / 30 heroes and 28 / 46 printed skills**; Gongsun Zan / Militia is the latest completed Standard hero capability. The next rules milestone is Ma Chao / Horse Riding + Cavalry.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 21 / 30 heroes and 30 / 46 printed skills**; Ma Chao / Horse Riding + Cavalry is the latest completed Standard hero capability. The next rules milestone is Da Qiao / Captivating + Deflection.
 
 ## Progress summary
 
@@ -227,7 +242,7 @@ Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE.
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
 | 5. Complete match rules | **Complete** | Dying/multi-damage, defeat continuation/outcome, delayed Stratagem LIFO ordering, placement timing, Judgement-phase Negation, and Lightning transfer semantics are deterministic and regression-covered. |
-| 6. Hero-specific abilities | **ACTIVE — 20 / 30 heroes, 28 / 46 skills** | Gongsun Zan / Militia is the latest completed hero. Ma Chao / Horse Riding + Cavalry is next. |
+| 6. Hero-specific abilities | **ACTIVE — 21 / 30 heroes, 30 / 46 skills** | Ma Chao / Horse Riding + Cavalry is the latest completed hero. Da Qiao / Captivating + Deflection is next. |
 | 7. Product polish | **Ongoing — Step 1 UI handover completed** | Final graphic/theme polish, separately approved artwork intake, sound, invitations, and saved history remain later work. |
 
 ## Stability foundation already complete

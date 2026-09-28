@@ -1,5 +1,20 @@
 # Three Kingdoms
 
+## Ma Chao / Horse Riding + Cavalry — 2026-09-28
+
+Completed Stage 6 Ma Chao on current `main`. Horse Riding reuses the generic
+server-owned effective-distance capability and composes with Mounts and Militia.
+Cavalry is an optional source-owned `attack_targeted` trigger using the shared
+Judgement continuation: Red suppresses Dodge for the current target, while the
+normal Attack damage and reaction pipeline remains in control. Virtual Attacks,
+Sima Yi replacement, and independent Sky Piercing Halberd target windows are
+covered by deterministic Worker/D1 tests.
+
+Standard selection now has 21/30 heroes and 30/46 printed skills implemented.
+The Step 1 UI handover remains closed; the next rules milestone is Da Qiao /
+Captivating + Deflection. No Da Qiao or additional presentation work is part of
+this change.
+
 ## Gongsun Zan artwork — 2026-09-28
 
 Added the supplied portrait as `public/hero-gongsun-zan.jpg` and connected it
@@ -18,8 +33,9 @@ The source images preserve the portrait-oriented framing used by the existing
 dimensions changed.
 
 Current stage remains Stage 7 product polish, and the Step 1 UI handover is
-closed. Stage 6's latest completed hero is Gongsun Zan / Militia (20/30 heroes,
-28/46 skills); the next rules milestone is Ma Chao / Horse Riding + Cavalry.
+closed. Stage 6's latest completed hero is Ma Chao / Horse Riding + Cavalry
+(21/30 heroes, 30/46 skills); the next rules milestone is Da Qiao / Captivating
++ Deflection.
 Final graphic/theme polish and separately approved artwork intake for remaining
 fallback heroes remain separate product work.
 
@@ -65,8 +81,8 @@ Militia derives directly from current HP: Gongsun Zan's outbound distance is -1
 above 2 HP; inbound distance to him is +1 at 2 HP or below. The same calculation
 drives projection and Attack/Steal/Rations legality. Deterministic capability,
 Worker/D1 Attack, HP-transition, horse-composition, Quick Test selection, and
-normal multiplayer regressions are included. Ma Chao / Horse Riding + Cavalry is
-the next hero; no Ma Chao implementation is included here.
+normal multiplayer regressions are included. This is the previous Gongsun Zan
+checkpoint; Ma Chao is complete in the current state above.
 
 ## Opponent board arc and inspection — 2026-09-24
 

@@ -1,5 +1,6 @@
 import type { Card, GamePlayer } from "../model";
 import { gongsunZanMilitia } from "./heroes/gongsun-zan-militia";
+import { maChaoHorseRiding } from "./heroes/ma-chao-horse-riding";
 import { mountDistanceModifier } from "./equipment/distance";
 
 export type DistancePlayer = GamePlayer & { hp?: number | null };
@@ -17,22 +18,16 @@ export type DistanceModifierProvider = {
 };
 
 /** Bounded providers for effective character-to-character distance. */
-export const distanceModifierProviders: DistanceModifierProvider[] = [mountDistanceModifier, gongsunZanMilitia];
-
-/** Test and future capability modules can add a narrowly scoped distance provider. */
-export function registerDistanceModifier(provider: DistanceModifierProvider) {
-  distanceModifierProviders.push(provider);
-  return () => {
-    const index = distanceModifierProviders.indexOf(provider);
-    if (index >= 0) distanceModifierProviders.splice(index, 1);
-  };
-}
+export const distanceModifierProviders: readonly DistanceModifierProvider[] = [mountDistanceModifier, gongsunZanMilitia, maChaoHorseRiding];
 
 /** Resolves directional modifiers without changing raw seat distance. */
 export function resolveEffectiveDistance<T extends DistancePlayer>(context: DistanceModifierContext<T>) {
   // distanceBetween() uses 99 for missing/dead endpoints. Preserve that
   // sentinel rather than allowing a modifier to turn it into a legal range.
   if (!Number.isFinite(context.rawDistance) || context.rawDistance >= 99) return context.rawDistance;
+  // Self-distance is a structural property of the seat graph, not a legal
+  // character range. Providers must never turn it into 1 (or another value).
+  if (context.rawDistance === 0) return 0;
   const modifiers = distanceModifierProviders.reduce((total, provider) => {
     const result = provider.getModifier(context);
     return {

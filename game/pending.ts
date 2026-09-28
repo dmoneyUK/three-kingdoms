@@ -5,7 +5,7 @@ import type { TriggerEvent } from "./capabilities/triggers";
 
 /** The one persisted decision in a room, independent of HTTP and D1. */
 export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered" | "borrowed_sword";
-export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; requiredDodgeCount?: number; sequenceStartCardId: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string };
+export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; requiredDodgeCount?: number; dodgeSuppressed?: boolean; sequenceStartCardId: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string };
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
 export type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 export type TargetCardPending = { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
@@ -56,6 +56,7 @@ export type AttackTargetedTriggerContinuation = {
   kind: "attack_targeted_event";
   declaration: AttackDeclaration;
   group?: GroupResponsePending;
+  resolvedEffectIds?: string[];
 };
 export type DamageAboutToApplyTriggerContinuation = {
   kind: "damage_about_to_apply_event";
@@ -142,7 +143,7 @@ export type JudgementContinuation = {
   purpose: JudgementPurpose;
   revealedCard: Card;
   revealedEventId?: string;
-  resume: { kind: "luoshen"; playerId: string } | { kind: "delayed"; targetId: string; delayedCard: Card; remainingDelayedCards: Card[]; resumePhase: string } | JudgementResponseResume | DamageSufferedJudgementResume;
+  resume: { kind: "luoshen"; playerId: string } | { kind: "delayed"; targetId: string; delayedCard: Card; remainingDelayedCards: Card[]; resumePhase: string } | { kind: "attack_targeted"; declaration: AttackDeclaration; group?: GroupResponsePending } | JudgementResponseResume | DamageSufferedJudgementResume;
   resolutionId?: string;
 };
 export type JudgementRevealedTriggerContinuation = {

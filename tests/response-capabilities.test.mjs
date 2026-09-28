@@ -5,7 +5,7 @@ import { resolveResponseDecision } from "../game/response-decision.ts";
 import { applySuccessfulNegation } from "../game/decisions/negation.ts";
 import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { canUseUnlimitedAttacks } from "../game/capabilities/attack-use-limit.ts";
-import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect } from "../game/capabilities/triggers.ts";
+import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect, triggerActorId } from "../game/capabilities/triggers.ts";
 import { continueTriggerEvent, createTriggerDecision, resumeTriggerContinuation } from "../game/decisions/triggers.ts";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
 import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
@@ -241,6 +241,14 @@ test("Yin-Yang Swords is a target-owned attack_targeted capability with live leg
   assert.deepEqual(resolveTriggeredEffect("yin_yang_swords_attack_targeted", context, { choice: "discard", cardKeys: ["hand:0"] })?.outcome, { kind: "target_discard", targetCardId: "hidden" });
   assert.deepEqual(getTriggeredEffects({ ...context, targetHand: [] })[0].selection, { type: "choice", choices: [{ id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: [] });
   assert.equal(getTriggeredEffects({ ...context, sourceGender: "female" }).length, 0);
+});
+
+test("Cavalry is a source-owned optional attack_targeted Judgement", () => {
+  const context = { event: "attack_targeted", sourceId: "ma-chao", hero: "ma-chao", sourceEquipment: [], sourceGender: "male", targetId: "target", targetHand: [], targetEquipment: [] };
+  assert.deepEqual(getTriggeredEffects(context), [{ effectId: "ma_chao_cavalry", label: "Cavalry — enter Judgement", description: "If the Judgement card is red, the target cannot use Dodge for this Attack.", selection: null, allowDecline: true }]);
+  assert.equal(triggerActorId("ma_chao_cavalry", context), "ma-chao");
+  assert.deepEqual(resolveTriggeredEffect("ma_chao_cavalry", context, {}).outcome, { kind: "judgement" });
+  assert.equal(getTriggeredEffects({ ...context, hero: "guan-yu" }).length, 0);
 });
 
 test("Blue Steel Sword suppresses Armor effects and Armor-based Dodge alternatives for its Attack", () => {
