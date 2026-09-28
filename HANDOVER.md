@@ -4,6 +4,12 @@
 
 This round is complete as a presentation-only change on current `main`.
 
+The owner-supplied profile artwork is now installed in the existing production
+bindings: Photo 1 for Liu Bei, Photo 2 for Cao Cao, and Photo 3 for Sun Quan.
+The three JPEGs retain portrait-oriented source dimensions and the established
+hero-art paths; no gameplay, projection, semantic action, or panel-layout
+behavior changed.
+
 Implemented:
 
 - Local hand packing uses the current physical card IDs/order, caps natural
@@ -48,4 +54,5 @@ changed. Gongsun Zan was not started.
 The remaining Stage 7 work is the final graphic/theme polish and separately
 approved artwork intake for remaining fallback heroes. Any new hero or card
 capability must remain a separate, server-owned semantic round and must not be
-combined with another presentation closure.
+combined with another presentation or asset closure. Gongsun Zan remains
+untouched.

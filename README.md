@@ -1,5 +1,18 @@
 # Three Kingdoms
 
+## Hero profile artwork replacement — 2026-09-28
+
+Replaced the production profile images for Liu Bei, Cao Cao, and Sun Quan with
+the owner-supplied artwork. The existing runtime bindings remain unchanged:
+`liu-bei` uses Photo 1, `cao-cao` uses Photo 2, and `sun-quan` uses Photo 3.
+The source images preserve the portrait-oriented framing used by the existing
+2:3 hero presentation. No gameplay rules, projections, actions, or layout
+dimensions changed.
+
+Current stage remains Stage 7 product polish. The next milestone is final
+graphic/theme polish and separately approved artwork intake for remaining
+fallback heroes; no new hero capability is included in this asset-only round.
+
 ## UI handover closure — 2026-09-28
 
 Completed the requested Step 1 presentation-only closure from current `main`.
