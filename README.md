@@ -1,5 +1,12 @@
 # Three Kingdoms
 
+## Hero artwork update — 2026-09-28
+
+Added the supplied Ma Chao design as `public/hero-ma-chao.jpg` and replaced
+`public/hero-liu-bei.jpg` with the supplied Liu Bei design. Both use the
+existing shared `HERO_ART_BY_ID` / `HeroPortrait` renderer; no gameplay rules,
+selection behavior, layout dimensions, or skill logic changed.
+
 ## Ma Chao / Horse Riding + Cavalry — 2026-09-28
 
 Completed Stage 6 Ma Chao on current `main`. Horse Riding reuses the generic

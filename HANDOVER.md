@@ -1,5 +1,14 @@
 # Three Kingdoms project handover
 
+## Latest presentation update — Ma Chao and Liu Bei artwork — 2026-09-28
+
+Added the supplied Ma Chao design at `public/hero-ma-chao.jpg` and replaced
+the Liu Bei design at `public/hero-liu-bei.jpg`. Both are connected through the
+existing shared `HERO_ART_BY_ID` / `HeroPortrait` path and the shared portrait
+renderer regression now verifies the Ma Chao asset and intentional fallback
+set. This update changes artwork only; gameplay, projections, selection rules,
+layout dimensions, and semantic actions are unchanged.
+
 ## Current state — Stage 6 Ma Chao / Horse Riding + Cavalry complete — 2026-09-28
 
 Ma Chao is complete on current `main`; Da Qiao has not been started. The Step 1

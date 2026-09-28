@@ -44,7 +44,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(html, /data-hero-art-id="cao-cao"/);
   assert.match(html, /data-hero-art-id="simayi"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
-  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.avif", "hero-zhang-fei.jpg", "hero-zhen-ji.jpg"]) {
+  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.avif", "hero-zhang-fei.jpg", "hero-zhen-ji.jpg", "hero-ma-chao.jpg"]) {
     assert.ok(existsSync(new URL(`../public/${asset}`, import.meta.url)), `${asset} is checked in`);
   }
   assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
@@ -112,7 +112,7 @@ test("every implemented Standard hero is audited through the shared portrait ren
       assert.match(html, /class="hero-art-fallback"/, `${id} keeps the intentional initials fallback until approved artwork exists`);
     }
   }
-  assert.deepEqual(unmappedIds, ["xu-chu", "guo-jia", "yue-jin", "guan-yu", "zhao-yun", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lu-xun", "lü-bu", "ma-chao"]);
+  assert.deepEqual(unmappedIds, ["xu-chu", "guo-jia", "yue-jin", "guan-yu", "zhao-yun", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lu-xun", "lü-bu"]);
 });
 
 test("hand cards stay naturally packed and compress only when the rail is tight", () => {
