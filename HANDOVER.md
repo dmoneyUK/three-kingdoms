@@ -3,6 +3,60 @@
 This file contains only unfinished follow-up work. Completed implementation
 history has been removed.
 
+
+## Resume checkpoint — 2026-09-28
+
+Current gameplay baseline reviewed: `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`. Yue Jin /
+Dauntless remains the latest completed Standard hero capability; the newer
+2026-09-25 commits are hero-art/design asset changes.
+
+The authoritative hero progress is now rechecked as **19 / 30 Standard heroes**
+and **27 / 46 printed skills** implemented. The remaining 11 heroes are Zhuge
+Liang, Ma Chao, Huang Yueying, Lady Gan, Da Qiao, Sun Shangxiang, Hua Tuo, Diao
+Chan, Hua Xiong, Gongsun Zan, and Pan Feng. New-game hero selection correctly
+uses `IMPLEMENTED_STANDARD_HEROES`, so those 11 metadata-only heroes remain
+unselectable.
+
+### Current-source audit of the open UI work
+
+The UI follow-up below is still real in current source, not stale documentation:
+
+- Hand spacing: `handCardLayout` computes
+  `(handRailWidth - cardWidth) / (count - 1)` and allows the step to exceed one
+  card width. With only two or three cards in a wide rail this deliberately
+  spreads them across the rail and creates the reported gaps. The memo also
+  depends on hand count rather than the hand ID/order signature.
+- Opponent zones: `OpponentPlayerCard` still renders
+  `.opponent-card-zones` inside `.opponent-hero-card`, and
+  `sequence-overrides.css` absolutely positions that zone over the hero
+  surface. Equipment and Judgement therefore still need structural separation.
+- Current-player overlay: JSX currently renders HP -> Hearts -> Role inside
+  `.local-hero-vitals`, then the hero name. This is the reverse of the
+  requested Name -> Role -> HP -> Hearts order.
+- Fifth-heart bug: `hpDisplay()` does **not** cap hearts; it repeats one heart
+  per current HP. The likely failure boundary is layout/CSS clipping
+  (`max-width: 100%; overflow: hidden; white-space: nowrap`), not the helper.
+  Verify at 5/5 before changing any HP rule.
+
+### Resume work order
+
+1. **Close Pending 1–3 below first.** Keep this a presentation-only round. Do
+   not change gameplay/rules while fixing the hand and player-board layout.
+2. Run `npm run build`, `npm test`, `npm run lint`, and
+   `git diff --check`. Do not mark the UI handover complete until the listed
+   mobile widths have been checked.
+3. Start a separate Stage 6 rules round with **Gongsun Zan / Militia**. Add a
+   generic distance-modifier capability rather than a hero-name branch in
+   `distanceBetween()`.
+4. Then implement **Ma Chao** on the same distance primitive plus the existing
+   `attack_targeted` / Judgement flow.
+5. Re-review the engine before **Da Qiao**; Deflection will need a generic
+   target-shift/redirect result, while Captivating should use the existing
+   delayed-Stratagem settlement rather than a private card resolver.
+
+The semantic response/trigger protocol remains a completed architecture
+invariant. Do not add hero-specific HTTP actions or a universal effects DSL.
+
 ## Pending 1 — Current UI follow-up from latest review
 
 Work from current HEAD.

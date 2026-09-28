@@ -1,13 +1,13 @@
 # WTK Standard Hero Reference and Roster Reconciliation
 
-> Status: **authoritative roster and implementation-progress reference for this project**. Printed skill text for all 30 Standard Generals is transcribed from owner-supplied official WTK card screenshots through 2026-09-21; implementation progress was audited against `main` at `65ae08708854801c32e61591adcc52b666be6ba6` on 2026-09-22.
+> Status: **authoritative roster and implementation-progress reference for this project**. Printed skill text for all 30 Standard Generals is transcribed from owner-supplied official WTK card screenshots through 2026-09-21; implementation progress was re-audited on 2026-09-28 against the gameplay baseline `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`.
 > This file records the current WTK **Standard** General roster shown in the official WTK General Card catalogue and the implementation confidence boundary for hero rules.
 
 ## Source and verification policy
 
 - **Primary roster source:** official WTK General Card catalogue: <https://wtkgames.com/generalCard/> with the product filter set to **Standard**. The project owner supplied a screenshot of that filtered roster on 2026-09-16. Individual card text is re-opened from the official Standard catalogue/API before implementation.
 - **Product source:** <https://wtkgames.com/product/Standard/>.
-- **Implementation progress audit baseline:** `main` at `65ae08708854801c32e61591adcc52b666be6ba6` on 2026-09-22.
+- **Implementation progress audit baseline:** re-audited on 2026-09-28 against `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`. The later documentation checkpoint does not itself change gameplay capability status.
 - The Standard-filtered official catalogue is authoritative for **which generals belong in new Standard games**, even when older Sanguosha/WTK material originally classified a general as SP, Kingdom Wars, or another pack.
 - **Roster membership is owner-verified** against the supplied official Standard-filtered WTK General catalogue. Faction, name, gender, and HP are retained only where supported by the official card/source or explicitly treated as implementation metadata pending individual verification.
 - The **Supplied printed English metadata** table below is a direct transcription of owner-supplied official WTK Standard card screenshots. Detailed hero sections may also include implementation-oriented interpretations; where an interpretation differs from the printed text, the printed card text wins.
@@ -16,7 +16,7 @@
 
 ## Implementation progress
 
-Audited against `main` at `65ae08708854801c32e61591adcc52b666be6ba6` on 2026-09-22.
+Re-audited on 2026-09-28 against `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`.
 
 - **Implemented:** 19 / 30 heroes
 - **Partial:** 0 / 30 heroes
@@ -24,6 +24,13 @@ Audited against `main` at `65ae08708854801c32e61591adcc52b666be6ba6` on 2026-09-
 - **Implemented skills:** 27 / 46
 - **Partial skills:** 0 / 46
 - **Not implemented skills:** 19 / 46
+
+**2026-09-28 audit note:** `game/heroes.ts` still allow-lists exactly these 19
+implemented Standard heroes. The 11 remaining generals are present as Standard
+roster metadata but are excluded from `IMPLEMENTED_STANDARD_HEROES` and from
+new-game hero selection. The post-Yue-Jin commits reviewed through the baseline
+above add presentation/art assets rather than new hero gameplay capabilities,
+so the implementation counts remain unchanged.
 
 Implementation status means the hero's printed Standard skill set has a live gameplay implementation on the audited baseline. Runtime metadata alone does not count as implementation.
 
@@ -224,7 +231,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **SHU 004**, printed title **The Prime Minister who is Past his Prime**.
 - **Implementation interpretation:** Stargazing uses the number of characters in the game, capped at 5, not the number of currently living characters unless the official rules separately define otherwise. Empty Fortress Strategem is a targeting prohibition: while Zhuge Liang has zero hand cards, [Attack] and [Duel] cannot select him as a target.
 - **Likely engine shape:** Preparation Phase deck-ordering decision; passive target-legality modifier.
-- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skills are not implemented.
+- **Current implementation:** Standard roster metadata exists in `STANDARD_HEROES`, but this hero is excluded from `IMPLEMENTED_STANDARD_HEROES` and new-game selection until both printed skills are implemented.
 
 ### Zhao Yun (赵云)
 
@@ -258,7 +265,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **SHU 016**, printed title **Empress of Zhao Lie**.
 - **Implementation interpretation:** Divine Wisdom uses a strict “more than your HP” comparison after discarding all hand cards. Prudence targets another character; the recipient draws 2 rather than 1 if they have no hand cards at that point.
 - **Likely engine shape:** start-of-turn all-hand discard/recovery; per-1-HP recovery trigger with target draw modifier.
-- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skills are not implemented.
+- **Current implementation:** Standard roster metadata exists in `STANDARD_HEROES`, but this hero is excluded from `IMPLEMENTED_STANDARD_HEROES` and new-game selection until both printed skills are implemented.
 
 ## Wu
 
@@ -374,7 +381,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **QUN 026**, printed title **The General on the White Stallion**.
 - **Implementation interpretation:** At HP > 2, only Gongsun Zan's outbound distance is reduced by 1. At HP <= 2, only other characters' distance to Gongsun Zan is increased by 1.
 - **Likely engine shape:** bidirectional HP-dependent distance modifier.
-- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skill is not implemented.
+- **Current implementation:** Standard roster metadata exists in `STANDARD_HEROES`, but this hero is excluded from `IMPLEMENTED_STANDARD_HEROES` and new-game selection until the printed skill is implemented.
 
 ### Pan Feng (潘凤)
 
@@ -383,7 +390,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **QUN 017**, printed title **General of the Coalition**.
 - **Implementation interpretation:** The once-per-Play-Phase trigger evaluates HP after the [Attack] has dealt damage. If the damaged character's current HP is lower than Pan Feng's current HP, Pan Feng draws 2 cards; otherwise Pan Feng loses 1 HP.
 - **Likely engine shape:** once-per-Play-Phase post-Attack-damage trigger with post-damage HP comparison and draw/HP-loss branch.
-- **Current implementation:** Selectable hero metadata exists in `STANDARD_HEROES`; the skill is not implemented.
+- **Current implementation:** Standard roster metadata exists in `STANDARD_HEROES`, but this hero is excluded from `IMPLEMENTED_STANDARD_HEROES` and new-game selection until the printed skill is implemented.
 
 ## Legacy/non-Standard runtime entries
 
@@ -407,7 +414,21 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 
 ## Next repository change
 
-Reconcile `game/heroes.ts` player-facing names and ability summaries with this
-reference, then implement or review remaining hero skills one General at a time.
-Preserve stable runtime IDs for saved-room compatibility and prefer semantic
-capabilities/triggers over hero-name branches in central game resolution.
+The player-facing Standard metadata and implemented-hero allow-list are aligned
+with this reference. Resume implementation one General at a time in this order:
+
+1. **Gongsun Zan / Militia** — introduce a generic distance-modifier capability
+   and keep `distanceBetween()` free of a Gongsun-Zan-specific branch.
+2. **Ma Chao / Horse Riding + Cavalry** — reuse the outbound-distance primitive;
+   implement Cavalry through the existing `attack_targeted` and Judgement
+   continuation architecture so a successful Red Judgement suppresses the
+   relevant Dodge opportunity without a provider-specific HTTP action.
+3. **Da Qiao / Captivating + Deflection** — reuse delayed-Stratagem settlement
+   for Diamond-as-Overindulgence and add a generic target-shift/redirect semantic
+   outcome for `attack_targeted` before wiring the hero provider.
+
+This is an engineering sequence, not a replacement rules source. Re-open the
+current official WTK Standard card/rulebook entry before each implementation.
+Preserve stable runtime IDs for saved-room compatibility and keep Quick Test,
+human multiplayer ownership, private projections, stale-action rejection, and
+deterministic regression coverage current.
