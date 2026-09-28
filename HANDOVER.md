@@ -1,58 +1,46 @@
 # Three Kingdoms project handover
 
-## Current state — Step 1 UI handover closed — 2026-09-28
+## Current state — Stage 6 Gongsun Zan / Militia complete — 2026-09-28
 
-This round is complete as a presentation-only change on current `main`.
-
-The owner-supplied profile artwork is now installed in the existing production
-bindings: Photo 1 for Liu Bei, Photo 2 for Cao Cao, and Photo 3 for Sun Quan.
-The three JPEGs retain portrait-oriented source dimensions and the established
-hero-art paths; no gameplay, projection, semantic action, or panel-layout
-behavior changed.
+This round is complete on current `main`. The Step 1 UI handover is also closed
+and remains separate from this gameplay change.
 
 Implemented:
 
-- Local hand packing uses the current physical card IDs/order, caps natural
-  step at 68px, and applies controlled overlap/compression when the rail is
-  tight. Physical card width and panel dimensions are unchanged.
-- Opponent Equipment is outside and below the hero portrait with four visible
-  logical slots: Weapon, Armour, +1 Horse, and -1 Horse.
-- Opponent Judgement is a separate side zone with controlled multi-card
-  overlap. Existing equipment/judgement data anchors, info controls,
-  inspection behavior, and flight/settlement lookup anchors remain intact.
-- Current-player hero information is ordered Hero Name, Role, HP current/max,
-  Hearts. The hero portrait remains 2:3 and the heart row is not clipped, so
-  Lord 5/5 displays five hearts.
-- The established Hero Skills contract remains unchanged: representative
-  response, trigger, Play Phase, and passive states use projected capability
-  availability; contextual responses use generic Confirm / Skip; no duplicate
-  skill controls were added to the bottom action row.
+- Added a small generic effective-distance capability with independently tested
+  raw circular seat distance, directional outbound/inbound providers, minimum
+  distance clamping, and the existing dead-player sentinel.
+- Moved offensive and defensive Mount distance behavior into the shared
+  provider pipeline so modifiers compose rather than replace one another.
+- Registered Gongsun Zan's passive Militia provider. It derives from authoritative
+  current HP: outbound -1 above 2 HP, inbound +1 at 2 HP or below; no mode flag
+  is persisted.
+- Routed projected distance and every distance-sensitive server legality check
+  through the same effective calculation, including Attack, Steal, and Rations
+  Depleted. No Gongsun-Zan branch exists in raw rules, Attack handling, or routes.
+- Added Gongsun Zan to Standard selection only after capability completion. Hero
+  Skills shows the normal disabled passive label, with no activation button,
+  Confirm/Skip flow, or provider-specific action.
 
-Regression coverage now protects hand packing, middle-card removal/repacking,
-actual hand ID/order dependencies, opponent zone structure and anchors, hero
-overlay order, 5/5, 4/5, 1/5, 4/4, and 3-HP heart rendering, plus the existing
-Hero Skills response/trigger/Play Phase/passive coverage.
-
-Responsive geometry was checked in the local browser at 320px, 390px, 393px,
-402px, and 430px. The document width matched the viewport at each size. The
-rendered suite provides the deterministic Judgement multi-card/anchor proof.
-
-No gameplay rules, target legality, distance, hero legality, response or
-Judgement semantics, hidden-information behavior, or semantic action API was
-changed. Gongsun Zan was not started.
+Regression coverage includes 4/3/2/1 HP directionality, exact-boundary and
+recovery transitions, clamping, dead-player handling, non-Gongsun behavior,
+Mount composition, healthy/low-HP Attack legality, Quick Test selection, and
+the existing normal multiplayer ownership/privacy suite.
 
 ## Validation
 
 - `npm run build` passed.
-- `npm test` passed: 40 fast tests and 106 API tests.
+- `npm test` passed: 46 fast tests and 109 API tests across four isolated
+  Worker/D1 shards.
 - `npm run lint` passed with one pre-existing warning for the unused
   `jsx-a11y/label-has-associated-control` disable directive at `app/page.tsx:1`.
 - `git diff --check` passed.
 
 ## Known boundaries and recommended next work
 
-The remaining Stage 7 work is the final graphic/theme polish and separately
-approved artwork intake for remaining fallback heroes. Any new hero or card
-capability must remain a separate, server-owned semantic round and must not be
-combined with another presentation or asset closure. Gongsun Zan remains
-untouched.
+The next Stage 6 hero is Ma Chao / Horse Riding + Cavalry, which must reuse the
+distance primitive and remain a separate round. Stage 7 still has final
+graphic/theme polish and separately approved artwork intake for fallback heroes.
+Do not begin Ma Chao in this change or combine future gameplay with presentation
+work. Preserve server-owned legality, private projections, Quick Test/normal
+multiplayer parity, stale safety, and the canonical semantic action contract.

@@ -11,7 +11,7 @@ const files = readdirSync(new URL("./api/", import.meta.url))
 // Keep the groups explicit so measured file costs can be rebalanced without
 // changing test membership. Every child gets its own Wrangler/D1 lifecycle.
 const shardGroups = [
-  ["tests/api/equipment.test.mjs", "tests/api/judgement.test.mjs"],
+  ["tests/api/equipment.test.mjs", "tests/api/gongsun-zan.test.mjs", "tests/api/judgement.test.mjs"],
   ["tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs"],
   ["tests/api/stratagems.test.mjs", "tests/api/borrowed-sword.test.mjs"],
   ["tests/api/lobby-heroes-wei.test.mjs", "tests/api/concurrency.test.mjs", "tests/api/yue-jin-dauntless.test.mjs"],

@@ -8,6 +8,7 @@ const fastTests = [
   "tests/private-hand.test.mjs",
   "tests/game-messages.test.mjs",
   "tests/response-capabilities.test.mjs",
+  "tests/distance-capabilities.test.mjs",
   "tests/room-safety.test.mjs",
   "tests/room-safety-render.test.mjs",
 ];

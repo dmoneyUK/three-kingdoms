@@ -9,9 +9,11 @@ The source images preserve the portrait-oriented framing used by the existing
 2:3 hero presentation. No gameplay rules, projections, actions, or layout
 dimensions changed.
 
-Current stage remains Stage 7 product polish. The next milestone is final
-graphic/theme polish and separately approved artwork intake for remaining
-fallback heroes; no new hero capability is included in this asset-only round.
+Current stage remains Stage 7 product polish, and the Step 1 UI handover is
+closed. Stage 6's latest completed hero is Gongsun Zan / Militia (20/30 heroes,
+28/46 skills); the next rules milestone is Ma Chao / Horse Riding + Cavalry.
+Final graphic/theme polish and separately approved artwork intake for remaining
+fallback heroes remain separate product work.
 
 ## UI handover closure — 2026-09-28
 
@@ -33,14 +35,30 @@ a 5/5 Lord; CSS no longer clips the heart row. Representative response,
 trigger, Play Phase, and passive Hero Skills coverage remains on the canonical
 Skills-panel and generic Confirm/Skip contract, with no duplicate bottom-row
 skill controls. No gameplay rules, legality, distance, Judgement semantics, or
-semantic action API changed, and Gongsun Zan was not started.
+semantic action API changed in that presentation-only handover. Gongsun Zan was
+implemented in the separate Stage 6 rules round below.
 
 Render regressions cover hand packing and identity/order recalculation, the
 opponent zone DOM/anchors, overlay order, all requested HP/heart combinations,
 and the existing Hero Skills contract. Responsive geometry was checked at
 320px, 390px, 393px, 402px, and 430px with no document horizontal overflow.
-The next milestone remains final graphic/theme polish and separately approved
-artwork intake for remaining fallback heroes.
+The next product milestone remains final graphic/theme polish and separately
+approved artwork intake for remaining fallback heroes.
+
+## Stage 6 hero capability — Gongsun Zan / Militia — 2026-09-28
+
+Implemented the generic server-owned effective-distance capability and registered
+Militia without adding a central hero branch, activation control, or new HTTP
+action. Raw circular seat distance remains independently testable; outbound and
+inbound providers compose with offensive and defensive Mount effects, clamp at
+1, and preserve the existing dead-player sentinel.
+
+Militia derives directly from current HP: Gongsun Zan's outbound distance is -1
+above 2 HP; inbound distance to him is +1 at 2 HP or below. The same calculation
+drives projection and Attack/Steal/Rations legality. Deterministic capability,
+Worker/D1 Attack, HP-transition, horse-composition, Quick Test selection, and
+normal multiplayer regressions are included. Ma Chao / Horse Riding + Cavalry is
+the next hero; no Ma Chao implementation is included here.
 
 ## Opponent board arc and inspection — 2026-09-24
 
@@ -235,8 +253,8 @@ polish and the next scoped product improvement.
 Repaired the missing opponent artwork path without changing gameplay. The
 checked-in Zhang Liao portrait was an undecodable JPEG; it is now a valid
 2:3 portrait, and original project artwork now covers Zhang Fei and Zhen Ji.
-All 19 implemented Standard hero IDs are covered by an explicit render audit:
-eight have checked-in artwork and the other 11 retain the intentional initials
+All 20 implemented Standard hero IDs are covered by an explicit render audit:
+eight have checked-in artwork and the other 12 retain the intentional initials
 fallback until approved assets exist. Every mapped hero continues to resolve
 through the single shared `HERO_ART_BY_ID` / `HeroPortrait` renderer.
 

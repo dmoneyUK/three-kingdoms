@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { getRequestExecutionContext } from "vinext/shims/request-context";
 import { cardDefinition, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import type { Card, EquipmentZone } from "../../../game/model";
-import { canDeclareAttack as canDeclareAttackFor, distanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
+import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { responseCostActor, semanticResponseActor } from "../../../game/response-identity";
@@ -333,14 +333,12 @@ async function actionRevisionFor(room: RoomRow, players: PlayerRow[], projectedA
   return [room.status, room.phase ?? "", projectedActionPlayerId ?? "", room.pending_json ?? "", room.skill_state_json ?? "", handRevision].join("|");
 }
 function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1; }
-function hasOffensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).offensiveHorse); }
-function hasDefensiveHorse(player?: PlayerRow | null) { return Boolean(equipmentZone(player).defensiveHorse); }
 function attackDistance(players: PlayerRow[], sourceId: string, targetId: string) {
   const source = players.find((player) => player.id === sourceId);
   const target = players.find((player) => player.id === targetId);
   if (sourceId === targetId) return 0;
   if (!source?.alive || !target?.alive) return 99;
-  return Math.max(1, distanceBetween(players, sourceId, targetId) + (hasDefensiveHorse(target) ? 1 : 0) - (hasOffensiveHorse(source) ? 1 : 0));
+  return effectiveDistanceBetween(players, sourceId, targetId, equipmentCards);
 }
 function borrowedSwordEligibleTargetIds(players: PlayerRow[], holderId: string) {
   const holder = players.find((player) => player.id === holderId && player.alive);

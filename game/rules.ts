@@ -1,5 +1,7 @@
 import type { GamePlayer } from "./model";
 import { canUseUnlimitedAttacks, type AttackUseLimitContext } from "./capabilities/attack-use-limit";
+import { resolveEffectiveDistance, type DistancePlayer } from "./capabilities/distance";
+import type { Card } from "./model";
 
 function livingPlayers<T extends GamePlayer>(players: T[]) {
   return players.filter((player) => Boolean(player.alive)).sort((a, b) => a.seat - b.seat);
@@ -28,6 +30,14 @@ export function distanceBetween<T extends GamePlayer>(players: T[], sourceId: st
   if (from < 0 || to < 0) return 99;
   const clockwise = (to - from + alive.length) % alive.length;
   return Math.min(clockwise, alive.length - clockwise);
+}
+
+export function effectiveDistanceBetween<T extends DistancePlayer>(players: T[], sourceId: string, targetId: string, equipmentFor: (player: T) => Card[] = () => []) {
+  const source = players.find((player) => player.id === sourceId);
+  const target = players.find((player) => player.id === targetId);
+  const rawDistance = distanceBetween(players, sourceId, targetId);
+  if (!source || !target) return rawDistance;
+  return resolveEffectiveDistance({ source, target, rawDistance, sourceEquipment: equipmentFor(source), targetEquipment: equipmentFor(target) });
 }
 
 export function playPhaseAfterAttack(source?: AttackUseLimitContext | null) {

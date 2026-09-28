@@ -11,34 +11,45 @@ latest gameplay hero change remains Yue Jin / Dauntless (implemented by
 The 2026-09-25 commits after that are hero-art/design asset work and do not
 change gameplay capability counts.
 
-- Stage 6 is at **19 / 30 Standard heroes implemented** and **27 / 46 printed
+- Stage 6 is at **20 / 30 Standard heroes implemented** and **28 / 46 printed
   skills implemented**.
 - The remaining metadata-only Standard heroes are **Zhuge Liang, Ma Chao,
   Huang Yueying, Lady Gan, Da Qiao, Sun Shangxiang, Hua Tuo, Diao Chan,
-  Hua Xiong, Gongsun Zan, and Pan Feng**.
-- Stage 7 still has the presentation work listed in `HANDOVER.md`: hand-card
-  packing, opponent Equipment/Judgement placement, current-player hero overlay
-  ordering/fifth-heart presentation, and representative hero-response UI
-  verification.
+  Hua Xiong, and Pan Feng**.
+- The Step 1 UI handover is complete. Stage 7's remaining work is final
+  graphic/theme polish and separately approved artwork intake.
 - The semantic response/trigger architecture is **complete**. Do not restart or
   replace it; extend it with a small generic capability only when a remaining
   Standard hero proves that primitive is needed.
 
 ### Resume order
 
-1. Finish the existing UI handover as a presentation-only change and run the
-   full validation suite.
-2. Resume Stage 6 with **Gongsun Zan / Militia** by adding one generic
-   distance-modifier capability. `distanceBetween()` is currently raw circular
-   seat distance, and Ma Chao needs the same outbound-distance mechanism.
-3. Implement **Ma Chao / Horse Riding + Cavalry** on top of that distance
+1. Keep the completed Step 1 UI handover closed; do not mix presentation work
+   into the next rules round.
+2. Implement **Ma Chao / Horse Riding + Cavalry** on the shared outbound-distance
    primitive and the existing `attack_targeted` + Judgement architecture.
-4. Reassess before **Da Qiao**. Deflection should extend `attack_targeted` with
+3. Reassess before **Da Qiao**. Deflection should extend `attack_targeted` with
    a generic target-shift/redirect semantic outcome rather than add a
    Da-Qiao-specific route action.
 
 Keep UI and hero-rules work in separate commits/rounds so a visual regression
 cannot hide a gameplay regression.
+
+## Stage 6 hero capability — Gongsun Zan / Militia — 2026-09-28
+
+Complete. The server now resolves effective distance from raw circular seat
+distance plus registered directional providers. Existing offensive/defensive
+Mount effects compose with Militia, raw distance remains independently testable,
+and dead-player distance retains its existing sentinel.
+
+Militia derives its mode from authoritative current HP: above 2 HP, Gongsun
+Zan's outbound distance is reduced by 1; at 2 HP or below, inbound distance to
+Gongsun Zan is increased by 1. The same calculation drives target projection,
+Attack legality, Steal, and Rations Depleted. Pure capability tests cover all HP
+boundaries, transitions, directionality, clamping, composition, and non-Gongsun
+regressions; Worker/D1 tests cover Attack legality and Quick Test selection.
+
+The next Stage 6 hero is **Ma Chao / Horse Riding + Cavalry**.
 
 ## Stage 6 hero capability — Yue Jin / Dauntless — 2026-09-23
 
@@ -205,7 +216,7 @@ registry.
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 19 / 30 heroes and 27 / 46 printed skills**; Yue Jin / Dauntless is the latest completed Standard hero capability. The next rules milestone is the generic distance foundation for Gongsun Zan / Militia, then Ma Chao.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 20 / 30 heroes and 28 / 46 printed skills**; Gongsun Zan / Militia is the latest completed Standard hero capability. The next rules milestone is Ma Chao / Horse Riding + Cavalry.
 
 ## Progress summary
 
@@ -216,8 +227,8 @@ Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE.
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
 | 5. Complete match rules | **Complete** | Dying/multi-damage, defeat continuation/outcome, delayed Stratagem LIFO ordering, placement timing, Judgement-phase Negation, and Lightning transfer semantics are deterministic and regression-covered. |
-| 6. Hero-specific abilities | **ACTIVE — 19 / 30 heroes, 27 / 46 skills** | Yue Jin / Dauntless is the latest completed hero. Next recommended primitive: Gongsun Zan / Militia generic distance modifier, then Ma Chao. |
-| 7. Product polish | **Ongoing — current handover open** | First close the hand packing, opponent zone placement, local hero overlay/hearts, hero-response UI and responsive verification tasks; sound, invitations and saved history remain later work. |
+| 6. Hero-specific abilities | **ACTIVE — 20 / 30 heroes, 28 / 46 skills** | Gongsun Zan / Militia is the latest completed hero. Ma Chao / Horse Riding + Cavalry is next. |
+| 7. Product polish | **Ongoing — Step 1 UI handover completed** | Final graphic/theme polish, separately approved artwork intake, sound, invitations, and saved history remain later work. |
 
 ## Stability foundation already complete
 

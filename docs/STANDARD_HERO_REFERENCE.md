@@ -1,13 +1,13 @@
 # WTK Standard Hero Reference and Roster Reconciliation
 
-> Status: **authoritative roster and implementation-progress reference for this project**. Printed skill text for all 30 Standard Generals is transcribed from owner-supplied official WTK card screenshots through 2026-09-21; implementation progress was re-audited on 2026-09-28 against the gameplay baseline `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`.
+> Status: **authoritative roster and implementation-progress reference for this project**. Printed skill text for all 30 Standard Generals is transcribed from owner-supplied official WTK card screenshots through 2026-09-21; the current official Standard catalogue/API and product/rulebook entry were re-opened for Gongsun Zan on 2026-09-28, and the pre-round implementation baseline was `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`.
 > This file records the current WTK **Standard** General roster shown in the official WTK General Card catalogue and the implementation confidence boundary for hero rules.
 
 ## Source and verification policy
 
 - **Primary roster source:** official WTK General Card catalogue: <https://wtkgames.com/generalCard/> with the product filter set to **Standard**. The project owner supplied a screenshot of that filtered roster on 2026-09-16. Individual card text is re-opened from the official Standard catalogue/API before implementation.
 - **Product source:** <https://wtkgames.com/product/Standard/>.
-- **Implementation progress audit baseline:** re-audited on 2026-09-28 against `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`. The later documentation checkpoint does not itself change gameplay capability status.
+- **Implementation progress audit baseline:** the pre-round audit was against `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`; this round updates the counts and Gongsun Zan status after implementation.
 - The Standard-filtered official catalogue is authoritative for **which generals belong in new Standard games**, even when older Sanguosha/WTK material originally classified a general as SP, Kingdom Wars, or another pack.
 - **Roster membership is owner-verified** against the supplied official Standard-filtered WTK General catalogue. Faction, name, gender, and HP are retained only where supported by the official card/source or explicitly treated as implementation metadata pending individual verification.
 - The **Supplied printed English metadata** table below is a direct transcription of owner-supplied official WTK Standard card screenshots. Detailed hero sections may also include implementation-oriented interpretations; where an interpretation differs from the printed text, the printed card text wins.
@@ -16,21 +16,22 @@
 
 ## Implementation progress
 
-Re-audited on 2026-09-28 against `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`.
+Re-audited on 2026-09-28 from the pre-round `main` baseline at
+`15bd5ee0bb40849bd21f21ab80d460d15357d2f6`; this round completes Gongsun Zan.
 
-- **Implemented:** 19 / 30 heroes
+- **Implemented:** 20 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 11 / 30 heroes
-- **Implemented skills:** 27 / 46
+- **Not implemented:** 10 / 30 heroes
+- **Implemented skills:** 28 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 19 / 46
+- **Not implemented skills:** 18 / 46
 
-**2026-09-28 audit note:** `game/heroes.ts` still allow-lists exactly these 19
-implemented Standard heroes. The 11 remaining generals are present as Standard
-roster metadata but are excluded from `IMPLEMENTED_STANDARD_HEROES` and from
-new-game hero selection. The post-Yue-Jin commits reviewed through the baseline
-above add presentation/art assets rather than new hero gameplay capabilities,
-so the implementation counts remain unchanged.
+**2026-09-28 implementation note:** `game/heroes.ts` now allow-lists exactly
+these 20 implemented Standard heroes, including Gongsun Zan. The 10 remaining
+generals are present as Standard roster metadata but are excluded from
+`IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
+Militia uses the generic server-owned effective-distance capability and is
+covered by pure, API, Quick Test, and normal multiplayer regressions.
 
 Implementation status means the hero's printed Standard skill set has a live gameplay implementation on the audited baseline. Runtime metadata alone does not count as implementation.
 
@@ -116,7 +117,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Unrivaled | Present | Implemented |
 | Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust<br>Beauty Outshining the Moon | Present | Not implemented |
 | Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Triumphant | Present | Not implemented |
-| Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Militia | Present | Not implemented |
+| Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Militia | Present | Implemented |
 | Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Axe of Insanity | Present | Not implemented |
 
 ## Detailed hero data
@@ -377,11 +378,11 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Gongsun Zan (公孙瓒)
 
 - **Runtime ID:** `gongsun-zan`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **QUN 026**, printed title **The General on the White Stallion**.
 - **Implementation interpretation:** At HP > 2, only Gongsun Zan's outbound distance is reduced by 1. At HP <= 2, only other characters' distance to Gongsun Zan is increased by 1.
 - **Likely engine shape:** bidirectional HP-dependent distance modifier.
-- **Current implementation:** Standard roster metadata exists in `STANDARD_HEROES`, but this hero is excluded from `IMPLEMENTED_STANDARD_HEROES` and new-game selection until the printed skill is implemented.
+- **Current implementation:** A generic effective-distance capability keeps raw circular seat distance reusable and composes directional outbound/inbound providers. Mount effects remain in that pipeline; Militia derives its outbound reduction or inbound increase directly from Gongsun Zan's authoritative current HP. Attack, Steal, Rations Depleted, projections, Quick Test, and normal multiplayer all use the same effective-distance result. No activation control, provider-specific action, or Gongsun-Zan branch exists in central raw-distance rules.
 
 ### Pan Feng (潘凤)
 
@@ -417,13 +418,11 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 The player-facing Standard metadata and implemented-hero allow-list are aligned
 with this reference. Resume implementation one General at a time in this order:
 
-1. **Gongsun Zan / Militia** — introduce a generic distance-modifier capability
-   and keep `distanceBetween()` free of a Gongsun-Zan-specific branch.
-2. **Ma Chao / Horse Riding + Cavalry** — reuse the outbound-distance primitive;
+1. **Ma Chao / Horse Riding + Cavalry** — reuse the outbound-distance primitive;
    implement Cavalry through the existing `attack_targeted` and Judgement
    continuation architecture so a successful Red Judgement suppresses the
    relevant Dodge opportunity without a provider-specific HTTP action.
-3. **Da Qiao / Captivating + Deflection** — reuse delayed-Stratagem settlement
+2. **Da Qiao / Captivating + Deflection** — reuse delayed-Stratagem settlement
    for Diamond-as-Overindulgence and add a generic target-shift/redirect semantic
    outcome for `attack_targeted` before wiring the hero provider.
 
