@@ -43,7 +43,13 @@ export function HeroPortrait({ hero }: { hero: Pick<Hero, "id" | "name"> }) {
   return <img className="hero-art-image" data-hero-art-id={hero.id} src={art} alt="" aria-hidden="true" />;
 }
 
-function hpDisplay(hp: number | null) { return hp !== null && hp <= 0 ? `${hp} HP` : "♥".repeat(Math.max(0, hp ?? 0)); }
+export function hpDisplay(hp: number | null) { return hp !== null && hp <= 0 ? `${hp} HP` : "♥".repeat(Math.max(0, hp ?? 0)); }
+export function calculateHandCardStep(handRailWidth: number, cardsOrCount: number | readonly string[], cardWidth = 68, minStep = 30) {
+  const count = typeof cardsOrCount === "number" ? cardsOrCount : cardsOrCount.length;
+  if (count <= 1 || handRailWidth <= 0) return cardWidth;
+  const naturalStep = (handRailWidth - cardWidth) / (count - 1);
+  return Math.min(cardWidth, Math.max(minStep, naturalStep));
+}
 function publicPlayerName(name: string) { return name; }
 function delayUntil(deadline: number) { return Math.max(0, deadline - Date.now()); }
 function suitColorClass(suit: Card["suit"]) { return suit === "♥" || suit === "♦" ? "red-suit" : "black-suit"; }
@@ -356,31 +362,47 @@ type OpponentPlayerCardProps = {
 };
 
 function OpponentPlayerCard({ player, viewerId, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, targetSelectionActive, targetablePlayer, onTarget, onInspect, onHeroInfo, onInfoCard, judgementInFlight, serpentSelected, triggerResponse, triggerSelectionUsesCards, responseDecisionReady, triggerCardOption, onToggleEquipment }: OpponentPlayerCardProps) {
-  const miniEquipment = player.equipmentCards.map((equipment) => <span className="mini-zone-card mini-equipment-card" data-equipment-id={equipment.id} key={equipment.id}>
-    <button type="button" className={`mini-equipment-button ${serpentSelected.includes(equipment.id) ? "selected-cost" : ""}`} disabled={!(triggerResponse && triggerSelectionUsesCards) || !responseDecisionReady || player.id !== viewerId || Boolean(triggerCardOption && triggerCardOption.selection?.type === "cards" && !triggerCardOption.selection.eligibleCardIds.includes(equipment.id))} onClick={() => onToggleEquipment(equipment.id)}><CardFace card={equipment} /></button>
-    <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(equipment.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(equipment); }}>i</button>
-  </span>);
+  const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
+  for (const equipment of player.equipmentCards) {
+    const slot = cardDefinition(equipment.kind).equipmentSlot;
+    if (slot) equipmentBySlot.set(slot, equipment);
+  }
+  const miniEquipment = LOCAL_EQUIPMENT_SLOTS.map(({ key, label }) => {
+    const equipment = equipmentBySlot.get(key);
+    return <span className="opponent-equipment-slot" data-slot={key} aria-label={`${label} slot`} key={key}>
+      {equipment ? <span className="mini-zone-card mini-equipment-card" data-equipment-id={equipment.id}>
+        <button type="button" className={`mini-equipment-button ${serpentSelected.includes(equipment.id) ? "selected-cost" : ""}`} disabled={!(triggerResponse && triggerSelectionUsesCards) || !responseDecisionReady || player.id !== viewerId || Boolean(triggerCardOption && triggerCardOption.selection?.type === "cards" && !triggerCardOption.selection.eligibleCardIds.includes(equipment.id))} onClick={() => onToggleEquipment(equipment.id)}><CardFace card={equipment} /></button>
+        <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(equipment.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(equipment); }}>i</button>
+      </span> : <span className="opponent-zone-empty" aria-label={`${label} empty`}>{label}</span>}
+    </span>;
+  });
   const miniJudgement = player.judgementCards.map((judgement) => <span className="mini-zone-card judgement-mini" data-judgement-id={judgement.id} key={judgement.id} style={{ visibility: judgementInFlight.has(judgement.id) ? "hidden" : "visible" }}>
     <span><small>{judgement.rank}{judgement.suit}</small><b>{cardDefinition(judgement.kind).name}</b></span>
     <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(judgement.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(judgement); }}>i</button>
   </span>);
   const targetButtonDisabled = targetSelectionActive && (!targetablePlayer || !player.alive);
   return <article className={`player-square opponent-player-card player-square-${relativeIndex} ${isTurn ? "turn-square" : ""} ${isActionPlayer ? "action-square" : ""} ${isSelectedTarget ? "selected-target" : ""} ${!player.alive ? "defeated-square" : ""}`} data-player-anchor={player.id}>
-    <div className="player-hero-card opponent-hero-card">
-      <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={`${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`} onClick={targetSelectionActive ? onTarget : onInspect}>
-        {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id}><HeroPortrait hero={playerHero} /></span>}
-        <span className="opponent-hero-overlay">
-          <span className="opponent-player-name">{player.name}</span>
-          <strong className="opponent-hero-name">{playerHero?.name ?? heroName(player.hero)}</strong>
-          <span className="player-hp">HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
-          <span className="player-hearts">{hpDisplay(player.hp)}</span>
-        </span>
-      </button>
-      {playerHero && <button type="button" className="hero-card-info-button" aria-label={`Explain ${playerHero.name}`} onClick={() => onHeroInfo(playerHero)}>i</button>}
-      {(player.equipmentCards.length > 0 || player.judgementCards.length > 0) && <div className="opponent-card-zones">
-        {player.equipmentCards.length > 0 && <div className="square-zone"><label>Equipment</label><div>{miniEquipment}</div></div>}
-        {player.judgementCards.length > 0 && <div className="square-zone judgement-square-zone"><label>Judgement</label><div>{miniJudgement}</div></div>}
-      </div>}
+    <div className="opponent-public-zones">
+      <div className="player-hero-card opponent-hero-card">
+        <button type="button" className="player-square-target opponent-hero-target" disabled={targetButtonDisabled} aria-label={`${targetSelectionActive ? "Select" : "Inspect"} ${player.name}`} onClick={targetSelectionActive ? onTarget : onInspect}>
+          {playerHero && <span className="player-square-portrait opponent-hero-portrait" data-hero-id={playerHero.id}><HeroPortrait hero={playerHero} /></span>}
+          <span className="opponent-hero-overlay">
+            <span className="opponent-player-name">{player.name}</span>
+            <strong className="opponent-hero-name">{playerHero?.name ?? heroName(player.hero)}</strong>
+            <span className="player-hp">HP {player.hp ?? 0}/{player.maxHp ?? 0}</span>
+            <span className="player-hearts">{hpDisplay(player.hp)}</span>
+          </span>
+        </button>
+        {playerHero && <button type="button" className="hero-card-info-button" aria-label={`Explain ${playerHero.name}`} onClick={() => onHeroInfo(playerHero)}>i</button>}
+      </div>
+      <section className="opponent-equipment-zone" aria-label="Equipment">
+        <span className="opponent-zone-label">Equipment</span>
+        <div className="opponent-equipment-slots">{miniEquipment}</div>
+      </section>
+      {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
+        <span className="opponent-zone-label">Judgement</span>
+        <div className="opponent-judgement-cards">{miniJudgement}</div>
+      </section>}
     </div>
     <div className="opponent-hand-footer"><span className="player-hand-label">Hand cards</span><strong className="player-hand-count">{player.handCount}</strong></div>
   </article>;
@@ -551,7 +573,7 @@ export function LocalPlayerDock({ player, hero, children, heroSkillControl, onHe
   </div>;
   return <section className="local-player-dock" data-player-anchor={player?.id ?? undefined} aria-label="Your player area">
     <div className="local-dock-identity">
-      {hero ? <button type="button" className="local-hero-card" aria-label={`Explain ${hero.name}`} onClick={() => onHeroInfo(hero)}><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-overlay"><span className="local-hero-vitals"><span className="local-hero-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span><span className="local-hero-hearts">{hpDisplay(player?.hp ?? null)}</span><strong className="local-hero-role">{player?.role ?? "Role pending"}</strong></span><span className="local-hero-label">{hero.name}</span></span></span></button> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
+      {hero ? <button type="button" className="local-hero-card" aria-label={`Explain ${hero.name}`} onClick={() => onHeroInfo(hero)}><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-overlay"><span className="local-hero-label">{hero.name}</span><span className="local-hero-vitals"><strong className="local-hero-role">{player?.role ?? "Role pending"}</strong><span className="local-hero-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span><span className="local-hero-hearts">{hpDisplay(player?.hp ?? null)}</span></span></span></span></button> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
     </div>
     <div className="local-dock-zones" aria-label="Your status and equipment zones">
       <div className="local-status-panel" aria-label="Hero skills">{heroSkillControl ?? <section className="hero-skills local-hero-skills" aria-label="Hero skills">{fallbackSkills.map((skill) => <button type="button" className="hero-skill-button" key={skill.name} title={skill.description} disabled>{skill.name}</button>)}</section>}</div>
@@ -761,15 +783,11 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
     observer.observe(rail);
     return () => observer.disconnect();
   }, [room.meId]);
-  const handCardLayout = useMemo(() => {
-    const cardWidth = 68;
-    const minStep = 30;
-    const count = room.myHand.length;
-    if (count <= 1) return { step: cardWidth, measured: handRailWidth > 0 };
-    if (handRailWidth <= 0) return { step: cardWidth, measured: false };
-    const naturalStep = (handRailWidth - cardWidth) / (count - 1);
-    return { step: naturalStep >= cardWidth ? naturalStep : Math.max(minStep, naturalStep), measured: handRailWidth > 0 };
-  }, [handRailWidth, room.myHand.length]);
+  const handCardKey = room.myHand.map((item) => item.id).join("|");
+  const handCardLayout = useMemo(() => ({
+    step: calculateHandCardStep(handRailWidth, handCardKey ? handCardKey.split("|") : []),
+    measured: handRailWidth > 0,
+  }), [handRailWidth, handCardKey]);
   const gameMessages = useMemo(() => latestPublicMessages(room.timeline, describeEvent), [room.timeline]);
   // A response is one decision, even when it has several providers.  Do not
   // expose (or start timing) one provider before the preceding public effect

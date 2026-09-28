@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
+import { calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
@@ -115,6 +115,18 @@ test("every implemented Standard hero is audited through the shared portrait ren
   assert.deepEqual(unmappedIds, ["xu-chu", "guo-jia", "yue-jin", "guan-yu", "zhao-yun", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lu-xun", "lü-bu"]);
 });
 
+test("hand cards stay naturally packed and compress only when the rail is tight", () => {
+  assert.equal(calculateHandCardStep(320, 1), 68, "one card keeps its physical width");
+  assert.equal(calculateHandCardStep(320, 2), 68, "two cards never spread beyond adjacent physical cards");
+  assert.equal(calculateHandCardStep(320, 3), 68, "three cards never spread beyond adjacent physical cards");
+  assert.equal(calculateHandCardStep(320, 10), 30, "large hands use controlled compression");
+  assert.equal(calculateHandCardStep(90, 2), 30, "tight rails use the minimum controlled overlap step");
+  assert.equal(calculateHandCardStep(90, 3), 30, "three tight cards remain a controlled stack");
+  assert.match(gameRoomSource, /const handCardKey = room\.myHand\.map\(\(item\) => item\.id\)\.join\("\\|"\)/, "hand layout keys the actual card IDs and order");
+  assert.match(gameRoomSource, /\[handRailWidth, handCardKey\]/, "hand layout recomputes after card identity, order, or count changes");
+  assert.match(gameRoomSource, /calculateHandCardStep\(handRailWidth, handCardKey \? handCardKey\.split\("\\|"\) : \[\]\)/);
+});
+
 test("the local player dock replaces the self battlefield square and follows Quick Test perspective", () => {
   const players = [
     { id: "p1", name: "HOST", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 2, equipmentCards: [card("weapon", "BlueSteelSword"), card("armor", "NioShield"), card("offensive-horse", "RedHare"), card("defensive-horse", "Shadowrunner")], judgementCards: [card("lightning", "Lightning"), card("overindulgence", "Overindulgence")], attackRange: 2, distance: null, isHost: true, role: "Lord" },
@@ -149,12 +161,22 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="player-square-portrait opponent-hero-portrait" data-hero-id="liu-bei"[\s\S]*data-hero-art-id="liu-bei"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
   assert.match(html, /aria-label="Inspect ALICE"/, "opponent heroes are inspectable when no target is active");
-  assert.match(sequenceStyleSource, /\.opponent-player-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "opponents use portrait hero cards");
+  assert.match(sequenceStyleSource, /\.opponent-hero-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "opponent hero portraits remain 2:3");
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \{[\s\S]*height: 100% !important;/, "opponent artwork fills the hero region");
   assert.match(sequenceStyleSource, /\.opponent-hero-portrait \.hero-art-image \{[^}]*object-fit: cover; object-position: center top;/, "opponent artwork uses cover framing");
   assert.doesNotMatch(globalStyleSource, /\.player-square-target \.player-square-portrait \{[^}]*height: clamp\(44px, 8vw, 92px\)/, "opponent portraits do not regress to the shallow mobile rule");
   assert.match(gameRoomSource, /<HeroPortrait hero=\{playerHero\} \/>/, "opponents use the shared HeroPortrait renderer");
-  assert.match(html, /class="local-hero-card"[\s\S]*class="local-hero-hp">HP 4\/4<\/span>[\s\S]*class="local-hero-hearts">♥♥♥♥<\/span>[\s\S]*class="local-hero-role">Lord<\/strong>[\s\S]*class="local-hero-label">Cao Cao<\/span>/, "local hero card owns HP, hearts, role, and name");
+  assert.match(html, /class="local-hero-card"[\s\S]*class="local-hero-label">Cao Cao<\/span>[\s\S]*class="local-hero-role">Lord<\/strong>[\s\S]*class="local-hero-hp">HP 4\/4<\/span>[\s\S]*class="local-hero-hearts">♥♥♥♥<\/span>/, "local hero card orders name, role, HP, and hearts");
+  assert.equal(hpDisplay(5), "♥♥♥♥♥");
+  assert.equal(hpDisplay(4), "♥♥♥♥");
+  assert.equal(hpDisplay(1), "♥");
+  assert.equal(hpDisplay(0), "0 HP");
+  for (const [current, max] of [[5, 5], [4, 5], [1, 5], [4, 4], [3, 4]]) {
+    const hpRoom = normalizeRoomData({ ...payload, code: `DOCK-HP-${current}-${max}`, players: players.map((player) => player.id === "p1" ? { ...player, hp: current, maxHp: max } : player) });
+    assert.ok(hpRoom);
+    const hpHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: hpRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    assert.match(hpHtml, new RegExp(`class="local-hero-hp">HP ${current}/${max}<\\/span>[\\s\\S]*class="local-hero-hearts">${"♥".repeat(current)}<\\/span>`), `${current}/${max} renders one heart per current HP`);
+  }
   assert.match(html, /class="local-status-panel"[\s\S]*class="hero-skills local-hero-skills"[\s\S]*>Treachery<\/button>[\s\S]*>Entourage<\/button>/, "local skills move into the flexible top panel");
   assert.doesNotMatch(html, /class="local-status-panel"[\s\S]*local-status-hp|class="local-status-panel"[\s\S]*local-status-hearts|class="local-status-panel"[\s\S]*local-status-role/);
   assert.equal((html.match(/class="hero-skill-button/g) ?? []).length, 2, "Cao Cao exposes one button per metadata skill");
@@ -186,6 +208,10 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /aria-label="Explain Blue Steel Sword"/); assert.match(html, /aria-label="Explain Lightning"/);
   assert.match(html, /data-equipment-id="weapon"[\s\S]*class="played-card bluesteelsword black-suit/);
   assert.match(html, /data-judgement-id="lightning"[\s\S]*class="played-card lightning black-suit/);
+  assert.match(html, /class="opponent-public-zones"[\s\S]*class="player-hero-card opponent-hero-card"[\s\S]*class="opponent-equipment-zone"/, "opponent Equipment is a sibling below the hero card");
+  assert.equal((html.match(/class="opponent-equipment-slot"/g) ?? []).length, 12, "each visible opponent keeps four identifiable equipment slots");
+  assert.match(html, /class="opponent-judgement-zone"[\s\S]*data-judgement-id="opponent-judgement"/, "Judgement is a separate side zone with its card anchor");
+  assert.doesNotMatch(html, /class="opponent-card-zones"/, "the old portrait-overlay zone wrapper is removed");
   assert.match(gameRoomSource, /const renderZoneCard[\s\S]*<CardFace card=\{card\}/, "local zones reuse the shared card artwork renderer");
   assert.match(html, /class="local-hand"/); assert.match(html, /class="local-hand-rail"/);
   assert.equal((html.match(/class="local-hand-section"/g) ?? []).length, 1, "the hand is a distinct dock layout region");
@@ -224,7 +250,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
   assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-judgement-panel,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
   assert.match(sequenceStyleSource, /\.local-hand-rail\s*\{[\s\S]*top: 0[\s\S]*height: var\(--hand-peek-height\)[\s\S]*overflow: visible/);
-  assert.match(gameRoomSource, /ResizeObserver[\s\S]*handRailWidth[\s\S]*naturalStep[\s\S]*minStep/);
+  assert.match(gameRoomSource, /ResizeObserver[\s\S]*handRailWidth[\s\S]*calculateHandCardStep/);
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
   assert.match(html, /class="hand-card-visual"[\s\S]*class="game-card[\s\S]*class="card-info-button"/);
   assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.hand-card-visual\s*\{[\s\S]*transform: translateY\(calc\(-1 \* var\(--selected-rise\)\)\)/);
@@ -254,8 +280,9 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /player-square-2 \{[\s\S]*left: 50%;[\s\S]*top: var\(--top-seat-y\)/, "top opponent remains centred");
   assert.match(sequenceStyleSource, /player-square-3 \{[\s\S]*right: var\(--opponent-seat-x\);[\s\S]*top: var\(--side-seat-y\)/, "right opponent mirrors the left seat");
   assert.match(sequenceStyleSource, /\.game-shell \.play-center \{[\s\S]*top: clamp\(290px, 66%, 520px\)/, "piles use the lower-middle board anchor");
-  assert.match(sequenceStyleSource, /\.opponent-card-zones \{[\s\S]*max-height: none;[\s\S]*overflow: visible;/, "compact public zones are not clipped by a max-height");
-  assert.match(sequenceStyleSource, /\.opponent-card-zones \.square-zone > div \{[\s\S]*flex-wrap: wrap;[\s\S]*overflow: visible;/, "multiple compact cards wrap instead of covering one another");
+  assert.match(sequenceStyleSource, /\.opponent-equipment-zone[\s\S]*\.opponent-equipment-slots[\s\S]*grid-template-columns: repeat\(4, minmax\(0, 1fr\)/, "Equipment keeps four logical slots below the portrait");
+  assert.match(sequenceStyleSource, /\.opponent-judgement-zone \{[\s\S]*left: calc\(100% \+ 4px\)/, "Judgement is visually distinct and offset to the side");
+  assert.match(sequenceStyleSource, /\.opponent-judgement-cards \.mini-zone-card \+ \.mini-zone-card \{[\s\S]*margin-left: -45%/i, "multiple Judgement cards use controlled overlap");
   assert.match(gameRoomSource, /const \[expandedOpponentId, setExpandedOpponentId\] = useState<string \| null>\(null\)/, "inspection is presentation-local state");
   assert.match(gameRoomSource, /targetSelectionActive \? onTarget : onInspect/, "target selection takes priority over inspection");
   assert.match(gameRoomSource, /expandedOpponentId && \(\(\) => \{[\s\S]*OpponentInspectionOverlay/, "expanded inspection reuses projected opponent data");

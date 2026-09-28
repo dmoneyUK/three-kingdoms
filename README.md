@@ -1,5 +1,34 @@
 # Three Kingdoms
 
+## UI handover closure — 2026-09-28
+
+Completed the requested Step 1 presentation-only closure from current `main`.
+The local hand rail now caps natural spacing at the 68px physical card width,
+uses controlled overlap when the rail is tight, and recomputes from the actual
+hand card IDs/order as well as count. Removing middle cards therefore repacks
+the remaining cards immediately without changing the Hand panel dimensions.
+
+Opponent Equipment now renders as a sibling zone below each 2:3 hero portrait
+with four identifiable Weapon, Armour, +1 Horse, and -1 Horse slots. Judgement
+is a separate side zone with controlled overlap for multiple cards. Existing
+`data-equipment-id` / `data-judgement-id` anchors, info controls, inspection
+behavior, and card-flight settlement lookup remain intact.
+
+The local hero overlay now reads Hero Name, Role, HP current/max, Hearts.
+Heart rendering remains authoritative to current HP, including five hearts for
+a 5/5 Lord; CSS no longer clips the heart row. Representative response,
+trigger, Play Phase, and passive Hero Skills coverage remains on the canonical
+Skills-panel and generic Confirm/Skip contract, with no duplicate bottom-row
+skill controls. No gameplay rules, legality, distance, Judgement semantics, or
+semantic action API changed, and Gongsun Zan was not started.
+
+Render regressions cover hand packing and identity/order recalculation, the
+opponent zone DOM/anchors, overlay order, all requested HP/heart combinations,
+and the existing Hero Skills contract. Responsive geometry was checked at
+320px, 390px, 393px, 402px, and 430px with no document horizontal overflow.
+The next milestone remains final graphic/theme polish and separately approved
+artwork intake for remaining fallback heroes.
+
 ## Opponent board arc and inspection — 2026-09-24
 
 Refined the presentation-only mobile table layout while preserving the
