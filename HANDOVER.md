@@ -5,6 +5,11 @@
 This round is complete on current `main`. The Step 1 UI handover is also closed
 and remains separate from this gameplay change.
 
+Latest asset addition: the supplied Gongsun Zan portrait is now connected to
+the shared hero-art renderer at `public/hero-gongsun-zan.jpg`. This is a
+presentation-only update; gameplay, projections, selection, and layout remain
+unchanged.
+
 Implemented:
 
 - Added a small generic effective-distance capability with independently tested

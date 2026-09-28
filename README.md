@@ -1,5 +1,13 @@
 # Three Kingdoms
 
+## Gongsun Zan artwork — 2026-09-28
+
+Added the supplied portrait as `public/hero-gongsun-zan.jpg` and connected it
+through the existing shared `HERO_ART_BY_ID` / `HeroPortrait` renderer. No game
+rules, projections, selection behavior, or layout dimensions changed. The
+implemented Standard roster now has nine checked-in portraits and 11 intentional
+initials fallbacks.
+
 ## Hero profile artwork replacement — 2026-09-28
 
 Replaced the production profile images for Liu Bei, Cao Cao, and Sun Quan with
@@ -254,7 +262,7 @@ Repaired the missing opponent artwork path without changing gameplay. The
 checked-in Zhang Liao portrait was an undecodable JPEG; it is now a valid
 2:3 portrait, and original project artwork now covers Zhang Fei and Zhen Ji.
 All 20 implemented Standard hero IDs are covered by an explicit render audit:
-eight have checked-in artwork and the other 12 retain the intentional initials
+nine have checked-in artwork and the other 11 retain the intentional initials
 fallback until approved assets exist. Every mapped hero continues to resolve
 through the single shared `HERO_ART_BY_ID` / `HeroPortrait` renderer.
 
