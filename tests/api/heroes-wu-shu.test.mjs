@@ -288,4 +288,3 @@ test("Attack response windows are public while Dodge options remain private", { 
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(held.target.id)}`)).map((item) => item.id), ["dodge-privacy-held"]);
 });
 
-

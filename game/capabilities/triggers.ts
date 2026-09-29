@@ -17,6 +17,7 @@ import { xuChuBaredBodiedTrigger } from "./heroes/xu-chu-bared-bodied";
 import { guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger } from "./heroes/guo-jia";
 import { maChaoCavalryTrigger } from "./heroes/ma-chao-cavalry";
 import { daQiaoDeflectionTrigger } from "./heroes/daqiao-deflection";
+import { zhugeLiangStargazingTrigger } from "./heroes/zhuge-liang-stargazing";
 
 export type TriggerEvent = "turn_start" | "turn_end" | "draw_phase" | "discard_phase" | "judgement_revealed" | "judgement_effective" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice" | "hand_lost";
 /**
@@ -48,6 +49,7 @@ export type TriggerExecution =
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "damage_player"; targetId: string; amount: number } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "attacker_draw" } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement" } }
+  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "deck_reorder" } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement_replacement"; cardId: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "obtain_judgement_card"; playerId: string; cardId: string } }
   | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "legacy_distribution"; playerId: string } }
@@ -103,7 +105,7 @@ const zhouYuFanjianChoice: TriggeredEffect = {
 
 import { yueJinDauntlessTrigger } from "./heroes/yue-jin-dauntless";
 
-const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, zhenJiLuoshenTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, maChaoCavalryTrigger, daQiaoDeflectionTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, zhenJiLuoshenTrigger, zhugeLiangStargazingTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, maChaoCavalryTrigger, daQiaoDeflectionTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {

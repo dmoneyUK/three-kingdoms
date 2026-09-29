@@ -17,7 +17,8 @@ import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../../../ga
 import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
-import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeferredStratagem, type DuelContinuation, type DyingPending, type DrawPhaseTriggerContinuation, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation } from "../../../game/pending";
+import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
+import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DrawPhaseTriggerContinuation, type GroupContinuation, type GroupResponsePending, type HarvestPending, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type ResponsePending, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
@@ -316,7 +317,7 @@ function activeHeroSkillOptions(player: PlayerRow | null | undefined, room: Room
   const livingTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id).map((candidate) => candidate.id);
   const targetableTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && targetableCardCount(candidate) > 0).map((candidate) => candidate.id);
   const overindulgenceTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && canTargetCharacter({ sourceId: player.id, targetId: candidate.id, targetHero: candidate.hero, cardKind: "Overindulgence" }) && !parse<Card[]>(candidate.judgement_json, []).some((delayed) => delayed.kind === "Overindulgence")).map((candidate) => candidate.id);
-  const attackTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && attackDistance(players, player.id, candidate.id) <= attackRangeFor(player)).map((candidate) => candidate.id);
+  const attackTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && attackDistance(players, player.id, candidate.id) <= attackRangeFor(player) && canTargetCharacter({ sourceId: player.id, targetId: candidate.id, targetHero: candidate.hero, targetHandCount: parse<Card[]>(candidate.hand_json, []).length, cardKind: "Attack" })).map((candidate) => candidate.id);
   const influencingAvailable = playersInTurnOrder(players, player.seat).slice(1).some((candidate) => candidate.alive && STANDARD_HEROES.find((hero) => hero.id === candidate.hero)?.faction === "Shu");
   return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, role: player.role, hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...player, ...attackUseLimitContext(player) }, room.phase) });
 }
@@ -346,7 +347,7 @@ function attackDistance(players: PlayerRow[], sourceId: string, targetId: string
 function borrowedSwordEligibleTargetIds(players: PlayerRow[], holderId: string) {
   const holder = players.find((player) => player.id === holderId && player.alive);
   if (!holder) return [];
-  return players.filter((player) => player.alive && player.id !== holder.id && attackDistance(players, holder.id, player.id) <= attackRangeFor(holder)).map((player) => player.id);
+  return players.filter((player) => player.alive && player.id !== holder.id && attackDistance(players, holder.id, player.id) <= attackRangeFor(holder) && canTargetCharacter({ sourceId: holder.id, targetId: player.id, targetHero: player.hero, targetHandCount: parse<Card[]>(player.hand_json, []).length, cardKind: "Attack" })).map((player) => player.id);
 }
 function hasSerpentSpear(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SerpentSpear"; }
 function hasSkyPiercingHalberd(player?: PlayerRow | null) { return equipmentZone(player).weapon?.kind === "SkyPiercingHalberd"; }
@@ -382,7 +383,7 @@ function attackResponseDecision(declaration: AttackDeclaration, target: PlayerRo
 }
 function attackTargetedContext(source: PlayerRow, target: PlayerRow, players: PlayerRow[] = []) {
   const targetIds = players.length
-    ? players.filter((candidate) => candidate.alive && candidate.id !== source.id && candidate.id !== target.id && attackDistance(players, target.id, candidate.id) <= attackRangeFor(target)).map((candidate) => candidate.id)
+    ? players.filter((candidate) => candidate.alive && candidate.id !== source.id && candidate.id !== target.id && attackDistance(players, target.id, candidate.id) <= attackRangeFor(target) && canTargetCharacter({ sourceId: source.id, targetId: candidate.id, targetHero: candidate.hero, targetHandCount: parse<Card[]>(candidate.hand_json, []).length, cardKind: "Attack" })).map((candidate) => candidate.id)
     : undefined;
   return { event: "attack_targeted" as const, sourceId: source.id, hero: source.hero, sourceEquipment: equipmentCards(source), sourceHand: parse<Card[]>(source.hand_json, []), targetId: target.id, targetHero: target.hero, targetHand: parse<Card[]>(target.hand_json, []), targetEquipment: equipmentCards(target), targetIds, sourceGender: heroGender(source.hero), targetGender: heroGender(target.hero) };
 }
@@ -497,6 +498,21 @@ function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) 
     const card = deck.shift(); if (card) drawn.push(card);
   }
   return { deck, discard, drawn, log };
+}
+function drawTopCards(deck: Card[], discard: Card[], count: number, log: string[]) {
+  let nextDeck = [...deck];
+  let nextDiscard = [...discard];
+  let nextLog = log;
+  const drawn: Card[] = [];
+  while (drawn.length < count) {
+    const result = drawJudgementCard(nextDeck, nextDiscard);
+    nextDeck = result.deck;
+    nextDiscard = result.discard;
+    if (result.reshuffled) nextLog = addLog(nextLog, "The discard pile is shuffled into a new draw deck.");
+    if (!result.card) break;
+    drawn.push(result.card);
+  }
+  return { deck: nextDeck, discard: nextDiscard, drawn, log: nextLog };
 }
 function drawPhaseFlags(phase?: string | null) {
   return { skipPlay: Boolean(phase?.includes("skip-play")), skipDraw: Boolean(phase?.includes("skip-draw")) };
@@ -1128,12 +1144,13 @@ async function beginTurnStart(roomId: string, turnSeat: number) {
     await db().prepare("UPDATE rooms SET turn_seat = ?, phase = 'draw', pending_json = NULL, skill_state_json = ? WHERE id = ? AND status = 'playing'").bind(turnSeat, skillState, roomId).run();
     return;
   }
-  const presentation = addLogWithId(log, `${player.name} may use Godess of Luo River.`);
+  const labels = options.map((option) => option.label).join(" or ");
+  const presentation = addLogWithId(log, `${player.name} may use ${labels}.`);
   const pending: TriggerPending = withPresentationBarrier({
     kind: "trigger",
     event: "turn_start",
     actorId: player.id,
-    reason: `${player.name} may use Godess of Luo River, or decline`,
+    reason: `${player.name} may use ${labels}, or decline`,
     deadline: nextResponseDeadline(player),
     continuation: { kind: "turn_start_event", playerId: player.id },
   }, presentation.log, presentation.eventId);
@@ -1293,7 +1310,7 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
     const actor = players.find((player) => player.id === pending.actorId && player.alive);
     if (!actor) return "The pending action does not belong to a living player.";
     const judgementResume = canonicalTrigger?.continuation.kind === "judgement_revealed_event" ? canonicalTrigger.continuation.judgement.resume : null;
-    const expectedOwnerId = pending.kind === "card_distribution" ? pending.actorId
+    const expectedOwnerId = pending.kind === "card_distribution" || pending.kind === "deck_reorder" ? pending.actorId
       : pending.kind === "dying" ? pending.resumePlayerId
       : canonicalTrigger?.continuation.kind === "turn_start_event" ? canonicalTrigger.continuation.playerId
         : canonicalTrigger?.continuation.kind === "draw_phase_event" ? canonicalTrigger.continuation.playerId
@@ -2529,6 +2546,7 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
     switch (pending.kind) {
       case "borrowed_sword": return pending.stage === "choose_target" ? ["choose_borrowed_sword_target"] : [];
       case "card_distribution": return ["trigger"];
+      case "deck_reorder": return ["trigger"];
       case "harvest": return ["preview_harvest", "choose_harvest"];
       case "target_card": return ["choose_target_card"];
     }
@@ -2551,6 +2569,7 @@ async function roomState(code: string, token?: string) {
   const persistedPending = parsePersistedPending(room.pending_json);
   const triggerPending = persistedPending?.kind === "trigger" ? persistedPending : null;
   const distributionPending = persistedPending?.kind === "card_distribution" ? persistedPending : null;
+  const deckReorderPending = persistedPending?.kind === "deck_reorder" ? persistedPending : null;
   const responsePending = persistedPending?.kind === "response" ? persistedPending : null;
   const legacyResponsePending = room.phase === "response" && persistedPending && ["attack", "duel", "group", "negation"].includes(persistedPending.kind);
   const projectedResponsePending = responsePending ?? (persistedPending?.kind === "dying" ? persistedPending.resumePending : null);
@@ -2624,6 +2643,7 @@ async function roomState(code: string, token?: string) {
     ...(responseDecision ? { requirement: responseDecision.requirement, options: responseDecision.options, declineAction: responseDecision.declineAction } : {}),
     ...(triggerPending ? { triggerEvent: triggerPending.event, triggerOptions, ...(legalActions.includes("decline_trigger") ? { declineAction: "decline_trigger" as GameplayAction } : {}) } : triggerOptions.length ? { triggerOptions } : {}),
     ...(distributionPending && me?.id === distributionPending.actorId ? { distribution: { cards: distributionPending.cards, eligibleRecipientIds: distributionPending.eligibleRecipientIds } } : {}),
+    ...(deckReorderPending && me?.id === deckReorderPending.actorId ? { deckReorder: { cards: deckReorderPending.cards, minTop: deckReorderPending.minTop, maxTop: deckReorderPending.maxTop } } : {}),
     ...(presentation ? { presentation } : {}),
   };
   return {
@@ -2847,6 +2867,29 @@ export async function POST(request: Request) {
         return json({ room: await roomState(code, token) });
       }
     }
+    if (action === "trigger" && pendingForController?.kind === "deck_reorder") {
+      if (!me || pendingForController.actorId !== me.id) return json({ error: "That private deck-reorder decision belongs to another character.", stale: true, room: await roomState(code, token) }, 409);
+      const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+      const pending = liveRoom ? parse<Pending | null>(liveRoom.pending_json, null) : null;
+      const reorder = pending?.kind === "deck_reorder" ? pending : null;
+      if (!liveRoom || !reorder || reorder.actorId !== me.id || body.providerId !== "private_deck_reorder") return json({ error: "That private deck-reorder decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      const topIds = Array.isArray(body.topCardIds) && body.topCardIds.every((id) => typeof id === "string") ? body.topCardIds as string[] : null;
+      const bottomIds = Array.isArray(body.bottomCardIds) && body.bottomCardIds.every((id) => typeof id === "string") ? body.bottomCardIds as string[] : null;
+      const held = new Map(reorder.cards.map((card) => [card.id, card]));
+      const submitted = topIds && bottomIds ? [...topIds, ...bottomIds] : null;
+      const validSubmission = Boolean(topIds && bottomIds && submitted && submitted.length === reorder.cards.length && new Set(submitted).size === reorder.cards.length && topIds.length >= reorder.minTop && topIds.length <= reorder.maxTop && submitted.every((id) => held.has(id)) && reorder.cards.every((card) => submitted.includes(card.id)));
+      if (!validSubmission || !topIds || !bottomIds) return json({ error: "Assign every Stargazing card exactly once between the ordered top and bottom groups.", stale: true, room: await roomState(code, token) }, 409);
+      const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
+      if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Stargazing decision has already resolved.", stale: true, room: await roomState(code, token) }, 409);
+      const deck = parse<Card[]>(liveRoom.deck_json, []);
+      const rebuiltDeck = rebuildDeckForReorder(deck, reorder.cards, topIds, bottomIds);
+      if (!rebuiltDeck) return json({ error: "The held Stargazing cards are inconsistent; the decision was not completed.", stale: true, room: await roomState(code, token) }, 409);
+      const log = addHistory(parse<string[]>(liveRoom.log_json, []), `${me.name} completes Stargazing; normal turn processing resumes.`);
+      await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving'")
+        .bind(reorder.resumePhase, JSON.stringify(rebuiltDeck), JSON.stringify(log), room.id).run();
+      return json({ room: await roomState(code, token) });
+    }
+
     if (action === "trigger" && pendingForController?.kind === "card_distribution") {
       if (!me || pendingForController.actorId !== me.id) return json({ error: "That private card distribution belongs to another character.", stale: true, room: await roomState(code, token) }, 409);
       const liveRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
@@ -2911,7 +2954,7 @@ export async function POST(request: Request) {
       const livingTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id).map((player) => player.id);
       const targetableTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && targetableCardCount(player) > 0).map((player) => player.id);
       const overindulgenceTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && canTargetCharacter({ sourceId: liveMe?.id, targetId: player.id, targetHero: player.hero, cardKind: "Overindulgence" }) && !parse<Card[]>(player.judgement_json, []).some((delayed) => delayed.kind === "Overindulgence")).map((player) => player.id);
-      const attackTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && liveMe && attackDistance(livePlayers, liveMe.id, player.id) <= attackRangeFor(liveMe)).map((player) => player.id);
+      const attackTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && liveMe && attackDistance(livePlayers, liveMe.id, player.id) <= attackRangeFor(liveMe) && canTargetCharacter({ sourceId: liveMe.id, targetId: player.id, targetHero: player.hero, targetHandCount: parse<Card[]>(player.hand_json, []).length, cardKind: "Attack" })).map((player) => player.id);
       const influencingAvailable = liveMe ? playersInTurnOrder(livePlayers, liveMe.seat).slice(1).some((player) => player.alive && STANDARD_HEROES.find((hero) => hero.id === player.hero)?.faction === "Shu") : false;
       const liveHand = parse<Card[]>(liveMe?.hand_json ?? null, []);
       const liveEquipment = liveMe ? equipmentCards(liveMe) : [];
@@ -3394,7 +3437,7 @@ export async function POST(request: Request) {
       return json({ room: await roomState(code, token), ...(drawn.length ? { drawnCards: drawn } : {}) });
     }
     if (liveRoom && trigger && continuation?.kind === "turn_start_event" && trigger.actorId === me.id) {
-      if (action === "apply_trigger" && triggerExecution?.outcome.kind !== "judgement") {
+      if (action === "apply_trigger" && triggerExecution?.outcome.kind !== "judgement" && triggerExecution?.outcome.kind !== "deck_reorder") {
         return json({ error: "That turn-start effect is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
@@ -3403,8 +3446,32 @@ export async function POST(request: Request) {
       const player = (rows.results ?? []).find((candidate) => candidate.id === continuation.playerId && candidate.alive);
       if (!player) return json({ error: "The turn-start player is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       if (action === "decline_trigger_effect") {
-        const log = addLog(parse<string[]>(liveRoom.log_json, []), `${player.name} declines Godess of Luo River; normal turn processing begins.`);
+        const log = addLog(parse<string[]>(liveRoom.log_json, []), `${player.name} declines the Preparation Phase optional effect; normal turn processing begins.`);
         await db.prepare("UPDATE rooms SET phase = 'draw', pending_json = NULL, log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id).run();
+      } else if (triggerExecution?.outcome.kind === "deck_reorder") {
+        const characterCount = rows.results?.length ?? 0;
+        const count = deckReorderCount(characterCount);
+        const originalDeck = parse<Card[]>(liveRoom.deck_json, []);
+        const originalDiscard = parse<Card[]>(liveRoom.discard_json, []);
+        const taken = drawTopCards(originalDeck, originalDiscard, count, parse<string[]>(liveRoom.log_json, []));
+        if (taken.drawn.length < count) {
+          const log = addLog(parse<string[]>(liveRoom.log_json, []), `${player.name} cannot complete Stargazing because fewer than ${count} cards are available; normal turn processing begins.`);
+          await db.prepare("UPDATE rooms SET phase = 'draw', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+            .bind(JSON.stringify(originalDeck), JSON.stringify(originalDiscard), JSON.stringify(log), room.id).run();
+        } else {
+          const pending: DeckReorderPending = {
+            kind: "deck_reorder",
+            actorId: player.id,
+            cards: taken.drawn,
+            minTop: 0,
+            maxTop: count,
+            resumePhase: "draw",
+            reason: `Stargazing: order ${count} private cards between the top and bottom of the deck`,
+          };
+          const log = addHistory(taken.log, `${player.name} is privately resolving Stargazing.`);
+          await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+            .bind(serializePending(pending), JSON.stringify(taken.deck), JSON.stringify(taken.discard), JSON.stringify(log), room.id).run();
+        }
       } else {
         await resolveTurnStartLuoshen(liveRoom, player);
       }
@@ -3934,7 +4001,7 @@ export async function POST(request: Request) {
     const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
     const players = rows.results ?? [];
     const holder = players.find((player) => player.id === pending.holderId && player.alive); const chosen = players.find((player) => player.id === String(body.targetId ?? "") && player.alive);
-    if (!holder || !chosen || chosen.id === holder.id || attackDistance(players, holder.id, chosen.id) > attackRangeFor(holder)) return json({ error: `Choose another living character within ${attackRangeFor(holder)} range of ${holder.name}.` }, 400);
+    if (!holder || !chosen || chosen.id === holder.id || attackDistance(players, holder.id, chosen.id) > attackRangeFor(holder) || !canTargetCharacter({ sourceId: holder.id, targetId: chosen.id, targetHero: chosen.hero, targetHandCount: parse<Card[]>(chosen.hand_json, []).length, cardKind: "Attack" })) return json({ error: `Choose another living character within ${attackRangeFor(holder)} range of ${holder.name}.` }, 400);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Borrowed Sword choice has already resolved.", stale: true, room: await roomState(code, token) }, 409);
     let log = parse<string[]>(liveRoom.log_json, []);
@@ -3972,7 +4039,7 @@ export async function POST(request: Request) {
     const holder = players.find((player) => player.id === semanticHolderId && player.id === continuation.holderId && player.alive);
     const costActorId = responseCostActor(response);
     const target = players.find((player) => player.id === continuation.targetId && player.alive);
-    if (!source || !holder || !target || target.id === holder.id || attackDistance(players, holder.id, target.id) > attackRangeFor(holder)) return json({ error: "Borrowed Sword's Attack target is no longer legal.", stale: true, room: await roomState(code, token) }, 409);
+    if (!source || !holder || !target || target.id === holder.id || attackDistance(players, holder.id, target.id) > attackRangeFor(holder) || !canTargetCharacter({ sourceId: holder.id, targetId: target.id, targetHero: target.hero, targetHandCount: parse<Card[]>(target.hand_json, []).length, cardKind: "Attack" })) return json({ error: "Borrowed Sword's Attack target is no longer legal.", stale: true, room: await roomState(code, token) }, 409);
     const transferOrEnd = async () => {
       const currentHolder = await db.prepare("SELECT * FROM players WHERE id = ?").bind(holder.id).first<PlayerRow>();
       const currentSource = await db.prepare("SELECT * FROM players WHERE id = ?").bind(source.id).first<PlayerRow>();
@@ -4265,6 +4332,7 @@ export async function POST(request: Request) {
       if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent as the target." }, 400);
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? [];
       if (attackDistance(players, me.id, target.id) > attackRangeFor(me)) return json({ error: `That opponent is out of range. Your current Attack Range is ${attackRangeFor(me)}.` }, 409);
+      if (!canTargetCharacter({ sourceId: me.id, targetId: target.id, targetHero: target.hero, targetHandCount: parse<Card[]>(target.hand_json, []).length, cardKind: "Attack" })) return json({ error: "That character cannot be targeted by Attack." }, 409);
       if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
       const materialIds = new Set(materials.map((item) => item.id)); hand = hand.filter((item) => !materialIds.has(item.id)); discard.push(...materials);
       log = addCardGroupEvent(log, me.name, materials, "play", true, target.name); log = addLog(log, `${me.name} discards 2 cards with Serpent Spear to form an Attack on ${target.name}.`);
@@ -4391,6 +4459,7 @@ export async function POST(request: Request) {
       } else if (card.kind === "Duel" && !playableAttack) {
         const targetId = String(body.targetId ?? ""); const target = await db.prepare("SELECT * FROM players WHERE room_id = ? AND id = ?").bind(room.id, targetId).first<PlayerRow>();
         if (!target || !target.alive || target.id === me.id) return json({ error: "Choose a living opponent for Duel." }, 400);
+        if (!canTargetCharacter({ sourceId: me.id, targetId: target.id, targetHero: target.hero, targetHandCount: parse<Card[]>(target.hand_json, []).length, cardKind: "Duel" })) return json({ error: "That character cannot be targeted by Duel." }, 409);
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id); discard.push(card);
         const presentation = addCardEventWithId(log, me.name, card, target.name); log = addLog(presentation.log, `${me.name} starts a Duel with ${target.name}.`);
@@ -4409,6 +4478,7 @@ export async function POST(request: Request) {
         const targets = playersInTurnOrder(players, me.seat).filter((player) => targetIds.includes(player.id));
         if (targets.length !== targetIds.length || targets.some((target) => !target.alive || target.id === me.id)) return json({ error: "Choose living opponents as Attack targets." }, 400);
         if (targets.some((target) => attackDistance(players, me.id, target.id) > attackRangeFor(me))) return json({ error: `Every target must be within your current Attack Range of ${attackRangeFor(me)}.` }, 409);
+        if (targets.some((target) => !canTargetCharacter({ sourceId: me.id, targetId: target.id, targetHero: target.hero, targetHandCount: parse<Card[]>(target.hand_json, []).length, cardKind: "Attack" }))) return json({ error: "One or more selected characters cannot be targeted by Attack." }, 409);
         const target = targets[0];
         if (!await claimTurnAction(room.id, me.seat, liveRoom.phase)) return json({ error: "The turn changed before that action completed. Refreshing the table." }, 409);
         hand = hand.filter((item) => item.id !== card.id);

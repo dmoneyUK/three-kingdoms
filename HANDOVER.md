@@ -1,9 +1,32 @@
 # Three Kingdoms project handover
 
-## Current state — Stage 6 Da Qiao / Captivating + Deflection — 2026-09-29
+## Current state — Stage 6 Zhuge Liang / Stargazing + Empty Fortress — 2026-09-29
 
-Da Qiao is complete and enabled in Standard selection on current `main` at
-22/30 heroes and 32/46 printed skills.
+Zhuge Liang and Da Qiao are complete and enabled in Standard selection at
+23/30 heroes and 34/46 printed skills.
+
+Implemented Zhuge Liang:
+
+- Added generic `DeckReorderPending` / `deck_reorder` currentAction support.
+  Stargazing opens from the existing `turn_start` Preparation lifecycle and
+  does not create a second turn-start path or provider-specific HTTP action.
+- The server calculates `min(5, number of participating characters)`, takes
+  the exact physical cards through the existing Judgement refill primitive,
+  holds them out of the normal deck, and exposes their identities only to the
+  acting Zhuge Liang projection.
+- The semantic submission accepts ordered `topCardIds` and `bottomCardIds`.
+  The top list is next-to-draw first; the bottom list is appended after the
+  untouched remaining deck. Exact-set, duplicate, foreign, missing, actor,
+  pending, and CAS stale checks preserve physical-card conservation.
+- Added the generic live target-legality provider for Empty Fortress. It
+  blocks only Attack and Duel when the target's authoritative hand is empty,
+  covering physical/virtual Attack, Influencing, Serpent Spear, Borrowed
+  Sword, Halberd, redirect targets, and Duel without changing response rules.
+- Added private reorder controls with explicit top/bottom assignment and
+  ordering. Quick Test and normal multiplayer use the same acting-seat private
+  projection.
+
+The next hero is Huang Yueying. Do not start another hero in this round.
 
 Implemented:
 

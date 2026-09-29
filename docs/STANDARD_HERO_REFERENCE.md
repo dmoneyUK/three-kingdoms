@@ -16,18 +16,18 @@
 
 ## Implementation progress
 
-Re-audited on 2026-09-28 from the pre-round `main` baseline at
-`15bd5ee0bb40849bd21f21ab80d460d15357d2f6`; this round completes Gongsun Zan.
+Re-audited on 2026-09-29 from Zhuge Liang baseline
+`d3611ad9b412f460d2b0ac17f40158cfac3fb665`; this round completes Zhuge Liang.
 
-- **Implemented:** 22 / 30 heroes
+- **Implemented:** 23 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 8 / 30 heroes
-- **Implemented skills:** 32 / 46
+- **Not implemented:** 7 / 30 heroes
+- **Implemented skills:** 34 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 16 / 46
+- **Not implemented skills:** 12 / 46
 
-**2026-09-28 implementation note:** `game/heroes.ts` now allow-lists exactly
-these 21 implemented Standard heroes, including Gongsun Zan and Ma Chao. The 9 remaining
+**2026-09-29 implementation note:** `game/heroes.ts` now allow-lists exactly
+these 23 implemented Standard heroes, including Zhuge Liang, Gongsun Zan, and Ma Chao. The 7 remaining
 generals are present as Standard roster metadata but are excluded from
 `IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
 Militia uses the generic server-owned effective-distance capability and is
@@ -100,7 +100,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Shu | `liu-bei` | Liu Bei | 刘备 | Male | 4 | Benevolence<br>Influencing | Present | Implemented |
 | Shu | `guan-yu` | Guan Yu | 关羽 | Male | 4 | God of War | Present | Implemented |
 | Shu | `zhang-fei` | Zhang Fei | 张飞 | Male | 4 | Battle Cry | Present | Implemented |
-| Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Stargazing<br>Empty Fortress Strategem | Present | Not implemented |
+| Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Stargazing<br>Empty Fortress Strategem | Present | Implemented |
 | Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Braveheart | Present | Implemented |
 | Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Horse Riding<br>Cavalry | Present | Implemented |
 | Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Cultivation<br>Wizardry | Present | Not implemented |
@@ -232,7 +232,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **SHU 004**, printed title **The Prime Minister who is Past his Prime**.
 - **Implementation interpretation:** Stargazing uses the number of characters in the game, capped at 5, not the number of currently living characters unless the official rules separately define otherwise. Empty Fortress Strategem is a targeting prohibition: while Zhuge Liang has zero hand cards, [Attack] and [Duel] cannot select him as a target.
 - **Likely engine shape:** Preparation Phase deck-ordering decision; passive target-legality modifier.
-- **Current implementation:** Standard roster metadata exists in `STANDARD_HEROES`, but this hero is excluded from `IMPLEMENTED_STANDARD_HEROES` and new-game selection until both printed skills are implemented.
+- **Current implementation:** `Stargazing` is a generic persisted `DeckReorderPending` opened from the existing `turn_start` Preparation lifecycle. The server calculates `min(5, participating character count)`, privately holds the exact physical cards, and accepts complete ordered top/bottom ID partitions. Empty Fortress is a generic live target-legality provider for Attack and Duel, including physical and virtual Attack declarations, Halberd, Serpent Spear, Borrowed Sword, Influencing, redirected Attack targets, and Duel. Both skills are enabled in `IMPLEMENTED_STANDARD_HEROES` and covered by pure, API, Quick Test, privacy, reload, stale-safety, and conservation regressions.
 
 ### Zhao Yun (赵云)
 

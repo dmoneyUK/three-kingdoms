@@ -5,17 +5,12 @@ This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL
 
 ## Restart checkpoint — 2026-09-29
 
-Gameplay implementation was re-audited against `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`. The
-latest gameplay hero change remains Yue Jin / Dauntless (implemented by
-`566e3bdf`, enabled for Standard selection by `684509d0`) on 2026-09-23.
-The 2026-09-25 commits after that are hero-art/design asset work and do not
-change gameplay capability counts.
+Zhuge Liang implementation was completed from baseline `d3611ad9b412f460d2b0ac17f40158cfac3fb665` on 2026-09-29. Da Qiao remains complete and unchanged mechanically.
 
-- Stage 6 is at **22 / 30 Standard heroes implemented** and **32 / 46 printed
+- Stage 6 is at **23 / 30 Standard heroes implemented** and **34 / 46 printed
   skills implemented**.
-- The remaining metadata-only Standard heroes are **Zhuge Liang, Huang
-  Yueying, Lady Gan, Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong,
-  and Pan Feng**.
+- The remaining metadata-only Standard heroes are **Huang Yueying, Lady Gan,
+  Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong, and Pan Feng**.
 - The Step 1 UI handover is complete. Stage 7's remaining work is final
   graphic/theme polish and separately approved artwork intake.
 - The semantic response/trigger architecture is **complete**. Do not restart or
@@ -257,7 +252,7 @@ registry.
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 22 / 30 heroes and 32 / 46 printed skills**; Da Qiao / Captivating + Deflection is the latest completed Standard hero capability.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 23 / 30 heroes and 34 / 46 printed skills**; Zhuge Liang / Stargazing + Empty Fortress is the latest completed Standard hero capability.
 
 ## Progress summary
 
@@ -268,7 +263,7 @@ Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE.
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
 | 5. Complete match rules | **Complete** | Dying/multi-damage, defeat continuation/outcome, delayed Stratagem LIFO ordering, placement timing, Judgement-phase Negation, and Lightning transfer semantics are deterministic and regression-covered. |
-| 6. Hero-specific abilities | **ACTIVE — 22 / 30 heroes, 32 / 46 skills** | Da Qiao / Captivating + Deflection is complete; continue with the next remaining Standard hero. |
+| 6. Hero-specific abilities | **ACTIVE — 23 / 30 heroes, 34 / 46 skills** | Zhuge Liang / Stargazing + Empty Fortress is complete; continue with Huang Yueying. |
 | 7. Product polish | **Ongoing — Step 1 UI handover completed** | Final graphic/theme polish, separately approved artwork intake, sound, invitations, and saved history remain later work. |
 
 ## Stability foundation already complete

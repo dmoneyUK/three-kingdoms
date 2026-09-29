@@ -1,9 +1,31 @@
 # Three Kingdoms
 
+## Stage 6 Zhuge Liang / Stargazing + Empty Fortress — 2026-09-29
+
+Zhuge Liang is complete and enabled in Standard selection at 23/30 heroes and
+34/46 printed skills. Stargazing is an optional Preparation Phase trigger that
+uses the generic persisted `deck_reorder` decision: the server holds exactly
+`min(5, character count)` physical cards, exposes them only to Zhuge Liang,
+and accepts ordered `topCardIds` and `bottomCardIds`. The top list is
+next-to-draw first; the bottom list is placed after the remaining deck. The
+decision survives reload, rejects duplicates/foreign/missing/stale submissions,
+and resumes the ordinary Draw Phase exactly once without drawing cards.
+
+Empty Fortress is a generic live target-legality capability for Attack and
+Duel. It covers physical and virtual Attack declarations, Influencing,
+Serpent Spear, Borrowed Sword, Sky Piercing Halberd, redirected Attack targets,
+and Duel without caching hand state or consuming an illegal card.
+
+The Zhuge Liang implementation is covered by deterministic capability/API
+tests for private projections, Quick Test acting-seat privacy, reload,
+canonical deck refill, exact conservation, ordering, stale safety, dynamic
+hand state, virtual Attack providers, Halberd, and Duel.
+
+The next Stage 6 milestone is Huang Yueying; no adjacent hero is being started.
+
 ## Stage 6 Da Qiao / Captivating + Deflection — 2026-09-29
 
-Da Qiao is complete and enabled in Standard selection at 22/30 heroes and
-32/46 printed skills. Captivating uses one Diamond-suited Hand card through the
+Da Qiao is complete and remains enabled in Standard selection. Captivating uses one Diamond-suited Hand card through the
 generic active-skill `trigger` contract as Overindulgence, then reuses the
 ordinary `startNegation` / `NegationContinuation` / `resolveDeferredStratagem`
 pipeline before placement. The physical card identity is preserved through

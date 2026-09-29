@@ -105,6 +105,18 @@ export type CardDistributionPending = {
   deadline?: number;
   resolutionId?: string;
 };
+/** A private, exact-card deck partition decision. The held cards are removed
+ * from the draw deck until the actor submits both ordered partitions. */
+export type DeckReorderPending = {
+  kind: "deck_reorder";
+  actorId: string;
+  cards: Card[];
+  minTop: number;
+  maxTop: number;
+  resumePhase: string;
+  reason: string;
+  deadline?: number;
+};
 export type TurnStartTriggerContinuation = {
   kind: "turn_start_event";
   playerId: string;
@@ -189,7 +201,7 @@ export type TriggerPending = {
   continuation: TriggerContinuation;
 };
 export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; origin?: AttackOrigin; reason: string };
-export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | CardDistributionPending | ResponsePending | TriggerPending | DyingPending;
+export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | CardDistributionPending | DeckReorderPending | ResponsePending | TriggerPending | DyingPending;
 
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
   return pending?.kind === "trigger" ? pending : null;

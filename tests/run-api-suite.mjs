@@ -13,7 +13,7 @@ const files = readdirSync(new URL("./api/", import.meta.url))
 const shardGroups = [
   ["tests/api/da-qiao.test.mjs", "tests/api/equipment.test.mjs", "tests/api/gongsun-zan.test.mjs", "tests/api/judgement.test.mjs", "tests/api/ma-chao.test.mjs"],
   ["tests/api/privacy-response.test.mjs", "tests/api/heroes-wu-shu.test.mjs"],
-  ["tests/api/stratagems.test.mjs", "tests/api/borrowed-sword.test.mjs"],
+  ["tests/api/stratagems.test.mjs", "tests/api/borrowed-sword.test.mjs", "tests/api/zhuge-liang.test.mjs"],
   ["tests/api/lobby-heroes-wei.test.mjs", "tests/api/concurrency.test.mjs", "tests/api/yue-jin-dauntless.test.mjs"],
 ];
 const assigned = shardGroups.flat();

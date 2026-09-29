@@ -45,7 +45,7 @@ export const STANDARD_HEROES: readonly HeroDefinition[] = [
 // but those heroes must not enter a playable Standard hero-selection flow.
 export const IMPLEMENTED_STANDARD_HERO_IDS: ReadonlySet<string> = new Set([
   "cao-cao", "simayi", "xiahou-dun", "zhang-liao", "xu-chu", "guo-jia", "zhen-ji", "yue-jin",
-  "liu-bei", "guan-yu", "zhang-fei", "zhao-yun",
+  "liu-bei", "guan-yu", "zhang-fei", "zhuge-liang", "zhao-yun",
   "sun-quan", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "daqiao", "lu-xun", "lü-bu", "gongsun-zan", "ma-chao",
 ]);
 export const IMPLEMENTED_STANDARD_HEROES: readonly HeroDefinition[] = STANDARD_HEROES.filter((hero) => IMPLEMENTED_STANDARD_HERO_IDS.has(hero.id));
