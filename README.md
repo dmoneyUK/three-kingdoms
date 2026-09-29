@@ -13,6 +13,34 @@ legality, layout dimensions, and semantic actions are unchanged. Huang Yueying
 remains the current completed Stage 6 rules milestone; no adjacent hero work
 is part of this artwork round.
 
+## Stage 6 Huang Yueying / Cultivation + Wizardry — 2026-09-30
+
+Huang Yueying is complete and enabled in Standard selection at 24/30 heroes
+and 36/46 printed skills. Cultivation reacts once to the generic semantic
+`stratagem_used` event, offers a private optional draw, uses the canonical
+deck/refill primitive, and resumes the persisted Stratagem continuation exactly
+once. The event uses effective card identity, so virtual Stratagems such as Da
+Qiao's Captivating Overindulgence conversion follow the same path. The used
+physical card is held out of the refill pool while Cultivation is open.
+
+The wrapper covers immediate, delayed, Duel, group/AOE, Harvest, Borrowed
+Sword, Dismantle, Steal, and other implemented Stratagem families without
+hero-specific card branches. Negation remains part of the original
+use/effect lifecycle: Cultivation is offered after use, remains available if a
+later effect is Negated, and does not trigger for Negation's response play or
+for Judgement/delayed settlement.
+
+Wizardry is a generic range capability. It ignores only the ordinary range
+check for Huang Yueying's Stratagems. Target restrictions remain authoritative,
+so Lu Xun Modesty still blocks Steal and Overindulgence; Attack and
+non-Stratagem range remains normal, including Mount and Gongsun Zan Militia
+interactions. Pure capability and Worker/D1 tests cover privacy, reload, stale
+submissions, refill, Quick Test seat ownership, continuation preservation, and
+these range/target boundaries.
+
+The remaining Standard heroes are Lady Gan, Sun Shangxiang, Hua Tuo, Diao Chan,
+Hua Xiong, and Pan Feng. No artwork or another hero is part of this round.
+
 ## Hero artwork update — 2026-09-29
 
 Added the supplied portraits to the shared `HERO_ART_BY_ID` / `HeroPortrait`
@@ -23,9 +51,9 @@ portraits use the same renderer, the new artwork appears in candidate cards,
 locked-in selection, the local hero dock, and opponent cards.
 
 This is a presentation-only update: gameplay rules, projections, selection
-legality, layout dimensions, and semantic actions are unchanged. The next
-Stage 6 rules milestone remains Huang Yueying; no adjacent hero work is part
-of this artwork round.
+legality, layout dimensions, and semantic actions are unchanged. The artwork
+round is historical; the current Stage 6 rules milestone is complete Huang
+Yueying.
 
 ## Stage 6 Zhuge Liang / Stargazing + Empty Fortress — 2026-09-29
 
@@ -48,7 +76,7 @@ tests for private projections, Quick Test acting-seat privacy, reload,
 canonical deck refill, exact conservation, ordering, stale safety, dynamic
 hand state, virtual Attack providers, Halberd, and Duel.
 
-The next Stage 6 milestone is Huang Yueying; no adjacent hero is being started.
+Huang Yueying is complete; no adjacent hero is being started in this round.
 
 ## Stage 6 Da Qiao / Captivating + Deflection — 2026-09-29
 

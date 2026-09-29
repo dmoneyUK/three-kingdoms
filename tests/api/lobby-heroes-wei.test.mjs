@@ -11,7 +11,7 @@ test("test controller accepts displayed Lord and non-first candidates through th
   const liuBei = room.myHeroOptions.find((hero) => hero.id === "liu-bei");
   assert.ok(liuBei, "Liu Bei is present in the displayed Lord candidates");
 
-  const forged = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: "zhuge-liang" });
+  const forged = await requestAndSettle("choose_hero", { code: room.code, token: created.data.token, heroId: "not-a-real-hero" });
   assert.equal(forged.status, 400, JSON.stringify(forged.data));
   assert.equal(room.players.find((player) => player.id === lordId).hero, null, "an unavailable candidate cannot mutate the Lord");
 
@@ -104,7 +104,7 @@ test("host test seats use one controller across four seats with a normal shuffle
   assert.equal(created.data.room.players.length, 4);
   assert.equal(created.data.room.myHeroOptions.length, 5);
   assert.equal(created.data.room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false);
-  const unimplementedStandardIds = new Set(["huang-yueying", "lady-gan", "sun-shangxiang", "hua-tuo", "diao-chan", "huaxiong", "pan-feng"]);
+  const unimplementedStandardIds = new Set(["lady-gan", "sun-shangxiang", "hua-tuo", "diao-chan", "huaxiong", "pan-feng"]);
   assert.equal(created.data.room.myHeroOptions.some((hero) => unimplementedStandardIds.has(hero.id)), false, "hero candidates only include heroes with implemented skills");
   assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
   const lordId = created.data.room.meId;

@@ -19,16 +19,17 @@
 Re-audited on 2026-09-29 from Zhuge Liang baseline
 `d3611ad9b412f460d2b0ac17f40158cfac3fb665`; this round completes Zhuge Liang.
 
-- **Implemented:** 23 / 30 heroes
+- **Implemented:** 24 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 7 / 30 heroes
-- **Implemented skills:** 34 / 46
+- **Not implemented:** 6 / 30 heroes
+- **Implemented skills:** 36 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 12 / 46
+- **Not implemented skills:** 10 / 46
 
-**2026-09-29 implementation note:** `game/heroes.ts` now allow-lists exactly
-these 23 implemented Standard heroes, including Zhuge Liang, Gongsun Zan, and Ma Chao. The 7 remaining
-generals are present as Standard roster metadata but are excluded from
+**2026-09-30 implementation note:** `game/heroes.ts` now allow-lists exactly
+these 24 implemented Standard heroes, including Huang Yueying, Zhuge Liang,
+Gongsun Zan, and Ma Chao. The 6 remaining generals are present as Standard
+roster metadata but are excluded from
 `IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
 Militia uses the generic server-owned effective-distance capability and is
 covered by pure, API, Quick Test, and normal multiplayer regressions.
@@ -103,7 +104,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Shu | `zhuge-liang` | Zhuge Liang | 诸葛亮 | Male | 3 | Stargazing<br>Empty Fortress Strategem | Present | Implemented |
 | Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Braveheart | Present | Implemented |
 | Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Horse Riding<br>Cavalry | Present | Implemented |
-| Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Cultivation<br>Wizardry | Present | Not implemented |
+| Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Cultivation<br>Wizardry | Present | Implemented |
 | Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Divine Wisdom<br>Prudence | Present | Not implemented |
 | Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Equilibrium<br>Deliverance | Present | Implemented |
 | Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Ambushment | Present | Implemented |
@@ -244,7 +245,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Ma Chao (马超)
 
 - **Runtime ID:** `ma-chao`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **SHU 006**, printed title **A Thousand Calvaries**.
 - **Implementation interpretation:** Horse Riding modifies distance from Ma Chao to other characters by -1. Cavalry is optional for an [Attack] target; a Red Judgement result prevents that target from using [Dodge] against the relevant [Attack].
 - **Likely engine shape:** outbound distance modifier; attack-targeted optional Judgement and Dodge prohibition.
@@ -253,11 +254,11 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Huang Yueying (黄月英)
 
 - **Runtime ID:** `huang-yueying`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **SHU 007**, printed title **Veiled Heroine in Seclusion**.
 - **Implementation interpretation:** Cultivation applies after Huang Yueying uses a Stratagem card as printed; do not silently narrow it to only non-delayed Stratagems. Wizardry removes range restrictions from her Stratagem cards.
 - **Likely engine shape:** Stratagem-used trigger; Stratagem range modifier.
-- **Current implementation:** Player-facing hero metadata now matches the verified printed skill text; the capabilities remain unimplemented.
+- **Current implementation:** Cultivation uses the generic persisted `stratagem_used` trigger. It is offered once after the effective Stratagem is committed, before Negation/effect continuation; acceptance draws exactly one private card through the canonical refill primitive and both acceptance and decline resume the original continuation once. The used physical card is held out of refill while the decision is open, including virtual/effective card paths such as Da Qiao Captivating. Group/AOE, Harvest, Duel, delayed cards, Negation, Judgement, and target responses do not create another Cultivation activation. Wizardry uses the generic effective-range capability and ignores only ordinary range for Huang Yueying Stratagems; target restrictions such as Lu Xun Modesty and all non-Stratagem range checks remain authoritative.
 
 ### Lady Gan (甘夫人)
 

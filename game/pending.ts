@@ -184,7 +184,19 @@ export type HandLossTriggerContinuation = {
   resumeTurnSeat: number | null;
   resumePending?: Pending;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | TurnEndTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation;
+export type StratagemUsedTriggerContinuation = {
+  kind: "stratagem_used_event";
+  sourceId: string;
+  physicalCardId: string;
+  physicalCardWasDiscarded?: boolean;
+  effectiveCard: Card;
+  targetName: string;
+  effectTargetId: string;
+  effect: DeferredStratagem;
+  resume: "negation" | "direct";
+  resumePhase: string;
+};
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | TurnEndTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation | StratagemUsedTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

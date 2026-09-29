@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { distanceBetween, effectiveDistanceBetween } from "../game/rules.ts";
+import { isWithinRange } from "../game/capabilities/range.ts";
+import { canTargetCharacter } from "../game/capabilities/targeting.ts";
 
 function player(id, seat, hero = null, hp = 4) {
   return { id, seat, hero, hp, alive: true };
@@ -102,4 +104,42 @@ test("non-Gongsun heroes retain existing distance behavior", () => {
   const players = [player("source", 0, "cao-cao"), player("left", 1), player("target", 2), player("right", 3)];
   assert.equal(distance(players, "source", "target"), 2);
   assert.equal(distance(players, "target", "source"), 2);
+});
+
+test("Wizardry ignores only range for Huang Yueying Stratagems", () => {
+  const source = player("source", 0, "huang-yueying");
+  const target = player("target", 2);
+  const players = [source, player("left", 1), target, player("right", 3)];
+  const effectiveDistance = distance(players, source.id, target.id);
+
+  assert.equal(effectiveDistance, 2);
+  assert.equal(isWithinRange({ source, target, effectiveCardKind: "Steal", effectiveDistance, ordinaryRange: 1 }), true);
+  assert.equal(isWithinRange({ source, target, effectiveCardKind: "Attack", effectiveDistance, ordinaryRange: 1 }), false);
+  assert.equal(isWithinRange({ source, target, effectiveCardKind: "BlueSteelSword", effectiveDistance, ordinaryRange: 1 }), false);
+});
+
+test("Wizardry survives ordinary distance modifiers without changing Attack range", () => {
+  const source = player("source", 0, "huang-yueying");
+  const target = player("target", 2, "gongsun-zan", 2);
+  const players = [source, player("left", 1), target, player("right", 3)];
+  const equipment = new Map([
+    [source.id, [{ kind: "RedHare" }]],
+    [target.id, [{ kind: "Shadowrunner" }]],
+  ]);
+  const effectiveDistance = distance(players, source.id, target.id, equipment);
+
+  assert.equal(effectiveDistance, 3, "mounts and low-HP Militia still compose normally");
+  assert.equal(isWithinRange({ source, target, effectiveCardKind: "RationsDepleted", effectiveDistance, ordinaryRange: 1 }), true);
+  assert.equal(isWithinRange({ source, target, effectiveCardKind: "Attack", effectiveDistance, ordinaryRange: 1 }), false);
+});
+
+test("Wizardry does not override Lu Xun Modesty target legality", () => {
+  const source = player("source", 0, "huang-yueying");
+  const target = player("target", 2, "lu-xun");
+  const players = [source, player("left", 1), target, player("right", 3)];
+  const effectiveDistance = distance(players, source.id, target.id);
+
+  assert.equal(isWithinRange({ source, target, effectiveCardKind: "Steal", effectiveDistance, ordinaryRange: 1 }), true);
+  assert.equal(canTargetCharacter({ sourceId: source.id, targetId: target.id, targetHero: target.hero, cardKind: "Steal" }), false);
+  assert.equal(canTargetCharacter({ sourceId: source.id, targetId: target.id, targetHero: target.hero, cardKind: "Overindulgence" }), false);
 });

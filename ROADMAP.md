@@ -2,15 +2,42 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+## Stage 6 hero capability — Huang Yueying / Cultivation + Wizardry — 2026-09-30
+
+Complete on this rules-only round. Huang Yueying is enabled at **24 / 30
+Standard heroes implemented** and **36 / 46 printed skills implemented**. The
+remaining heroes are Lady Gan, Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong,
+and Pan Feng. No artwork or adjacent hero work is included.
+
+Cultivation uses the generic semantic `stratagem_used` event. It carries the
+source, effective card identity (including virtual Stratagem conversions),
+physical identity, and the persisted original continuation. The optional
+private decision draws one card through the canonical deck/refill primitive and
+resumes the original Stratagem exactly once after acceptance or decline. It is
+emitted once at declaration, so Negation, Judgement, delayed settlement, group
+responses, Duel exchanges, Harvest choices, and AOE responses do not create
+extra activations. The used physical card is held out of refill while the
+decision is open.
+
+Wizardry is a generic `isWithinRange` capability over effective card identity.
+It ignores only ordinary range for Huang Yueying Stratagems; target legality,
+Lu Xun Modesty, Attack range, Mounts, and Gongsun Zan Militia remain separate
+authoritative checks. Implemented normal, delayed, group, Harvest, Borrowed
+Sword, Duel, Dismantle, Steal, and virtual/effective Stratagem paths use the
+shared card-use wrapper; Negation responses retain the existing play/respond
+distinction. Pure and Worker/D1 coverage includes privacy, reload, stale replay,
+refill, Quick Test ownership, continuation preservation, distance modifiers,
+and Modesty target blocking.
+
 
 ## Restart checkpoint — 2026-09-29
 
 Zhuge Liang implementation was completed from baseline `d3611ad9b412f460d2b0ac17f40158cfac3fb665` on 2026-09-29. Da Qiao remains complete and unchanged mechanically.
 
-- Stage 6 is at **23 / 30 Standard heroes implemented** and **34 / 46 printed
+- Stage 6 was at **23 / 30 Standard heroes implemented** and **34 / 46 printed
   skills implemented**.
-- The remaining metadata-only Standard heroes are **Huang Yueying, Lady Gan,
-  Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong, and Pan Feng**.
+- Huang Yueying is now complete; the remaining metadata-only Standard heroes
+  are **Lady Gan, Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong, and Pan Feng**.
 - The Step 1 UI handover is complete. Stage 7's remaining work is final
   graphic/theme polish and separately approved artwork intake.
 - The semantic response/trigger architecture is **complete**. Do not restart or
@@ -252,7 +279,7 @@ registry.
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 23 / 30 heroes and 34 / 46 printed skills**; Zhuge Liang / Stargazing + Empty Fortress is the latest completed Standard hero capability.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 24 / 30 heroes and 36 / 46 printed skills**; Huang Yueying / Cultivation + Wizardry is the latest completed Standard hero capability.
 
 ## Progress summary
 
@@ -263,7 +290,7 @@ Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE.
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
 | 5. Complete match rules | **Complete** | Dying/multi-damage, defeat continuation/outcome, delayed Stratagem LIFO ordering, placement timing, Judgement-phase Negation, and Lightning transfer semantics are deterministic and regression-covered. |
-| 6. Hero-specific abilities | **ACTIVE — 23 / 30 heroes, 34 / 46 skills** | Zhuge Liang / Stargazing + Empty Fortress is complete; continue with Huang Yueying. |
+| 6. Hero-specific abilities | **ACTIVE — 24 / 30 heroes, 36 / 46 skills** | Huang Yueying / Cultivation + Wizardry is complete; continue with the next individually approved remaining hero. |
 | 7. Product polish | **Ongoing — Step 1 UI handover completed** | Final graphic/theme polish, separately approved artwork intake, sound, invitations, and saved history remain later work. |
 
 ## Stability foundation already complete

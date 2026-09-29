@@ -17,6 +17,37 @@ hero card, and opponent cards. This remains presentation-only: no gameplay
 rules, projections, selection legality, layout dimensions, or semantic actions
 changed. Huang Yueying remains the current completed rules milestone.
 
+## Current state — Stage 6 Huang Yueying / Cultivation + Wizardry — 2026-09-30
+
+Huang Yueying is complete and enabled in Standard selection. The current
+implementation count is **24/30 Standard heroes** and **36/46 printed skills**;
+the remaining six are Lady Gan, Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong,
+and Pan Feng. This round is rules-only and contains no artwork work.
+
+Implemented architecture:
+
+- `stratagem_used` is the canonical card-use event. It is emitted once when an
+  implemented Stratagem is declared, before its effect/response workflow, and
+  carries effective card identity plus the persisted continuation. It covers
+  immediate, delayed, Duel, group/AOE, Harvest, Borrowed Sword, Dismantle,
+  Steal, and existing virtual/effective Stratagem paths; active Negation keeps
+  the existing play/respond distinction.
+- `huang_yueying_cultivation` is an optional source-owned semantic trigger.
+  Accepting draws exactly one private physical card through the normal refill
+  primitive; declining draws nothing. Both paths resume the original
+  continuation exactly once. The used card is held out of refill while the
+  decision is open, preventing a refill from drawing the interrupted card.
+- `huang_yueying_wizardry` is registered in the generic range capability. It
+  ignores only range for an effective Stratagem from Huang Yueying. Target
+  legality remains separate, so Lu Xun Modesty still blocks Steal and
+  Overindulgence; Attack and non-Stratagem distance still use ordinary Mount,
+  Militia, and range rules.
+
+Validation coverage includes private opponent projection, reload, stale/replay
+safety, Negation, Duel, group/AOE, delayed cards, refill, Quick Test acting-seat
+ownership, distant Steal, Attack/non-Stratagem range, Mount/Militia distance,
+and Modesty target restrictions. Do not begin another hero in this handover.
+
 ## Latest presentation update — supplied hero portraits — 2026-09-29
 
 Added and wired the eight supplied portraits through the shared
@@ -34,7 +65,8 @@ Added and wired the eight supplied portraits through the shared
 The shared path covers hero selection, the locked-in selection state, the local
 hero card, and opponent cards. This remains presentation-only: no gameplay
 rules, projections, selection legality, layout dimensions, or semantic actions
-changed. The next recommended rules milestone remains Huang Yueying.
+changed. This artwork update is historical; Huang Yueying is the current
+completed rules milestone.
 
 ## Current state — Stage 6 Zhuge Liang / Stargazing + Empty Fortress — 2026-09-29
 
@@ -62,7 +94,7 @@ Implemented Zhuge Liang:
   ordering. Quick Test and normal multiplayer use the same acting-seat private
   projection.
 
-The next hero is Huang Yueying. Do not start another hero in this round.
+Huang Yueying is complete. Do not start another hero in this round.
 
 Implemented:
 
