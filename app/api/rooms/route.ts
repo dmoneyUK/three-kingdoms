@@ -315,9 +315,10 @@ function activeHeroSkillOptions(player: PlayerRow | null | undefined, room: Room
   const skillState = parse<KingSkillState>(room.skill_state_json, {});
   const livingTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id).map((candidate) => candidate.id);
   const targetableTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && targetableCardCount(candidate) > 0).map((candidate) => candidate.id);
+  const overindulgenceTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && canTargetCharacter({ sourceId: player.id, targetId: candidate.id, targetHero: candidate.hero, cardKind: "Overindulgence" }) && !parse<Card[]>(candidate.judgement_json, []).some((delayed) => delayed.kind === "Overindulgence")).map((candidate) => candidate.id);
   const attackTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && attackDistance(players, player.id, candidate.id) <= attackRangeFor(player)).map((candidate) => candidate.id);
   const influencingAvailable = playersInTurnOrder(players, player.seat).slice(1).some((candidate) => candidate.alive && STANDARD_HEROES.find((hero) => hero.id === candidate.hero)?.faction === "Shu");
-  return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, role: player.role, hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...player, ...attackUseLimitContext(player) }, room.phase) });
+  return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, role: player.role, hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...player, ...attackUseLimitContext(player) }, room.phase) });
 }
 
 async function recoverClaimedHeroSkill(room: RoomRow, player: PlayerRow, hand: Card[], heldCards: Card[], discard: Card[], log: string[], message: string) {
@@ -2909,23 +2910,25 @@ export async function POST(request: Request) {
       const skillState = parse<KingSkillState>(liveRoom?.skill_state_json ?? null, {});
       const livingTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id).map((player) => player.id);
       const targetableTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && targetableCardCount(player) > 0).map((player) => player.id);
+      const overindulgenceTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && canTargetCharacter({ sourceId: liveMe?.id, targetId: player.id, targetHero: player.hero, cardKind: "Overindulgence" }) && !parse<Card[]>(player.judgement_json, []).some((delayed) => delayed.kind === "Overindulgence")).map((player) => player.id);
       const attackTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && liveMe && attackDistance(livePlayers, liveMe.id, player.id) <= attackRangeFor(liveMe)).map((player) => player.id);
       const influencingAvailable = liveMe ? playersInTurnOrder(livePlayers, liveMe.seat).slice(1).some((player) => player.alive && STANDARD_HEROES.find((hero) => hero.id === player.hero)?.faction === "Shu") : false;
       const liveHand = parse<Card[]>(liveMe?.hand_json ?? null, []);
       const liveEquipment = liveMe ? equipmentCards(liveMe) : [];
-      const execution = liveMe && liveRoom && option ? resolveActiveHeroSkill(skillId, { playerId: liveMe.id, hero: liveMe.hero, role: liveMe.role, hand: liveHand, equipment: liveEquipment, livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...liveMe, ...attackUseLimitContext(liveMe) }, liveRoom.phase) }, { cardIds: body.cardIds, targetId: body.targetId }) : null;
+      const execution = liveMe && liveRoom && option ? resolveActiveHeroSkill(skillId, { playerId: liveMe.id, hero: liveMe.hero, role: liveMe.role, hand: liveHand, equipment: liveEquipment, livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...liveMe, ...attackUseLimitContext(liveMe) }, liveRoom.phase) }, { cardIds: body.cardIds, targetId: body.targetId }) : null;
       if (!execution || !liveRoom || !liveMe) return json({ error: "That hero skill is no longer available or its selection is stale.", stale: true, room: await roomState(code, token) }, 409);
-      const selectedCardIds = "cardIds" in execution.outcome ? execution.outcome.cardIds : [];
+      const selectedCardIds = "cardIds" in execution.outcome ? execution.outcome.cardIds : "cardId" in execution.outcome ? [execution.outcome.cardId] : [];
       const selectedIds = new Set(selectedCardIds);
       const selected = selectedCardIds.map((id) => liveHand.find((card) => card.id === id) ?? liveEquipment.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
       if (selected.length !== selectedCardIds.length || selectedIds.size !== selectedCardIds.length) {
         return json({ error: "One selected hero-skill card is no longer in your hand.", stale: true, room: await roomState(code, token) }, 409);
       }
-      if (execution.outcome.kind === "give_cards" || execution.outcome.kind === "dismantle" || execution.outcome.kind === "fanjian" || execution.outcome.kind === "influencing_attack") {
+      if (execution.outcome.kind === "give_cards" || execution.outcome.kind === "dismantle" || execution.outcome.kind === "fanjian" || execution.outcome.kind === "place_delayed" || execution.outcome.kind === "influencing_attack") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId);
         if (!target || !target.alive || target.id === liveMe.id) return json({ error: "The selected hero-skill target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "dismantle" && targetableCardCount(target) === 0) return json({ error: "The Ambushment target no longer has a card to dismantle.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "fanjian" && liveHand.length === 0) return json({ error: "The Sowing Distrust target or Zhou Yu's hand is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+        if (execution.outcome.kind === "place_delayed" && (!overindulgenceTargetIds.includes(target.id) || selected.length !== 1 || !liveHand.some((card) => card.id === execution.outcome.cardId) || selected[0].suit !== "♦")) return json({ error: "The Captivating card or target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "influencing_attack" && attackDistance(livePlayers, liveMe.id, target.id) > attackRangeFor(liveMe)) return json({ error: "The Influencing target is no longer in Attack Range.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "influencing_attack" && !canDeclareAttackFor({ ...liveMe, ...attackUseLimitContext(liveMe) }, liveRoom?.phase)) return json({ error: "You may use only one Attack per Play Phase.", stale: true, room: await roomState(code, token) }, 409);
       }
@@ -2959,7 +2962,23 @@ export async function POST(request: Request) {
       let log = parse<string[]>(liveRoom.log_json, []);
       hand = hand.filter((card) => !selectedIds.has(card.id));
       equipment = Object.fromEntries(Object.entries(equipment).filter(([, card]) => !card || !selectedIds.has(card.id))) as EquipmentZone;
-      if (execution.outcome.kind === "give_cards") {
+      if (execution.outcome.kind === "place_delayed") {
+        const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
+        const physicalCard = selected.find((card) => card.id === execution.outcome.cardId);
+        if (!target || !physicalCard || !liveHand.some((card) => card.id === physicalCard.id)) await recoverClaimedHeroSkill(liveRoom, liveMe, hand, selected, discard, log, `${liveMe.name}'s Captivating could not find a valid target and was settled safely.`);
+        else {
+          const delayed = { ...physicalCard, kind: execution.outcome.delayedKind } as Card;
+          const judgement = [...parse<Card[]>(target.judgement_json, []), delayed];
+          log = addCardEvent(log, liveMe.name, physicalCard, target.name);
+          log = addLog(log, `${liveMe.name} uses Captivating to play ${physicalCard.rank}${physicalCard.suit} as Overindulgence on ${target.name}.`);
+          const nextState = { ...skillState, turnPlayerId: liveMe.id };
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), liveMe.id),
+            db.prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(judgement), target.id),
+            db.prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), room.id),
+          ]);
+        }
+      } else if (execution.outcome.kind === "give_cards") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
         if (!target) return json({ error: "The Benevolence target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         const targetHand = [...parse<Card[]>(target.hand_json, []), ...selected];
@@ -3775,10 +3794,11 @@ export async function POST(request: Request) {
     const options = currentHeroOptions(selector.hero_options_json);
     const hero = options.find((item) => item.id === heroId);
     if (!hero) return json({ error: "That hero is not one of your choices." }, 400);
-    const taken = await db.prepare("SELECT 1 FROM players WHERE room_id = ? AND hero = ?").bind(room.id, hero.id).first();
-    if (taken) return json({ error: "That hero was just selected. Choose another.", stale: true, room: await roomState(code, token) }, 409);
-    const locked = await db.prepare("UPDATE players SET hero = ?, hp = NULL, max_hp = NULL WHERE id = ? AND hero IS NULL").bind(hero.id, selector.id).run();
-    if ((locked.meta.changes ?? 0) <= 0) return json({ error: "That general choice is stale. Refresh the table and try again.", stale: true, room: await roomState(code, token) }, 409);
+    const locked = await db.prepare("UPDATE players SET hero = ?, hp = NULL, max_hp = NULL WHERE id = ? AND hero IS NULL AND NOT EXISTS (SELECT 1 FROM players AS taken WHERE taken.room_id = ? AND taken.hero = ?)").bind(hero.id, selector.id, room.id, hero.id).run();
+    if ((locked.meta.changes ?? 0) <= 0) {
+      const taken = await db.prepare("SELECT 1 FROM players WHERE room_id = ? AND hero = ? AND id <> ?").bind(room.id, hero.id, selector.id).first();
+      return json({ error: taken ? "That hero was just selected. Choose another." : "That general choice is stale. Refresh the table and try again.", stale: true, room: await roomState(code, token) }, 409);
+    }
     const remaining = await db.prepare("SELECT COUNT(*) AS count FROM players WHERE room_id = ? AND hero IS NULL").bind(room.id).first<{ count: number }>();
     if ((remaining?.count ?? 0) === 0) {
       const ready = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();

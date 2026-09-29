@@ -11,10 +11,10 @@ latest gameplay hero change remains Yue Jin / Dauntless (implemented by
 The 2026-09-25 commits after that are hero-art/design asset work and do not
 change gameplay capability counts.
 
-- Stage 6 is at **21 / 30 Standard heroes implemented** and **30 / 46 printed
+- Stage 6 is at **22 / 30 Standard heroes implemented** and **32 / 46 printed
   skills implemented**.
 - The remaining metadata-only Standard heroes are **Zhuge Liang, Huang
-  Yueying, Lady Gan, Da Qiao, Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong,
+  Yueying, Lady Gan, Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong,
   and Pan Feng**.
 - The Step 1 UI handover is complete. Stage 7's remaining work is final
   graphic/theme polish and separately approved artwork intake.
@@ -26,10 +26,9 @@ change gameplay capability counts.
 
 1. Keep the completed Step 1 UI handover closed; do not mix presentation work
    into the next rules round.
-2. Complete **Da Qiao / Captivating + Deflection**. Step 1 now provides the
-   generic `attack_targeted` redirect outcome and internally tested,
-   target-owned Deflection, but Da Qiao remains disabled until Captivating is
-   implemented and the combined two-skill round is validated.
+2. Continue with the next individually verified remaining Standard hero. Da
+   Qiao / Captivating + Deflection is complete and enabled after the combined
+   Standard selection, Quick Test, multiplayer, and deterministic validation.
 
 Keep UI and hero-rules work in separate commits/rounds so a visual regression
 cannot hide a gameplay regression.
@@ -67,25 +66,25 @@ targets. Ma Chao is now enabled for Standard selection.
 
 The next Stage 6 hero is **Da Qiao / Captivating + Deflection**.
 
-## Stage 6 hero capability — Da Qiao / Deflection Step 1 — 2026-09-29
+## Stage 6 hero capability — Da Qiao / Captivating + Deflection — 2026-09-29
 
-Step 1 is internally complete, but the hero is not enabled. The semantic
-`attack_targeted` protocol now supports a small `redirect_attack` outcome.
-Deflection is target-owned, optional, and accepts one Hand or Equipment card
-plus one live replacement target within Da Qiao's current effective Attack
-Range, excluding the original attacker. The server revalidates the live cost,
-target, distance, weapon, Mount, Militia, and window before the atomic claim.
+Da Qiao is complete and enabled. Captivating uses the generic active-skill
+`trigger` contract to use one Diamond-suited Hand card as Overindulgence on a
+legal target, preserving the physical card identity in the target's Judgement
+Zone. The semantic `attack_targeted` protocol supports a small
+`redirect_attack` outcome. Deflection is target-owned, optional, and accepts
+one Hand or Equipment card plus one live replacement target within Da Qiao's
+current effective Attack Range, excluding the original attacker. The server
+revalidates the live cost, target, distance, weapon, Mount, Militia, and window
+before the atomic claim.
 
 The original Attack declaration remains authoritative: source, physical or
 virtual identity, origin, physical cards, armor flag, Dodge count, sequence,
 resolution, and Halberd group continuation are retained. The replacement
-target receives a fresh target-specific lifecycle. Regression coverage also
-locks the source-owned Ma Chao Cavalry window before Deflection, Sima Yi's
-Black replacement path, another Da Qiao, and exact card conservation.
-
-The next milestone is Captivating plus the full Da Qiao round, followed by
-enabling Da Qiao only after both skills pass the Standard selection, Quick
-Test, multiplayer, and deterministic validation gates.
+target receives a fresh target-specific lifecycle. Regression coverage locks
+the source-owned Ma Chao Cavalry window before Deflection, Sima Yi's Black
+replacement path, the realistic Yin-Yang replacement lifecycle, hero
+uniqueness in normal/Quick Test selection, and exact card conservation.
 
 ## Stage 6 hero capability — Yue Jin / Dauntless — 2026-09-23
 
@@ -252,7 +251,7 @@ registry.
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 21 / 30 heroes and 30 / 46 printed skills**; Ma Chao / Horse Riding + Cavalry is the latest completed Standard hero capability. The next rules milestone is Da Qiao / Captivating + Deflection.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 22 / 30 heroes and 32 / 46 printed skills**; Da Qiao / Captivating + Deflection is the latest completed Standard hero capability.
 
 ## Progress summary
 
@@ -263,7 +262,7 @@ Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE.
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
 | 5. Complete match rules | **Complete** | Dying/multi-damage, defeat continuation/outcome, delayed Stratagem LIFO ordering, placement timing, Judgement-phase Negation, and Lightning transfer semantics are deterministic and regression-covered. |
-| 6. Hero-specific abilities | **ACTIVE — 21 / 30 heroes, 30 / 46 skills** | Ma Chao / Horse Riding + Cavalry is the latest completed hero. Da Qiao / Captivating + Deflection is next. |
+| 6. Hero-specific abilities | **ACTIVE — 22 / 30 heroes, 32 / 46 skills** | Da Qiao / Captivating + Deflection is complete; continue with the next remaining Standard hero. |
 | 7. Product polish | **Ongoing — Step 1 UI handover completed** | Final graphic/theme polish, separately approved artwork intake, sound, invitations, and saved history remain later work. |
 
 ## Stability foundation already complete

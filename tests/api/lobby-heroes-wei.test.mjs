@@ -55,6 +55,48 @@ test("test controller accepts displayed Lord and non-first candidates through th
   assert.ok(room.players.every((player) => player.hero));
 });
 
+test("hero selection enforces unique heroes for Quick Test and normal multiplayer, including stale concurrent choices", async () => {
+  const quick = await createTestLobby();
+  const quickFirst = quick.data.room;
+  const quickHero = quickFirst.myHeroOptions[0];
+  assert.ok(quickHero);
+  const quickLocked = await requestAndSettle("choose_hero", { code: quickFirst.code, token: quick.data.token, heroId: quickHero.id });
+  assert.equal(quickLocked.status, 200, JSON.stringify(quickLocked.data));
+  const quickNextId = quickLocked.data.room.meId;
+  sql(`UPDATE players SET hero_options_json=${quote(JSON.stringify([{ id: quickHero.id }]))} WHERE id=${quote(quickNextId)}`);
+  const quickNext = (await state(quickFirst.code, quick.data.token)).data;
+  assert.deepEqual(quickNext.myHeroOptions.map((hero) => hero.id), [quickHero.id], "Quick Test exposes the stale candidate so the server guard is exercised");
+  const quickAttempts = await Promise.all([
+    request("choose_hero", { code: quickFirst.code, token: quick.data.token, heroId: quickHero.id }),
+    request("choose_hero", { code: quickFirst.code, token: quick.data.token, heroId: quickHero.id }),
+  ]);
+  assert.deepEqual(quickAttempts.map((attempt) => attempt.status), [409, 409]);
+  assert.equal(query(`SELECT COUNT(*) FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(quickFirst.code)}) AND hero=${quote(quickHero.id)}`), "1", "Quick Test never duplicates a hero");
+
+  const normal = await createHumanSetupGame();
+  const normalLordIndex = normal.views.findIndex((view) => view.myRole === "Lord");
+  assert.ok(normalLordIndex >= 0);
+  const normalLord = normal.views[normalLordIndex];
+  const normalHero = normalLord.myHeroOptions[0];
+  assert.ok(normalHero);
+  const normalLocked = await requestAndSettle("choose_hero", { code: normal.code, token: normal.members[normalLordIndex].token, heroId: normalHero.id });
+  assert.equal(normalLocked.status, 200, JSON.stringify(normalLocked.data));
+  const normalNextId = normalLocked.data.room.actionPlayerId;
+  assert.ok(normalNextId);
+  const normalMemberById = new Map(normal.views.map((view, index) => [view.meId, normal.members[index]]));
+  const normalNextMember = normalMemberById.get(normalNextId);
+  assert.ok(normalNextMember);
+  sql(`UPDATE players SET hero_options_json=${quote(JSON.stringify([{ id: normalHero.id }]))} WHERE id=${quote(normalNextId)}`);
+  const normalNext = (await state(normal.code, normalNextMember.token)).data;
+  assert.deepEqual(normalNext.myHeroOptions.map((hero) => hero.id), [normalHero.id]);
+  const normalAttempts = await Promise.all([
+    request("choose_hero", { code: normal.code, token: normalNextMember.token, heroId: normalHero.id }),
+    request("choose_hero", { code: normal.code, token: normalNextMember.token, heroId: normalHero.id }),
+  ]);
+  assert.deepEqual(normalAttempts.map((attempt) => attempt.status), [409, 409]);
+  assert.equal(query(`SELECT COUNT(*) FROM players WHERE room_id=(SELECT id FROM rooms WHERE code=${quote(normal.code)}) AND hero=${quote(normalHero.id)}`), "1", "normal multiplayer never duplicates a hero");
+});
+
 test("host test seats use one controller across four seats with a normal shuffled opening deal", async () => {
   const created = await createTestLobby();
   assert.equal(created.data.room.status, "heroes");
@@ -62,7 +104,7 @@ test("host test seats use one controller across four seats with a normal shuffle
   assert.equal(created.data.room.players.length, 4);
   assert.equal(created.data.room.myHeroOptions.length, 5);
   assert.equal(created.data.room.myHeroOptions.some((hero) => hero.id === "yu-jin"), false);
-  const unimplementedStandardIds = new Set(["zhuge-liang", "huang-yueying", "lady-gan", "daqiao", "sun-shangxiang", "hua-tuo", "diao-chan", "huaxiong", "pan-feng"]);
+  const unimplementedStandardIds = new Set(["zhuge-liang", "huang-yueying", "lady-gan", "sun-shangxiang", "hua-tuo", "diao-chan", "huaxiong", "pan-feng"]);
   assert.equal(created.data.room.myHeroOptions.some((hero) => unimplementedStandardIds.has(hero.id)), false, "hero candidates only include heroes with implemented skills");
   assert.deepEqual(created.data.room.myHeroOptions.find((hero) => hero.id === "cao-cao").skills.map((skill) => skill.name), ["Treachery", "Entourage"]);
   const lordId = created.data.room.meId;

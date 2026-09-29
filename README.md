@@ -1,27 +1,27 @@
 # Three Kingdoms
 
-## Stage 6 Da Qiao / Deflection Step 1 — 2026-09-29
+## Stage 6 Da Qiao / Captivating + Deflection — 2026-09-29
 
-Implemented the generic `attack_targeted` redirection outcome and Da Qiao's
-target-owned Deflection provider. The provider can discard exactly one Hand or
-Equipment card and transfer the existing Attack to one live character in Da
-Qiao's authoritative effective range, excluding the original attacker. The
-Attack declaration, source, physical/virtual identity, resolution metadata,
-and group continuation are preserved; the replacement target receives a fresh
-target-specific lifecycle. Coverage includes Ma Chao Cavalry ordering and
-Judgement replacement, distance providers, stale submissions, another Da Qiao,
-and Sky Piercing Halberd target continuation.
+Da Qiao is complete and enabled in Standard selection at 22/30 heroes and
+32/46 printed skills. Captivating uses one Diamond-suited Hand card through the
+generic active-skill `trigger` contract as Overindulgence, preserving the
+physical card identity in the target's Judgement Zone. Deflection remains the
+target-owned generic `attack_targeted` redirect outcome; the original Attack
+declaration and replacement-target lifecycle are preserved.
 
-Da Qiao remains disabled in Standard selection because Captivating is not part
-of this step. Counts remain 21/30 heroes and 30/46 printed skills. The next
-milestone is Captivating implementation and the combined Da Qiao validation;
-no Da Qiao-specific HTTP action or central Attack branch was added.
+Hero selection now enforces unique heroes with an atomic server-side claim for
+normal multiplayer and Quick Test, including stale/concurrent submissions.
+The impossible duplicate-Da-Qiao fixture was removed; replacement-target
+lifecycle coverage uses the realistic Yin-Yang Swords interaction.
+
+The next Stage 6 milestone is the next individually verified Standard hero;
+Captivating and Deflection are both complete with no provider-specific HTTP
+action or central Attack branch added.
 
 ## Da Qiao artwork update — 2026-09-29
 
 Added the supplied Da Qiao portrait as `public/hero-daqiao.jpg` and connected
-it through the shared `HERO_ART_BY_ID` / `HeroPortrait` renderer. Da Qiao
-remains unavailable in Standard selection until Captivating is implemented.
+it through the shared `HERO_ART_BY_ID` / `HeroPortrait` renderer.
 
 ## Hero artwork update — 2026-09-28
 

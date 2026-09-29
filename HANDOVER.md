@@ -1,9 +1,9 @@
 # Three Kingdoms project handover
 
-## Current state — Stage 6 Da Qiao / Deflection Step 1 — 2026-09-29
+## Current state — Stage 6 Da Qiao / Captivating + Deflection — 2026-09-29
 
-Step 1 is implemented internally on current `main`; Captivating has not been
-started and Da Qiao remains unavailable in Standard hero selection.
+Da Qiao is complete and enabled in Standard selection on current `main` at
+22/30 heroes and 32/46 printed skills.
 
 Implemented:
 
@@ -22,15 +22,18 @@ Implemented:
 - Ma Chao's source-owned Cavalry window remains before target-owned Deflection.
   Black replacement Judgement reopens normal Dodge, and red Cavalry does not
   incorrectly suppress Dodge after a redirect.
-- Added deterministic capability, API, range, stale-safety, another-Da-Qiao,
-  and Halberd regressions. `daqiao` was deliberately not added to
-  `IMPLEMENTED_STANDARD_HERO_IDS`; counts remain 21/30 heroes and 30/46 skills.
+- Added deterministic capability, API, range, stale-safety, and Halberd
+  regressions. The replacement-target lifecycle is covered through the
+  realistic Yin-Yang Swords interaction; no duplicate-Da-Qiao fixture is used
+  because normal Standard selection enforces unique heroes.
+- Added Captivating through the generic active-skill `trigger` contract. It
+  accepts one Diamond-suited Hand card, applies the existing Overindulgence
+  settlement to a legal target, and preserves the physical card ID.
+- Hero selection uses an atomic server-side uniqueness claim for normal
+  multiplayer and Quick Test, including stale/concurrent submissions.
 
 Known boundary and next work:
 
-- Captivating is still unimplemented. Do not enable Da Qiao or change the
-  implementation counts until Captivating and the full two-skill hero round
-  are complete.
 - Preserve the canonical `trigger`/`decline_trigger` and
   `respond`/`decline_response` protocol, server-owned legality, private
   projections, Quick Test parity, and exact card conservation.
@@ -38,9 +41,7 @@ Known boundary and next work:
 ## Latest presentation update — Da Qiao artwork — 2026-09-29
 
 Added the supplied portrait at `public/hero-daqiao.jpg` and connected it
-through the shared `HERO_ART_BY_ID` / `HeroPortrait` path. This is artwork only;
-Da Qiao remains disabled in Standard selection and implementation counts are
-unchanged.
+through the shared `HERO_ART_BY_ID` / `HeroPortrait` path.
 
 ## Latest presentation update — Ma Chao and Liu Bei artwork — 2026-09-28
 

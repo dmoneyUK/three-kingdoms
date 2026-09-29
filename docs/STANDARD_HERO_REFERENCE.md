@@ -19,12 +19,12 @@
 Re-audited on 2026-09-28 from the pre-round `main` baseline at
 `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`; this round completes Gongsun Zan.
 
-- **Implemented:** 21 / 30 heroes
+- **Implemented:** 22 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 9 / 30 heroes
-- **Implemented skills:** 30 / 46
+- **Not implemented:** 8 / 30 heroes
+- **Implemented skills:** 32 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 18 / 46
+- **Not implemented skills:** 16 / 46
 
 **2026-09-28 implementation note:** `game/heroes.ts` now allow-lists exactly
 these 21 implemented Standard heroes, including Gongsun Zan and Ma Chao. The 9 remaining
@@ -110,7 +110,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Composure | Present | Implemented |
 | Wu | `huang-gai` | Huang Gai | 黄盖 | Male | 4 | Self Sacrifice | Present | Implemented |
 | Wu | `zhou-yu` | Zhou Yu | 周瑜 | Male | 3 | Heroic<br>Sowing Distrust | Present | Implemented |
-| Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Captivating<br>Deflection | Present | Not implemented |
+| Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Captivating<br>Deflection | Present | Implemented |
 | Wu | `lu-xun` | Lu Xun | 陆逊 | Male | 3 | Modesty<br>Second Wind | Present | Implemented |
 | Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Betrothment<br>Daredevil | Present | Not implemented |
 | Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid<br>Prodigal Healer | Present | Not implemented |
@@ -316,11 +316,17 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Da Qiao (大乔)
 
 - **Runtime ID:** `daqiao`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **WU 006**, printed title **Reserved Beauty**.
 - **Implementation interpretation:** Captivating is specifically Diamond-suited. Deflection requires a one-card discard and a new target within Da Qiao's attack range; the original attacker cannot be selected.
 - **Likely engine shape:** virtual delayed Stratagem provider/use; attack-targeted redirect trigger with cost and target-legality check.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Captivating uses the generic active-skill `trigger`
+  contract to use one Diamond-suited Hand card as Overindulgence, preserving
+  the physical card ID in the target's Judgement Zone. Deflection uses the
+  generic target-owned `attack_targeted` redirect outcome and reopens the
+  replacement target's normal target-specific lifecycle. Hero selection's
+  atomic uniqueness claim prevents duplicate heroes in normal multiplayer and
+  Quick Test.
 
 ### Lu Xun (陆逊)
 
@@ -418,9 +424,9 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 The player-facing Standard metadata and implemented-hero allow-list are aligned
 with this reference. Resume implementation one General at a time in this order:
 
-1. **Da Qiao / Captivating + Deflection** — reuse delayed-Stratagem settlement
-   for Diamond-as-Overindulgence and add a generic target-shift/redirect semantic
-   outcome for `attack_targeted` before wiring the hero provider.
+1. Continue with the next remaining Standard hero after Da Qiao / Captivating +
+   Deflection, preserving the generic active-skill and `attack_targeted`
+   capability contracts.
 
 This is an engineering sequence, not a replacement rules source. Re-open the
 current official WTK Standard card/rulebook entry before each implementation.

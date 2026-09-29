@@ -1,6 +1,6 @@
 import test from "node:test";
 import {
-  assert, card, createHumanGame, discardIds, quote, request, setDeck, setEquipment, setHand, setTurn, sql, state,
+  assert, card, createHumanGame, discardIds, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state,
 } from "./test-support.mjs";
 
 async function openAttack({ targetCard = card("Peach", "deflection-cost"), targetEquipment = {}, replacementHero = "zhao-yun", sourceHero = "zhao-yun", sourceEquipment = {} } = {}) {
@@ -43,6 +43,40 @@ test("Deflection is offered only to the current Da Qiao target and Skip preserve
   assert.equal(dodge.currentAction.kind, "response", JSON.stringify(dodge));
   assert.equal(dodge.currentAction.actorId, opened.daqiao.id);
   assert.equal(dodge.currentAction.requirement, "dodge");
+});
+
+test("Captivating uses one Diamond hand card as Overindulgence and preserves its physical identity", async () => {
+  const game = await createHumanGame();
+  const [daqiao, target, other] = game.room.players;
+  const [daqiaoMember, targetMember] = [game.members[0], game.members[1]];
+  const diamond = { ...card("Peach", "captivating-diamond"), suit: "♦", rank: "7" };
+  const black = card("Peach", "captivating-black");
+  sql(`UPDATE players SET hero='daqiao', hp=3, max_hp=3 WHERE id=${quote(daqiao.id)}`);
+  sql(`UPDATE players SET hero='zhao-yun', hp=4, max_hp=4 WHERE id=${quote(target.id)}`);
+  sql(`UPDATE players SET hero='lu-xun', hp=3, max_hp=3 WHERE id=${quote(other.id)}`);
+  setHand(daqiao.id, [diamond, black], 3, 3); setHand(target.id, [], 4, 4); setHand(other.id, [], 3, 3);
+  setEquipment(daqiao.id); setEquipment(target.id); setEquipment(other.id); setJudgement(target.id, []); setJudgement(other.id, []);
+  setTurn(game.code, daqiao.seat, "play");
+  const view = (await state(game.code, daqiaoMember.token)).data;
+  const option = view.currentAction.triggerOptions.find((candidate) => candidate.effectId === "daqiao_captivating");
+  assert.deepEqual(option.selection.eligibleCardIds, [diamond.id]);
+  assert.equal(option.selection.targetIds.includes(target.id), true);
+  assert.equal(option.selection.targetIds.includes(other.id), false, "Captivating respects Modesty's Overindulgence immunity");
+  const used = await request("trigger", { code: game.code, token: daqiaoMember.token, providerId: "daqiao_captivating", cardIds: [diamond.id], targetId: target.id });
+  assert.equal(used.status, 200, JSON.stringify(used.data));
+  const placed = (await state(game.code, targetMember.token)).data;
+  const delayed = placed.players.find((player) => player.id === target.id).judgementCards;
+  assert.deepEqual(delayed, [{ ...diamond, kind: "Overindulgence" }]);
+  assert.equal(placed.players.find((player) => player.id === daqiao.id).handCount, 1);
+  assert.equal(discardIds(game.code).includes(diamond.id), false);
+
+  setTurn(game.code, target.seat, "draw");
+  setDeck(game.code, [{ ...card("Dodge", "captivating-black-judge"), suit: "♠", rank: "9" }, card("Attack", "captivating-draw-a"), card("Dodge", "captivating-draw-b")]);
+  const resolved = await requestAndSettle("draw", { code: game.code, token: targetMember.token });
+  assert.equal(resolved.status, 200, JSON.stringify(resolved.data));
+  assert.equal(resolved.data.room.phase, "discard", "a black Overindulgence judgement skips the target's Play Phase");
+  assert.equal(resolved.data.room.players.find((player) => player.id === target.id).judgementCards.length, 0);
+  assert.ok(discardIds(game.code).includes(diamond.id), "the converted physical card is discarded after resolution");
 });
 
 test("Deflection discards one hand card, preserves Attack identity/source, and starts normal Dodge for the replacement", async () => {
@@ -130,19 +164,6 @@ test("Deflection rejects stale cost, target, and range submissions without consu
   const staleRange = await request("trigger", { code: opened.game.code, token: opened.daqiaoMember.token, providerId: "daqiao_deflection", cardId: costId, targetId: opened.replacement.id });
   assert.equal(staleRange.status, 409, JSON.stringify(staleRange.data));
   assert.deepEqual(discardIds(opened.game.code), ["attack-deflection-attack"]);
-});
-
-test("Deflection restarts target-owned processing for another Da Qiao", async () => {
-  const opened = await openAttack({ replacementHero: "daqiao" });
-  setHand(opened.replacement.id, [card("Peach", "deflection-second-cost")], 4, 4);
-  assert.equal((await request("trigger", { code: opened.game.code, token: opened.daqiaoMember.token, providerId: "daqiao_deflection", cardId: "peach-deflection-cost", targetId: opened.replacement.id })).status, 200);
-  const secondView = (await state(opened.game.code, opened.replacementMember.token)).data;
-  assert.equal(secondView.currentAction.kind, "trigger", JSON.stringify(secondView));
-  assert.equal(secondView.currentAction.actorId, opened.replacement.id);
-  assert.equal(deflectionOption(secondView).selection.targetIds.includes(opened.daqiao.id), true);
-  assert.equal((await request("decline_trigger", { code: opened.game.code, token: opened.replacementMember.token })).status, 200);
-  const dodge = (await state(opened.game.code, opened.replacementMember.token)).data;
-  assert.equal(dodge.currentAction.requirement, "dodge");
 });
 
 test("Ma Chao Cavalry resolves before Da Qiao Deflection and restarts for the redirected target", async () => {

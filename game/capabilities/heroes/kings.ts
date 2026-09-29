@@ -21,6 +21,7 @@ export type ActiveHeroSkillContext = {
   attackTargetIds?: string[];
   influencingAvailable?: boolean;
   targetableTargetIds?: string[];
+  overindulgenceTargetIds?: string[];
   skillState: KingSkillState;
   canDeclareAttack?: boolean;
 };
@@ -31,6 +32,7 @@ export type ActiveHeroSkillExecution =
   | { status: "resolved"; effectId: string; outcome: { kind: "dismantle"; sourceId: string; targetId: string; cardIds: string[] } }
   | { status: "resolved"; effectId: string; outcome: { kind: "lose_draw"; sourceId: string; lose: number; draw: number } }
   | { status: "resolved"; effectId: string; outcome: { kind: "fanjian"; sourceId: string; targetId: string } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "place_delayed"; sourceId: string; targetId: string; cardId: string; delayedKind: "Overindulgence" } }
   | { status: "resolved"; effectId: string; outcome: { kind: "influencing_attack"; sourceId: string; targetId: string } };
 
 const rendeId = "liu_bei_rende";
@@ -38,6 +40,7 @@ const zhihengId = "sun_quan_zhiheng";
 const qixiId = "gan_ning_qixi";
 const kurouId = "huang_gai_kurou";
 const fanjianId = "zhou_yu_fanjian";
+const captivatingId = "daqiao_captivating";
 
 /**
  * Active king skills are projected as semantic trigger options during the
@@ -91,6 +94,16 @@ export function getActiveHeroSkillOptions(context: ActiveHeroSkillContext): Trig
       selection: { type: "target", targetIds: context.livingTargetIds },
     });
   }
+  const diamondCards = context.hand.filter((card) => card.suit === "♦");
+  const captivatingTargets = context.overindulgenceTargetIds ?? context.livingTargetIds;
+  if (context.hero === "daqiao" && diamondCards.length > 0 && captivatingTargets.length > 0) {
+    options.push({
+      effectId: captivatingId,
+      label: "Captivating",
+      description: "Use a Diamond-suited card as Overindulgence on another living character.",
+      selection: { type: "cards", min: 1, max: 1, eligibleCardIds: diamondCards.map((card) => card.id), targetIds: captivatingTargets },
+    });
+  }
   return options;
 }
 
@@ -108,6 +121,11 @@ export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSki
   if (!selection.cardIds.every((id): id is string => typeof id === "string")) return null;
   const cardIds = selection.cardIds;
   if (cardIds.length < option.selection.min || cardIds.length > option.selection.max || new Set(cardIds).size !== cardIds.length || cardIds.some((id) => !option.selection?.eligibleCardIds.includes(id))) return null;
+  if (effectId === captivatingId) {
+    const targetId = typeof selection.targetId === "string" ? selection.targetId : "";
+    if (cardIds.length !== 1 || !option.selection.targetIds?.includes(targetId) || targetId === context.playerId) return null;
+    return { status: "resolved", effectId, outcome: { kind: "place_delayed", sourceId: context.playerId, targetId, cardId: cardIds[0], delayedKind: "Overindulgence" } };
+  }
   if (effectId === rendeId) {
     const targetId = typeof selection.targetId === "string" ? selection.targetId : "";
     if (!option.selection.targetIds?.includes(targetId) || targetId === context.playerId) return null;
@@ -122,4 +140,4 @@ export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSki
   return null;
 }
 
-export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId, qixi: qixiId, kurou: kurouId, fanjian: fanjianId } as const;
+export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId, qixi: qixiId, kurou: kurouId, fanjian: fanjianId, captivating: captivatingId } as const;

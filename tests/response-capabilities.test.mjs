@@ -77,6 +77,18 @@ test("Wu and Qun hero capabilities project their private costs and Wushuang mult
   assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a")], equipment: [], hero: null }, { kind: "dodge", count: 2 }).length, 0);
 });
 
+test("Da Qiao Captivating exposes only Diamond hand cards and legal Overindulgence targets", () => {
+  const diamond = { ...card("Peach", "captivating-diamond"), suit: "♦" };
+  const black = card("Peach", "captivating-black");
+  const context = { playerId: "daqiao", hero: "daqiao", hand: [diamond, black], livingTargetIds: ["target", "blocked"], overindulgenceTargetIds: ["target"], skillState: {} };
+  const [option] = getActiveHeroSkillOptions(context);
+  assert.equal(option.effectId, "daqiao_captivating");
+  assert.deepEqual(option.selection, { type: "cards", min: 1, max: 1, eligibleCardIds: [diamond.id], targetIds: ["target"] });
+  assert.deepEqual(resolveActiveHeroSkill(option.effectId, context, { cardIds: [diamond.id], targetId: "target" })?.outcome, { kind: "place_delayed", sourceId: "daqiao", targetId: "target", cardId: diamond.id, delayedKind: "Overindulgence" });
+  assert.equal(resolveActiveHeroSkill(option.effectId, context, { cardIds: [black.id], targetId: "target" }), null);
+  assert.equal(getActiveHeroSkillOptions({ ...context, overindulgenceTargetIds: [] }).length, 0);
+});
+
 test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack", () => {
   const redPeach = { ...card("Peach", "red-peach"), suit: "♥" };
   const redEquipment = { ...card("ZhugeCrossbow", "red-equipment"), suit: "♦" };

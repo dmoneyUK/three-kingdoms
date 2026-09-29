@@ -508,6 +508,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "yue-jin": { Dauntless: ["yue_jin_dauntless"] },
   "zhou-yu": { Heroic: ["zhou_yu_yingzi"], "Sowing Distrust": ["zhou_yu_fanjian"] },
   "lu-xun": { "Second Wind": ["lu_xun_second_wind"] },
+  daqiao: { Captivating: ["daqiao_captivating"] },
 };
 
 // Response capabilities are projected in currentAction.options rather than
@@ -811,7 +812,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const triggerTargetMin = triggerTargetSelection?.min ?? 1;
   const triggerTargetMax = triggerTargetSelection?.max ?? 1;
   const triggerTargetMode = Boolean(triggerResponse && responseDecisionReady && triggerTargetSelection && responseProviderId === selectedTriggerOption?.effectId);
-  const targetSelectionActive = Boolean(triggerTargetMode || room.isMyTurn && canPlay && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind) || activeSkillTargetSelection));
+  const targetSelectionActive = Boolean(triggerTargetMode || room.isMyTurn && canPlay && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind) || activeSkillTargetSelection || activeSkillSelection?.targetIds?.length));
   const triggerTargetComplete = Boolean(triggerTargetMode && targetIds.length >= triggerTargetMin && targetIds.length <= triggerTargetMax);
   const triggerSubmissionComplete = triggerSelectionComplete && (!triggerTargetSelection || triggerTargetComplete);
   const canUseLongdanInResponse = Boolean(me?.hero === "zhao-yun" && responseDecisionReady && longdanResponseOptions.length > 0);
