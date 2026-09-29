@@ -1,5 +1,18 @@
 # Three Kingdoms
 
+## Hero artwork update — 2026-09-30
+
+Added the six supplied portraits to the shared `HERO_ART_BY_ID` /
+`HeroPortrait` renderer. Photo 1 is Zhang Liao, Photo 2 replaces Xiahou Dun,
+Photo 3 is Xu Zhu, Photo 4 is Guo Jia, Photo 5 replaces Zhen Ji, and Photo 6
+is Yue Jin. The shared renderer applies the artwork in hero selection,
+locked-in selection, the local hero dock, and opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged. Huang Yueying
+remains the current completed Stage 6 rules milestone; no adjacent hero work
+is part of this artwork round.
+
 ## Hero artwork update — 2026-09-29
 
 Added the supplied portraits to the shared `HERO_ART_BY_ID` / `HeroPortrait`

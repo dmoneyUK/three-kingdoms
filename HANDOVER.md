@@ -1,5 +1,22 @@
 # Three Kingdoms project handover
 
+## Latest presentation update — six supplied hero portraits — 2026-09-30
+
+Added and wired the six supplied portraits through the shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer:
+
+- Photo 1: Zhang Liao (`public/hero-zhang-liao.jpg`)
+- Photo 2: Xiahou Dun (`public/hero-xiahou-dun.jpg`)
+- Photo 3: Xu Zhu (`public/hero-xu-chu.jpg`)
+- Photo 4: Guo Jia (`public/hero-guo-jia.jpg`)
+- Photo 5: Zhen Ji (`public/hero-zhen-ji.jpg`)
+- Photo 6: Yue Jin (`public/hero-yue-jin.jpg`)
+
+The shared path covers hero selection, the locked-in selection state, the local
+hero card, and opponent cards. This remains presentation-only: no gameplay
+rules, projections, selection legality, layout dimensions, or semantic actions
+changed. Huang Yueying remains the current completed rules milestone.
+
 ## Latest presentation update — supplied hero portraits — 2026-09-29
 
 Added and wired the eight supplied portraits through the shared
