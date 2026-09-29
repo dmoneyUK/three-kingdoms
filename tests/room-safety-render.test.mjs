@@ -95,7 +95,8 @@ test("hero selection shows the effective viewer's private role", () => {
 test("every implemented Standard hero is audited through the shared portrait renderer", () => {
   const implementedIds = [...IMPLEMENTED_STANDARD_HERO_IDS];
   const mappedIds = Object.keys(HERO_ART_BY_ID);
-  assert.ok(mappedIds.every((id) => IMPLEMENTED_STANDARD_HERO_IDS.has(id)), "art mapping must not point at non-Standard or unimplemented heroes");
+  const standardIds = new Set(STANDARD_HEROES.map((hero) => hero.id));
+  assert.ok(mappedIds.every((id) => standardIds.has(id)), "art mapping must not point at non-Standard heroes");
   for (const id of mappedIds) {
     assert.ok(existsSync(new URL(`../public/${HERO_ART_BY_ID[id].replace(/^\//, "")}`, import.meta.url)), `${id} artwork is checked in`);
   }

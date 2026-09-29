@@ -35,6 +35,13 @@ Known boundary and next work:
   `respond`/`decline_response` protocol, server-owned legality, private
   projections, Quick Test parity, and exact card conservation.
 
+## Latest presentation update — Da Qiao artwork — 2026-09-29
+
+Added the supplied portrait at `public/hero-daqiao.jpg` and connected it
+through the shared `HERO_ART_BY_ID` / `HeroPortrait` path. This is artwork only;
+Da Qiao remains disabled in Standard selection and implementation counts are
+unchanged.
+
 ## Latest presentation update — Ma Chao and Liu Bei artwork — 2026-09-28
 
 Added the supplied Ma Chao design at `public/hero-ma-chao.jpg` and replaced

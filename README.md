@@ -17,6 +17,12 @@ of this step. Counts remain 21/30 heroes and 30/46 printed skills. The next
 milestone is Captivating implementation and the combined Da Qiao validation;
 no Da Qiao-specific HTTP action or central Attack branch was added.
 
+## Da Qiao artwork update — 2026-09-29
+
+Added the supplied Da Qiao portrait as `public/hero-daqiao.jpg` and connected
+it through the shared `HERO_ART_BY_ID` / `HeroPortrait` renderer. Da Qiao
+remains unavailable in Standard selection until Captivating is implemented.
+
 ## Hero artwork update — 2026-09-28
 
 Added the supplied Ma Chao design as `public/hero-ma-chao.jpg` and replaced
