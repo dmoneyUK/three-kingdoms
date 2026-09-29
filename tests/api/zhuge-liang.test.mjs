@@ -1,6 +1,6 @@
 import test from "node:test";
 import {
-  assert, card, createHumanSetupGame, createTestGame, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state,
+  assert, card, createHumanSetupGame, createTestGame, openBorrowedSwordScenario, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
 
 function setHeroes(room, heroes) {
@@ -195,6 +195,14 @@ test("Empty Fortress covers Guan Yu, Zhao Yun, Serpent Spear, and Halberd target
   setTurn(game.code, game.source.seat, "play");
   const halberdAllowed = await request("play_card", { code: game.code, token: game.sourceToken, cardId: halberdAttack.id, targetIds: [game.target.id, game.room.players[2].id] });
   assert.equal(halberdAllowed.status, 200, JSON.stringify(halberdAllowed.data));
+});
+
+test("Empty Fortress rejects a Borrowed Sword target before the forced Attack begins", async () => {
+  const scenario = await openBorrowedSwordScenario({ choose: false });
+  setHeroes(scenario.game.room, ["guan-yu", "zhao-yun", "zhuge-liang", "xiahou-dun"]);
+  const blocked = await request("choose_borrowed_sword_target", { code: scenario.game.code, token: scenario.host.token, targetId: scenario.target.id });
+  assert.equal(blocked.status, 400);
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(scenario.holder.id)} AND json_extract(value,'$.id')=${quote(scenario.attackId)}`), "1");
 });
 
 test("Liu Bei Influencing excludes empty-handed Zhuge Liang from Attack targets", async () => {
