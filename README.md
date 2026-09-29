@@ -1,5 +1,22 @@
 # Three Kingdoms
 
+## Stage 6 Da Qiao / Deflection Step 1 — 2026-09-29
+
+Implemented the generic `attack_targeted` redirection outcome and Da Qiao's
+target-owned Deflection provider. The provider can discard exactly one Hand or
+Equipment card and transfer the existing Attack to one live character in Da
+Qiao's authoritative effective range, excluding the original attacker. The
+Attack declaration, source, physical/virtual identity, resolution metadata,
+and group continuation are preserved; the replacement target receives a fresh
+target-specific lifecycle. Coverage includes Ma Chao Cavalry ordering and
+Judgement replacement, distance providers, stale submissions, another Da Qiao,
+and Sky Piercing Halberd target continuation.
+
+Da Qiao remains disabled in Standard selection because Captivating is not part
+of this step. Counts remain 21/30 heroes and 30/46 printed skills. The next
+milestone is Captivating implementation and the combined Da Qiao validation;
+no Da Qiao-specific HTTP action or central Attack branch was added.
+
 ## Hero artwork update — 2026-09-28
 
 Added the supplied Ma Chao design as `public/hero-ma-chao.jpg` and replaced

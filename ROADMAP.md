@@ -3,7 +3,7 @@
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
 
-## Restart checkpoint — 2026-09-28
+## Restart checkpoint — 2026-09-29
 
 Gameplay implementation was re-audited against `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`. The
 latest gameplay hero change remains Yue Jin / Dauntless (implemented by
@@ -26,9 +26,10 @@ change gameplay capability counts.
 
 1. Keep the completed Step 1 UI handover closed; do not mix presentation work
    into the next rules round.
-2. Implement **Da Qiao / Captivating + Deflection**. Deflection should extend `attack_targeted` with
-   a generic target-shift/redirect semantic outcome rather than add a
-   Da-Qiao-specific route action.
+2. Complete **Da Qiao / Captivating + Deflection**. Step 1 now provides the
+   generic `attack_targeted` redirect outcome and internally tested,
+   target-owned Deflection, but Da Qiao remains disabled until Captivating is
+   implemented and the combined two-skill round is validated.
 
 Keep UI and hero-rules work in separate commits/rounds so a visual regression
 cannot hide a gameplay regression.
@@ -65,6 +66,26 @@ preserved, including virtual Attacks and independent Sky Piercing Halberd
 targets. Ma Chao is now enabled for Standard selection.
 
 The next Stage 6 hero is **Da Qiao / Captivating + Deflection**.
+
+## Stage 6 hero capability — Da Qiao / Deflection Step 1 — 2026-09-29
+
+Step 1 is internally complete, but the hero is not enabled. The semantic
+`attack_targeted` protocol now supports a small `redirect_attack` outcome.
+Deflection is target-owned, optional, and accepts one Hand or Equipment card
+plus one live replacement target within Da Qiao's current effective Attack
+Range, excluding the original attacker. The server revalidates the live cost,
+target, distance, weapon, Mount, Militia, and window before the atomic claim.
+
+The original Attack declaration remains authoritative: source, physical or
+virtual identity, origin, physical cards, armor flag, Dodge count, sequence,
+resolution, and Halberd group continuation are retained. The replacement
+target receives a fresh target-specific lifecycle. Regression coverage also
+locks the source-owned Ma Chao Cavalry window before Deflection, Sima Yi's
+Black replacement path, another Da Qiao, and exact card conservation.
+
+The next milestone is Captivating plus the full Da Qiao round, followed by
+enabling Da Qiao only after both skills pass the Standard selection, Quick
+Test, multiplayer, and deterministic validation gates.
 
 ## Stage 6 hero capability — Yue Jin / Dauntless — 2026-09-23
 

@@ -1,5 +1,40 @@
 # Three Kingdoms project handover
 
+## Current state — Stage 6 Da Qiao / Deflection Step 1 — 2026-09-29
+
+Step 1 is implemented internally on current `main`; Captivating has not been
+started and Da Qiao remains unavailable in Standard hero selection.
+
+Implemented:
+
+- Added the small generic `redirect_attack` semantic outcome to the existing
+  `attack_targeted` capability protocol; no Da Qiao-specific route action,
+  `play_card` branch, or central Attack-resolution branch was added.
+- Added target-owned `daqiao_deflection`. It projects privately only when Da
+  Qiao is the current Attack target, accepts exactly one live Hand or
+  Equipment card and one legal replacement target, and revalidates ownership,
+  liveness, effective range, attacker exclusion, and the active window before
+  the atomic claim.
+- Redirection preserves the original source, physical/virtual Attack identity,
+  origin, physical cards, Attack card, armor flag, Dodge count, sequence and
+  resolution metadata. A replacement target starts a fresh target-specific
+  `attack_targeted` lifecycle; Halberd remaining targets remain intact.
+- Ma Chao's source-owned Cavalry window remains before target-owned Deflection.
+  Black replacement Judgement reopens normal Dodge, and red Cavalry does not
+  incorrectly suppress Dodge after a redirect.
+- Added deterministic capability, API, range, stale-safety, another-Da-Qiao,
+  and Halberd regressions. `daqiao` was deliberately not added to
+  `IMPLEMENTED_STANDARD_HERO_IDS`; counts remain 21/30 heroes and 30/46 skills.
+
+Known boundary and next work:
+
+- Captivating is still unimplemented. Do not enable Da Qiao or change the
+  implementation counts until Captivating and the full two-skill hero round
+  are complete.
+- Preserve the canonical `trigger`/`decline_trigger` and
+  `respond`/`decline_response` protocol, server-owned legality, private
+  projections, Quick Test parity, and exact card conservation.
+
 ## Latest presentation update — Ma Chao and Liu Bei artwork — 2026-09-28
 
 Added the supplied Ma Chao design at `public/hero-ma-chao.jpg` and replaced

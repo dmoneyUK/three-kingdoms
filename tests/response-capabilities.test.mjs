@@ -243,6 +243,37 @@ test("Yin-Yang Swords is a target-owned attack_targeted capability with live leg
   assert.equal(getTriggeredEffects({ ...context, sourceGender: "female" }).length, 0);
 });
 
+test("Deflection is a target-owned generic Attack redirection with live card and range choices", () => {
+  const context = {
+    event: "attack_targeted",
+    sourceId: "attacker",
+    sourceEquipment: [],
+    targetId: "daqiao",
+    targetHero: "daqiao",
+    targetHand: [card("Peach", "hand-cost")],
+    targetEquipment: [card("NioShield", "equipment-cost")],
+    targetIds: ["attacker", "daqiao", "replacement"],
+  };
+  const [option] = getTriggeredEffects(context);
+  assert.equal(option.effectId, "daqiao_deflection");
+  assert.equal(triggerActorId(option.effectId, context), "daqiao");
+  assert.deepEqual(option.selection, {
+    type: "cards",
+    min: 1,
+    max: 1,
+    eligibleCardIds: ["hand-cost", "equipment-cost"],
+    targetIds: ["replacement"],
+  });
+  assert.deepEqual(resolveTriggeredEffect(option.effectId, context, { cardId: "equipment-cost", targetId: "replacement" })?.outcome, {
+    kind: "redirect_attack",
+    targetId: "replacement",
+    discardCardId: "equipment-cost",
+  });
+  assert.equal(resolveTriggeredEffect(option.effectId, context, { cardId: "hand-cost", targetId: "attacker" }), null);
+  assert.equal(getTriggeredEffects({ ...context, targetHand: [], targetEquipment: [] }).length, 0);
+  assert.equal(getTriggeredEffects({ ...context, targetIds: ["attacker", "daqiao"] }).length, 0);
+});
+
 test("Cavalry is a source-owned optional attack_targeted Judgement", () => {
   const context = { event: "attack_targeted", sourceId: "ma-chao", hero: "ma-chao", sourceEquipment: [], sourceGender: "male", targetId: "target", targetHand: [], targetEquipment: [] };
   assert.deepEqual(getTriggeredEffects(context), [{ effectId: "ma_chao_cavalry", label: "Cavalry — enter Judgement", description: "If the Judgement card is red, the target cannot use Dodge for this Attack.", selection: null, allowDecline: true }]);

@@ -83,6 +83,31 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   assert.notEqual(settled.currentAction?.kind, "response", "a red replacement must suppress Dodge");
 });
 
+test("Cavalry keeps Dodge available when Sima Yi replaces the original red Judgement with Black", async () => {
+  const game = await createHumanGame();
+  const [source, target, sima] = game.room.players;
+  const [sourceMember, targetMember, simaMember] = game.members;
+  sql(`UPDATE players SET hero='ma-chao', hp=4, max_hp=4 WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='zhao-yun', hp=4, max_hp=4 WHERE id=${quote(target.id)}`);
+  sql(`UPDATE players SET hero='simayi', hp=3, max_hp=3 WHERE id=${quote(sima.id)}`);
+  const original = { ...card("Attack", "cavalry-red-original"), suit: "♥", rank: "9" };
+  const replacement = { ...card("Dodge", "cavalry-black-replacement"), suit: "♣", rank: "2" };
+  setHand(source.id, [card("Attack", "cavalry-red-attack")], 4, 4);
+  setHand(target.id, [], 4, 4);
+  setHand(sima.id, [replacement], 3, 3);
+  setDeck(game.code, [original]);
+  setTurn(game.code, source.seat, "play");
+  assert.equal((await request("play_card", { code: game.code, token: sourceMember.token, cardId: "attack-cavalry-red-attack", targetId: target.id })).status, 200);
+  assert.equal((await request("trigger", { code: game.code, token: sourceMember.token, providerId: "ma_chao_cavalry" })).status, 200);
+  const revealed = (await state(game.code, simaMember.token)).data;
+  assert.equal(revealed.currentAction.triggerEvent, "judgement_revealed", JSON.stringify(revealed));
+  const replaced = await request("trigger", { code: game.code, token: simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
+  assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
+  const dodge = (await state(game.code, targetMember.token)).data;
+  assert.equal(dodge.currentAction.kind, "response", JSON.stringify(dodge));
+  assert.equal(dodge.currentAction.requirement, "dodge");
+});
+
 test("Cavalry preserves a virtual Serpent Spear Attack identity", async () => {
   const game = await createHumanGame();
   const [source, target] = game.room.players;
