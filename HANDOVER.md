@@ -1,5 +1,24 @@
 # Three Kingdoms project handover
 
+## Latest presentation update — supplied hero portraits — 2026-09-29
+
+Added and wired the eight supplied portraits through the shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer:
+
+- Photo 1: Zhuge Liang (`public/hero-zhuge-liang.jpg`)
+- Photo 2: Da Qiao (`public/hero-daqiao.jpg`)
+- Photo 3: Zhao Yun (`public/hero-zhao-yun.jpg`)
+- Photo 4: Guan Yu (`public/hero-guan-yu.jpg`)
+- Photo 5: Zhang Fei (`public/hero-zhang-fei.jpg`)
+- Photo 6: Gan Ning (`public/hero-gan-ning.jpg`)
+- Photo 7: Huang Gai (`public/hero-huang-gai.jpg`)
+- Photo 8: Lv Meng (`public/hero-lv-meng.jpg`, stable ID `lü-meng`)
+
+The shared path covers hero selection, the locked-in selection state, the local
+hero card, and opponent cards. This remains presentation-only: no gameplay
+rules, projections, selection legality, layout dimensions, or semantic actions
+changed. The next recommended rules milestone remains Huang Yueying.
+
 ## Current state — Stage 6 Zhuge Liang / Stargazing + Empty Fortress — 2026-09-29
 
 Zhuge Liang and Da Qiao are complete and enabled in Standard selection at

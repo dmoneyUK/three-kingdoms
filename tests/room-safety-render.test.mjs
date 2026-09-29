@@ -44,7 +44,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(html, /data-hero-art-id="cao-cao"/);
   assert.match(html, /data-hero-art-id="simayi"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
-  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.avif", "hero-zhang-fei.jpg", "hero-zhen-ji.jpg", "hero-ma-chao.jpg"]) {
+  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.avif", "hero-zhang-fei.jpg", "hero-zhen-ji.jpg", "hero-ma-chao.jpg", "hero-daqiao.jpg", "hero-zhuge-liang.jpg", "hero-zhao-yun.jpg", "hero-guan-yu.jpg", "hero-gan-ning.jpg", "hero-huang-gai.jpg", "hero-lv-meng.jpg"]) {
     assert.ok(existsSync(new URL(`../public/${asset}`, import.meta.url)), `${asset} is checked in`);
   }
   assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
@@ -96,6 +96,23 @@ test("every implemented Standard hero is audited through the shared portrait ren
   const implementedIds = [...IMPLEMENTED_STANDARD_HERO_IDS];
   const mappedIds = Object.keys(HERO_ART_BY_ID);
   const standardIds = new Set(STANDARD_HEROES.map((hero) => hero.id));
+  const expectedNewArtwork = {
+    "zhuge-liang": "/hero-zhuge-liang.jpg",
+    daqiao: "/hero-daqiao.jpg",
+    "zhao-yun": "/hero-zhao-yun.jpg",
+    "guan-yu": "/hero-guan-yu.jpg",
+    "zhang-fei": "/hero-zhang-fei.jpg",
+    "gan-ning": "/hero-gan-ning.jpg",
+    "huang-gai": "/hero-huang-gai.jpg",
+    "lü-meng": "/hero-lv-meng.jpg",
+  };
+  for (const [id, asset] of Object.entries(expectedNewArtwork)) {
+    assert.equal(HERO_ART_BY_ID[id], asset, `${id} uses the supplied hero artwork`);
+    const hero = STANDARD_HEROES.find((candidate) => candidate.id === id);
+    assert.ok(hero);
+    const html = renderToStaticMarkup(React.createElement(HeroSelection, { room: { code: `ART-${id}`, myHeroOptions: [hero], players: [{ id: "p1", name: "TEST", hero: null, generalReady: false }], isTestController: true, meId: "p1", myRole: "Rebel", isMyAction: true, actionPlayerId: "p1" }, busy: false, error: "", onChoose: () => {}, onLeave: () => {} }));
+    assert.match(html, new RegExp(`data-hero-art-id="${id}"`), `${id} renders in hero selection`);
+  }
   assert.ok(mappedIds.every((id) => standardIds.has(id)), "art mapping must not point at non-Standard heroes");
   for (const id of mappedIds) {
     assert.ok(existsSync(new URL(`../public/${HERO_ART_BY_ID[id].replace(/^\//, "")}`, import.meta.url)), `${id} artwork is checked in`);
@@ -113,7 +130,7 @@ test("every implemented Standard hero is audited through the shared portrait ren
       assert.match(html, /class="hero-art-fallback"/, `${id} keeps the intentional initials fallback until approved artwork exists`);
     }
   }
-  assert.deepEqual(unmappedIds, ["xu-chu", "guo-jia", "yue-jin", "guan-yu", "zhuge-liang", "zhao-yun", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "lu-xun", "lü-bu"]);
+  assert.deepEqual(unmappedIds, ["xu-chu", "guo-jia", "yue-jin", "zhou-yu", "lu-xun", "lü-bu"]);
 });
 
 test("hand cards stay naturally packed and compress only when the rail is tight", () => {

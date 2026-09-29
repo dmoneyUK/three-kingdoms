@@ -1,5 +1,19 @@
 # Three Kingdoms
 
+## Hero artwork update — 2026-09-29
+
+Added the supplied portraits to the shared `HERO_ART_BY_ID` / `HeroPortrait`
+renderer. Photo 1 is Zhuge Liang, Photo 2 replaces Da Qiao, Photo 3 is Zhao
+Yun, Photo 4 is Guan Yu, Photo 5 replaces Zhang Fei, Photo 6 is Gan Ning, Photo
+7 is Huang Gai, and Photo 8 is Lv Meng. Because hero selection and in-game
+portraits use the same renderer, the new artwork appears in candidate cards,
+locked-in selection, the local hero dock, and opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged. The next
+Stage 6 rules milestone remains Huang Yueying; no adjacent hero work is part
+of this artwork round.
+
 ## Stage 6 Zhuge Liang / Stargazing + Empty Fortress — 2026-09-29
 
 Zhuge Liang is complete and enabled in Standard selection at 23/30 heroes and
