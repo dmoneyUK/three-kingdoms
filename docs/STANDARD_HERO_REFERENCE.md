@@ -16,23 +16,28 @@
 
 ## Implementation progress
 
-Re-audited on 2026-09-29 from Zhuge Liang baseline
-`d3611ad9b412f460d2b0ac17f40158cfac3fb665`; this round completes Zhuge Liang.
+Re-audited on 2026-09-30 from Lady Gan baseline
+`01d5acdcb2bf4ec55f2393a15bb07ec10099d429`; this round completes Lady Gan.
 
-- **Implemented:** 24 / 30 heroes
+- **Implemented:** 25 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 6 / 30 heroes
-- **Implemented skills:** 36 / 46
+- **Not implemented:** 5 / 30 heroes
+- **Implemented skills:** 38 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 10 / 46
+- **Not implemented skills:** 8 / 46
 
 **2026-09-30 implementation note:** `game/heroes.ts` now allow-lists exactly
-these 24 implemented Standard heroes, including Huang Yueying, Zhuge Liang,
-Gongsun Zan, and Ma Chao. The 6 remaining generals are present as Standard
-roster metadata but are excluded from
+these 25 implemented Standard heroes, including Lady Gan, Huang Yueying,
+Zhuge Liang, Gongsun Zan, and Ma Chao. The 5 remaining generals are present as
+Standard roster metadata but are excluded from
 `IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
 Militia uses the generic server-owned effective-distance capability and is
-covered by pure, API, Quick Test, and normal multiplayer regressions.
+covered by pure, API, Quick Test, and normal multiplayer regressions. Lady Gan's
+Divine Wisdom uses `turn_start`; its strict `discardedCount > HP` recovery is
+resolved server-side. Actual recovery emits the generic `hp_recovered` event,
+and Prudence excludes Lady Gan/dead targets and derives the live target draw
+amount as 1 or 2 cards. The recovery continuation preserves Play Phase,
+turn-start, Oath/Benevolence, and Dying/rescue flows.
 
 Implementation status means the hero's printed Standard skill set has a live gameplay implementation on the audited baseline. Runtime metadata alone does not count as implementation.
 
@@ -105,7 +110,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Shu | `zhao-yun` | Zhao Yun | 赵云 | Male | 4 | Braveheart | Present | Implemented |
 | Shu | `ma-chao` | Ma Chao | 马超 | Male | 4 | Horse Riding<br>Cavalry | Present | Implemented |
 | Shu | `huang-yueying` | Huang Yueying | 黄月英 | Female | 3 | Cultivation<br>Wizardry | Present | Implemented |
-| Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Divine Wisdom<br>Prudence | Present | Not implemented |
+| Shu | `lady-gan` | Lady Gan | 甘夫人 | Female | 3 | Divine Wisdom<br>Prudence | Present | Implemented |
 | Wu | `sun-quan` | Sun Quan | 孙权 | Male | 4 | Equilibrium<br>Deliverance | Present | Implemented |
 | Wu | `gan-ning` | Gan Ning | 甘宁 | Male | 4 | Ambushment | Present | Implemented |
 | Wu | `lü-meng` | Lu Meng | 吕蒙 | Male | 4 | Composure | Present | Implemented |
@@ -263,11 +268,11 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Lady Gan (甘夫人)
 
 - **Runtime ID:** `lady-gan`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **SHU 016**, printed title **Empress of Zhao Lie**.
 - **Implementation interpretation:** Divine Wisdom uses a strict “more than your HP” comparison after discarding all hand cards. Prudence targets another character; the recipient draws 2 rather than 1 if they have no hand cards at that point.
-- **Likely engine shape:** start-of-turn all-hand discard/recovery; per-1-HP recovery trigger with target draw modifier.
-- **Current implementation:** Standard roster metadata exists in `STANDARD_HEROES`, but this hero is excluded from `IMPLEMENTED_STANDARD_HEROES` and new-game selection until both printed skills are implemented.
+- **Likely engine shape:** canonical `turn_start` all-hand discard/recovery; generic actual-HP-recovery trigger with target draw modifier.
+- **Current implementation:** Divine Wisdom is an optional private `turn_start` trigger. The server snapshots and discards the full authoritative Hand without a client card selection, leaves Equipment/Judgement unchanged, and recovers only when `discardedCount > HP` using HP before canonical max-HP-capped recovery. Acceptance discards even when no recovery occurs, while decline preserves the existing turn-start continuation. The generic `hp_recovered` event is emitted only when HP actually increases and carries the recovered amount, source, and reason. Prudence is an optional provider for Lady Gan's actual 1-HP recovery; it excludes Lady Gan and dead characters, revalidates one other living target, derives 1 versus 2 cards from the target's live Hand at resolution, uses canonical refill, and keeps drawn identities private. Persisted recovery continuations preserve normal Play Phase, turn-start, Oath/Benevolence, and Dying/rescue settlement.
 
 ## Wu
 

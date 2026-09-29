@@ -1,5 +1,39 @@
 # Three Kingdoms project handover
 
+## Current state — Stage 6 Lady Gan / Divine Wisdom + Prudence — 2026-09-30
+
+Lady Gan is complete and enabled in Standard selection. The implementation
+count is **25/30 Standard heroes** and **38/46 printed skills**; the remaining
+metadata-only heroes are Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong, and Pan
+Feng. This round is rules-only and contains no artwork work.
+
+Divine Wisdom is a private optional `turn_start` trigger. Acceptance snapshots
+the authoritative Hand and discards every physical Hand card through the normal
+discard/history path, without changing Equipment or the Judgement Zone. The
+recovery condition is strict `discardedCount > HP`, using HP before recovery;
+canonical `applyRecovery` caps at max HP, and accepting still discards at
+equality, below the threshold, or full HP. Declining resumes the existing
+turn-start continuation.
+
+The generic `hp_recovered` trigger is emitted only after an actual HP increase
+and carries the recovered amount, source, and reason. Its persisted continuation
+pauses and resumes Play Phase, turn-start, Oath/Benevolence settlement, and
+Dying/rescue. Prudence is an optional Lady Gan provider for actual recovery of
+exactly 1 HP. It offers one other living character, revalidates that target at
+resolution, derives 1 versus 2 cards from the target's live Hand state, and
+uses canonical refill plus private draw projection. Peach, rescue Peach,
+Divine Wisdom, Oath, and Benevolence use the generic recovery boundary; a
+non-Lady Gan recovery produces no extra decision. No provider-specific HTTP
+action or UI was added; existing trigger and target-selection controls are
+used.
+
+Focused coverage includes strict Divine Wisdom boundaries, zones and physical
+discard conservation, decline/reload/replay safety, Prudence target privacy and
+live hand state, Peach/Oath/Dying continuation, Quick Test acting-seat
+ownership, and canonical recovery/refill behavior. Do not begin another hero in
+this handover; the next staged work is a separately approved remaining Standard
+hero after this validated round.
+
 ## Latest presentation update — six supplied hero portraits — 2026-09-30
 
 Added and wired the six supplied portraits through the shared

@@ -1,5 +1,32 @@
 # Three Kingdoms
 
+## Stage 6 Lady Gan / Divine Wisdom + Prudence — 2026-09-30
+
+Lady Gan is complete and enabled in Standard selection at **25/30 heroes**
+and **38/46 printed skills**. The remaining Standard heroes are Sun Shangxiang,
+Hua Tuo, Diao Chan, Hua Xiong, and Pan Feng. This is a rules-only round; no
+graphic or artwork work was included.
+
+Divine Wisdom is an optional provider on the canonical `turn_start` event. If
+accepted, the server snapshots and discards every current Hand card, preserving
+each physical card in the normal discard/history/presentation pipeline while
+leaving Equipment and the Judgement Zone untouched. Recovery uses strict
+`discardedCount > HP`, with HP read before recovery and canonical max-HP capping;
+the Hand is discarded even when the condition is false or the character is
+already at max HP. Decline resumes the existing turn-start lifecycle unchanged.
+
+Recovery now emits the generic semantic `hp_recovered` event only when the
+authoritative HP transition actually increases HP. The persisted recovery
+continuation covers Play Phase, turn-start, Oath, Benevolence, and Dying/rescue
+resumption. Prudence is an optional `hp_recovered` provider for Lady Gan's
+actual 1-HP recovery: it excludes Lady Gan, dead characters, and stale targets;
+the target draws 1 card with a non-empty Hand and 2 with an empty Hand based on
+live resolution state. Draws use canonical refill and private Hand projection,
+with only the public draw count exposed to other players. Peach, Oath, normal
+rescue Peach, Divine Wisdom, and Benevolence all use the recovery boundary;
+non-Lady Gan recoveries do not create a Prudence decision. Quick Test and human
+multiplayer keep acting-seat ownership and private-card projections intact.
+
 ## Hero artwork update — 2026-09-30
 
 Added the six supplied portraits to the shared `HERO_ART_BY_ID` /

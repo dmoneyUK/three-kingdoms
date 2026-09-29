@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyDamage, applyRecovery, isDying, recoveryNeeded } from "../game/match/dying.js";
+import { applyDamage, applyRecovery, isDying, recoveredAmount, recoveryNeeded } from "../game/match/dying.js";
 import { determineDefeatContinuation } from "../game/match/continuation.ts";
 import { determineMatchOutcome } from "../game/match/outcome.ts";
 
 test("pure Dying HP, match outcome, and defeat continuation rules", () => {
   assert.equal(applyDamage(1, 1), 0); assert.equal(applyDamage(1, 2), -1); assert.equal(applyDamage(1, 3), -2);
   assert.equal(isDying(-2), true); assert.equal(recoveryNeeded(-2), 3); assert.equal(applyRecovery(-2), -1); assert.equal(applyRecovery(-1), 0); assert.equal(applyRecovery(0), 1); assert.equal(isDying(1), false);
+  assert.equal(applyRecovery(2, 1, 3), 3); assert.equal(applyRecovery(3, 1, 3), 3); assert.equal(recoveredAmount(2, 3, 1), 1); assert.equal(recoveredAmount(3, 3, 1), 0); assert.equal(recoveredAmount(0, 3, 2), 2);
   const players = [{ id: "lord", seat: 0, role: "Lord", alive: 0 }, { id: "rebel", seat: 1, role: "Rebel", alive: 0 }, { id: "traitor", seat: 2, role: "Renegade", alive: 1 }];
   assert.equal(determineMatchOutcome(players), "traitor");
   assert.equal(determineMatchOutcome(players.map((player) => player.id === "traitor" ? { ...player, alive: 0 } : { ...player, alive: player.id === "lord" ? 1 : player.alive })), "lord_loyalist");

@@ -120,6 +120,7 @@ export type DeckReorderPending = {
 export type TurnStartTriggerContinuation = {
   kind: "turn_start_event";
   playerId: string;
+  resolvedEffectIds?: string[];
 };
 export type DrawPhaseTriggerContinuation = {
   kind: "draw_phase_event";
@@ -196,7 +197,19 @@ export type StratagemUsedTriggerContinuation = {
   resume: "negation" | "direct";
   resumePhase: string;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | TurnEndTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation | StratagemUsedTriggerContinuation;
+export type RecoveryRecord = { playerId: string; amountRecovered: number; sourceId?: string; reason?: string };
+export type RecoveryResume =
+  | { kind: "phase"; phase: string; playerId?: string }
+  | { kind: "turn_start"; continuation: TurnStartTriggerContinuation }
+  | { kind: "dying"; pending: DyingPending };
+export type HpRecoveredTriggerContinuation = {
+  kind: "hp_recovered_event";
+  recovery: RecoveryRecord;
+  remaining: RecoveryRecord[];
+  resolvedEffectIds?: string[];
+  resume: RecoveryResume;
+};
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | TurnEndTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation | StratagemUsedTriggerContinuation | HpRecoveredTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

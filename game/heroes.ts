@@ -46,7 +46,7 @@ export const STANDARD_HEROES: readonly HeroDefinition[] = [
 export const IMPLEMENTED_STANDARD_HERO_IDS: ReadonlySet<string> = new Set([
   "cao-cao", "simayi", "xiahou-dun", "zhang-liao", "xu-chu", "guo-jia", "zhen-ji", "yue-jin",
   "liu-bei", "guan-yu", "zhang-fei", "zhuge-liang", "zhao-yun",
-  "sun-quan", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "daqiao", "lu-xun", "lü-bu", "gongsun-zan", "ma-chao", "huang-yueying",
+  "sun-quan", "gan-ning", "lü-meng", "huang-gai", "zhou-yu", "daqiao", "lu-xun", "lü-bu", "gongsun-zan", "ma-chao", "huang-yueying", "lady-gan",
 ]);
 export const IMPLEMENTED_STANDARD_HEROES: readonly HeroDefinition[] = STANDARD_HEROES.filter((hero) => IMPLEMENTED_STANDARD_HERO_IDS.has(hero.id));
 

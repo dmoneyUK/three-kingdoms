@@ -7,8 +7,12 @@ export function isDying(hp) {
   return hp <= 0;
 }
 
-export function applyRecovery(hp, amount = 1) {
-  return hp + amount;
+export function applyRecovery(hp, amount = 1, maxHp = Infinity) {
+  return Math.min(maxHp, hp + amount);
+}
+
+export function recoveredAmount(hp, maxHp, amount = 1) {
+  return Math.max(0, applyRecovery(hp, amount, maxHp) - hp);
 }
 
 export function recoveryNeeded(hp) {

@@ -2,6 +2,29 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+## Stage 6 hero capability — Lady Gan / Divine Wisdom + Prudence — 2026-09-30
+
+Complete on this rules-only round. Lady Gan is enabled at **25 / 30 Standard
+heroes implemented** and **38 / 46 printed skills implemented**. The remaining
+heroes are Sun Shangxiang, Hua Tuo, Diao Chan, Hua Xiong, and Pan Feng. No
+artwork or adjacent hero work is included.
+
+Divine Wisdom reuses the canonical `turn_start` trigger and offers only a
+private Accept/Decline decision when Lady Gan has Hand cards. Acceptance
+discards the authoritative complete Hand, preserves physical identities and
+normal hand-loss handling, and applies recovery only when the strict
+`discardedCount > HP` condition was true at resolution. Equipment, Judgement,
+and max-HP capping remain canonical.
+
+The reusable `hp_recovered` event is emitted only for actual HP increases and
+carries `amountRecovered` plus source/reason context. A persisted recovery
+continuation pauses and resumes the original phase, turn-start, Oath/Benevolence
+settlement, or Dying/rescue flow. Prudence revalidates one other living target
+and chooses 1 versus 2 cards from the target's authoritative Hand at resolution;
+draws use canonical refill and private projection. Peach, rescue Peach, Divine
+Wisdom, Oath, Benevolence, Quick Test, reload, stale submissions, and physical
+card conservation are covered by deterministic Worker/D1 tests.
+
 ## Stage 6 hero capability — Huang Yueying / Cultivation + Wizardry — 2026-09-30
 
 Complete on this rules-only round. Huang Yueying is enabled at **24 / 30
@@ -279,7 +302,7 @@ registry.
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 24 / 30 heroes and 36 / 46 printed skills**; Huang Yueying / Cultivation + Wizardry is the latest completed Standard hero capability.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 25 / 30 heroes and 38 / 46 printed skills**; Lady Gan / Divine Wisdom + Prudence is the latest completed Standard hero capability.
 
 ## Progress summary
 
@@ -290,7 +313,7 @@ Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE.
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
 | 5. Complete match rules | **Complete** | Dying/multi-damage, defeat continuation/outcome, delayed Stratagem LIFO ordering, placement timing, Judgement-phase Negation, and Lightning transfer semantics are deterministic and regression-covered. |
-| 6. Hero-specific abilities | **ACTIVE — 24 / 30 heroes, 36 / 46 skills** | Huang Yueying / Cultivation + Wizardry is complete; continue with the next individually approved remaining hero. |
+| 6. Hero-specific abilities | **ACTIVE — 25 / 30 heroes, 38 / 46 skills** | Lady Gan / Divine Wisdom + Prudence is complete; continue only with the next individually approved remaining hero. |
 | 7. Product polish | **Ongoing — Step 1 UI handover completed** | Final graphic/theme polish, separately approved artwork intake, sound, invitations, and saved history remain later work. |
 
 ## Stability foundation already complete
