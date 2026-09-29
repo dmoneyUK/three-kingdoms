@@ -620,12 +620,16 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
 
   setHand(hostPlayer.id, [card("Overindulgence", "cancelled")], 5, 5); setHand(alicePlayer.id, [card("Negation", "overindulgence")], 4, 4); setTurn(game.code, hostPlayer.seat);
   const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "overindulgence-cancelled", targetId: alicePlayer.id });
-  assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation, null); assert.equal(opened.data.room.phase, "play");
-  assert.deepEqual(opened.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.map((delayed) => delayed.id), ["overindulgence-cancelled"], "placement immediately enters the Judgement Zone");
+  assert.equal(opened.status, 200); assert.equal(opened.data.room.pendingNegation.cardName, "Overindulgence"); assert.equal(opened.data.room.phase, "response");
+  assert.equal(opened.data.room.discardTop.id, "overindulgence-cancelled", "the physical Overindulgence card is staged in discard while Negation is open");
+  const cancelled = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-overindulgence" });
+  assert.equal(cancelled.status, 200); assert.equal(cancelled.data.room.pendingNegation, null); assert.equal(cancelled.data.room.phase, "play");
+  assert.deepEqual(cancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, [], "Negation prevents initial Overindulgence placement");
+  assert.deepEqual(discardIds(game.code).filter((id) => ["overindulgence-cancelled", "negation-overindulgence"].includes(id)).sort(), ["negation-overindulgence", "overindulgence-cancelled"]);
 
   setHand(hostPlayer.id, [card("Overindulgence", "placed")], 5, 5); setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, []); setTurn(game.code, hostPlayer.seat);
   const placed = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "overindulgence-placed", targetId: alicePlayer.id });
-  assert.equal(placed.status, 200); assert.equal(placed.data.room.phase, "play"); assert.equal(placed.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards[0].id, "overindulgence-placed");
+  assert.equal(placed.status, 200, JSON.stringify(placed.data)); assert.equal(placed.data.room.phase, "play"); assert.equal(placed.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards[0].id, "overindulgence-placed");
   setHand(hostPlayer.id, [card("Overindulgence", "duplicate")], 5, 5); setTurn(game.code, hostPlayer.seat);
   assert.equal((await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "overindulgence-duplicate", targetId: alicePlayer.id })).status, 409, "a Judgement Zone cannot contain duplicate Overindulgence cards");
 
@@ -671,7 +675,7 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
   assert.equal(judgementWindow.status, 200); assert.equal(judgementWindow.data.room.phase, "response"); assert.equal(judgementWindow.data.room.pendingNegation.cardName, "Overindulgence"); assert.equal(judgementWindow.data.room.actionPlayerId, alicePlayer.id);
   const judgementCancelled = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-judgement-window" });
   assert.equal(judgementCancelled.status, 200); assert.equal(judgementCancelled.data.room.phase, "draw"); assert.deepEqual(judgementCancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
-  assert.equal(judgementCancelled.data.room.log.filter((entry) => /Overindulgence's effect on Alice is cancelled by Negation\./.test(entry)).length, 1, "Negated Overindulgence records one cancellation");
+  assert.equal(judgementCancelled.data.room.log.filter((entry) => /Overindulgence's effect on Alice is cancelled by Negation\./.test(entry)).length, 2, "each negated Overindulgence records one cancellation");
   const afterJudgementNegation = await requestAndSettle("draw", { code: game.code, token: alice.token });
   assert.equal(afterJudgementNegation.status, 200); assert.equal(afterJudgementNegation.data.room.phase, "play"); assert.equal(afterJudgementNegation.data.room.timeline.some((event) => event.card?.id === "dodge-unused-judgement"), false, "Negation cancels the delayed effect before a judgement card is drawn");
 

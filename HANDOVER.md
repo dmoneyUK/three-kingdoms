@@ -27,8 +27,11 @@ Implemented:
   realistic Yin-Yang Swords interaction; no duplicate-Da-Qiao fixture is used
   because normal Standard selection enforces unique heroes.
 - Added Captivating through the generic active-skill `trigger` contract. It
-  accepts one Diamond-suited Hand card, applies the existing Overindulgence
-  settlement to a legal target, and preserves the physical card ID.
+  accepts one Diamond-suited Hand card, converts that same physical card to
+  effective Overindulgence, and reuses the ordinary `startNegation` /
+  `NegationContinuation` / `resolveDeferredStratagem` path before placement.
+  Initial Negation, Negation-of-Negation, delayed Judgement settlement, and
+  Sima Yi final-result replacement all preserve the physical card ID.
 - Hero selection uses an atomic server-side uniqueness claim for normal
   multiplayer and Quick Test, including stale/concurrent submissions.
 

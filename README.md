@@ -4,10 +4,12 @@
 
 Da Qiao is complete and enabled in Standard selection at 22/30 heroes and
 32/46 printed skills. Captivating uses one Diamond-suited Hand card through the
-generic active-skill `trigger` contract as Overindulgence, preserving the
-physical card identity in the target's Judgement Zone. Deflection remains the
-target-owned generic `attack_targeted` redirect outcome; the original Attack
-declaration and replacement-target lifecycle are preserved.
+generic active-skill `trigger` contract as Overindulgence, then reuses the
+ordinary `startNegation` / `NegationContinuation` / `resolveDeferredStratagem`
+pipeline before placement. The physical card identity is preserved through
+Negation, the target's Judgement Zone, and delayed settlement. Deflection
+remains the target-owned generic `attack_targeted` redirect outcome; the
+original Attack declaration and replacement-target lifecycle are preserved.
 
 Hero selection now enforces unique heroes with an atomic server-side claim for
 normal multiplayer and Quick Test, including stale/concurrent submissions.

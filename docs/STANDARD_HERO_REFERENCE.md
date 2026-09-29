@@ -321,12 +321,14 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Implementation interpretation:** Captivating is specifically Diamond-suited. Deflection requires a one-card discard and a new target within Da Qiao's attack range; the original attacker cannot be selected.
 - **Likely engine shape:** virtual delayed Stratagem provider/use; attack-targeted redirect trigger with cost and target-legality check.
 - **Current implementation:** Captivating uses the generic active-skill `trigger`
-  contract to use one Diamond-suited Hand card as Overindulgence, preserving
-  the physical card ID in the target's Judgement Zone. Deflection uses the
-  generic target-owned `attack_targeted` redirect outcome and reopens the
-  replacement target's normal target-specific lifecycle. Hero selection's
-  atomic uniqueness claim prevents duplicate heroes in normal multiplayer and
-  Quick Test.
+  contract to use one Diamond-suited Hand card as Overindulgence, then reuses
+  the ordinary `startNegation` / `NegationContinuation` /
+  `resolveDeferredStratagem` pipeline before placement. The physical card ID,
+  Diamond suit, and rank survive initial Negation, placement, and delayed
+  settlement. Deflection uses the generic target-owned `attack_targeted`
+  redirect outcome and reopens the replacement target's normal target-specific
+  lifecycle. Hero selection's atomic uniqueness claim prevents duplicate
+  heroes in normal multiplayer and Quick Test.
 
 ### Lu Xun (陆逊)
 

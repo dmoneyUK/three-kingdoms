@@ -70,8 +70,11 @@ The next Stage 6 hero is **Da Qiao / Captivating + Deflection**.
 
 Da Qiao is complete and enabled. Captivating uses the generic active-skill
 `trigger` contract to use one Diamond-suited Hand card as Overindulgence on a
-legal target, preserving the physical card identity in the target's Judgement
-Zone. The semantic `attack_targeted` protocol supports a small
+legal target, then reuses the ordinary `startNegation` /
+`NegationContinuation` / `resolveDeferredStratagem` pipeline before placement.
+The physical card identity is preserved through initial Negation,
+Negation-of-Negation, the target's Judgement Zone, and delayed settlement. The
+semantic `attack_targeted` protocol supports a small
 `redirect_attack` outcome. Deflection is target-owned, optional, and accepts
 one Hand or Equipment card plus one live replacement target within Da Qiao's
 current effective Attack Range, excluding the original attacker. The server
@@ -85,6 +88,9 @@ target receives a fresh target-specific lifecycle. Regression coverage locks
 the source-owned Ma Chao Cavalry window before Deflection, Sima Yi's Black
 replacement path, the realistic Yin-Yang replacement lifecycle, hero
 uniqueness in normal/Quick Test selection, and exact card conservation.
+Captivating coverage includes ordinary placement, initial Negation,
+Negation-of-Negation, both delayed outcomes, and both directions of Sima Yi
+Judgement replacement. Do not start another hero in this follow-up.
 
 ## Stage 6 hero capability — Yue Jin / Dauntless — 2026-09-23
 
