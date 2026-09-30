@@ -1,3 +1,17 @@
+# Current roadmap — Standard hero roster complete (2026-09-30)
+
+The Standard hero implementation milestone is closed after the full roster review: **30/30 Standard heroes and 46/46 printed skills are implemented**. Pan Feng / Axe of Insanity is the final hero implementation milestone. No Standard hero remains partial or metadata-only.
+
+## Next engineering phase — Standard interaction audit
+
+Do not begin another Standard hero. Audit the completed game horizontally across heroes and cards. Prioritise: (1) older hero implementations that predate the semantic capability architecture; (2) converted/virtual Attack and Stratagem identity; (3) damage source/target ownership and multi-damage timing; (4) Dying/rescue plus nested `hp_recovered` reactions; (5) Judgement replacement and delayed Stratagem continuations; (6) Equipment loss/replacement and card conservation; (7) distance versus target-legality composition; and (8) reload, stale/replay rejection, Quick Test ownership, and private projection. Fix only verified rule/interaction gaps and add deterministic regression coverage for each correction.
+
+## Completion gate
+
+Keep the Standard roster at **30/30 heroes, 46/46 skills**. A regression finding does not make a hero “unimplemented”; mark it as a focused rules defect until corrected. Exact official WTK Standard card/rulebook text remains authoritative. Expansion heroes and graphic-design work are separate future scopes.
+
+---
+
 # Three Kingdoms Roadmap
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
