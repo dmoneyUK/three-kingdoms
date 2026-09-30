@@ -4,6 +4,38 @@ The completed Standard roster has been reviewed and reconciled with the hero ref
 
 The implementation architecture to preserve is capability-driven: semantic respond/decline_response and trigger/decline_trigger actions, persisted continuations, canonical damage/Dying/recovery/Judgement pipelines, generic distance and target-legality capabilities, physical-card conservation, server-owned legality, private projection, stale/replay rejection, and Quick Test parity with normal multiplayer. Do not add hero-name branches to central rules when a small generic capability/provider contract fits.
 
+## Cross-hero interaction audit findings — 2026-09-30
+
+The post-roster interaction audit keeps the authoritative completion count at **30/30 Standard heroes and 46/46 printed skills**. The following items are correctness or hardening work in already implemented skills.
+
+### Confirmed defects
+
+**Cao Cao / Entourage:** the Lord-role restriction is missing. The provider currently checks Cao Cao's hero identity but not that his role is Lord. Liu Bei / Influencing already has the corresponding role gate. Correct the implementation and the existing tests that currently accept non-Lord Cao Cao.
+
+**Sun Quan / Deliverance:** the Lord-role restriction is missing. Current rescue handling checks Sun Quan and a different Wu rescuer but does not require Sun Quan's authoritative role to be Lord. Correct the implementation and tests that currently accept non-Lord Sun Quan.
+
+**Lü Bu / Unrivaled:** the generic multi-response model incorrectly couples the number of semantic Attacks or Dodges required to the number of physical cost cards selected by one provider. Serpent Spear is the clearest failure: two physical cost cards form one Attack and must not satisfy a two-Attack requirement. Conversely, one-card conversions such as Guan Yu God of War, Zhao Yun Braveheart, and Zhen Ji Empress Dowager must be able to contribute one response and then leave one response still required. Eight Trigrams must likewise be able to contribute one successful Judgement Dodge and continue to the second Dodge. Entourage and Influencing must compose with the same mechanism.
+
+Fix Unrivaled at the generic response-continuation level. Track semantic responses remaining independently of provider cost-card count. A successful provider contributes the semantic response it actually creates, normally one, then the engine asks for the remainder until zero. Do not add Lü-Bu-specific branches to the individual hero or equipment providers. Regression coverage should include ordinary plus converted mixed responses, Guan Yu, Zhao Yun, Zhen Ji, Eight Trigrams, Serpent Spear, Entourage, Influencing, ordinary Duel, Diao Chan Lust Duel, reload/stale safety, privacy, and physical-card conservation.
+
+### Timing issue to verify before changing
+
+**Huang Gai / Self Sacrifice at 1 HP:** current handling draws two cards before entering Dying when the HP loss reduces Huang Gai to zero. This can expose newly drawn cards before the Dying/rescue boundary. Re-verify the exact WTK timing/ruling before changing it. If confirmed, use the canonical HP-loss/Dying continuation: lose HP first; if still alive draw two; if zero HP enter Dying/rescue and resume the suspended draw only after successful rescue. Prefer the persisted continuation pattern already used by Pan Feng rather than a Huang-Gai-specific Dying path.
+
+### Hardening issue
+
+**Sima Yi / Retaliation Hand acquisition:** the rules treat obtaining a card from another character's Hand as random, while public Equipment/Judgement cards can be selected deliberately. Current Retaliation hides Hand identities but accepts an opaque positional Hand choice. Harden it so choosing the Hand zone makes the server randomly choose one current Hand card; exact selection remains available for public Equipment/Judgement cards. Preserve private projection, authoritative revalidation, stale safety, and physical-card conservation.
+
+### Deliberately unresolved interpretation
+
+Do not change the source zones for Guan Yu God of War, Zhen Ji Empress Dowager, Gan Ning Ambushment, Da Qiao Captivating, or Hua Tuo First Aid solely because the English card wording says "a card". The current reference records deliberate Hand-zone interpretations for some of these and the available rule material does not clearly resolve every source-zone case. Require an explicit WTK ruling/source before changing them.
+
+### Recommended execution order
+
+First fix the Cao Cao and Sun Quan Lord gates and their regressions. Second redesign the generic semantic multi-response continuation and close the Lü Bu interaction matrix. Third verify Huang Gai's timing and correct it through the canonical HP-loss/Dying continuation if confirmed. Finally harden Sima Yi's Hand acquisition.
+
+For every fix preserve the capability-driven architecture: generic semantic providers, persisted continuations, server-owned legality, canonical damage/Dying/recovery/Judgement paths, private projection, Quick Test parity, stale/replay rejection, and physical-card conservation. No graphic-design work belongs to this audit.
+
 ## Next work
 
 Do **not** implement another Standard hero. Begin a focused cross-hero/card interaction audit of the completed roster. Start with older implementations and exercise them through newer infrastructure: virtual/converted cards, delegated Attacks/Dodges, multi-target and redirected Attacks, damage-source ownership, nested post-damage reactions, Dying/rescue, hp_recovered, Judgement replacement, delayed Stratagems, Equipment-zone exits, distance/target legality, reload, stale submissions, Quick Test, and privacy. For each verified defect, make the smallest generic correction and add deterministic regression coverage before moving to the next issue.
