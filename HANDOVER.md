@@ -1,11 +1,37 @@
 # Three Kingdoms project handover
 
+## Current state — Stage 6 Diao Chan / Lust + Beauty Outshining the Moon — 2026-09-30
+
+Diao Chan is complete and enabled in Standard selection. The implementation
+count is **28/30 Standard heroes** and **44/46 printed skills**; only Hua Xiong
+and Pan Feng remain. This round is rules-only and contains no artwork work.
+
+Lust is projected through the generic active-hero-skill `trigger` contract and
+uses `lustUsed` in Play-Phase skill state. Exactly one owned Hand or Equipment
+card pays the cost; Judgement is excluded. The authoritative submission carries
+two distinct living male target IDs in player-visible order, and the server
+revalidates pairwise generic Duel legality, including Zhuge Liang's Empty
+Fortress. The cost and use claim occur before a direct canonical Duel response
+continuation; no physical Duel card, Negation, `stratagem_used`, or Cultivation
+event exists. The Duel participants, not Diao Chan, own Attack responses and
+source failure damage. `resumePlayerId` keeps Diao Chan's Play Phase enclosing
+the Duel, including Dying/rescue. Equipment costs pass through
+`equipment_lost`, and the persisted Lust continuation reloads safely.
+
+Beauty Outshining the Moon is an optional Diao Chan-own-turn `turn_end`
+provider. Accept draws one private card through canonical refill; decline draws
+zero. The shared provider order composes naturally with Yue Jin Dauntless, and
+the turn-end continuation advances once. API coverage is in
+`tests/api/diao-chan.test.mjs`, including Unrivaled and Attack conversions.
+
+Do not start Hua Xiong or Pan Feng in this handover.
+
 ## Current state — Stage 6 Hua Tuo / First Aid + Prodigal Healer — 2026-09-30
 
 Hua Tuo is complete and enabled in Standard selection. The implementation
-count is **27/30 Standard heroes** and **42/46 printed skills**; the remaining
-metadata-only heroes are Diao Chan, Hua Xiong, and Pan Feng. This round is
-rules-only and contains no artwork work.
+count was **27/30 Standard heroes** and **42/46 printed skills**; the remaining
+metadata-only heroes were Diao Chan, Hua Xiong, and Pan Feng. This historical
+stage is retained below.
 
 First Aid uses the generic semantic `peach` response requirement. A physical
 Peach and Hua Tuo's `hua_tuo_first_aid` provider satisfy the same rescue

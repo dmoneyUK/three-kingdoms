@@ -71,7 +71,7 @@ function normalizeCurrentAction(value) {
   const options = Array.isArray(value.options) ? value.options.filter(isRecord).flatMap((option) => {
     if (typeof option.providerId !== "string" || typeof option.label !== "string" || option.satisfies !== requirement) return [];
     const selection = option.selection === null ? null : isRecord(option.selection) && option.selection.type === "cards" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
-      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string"), ...(Array.isArray(option.selection.targetIds) ? { targetIds: option.selection.targetIds.filter((id) => typeof id === "string") } : {}) }
+      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string"), ...(Array.isArray(option.selection.targetIds) ? { targetIds: option.selection.targetIds.filter((id) => typeof id === "string") } : {}), ...(Number.isInteger(option.selection.targetMin) ? { targetMin: option.selection.targetMin } : {}), ...(Number.isInteger(option.selection.targetMax) ? { targetMax: option.selection.targetMax } : {}) }
       : null;
     const activation = option.activation === "explicit" ? "explicit" : option.activation === "implicit" || value.version === 1 ? "implicit" : null;
     if (!activation) return [];
@@ -80,7 +80,7 @@ function normalizeCurrentAction(value) {
   const triggerOptions = Array.isArray(value.triggerOptions) ? value.triggerOptions.filter(isRecord).flatMap((option) => {
     if (typeof option.effectId !== "string" || typeof option.label !== "string") return [];
     const selection = option.selection === null ? null : isRecord(option.selection) && option.selection.type === "cards" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
-      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string"), ...(Array.isArray(option.selection.targetIds) ? { targetIds: option.selection.targetIds.filter((id) => typeof id === "string") } : {}) }
+      ? { type: "cards", min: option.selection.min, max: option.selection.max, eligibleCardIds: option.selection.eligibleCardIds.filter((id) => typeof id === "string"), ...(Array.isArray(option.selection.targetIds) ? { targetIds: option.selection.targetIds.filter((id) => typeof id === "string") } : {}), ...(Number.isInteger(option.selection.targetMin) ? { targetMin: option.selection.targetMin } : {}), ...(Number.isInteger(option.selection.targetMax) ? { targetMax: option.selection.targetMax } : {}) }
       : isRecord(option.selection) && option.selection.type === "target" && Array.isArray(option.selection.targetIds)
         ? { type: "target", targetIds: option.selection.targetIds.filter((id) => typeof id === "string"), ...(Number.isInteger(option.selection.min) ? { min: option.selection.min } : {}), ...(Number.isInteger(option.selection.max) ? { max: option.selection.max } : {}) }
       : isRecord(option.selection) && option.selection.type === "target_cards" && typeof option.selection.targetId === "string" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleKeys)

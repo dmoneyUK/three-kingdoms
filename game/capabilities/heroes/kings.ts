@@ -11,6 +11,7 @@ export type KingSkillState = {
   baredBodiedActive?: boolean;
   betrothmentUsed?: boolean;
   prodigalHealerUsed?: boolean;
+  lustUsed?: boolean;
 };
 
 export type ActiveHeroSkillContext = {
@@ -26,6 +27,7 @@ export type ActiveHeroSkillContext = {
   overindulgenceTargetIds?: string[];
   betrothmentTargetIds?: string[];
   injuredLivingTargetIds?: string[];
+  lustTargetIds?: string[];
   skillState: KingSkillState;
   canDeclareAttack?: boolean;
 };
@@ -39,6 +41,7 @@ export type ActiveHeroSkillExecution =
   | { status: "resolved"; effectId: string; outcome: { kind: "place_delayed"; sourceId: string; targetId: string; cardId: string; delayedKind: "Overindulgence" } }
   | { status: "resolved"; effectId: string; outcome: { kind: "betrothment"; sourceId: string; targetId: string; cardIds: string[] } }
   | { status: "resolved"; effectId: string; outcome: { kind: "prodigal_healer"; sourceId: string; targetId: string; cardIds: string[] } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "lust"; sourceId: string; cardIds: string[]; targetIds: string[] } }
   | { status: "resolved"; effectId: string; outcome: { kind: "influencing_attack"; sourceId: string; targetId: string } };
 
 const rendeId = "liu_bei_rende";
@@ -49,6 +52,7 @@ const fanjianId = "zhou_yu_fanjian";
 const captivatingId = "daqiao_captivating";
 const betrothmentId = "sun_shangxiang_betrothment";
 const prodigalHealerId = "hua_tuo_prodigal_healer";
+const lustId = "diao_chan_lust";
 
 /**
  * Active king skills are projected as semantic trigger options during the
@@ -128,10 +132,19 @@ export function getActiveHeroSkillOptions(context: ActiveHeroSkillContext): Trig
       selection: { type: "cards", min: 1, max: 1, eligibleCardIds: context.hand.map((card) => card.id), targetIds: context.injuredLivingTargetIds },
     });
   }
+  const lustCards = [...context.hand, ...(context.equipment ?? [])];
+  if (context.hero === "diao-chan" && lustCards.length > 0 && !context.skillState.lustUsed && (context.lustTargetIds?.length ?? 0) >= 2) {
+    options.push({
+      effectId: lustId,
+      label: "Lust",
+      description: "Discard 1 card, then choose two male characters in order: the first selected plays Attack first in their Duel.",
+      selection: { type: "cards", min: 1, max: 1, eligibleCardIds: lustCards.map((card) => card.id), targetIds: context.lustTargetIds, targetMin: 2, targetMax: 2 },
+    });
+  }
   return options;
 }
 
-export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSkillContext, selection: { cardIds?: unknown; targetId?: unknown }): ActiveHeroSkillExecution | null {
+export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSkillContext, selection: { cardIds?: unknown; targetId?: unknown; targetIds?: unknown }): ActiveHeroSkillExecution | null {
   const option = getActiveHeroSkillOptions(context).find((candidate) => candidate.effectId === effectId);
   if (!option) return null;
   if (effectId === kurouId && option.selection === null) return { status: "resolved", effectId, outcome: { kind: "lose_draw", sourceId: context.playerId, lose: 1, draw: 2 } };
@@ -171,7 +184,12 @@ export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSki
     if (cardIds.length !== 1 || !option.selection.targetIds?.includes(targetId)) return null;
     return { status: "resolved", effectId, outcome: { kind: "prodigal_healer", sourceId: context.playerId, targetId, cardIds } };
   }
+  if (effectId === lustId) {
+    const targetIds = Array.isArray((selection as { targetIds?: unknown }).targetIds) ? (selection as { targetIds: unknown[] }).targetIds : [];
+    if (cardIds.length !== 1 || targetIds.length !== 2 || !targetIds.every((id): id is string => typeof id === "string") || new Set(targetIds).size !== 2 || targetIds.some((id) => !option.selection?.targetIds?.includes(id))) return null;
+    return { status: "resolved", effectId, outcome: { kind: "lust", sourceId: context.playerId, cardIds, targetIds } };
+  }
   return null;
 }
 
-export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId, qixi: qixiId, kurou: kurouId, fanjian: fanjianId, captivating: captivatingId, betrothment: betrothmentId, prodigalHealer: prodigalHealerId } as const;
+export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId, qixi: qixiId, kurou: kurouId, fanjian: fanjianId, captivating: captivatingId, betrothment: betrothmentId, prodigalHealer: prodigalHealerId, lust: lustId } as const;

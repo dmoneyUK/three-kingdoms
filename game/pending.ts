@@ -19,7 +19,7 @@ export type DeferredStratagem =
 export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string };
 export type InfluencingAttackContinuation = { kind: "influencing_attack"; sourceId: string; targetId: string; resumePhase: string; sequenceStartCardId: string; origin: "triggered" };
 export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; damageCards?: Card[]; sequenceStartCardId?: string; resolutionId?: string };
-export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string };
+export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string };
 export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string };
 export type ResponseContinuation = AttackContinuation | InfluencingAttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;
 
@@ -188,6 +188,7 @@ export type HandLossTriggerContinuation = {
 export type EquipmentLostRecord = { playerId: string; lostCards: Card[]; reason?: string };
 export type EquipmentLostResume =
   | { kind: "phase"; phase: string; playerId?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
+  | { kind: "lust_duel"; ownerId: string; firstId: string; secondId: string; resumePhase: string; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "attack_targeted"; continuation: AttackTargetedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "attack_dodged"; continuation: AttackDodgedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "forced_damage"; sourceId: string; targetId: string; amount: number; resumePhase: string; resumePlayerId?: string; sequenceStartCardId: string; origin?: AttackOrigin; damageCards?: Card[]; label: string; damageDescription?: string; handLoss?: { playerId: string; beforeHand: Card[] } }

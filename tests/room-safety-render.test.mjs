@@ -139,7 +139,7 @@ test("every implemented Standard hero is audited through the shared portrait ren
       assert.match(html, /class="hero-art-fallback"/, `${id} keeps the intentional initials fallback until approved artwork exists`);
     }
   }
-  assert.deepEqual(unmappedIds, ["lu-xun", "sun-shangxiang", "hua-tuo", "lü-bu"]);
+  assert.deepEqual(unmappedIds, ["lu-xun", "sun-shangxiang", "hua-tuo", "lü-bu", "diao-chan"]);
 });
 
 test("hand cards stay naturally packed and compress only when the rail is tight", () => {
@@ -359,7 +359,7 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
   assert.doesNotMatch(fanjianButton, /disabled=""/, "Sowing Distrust is enabled when zhou_yu_fanjian is projected");
   assert.match(html, /data-player-anchor="p2"/, "the projected eligible opponent is rendered");
   assert.match(gameRoomSource, /activeSkillTargetIds\.includes\(player\.id\) && canPlay/, "activated target skills make projected opponents selectable");
-  assert.match(gameRoomSource, /setActiveSkillSelectionState\(\(state\) => state \? \{ \.\.\.state, targetIds: \[playerId\] \}/, "target selection stores the chosen opponent in the active skill state");
+  assert.match(gameRoomSource, /setActiveSkillSelectionState\(\(state\) => \{[\s\S]*targetIds: next/, "target selection stores the chosen opponent in the active skill state");
   assert.match(gameRoomSource, /onAction\("trigger", activeSkillSubmission\)/, "active skills use the generic trigger action");
   assert.match(gameRoomSource, /activeSkillSubmission = .*providerId: activeSkillOption\.effectId[\s\S]*targetId: activeSkillTargetId/, "the generic trigger payload carries providerId and targetId");
 

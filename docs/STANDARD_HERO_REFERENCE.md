@@ -16,19 +16,19 @@
 
 ## Implementation progress
 
-Re-audited on 2026-09-30 from Hua Tuo baseline
-`9d7166b00fb134926bab5b1cb0db18d07e98c684`; this round completes Hua Tuo.
+Re-audited on 2026-09-30 from Diao Chan baseline
+`faf54b5b15686338d93ada732acb38cdc63b1dd3`; this round completes Diao Chan.
 
-- **Implemented:** 27 / 30 heroes
+- **Implemented:** 28 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 3 / 30 heroes
-- **Implemented skills:** 42 / 46
+- **Not implemented:** 2 / 30 heroes
+- **Implemented skills:** 44 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 4 / 46
+- **Not implemented skills:** 2 / 46
 
 **2026-09-30 implementation note:** `game/heroes.ts` now allow-lists exactly
-these 27 implemented Standard heroes, including Hua Tuo, Sun Shangxiang, Lady Gan,
-Huang Yueying, Zhuge Liang, Gongsun Zan, and Ma Chao. The 3 remaining generals are present as
+these 28 implemented Standard heroes, including Diao Chan, Hua Tuo, Sun Shangxiang, Lady Gan,
+Huang Yueying, Zhuge Liang, Gongsun Zan, and Ma Chao. The 2 remaining generals are present as
 Standard roster metadata but are excluded from
 `IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
 Militia uses the generic server-owned effective-distance capability and is
@@ -127,7 +127,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Betrothment<br>Daredevil | Present | Implemented |
 | Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid<br>Prodigal Healer | Present | Implemented |
 | Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Unrivaled | Present | Implemented |
-| Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust<br>Beauty Outshining the Moon | Present | Not implemented |
+| Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust<br>Beauty Outshining the Moon | Present | Implemented |
 | Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Triumphant | Present | Not implemented |
 | Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Militia | Present | Implemented |
 | Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Axe of Insanity | Present | Not implemented |
@@ -380,11 +380,23 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Diao Chan (貂蝉)
 
 - **Runtime ID:** `diao-chan`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **QUN 003**, printed title **The Seductive Dancer**.
 - **Implementation interpretation:** Lust is a generated Duel-like settlement that explicitly cannot be dispelled by Negation, and Diao Chan chooses which selected male character provides the first [Attack]. Beauty Outshining the Moon is optional in the Final Phase.
 - **Likely engine shape:** once-per-Play-Phase active / generated Duel with custom first responder and no Negation window; Final Phase draw trigger.
-- **Current implementation:** Metadata only.
+- **Current implementation:** Lust is a once-per-Play-Phase generic active-skill
+  outcome. Diao Chan pays exactly one owned Hand or Equipment card, selects two
+  distinct living male characters in explicit order, and the server applies
+  generic Duel target legality before entering the canonical Duel response
+  continuation directly. The first selected participant receives the first
+  Attack requirement; the other participant sources failure damage. The
+  continuation stores `resumePlayerId` as Diao Chan and `damageCards: []`, so
+  Diao Chan is never a Duel participant or damage source. Lust creates no
+  physical Duel card, Stratagem boundary, `stratagem_used`, Cultivation, or
+  Negation window. Equipment costs use `equipment_lost`; Unrivaled and semantic
+  Attack providers remain canonical. Beauty Outshining the Moon is an optional
+  Diao Chan-own-turn `turn_end` draw of one private card and composes with Yue
+  Jin's shared turn-end lifecycle.
 
 ### Hua Xiong (华雄)
 

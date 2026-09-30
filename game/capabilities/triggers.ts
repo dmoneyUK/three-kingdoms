@@ -21,6 +21,7 @@ import { zhugeLiangStargazingTrigger } from "./heroes/zhuge-liang-stargazing";
 import { huangYueyingCultivationTrigger } from "./heroes/huang-yueying-cultivation";
 import { ladyGanDivineWisdomTrigger, ladyGanPrudenceTrigger } from "./heroes/lady-gan";
 import { sunShangxiangDaredevilTrigger } from "./heroes/sun-shangxiang-daredevil";
+import { diaoChanBeautyTrigger } from "./heroes/diao-chan";
 
 export type TriggerEvent = "turn_start" | "turn_end" | "draw_phase" | "discard_phase" | "judgement_revealed" | "judgement_effective" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice" | "hand_lost" | "equipment_lost" | "stratagem_used" | "hp_recovered";
 /**
@@ -30,7 +31,7 @@ export type TriggerEvent = "turn_start" | "turn_end" | "draw_phase" | "discard_p
 export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; lostCards?: Card[]; attackUsed?: boolean; targetId?: string; targetIds?: string[]; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; amountRecovered?: number; recoveryReason?: string; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie" | "cavalry"; effectiveCard?: Card; heroChoiceStage?: "suit" | "card"; heroChoiceGuess?: string; turnEndStage?: "activation" | "equipment" };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown; targetId?: unknown; targetIds?: unknown; choice?: unknown };
 export type TriggerSelectionConstraint =
-  | { type: "cards"; min: number; max: number; eligibleCardIds: string[]; targetIds?: string[] }
+  | { type: "cards"; min: number; max: number; eligibleCardIds: string[]; targetIds?: string[]; targetMin?: number; targetMax?: number }
   | { type: "target"; targetIds: string[]; min?: number; max?: number }
   | { type: "target_cards"; targetId: string; min: number; max: number; eligibleKeys: string[] }
   | { type: "choice"; choices: { id: string; label: string }[]; eligibleHandKeys: string[]; cardCountByChoice?: Record<string, number> };
@@ -110,7 +111,7 @@ const zhouYuFanjianChoice: TriggeredEffect = {
 
 import { yueJinDauntlessTrigger } from "./heroes/yue-jin-dauntless";
 
-const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, zhenJiLuoshenTrigger, zhugeLiangStargazingTrigger, huangYueyingCultivationTrigger, ladyGanDivineWisdomTrigger, ladyGanPrudenceTrigger, sunShangxiangDaredevilTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, maChaoCavalryTrigger, daQiaoDeflectionTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, diaoChanBeautyTrigger, zhenJiLuoshenTrigger, zhugeLiangStargazingTrigger, huangYueyingCultivationTrigger, ladyGanDivineWisdomTrigger, ladyGanPrudenceTrigger, sunShangxiangDaredevilTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, maChaoCavalryTrigger, daQiaoDeflectionTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {

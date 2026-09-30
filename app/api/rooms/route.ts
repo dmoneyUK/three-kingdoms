@@ -361,7 +361,8 @@ function activeHeroSkillOptions(player: PlayerRow | null | undefined, room: Room
   const influencingAvailable = playersInTurnOrder(players, player.seat).slice(1).some((candidate) => candidate.alive && STANDARD_HEROES.find((hero) => hero.id === candidate.hero)?.faction === "Shu");
   const betrothmentTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && heroGender(candidate.hero) === "male" && (candidate.hp ?? 0) < (candidate.max_hp ?? 0)).map((candidate) => candidate.id);
   const injuredLivingTargetIds = players.filter((candidate) => candidate.alive && (candidate.hp ?? 0) < (candidate.max_hp ?? 0)).map((candidate) => candidate.id);
-  return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, role: player.role, hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, betrothmentTargetIds, injuredLivingTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...player, ...attackUseLimitContext(player) }, room.phase) });
+  const lustTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && heroGender(candidate.hero) === "male" && canTargetCharacter({ sourceId: player.id, targetId: candidate.id, targetHero: candidate.hero, targetHandCount: parse<Card[]>(candidate.hand_json, []).length, cardKind: "Duel" })).map((candidate) => candidate.id);
+  return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, role: player.role, hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, betrothmentTargetIds, injuredLivingTargetIds, lustTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...player, ...attackUseLimitContext(player) }, room.phase) });
 }
 
 async function recoverClaimedHeroSkill(room: RoomRow, player: PlayerRow, hand: Card[], heldCards: Card[], discard: Card[], log: string[], message: string) {
@@ -1329,6 +1330,14 @@ async function advanceEquipmentLostEvents(roomId: string, records: EquipmentLost
     return;
   }
   const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+  if (resume.kind === "lust_duel") {
+    const owner = players.find((player) => player.id === resume.ownerId && player.alive);
+    const first = players.find((player) => player.id === resume.firstId && player.alive);
+    const second = players.find((player) => player.id === resume.secondId && player.alive);
+    if (owner && first && second) await beginLustDuel({ ...room, phase: "resolving", pending_json: null }, owner, first, second, discard, log);
+    if (handLoss) await maybeOpenHandLossTrigger(roomId, handLoss.playerId, handLoss.beforeHand);
+    return;
+  }
   await db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
     .bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
   const resolvingRoom = { ...room, phase: "resolving", pending_json: null, deck_json: JSON.stringify(deck), discard_json: JSON.stringify(discard), log_json: JSON.stringify(log) };
@@ -1382,15 +1391,16 @@ async function continueTurnEndEvent(room: RoomRow, continuation: TurnEndTriggerC
   const endingPlayer = players.find((player) => player.id === continuation.endingPlayerId) ?? null;
   if (endingPlayer?.alive) {
     const resolved = continuation.resolvedEffectIds ?? [];
-    for (const actor of playersInTurnOrder(players, continuation.endingSeat).filter((player) => player.id !== endingPlayer.id)) {
+    for (const actor of playersInTurnOrder(players, continuation.endingSeat)) {
       const options = getTriggeredEffects(turnEndTriggerContext(actor, endingPlayer, "activation"), resolved);
       if (!options.length) continue;
-      const presentation = addLogWithId(log, `${actor.name} may use Dauntless at the end of ${endingPlayer.name}'s turn.`);
+      const labels = options.map((option) => option.label).join(" or ");
+      const presentation = addLogWithId(log, `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn.`);
       const pending: TriggerPending = withPresentationBarrier({
         kind: "trigger",
         event: "turn_end",
         actorId: actor.id,
-        reason: `${actor.name} may use Dauntless on ${endingPlayer.name}, or decline`,
+        reason: `${actor.name} may use ${labels} at the end of ${endingPlayer.name}'s turn, or decline`,
         deadline: nextResponseDeadline(actor),
         resolvedEffectIds: resolved,
         continuation: { ...continuation, stage: "activation" },
@@ -1500,9 +1510,19 @@ function groupResponseDecision(cardKind: GroupContinuation["cardKind"], sourceId
   return { kind: "response", actorId, requirement: { kind: requiredKind === "Attack" ? "attack" : "dodge", sourceId, actorId, context: requiredKind === "Attack" ? "barbarian_invasion" : undefined }, reason, deadline, ...(resolutionId ? { resolutionId } : {}), continuation: { kind: "group", cardKind, sourceId, remainingIds, requiredKind, resumePhase, heldCards, damageCards, sequenceStartCardId: damageCards[0]?.id ?? heldCards[0]?.id ?? "", ...(resolutionId ? { resolutionId } : {}) } };
 }
 
-function duelResponseDecision(sourceId: string, targetId: string, opponentId: string, resumePhase: string, reason: string, deadline: number, damageCards?: Card[], wushuangPlayerId?: string): ResponsePending {
+function duelResponseDecision(sourceId: string, targetId: string, opponentId: string, resumePhase: string, reason: string, deadline: number, damageCards?: Card[], wushuangPlayerId?: string, resumePlayerId?: string): ResponsePending {
   const requiredAttackCount = wushuangPlayerId && targetId !== wushuangPlayerId ? 2 : 1;
-  return { kind: "response", actorId: targetId, requirement: { kind: "attack", sourceId, actorId: targetId, count: requiredAttackCount, context: "duel" }, reason, deadline, continuation: { kind: "duel", sourceId, targetId, opponentId, resumePhase, requiredAttackCount, ...(wushuangPlayerId ? { wushuangPlayerId } : {}), ...(damageCards?.length ? { damageCards } : {}) } };
+  return { kind: "response", actorId: targetId, requirement: { kind: "attack", sourceId, actorId: targetId, count: requiredAttackCount, context: "duel" }, reason, deadline, continuation: { kind: "duel", sourceId, targetId, opponentId, resumePhase, ...(resumePlayerId ? { resumePlayerId } : {}), requiredAttackCount, ...(wushuangPlayerId ? { wushuangPlayerId } : {}), ...(damageCards ? { damageCards } : {}) } };
+}
+
+/** Starts Lust after its cost and any Equipment-loss reactions have settled. */
+async function beginLustDuel(room: RoomRow, owner: PlayerRow, first: PlayerRow, second: PlayerRow, discard: Card[], log: string[]) {
+  if (!owner.alive || !first.alive || !second.alive || first.id === second.id) return;
+  const wushuangPlayerId = first.hero === "lü-bu" ? first.id : second.hero === "lü-bu" ? second.id : undefined;
+  const presentation = addLogWithId(log, `${owner.name} uses Lust: ${first.name} and ${second.name} enter a Duel. ${first.name} plays Attack first.`);
+  const pending = duelResponseDecision(first.id, first.id, second.id, "play", "Respond to Lust Duel: select Attack or take 1 damage", nextResponseDeadline(first), [], wushuangPlayerId, owner.id);
+  await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving'")
+    .bind(serializePending(withPresentationBarrier(pending, presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id).run();
 }
 
 function negationResponse(pending: ResponsePending | null | undefined): { response: ResponsePending; continuation: NegationContinuation } | null {
@@ -1541,6 +1561,7 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
         : canonicalTrigger?.continuation.kind === "hp_recovered_event" ? canonicalTrigger.continuation.recovery.playerId
         : canonicalTrigger?.continuation.kind === "equipment_lost_event" ? canonicalTrigger.continuation.loss.playerId
         : canonicalTrigger ? canonicalTrigger.continuation.sourceId
+            : pending.kind === "response" && pending.continuation.kind === "duel" ? pending.continuation.resumePlayerId ?? pending.continuation.sourceId
             : pending.kind === "response" ? pending.continuation.sourceId
             : pending.sourceId;
     const borrowedContinuationAttack = pending.kind === "response" && pending.continuation.kind === "attack" && (pending.continuation.origin === "triggered" || pending.continuation.origin === "serpent_spear" || pending.continuation.origin === "borrowed_sword") && owner.id !== pending.continuation.sourceId;
@@ -1713,7 +1734,7 @@ async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target:
 }
 
 async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePending; continuation: DuelContinuation }, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[]) {
-  const resume = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.sourceId).first<PlayerRow>();
+  const resume = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.resumePlayerId ?? pending.continuation.sourceId).first<PlayerRow>();
   if (!resume) return;
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
   await resolveSourcedDamage({
@@ -3313,13 +3334,28 @@ export async function POST(request: Request) {
       const liveEquipment = liveMe ? equipmentCards(liveMe) : [];
       const betrothmentTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && heroGender(player.hero) === "male" && (player.hp ?? 0) < (player.max_hp ?? 0)).map((player) => player.id);
       const injuredLivingTargetIds = livePlayers.filter((player) => player.alive && (player.hp ?? 0) < (player.max_hp ?? 0)).map((player) => player.id);
-      const execution = liveMe && liveRoom && option ? resolveActiveHeroSkill(skillId, { playerId: liveMe.id, hero: liveMe.hero, role: liveMe.role, hand: liveHand, equipment: liveEquipment, livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, betrothmentTargetIds, injuredLivingTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...liveMe, ...attackUseLimitContext(liveMe) }, liveRoom.phase) }, { cardIds: body.cardIds, targetId: body.targetId }) : null;
+      const lustTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && heroGender(player.hero) === "male" && canTargetCharacter({ sourceId: liveMe?.id ?? "", targetId: player.id, targetHero: player.hero, targetHandCount: parse<Card[]>(player.hand_json, []).length, cardKind: "Duel" })).map((player) => player.id);
+      const execution = liveMe && liveRoom && option ? resolveActiveHeroSkill(skillId, { playerId: liveMe.id, hero: liveMe.hero, role: liveMe.role, hand: liveHand, equipment: liveEquipment, livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, betrothmentTargetIds, injuredLivingTargetIds, lustTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...liveMe, ...attackUseLimitContext(liveMe) }, liveRoom.phase) }, { cardIds: body.cardIds, targetId: body.targetId, targetIds: body.targetIds }) : null;
       if (!execution || !liveRoom || !liveMe) return json({ error: "That hero skill is no longer available or its selection is stale.", stale: true, room: await roomState(code, token) }, 409);
       const selectedCardIds = "cardIds" in execution.outcome ? execution.outcome.cardIds : "cardId" in execution.outcome ? [execution.outcome.cardId] : [];
       const selectedIds = new Set(selectedCardIds);
-      const selected = selectedCardIds.map((id) => liveHand.find((card) => card.id === id) ?? (execution.outcome.kind === "discard_draw" || execution.outcome.kind === "lose_draw" ? liveEquipment.find((card) => card.id === id) : undefined)).filter((card): card is Card => Boolean(card));
+      const selected = selectedCardIds.map((id) => liveHand.find((card) => card.id === id) ?? liveEquipment.find((card) => card.id === id)).filter((card): card is Card => Boolean(card));
       if (selected.length !== selectedCardIds.length || selectedIds.size !== selectedCardIds.length) {
-        return json({ error: "One selected hero-skill card is no longer in your hand.", stale: true, room: await roomState(code, token) }, 409);
+        return json({ error: "One selected hero-skill card is no longer owned by you.", stale: true, room: await roomState(code, token) }, 409);
+      }
+      if (execution.outcome.kind === "lust") {
+        const [firstId, secondId] = execution.outcome.targetIds;
+        const first = livePlayers.find((player) => player.id === firstId);
+        const second = livePlayers.find((player) => player.id === secondId);
+        const legalIds = new Set(lustTargetIds);
+        const pairLegal = first && second && first.id !== second.id
+          && first.id !== liveMe.id && second.id !== liveMe.id
+          && first.alive && second.alive
+          && heroGender(first.hero) === "male" && heroGender(second.hero) === "male"
+          && legalIds.has(first.id) && legalIds.has(second.id)
+          && canTargetCharacter({ sourceId: second.id, targetId: first.id, targetHero: first.hero, targetHandCount: parse<Card[]>(first.hand_json, []).length, cardKind: "Duel" })
+          && canTargetCharacter({ sourceId: first.id, targetId: second.id, targetHero: second.hero, targetHandCount: parse<Card[]>(second.hand_json, []).length, cardKind: "Duel" });
+        if (execution.outcome.cardIds.length !== 1 || selected.length !== 1 || !pairLegal) return json({ error: "Lust requires exactly 1 owned card and two distinct living male characters who can be targeted by Duel.", stale: true, room: await roomState(code, token) }, 409);
       }
       if (execution.outcome.kind === "give_cards" || execution.outcome.kind === "dismantle" || execution.outcome.kind === "fanjian" || execution.outcome.kind === "place_delayed" || execution.outcome.kind === "influencing_attack" || execution.outcome.kind === "betrothment" || execution.outcome.kind === "prodigal_healer") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId);
@@ -3362,7 +3398,29 @@ export async function POST(request: Request) {
       let log = parse<string[]>(liveRoom.log_json, []);
       hand = hand.filter((card) => !selectedIds.has(card.id));
       equipment = Object.fromEntries(Object.entries(equipment).filter(([, card]) => !card || !selectedIds.has(card.id))) as EquipmentZone;
-      if (execution.outcome.kind === "prodigal_healer") {
+      if (execution.outcome.kind === "lust") {
+        const [firstId, secondId] = execution.outcome.targetIds;
+        const first = livePlayers.find((player) => player.id === firstId && player.alive);
+        const second = livePlayers.find((player) => player.id === secondId && player.alive);
+        const nextState = { ...skillState, turnPlayerId: liveMe.id, lustUsed: true };
+        const lostEquipment = selected.filter((card) => liveEquipment.some((equipped) => equipped.id === card.id));
+        discard.push(selected[0]);
+        log = addDiscardEvent(log, liveMe.name, selected);
+        log = addLog(log, `${liveMe.name} uses Lust; ${first?.name ?? "the first selected character"} must play Attack first against ${second?.name ?? "the other selected character"}.`);
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify(hand), JSON.stringify(equipment), liveMe.id),
+          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+        ]);
+        if (first && second) {
+          if (lostEquipment.length) {
+            await advanceEquipmentLostEvents(room.id, equipmentLostRecords(liveMe.id, lostEquipment, "lust"), { kind: "lust_duel", ownerId: liveMe.id, firstId: first.id, secondId: second.id, resumePhase: "play", handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
+            await maybeOpenHandLossTrigger(room.id, liveMe.id, liveHand);
+          } else {
+            await beginLustDuel({ ...liveRoom, phase: "resolving", pending_json: null }, liveMe, first, second, discard, log);
+            await maybeOpenHandLossTrigger(room.id, liveMe.id, liveHand);
+          }
+        }
+      } else if (execution.outcome.kind === "prodigal_healer") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive && (player.hp ?? 0) < (player.max_hp ?? 0));
         if (!target || selected.length !== 1 || !liveHand.some((held) => held.id === selected[0].id) || equipmentCards(liveMe).some((card) => card.id === selected[0].id)) {
           await recoverClaimedHeroSkill(liveRoom, liveMe, hand, selected, discard, log, `${liveMe.name}'s Prodigal Healer could not find a valid injured target or Hand cost and was settled safely.`);
@@ -3437,6 +3495,7 @@ export async function POST(request: Request) {
         ]);
         await advanceHpRecoveredEvents(room.id, shouldRecover ? [{ playerId: liveMe.id, amountRecovered, sourceId: liveMe.id, reason: "benevolence" }] : [], { kind: "phase", phase: "play", playerId: liveMe.id });
       } else if (execution.outcome.kind === "discard_draw") {
+        const lostEquipment = selected.filter((card) => liveEquipment.some((equipped) => equipped.id === card.id));
         discard.push(...selected);
         log = addDiscardEvent(log, liveMe.name, selected);
         const draw = drawCards(deck, discard, selected.length, log); deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${liveMe.name} uses Equilibrium and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, liveMe.id);
@@ -3444,8 +3503,13 @@ export async function POST(request: Request) {
         const nextState = { ...skillState, turnPlayerId: liveMe.id, zhihengUsed: true };
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ?, equipment_json = ? WHERE id = ?").bind(JSON.stringify([...hand, ...draw.drawn]), JSON.stringify(equipment), liveMe.id),
-          db.prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, deck_json = ?, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+          db.prepare(`UPDATE rooms SET phase = '${lostEquipment.length ? "resolving" : "play"}', pending_json = NULL, deck_json = ?, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?`).bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
         ]);
+        if (lostEquipment.length) {
+          await advanceEquipmentLostEvents(room.id, equipmentLostRecords(liveMe.id, lostEquipment, "active_skill_cost"), { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
+        } else {
+          await maybeOpenHandLossTrigger(room.id, liveMe.id, liveHand);
+        }
       } else if (execution.outcome.kind === "dismantle") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive);
         const card = selected[0];
@@ -3670,13 +3734,13 @@ export async function POST(request: Request) {
       const source = continuation.stage === "equipment"
         ? players.find((player) => player.id === continuation.sourceId && player.alive) ?? null
         : players.find((player) => player.id === trigger.actorId && player.alive) ?? null;
-      if (!endingPlayer || !source || (continuation.stage === "activation" && source.id === endingPlayer.id)) return json({ error: "That turn-end decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (!endingPlayer || !source) return json({ error: "That turn-end decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
       const context = triggerContextFor(trigger, players);
       const available = context ? getTriggeredEffects(context, trigger.resolvedEffectIds) : [];
-      if (action === "apply_trigger" && (!triggerExecution || !available.some((option) => option.effectId === triggerExecution.effectId))) return json({ error: "That Dauntless decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      if (action === "apply_trigger" && continuation.stage === "activation" && (triggerExecution.outcome.kind !== "discard_cards" || triggerExecution.outcome.targetId !== source.id || triggerExecution.outcome.targetCardIds.length !== 1)) return json({ error: "Select exactly 1 Basic card for Dauntless.", stale: true, room: await roomState(code, token) }, 409);
+      if (action === "apply_trigger" && (!triggerExecution || !available.some((option) => option.effectId === triggerExecution.effectId))) return json({ error: "That turn-end decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+      if (action === "apply_trigger" && continuation.stage === "activation" && triggerExecution.outcome.kind !== "draw_cards" && (triggerExecution.outcome.kind !== "discard_cards" || triggerExecution.outcome.targetId !== source.id || triggerExecution.outcome.targetCardIds.length !== 1)) return json({ error: "Select exactly 1 Basic card for Dauntless.", stale: true, room: await roomState(code, token) }, 409);
       if (action === "apply_trigger" && continuation.stage === "equipment" && (triggerExecution.outcome.kind !== "target_discard" || !equipmentCards(endingPlayer).some((card) => card.id === triggerExecution.outcome.targetCardId))) return json({ error: "Select exactly 1 equipped card for Dauntless.", stale: true, room: await roomState(code, token) }, 409);
-      if (action === "apply_trigger" && continuation.stage === "activation") {
+      if (action === "apply_trigger" && continuation.stage === "activation" && triggerExecution.outcome.kind === "discard_cards") {
         const requestedCostId = (triggerExecution.outcome as { kind: "discard_cards"; targetCardIds: string[] }).targetCardIds[0];
         const requestedCost = parse<Card[]>(source.hand_json, []).find((card) => card.id === requestedCostId);
         if (!requestedCost || cardDefinition(requestedCost.kind).category !== "basic") return json({ error: "The Dauntless cost must be exactly 1 Basic card from Yue Jin's hand.", stale: true, room: await roomState(code, token) }, 409);
@@ -3687,7 +3751,27 @@ export async function POST(request: Request) {
       let log = parse<string[]>(liveRoom.log_json, []);
       if (action === "decline_trigger_effect") {
         const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), ...available.map((option) => option.effectId)])] } satisfies TurnEndTriggerContinuation;
-        await continueTurnEndEvent({ ...liveRoom, phase: "resolving", pending_json: null }, resolved, players, parse<Card[]>(liveRoom.deck_json, []), discard, addLog(log, `${source.name} declines Dauntless; the turn-end event continues.`));
+        await continueTurnEndEvent({ ...liveRoom, phase: "resolving", pending_json: null }, resolved, players, parse<Card[]>(liveRoom.deck_json, []), discard, addLog(log, `${source.name} declines the turn-end option; the event continues.`));
+        return json({ room: await roomState(code, token) });
+      }
+      if (continuation.stage === "activation" && triggerExecution.outcome.kind === "draw_cards") {
+        if (triggerExecution.outcome.amount !== 1) return json({ error: "That Beauty Outshining the Moon decision is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+        let deck = parse<Card[]>(liveRoom.deck_json, []);
+        let nextDiscard = discard;
+        const draw = drawCards(deck, nextDiscard, 1, log);
+        deck = draw.deck;
+        nextDiscard = draw.discard;
+        const nextHand = [...parse<Card[]>(source.hand_json, []), ...draw.drawn];
+        let nextLog = addTriggeredEffectNotice(draw.log, source.name, triggerExecution.presentation?.label ?? "Beauty Outshining the Moon").log;
+        for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, source, drawn);
+        nextLog = addHistory(nextLog, `${source.name} draws ${draw.drawn.length} card with Beauty Outshining the Moon.`, source.id);
+        const resolved = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), triggerExecution.effectId])] } satisfies TurnEndTriggerContinuation;
+        const nextPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), source.id),
+          db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(nextDiscard), JSON.stringify(nextLog), room.id),
+        ]);
+        await continueTurnEndEvent({ ...liveRoom, phase: "resolving", pending_json: null, deck_json: JSON.stringify(deck), discard_json: JSON.stringify(nextDiscard), log_json: JSON.stringify(nextLog) }, resolved, nextPlayers, deck, nextDiscard, nextLog);
         return json({ room: await roomState(code, token) });
       }
       if (continuation.stage === "equipment") {

@@ -2,12 +2,38 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+## Stage 6 hero capability — Diao Chan / Lust + Beauty Outshining the Moon — 2026-09-30
+
+Complete on this rules-only round. Diao Chan is enabled at **28 / 30 Standard
+heroes implemented** and **44 / 46 printed skills implemented**. Only Hua Xiong
+and Pan Feng remain. No artwork or adjacent hero work is included.
+
+Lust is the generic active Play-Phase option `diao_chan_lust`. It is offered
+once per Play Phase when Diao Chan owns at least one Hand or Equipment card and
+at least two legal living male targets exist. The authoritative selection pays
+exactly one physical card, chooses exactly two distinct targets in explicit
+first-Attack order, and revalidates generic Duel target legality, including
+Empty Fortress, without applying distance. The engine claims and pays before
+entering a direct canonical Duel continuation with `damageCards: []` and
+`resumePlayerId` set to Diao Chan; no Stratagem, Negation, physical Duel card,
+`stratagem_used`, or Cultivation path is involved. Existing Unrivaled,
+Guan Yu, Zhao Yun, Serpent Spear, Liu Bei, damage-source, Dying, and equipment
+loss semantics remain in their generic pipelines.
+
+Beauty Outshining the Moon is an optional Diao Chan-own-turn `turn_end`
+provider. Acceptance draws exactly one private card through canonical refill;
+decline draws zero. It composes with Yue Jin's existing deterministic turn-end
+ordering and advances once after either choice. Reload and stale/replay safety,
+Quick Test ownership, and the focused API regressions are covered in
+`tests/api/diao-chan.test.mjs`.
+
+Do not start Hua Xiong or Pan Feng in this round.
+
 ## Stage 6 hero capability — Hua Tuo / First Aid + Prodigal Healer — 2026-09-30
 
-Complete on this rules-only round. Hua Tuo is enabled at **27 / 30 Standard
-heroes implemented** and **42 / 46 printed skills implemented**. The remaining
-heroes are Diao Chan, Hua Xiong, and Pan Feng. No artwork or adjacent hero work
-is included.
+Complete on that earlier rules-only round. Hua Tuo was enabled at **27 / 30
+Standard heroes implemented** and **42 / 46 printed skills implemented**. The
+remaining heroes were Diao Chan, Hua Xiong, and Pan Feng.
 
 First Aid adds the small generic semantic `peach` rescue requirement. The
 physical Peach provider and Hua Tuo's First Aid provider both satisfy it;

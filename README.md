@@ -1,11 +1,34 @@
 # Three Kingdoms
 
+## Stage 6 Diao Chan / Lust + Beauty Outshining the Moon — 2026-09-30
+
+Diao Chan is complete and enabled in Standard selection at **28/30 heroes** and
+**44/46 printed skills**. Only Hua Xiong and Pan Feng remain. This is a
+rules-only round; no graphic or artwork work was included.
+
+Lust is a once-per-Play-Phase semantic active skill. It accepts exactly one
+owned card from Diao Chan's Hand or Equipment Zone, excludes Judgement cards,
+and selects exactly two distinct living male characters in an explicit order.
+The server applies the generic Duel target-legality capability, including Empty
+Fortress, then enters the canonical Duel response engine directly: no physical
+Duel card, `stratagem_used`, Cultivation, or Negation window is created. The
+selected first character receives the first Attack requirement, the other
+participant is the Duel damage source, and `resumePlayerId` returns the
+enclosing Play Phase to Diao Chan. Equipment costs use the shared
+`equipment_lost` pipeline. Unrivaled, Guan Yu, Zhao Yun, Serpent Spear,
+reload, stale-request, and Quick Test ownership remain generic.
+
+Beauty Outshining the Moon is an optional own-turn `turn_end` provider that
+draws exactly one private card through canonical refill. It composes with Yue
+Jin's existing turn-end lifecycle and advances the turn exactly once after
+either acceptance or decline. Deterministic coverage is in
+`tests/api/diao-chan.test.mjs`.
+
 ## Stage 6 Hua Tuo / First Aid + Prodigal Healer — 2026-09-30
 
 Hua Tuo is complete and enabled in Standard selection at **27/30 heroes** and
-**42/46 printed skills**. The remaining Standard heroes are Diao Chan, Hua
-Xiong, and Pan Feng. This is a rules-only round; no graphic or artwork work
-was included.
+**42/46 printed skills**. At that point the remaining Standard heroes were
+Diao Chan, Hua Xiong, and Pan Feng. This historical stage is retained below.
 
 First Aid is a semantic Peach response provider for Hua Tuo only when the
 authoritative turn owner is another character. It exposes only red-suited
