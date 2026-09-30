@@ -1,22 +1,17 @@
 # Three Kingdoms — current handover
 
-## Current state — Gan Ning Ambushment UI stability — 2026-09-30
+## Current state — Cao Cao Entourage + Sun Quan Deliverance correctness — 2026-09-30
 
-Gan Ning `gan_ning_qixi` activation is hardened at the shared active-skill
-client boundary. Card selections now have safe `eligibleCardIds` and
-`targetIds` arrays, and absent `targetMin`/`targetMax` default to `1`. The
-empty card/target state after tapping Ambushment renders safely, keeps the
-server-projected black Hand card and legal opponents available, and uses the
-same revision/effect keyed state for the exact generic trigger submission.
+Cao Cao `cao_cao_hujia` (Entourage) now requires `context.hero ===
+"cao-cao" && context.role === "Lord"` in both option discovery and semantic
+resolution. Sun Quan rescue handling now requires `target.hero ===
+"sun-quan" && target.role === "Lord"` before applying Deliverance's second
+point, while preserving First Aid and the canonical recovery/Dying pipeline.
+Focused API coverage proves Lord delegation, non-Lord discovery and forged
+resolution rejection, Wu/other-character Peach restrictions, max-HP capping,
+and resumed Dying state. No provider-specific route or UI protocol was added.
 
-`GameRoomErrorBoundary` remains protective but records public phase, action,
-hero, effect IDs, exception, and component stack without private card
-identities; its recovery copy no longer claims saved data is incompatible.
-`game/room-safety.js` and Qixi's server/Negation/target-card flow are
-unchanged. The focused regression is in
-`tests/room-safety-render.test.mjs`; full build, 64 fast tests, 183 API tests,
-lint, and `git diff --check` pass, with one pre-existing lint warning. The
-next milestone is pushing this validated fix to `origin/main`.
+The next gameplay bug-fix task is **Lü Bu / Unrivaled semantic multi-response**.
 
 ## Current state — 2026-09-30
 
@@ -26,19 +21,7 @@ The current codebase remains capability-driven: semantic `respond` / `decline_re
 
 ## Real remaining gameplay work
 
-### 1. Cao Cao / Entourage — add the missing Lord restriction
-
-The printed skill is a Lord skill. Current `caoCaoHujiaProvider` checks `context.hero === "cao-cao"` but does not require `context.role === "Lord"`. Liu Bei / Influencing already demonstrates the intended role gate.
-
-Required work: require authoritative Lord role in both Entourage option discovery and resolution, and correct existing regressions that currently allow non-Lord Cao Cao. Preserve delegated-response ownership, privacy, stale safety, and normal/Quick Test parity.
-
-### 2. Sun Quan / Deliverance — add the missing Lord restriction
-
-The printed skill is `Lord, Passive`. Current rescue handling recognises Sun Quan and a different Wu rescuer but does not require Sun Quan's authoritative role to be Lord.
-
-Required work: require Sun Quan to be Lord before the Deliverance bonus applies, and correct tests that currently accept the bonus for non-Lord Sun Quan. Keep ordinary Peach/recovery, Dying continuation, and Lady Gan `hp_recovered` interactions canonical.
-
-### 3. Lü Bu / Unrivaled — fix generic semantic multi-response handling
+### 1. Lü Bu / Unrivaled — fix generic semantic multi-response handling
 
 This is the largest confirmed interaction defect. The current response layer uses `requirement.count = 2` and filters provider selections by physical selection count. Semantic response count must not be inferred from the number of physical cost cards.
 
@@ -74,7 +57,7 @@ Do not change the source zones for Guan Yu God of War, Zhen Ji Empress Dowager, 
 
 ## Execution order
 
-Complete the remaining work in this order: **(1) Cao Cao + Sun Quan Lord gates; (2) generic Unrivaled/multi-response correction; (3) verify and, if confirmed, fix Huang Gai timing; (4) Sima Yi random-Hand hardening.**
+Complete the remaining work in this order: **(1) generic Unrivaled/multi-response correction; (2) verify and, if confirmed, fix Huang Gai timing; (3) Sima Yi random-Hand hardening.**
 
 After each change, add focused deterministic regressions and re-run the relevant API/capability suites. Do not reduce the implementation status from **30/30 heroes / 46/46 skills** for these defects; they are interaction corrections to completed skills.
 

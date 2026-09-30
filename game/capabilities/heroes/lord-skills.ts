@@ -15,11 +15,11 @@ export const caoCaoHujiaProvider: ResponseProvider = {
   satisfies: "dodge",
   activation: "explicit",
   getOption(context) {
-    const delegates = context.hero === "cao-cao" ? delegatesFor(context, "Wei") : [];
+    const delegates = context.hero === "cao-cao" && context.role === "Lord" ? delegatesFor(context, "Wei") : [];
     return delegates.length ? { provider: "cao_cao", providerId: "cao_cao_hujia", satisfies: "dodge", label: "Use Entourage — ask Wei", selection: null } : null;
   },
   resolve(context) {
-    const delegates = context.hero === "cao-cao" ? delegatesFor(context, "Wei") : [];
+    const delegates = context.hero === "cao-cao" && context.role === "Lord" ? delegatesFor(context, "Wei") : [];
     return delegates.length ? { status: "delegated", providerId: "cao_cao_hujia", satisfies: "dodge", delegateIds: delegates.map((delegate) => delegate.id) } : null;
   },
 };

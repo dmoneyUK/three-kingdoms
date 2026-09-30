@@ -335,7 +335,7 @@ export async function openHujiaScenario({ delegateHero, delegateCards = [], thir
   assert.ok(source && cao && delegate && third);
   const attack = card("Attack", "hujia-regression-attack");
   for (const player of game.room.players) sql("UPDATE players SET hero=NULL WHERE id=" + quote(player.id));
-  sql("UPDATE players SET hero='cao-cao' WHERE id=" + quote(cao.id));
+  sql("UPDATE players SET hero='cao-cao', role='Lord' WHERE id=" + quote(cao.id));
   sql("UPDATE players SET hero=" + quote(delegateHero) + " WHERE id=" + quote(delegate.id));
   if (thirdHero) sql("UPDATE players SET hero=" + quote(thirdHero) + " WHERE id=" + quote(third.id));
   setEquipment(cao.id, {});

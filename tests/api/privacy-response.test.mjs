@@ -122,7 +122,7 @@ test("the three faction lords expose their active skills through the semantic pr
   assert.ok(jiuyuanSource && sun && wuRescuer);
   const lethalAttack = card("Attack", "jiuyuan-lethal"); const rescuePeach = card("Peach", "jiuyuan-peach");
   sql(`UPDATE players SET hero=NULL WHERE id IN (${jiuyuanGame.room.players.filter((player) => player.id !== sun.id && player.id !== wuRescuer.id).map((player) => quote(player.id)).join(",")})`);
-  sql(`UPDATE players SET hero='sun-quan' WHERE id=${quote(sun.id)}`); sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(wuRescuer.id)}`);
+  sql(`UPDATE players SET hero='sun-quan', role='Lord' WHERE id=${quote(sun.id)}`); sql(`UPDATE players SET hero='gan-ning' WHERE id=${quote(wuRescuer.id)}`);
   setEquipment(sun.id, {}); setHand(jiuyuanSource.id, [lethalAttack], 4, 4); setHand(sun.id, [], 1, 4); setHand(wuRescuer.id, [rescuePeach], 4, 4); setTurn(jiuyuanGame.code, jiuyuanSource.seat);
   const jiuyuanAttack = await requestAndSettle("play_card", { code: jiuyuanGame.code, token: jiuyuanMembers[0].token, cardId: lethalAttack.id, targetId: sun.id });
   assert.equal(jiuyuanAttack.status, 200, JSON.stringify(jiuyuanAttack.data));
@@ -166,7 +166,7 @@ test("the three faction lords expose their active skills through the semantic pr
   const hujiaWei = hujiaGame.room.players.find((player) => player.name === "Bob");
   assert.ok(hujiaSource && hujiaCao && hujiaWei);
   const hujiaAttack = card("Attack", "hujia-attack"); const hujiaDodge = card("Dodge", "hujia-dodge");
-  sql(`UPDATE players SET hero=NULL WHERE id=${quote(hujiaSource.id)}`); sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(hujiaCao.id)}`); sql(`UPDATE players SET hero='zhang-liao' WHERE id=${quote(hujiaWei.id)}`);
+  sql(`UPDATE players SET hero=NULL WHERE id=${quote(hujiaSource.id)}`); sql(`UPDATE players SET hero='cao-cao', role='Lord' WHERE id=${quote(hujiaCao.id)}`); sql(`UPDATE players SET hero='zhang-liao' WHERE id=${quote(hujiaWei.id)}`);
   setEquipment(hujiaCao.id, {}); setHand(hujiaSource.id, [hujiaAttack], 4, 4); setHand(hujiaCao.id, [], 4, 4); setHand(hujiaWei.id, [hujiaDodge], 4, 4); setTurn(hujiaGame.code, hujiaSource.seat);
   const hujiaOpened = await requestAndSettle("play_card", { code: hujiaGame.code, token: hujiaHost.token, cardId: hujiaAttack.id, targetId: hujiaCao.id });
   assert.equal(hujiaOpened.status, 200, JSON.stringify(hujiaOpened.data));
@@ -178,6 +178,19 @@ test("the three faction lords expose their active skills through the semantic pr
   const hujiaDodged = await requestAndSettle("respond", { code: hujiaGame.code, token: hujiaBob.token, cardId: hujiaDodge.id });
   assert.equal(hujiaDodged.status, 200, JSON.stringify(hujiaDodged.data));
   assert.equal(hujiaDodged.data.room.players.find((player) => player.id === hujiaCao.id).hp, 4, "the delegated Dodge prevents damage");
+
+  const nonLordHujia = await createHumanGame();
+  const nonLordSource = nonLordHujia.room.players[0]; const nonLordCao = nonLordHujia.room.players[1]; const nonLordWei = nonLordHujia.room.players[2];
+  const nonLordAttack = card("Attack", "hujia-non-lord-attack"); const nonLordDodge = card("Dodge", "hujia-non-lord-dodge");
+  sql(`UPDATE players SET hero=NULL WHERE id IN (${nonLordHujia.room.players.map((player) => quote(player.id)).join(",")})`);
+  sql(`UPDATE players SET hero='cao-cao', role='Loyalist' WHERE id=${quote(nonLordCao.id)}`); sql(`UPDATE players SET hero='zhang-liao' WHERE id=${quote(nonLordWei.id)}`);
+  setHand(nonLordSource.id, [nonLordAttack], 4, 4); setHand(nonLordCao.id, [], 4, 4); setHand(nonLordWei.id, [nonLordDodge], 4, 4); setHand(nonLordHujia.room.players[3].id, [], 4, 4); setTurn(nonLordHujia.code, nonLordSource.seat);
+  const nonLordOpened = await requestAndSettle("play_card", { code: nonLordHujia.code, token: nonLordHujia.members[0].token, cardId: nonLordAttack.id, targetId: nonLordCao.id });
+  assert.equal(nonLordOpened.status, 200, JSON.stringify(nonLordOpened.data));
+  const nonLordView = await state(nonLordHujia.code, nonLordHujia.members[1].token);
+  assert.equal(nonLordView.data.currentAction.options?.some((option) => option.providerId === "cao_cao_hujia") ?? false, false, "a non-Lord Cao Cao does not discover Entourage");
+  const forgedNonLord = await requestAndSettle("respond", { code: nonLordHujia.code, token: nonLordHujia.members[1].token, providerId: "cao_cao_hujia" });
+  assert.equal(forgedNonLord.status, 409, "resolution rejects a forged non-Lord Entourage invocation");
 
   const jijiangGame = await createHumanGame();
   const [jijiangHost, jijiangAlice, jijiangBob] = jijiangGame.members;
@@ -375,6 +388,46 @@ test("Hujia lets a Wei character with Dodge cancel the Attack", { timeout: 120_0
   assert.equal(answered.data.room.players.find((player) => player.id === game.cao.id).hp, 4);
 });
 
+test("Deliverance is Lord-only, faction- and ownership-gated, capped, and resumes Dying", { timeout: 120_000 }, async () => {
+  async function rescue({ role = "Lord", rescuerHero = "gan-ning", self = false, maxHp = 4 }) {
+    const game = await createHumanGame();
+    const source = game.room.players[0]; const sun = game.room.players[1]; const rescuer = game.room.players[2];
+    const attack = card("Attack", `deliverance-attack-${role}-${rescuerHero}-${self}-${maxHp}`); const peach = card("Peach", `deliverance-peach-${role}-${rescuerHero}-${self}-${maxHp}`);
+    for (const player of game.room.players) sql(`UPDATE players SET hero=NULL WHERE id=${quote(player.id)}`);
+    sql(`UPDATE players SET hero='sun-quan', role=${quote(role)} WHERE id=${quote(sun.id)}`);
+    if (!self) sql(`UPDATE players SET hero=${quote(rescuerHero)} WHERE id=${quote(rescuer.id)}`);
+    setHand(source.id, [attack], 4, 4); setHand(sun.id, self ? [peach] : [], 1, maxHp); setHand(rescuer.id, self ? [] : [peach], 4, 4); setHand(game.room.players[3].id, [], 4, 4); setTurn(game.code, source.seat);
+    const started = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: sun.id });
+    assert.equal(started.status, 200, JSON.stringify(started.data));
+    const membersById = new Map(game.room.players.map((player, index) => [player.id, game.members[index]]));
+    let rescued = null;
+    for (let attempt = 0; attempt < game.members.length && !rescued; attempt++) {
+      const views = await Promise.all(game.members.map((member) => state(game.code, member.token)));
+      const activeIndex = views.findIndex((view) => view.data.currentAction?.kind === "dying" && view.data.isMyAction);
+      const actorId = activeIndex >= 0 ? views[activeIndex].data.currentAction.actorId : null; const actorMember = actorId ? membersById.get(actorId) : null;
+      if (!actorId || !actorMember) break;
+      const peachOwner = self ? sun.id : rescuer.id;
+      rescued = actorId === peachOwner
+        ? await requestAndSettle("give_peach", { code: game.code, token: actorMember.token, cardId: peach.id })
+        : (await requestAndSettle("skip_rescue", { code: game.code, token: actorMember.token }), null);
+    }
+    assert.equal(rescued?.status, 200, "the eligible Peach owner completes rescue");
+    return rescued.data.room;
+  }
+
+  const lordWu = await rescue({});
+  assert.equal(lordWu.players.find((player) => player.id === lordWu.players[1].id)?.hp, 2);
+  assert.equal(lordWu.phase, "play-struck", "Dying resumes the interrupted Attack continuation"); assert.equal(lordWu.pendingDying, null);
+  const nonLord = await rescue({ role: "Loyalist" });
+  assert.equal(nonLord.players[1].hp, 1, "non-Lord Sun Quan gets ordinary Peach recovery");
+  const nonWu = await rescue({ rescuerHero: "cao-cao" });
+  assert.equal(nonWu.players[1].hp, 1, "non-Wu rescuer gets ordinary Peach recovery");
+  const ownPeach = await rescue({ self: true });
+  assert.equal(ownPeach.players[1].hp, 1, "Sun Quan's own Peach gets ordinary recovery");
+  const capped = await rescue({ maxHp: 1 });
+  assert.equal(capped.players[1].hp, 1, "canonical recovery caps Deliverance at max HP");
+});
+
 test("Hujia asks Wei characters in action order instead of skipping empty hands", { timeout: 120_000 }, async () => {
   const dodge = card("Dodge", "hujia-order-dodge");
   const game = await openHujiaScenario({ delegateHero: "simayi", thirdHero: "zhang-liao", thirdCards: [dodge] });
@@ -453,5 +506,3 @@ test("Jijiang also asks an empty-handed Shu character before the next delegate",
   const answered = await requestAndSettle("respond", { code: game.code, token: secondShuMember.token, cardId: attack.id });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
 });
-
-

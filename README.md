@@ -1,22 +1,17 @@
 # War of Three Kingdoms
 
-## UI stability — Gan Ning Ambushment activation — 2026-09-30
+## Gameplay correctness — Cao Cao Entourage + Sun Quan Deliverance — 2026-09-30
 
-Fixed the active-skill render boundary used by Gan Ning's `gan_ning_qixi`
-(`Ambushment`). Card-based active skills now normalize their card IDs, target
-IDs, and target bounds before rendering; Qixi safely defaults absent
-`targetMin`/`targetMax` to one target, including the empty state immediately
-after activation. Submission remains the generic `trigger` contract with
-`providerId`, `cardIds`, and one `targetId`; server-owned legality,
-`room-safety.js`, Burning Bridges Negation, and card conservation are
-unchanged.
+Corrected the missing Lord-role gates for Cao Cao's Entourage and Sun Quan's
+Deliverance. Entourage now requires authoritative Lord status in both semantic
+provider discovery and resolution, preserving delegated-response ownership,
+privacy, ordering, and stale safety. Deliverance now additionally requires
+Lord Sun Quan while retaining the existing Wu-rescuer, other-character,
+First Aid, max-HP, and canonical Dying/recovery behavior.
 
-The render boundary now logs public phase/action/hero/effect context, the
-exception, and component stack without private card identities, and its copy
-does not misdiagnose a React render exception as incompatible saved data.
-Coverage is in `tests/room-safety-render.test.mjs`, alongside the existing
-Qixi API and room-safety regressions. The next milestone is pushing this
-validated fix to `origin/main`.
+Focused API regressions cover Lord and non-Lord discovery/resolution, faction
+and ownership restrictions, capping, and Dying continuation. The next
+gameplay bug-fix milestone is Lü Bu / Unrivaled semantic multi-response.
 
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
@@ -44,9 +39,7 @@ See:
 
 The current verified priorities are:
 
-1. **Cao Cao / Entourage:** enforce the missing Lord-role restriction.
-2. **Sun Quan / Deliverance:** enforce the missing Lord-role restriction.
-3. **Lü Bu / Unrivaled:** correct generic multi-response handling so semantic Attack/Dodge count is independent of provider physical-card cost. This includes conversions, Serpent Spear, Eight Trigrams, delegated responses, normal Duel, and Diao Chan Lust.
+1. **Lü Bu / Unrivaled:** correct generic multi-response handling so semantic Attack/Dodge count is independent of provider physical-card cost. This includes conversions, Serpent Spear, Eight Trigrams, delegated responses, normal Duel, and Diao Chan Lust.
 4. **Huang Gai / Self Sacrifice:** verify the authoritative 1-HP timing; if confirmed, make lethal HP loss enter canonical Dying/rescue before the suspended draw resumes.
 5. **Sima Yi / Retaliation:** make hidden-Hand acquisition server-random while keeping public Equipment/Judgement selection exact.
 
