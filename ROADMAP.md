@@ -17,7 +17,8 @@ Attacks, non-Attack damage, prevention, or zero damage. The physical Attack suit
 is carried in the generic damage metadata, so Guan Yu, Zhao Yun, Liu Bei
 Influencing, Borrowed Sword, Da Qiao Deflection, follow-up Attacks, and
 multi-target Halberd flows preserve the correct source and suit. Serpent Spear
-does not invent a suit.
+uses the generic common-suit rule: same-suit component cards preserve that
+suit, while mixed-suit components have no suit.
 
 Recovery uses canonical `applyRecovery` and `hp_recovered`; nested Prudence
 resolves before the original damage continuation resumes. The implementation

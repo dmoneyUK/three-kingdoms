@@ -15,8 +15,9 @@ HP, Draw 1 card, or Decline. Recovery uses `applyRecovery` and the canonical
 `hp_recovered` continuation, so Lady Gan's Prudence resolves before the same
 damage continuation resumes. The event is one opportunity per damage event,
 preserves converted Attack identity (including Guan Yu, Zhao Yun, Influencing,
-Borrowed Sword, Deflection, and Halberd flows), and treats Serpent Spear's
-suitless virtual Attack as non-red. Reload, stale/replay safety, private draw
+Borrowed Sword, Deflection, and Halberd flows), and applies the generic
+common-suit rule to Serpent Spear's two-card virtual Attack: a shared Heart or
+Diamond remains red, while mixed or black suits are non-red. Reload, stale/replay safety, private draw
 projection, and Quick Test actor ownership remain on the semantic trigger
 contract.
 

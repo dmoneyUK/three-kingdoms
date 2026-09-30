@@ -145,3 +145,8 @@ export function triggerActorId(effectId: string, context: TriggerContext) {
   const trigger = triggers.find((candidate) => candidate.id === effectId && candidate.event === context.event);
   return trigger?.getActorId?.(context) ?? null;
 }
+
+/** Returns whether a damage trigger is intentionally repeated per damage point. */
+export function triggerRepeatsPerDamagePoint(effectId: string, event: TriggerEvent = "damage_suffered") {
+  return triggers.find((candidate) => candidate.id === effectId && candidate.event === event)?.repeatPerDamagePoint ?? false;
+}

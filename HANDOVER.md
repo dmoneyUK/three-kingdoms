@@ -18,7 +18,9 @@ and unavailable sources do not open it.
 The physical suit is carried through the generic Attack and damage
 continuations, including Guan Yu and Zhao Yun conversions, Liu Bei Influencing
 source ownership, Borrowed Sword, Da Qiao redirection, and multi-target
-Halberd damage. Serpent Spear remains suitless. Recovery uses canonical
+Halberd damage. Converted multi-card Attacks preserve a suit only when all
+components share it, so same-suit Heart/Diamond Serpent Spear costs can be red
+while mixed or black pairs remain non-red. Recovery uses canonical
 `applyRecovery`/`hp_recovered`; a nested Prudence decision resumes the same
 `damage_suffered` continuation exactly once. One damage event creates one
 opportunity even when its amount is two. Draw uses canonical refill and stays

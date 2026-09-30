@@ -48,8 +48,9 @@ opens one optional Draw-2 continuation.
 Hua Xiong's Triumphant is a source-owned `damage_suffered` choice after
 actual damage from an effective Heart/Diamond-suited Attack; it offers Recover
 1 HP, Draw 1 card, or Decline. The physical suit is carried as generic Attack
-metadata, so converted Attacks retain their real card suit while Serpent Spear
-remains suitless. Recovery emits `hp_recovered` only for actual recovery and
+metadata, so converted Attacks retain their real card suit. Multi-card
+conversions preserve a suit only when every component shares that suit;
+mixed-suit conversions remain suitless. Recovery emits `hp_recovered` only for actual recovery and
 resumes the same damage continuation after nested Prudence. The opportunity is
 per damage event, not per damage point.
 
@@ -413,7 +414,7 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 - **Verified official Standard card:** **QUN 019**, printed title **The Haughty Gladiator**.
 - **Implementation interpretation:** This is a benefit offered to the character that dealt the qualifying damage: after a Red-suited [Attack] damages Hua Xiong, that source may choose either to recover 1 HP or draw 1 card.
 - **Likely engine shape:** generic `damage_suffered` passive trigger owned by Hua Xiong but resolved as an optional choice for the damage source.
-- **Current implementation:** `hua_xiong_triumphant` opens after actual damage only when the source is living/available, the effective damage cause is Attack, and the physical Attack suit is Heart or Diamond. The source receives private Recover 1 HP / Draw 1 card / Decline choices. Guan Yu and Zhao Yun conversions, Liu Bei Influencing, Borrowed Sword, Da Qiao Deflection, follow-up Attacks, and Halberd preserve effective source and physical suit; Serpent Spear's virtual Attack has no invented suit. Recovery uses canonical `applyRecovery`, emits `hp_recovered` only for a positive increase, and resumes the original damage continuation after nested Prudence. One damage event creates one opportunity. Duel, group non-Attack damage, Judgement, prevention, and zero damage do not trigger it.
+- **Current implementation:** `hua_xiong_triumphant` opens after actual damage only when the source is living/available, the effective damage cause is Attack, and the physical Attack suit is Heart or Diamond. The source receives private Recover 1 HP / Draw 1 card / Decline choices. Guan Yu and Zhao Yun conversions, Liu Bei Influencing, Borrowed Sword, Da Qiao Deflection, follow-up Attacks, and Halberd preserve effective source and physical suit. Converted multi-card Attacks preserve a physical suit only when all components share it (including Heart+Heart and Diamond+Diamond Serpent Spear costs); mixed suits and black same-suit pairs do not satisfy Triumphant. Recovery uses canonical `applyRecovery`, emits `hp_recovered` only for a positive increase, and resumes the original damage continuation after nested Prudence. One damage event creates one opportunity. Duel, group non-Attack damage, Judgement, prevention, and zero damage do not trigger it.
 
 ### Gongsun Zan (公孙瓒)
 

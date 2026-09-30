@@ -1177,7 +1177,7 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
   const requiredHandCount = selectedChoice ? selection.cardCountByChoice?.[selectedChoice] ?? (selectedChoice === "discard" ? 1 : 0) : 0;
   const needsHandCard = requiredHandCount > 0;
   const complete = Boolean(selectedChoice && validSelectedKeys.length === requiredHandCount);
-  const labelForChoice = (choice: { id: string; label: string }) => choice.id === "draw" ? "Keep hand — attacker draws 1 card" : choice.label;
+  const labelForChoice = (choice: { id: string; label: string }) => choice.label;
   return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel choice-trigger-panel" role="dialog" aria-modal="true" aria-label={`${option.label} decision`}>
     <header><strong>{option.label.toUpperCase()}</strong><span>{option.description ?? "Choose one:"}</span></header>
     <div className="choice-trigger-options">{selection.choices.map((choice) => <button type="button" key={choice.id} className={selectedChoice === choice.id ? "selected" : ""} disabled={disabled} aria-pressed={selectedChoice === choice.id} onClick={() => onChoice(choice.id)}>{labelForChoice(choice)}</button>)}</div>

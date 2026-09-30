@@ -14,6 +14,7 @@ import { canDeclareAttack, playPhaseAfterAttack } from "../game/rules.ts";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill } from "../game/capabilities/heroes/kings.ts";
 import { resolveDamageModifiers } from "../game/capabilities/damage-modifiers.ts";
 import { responseCostActor, semanticResponseActor } from "../game/response-identity.ts";
+import { effectivePhysicalSuit } from "../game/cards.ts";
 
 const card = (kind, id) => ({ kind, id, suit: "♠", rank: "A" });
 
@@ -413,7 +414,14 @@ test("Hua Xiong Triumphant is a source-owned choice for actual red Attack damage
   assert.equal(getTriggeredEffects(context("♥", { damageCause: "duel" })).some((entry) => entry.effectId === "hua_xiong_triumphant"), false);
   assert.equal(getTriggeredEffects(context("♥", { sourceId: undefined, sourceHero: undefined })).some((entry) => entry.effectId === "hua_xiong_triumphant"), false);
   assert.deepEqual(getTriggeredEffects(context("♥", { sourceHp: 4 })).find((entry) => entry.effectId === "hua_xiong_triumphant")?.selection.choices, [{ id: "draw", label: "Draw 1 card" }]);
-  assert.equal(getTriggeredEffects(context(undefined)).some((entry) => entry.effectId === "hua_xiong_triumphant"), false, "suitless virtual Attacks do not invent a red suit");
+  assert.equal(getTriggeredEffects(context(undefined)).some((entry) => entry.effectId === "hua_xiong_triumphant"), false, "a conversion with no effective suit is not red");
+});
+
+test("converted multi-card metadata preserves only a common physical suit", () => {
+  for (const suit of ["♥", "♦", "♠", "♣"]) {
+    assert.equal(effectivePhysicalSuit([{ suit }, { suit }]), suit);
+  }
+  assert.equal(effectivePhysicalSuit([{ suit: "♥" }, { suit: "♦" }]), undefined);
 });
 
 test("a non-terminal trigger outcome reopens the event without naming its provider", () => {

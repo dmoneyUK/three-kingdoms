@@ -3,7 +3,7 @@ import {
   assert, card, createHumanGame, discardIds, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setJudgement, setTurn, sql, state,
 } from "./test-support.mjs";
 
-async function openAttack({ targetCard = card("Peach", "deflection-cost"), targetEquipment = {}, replacementHero = "zhao-yun", sourceHero = "zhao-yun", sourceEquipment = {} } = {}) {
+async function openAttack({ targetCard = card("Peach", "deflection-cost"), targetEquipment = {}, replacementHero = "zhao-yun", sourceHero = "zhao-yun", sourceEquipment = {}, sourceAttackSuit = "♠" } = {}) {
   const game = await createHumanGame();
   const [source, daqiao, replacement, fourth] = game.room.players;
   const [sourceMember, daqiaoMember, replacementMember] = game.members;
@@ -11,7 +11,7 @@ async function openAttack({ targetCard = card("Peach", "deflection-cost"), targe
   sql(`UPDATE players SET hero='daqiao', hp=4, max_hp=4 WHERE id=${quote(daqiao.id)}`);
   sql(`UPDATE players SET hero=${quote(replacementHero)}, hp=4, max_hp=4 WHERE id=${quote(replacement.id)}`);
   sql(`UPDATE players SET hero='zhao-yun', hp=4, max_hp=4 WHERE id=${quote(fourth.id)}`);
-  setHand(source.id, [card("Attack", "deflection-attack")], 4, 4);
+  setHand(source.id, [{ ...card("Attack", "deflection-attack"), suit: sourceAttackSuit }], 4, 4);
   setHand(daqiao.id, targetCard ? [targetCard] : [], 4, 4);
   setHand(replacement.id, [], 4, 4);
   setHand(fourth.id, [], 4, 4);

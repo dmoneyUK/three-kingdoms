@@ -78,6 +78,16 @@ export function isAttackCard(card: Pick<Card, "kind">) {
   return card.kind === "Attack" || card.kind === "Strike";
 }
 
+/**
+ * A converted card has a suit only when every physical component shares it.
+ * This is intentionally card-generic: Attack, response, and future
+ * multi-card conversions can all reuse the same conservative metadata rule.
+ */
+export function effectivePhysicalSuit(cards: readonly Pick<Card, "suit">[]): Card["suit"] | undefined {
+  const suit = cards[0]?.suit;
+  return suit && cards.every((card) => card.suit === suit) ? suit : undefined;
+}
+
 export function shuffle<T>(items: readonly T[], random: () => number = Math.random): T[] {
   const shuffled = [...items];
   for (let index = shuffled.length - 1; index > 0; index--) {

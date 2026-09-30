@@ -1,13 +1,13 @@
 import { env } from "cloudflare:workers";
 import { getRequestExecutionContext } from "vinext/shims/request-context";
-import { cardDefinition, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
+import { cardDefinition, effectivePhysicalSuit, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import type { Card, EquipmentZone } from "../../../game/model";
 import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
 import { canRespondWithNegation, getAttackCardProvider, getPlayPhaseActions, type ResponseExecution } from "../../../game/responses";
 import { responseDecisionFor, resolveResponseDecision } from "../../../game/response-decision";
 import { responseCostActor, semanticResponseActor } from "../../../game/response-identity";
 import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passive";
-import { getTriggeredEffects, resolveTriggeredEffect, triggerActorId, triggerAllowsDecline } from "../../../game/capabilities/triggers";
+import { getTriggeredEffects, resolveTriggeredEffect, triggerActorId, triggerAllowsDecline, triggerRepeatsPerDamagePoint } from "../../../game/capabilities/triggers";
 import { IMPLEMENTED_STANDARD_HEROES, STANDARD_HEROES, heroGender, type HeroDefinition } from "../../../game/heroes";
 import { continueTriggerEvent, resumeTriggerContinuation } from "../../../game/decisions/triggers";
 import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../../../game/decisions/responses";
@@ -428,15 +428,16 @@ function attackResponseDecision(declaration: AttackDeclaration, target: PlayerRo
   // Private capability discovery determines the acting player's available
   // options, never whether the response window exists.
   const physicalCard = attackPhysicalCard(declaration);
+  const physicalSuit = attackPhysicalSuit(declaration);
   const count = declaration.requiredDodgeCount ?? 1;
   return {
     kind: "response",
     actorId: target.id,
-    requirement: { kind: "dodge", sourceId: declaration.sourceId, targetId: declaration.targetId, count, attack: { cardId: physicalCard?.id, suit: physicalCard?.suit, ignoresArmor: declaration.ignoresArmor } },
+    requirement: { kind: "dodge", sourceId: declaration.sourceId, targetId: declaration.targetId, count, attack: { cardId: physicalCard?.id, suit: physicalSuit, ignoresArmor: declaration.ignoresArmor } },
     reason: "Respond to Attack: play Dodge or use an eligible Dodge alternative, or skip and take 1 damage",
     deadline: nextResponseDeadline(target),
     ...(declaration.resolutionId ? { resolutionId: declaration.resolutionId } : {}),
-    continuation: { kind: "attack", sourceId: declaration.sourceId, targetId: declaration.targetId, resumePhase: declaration.resumePhase, resumePlayerId: declaration.resumePlayerId, sequenceStartCardId: declaration.sequenceStartCardId, origin: declaration.origin, damageCards: declaration.physicalCards, requiredDodgeCount: count, ...(declaration.resolutionId ? { resolutionId: declaration.resolutionId } : {}), ...(declaration.ignoresArmor ? { ignoresArmor: true } : {}), ...(physicalCard ? { physicalCardId: physicalCard.id, physicalSuit: physicalCard.suit } : {}) },
+    continuation: { kind: "attack", sourceId: declaration.sourceId, targetId: declaration.targetId, resumePhase: declaration.resumePhase, resumePlayerId: declaration.resumePlayerId, sequenceStartCardId: declaration.sequenceStartCardId, origin: declaration.origin, damageCards: declaration.physicalCards, requiredDodgeCount: count, ...(declaration.resolutionId ? { resolutionId: declaration.resolutionId } : {}), ...(declaration.ignoresArmor ? { ignoresArmor: true } : {}), ...(physicalCard ? { physicalCardId: physicalCard.id } : {}), ...(physicalSuit ? { physicalSuit } : {}) },
   };
 }
 function attackTargetedContext(source: PlayerRow, target: PlayerRow, players: PlayerRow[] = []) {
@@ -463,6 +464,7 @@ async function beginAttackTargeted(room: RoomRow, declaration: AttackDeclaration
   return true;
 }
 function attackPhysicalCard(declaration: AttackDeclaration) { return declaration.attackCard ?? (declaration.physicalCards.length === 1 && isAttackCard(declaration.physicalCards[0]) ? declaration.physicalCards[0] : null); }
+function attackPhysicalSuit(declaration: AttackDeclaration) { return attackPhysicalCard(declaration)?.suit ?? effectivePhysicalSuit(declaration.physicalCards); }
 function groupCardName(kind: GroupContinuation["cardKind"]) { return kind === "BarbarianInvasion" ? "Barbarian Invasion" : kind === "RainingArrows" ? "Raining Arrows" : "Sky Piercing Halberd Attack"; }
 function selectedSerpentSpearCards(player: PlayerRow | null | undefined, hand: Card[], value: unknown) {
   if (!hasSerpentSpear(player) || !Array.isArray(value)) return [];
@@ -2580,11 +2582,11 @@ async function resumeCanonicalTriggerContinuation(room: RoomRow, continuation: A
       if (continuation.group) {
         const group = groupResponse(continuation.group);
         if (group) {
-          await resolveSourcedDamage({ room, source, target, players, amount: 1, discard, log: addLog(nextLog, `${target.name} cannot use Dodge against this Attack.`), resumePhase: declaration.resumePhase, resumePlayerId: declaration.resumePlayerId, sequenceStartCardId: declaration.sequenceStartCardId, damageCards: declaration.physicalCards, physicalSuit: attackPhysicalCard(declaration)?.suit, origin: declaration.origin, cause: "attack", label: "Attack", resumeGroup: group.response });
+          await resolveSourcedDamage({ room, source, target, players, amount: 1, discard, log: addLog(nextLog, `${target.name} cannot use Dodge against this Attack.`), resumePhase: declaration.resumePhase, resumePlayerId: declaration.resumePlayerId, sequenceStartCardId: declaration.sequenceStartCardId, damageCards: declaration.physicalCards, physicalSuit: attackPhysicalSuit(declaration), origin: declaration.origin, cause: "attack", label: "Attack", resumeGroup: group.response });
           return;
         }
       }
-      await resolveAttackDamageAboutToApply({ room, source, target, players, sourceHand: parse<Card[]>(source.hand_json, []), discard, log: addLog(nextLog, `${target.name} cannot use Dodge against this Attack.`), resumePhase: declaration.resumePhase, resumePlayerId: declaration.resumePlayerId, sequenceStartCardId: declaration.sequenceStartCardId, damageCards: declaration.physicalCards, physicalSuit: attackPhysicalCard(declaration)?.suit, origin: declaration.origin });
+      await resolveAttackDamageAboutToApply({ room, source, target, players, sourceHand: parse<Card[]>(source.hand_json, []), discard, log: addLog(nextLog, `${target.name} cannot use Dodge against this Attack.`), resumePhase: declaration.resumePhase, resumePlayerId: declaration.resumePlayerId, sequenceStartCardId: declaration.sequenceStartCardId, damageCards: declaration.physicalCards, physicalSuit: attackPhysicalSuit(declaration), origin: declaration.origin });
       return;
     }
     if (continuation.group) {
@@ -4281,7 +4283,9 @@ export async function POST(request: Request) {
         if (action === "decline_trigger_effect") {
           const decliningPlayer = trigger.actorId === source?.id ? source : target;
           log = addLog(log, `${decliningPlayer.name} declines the optional post-damage reaction. Normal processing resumes.`);
-          await finishDamageSufferedEvent(liveRoom, continuation, players, parse<Card[]>(liveRoom.deck_json, []), discard, log);
+          const declinedOptions = triggerOptionsFor(trigger, players);
+          const resolvedEffectIds = [...new Set([...(continuation.resolvedEffectIds ?? []), ...declinedOptions.filter((option) => !triggerRepeatsPerDamagePoint(option.effectId)).map((option) => option.effectId)])];
+          await finishDamageSufferedEvent(liveRoom, { ...continuation, resolvedEffectIds }, players, parse<Card[]>(liveRoom.deck_json, []), discard, log);
           return json({ room: await roomState(code, token) });
         }
         if (triggerExecution?.outcome.kind === "recover_player" || triggerExecution?.outcome.kind === "draw_cards") {
