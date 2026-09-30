@@ -144,7 +144,6 @@ test("accepted Cultivation resumes Overindulgence once and preserves the delayed
   assert.equal(opened.data.room.currentAction.triggerEvent, "stratagem_used");
   assert.equal(opened.data.room.currentAction.actorId, host.id);
   assert.deepEqual(opened.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["huang_yueying_cultivation"]);
-  assert.deepEqual(opened.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["huang_yueying_cultivation"]);
 
   const accepted = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "huang_yueying_cultivation", preserveResponse: true });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));

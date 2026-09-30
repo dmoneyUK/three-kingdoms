@@ -138,8 +138,7 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   await act(async () => { renderer.unmount(); });
 });
 
-for (const stratagem of ["Overindulgence", "Burning Bridges"]) {
-  test(`${stratagem} Cultivation trigger has a routed skill control, generic prompt, and continuation-safe UI`, async () => {
+test("Cultivation trigger has a routed skill control, generic prompt, and continuation-safe UI", async () => {
     const room = triggerRoom();
     let actionCalls = [];
     const onAction = async (...args) => { actionCalls.push(args); return true; };
@@ -148,9 +147,9 @@ for (const stratagem of ["Overindulgence", "Burning Bridges"]) {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
     const cultivation = button(renderer, { "aria-label": "Cultivation" });
-    assert.equal(cultivation.props.disabled, false, `${stratagem} exposes Cultivation through the Skills panel`);
-    assert.equal(text(renderer, "Your action · Use Cultivation: Draw 1 card after using a Stratagem., or skip").length, 1, `${stratagem} uses the trigger-specific prompt`);
-    assert.equal(button(renderer, { children: "Skip" }).props.disabled, false, `${stratagem} keeps the optional skip action`);
+    assert.equal(cultivation.props.disabled, false, "Cultivation exposes a Skills-panel control");
+    assert.equal(text(renderer, "Your action · Use Cultivation: Draw 1 card after using a Stratagem, or skip").length, 1, "Cultivation uses the trigger-specific prompt");
+    assert.equal(button(renderer, { children: "Skip" }).props.disabled, false, "Cultivation keeps the optional skip action");
     await act(async () => { cultivation.props.onClick(); });
     assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "huang_yueying_cultivation" }]);
 
@@ -165,17 +164,17 @@ for (const stratagem of ["Overindulgence", "Burning Bridges"]) {
     let opponentRenderer;
     await act(async () => { opponentRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: opponentRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: opponentRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for HUANG YUEYING to decide")).length, 1, `${stratagem} opponent waits for the trigger actor`);
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for the target to answer the attacker")).length, 0, `${stratagem} never shows the Attack fallback prompt`);
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Use Cultivation")).length, 0, `${stratagem} keeps Cultivation private`);
+    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for HUANG YUEYING to decide")).length, 1, "opponent waits for the trigger actor");
+    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for the target to answer the attacker")).length, 0, "the Attack fallback prompt is absent");
+    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Use Cultivation")).length, 0, "Cultivation remains private");
     assert.equal(opponentRoom.actionPlayerId, "p1");
     assert.equal(opponentRoom.currentAction.actorId, "p1");
 
-    await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: normalizeRoomData({ ...room, isMyAction: false, actionPlayerId: "p2", currentAction: { version: 3, kind: "response", actorId: "p2", deadline: 0, reason: "Negation window", requirement: "negate", legalActions: ["respond", "decline_response"], options: [], triggerOptions: [] }, pendingNegation: { kind: "negation", actorId: "p2", responseTarget: `${stratagem}'s effect on TARGET`, cardName: stratagem }, phase: "response" }), onRecover: () => {} }, React.createElement(GameRoom, { room: normalizeRoomData({ ...room, isMyAction: false, actionPlayerId: "p2", currentAction: { version: 3, kind: "response", actorId: "p2", deadline: 0, reason: "Negation window", requirement: "negate", legalActions: ["respond", "decline_response"], options: [], triggerOptions: [] }, pendingNegation: { kind: "negation", actorId: "p2", responseTarget: `${stratagem}'s effect on TARGET`, cardName: stratagem }, phase: "response" }), busy: false, error: "", onAction, onLeave: () => {} }))); });
-    assert.ok(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for Negation")).length >= 1, `${stratagem} follows the original continuation after Cultivation`);
+    const continuationRoom = normalizeRoomData({ ...room, isMyAction: false, actionPlayerId: "p2", currentAction: { version: 3, kind: "response", actorId: "p2", deadline: 0, reason: "Negation window", requirement: "negate", legalActions: ["respond", "decline_response"], options: [], triggerOptions: [] }, pendingNegation: { kind: "negation", actorId: "p2", responseTarget: "Stratagem's effect on TARGET", cardName: "Stratagem" }, phase: "response" });
+    await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: continuationRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: continuationRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
+    assert.ok(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for Negation")).length >= 1, "the original continuation remains visible after Cultivation");
     await act(async () => { renderer.unmount(); skipRenderer.unmount(); opponentRenderer.unmount(); });
-  });
-}
+});
 
 test("an unmapped future trigger remains available through generic trigger controls", async () => {
   const room = triggerRoom({ triggerOptions: [{ effectId: "future_trigger", label: "Future Trigger", selection: null }] });

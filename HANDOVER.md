@@ -18,8 +18,11 @@ Overindulgence re-enters its Negation flow and Burning Bridges re-enters its
 source-owned target-card choice. No card-specific UI or server branch was
 added.
 
-Mounted GameRoom tests cover Overindulgence, Burning Bridges, private controls,
-Skip, actor ownership, continuation rendering, and unmapped generic triggers.
+Mounted GameRoom tests cover the card-independent Cultivation semantic trigger,
+private controls, Skip, actor ownership, continuation rendering, normalized
+optional-trigger punctuation, and unmapped generic triggers. Card-specific
+Overindulgence and Burning Bridges continuation coverage remains in the API
+suite.
 API tests cover accepted and declined Cultivation, stale/replayed submissions,
 reload/privacy, Quick Test ownership, refill boundaries, Negation behavior,
 target-card continuation, and physical-card conservation.

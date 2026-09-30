@@ -12,7 +12,8 @@ instead of falling through to the Attack-response waiting message.
 
 Mounted `GameRoom` coverage verifies enabled Use Cultivation and Skip controls,
 private opponent projection, the corrected prompt, actor ownership, original
-continuation rendering, and the generic unmapped-trigger fallback. API coverage
+continuation rendering, normalized optional-trigger punctuation, and the
+generic unmapped-trigger fallback. API coverage
 verifies accepting one private draw for Overindulgence and Burning Bridges,
 Negation/target-card continuation, stale and decline safety, reload/privacy,
 Quick Test ownership, refill behavior, and physical-card conservation.
