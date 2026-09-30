@@ -62,6 +62,12 @@ private-card logging changed.
 Recommended next work remains Lü Bu / Unrivaled semantic multi-response
 handling, followed by the remaining correctness items below.
 
+The Benevolence hand animation is corrected: eligibility styling no longer
+applies a transform, while selected multi-select cards still rise from the
+normal baseline. Render-source regressions cover the absence of the eligibility
+transform and the retained selected-card rise. Gameplay semantics and normal
+single-card selection are unchanged.
+
 ## Current state — Cao Cao Entourage + Sun Quan Deliverance correctness — 2026-09-30
 
 Cao Cao `cao_cao_hujia` (Entourage) now requires `context.hero ===

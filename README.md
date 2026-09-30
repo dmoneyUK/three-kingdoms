@@ -35,6 +35,12 @@ their projected providers; server gameplay semantics are unchanged.
 The next gameplay bug-fix milestone remains Lü Bu / Unrivaled semantic
 multi-response handling.
 
+Corrected Benevolence hand presentation so `hero-skill-eligible` keeps only
+its eligibility border/glow and does not move every eligible card. The existing
+multi-select selected-card rule remains responsible for the upward rise;
+render-source regression coverage protects both contracts. Normal card
+selection and Benevolence logic are unchanged.
+
 ## Opponent frame anchoring fix — 2026-09-30
 
 Fixed the first opponent-frame integration after mobile review showed the frame

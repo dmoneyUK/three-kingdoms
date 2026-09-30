@@ -287,6 +287,10 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
   assert.match(html, /class="hand-card-visual"[\s\S]*class="game-card[\s\S]*class="card-info-button"/);
   assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.hand-card-visual\s*\{[\s\S]*transform: translateY\(calc\(-1 \* var\(--selected-rise\)\)\)/);
+  const heroSkillEligibleRule = globalStyleSource.match(/\.game-card\.hero-skill-eligible\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(heroSkillEligibleRule, /border-color:/, "hero-skill-eligible keeps its eligibility styling");
+  assert.doesNotMatch(heroSkillEligibleRule, /transform\s*:/, "eligibility must not move every hand card");
+  assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot:not\(\.single-selected\) \.game-card\.selected\s*\{\s*transform: translateY\(-5px\)/, "multi-select cards rise from the normal baseline");
   assert.match(sequenceStyleSource, /\.local-hand-rail \.card-info-button\s*\{[\s\S]*left: 50%[\s\S]*top: calc\(var\(--hand-card-height\) \* \.67\)/);
   assert.match(sequenceStyleSource, /\.local-hand-rail \.card-slot\.single-selected \.card-info-button\s*\{[\s\S]*opacity: 1[\s\S]*pointer-events: auto[\s\S]*translate: -50% -50%/);
   assert.match(sequenceStyleSource, /\.local-hand-rail \.game-card \.corner\s*\{[\s\S]*width: 17px[\s\S]*min-height: 23px/);
