@@ -1,5 +1,15 @@
 # War of Three Kingdoms
 
+## Hero artwork update — 2026-09-30
+
+Added the supplied Lu Xun portrait at `public/hero-lu-xun.jpg` and connected
+it through the shared `HERO_ART_BY_ID` / `HeroPortrait` renderer. The artwork
+appears in hero selection, locked-in selection, the local hero dock, and
+opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged.
+
 ## Gameplay correctness — shared active hero-skill UI recovery — 2026-09-30
 
 Fixed the shared React render regression that affected Liu Bei Benevolence and

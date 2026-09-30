@@ -1,5 +1,13 @@
 # Three Kingdoms — current handover
 
+## Latest presentation update — Lu Xun portrait — 2026-09-30
+
+Added and wired the supplied portrait at `public/hero-lu-xun.jpg` through the
+shared `HERO_ART_BY_ID` / `HeroPortrait` renderer. The shared path covers hero
+selection, the locked-in selection state, the local hero card, and opponent
+cards. This remains presentation-only: no gameplay rules, projections,
+selection legality, layout dimensions, or semantic actions changed.
+
 ## Opponent frame anchoring fix — 2026-09-30
 
 Mobile review immediately exposed that the newly applied opponent frames were
