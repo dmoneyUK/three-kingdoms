@@ -9,6 +9,7 @@ export type KingSkillState = {
   fanjianUsed?: boolean;
   attackUsed?: boolean;
   baredBodiedActive?: boolean;
+  betrothmentUsed?: boolean;
 };
 
 export type ActiveHeroSkillContext = {
@@ -22,6 +23,7 @@ export type ActiveHeroSkillContext = {
   influencingAvailable?: boolean;
   targetableTargetIds?: string[];
   overindulgenceTargetIds?: string[];
+  betrothmentTargetIds?: string[];
   skillState: KingSkillState;
   canDeclareAttack?: boolean;
 };
@@ -33,6 +35,7 @@ export type ActiveHeroSkillExecution =
   | { status: "resolved"; effectId: string; outcome: { kind: "lose_draw"; sourceId: string; lose: number; draw: number } }
   | { status: "resolved"; effectId: string; outcome: { kind: "fanjian"; sourceId: string; targetId: string } }
   | { status: "resolved"; effectId: string; outcome: { kind: "place_delayed"; sourceId: string; targetId: string; cardId: string; delayedKind: "Overindulgence" } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "betrothment"; sourceId: string; targetId: string; cardIds: string[] } }
   | { status: "resolved"; effectId: string; outcome: { kind: "influencing_attack"; sourceId: string; targetId: string } };
 
 const rendeId = "liu_bei_rende";
@@ -41,6 +44,7 @@ const qixiId = "gan_ning_qixi";
 const kurouId = "huang_gai_kurou";
 const fanjianId = "zhou_yu_fanjian";
 const captivatingId = "daqiao_captivating";
+const betrothmentId = "sun_shangxiang_betrothment";
 
 /**
  * Active king skills are projected as semantic trigger options during the
@@ -104,6 +108,14 @@ export function getActiveHeroSkillOptions(context: ActiveHeroSkillContext): Trig
       selection: { type: "cards", min: 1, max: 1, eligibleCardIds: diamondCards.map((card) => card.id), targetIds: captivatingTargets },
     });
   }
+  if (context.hero === "sun-shangxiang" && context.hand.length >= 2 && !context.skillState.betrothmentUsed && (context.betrothmentTargetIds?.length ?? 0) > 0) {
+    options.push({
+      effectId: betrothmentId,
+      label: "Betrothment",
+      description: "Discard exactly 2 Hand cards; you and an injured male character recover 1 HP.",
+      selection: { type: "cards", min: 2, max: 2, eligibleCardIds: context.hand.map((card) => card.id), targetIds: context.betrothmentTargetIds },
+    });
+  }
   return options;
 }
 
@@ -137,7 +149,12 @@ export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSki
     if (!option.selection.targetIds?.includes(targetId) || targetId === context.playerId) return null;
     return { status: "resolved", effectId, outcome: { kind: "dismantle", sourceId: context.playerId, targetId, cardIds } };
   }
+  if (effectId === betrothmentId) {
+    const targetId = typeof selection.targetId === "string" ? selection.targetId : "";
+    if (cardIds.length !== 2 || !option.selection.targetIds?.includes(targetId) || targetId === context.playerId) return null;
+    return { status: "resolved", effectId, outcome: { kind: "betrothment", sourceId: context.playerId, targetId, cardIds } };
+  }
   return null;
 }
 
-export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId, qixi: qixiId, kurou: kurouId, fanjian: fanjianId, captivating: captivatingId } as const;
+export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId, qixi: qixiId, kurou: kurouId, fanjian: fanjianId, captivating: captivatingId, betrothment: betrothmentId } as const;

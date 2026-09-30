@@ -2,6 +2,29 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+## Stage 6 hero capability — Sun Shangxiang / Betrothment + Daredevil — 2026-09-30
+
+Complete on this rules-only round. Sun Shangxiang is enabled at **26 / 30
+Standard heroes implemented** and **40 / 46 printed skills implemented**. The
+remaining heroes are Hua Tuo, Diao Chan, Hua Xiong, and Pan Feng. No artwork or
+adjacent hero work is included.
+
+Betrothment is a once-per-Play-Phase semantic active skill. It requires at
+least two Hand cards and an other living injured male; Sun herself need not be
+injured. The server accepts exactly two current Hand IDs, discards them before
+creating two canonical recovery attempts, records only actual HP increases as
+`hp_recovered`, and resumes the Play Phase through the existing persisted
+recovery queue.
+
+Daredevil uses the generic persisted `equipment_lost` event. The event is a
+zone-transition record, not a discard-only hook: Steal, Equipment replacement,
+Kirin Bow, Dauntless, Borrowed Sword, and other audited exits qualify, while
+equipping into an empty slot does not. Each physical lost Equipment card gets
+one optional Draw-2 opportunity. Accept/decline preserves private draw
+projection, canonical refill, and the interrupted Attack/damage/turn-end
+continuation. Quick Test and human multiplayer share the same semantic actor
+ownership and stale safety.
+
 ## Stage 6 hero capability — Lady Gan / Divine Wisdom + Prudence — 2026-09-30
 
 Complete on this rules-only round. Lady Gan is enabled at **25 / 30 Standard
@@ -302,7 +325,7 @@ registry.
 
 ## Validation status
 
-Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 25 / 30 heroes and 38 / 46 printed skills**; Lady Gan / Divine Wisdom + Prudence is the latest completed Standard hero capability.
+Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE. Death / continuation / match outcome — COMPLETE. Stage 5 — COMPLETE. Stage 6 hero abilities is **ACTIVE at 26 / 30 heroes and 40 / 46 printed skills**; Sun Shangxiang / Betrothment + Daredevil is the latest completed Standard hero capability.
 
 ## Progress summary
 
@@ -313,7 +336,7 @@ Physical Standard 108-card deck — COMPLETE. Dying / multi-damage — COMPLETE.
 | 3. Complete the verified Standard card identities | **28 / 28 playable** | Complete. All verified identities are implemented and dealt. |
 | 4. Reconcile the physical Standard deck | **Complete** | The exact 108-card quantity/suit/rank manifest and six named mounts are implemented and validated. |
 | 5. Complete match rules | **Complete** | Dying/multi-damage, defeat continuation/outcome, delayed Stratagem LIFO ordering, placement timing, Judgement-phase Negation, and Lightning transfer semantics are deterministic and regression-covered. |
-| 6. Hero-specific abilities | **ACTIVE — 25 / 30 heroes, 38 / 46 skills** | Lady Gan / Divine Wisdom + Prudence is complete; continue only with the next individually approved remaining hero. |
+| 6. Hero-specific abilities | **ACTIVE — 26 / 30 heroes, 40 / 46 skills** | Sun Shangxiang / Betrothment + Daredevil is complete; continue only with the next individually approved remaining hero. |
 | 7. Product polish | **Ongoing — Step 1 UI handover completed** | Final graphic/theme polish, separately approved artwork intake, sound, invitations, and saved history remain later work. |
 
 ## Stability foundation already complete

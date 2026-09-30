@@ -1,5 +1,40 @@
 # Three Kingdoms project handover
 
+## Current state — Stage 6 Sun Shangxiang / Betrothment + Daredevil — 2026-09-30
+
+Sun Shangxiang is complete and enabled in Standard selection. The implementation
+count is **26/30 Standard heroes** and **40/46 printed skills**; the remaining
+metadata-only heroes are Hua Tuo, Diao Chan, Hua Xiong, and Pan Feng. This
+round is rules-only and contains no artwork work. Lady Gan's implementation is
+unchanged except for the shared recovery/pending type boundary.
+
+Betrothment uses the existing active hero-skill architecture and semantic
+`trigger` action with no hero-specific HTTP route. The server offers it only
+during Sun's Play Phase with two or more Hand cards, an unused
+`betrothmentUsed` turn-state field, and an injured living male target. It does
+not require Sun to be injured. Resolution validates exactly two distinct live
+Hand cards, pays the discard cost first, marks the current Play Phase used, and
+applies Sun-first `applyRecovery`/`recoveredAmount` records. Only positive
+recoveries enter the persisted generic `hp_recovered` queue, which resumes
+Play Phase and canonical hand-loss processing.
+
+Daredevil is an optional `sun_shangxiang_daredevil` provider on the generic
+`equipment_lost` event. The event records exact physical Equipment cards that
+left an Equipment Zone, so Steal into another Hand, replacement, Dismantle,
+Kirin Bow, Dauntless, Borrowed Sword, forced Equipment costs, and other audited
+zone exits use the same boundary. Multiple cards become one persisted optional
+opportunity per lost card. Accepting draws exactly two private cards through
+canonical refill; declining draws none. The persisted equipment-loss
+continuation resumes the original phase, Attack/damage, or turn-end lifecycle
+exactly once. Defeat cleanup remains non-triggering because the character is
+already unavailable.
+
+Focused deterministic coverage now includes exact Betrothment cost/target
+legality, full-HP Sun, recovery ordering and physical conservation, stale and
+replay safety, Steal, replacement, Kirin Bow, Dauntless, private draw, and
+Quick Test acting-seat ownership. Recommended next work is the next separately
+approved remaining Standard hero; do not start one in this round.
+
 ## Current state — Stage 6 Lady Gan / Divine Wisdom + Prudence — 2026-09-30
 
 Lady Gan is complete and enabled in Standard selection. The implementation

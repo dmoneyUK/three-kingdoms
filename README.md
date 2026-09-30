@@ -1,5 +1,28 @@
 # Three Kingdoms
 
+## Stage 6 Sun Shangxiang / Betrothment + Daredevil — 2026-09-30
+
+Sun Shangxiang is complete and enabled in Standard selection at **26/30 heroes**
+and **40/46 printed skills**. The remaining Standard heroes are Hua Tuo, Diao
+Chan, Hua Xiong, and Pan Feng. This is a rules-only round; no graphic or
+artwork work was included.
+
+Betrothment is a semantic active `trigger` option available once per Play
+Phase when Sun has at least two Hand cards and a legal other living injured
+male exists. The server revalidates the target and exactly two authoritative
+Hand-card IDs, discards the cost first, marks the Play-Phase skill state, then
+creates Sun-first canonical recovery records. Only actual HP increases emit
+`hp_recovered`; Sun need not be injured, and max-HP capping remains canonical.
+
+Daredevil observes the generic persisted `equipment_lost` event: a card counts
+when it leaves a character's Equipment Zone, regardless of whether it is
+discarded, stolen, replaced, or transferred. There is one optional Draw-2
+decision per lost physical Equipment card, with persisted continuations for
+replacement, Steal, Kirin Bow damage, Yue Jin's Dauntless turn-end flow, and
+other audited exits. Draw identities remain private to Sun and use canonical
+refill. Quick Test and human multiplayer use the same actor-owned semantic
+projections.
+
 ## Stage 6 Lady Gan / Divine Wisdom + Prudence — 2026-09-30
 
 Lady Gan is complete and enabled in Standard selection at **25/30 heroes**

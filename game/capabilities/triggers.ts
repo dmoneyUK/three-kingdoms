@@ -20,8 +20,9 @@ import { daQiaoDeflectionTrigger } from "./heroes/daqiao-deflection";
 import { zhugeLiangStargazingTrigger } from "./heroes/zhuge-liang-stargazing";
 import { huangYueyingCultivationTrigger } from "./heroes/huang-yueying-cultivation";
 import { ladyGanDivineWisdomTrigger, ladyGanPrudenceTrigger } from "./heroes/lady-gan";
+import { sunShangxiangDaredevilTrigger } from "./heroes/sun-shangxiang-daredevil";
 
-export type TriggerEvent = "turn_start" | "turn_end" | "draw_phase" | "discard_phase" | "judgement_revealed" | "judgement_effective" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice" | "hand_lost" | "stratagem_used" | "hp_recovered";
+export type TriggerEvent = "turn_start" | "turn_end" | "draw_phase" | "discard_phase" | "judgement_revealed" | "judgement_effective" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice" | "hand_lost" | "equipment_lost" | "stratagem_used" | "hp_recovered";
 /**
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
@@ -109,7 +110,7 @@ const zhouYuFanjianChoice: TriggeredEffect = {
 
 import { yueJinDauntlessTrigger } from "./heroes/yue-jin-dauntless";
 
-const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, zhenJiLuoshenTrigger, zhugeLiangStargazingTrigger, huangYueyingCultivationTrigger, ladyGanDivineWisdomTrigger, ladyGanPrudenceTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, maChaoCavalryTrigger, daQiaoDeflectionTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
+const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, zhenJiLuoshenTrigger, zhugeLiangStargazingTrigger, huangYueyingCultivationTrigger, ladyGanDivineWisdomTrigger, ladyGanPrudenceTrigger, sunShangxiangDaredevilTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, maChaoCavalryTrigger, daQiaoDeflectionTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {

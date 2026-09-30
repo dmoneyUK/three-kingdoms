@@ -185,6 +185,21 @@ export type HandLossTriggerContinuation = {
   resumeTurnSeat: number | null;
   resumePending?: Pending;
 };
+export type EquipmentLostRecord = { playerId: string; lostCards: Card[]; reason?: string };
+export type EquipmentLostResume =
+  | { kind: "phase"; phase: string; playerId?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
+  | { kind: "attack_targeted"; continuation: AttackTargetedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
+  | { kind: "attack_dodged"; continuation: AttackDodgedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
+  | { kind: "forced_damage"; sourceId: string; targetId: string; amount: number; resumePhase: string; resumePlayerId?: string; sequenceStartCardId: string; origin?: AttackOrigin; damageCards?: Card[]; label: string; damageDescription?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
+  | { kind: "turn_end"; continuation: TurnEndTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
+  | { kind: "damage_about_to_apply"; continuation: DamageAboutToApplyTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } }
+  | { kind: "damage_suffered"; continuation: DamageSufferedTriggerContinuation; handLoss?: { playerId: string; beforeHand: Card[] } };
+export type EquipmentLostTriggerContinuation = {
+  kind: "equipment_lost_event";
+  loss: EquipmentLostRecord;
+  remaining: EquipmentLostRecord[];
+  resume: EquipmentLostResume;
+};
 export type StratagemUsedTriggerContinuation = {
   kind: "stratagem_used_event";
   sourceId: string;
@@ -199,7 +214,7 @@ export type StratagemUsedTriggerContinuation = {
 };
 export type RecoveryRecord = { playerId: string; amountRecovered: number; sourceId?: string; reason?: string };
 export type RecoveryResume =
-  | { kind: "phase"; phase: string; playerId?: string }
+  | { kind: "phase"; phase: string; playerId?: string; handLoss?: { playerId: string; beforeHand: Card[] } }
   | { kind: "turn_start"; continuation: TurnStartTriggerContinuation }
   | { kind: "dying"; pending: DyingPending };
 export type HpRecoveredTriggerContinuation = {
@@ -209,7 +224,7 @@ export type HpRecoveredTriggerContinuation = {
   resolvedEffectIds?: string[];
   resume: RecoveryResume;
 };
-export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | TurnEndTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation | StratagemUsedTriggerContinuation | HpRecoveredTriggerContinuation;
+export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | TurnEndTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation | EquipmentLostTriggerContinuation | StratagemUsedTriggerContinuation | HpRecoveredTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
 export type TriggerPending = {

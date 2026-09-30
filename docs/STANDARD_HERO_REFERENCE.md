@@ -16,18 +16,18 @@
 
 ## Implementation progress
 
-Re-audited on 2026-09-30 from Lady Gan baseline
-`01d5acdcb2bf4ec55f2393a15bb07ec10099d429`; this round completes Lady Gan.
+Re-audited on 2026-09-30 from Sun Shangxiang baseline
+`21e7558fe5536ab6c6c58c0bb896c0dd8df8d33a`; this round completes Sun Shangxiang.
 
-- **Implemented:** 25 / 30 heroes
+- **Implemented:** 26 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 5 / 30 heroes
-- **Implemented skills:** 38 / 46
+- **Not implemented:** 4 / 30 heroes
+- **Implemented skills:** 40 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 8 / 46
+- **Not implemented skills:** 6 / 46
 
 **2026-09-30 implementation note:** `game/heroes.ts` now allow-lists exactly
-these 25 implemented Standard heroes, including Lady Gan, Huang Yueying,
+these 26 implemented Standard heroes, including Sun Shangxiang, Lady Gan, Huang Yueying,
 Zhuge Liang, Gongsun Zan, and Ma Chao. The 5 remaining generals are present as
 Standard roster metadata but are excluded from
 `IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
@@ -37,7 +37,13 @@ Divine Wisdom uses `turn_start`; its strict `discardedCount > HP` recovery is
 resolved server-side. Actual recovery emits the generic `hp_recovered` event,
 and Prudence excludes Lady Gan/dead targets and derives the live target draw
 amount as 1 or 2 cards. The recovery continuation preserves Play Phase,
-turn-start, Oath/Benevolence, and Dying/rescue flows.
+turn-start, Oath/Benevolence, and Dying/rescue flows. Sun Shangxiang's
+Betrothment uses the once-per-Play-Phase `betrothmentUsed` state, exactly two
+Hand cards, an injured living male target, Sun-first canonical recovery
+records, and actual-increase-only `hp_recovered`. Her Daredevil observes the
+generic persisted `equipment_lost` zone transition; Steal and replacement
+qualify, empty-slot equipping does not, and each lost physical Equipment card
+opens one optional Draw-2 continuation.
 
 Implementation status means the hero's printed Standard skill set has a live gameplay implementation on the audited baseline. Runtime metadata alone does not count as implementation.
 
@@ -118,7 +124,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Wu | `zhou-yu` | Zhou Yu | 周瑜 | Male | 3 | Heroic<br>Sowing Distrust | Present | Implemented |
 | Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Captivating<br>Deflection | Present | Implemented |
 | Wu | `lu-xun` | Lu Xun | 陆逊 | Male | 3 | Modesty<br>Second Wind | Present | Implemented |
-| Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Betrothment<br>Daredevil | Present | Not implemented |
+| Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Betrothment<br>Daredevil | Present | Implemented |
 | Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid<br>Prodigal Healer | Present | Not implemented |
 | Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Unrivaled | Present | Implemented |
 | Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust<br>Beauty Outshining the Moon | Present | Not implemented |
@@ -347,11 +353,11 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Sun Shangxiang (孙尚香)
 
 - **Runtime ID:** `sun-shangxiang`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **WU 008**, printed title **The Enchanting Princess**.
 - **Implementation interpretation:** Betrothment requires an injured male target and exactly two hand cards as the cost; both Sun Shangxiang and the target recover 1 HP. Daredevil grants 2 cards when an equipped Equipment is lost.
 - **Likely engine shape:** once-per-Play-Phase active / dual recovery; equipment-lost trigger.
-- **Current implementation:** Player-facing hero metadata now matches the verified printed skill text; the capabilities remain unimplemented.
+- **Current implementation:** Betrothment is a semantic active skill available only during Sun Shangxiang's Play Phase when the persisted per-turn state has not set `betrothmentUsed`, Sun has at least two Hand cards, and another living male is injured. The target is revalidated server-side with `heroGender`, liveness, and current HP; Sun need not be injured. Exactly two distinct authoritative Hand cards are discarded before Sun-first `applyRecovery` attempts. Only positive `recoveredAmount` records enter the persisted generic `hp_recovered` queue, and normal hand-loss processing remains active when the cost empties her Hand. Daredevil is an optional provider on generic `equipment_lost`: leaving the Equipment Zone qualifies whether the card is discarded, stolen, transferred, or replaced, while equipping an empty slot does not. The queue creates one decision per physical lost Equipment card and resumes the saved Play Phase, Attack/damage, or turn-end continuation after private canonical Draw-2 resolution.
 
 ## Qun
 
