@@ -1,5 +1,26 @@
 # Three Kingdoms — current handover
 
+## Current state — generic cross-phase active-skill target-selection UI fix — 2026-09-30
+
+Zhang Liao Assault now uses the shared semantic active-skill target mode even
+when the authoritative `currentAction` is a Draw Phase trigger rather than a
+Play Phase turn action. The opponent board keeps normal card/Attack targeting
+behind the Play Phase gate, while active skill targetability uses only the
+server-projected target IDs and live-player state. No Zhang-Liao-specific UI
+branch, route, server settlement, or opponent-Hand picker was added.
+
+Mounted `GameRoom` regression coverage verifies inactive opponent inspection,
+Assault activation in a real `draw_phase` trigger fixture, eligible target
+controls, selected-target styling, one/two-target submission, invalid-target
+blocking, the exact generic `trigger` payload, and cancel/re-entry reset.
+
+The privacy boundary remains unchanged: Zhang Liao selects characters, and the
+server chooses one random current Hand card from each selected character
+without projecting Hand identities or positions.
+
+Recommended next work remains Lü Bu / Unrivaled semantic multi-response
+handling, followed by the remaining correctness items below.
+
 ## Latest presentation update — Lu Xun portrait — 2026-09-30
 
 Added and wired the supplied portrait at `public/hero-lu-xun.jpg` through the

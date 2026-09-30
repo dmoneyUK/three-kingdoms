@@ -368,7 +368,7 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
   assert.ok(fanjianButton, "metadata-backed Sowing Distrust is rendered");
   assert.doesNotMatch(fanjianButton, /disabled=""/, "Sowing Distrust is enabled when zhou_yu_fanjian is projected");
   assert.match(html, /data-player-anchor="p2"/, "the projected eligible opponent is rendered");
-  assert.match(gameRoomSource, /activeSkillTargetIds\.includes\(player\.id\) && canPlay/, "activated target skills make projected opponents selectable");
+  assert.match(gameRoomSource, /activeSkillTargetMode && activeSkillTargetIds\.includes\(player\.id\)/, "activated semantic target skills make projected opponents selectable across phases");
   assert.match(gameRoomSource, /setActiveSkillSelectionState\(\(state\) => \{[\s\S]*targetIds: next/, "target selection stores the chosen opponent in the active skill state");
   assert.match(gameRoomSource, /onAction\("trigger", activeSkillSubmission\)/, "active skills use the generic trigger action");
   assert.match(gameRoomSource, /activeSkillSubmission = .*providerId: activeSkillOption\.effectId[\s\S]*targetId: activeSkillTargetId/, "the generic trigger payload carries providerId and targetId");

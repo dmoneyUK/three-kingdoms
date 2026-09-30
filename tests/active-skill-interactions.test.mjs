@@ -21,11 +21,16 @@ function activeSkillRoom(skill) {
     { id: "p1", name: "ACTIVE HERO", seat: 0, hero: skill.hero, hp: skill.hero === "sun-shangxiang" ? 3 : 4, maxHp: skill.hero === "sun-shangxiang" ? 3 : 4, alive: true, connected: true, handCount: skill.cardIds.length, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
     { id: "p2", name: "TARGET ONE", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     { id: "p3", name: "TARGET TWO", seat: 2, hero: "sun-quan", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
+    ...(skill.extraPlayer ? [{ id: skill.extraPlayer.id, name: skill.extraPlayer.name, seat: 3, hero: "cao-cao", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" }] : []),
   ];
+  const selection = skill.selectionType === "target"
+    ? { type: "target", targetIds: skill.targetIds, min: skill.targetMin, max: skill.targetMax }
+    : { type: "cards", min: skill.min, max: skill.max, eligibleCardIds: skill.cardIds, targetIds: skill.targetIds, targetMin: skill.targetMin, targetMax: skill.targetMax };
   return normalizeRoomData({
     code: `INTERACTION-${skill.effectId}`, status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [], players,
-    myHand: skill.cardIds.map((id, index) => card(id, index % 2 ? "Dodge" : "Attack", index % 2 ? "♣" : "♠")), turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards or use a hero skill", isMyAction: true,
-    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards or use a hero skill", legalActions: ["trigger"], triggerOptions: [{ effectId: skill.effectId, label: skill.label, selection: { type: "cards", min: skill.min, max: skill.max, eligibleCardIds: skill.cardIds, targetIds: skill.targetIds, targetMin: skill.targetMin, targetMax: skill.targetMax } }] },
+    myHand: skill.cardIds.map((id, index) => card(id, index % 2 ? "Dodge" : "Attack", index % 2 ? "♣" : "♠")), turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards or use a hero skill", isMyAction: true,
+    actionRevision: "interaction-revision", phase: skill.phase ?? "play",
+    currentAction: { version: 3, kind: skill.triggerEvent ? "trigger" : "turn", actorId: "p1", deadline: 0, reason: skill.triggerEvent ? "Choose a trigger" : "Play cards or use a hero skill", legalActions: ["trigger", "decline_trigger"], ...(skill.triggerEvent ? { triggerEvent: skill.triggerEvent } : {}), triggerOptions: [{ effectId: skill.effectId, label: skill.label, selection }] },
   });
 }
 
@@ -84,3 +89,37 @@ for (const skill of activeSkills) {
     await act(async () => { renderer.unmount(); });
   });
 }
+
+test("Zhang Liao Assault uses generic target controls during the Draw Phase", async () => {
+  const skill = { hero: "zhang-liao", effectId: "zhang_liao_assault", label: "Assault", skill: "Assault", cardIds: [], targetIds: ["p2", "p3"], targetMin: 1, targetMax: 2, selectionType: "target", phase: "draw", triggerEvent: "draw_phase", extraPlayer: { id: "p4", name: "INVALID TARGET" } };
+  const { renderer, actionCalls } = await gameTree(skill);
+  const skillButton = () => button(renderer, { "aria-label": "Assault" });
+  const useButton = () => button(renderer, { children: "Use Assault" });
+
+  assert.equal(button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.disabled, false, "inactive Assault preserves inspection controls");
+  await act(async () => { button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.onClick(); });
+  assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 1, "inactive opponent hero click opens inspection");
+  await act(async () => { renderer.root.findByProps({ "aria-label": "Close TARGET ONE inspection" }).props.onClick(); });
+
+  await act(async () => { skillButton().props.onClick(); });
+  assert.equal(button(renderer, { "aria-label": "Select TARGET ONE" }).props.disabled, false);
+  assert.equal(button(renderer, { "aria-label": "Select TARGET TWO" }).props.disabled, false);
+  assert.equal(button(renderer, { "aria-label": "Select INVALID TARGET" }).props.disabled, true, "non-eligible targets remain disabled");
+  assert.equal(renderer.root.findAllByProps({ role: "dialog" }).length, 0, "target mode does not open inspection");
+
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true);
+  assert.equal(useButton().props.disabled, false, "one Assault target enables submission");
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET TWO" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
+  assert.equal(button(renderer, { "aria-label": "Select INVALID TARGET" }).props.disabled, true);
+  await act(async () => { useButton().props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "zhang_liao_assault", targetIds: ["p2", "p3"] }]);
+
+  await act(async () => { skillButton().props.onClick(); });
+  assert.equal(button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.disabled, false, "cancel exits target mode");
+  await act(async () => { skillButton().props.onClick(); });
+  assert.equal(useButton().props.disabled, true, "re-entering Assault resets target selection");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  await act(async () => { renderer.unmount(); });
+});

@@ -114,6 +114,21 @@ pass incrementally with regression checks between steps.
 
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
+## Gameplay correctness — cross-phase active-skill target selection — 2026-09-30
+
+Fixed the shared opponent targeting UI so semantic active hero skills can
+select projected character targets outside the Play Phase. Zhang Liao Assault
+now enters generic target-selection mode during its Draw Phase trigger: only
+server-projected live targets are selectable, selected opponents use the
+existing target treatment, and the generic `trigger` payload carries one or
+two character IDs. Ordinary Play Phase targeting and inactive opponent hero
+inspection remain unchanged. Assault continues to resolve hidden Hand cards
+server-side without exposing opponent Hand identities.
+
+Mounted GameRoom coverage protects activation, inspection-vs-selection button
+semantics, one/two-target selection, invalid-target rejection, exact semantic
+submission, and cancel/re-entry reset behavior.
+
 ## Current status — 2026-09-30
 
 The Standard gameplay foundation is implemented:
