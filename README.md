@@ -13,6 +13,51 @@ Focused API regressions cover Lord and non-Lord discovery/resolution, faction
 and ownership restrictions, capping, and Dying continuation. The next
 gameplay bug-fix milestone is Lü Bu / Unrivaled semantic multi-response.
 
+## Opponent frame asset integration — 2026-09-30
+
+Applied the approved opponent-frame assets without changing the existing player
+layout or hit areas. Left/right seats use
+`other-player-frame-asymmetric.webp`; the top seat uses
+`other-player-frame-symmetric.webp`, and only the right decorative layer is
+mirrored.
+
+The frame bitmaps are near-square (493×512 and 506×512) while the live opponent
+panels remain 2:3. To avoid deforming the ornament, CSS matches frame height to
+the player panel and lets the art extend horizontally: 144.4% width for the
+asymmetric frame and 148.2% for the symmetric frame. Decorative pseudo-elements
+use `pointer-events: none`; player content, target controls, state borders and
+gameplay logic remain unchanged.
+
+## Board frame portrait scaling fix — 2026-09-30
+
+Corrected the staged board-frame integration after deployed mobile review showed
+the gold frame compressed into a smaller landscape rectangle in the centre of
+the portrait play area. The SVG source viewBox is landscape (1672:941), and its
+default SVG aspect-ratio preservation caused internal letterboxing even though
+CSS requested `background-size: 100% 100%`.
+
+`game-board-frame.svg` now uses `preserveAspectRatio="none"`, allowing the
+decorative frame to follow the real `.play-table` bounds on portrait and
+desktop layouts. This is presentation-only; no gameplay layout or animation
+anchors changed.
+
+## Board visual skin integration — 2026-09-30
+
+Started the staged UI asset integration with the lowest-risk board foundation.
+The existing `.play-table` now renders `game-board-bg.webp` as the cover
+background and `game-board-frame.svg` as a full-size upper background layer.
+Both layers live entirely in CSS behind the current gameplay DOM, so no player,
+deck/discard, LocalPlayerDock, response flow, hidden-information behavior, or
+card-flight/landing anchor was changed.
+
+This is intentionally only Step 1 of the staged visual pass. Card frames,
+opponent frames, the local-player frame, and the secondary button remain
+unapplied for now; blocked/missing primary/deck/destructive assets are still not
+substituted.
+
+Current stage: Stage 7 product polish, board skin applied; continue the visual
+pass incrementally with regression checks between steps.
+
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
 ## Current status — 2026-09-30

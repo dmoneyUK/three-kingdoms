@@ -73,7 +73,7 @@ Change Retaliation so selecting the damage source's Hand means **server-random a
 
 ---
 
-## Phase 2 — Standard release-confidence pass
+## Future TODO — Standard integration testing
 
 **Goal:** prove the completed Standard ruleset behaves correctly as a whole rather than continuing hero-by-hero implementation.
 
@@ -97,7 +97,7 @@ Do not create a giant exhaustive pairwise hero matrix. Add tests only where shar
 
 ---
 
-## Phase 3 — Release and playtest hardening
+## Future TODO — End-to-end and release testing
 
 **Goal:** make the completed Standard game easier to trust in real multiplayer sessions.
 
@@ -142,20 +142,30 @@ Then require the GitHub Actions `build-and-test`, Cloudflare deployment and prod
 
 ---
 
-## Phase 4 — Product expansion decision
+## Next active phase after bug fixes — UX improvement
 
-Do **not** start this phase automatically.
+After the confirmed Phase 1 gameplay defects are fixed, **UX improvement becomes the next active development phase**.
 
-Once Standard correctness and release confidence are closed, choose the next product direction explicitly. Possible future tracks are:
+Do not automatically begin the large integration/release-testing phases first. Keep those as future TODO work while UX is improved.
 
-- expansion-set gameplay;
-- multiplayer/product usability improvements;
-- presentation/artwork work;
-- additional automation or test tooling.
+The UX phase should be planned from the actual current game flow before implementation. Review the existing browser experience for normal multiplayer and Quick Test and identify friction in:
 
-Expansion sets such as Endless Legends and Kingdom Wars remain out of scope until explicitly selected. Graphic design/artwork is also separate from the current gameplay roadmap.
+- understanding whose turn/action it is;
+- understanding what decision is currently required;
+- selecting cards and targets;
+- response/trigger choices and decline actions;
+- waiting/presentation states between actions;
+- hand, equipment, Judgement and hero information readability;
+- mobile/touch usability and crowded layouts;
+- error/stale-action feedback;
+- game setup, hero selection and match-end flow;
+- Quick Test perspective switching.
 
-Before choosing an expansion track, create a new source-backed scope from the relevant official rules/cards rather than extending Standard assumptions.
+Keep gameplay legality and semantic action architecture unchanged unless a UX problem exposes a genuine rules defect. UX work should consume the existing `currentAction` contract rather than create UI-only game rules.
+
+Graphic/art redesign is separate from functional UX work unless explicitly requested.
+
+**UX exit gate:** agree a concrete UX backlog from the current product, implement it in small reviewable steps, and verify normal multiplayer plus Quick Test remain functionally correct.
 
 ---
 
@@ -185,15 +195,12 @@ Preserve the architecture already established by the project:
 
 ---
 
-## Definition of Standard gameplay closure
+## Roadmap order
 
-The Standard gameplay milestone is closed for release when:
+1. **Now:** Phase 1 — close the confirmed Standard correctness defects.
+2. **Next:** UX improvement based on the actual current game flow.
+3. **Future TODO:** Standard integration testing.
+4. **Future TODO:** end-to-end, persistence, release and production validation testing.
+5. **Later:** choose expansion gameplay or another product direction explicitly.
 
-1. all four Phase 1 work packages are resolved or, for Huang Gai, explicitly closed by the verified ruling;
-2. the Phase 2 interaction pass finds no unresolved P0/P1 Standard rules defect;
-3. Phase 3 end-to-end/integrity coverage is green;
-4. build, full tests, lint and `git diff --check` pass;
-5. GitHub Actions deployment and production smoke checks succeed;
-6. `README.md`, `HANDOVER.md`, `ROADMAP.md`, and the Standard reference accurately describe the shipped rules.
-
-At that point, stop extending Standard implementation by default and select the next product track explicitly.
+The Standard implementation count remains **30/30 heroes and 46/46 skills** throughout bug fixing and UX work. Expansion gameplay remains out of scope until explicitly selected.

@@ -1,6 +1,7 @@
 # WTK UI Asset Integration Guide
 
-Status: **asset staging — do not apply the full visual refresh yet**  
+Status: **asset staging + incremental integration — do not apply the remaining full visual refresh yet**  
+Integration progress: **Step 2 — board foundation + opponent frames applied**  
 Last updated: **2026-09-23**
 
 This document is the single source of truth for the generated UI assets being prepared for War of the Three Kingdoms. We will keep adding approved assets here. When the user later asks for the final visual integration, review this document and apply the complete set in one coherent pass.
@@ -173,20 +174,13 @@ Primary artwork behind the in-game play surface.
 - interactive elements,
 - outer UI frame.
 
-### Integration intent
+### Integration status
 
-Use it as the background of the existing game-board area:
+**IMPLEMENTED in `app/globals.css`.**
 
-```css
-.game-board-background {
-  position: absolute;
-  inset: 0;
-  background: url('/assets/ui/game-board-bg.webp') center / cover no-repeat;
-  pointer-events: none;
-}
-```
+The existing `.play-table` owns the board artwork directly as a CSS background layer. No extra DOM node was added, so card-flight anchors and gameplay layout are unchanged.
 
-A small amount of cropping is acceptable on unusual aspect ratios. Do not stretch the bitmap disproportionately.
+The board uses `game-board-bg.webp` with `background-size: cover`. A small amount of cropping is acceptable on unusual aspect ratios; do not stretch the bitmap disproportionately.
 
 ---
 
@@ -201,27 +195,12 @@ Decorative antique-gold border overlay for the main game board.
 - restrained geometric corner ornaments.
 
 ### Layering
-Render it above the board background but below all gameplay UI.
 
-```tsx
-<img
-  className="game-board-frame"
-  src="/assets/ui/game-board-frame.svg"
-  alt=""
-  aria-hidden="true"
-/>
-```
+**IMPLEMENTED in `app/globals.css`.**
 
-```css
-.game-board-frame {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  object-fit: fill;
-}
-```
+The frame is the first CSS background layer on the existing `.play-table`, above `game-board-bg.webp` but automatically behind every gameplay child. This avoids an extra overlay element and guarantees the decoration cannot intercept pointer/touch events.
+
+The frame uses `background-size: 100% 100%`; the board artwork below it uses `cover`. The SVG root also uses `preserveAspectRatio="none"` so the landscape source viewBox stretches to the actual `.play-table` bounds on portrait/mobile boards instead of letterboxing as a smaller centered rectangle.
 
 If the board becomes extremely narrow or wide, protect the gameplay controls first. Decoration must adapt to the layout, never the other way around.
 
@@ -468,6 +447,35 @@ Use for the **top-center opponent** so the top opponent does not inherit a left/
 
 ---
 
+### Production sizing / fit
+
+The source assets and the current player panel do not share the same aspect ratio:
+
+```text
+other-player-frame-asymmetric.webp  493 × 512  (~0.963:1)
+other-player-frame-symmetric.webp   506 × 512  (~0.988:1)
+.player-square                      2 : 3      (~0.667:1)
+```
+
+Do **not** stretch the near-square artwork directly to the 2:3 player panel; doing so would visibly deform circular and geometric ornament.
+
+The runtime CSS preserves the frame artwork's natural ratio by matching frame height to the player panel and allowing the decorative frame to extend horizontally:
+
+```text
+asymmetric frame width = 144.4% of .player-square width
+symmetric frame width  = 148.2% of .player-square width
+height                  = 100% of .player-square height
+```
+
+This means a maximum 180 × 270 player panel receives approximately:
+
+```text
+asymmetric decorative box ≈ 260 × 270
+symmetric decorative box  ≈ 267 × 270
+```
+
+At a 100 × 150 mobile player panel the decorative boxes are approximately 144 × 150 and 148 × 150. The extra width is decoration only, uses `pointer-events: none`, and must not change the live hit area or player layout.
+
 ## 5.3 `other-player-frame-asymmetric-reference.webp`
 
 ### Purpose
@@ -553,6 +561,8 @@ For a normal four-player table:
 .player-square-2 -> top opponent
 .player-square-3 -> right opponent
 ```
+
+**IMPLEMENTED:** `.player-square-1`, `.player-square-2`, and `.player-square-3` now receive their approved frame art through CSS pseudo-elements. The right-side decorative layer is mirrored with `scaleX(-1)`; live player DOM/content is never mirrored.
 
 For the current three-opponent board:
 
@@ -919,6 +929,36 @@ Do not create competing implementation-guide files for the same asset set.
 ---
 
 # 15. Change log
+
+## 2026-09-30 — opponent frame integration
+
+Applied:
+- `other-player-frame-asymmetric.webp` to left/right opponents,
+- `other-player-frame-symmetric.webp` to the top opponent.
+
+Sizing decision:
+- preserve each source frame's natural near-square aspect ratio,
+- match decorative-frame height to the existing 2:3 player panel,
+- allow the frame to extend horizontally rather than stretching it vertically,
+- asymmetric frame uses 144.4% player width,
+- symmetric frame uses 148.2% player width,
+- right-side decoration mirrors only the image layer,
+- all decorative layers use `pointer-events: none`,
+- no player layout, hit area, state rendering or gameplay logic changed.
+
+
+
+## 2026-09-30 — portrait aspect-ratio frame fix
+
+Corrected:
+- `public/assets/ui/game-board-frame.svg`
+
+Decision:
+- add `preserveAspectRatio="none"` to the SVG root,
+- the frame must follow the actual `.play-table` rectangle on portrait/mobile layouts,
+- do not allow the source 1672:941 viewBox to letterbox into a smaller centered landscape rectangle.
+
+
 
 ## 2026-09-23 — board foundation
 

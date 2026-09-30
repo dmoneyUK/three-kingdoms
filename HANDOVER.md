@@ -13,6 +13,98 @@ and resumed Dying state. No provider-specific route or UI protocol was added.
 
 The next gameplay bug-fix task is **Lü Bu / Unrivaled semantic multi-response**.
 
+## Opponent frame asset integration — 2026-09-30
+
+The opponent-frame production assets are now wired into the existing
+`.player-square-${relativeIndex}` layout using CSS pseudo-elements, so no JSX
+or player-state rendering was forked.
+
+Seat mapping:
+- `.player-square-1`: asymmetric frame, normal orientation,
+- `.player-square-2`: symmetric frame,
+- `.player-square-3`: asymmetric frame, decorative image mirrored only.
+
+Fit was checked against the real CSS geometry. The player panel is fixed at a
+2:3 aspect ratio, while the source frames are 493×512 and 506×512. Instead of
+stretching those near-square assets to 2:3, the overlay height is 100% of the
+player panel and its width is 144.4% (asymmetric) or 148.2% (symmetric). At the
+maximum 180×270 panel this produces roughly 260×270 / 267×270 decorative boxes;
+at a 100×150 mobile panel it produces roughly 144×150 / 148×150 boxes. The
+horizontal overhang is visual only and has no pointer events.
+
+No player positions, live content, targeting, state classes, card zones, or
+hit areas changed. Next review should verify the deployed mobile portrait view
+for ornament overlap before moving to the local-player frame.
+
+## Approved board-background direction — 2026-09-30
+
+The owner approved the latest board-background reference shown in chat as the
+visual target for the real game board.
+
+Approved visual content:
+- dark forest-green / near-black ink texture,
+- a large central enso / circular brush mark that is visibly readable,
+- shadowed mountain silhouettes along the lower area,
+- broad black ink-brush strokes entering from the corners/edges,
+- restrained antique-gold flecks,
+- quiet enough central contrast for player panels, deck/discard, cards, and
+  animation overlays to remain readable.
+
+Important production rule: do **not** use the uploaded presentation image
+verbatim. The reference image contains presentation-only material that must not
+be baked into the runtime board:
+- the white header area,
+- the "1. Board Background" title,
+- the "War of the Three Kingdoms · UI Asset" label,
+- the baked outer gold border.
+
+Create/replace `public/assets/ui/game-board-bg.webp` with only the interior
+board artwork. Keep `public/assets/ui/game-board-frame.svg` as the separate
+outer frame; its portrait scaling fix using `preserveAspectRatio="none"` is
+already deployed and working.
+
+Target runtime layering remains:
+
+```text
+.play-table
+  -> game-board-frame.svg   (separate decorative frame)
+  -> game-board-bg.webp     (approved ink/enso/mountain artwork)
+  -> existing live game UI
+```
+
+The current deployed `game-board-bg.webp` is considered too subtle/dark to
+show the intended artwork clearly and should be replaced by this approved
+direction before the visual pass is considered complete.
+
+## Board frame portrait scaling fix — 2026-09-30
+
+Deployed mobile review exposed an SVG scaling issue in the new board frame.
+Although `.play-table` used `background-size: 100% 100%`, the SVG's
+1672:941 viewBox still used the default `preserveAspectRatio="xMidYMid meet"`.
+On the tall mobile board that preserved the landscape ratio and visually
+letterboxed the ornament into a smaller centred rectangle.
+
+The root SVG now declares `preserveAspectRatio="none"`. The frame therefore
+stretches with the existing play-table box while leaving all current gameplay
+DOM, anchors, z-index relationships, and interactions unchanged.
+
+## Board visual skin integration — 2026-09-30
+
+Step 1 of the approved staged UI integration is now implemented. The current
+`.play-table` in `app/globals.css` uses two CSS background layers:
+`game-board-frame.svg` on top and `game-board-bg.webp` below it. The frame
+is sized to the table bounds and the artwork uses `cover`.
+
+No JSX wrapper or decorative overlay node was added. This deliberately leaves
+all existing measurement code in `TableResolutionSequence`, player anchors,
+draw/discard anchors, equipment/judgement destinations, z-index behavior, and
+pointer/touch handling untouched.
+
+Recommended next work is Step 2 of the visual pass: integrate the shared card
+visual system across both the local `.game-card` path and the shared
+`CardFace` / `.played-card` path, then verify discard/equipment/judgement
+sizes and sequence animations before continuing.
+
 ## Current state — 2026-09-30
 
 The Standard hero implementation milestone is complete: **30/30 Standard heroes and 46/46 printed skills are implemented and enabled**. There is no remaining Standard hero implementation task.
@@ -55,11 +147,15 @@ Required work: when Retaliation chooses the Hand zone, make the authoritative se
 
 Do not change the source zones for Guan Yu God of War, Zhen Ji Empress Dowager, Gan Ning Ambushment, Da Qiao Captivating, or Hua Tuo First Aid solely because the English card wording says “a card”. The current project reference records deliberate Hand-zone interpretations for some of these, and the available rule material does not clearly resolve every source-zone case. Require an explicit WTK ruling/source before changing them.
 
-## Execution order
+## Execution order and next work
 
 Complete the remaining work in this order: **(1) generic Unrivaled/multi-response correction; (2) verify and, if confirmed, fix Huang Gai timing; (3) Sima Yi random-Hand hardening.**
 
-After each change, add focused deterministic regressions and re-run the relevant API/capability suites. Do not reduce the implementation status from **30/30 heroes / 46/46 skills** for these defects; they are interaction corrections to completed skills.
+After each correction, add focused deterministic regressions and run the relevant API/capability suites. Do not reduce the implementation status from **30/30 heroes / 46/46 skills**; these are corrections to completed skills.
+
+**After these confirmed gameplay bugs are closed, the next active product work is UX improvement.** Review the actual normal-multiplayer and Quick Test flows and turn the findings into a small functional UX backlog covering action/turn clarity, decision prompts, card and target selection, response/trigger controls, waiting states, mobile/touch usability, feedback for rejected/stale actions, setup/hero selection, match-end flow, and Quick Test perspective switching.
+
+Keep the larger Standard integration matrix and end-to-end/release hardening as **future TODO testing phases**, as defined in `ROADMAP.md`. Graphic/art redesign is separate from functional UX work unless explicitly requested.
 
 ## Out of scope for this handover
 
