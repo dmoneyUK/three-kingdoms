@@ -46,6 +46,10 @@ export const HERO_ART_BY_ID: Record<string, string> = {
   "lady-gan": "/hero-lady-gan.jpg",
   "huang-yueying": "/hero-huang-yueying.jpg",
   "zhou-yu": "/hero-zhou-yu.jpg",
+  "diao-chan": "/hero-diao-chan.jpg",
+  "lü-bu": "/hero-lv-bu.jpg",
+  "hua-tuo": "/hero-hua-tuo.jpg",
+  "sun-shangxiang": "/hero-sun-shangxiang.jpg",
 };
 
 export function HeroPortrait({ hero }: { hero: Pick<Hero, "id" | "name"> }) {

@@ -26,6 +26,22 @@ the turn-end continuation advances once. API coverage is in
 
 Do not start Hua Xiong or Pan Feng in this handover.
 
+## Latest presentation update — five supplied hero portraits — 2026-09-30
+
+Added and replaced the five supplied portraits through the shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer:
+
+- Photo 1: Sima Yi (`public/hero-sima-yi.jpg`)
+- Photo 2: Diao Chan (`public/hero-diao-chan.jpg`)
+- Photo 3: Lv Bu (`public/hero-lv-bu.jpg`, stable ID `lü-bu`)
+- Photo 4: Hua Tuo (`public/hero-hua-tuo.jpg`)
+- Photo 5: Sun Shangxiang (`public/hero-sun-shangxiang.jpg`)
+
+The shared path covers hero selection, the locked-in selection state, the local
+hero card, and opponent cards. This remains presentation-only: no gameplay
+rules, projections, selection legality, layout dimensions, or semantic actions
+changed. Diao Chan remains the current completed rules milestone.
+
 ## Current state — Stage 6 Hua Tuo / First Aid + Prodigal Healer — 2026-09-30
 
 Hua Tuo is complete and enabled in Standard selection. The implementation

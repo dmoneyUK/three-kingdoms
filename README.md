@@ -24,6 +24,19 @@ Jin's existing turn-end lifecycle and advances the turn exactly once after
 either acceptance or decline. Deterministic coverage is in
 `tests/api/diao-chan.test.mjs`.
 
+## Hero artwork update — 2026-09-30
+
+Added and replaced the five supplied portraits through the shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer: Photo 1 replaces Sima Yi, Photo 2
+is Diao Chan, Photo 3 is Lv Bu (`lü-bu`), Photo 4 is Hua Tuo, and Photo 5 is
+Sun Shangxiang. The shared renderer applies the artwork in hero selection,
+locked-in selection, the local hero dock, and opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged. Diao Chan
+remains the current completed Stage 6 rules milestone; no adjacent hero work is
+part of this artwork round.
+
 ## Stage 6 Hua Tuo / First Aid + Prodigal Healer — 2026-09-30
 
 Hua Tuo is complete and enabled in Standard selection at **27/30 heroes** and
