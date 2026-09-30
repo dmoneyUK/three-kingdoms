@@ -1,5 +1,30 @@
 # Three Kingdoms
 
+## Stage 6 Hua Tuo / First Aid + Prodigal Healer — 2026-09-30
+
+Hua Tuo is complete and enabled in Standard selection at **27/30 heroes** and
+**42/46 printed skills**. The remaining Standard heroes are Diao Chan, Hua
+Xiong, and Pan Feng. This is a rules-only round; no graphic or artwork work
+was included.
+
+First Aid is a semantic Peach response provider for Hua Tuo only when the
+authoritative turn owner is another character. It exposes only red-suited
+non-Peach Hand cards privately, preserves the physical card identity, and
+satisfies the same narrowly scoped `peach` rescue requirement as a physical
+Peach. Dying orchestration remains provider-agnostic: the selected card is
+consumed once, canonical recovery emits `hp_recovered` only for actual HP
+recovery, and the persisted Dying continuation resumes after Lady Gan's
+optional Prudence decision or continues rescue when needed. Own-turn nested
+Dying events do not expose First Aid.
+
+Prodigal Healer is a generic semantic active skill during Hua Tuo's Play
+Phase. It discards exactly one authoritative Hand card, accepts any living
+injured target including Hua Tuo, marks a minimal once-per-Play-Phase state,
+uses `applyRecovery`/`recoveredAmount`, and resumes the same Play Phase. Empty
+Hand loss and Quick Test use the existing semantic pipelines. Focused Worker/D1
+coverage verifies target and cost legality, private red-card projection,
+stale/replay safety, physical conservation, and the Lady Gan rescue boundary.
+
 ## Stage 6 Sun Shangxiang / Betrothment + Daredevil — 2026-09-30
 
 Sun Shangxiang is complete and enabled in Standard selection at **26/30 heroes**

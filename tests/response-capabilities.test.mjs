@@ -123,6 +123,34 @@ test("Guan Yu Wusheng provides only eligible red hand cards as semantic Attack",
   assert.deepEqual(resolveResponseDecision({ kind: "response", actorId: "p2", requirement: { kind: "dodge", sourceId: "p1", targetId: "p2" }, reason: "Dodge", continuation: { kind: "attack", sourceId: "p1", targetId: "p2", resumePhase: "play" } }, { ...longdanContext, hand: [longdanAttack] }, "zhao_yun_attack_as_dodge", { cardId: longdanAttack.id }), { status: "satisfied", providerId: "zhao_yun_attack_as_dodge", satisfies: "dodge", consumeCardIds: [longdanAttack.id], resolution: "cards", playedAs: "dodge" });
 });
 
+test("Hua Tuo First Aid is a private red-card Peach provider with an authoritative turn restriction", () => {
+  const redAttack = { ...card("Attack", "first-aid-heart"), suit: "♥" };
+  const redDodge = { ...card("Dodge", "first-aid-diamond"), suit: "♦" };
+  const blackAttack = card("Attack", "first-aid-spade");
+  const physicalPeach = { ...card("Peach", "first-aid-peach"), suit: "♥" };
+  const context = { playerId: "hua", hero: "hua-tuo", turnPlayerId: "other", hand: [redAttack, redDodge, blackAttack, physicalPeach], equipment: [] };
+  const options = getResponseOptions(context, { kind: "peach", targetId: "dying" });
+  assert.deepEqual(options.map((option) => option.providerId), ["card", "hua_tuo_first_aid"]);
+  assert.deepEqual(options[0].selection?.eligibleCardIds, [physicalPeach.id]);
+  assert.deepEqual(options[1].selection?.eligibleCardIds, [redAttack.id, redDodge.id]);
+  assert.deepEqual(resolveResponseDecision({ kind: "dying", actorId: "hua", targetId: "dying", sourceId: "source", remainingIds: [], deadline: 0, resumePlayerId: "source", reason: "Rescue" }, context, "hua_tuo_first_aid", { cardId: redDodge.id }), { status: "satisfied", providerId: "hua_tuo_first_aid", satisfies: "peach", consumeCardIds: [redDodge.id], resolution: "cards", playedAs: "peach" });
+  assert.equal(getResponseOptions({ ...context, turnPlayerId: "hua" }, { kind: "peach", targetId: "dying" }).some((option) => option.providerId === "hua_tuo_first_aid"), false);
+  assert.equal(getResponseOptions({ ...context, hero: "zhao-yun" }, { kind: "peach", targetId: "dying" }).some((option) => option.providerId === "hua_tuo_first_aid"), false);
+});
+
+test("Prodigal Healer exposes exactly one Hand cost and any injured living target", () => {
+  const cost = card("Attack", "prodigal-cost");
+  const equipment = card("NioShield", "prodigal-equipment");
+  const context = { playerId: "hua", hero: "hua-tuo", hand: [cost], equipment: [equipment], livingTargetIds: ["hua", "injured", "full"], injuredLivingTargetIds: ["hua", "injured"], skillState: {} };
+  const [option] = getActiveHeroSkillOptions(context);
+  assert.equal(option.effectId, "hua_tuo_prodigal_healer");
+  assert.deepEqual(option.selection, { type: "cards", min: 1, max: 1, eligibleCardIds: [cost.id], targetIds: ["hua", "injured"] });
+  assert.deepEqual(resolveActiveHeroSkill(option.effectId, context, { cardIds: [cost.id], targetId: "hua" })?.outcome, { kind: "prodigal_healer", sourceId: "hua", targetId: "hua", cardIds: [cost.id] });
+  assert.equal(resolveActiveHeroSkill(option.effectId, context, { cardIds: [equipment.id], targetId: "injured" }), null);
+  assert.equal(resolveActiveHeroSkill(option.effectId, { ...context, skillState: { prodigalHealerUsed: true } }, { cardIds: [cost.id], targetId: "injured" }), null);
+  assert.equal(getActiveHeroSkillOptions({ ...context, injuredLivingTargetIds: [] }).length, 0);
+});
+
 test("Play Phase virtual Attack projection is explicit and shares Wusheng eligibility", () => {
   const redPeach = { ...card("Peach", "play-peach"), suit: "♥" };
   const redDodge = { ...card("Dodge", "play-dodge"), suit: "♦" };

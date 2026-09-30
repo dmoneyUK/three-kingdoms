@@ -1,24 +1,26 @@
 import type { Card } from "./model";
 import type { JudgementResolution } from "./decisions/judgement";
-import { physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider } from "./capabilities/cards";
+import { physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider, physicalPeachProvider } from "./capabilities/cards";
 import { eightTrigramsDodgeProvider } from "./capabilities/equipment/eight-trigrams";
 import { serpentSpearAttackProvider } from "./capabilities/equipment/serpent-spear";
 import { zhenJiBlackCardDodgeProvider } from "./capabilities/heroes/zhen-ji";
 import { guanYuRedCardAttackProvider } from "./capabilities/heroes/guan-yu";
 import { zhaoYunAttackAsDodgeProvider, zhaoYunDodgeAsAttackProvider } from "./capabilities/heroes/zhao-yun";
 import { caoCaoHujiaProvider, liuBeiJijiangProvider } from "./capabilities/heroes/lord-skills";
+import { huaTuoFirstAidProvider } from "./capabilities/heroes/hua-tuo";
 
 export type ResponseDelegate = { id: string; hero?: string | null; hand: Card[]; equipment: Card[] };
-export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null; role?: string | null; playerId?: string; delegates?: ResponseDelegate[] };
+export type ResponseContext = { hand: Card[]; equipment: Card[]; hero?: string | null; role?: string | null; playerId?: string; turnPlayerId?: string; delegates?: ResponseDelegate[] };
 export type SemanticAction = "attack" | "dodge" | "damage" | "recover" | "draw" | "discard" | "negate" | "judgement" | "gain_card" | "lose_card";
 export type ActionRequirement =
   | { kind: "dodge"; sourceId?: string; targetId?: string; count?: number; attack?: { cardId?: string; suit?: string; ignoresArmor?: boolean } }
   | { kind: "attack"; sourceId?: string; actorId?: string; count?: number; context?: "duel" | "barbarian_invasion" | "green_dragon" }
-  | { kind: "negate"; sourceId?: string; targetId?: string };
+  | { kind: "negate"; sourceId?: string; targetId?: string }
+  | { kind: "peach"; sourceId?: string; targetId: string };
 export type ResponseSelection = { type: "cards"; min: number; max: number; eligibleCardIds: string[] } | null;
 export type CapabilityContext = ResponseContext & { requirement: ActionRequirement };
 export type ResponseActivation = "implicit" | "explicit";
-export type ResponseOption = { provider: string; providerId: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; label: string; cards: Card[]; selection: ResponseSelection; playedAs?: "attack" | "dodge" };
+export type ResponseOption = { provider: string; providerId: string; satisfies: ActionRequirement["kind"]; activation: ResponseActivation; label: string; cards: Card[]; selection: ResponseSelection; playedAs?: "attack" | "dodge" | "peach" };
 export type ResponseProviderOption = Omit<ResponseOption, "activation">;
 export type PlayPhaseAction = { cardId: string; canPlayAs: "attack" };
 export type ResponseSelectionInput = { cardId?: unknown; cardIds?: unknown };
@@ -26,18 +28,18 @@ export type { JudgementResolution } from "./decisions/judgement";
 export type ResolutionEffect = JudgementResolution;
 /** A provider reports the semantic result and costs, never an HTTP action. */
 export type ResponseExecution =
-  | { status: "satisfied"; providerId: string; satisfies: "attack" | "dodge" | "negate"; consumeCardIds?: string[]; resolution?: "cards"; playedAs?: "attack" | "dodge" }
+  | { status: "satisfied"; providerId: string; satisfies: ActionRequirement["kind"]; consumeCardIds?: string[]; resolution?: "cards"; playedAs?: "attack" | "dodge" | "peach" }
   | { status: "delegated"; providerId: string; satisfies: "attack" | "dodge"; delegateIds: string[] }
   | { status: "requires_resolution"; providerId: string; satisfies: "attack" | "dodge" | "negate"; resolution: ResolutionEffect; playedAs?: "attack" | "dodge" };
-export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation"; selection: { cardId?: string; cardIds?: string[] } };
-export type ResponseProvider = { id: string; satisfies: "attack" | "dodge" | "negate"; activation: ResponseActivation; playPhaseUse?: "attack"; getOption: (context: CapabilityContext) => ResponseProviderOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
+export type ResponseExecutionContext = CapabilityContext & { pendingKind: "attack" | "group" | "duel" | "negation" | "dying"; selection: { cardId?: string; cardIds?: string[] } };
+export type ResponseProvider = { id: string; satisfies: ActionRequirement["kind"]; activation: ResponseActivation; playPhaseUse?: "attack"; getOption: (context: CapabilityContext) => ResponseProviderOption | null; resolve: (context: ResponseExecutionContext) => ResponseExecution | null };
 
 // Providers own their availability and resolver choice. The engine only asks
 // the currently valid provider to satisfy an abstract requirement.
 const providers: ResponseProvider[] = [
-  physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider,
+  physicalAttackProvider, physicalDodgeProvider, physicalNegationProvider, physicalPeachProvider,
   eightTrigramsDodgeProvider, serpentSpearAttackProvider, zhenJiBlackCardDodgeProvider, guanYuRedCardAttackProvider,
-  zhaoYunDodgeAsAttackProvider, zhaoYunAttackAsDodgeProvider, caoCaoHujiaProvider, liuBeiJijiangProvider,
+  zhaoYunDodgeAsAttackProvider, zhaoYunAttackAsDodgeProvider, caoCaoHujiaProvider, liuBeiJijiangProvider, huaTuoFirstAidProvider,
 ];
 
 export function registerResponseProvider(provider: ResponseProvider) {

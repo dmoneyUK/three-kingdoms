@@ -10,6 +10,7 @@ export type KingSkillState = {
   attackUsed?: boolean;
   baredBodiedActive?: boolean;
   betrothmentUsed?: boolean;
+  prodigalHealerUsed?: boolean;
 };
 
 export type ActiveHeroSkillContext = {
@@ -24,6 +25,7 @@ export type ActiveHeroSkillContext = {
   targetableTargetIds?: string[];
   overindulgenceTargetIds?: string[];
   betrothmentTargetIds?: string[];
+  injuredLivingTargetIds?: string[];
   skillState: KingSkillState;
   canDeclareAttack?: boolean;
 };
@@ -36,6 +38,7 @@ export type ActiveHeroSkillExecution =
   | { status: "resolved"; effectId: string; outcome: { kind: "fanjian"; sourceId: string; targetId: string } }
   | { status: "resolved"; effectId: string; outcome: { kind: "place_delayed"; sourceId: string; targetId: string; cardId: string; delayedKind: "Overindulgence" } }
   | { status: "resolved"; effectId: string; outcome: { kind: "betrothment"; sourceId: string; targetId: string; cardIds: string[] } }
+  | { status: "resolved"; effectId: string; outcome: { kind: "prodigal_healer"; sourceId: string; targetId: string; cardIds: string[] } }
   | { status: "resolved"; effectId: string; outcome: { kind: "influencing_attack"; sourceId: string; targetId: string } };
 
 const rendeId = "liu_bei_rende";
@@ -45,6 +48,7 @@ const kurouId = "huang_gai_kurou";
 const fanjianId = "zhou_yu_fanjian";
 const captivatingId = "daqiao_captivating";
 const betrothmentId = "sun_shangxiang_betrothment";
+const prodigalHealerId = "hua_tuo_prodigal_healer";
 
 /**
  * Active king skills are projected as semantic trigger options during the
@@ -116,6 +120,14 @@ export function getActiveHeroSkillOptions(context: ActiveHeroSkillContext): Trig
       selection: { type: "cards", min: 2, max: 2, eligibleCardIds: context.hand.map((card) => card.id), targetIds: context.betrothmentTargetIds },
     });
   }
+  if (context.hero === "hua-tuo" && context.hand.length > 0 && !context.skillState.prodigalHealerUsed && (context.injuredLivingTargetIds?.length ?? 0) > 0) {
+    options.push({
+      effectId: prodigalHealerId,
+      label: "Prodigal Healer",
+      description: "Discard exactly 1 Hand card; a living injured character recovers 1 HP.",
+      selection: { type: "cards", min: 1, max: 1, eligibleCardIds: context.hand.map((card) => card.id), targetIds: context.injuredLivingTargetIds },
+    });
+  }
   return options;
 }
 
@@ -154,7 +166,12 @@ export function resolveActiveHeroSkill(effectId: unknown, context: ActiveHeroSki
     if (cardIds.length !== 2 || !option.selection.targetIds?.includes(targetId) || targetId === context.playerId) return null;
     return { status: "resolved", effectId, outcome: { kind: "betrothment", sourceId: context.playerId, targetId, cardIds } };
   }
+  if (effectId === prodigalHealerId) {
+    const targetId = typeof selection.targetId === "string" ? selection.targetId : "";
+    if (cardIds.length !== 1 || !option.selection.targetIds?.includes(targetId)) return null;
+    return { status: "resolved", effectId, outcome: { kind: "prodigal_healer", sourceId: context.playerId, targetId, cardIds } };
+  }
   return null;
 }
 
-export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId, qixi: qixiId, kurou: kurouId, fanjian: fanjianId, captivating: captivatingId, betrothment: betrothmentId } as const;
+export const KING_SKILL_IDS = { rende: rendeId, zhiheng: zhihengId, qixi: qixiId, kurou: kurouId, fanjian: fanjianId, captivating: captivatingId, betrothment: betrothmentId, prodigalHealer: prodigalHealerId } as const;

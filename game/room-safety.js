@@ -67,7 +67,7 @@ function normalizePending(value, kind) {
 
 function normalizeCurrentAction(value) {
   if (!isRecord(value) || (value.version !== 1 && value.version !== 3) || typeof value.kind !== "string" || !PENDING_KINDS.has(value.kind) && value.kind !== "turn" && value.kind !== "none") return null;
-  const requirement = value.requirement === "attack" || value.requirement === "dodge" || value.requirement === "negate" ? value.requirement : undefined;
+  const requirement = value.requirement === "attack" || value.requirement === "dodge" || value.requirement === "negate" || value.requirement === "peach" ? value.requirement : undefined;
   const options = Array.isArray(value.options) ? value.options.filter(isRecord).flatMap((option) => {
     if (typeof option.providerId !== "string" || typeof option.label !== "string" || option.satisfies !== requirement) return [];
     const selection = option.selection === null ? null : isRecord(option.selection) && option.selection.type === "cards" && Number.isInteger(option.selection.min) && Number.isInteger(option.selection.max) && Array.isArray(option.selection.eligibleCardIds)
@@ -75,7 +75,7 @@ function normalizeCurrentAction(value) {
       : null;
     const activation = option.activation === "explicit" ? "explicit" : option.activation === "implicit" || value.version === 1 ? "implicit" : null;
     if (!activation) return [];
-    return [{ providerId: option.providerId, satisfies: option.satisfies, activation, label: option.label, selection, ...(option.playedAs === "attack" || option.playedAs === "dodge" ? { playedAs: option.playedAs } : {}) }];
+    return [{ providerId: option.providerId, satisfies: option.satisfies, activation, label: option.label, selection, ...(option.playedAs === "attack" || option.playedAs === "dodge" || option.playedAs === "peach" ? { playedAs: option.playedAs } : {}) }];
   }) : [];
   const triggerOptions = Array.isArray(value.triggerOptions) ? value.triggerOptions.filter(isRecord).flatMap((option) => {
     if (typeof option.effectId !== "string" || typeof option.label !== "string") return [];

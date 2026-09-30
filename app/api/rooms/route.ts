@@ -29,7 +29,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -333,11 +333,11 @@ function triggerOptionsFor(pending: TriggerPending, players: PlayerRow[]) {
   return options.filter((option) => (triggerActorId(option.effectId, context) ?? pending.actorId) === pending.actorId);
 }
 function weaponCard(player?: PlayerRow | null) { return equipmentZone(player).weapon; }
-function responseContext(player?: PlayerRow | null, players: PlayerRow[] = []) {
+function responseContext(player?: PlayerRow | null, players: PlayerRow[] = [], turnSeat?: number | null) {
   const delegates = player && players.length
     ? playersInTurnOrder(players, player.seat).slice(1).filter((candidate) => candidate.alive).map((candidate) => ({ id: candidate.id, hero: candidate.hero, hand: parse<Card[]>(candidate.hand_json, []), equipment: equipmentCards(candidate) }))
     : [];
-  return { hand: parse<Card[]>(player?.hand_json ?? null, []), equipment: equipmentCards(player), hero: player?.hero, role: player?.role, delegates };
+  return { hand: parse<Card[]>(player?.hand_json ?? null, []), equipment: equipmentCards(player), hero: player?.hero, role: player?.role, playerId: player?.id, turnPlayerId: players.find((candidate) => candidate.seat === turnSeat)?.id, delegates };
 }
 function heroDisplayName(player?: PlayerRow | null) { return player ? STANDARD_HEROES.find((hero) => hero.id === player.hero)?.name ?? player.name : "The requester"; }
 function delegatedResponseReason(response: ResponsePending, viewer: PlayerRow | undefined, players: PlayerRow[]) {
@@ -360,7 +360,8 @@ function activeHeroSkillOptions(player: PlayerRow | null | undefined, room: Room
   const attackTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && attackDistance(players, player.id, candidate.id) <= attackRangeFor(player) && canTargetCharacter({ sourceId: player.id, targetId: candidate.id, targetHero: candidate.hero, targetHandCount: parse<Card[]>(candidate.hand_json, []).length, cardKind: "Attack" })).map((candidate) => candidate.id);
   const influencingAvailable = playersInTurnOrder(players, player.seat).slice(1).some((candidate) => candidate.alive && STANDARD_HEROES.find((hero) => hero.id === candidate.hero)?.faction === "Shu");
   const betrothmentTargetIds = players.filter((candidate) => candidate.alive && candidate.id !== player.id && heroGender(candidate.hero) === "male" && (candidate.hp ?? 0) < (candidate.max_hp ?? 0)).map((candidate) => candidate.id);
-  return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, role: player.role, hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, betrothmentTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...player, ...attackUseLimitContext(player) }, room.phase) });
+  const injuredLivingTargetIds = players.filter((candidate) => candidate.alive && (candidate.hp ?? 0) < (candidate.max_hp ?? 0)).map((candidate) => candidate.id);
+  return getActiveHeroSkillOptions({ playerId: player.id, hero: player.hero, role: player.role, hand: parse<Card[]>(player.hand_json, []), equipment: equipmentCards(player), livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, betrothmentTargetIds, injuredLivingTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...player, ...attackUseLimitContext(player) }, room.phase) });
 }
 
 async function recoverClaimedHeroSkill(room: RoomRow, player: PlayerRow, hand: Card[], heldCards: Card[], discard: Card[], log: string[], message: string) {
@@ -2863,7 +2864,7 @@ function legalActionsFor(room: RoomRow, actor: PlayerRow | undefined, pending: P
   if (!actor) return [];
   const hand = parse<Card[]>(actor.hand_json, []);
   if (room.phase === "dying") return pending?.kind === "dying" && pending.actorId === actor.id
-    ? (["skip_rescue", ...(hand.some((card) => card.kind === "Peach") ? ["give_peach"] : [])] as GameplayAction[])
+    ? (["skip_rescue", ...(responseDecisionFor(pending, responseContext(actor, players, room.turn_seat))?.options.length ? ["respond"] : []), ...(hand.some((card) => card.kind === "Peach") ? ["give_peach"] : [])] as GameplayAction[])
     : [];
   if (room.phase === "response") {
     if (!pending || pending.actorId !== actor.id) return [];
@@ -2951,7 +2952,7 @@ async function roomState(code: string, token?: string) {
   const actionReason = negationWaitingForOther
     ? "Waiting for Negation..."
     : room.phase === "dying" && me?.id !== actualActionPlayerId ? "Waiting — no rescue action is required from you." : privateActionReason;
-  const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me, players) : undefined) : null;
+  const responseDecision = me?.id === actualActionPlayerId ? responseDecisionFor(responsePending ?? pending, me ? responseContext(me, players, room.turn_seat) : undefined) : null;
   const canDeclareAttack = me?.id === actualActionPlayerId && canDeclareAttackFor({ ...me, ...attackUseLimitContext(me) }, room.phase);
   const playPhaseActions = me?.id === actualActionPlayerId && room.phase?.startsWith("play") ? getPlayPhaseActions(responseContext(me, players)) : [];
   const triggerOptions = me?.id === actualActionPlayerId && triggerPending
@@ -3141,6 +3142,15 @@ export async function POST(request: Request) {
       return json({ error: "That action is stale. The table has advanced to the next actor.", stale: true, room: await roomState(code, token) }, 409);
     }
     if (action === "decline_response") {
+      if (pendingForController?.kind === "dying") {
+        canonicalResponseDeclined = true;
+        canonicalResponseKind = "dying";
+        action = "skip_rescue";
+      }
+      if (action === "skip_rescue") {
+        // The existing Dying transition below remains the compatibility
+        // boundary; its choices are now discovered by semantic Peach providers.
+      } else {
       const response = pendingForController?.kind === "response" ? pendingForController : null;
       if (!response) return json({ error: "There is no response decision to decline.", stale: true, room: await roomState(code, token) }, 409);
       if (response.delegation) {
@@ -3171,16 +3181,21 @@ export async function POST(request: Request) {
       const declined = applyResponseDeclined(response);
       canonicalResponseDeclined = true;
       canonicalResponseKind = declined.continuation.kind;
+      }
     }
     if (action === "respond") {
-      responseExecution = resolveResponseDecision(pendingForController, me ? responseContext(me, allRoomPlayers) : undefined, body.providerId, { cardId: body.cardId, cardIds: body.cardIds });
+      responseExecution = resolveResponseDecision(pendingForController, me ? responseContext(me, allRoomPlayers, room.turn_seat) : undefined, body.providerId, { cardId: body.cardId, cardIds: body.cardIds });
       if (responseExecution?.status === "requires_resolution") {
         action = "resolve_response_secondary";
       }
       const responsePending = pendingForController?.kind === "response" ? pendingForController : null;
-      const canonicalResponse = responsePending && responseExecution ? applyResponseSatisfied(responsePending, responseExecution) : null;
+      const canonicalResponse = responsePending && responseExecution
+        ? applyResponseSatisfied(responsePending, responseExecution)
+        : pendingForController?.kind === "dying" && responseExecution?.status === "satisfied" && responseExecution.satisfies === "peach"
+          ? { consumeCardIds: responseExecution.consumeCardIds ?? [] }
+          : null;
       if (!responseExecution || responseExecution.status === "satisfied" && !canonicalResponse) return json({ error: "That response provider is no longer available.", stale: true, room: await roomState(code, token) }, 409);
-      canonicalResponseKind = responsePending?.continuation.kind ?? null;
+      canonicalResponseKind = pendingForController?.kind === "dying" ? "dying" : responsePending?.continuation.kind ?? null;
       if (canonicalResponse?.consumeCardIds.length) {
         body.cardIds = canonicalResponse.consumeCardIds;
         body.cardId = canonicalResponse.consumeCardIds[0];
@@ -3200,6 +3215,10 @@ export async function POST(request: Request) {
         if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That delegated response has already advanced.", stale: true, room: await roomState(code, token) }, 409);
         return json({ room: await roomState(code, token) });
       }
+    }
+    if (action === "respond" && canonicalResponseKind === "dying" && canonicalResponseSatisfied) {
+      action = "give_peach";
+      body.cardId = responseExecution?.consumeCardIds?.[0] ?? body.cardId;
     }
     if (action === "trigger" && pendingForController?.kind === "deck_reorder") {
       if (!me || pendingForController.actorId !== me.id) return json({ error: "That private deck-reorder decision belongs to another character.", stale: true, room: await roomState(code, token) }, 409);
@@ -3293,7 +3312,8 @@ export async function POST(request: Request) {
       const liveHand = parse<Card[]>(liveMe?.hand_json ?? null, []);
       const liveEquipment = liveMe ? equipmentCards(liveMe) : [];
       const betrothmentTargetIds = livePlayers.filter((player) => player.alive && player.id !== liveMe?.id && heroGender(player.hero) === "male" && (player.hp ?? 0) < (player.max_hp ?? 0)).map((player) => player.id);
-      const execution = liveMe && liveRoom && option ? resolveActiveHeroSkill(skillId, { playerId: liveMe.id, hero: liveMe.hero, role: liveMe.role, hand: liveHand, equipment: liveEquipment, livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, betrothmentTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...liveMe, ...attackUseLimitContext(liveMe) }, liveRoom.phase) }, { cardIds: body.cardIds, targetId: body.targetId }) : null;
+      const injuredLivingTargetIds = livePlayers.filter((player) => player.alive && (player.hp ?? 0) < (player.max_hp ?? 0)).map((player) => player.id);
+      const execution = liveMe && liveRoom && option ? resolveActiveHeroSkill(skillId, { playerId: liveMe.id, hero: liveMe.hero, role: liveMe.role, hand: liveHand, equipment: liveEquipment, livingTargetIds, attackTargetIds, influencingAvailable, targetableTargetIds, overindulgenceTargetIds, betrothmentTargetIds, injuredLivingTargetIds, skillState, canDeclareAttack: canDeclareAttackFor({ ...liveMe, ...attackUseLimitContext(liveMe) }, liveRoom.phase) }, { cardIds: body.cardIds, targetId: body.targetId }) : null;
       if (!execution || !liveRoom || !liveMe) return json({ error: "That hero skill is no longer available or its selection is stale.", stale: true, room: await roomState(code, token) }, 409);
       const selectedCardIds = "cardIds" in execution.outcome ? execution.outcome.cardIds : "cardId" in execution.outcome ? [execution.outcome.cardId] : [];
       const selectedIds = new Set(selectedCardIds);
@@ -3301,15 +3321,16 @@ export async function POST(request: Request) {
       if (selected.length !== selectedCardIds.length || selectedIds.size !== selectedCardIds.length) {
         return json({ error: "One selected hero-skill card is no longer in your hand.", stale: true, room: await roomState(code, token) }, 409);
       }
-      if (execution.outcome.kind === "give_cards" || execution.outcome.kind === "dismantle" || execution.outcome.kind === "fanjian" || execution.outcome.kind === "place_delayed" || execution.outcome.kind === "influencing_attack" || execution.outcome.kind === "betrothment") {
+      if (execution.outcome.kind === "give_cards" || execution.outcome.kind === "dismantle" || execution.outcome.kind === "fanjian" || execution.outcome.kind === "place_delayed" || execution.outcome.kind === "influencing_attack" || execution.outcome.kind === "betrothment" || execution.outcome.kind === "prodigal_healer") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId);
-        if (!target || !target.alive || target.id === liveMe.id) return json({ error: "The selected hero-skill target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
+        if (!target || !target.alive || target.id === liveMe.id && execution.outcome.kind !== "prodigal_healer") return json({ error: "The selected hero-skill target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "dismantle" && targetableCardCount(target) === 0) return json({ error: "The Ambushment target no longer has a card to dismantle.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "fanjian" && liveHand.length === 0) return json({ error: "The Sowing Distrust target or Zhou Yu's hand is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "place_delayed" && (!overindulgenceTargetIds.includes(target.id) || selected.length !== 1 || !liveHand.some((card) => card.id === execution.outcome.cardId) || selected[0].suit !== "♦")) return json({ error: "The Captivating card or target is no longer available.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "influencing_attack" && attackDistance(livePlayers, liveMe.id, target.id) > attackRangeFor(liveMe)) return json({ error: "The Influencing target is no longer in Attack Range.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "influencing_attack" && !canDeclareAttackFor({ ...liveMe, ...attackUseLimitContext(liveMe) }, liveRoom?.phase)) return json({ error: "You may use only one Attack per Play Phase.", stale: true, room: await roomState(code, token) }, 409);
         if (execution.outcome.kind === "betrothment" && (heroGender(target.hero) !== "male" || (target.hp ?? 0) >= (target.max_hp ?? 0) || selected.length !== 2 || selected.some((card) => !liveHand.some((held) => held.id === card.id)))) return json({ error: "Betrothment requires exactly 2 Hand cards and an injured living male target.", stale: true, room: await roomState(code, token) }, 409);
+        if (execution.outcome.kind === "prodigal_healer" && ((target.hp ?? 0) >= (target.max_hp ?? 0) || selected.length !== 1 || !liveHand.some((held) => held.id === selected[0]?.id) || selected.some((card) => equipmentCards(liveMe).some((equipped) => equipped.id === card.id)))) return json({ error: "Prodigal Healer requires exactly 1 Hand card and a living injured target.", stale: true, room: await roomState(code, token) }, 409);
       }
       const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND status = 'playing' AND turn_seat = ? AND phase LIKE 'play%'").bind(room.id, liveMe.seat).run();
       if ((claim.meta.changes ?? 0) <= 0) return json({ error: "The turn changed before that hero skill resolved.", stale: true, room: await roomState(code, token) }, 409);
@@ -3341,7 +3362,26 @@ export async function POST(request: Request) {
       let log = parse<string[]>(liveRoom.log_json, []);
       hand = hand.filter((card) => !selectedIds.has(card.id));
       equipment = Object.fromEntries(Object.entries(equipment).filter(([, card]) => !card || !selectedIds.has(card.id))) as EquipmentZone;
-      if (execution.outcome.kind === "betrothment") {
+      if (execution.outcome.kind === "prodigal_healer") {
+        const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive && (player.hp ?? 0) < (player.max_hp ?? 0));
+        if (!target || selected.length !== 1 || !liveHand.some((held) => held.id === selected[0].id) || equipmentCards(liveMe).some((card) => card.id === selected[0].id)) {
+          await recoverClaimedHeroSkill(liveRoom, liveMe, hand, selected, discard, log, `${liveMe.name}'s Prodigal Healer could not find a valid injured target or Hand cost and was settled safely.`);
+        } else {
+          const beforeHp = target.hp ?? 0;
+          const maxHp = target.max_hp ?? beforeHp;
+          const amountRecovered = recoveredAmount(beforeHp, maxHp, 1);
+          const nextState = { ...skillState, turnPlayerId: liveMe.id, prodigalHealerUsed: true };
+          discard.push(selected[0]);
+          log = addDiscardEvent(log, liveMe.name, selected);
+          log = addLog(log, `${liveMe.name} uses Prodigal Healer on ${target.name}; ${target.name} recovers ${amountRecovered} HP.`);
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), liveMe.id),
+            db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(applyRecovery(beforeHp, amountRecovered, maxHp), target.id),
+            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+          ]);
+          await advanceHpRecoveredEvents(room.id, amountRecovered ? [{ playerId: target.id, amountRecovered, sourceId: liveMe.id, reason: "prodigal_healer" }] : [], { kind: "phase", phase: "play", playerId: liveMe.id, handLoss: { playerId: liveMe.id, beforeHand: liveHand } });
+        }
+      } else if (execution.outcome.kind === "betrothment") {
         const target = livePlayers.find((player) => player.id === execution.outcome.targetId && player.alive && heroGender(player.hero) === "male" && (player.hp ?? 0) < (player.max_hp ?? 0));
         if (!target || selected.length !== 2 || selected.some((card) => !liveHand.some((held) => held.id === card.id))) {
           await recoverClaimedHeroSkill(liveRoom, liveMe, hand, selected, discard, log, `${liveMe.name}'s Betrothment could not find a valid target or Hand cost and was settled safely.`);
@@ -4789,12 +4829,20 @@ export async function POST(request: Request) {
       if (action === "skip_rescue") return json({ room: await roomState(code, token) });
       return json({ error: "You are not the acting player for this Peach rescue decision." }, 409);
     }
-    let hand = parse<Card[]>(me.hand_json, []); const handBeforePeach = [...hand]; const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const players = rows.results ?? []; const target = players.find((player) => player.id === pending.targetId) ?? null; const source = players.find((player) => player.id === pending.sourceId) ?? null; const resume = players.find((player) => player.id === pending.resumePlayerId) ?? null;
-    const peach = action === "give_peach" ? hand.find((card) => card.id === String(body.cardId ?? "") && card.kind === "Peach") : null;
-    if (action === "give_peach" && !peach) return json({ error: "Select the Peach card you want to give." }, 409);
+    const players = (await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>()).results ?? [];
+    const liveActor = players.find((player) => player.id === me.id) ?? me;
+    let hand = parse<Card[]>(liveActor.hand_json, []); const handBeforePeach = [...hand]; const target = players.find((player) => player.id === pending.targetId) ?? null; const source = players.find((player) => player.id === pending.sourceId) ?? null; const resume = players.find((player) => player.id === pending.resumePlayerId) ?? null;
+    if (!target || !target.alive || !isDying(target.hp)) return json({ error: "That rescue target is no longer dying." }, 409);
+    const liveSemanticExecution = canonicalResponseSatisfied
+      ? resolveResponseDecision(pending, responseContext(liveActor, players, liveRoom.turn_seat), body.providerId, { cardId: body.cardId, cardIds: body.cardIds })
+      : null;
+    const selectedExecution = canonicalResponseSatisfied ? liveSemanticExecution : responseExecution;
+    const selectedPeach = action === "give_peach" ? hand.find((card) => card.id === String(body.cardId ?? "")) ?? null : null;
+    const peach = selectedPeach && (!canonicalResponseSatisfied || selectedExecution?.status === "satisfied" && selectedExecution.satisfies === "peach" && selectedExecution.consumeCardIds?.length === 1 && selectedExecution.consumeCardIds[0] === selectedPeach.id) ? selectedPeach : null;
+    if (action === "give_peach" && !peach) return json({ error: "Select a valid Peach or First Aid card for this rescue." }, 409);
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run(); if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That Peach rescue decision has already moved on." }, 409);
     if (peach) {
-      hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const jiuyuan = target?.hero === "sun-quan" && target.id !== me.id && me.hero ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu" : false; const recoveryAmount = jiuyuan ? 2 : 1; const beforeHp = target?.hp ?? 0; const maxHp = target?.max_hp ?? beforeHp; const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp); const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount); log = addCardEvent(log, me.name, peach, target?.name ?? "the dying player"); log = addLog(log, `${me.name} gives Peach to ${target?.name ?? "the dying player"}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
+      hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid"; const jiuyuan = !firstAid && target?.hero === "sun-quan" && target.id !== me.id && me.hero ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu" : false; const recoveryAmount = jiuyuan ? 2 : 1; const beforeHp = target?.hp ?? 0; const maxHp = target?.max_hp ?? beforeHp; const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp); const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount); log = addCardEvent(log, me.name, peach, target?.name ?? "the dying player", undefined, undefined, firstAid ? { playedAs: "peach" } : undefined); log = addLog(log, firstAid ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target?.name ?? "the dying player"}, restoring ${amountRecovered} HP (${nextHp} HP).` : `${me.name} gives Peach to ${target?.name ?? "the dying player"}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
       if (amountRecovered > 0) {
         const recoveryPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
         await db.batch([

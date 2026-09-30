@@ -2,6 +2,30 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+## Stage 6 hero capability — Hua Tuo / First Aid + Prodigal Healer — 2026-09-30
+
+Complete on this rules-only round. Hua Tuo is enabled at **27 / 30 Standard
+heroes implemented** and **42 / 46 printed skills implemented**. The remaining
+heroes are Diao Chan, Hua Xiong, and Pan Feng. No artwork or adjacent hero work
+is included.
+
+First Aid adds the small generic semantic `peach` rescue requirement. The
+physical Peach provider and Hua Tuo's First Aid provider both satisfy it;
+First Aid is offered only to Hua Tuo when the authoritative turn owner is not
+Hua Tuo, and only red non-Peach Hand cards are private eligible choices. The
+physical card is consumed once but resolves as Peach. Dying keeps its existing
+rescue order and persisted continuation, so actual recovery emits
+`hp_recovered`, Lady Gan Prudence may pause it, and the original rescue or
+interrupted effect resumes afterward.
+
+Prodigal Healer is a generic active Play-Phase option. It requires one
+authoritative Hand card and one living injured target, including Hua Tuo;
+Equipment and Judgement cards cannot pay it. The server revalidates both
+selections, discards the cost before recovery, marks the minimal
+`prodigalHealerUsed` turn state, and resets it through the normal turn-start
+state. Quick Test and human multiplayer share the same projections and actor
+ownership.
+
 ## Stage 6 hero capability — Sun Shangxiang / Betrothment + Daredevil — 2026-09-30
 
 Complete on this rules-only round. Sun Shangxiang is enabled at **26 / 30

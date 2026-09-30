@@ -3,6 +3,7 @@ export type TurnHistoryState = {
   turnPlayerId?: string;
   attackUsed?: boolean;
   betrothmentUsed?: boolean;
+  prodigalHealerUsed?: boolean;
 };
 
 export function turnHistoryFor(playerId: string): TurnHistoryState {

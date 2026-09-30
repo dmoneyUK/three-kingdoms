@@ -22,7 +22,7 @@ export async function drainEmptyPrivateDecisions(code, fallbackToken) {
         advanced = true;
         break;
       }
-      if (current?.kind === "dying" && current.legalActions?.includes("skip_rescue") && !current.legalActions?.includes("give_peach")) {
+      if (current?.kind === "dying" && current.legalActions?.includes("skip_rescue") && !(current.options?.length ?? 0)) {
         await request("skip_rescue", { code, token: member.token });
         advanced = true;
         break;

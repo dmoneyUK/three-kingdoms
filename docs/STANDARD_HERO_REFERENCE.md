@@ -16,19 +16,19 @@
 
 ## Implementation progress
 
-Re-audited on 2026-09-30 from Sun Shangxiang baseline
-`21e7558fe5536ab6c6c58c0bb896c0dd8df8d33a`; this round completes Sun Shangxiang.
+Re-audited on 2026-09-30 from Hua Tuo baseline
+`9d7166b00fb134926bab5b1cb0db18d07e98c684`; this round completes Hua Tuo.
 
-- **Implemented:** 26 / 30 heroes
+- **Implemented:** 27 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 4 / 30 heroes
-- **Implemented skills:** 40 / 46
+- **Not implemented:** 3 / 30 heroes
+- **Implemented skills:** 42 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 6 / 46
+- **Not implemented skills:** 4 / 46
 
 **2026-09-30 implementation note:** `game/heroes.ts` now allow-lists exactly
-these 26 implemented Standard heroes, including Sun Shangxiang, Lady Gan, Huang Yueying,
-Zhuge Liang, Gongsun Zan, and Ma Chao. The 5 remaining generals are present as
+these 27 implemented Standard heroes, including Hua Tuo, Sun Shangxiang, Lady Gan,
+Huang Yueying, Zhuge Liang, Gongsun Zan, and Ma Chao. The 3 remaining generals are present as
 Standard roster metadata but are excluded from
 `IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
 Militia uses the generic server-owned effective-distance capability and is
@@ -125,7 +125,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Wu | `daqiao` | Da Qiao | 大乔 | Female | 3 | Captivating<br>Deflection | Present | Implemented |
 | Wu | `lu-xun` | Lu Xun | 陆逊 | Male | 3 | Modesty<br>Second Wind | Present | Implemented |
 | Wu | `sun-shangxiang` | Sun Shangxiang | 孙尚香 | Female | 3 | Betrothment<br>Daredevil | Present | Implemented |
-| Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid<br>Prodigal Healer | Present | Not implemented |
+| Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid<br>Prodigal Healer | Present | Implemented |
 | Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Unrivaled | Present | Implemented |
 | Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust<br>Beauty Outshining the Moon | Present | Not implemented |
 | Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Triumphant | Present | Not implemented |
@@ -364,10 +364,10 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Hua Tuo (华佗)
 
 - **Runtime ID:** `hua-tuo`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **QUN 001**, printed title **Divine Physician**.
 - **Likely engine shape:** semantic Peach provider outside own turn; once-per-Play-Phase recovery active.
-- **Current implementation:** Player-facing hero metadata now matches the verified printed names and exact zone/timing wording; the capabilities remain unimplemented.
+- **Current implementation:** First Aid is the private `hua_tuo_first_aid` provider for the semantic `peach` rescue requirement. It excludes physical Peach from conversion choices, requires red-suited Hand cards, and checks that the authoritative turn owner is not Hua Tuo. Prodigal Healer is the generic `hua_tuo_prodigal_healer` Play-Phase active skill: exactly one Hand card pays for one living injured target, including Hua Tuo, with the once-per-Play-Phase state reset at normal turn start. Both paths use canonical physical-card consumption and `applyRecovery`/`recoveredAmount`; actual recovery emits `hp_recovered`, so Lady Gan Prudence and persisted Dying/resume continuations remain active.
 
 ### Lu Bu (吕布)
 

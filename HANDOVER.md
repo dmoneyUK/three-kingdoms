@@ -1,5 +1,37 @@
 # Three Kingdoms project handover
 
+## Current state — Stage 6 Hua Tuo / First Aid + Prodigal Healer — 2026-09-30
+
+Hua Tuo is complete and enabled in Standard selection. The implementation
+count is **27/30 Standard heroes** and **42/46 printed skills**; the remaining
+metadata-only heroes are Diao Chan, Hua Xiong, and Pan Feng. This round is
+rules-only and contains no artwork work.
+
+First Aid uses the generic semantic `peach` response requirement. A physical
+Peach and Hua Tuo's `hua_tuo_first_aid` provider satisfy the same rescue
+contract. First Aid is private to the acting Hua Tuo, requires the
+authoritative turn owner to be another character, excludes physical Peach from
+the conversion choice to avoid duplicate equivalent options, and exposes only
+red-suited non-Peach Hand cards. The consumed physical card retains its
+identity in discard/history while resolving as Peach; own-turn nested Dying
+events cannot use First Aid.
+
+Prodigal Healer is a generic active `trigger` option during Hua Tuo's Play
+Phase. It accepts exactly one current Hand card and one living injured target,
+including Hua Tuo, rejects Equipment/Judgement/foreign/stale cards and full-HP
+or dead targets, discards before recovery, and records
+`prodigalHealerUsed` only after validation. Normal turn-start state resets the
+once-per-Play-Phase flag. Recovery uses `applyRecovery`, `recoveredAmount`, and
+the existing persisted `hp_recovered` continuation; Lady Gan Prudence can
+pause the rescue or Play Phase and the original continuation resumes exactly
+once. Empty-Hand loss, Quick Test actor ownership, private projections, and
+stale/replay safety remain on the canonical pipelines.
+
+Focused deterministic coverage is in `tests/response-capabilities.test.mjs`
+and `tests/api/hua-tuo.test.mjs`. The recommended next work is separately
+approved Diao Chan, Hua Xiong, or Pan Feng; do not start another hero in this
+round.
+
 ## Current state — Stage 6 Sun Shangxiang / Betrothment + Daredevil — 2026-09-30
 
 Sun Shangxiang is complete and enabled in Standard selection. The implementation
