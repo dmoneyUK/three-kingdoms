@@ -1,5 +1,24 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — shared active hero-skill UI recovery — 2026-09-30
+
+Fixed the shared React render regression that affected Liu Bei Benevolence and
+Gan Ning Ambushment/Qixi immediately after activation. The active-skill
+selection state now renders safely with zero selected cards and targets before
+the player completes the projected selection. The fix is shared across the
+generic active-skill path; it does not add hero-specific workarounds.
+
+Live React UI reproduction covered both heroes and produced the same
+`presentationBusy` initialization exception and `GameRoom` component stack.
+Parameterized render coverage now protects Benevolence, Ambushment, Lust,
+Prodigal Healer, and Betrothment selection states, including empty payload
+normalization and recovery-screen exclusion. The render boundary diagnostics
+also include action revision, current-action requirements, active provider IDs,
+hero, and component stack without card identities.
+
+The next gameplay bug-fix milestone remains Lü Bu / Unrivaled semantic
+multi-response handling.
+
 ## Opponent frame anchoring fix — 2026-09-30
 
 Fixed the first opponent-frame integration after mobile review showed the frame
@@ -9,9 +28,9 @@ containing block, so their percentage geometry was resolving against an outer
 ancestor instead of each player card.
 
 `.player-square` now explicitly uses `position: relative`. The previously
-calculated frame fit (144.4% asymmetric / 148.2% symmetric width at 100% panel
-height) is unchanged. This is a presentation-only correction; player positions,
-hit areas, targeting, live content and gameplay logic are unchanged.
+calculated frame fit (144.4% asymmetric / 148.2% symmetric width at 100%
+panel height) is unchanged. This is a presentation-only correction; player
+positions, hit areas, targeting, live content and gameplay logic are unchanged.
 
 ## Gameplay correctness — Cao Cao Entourage + Sun Quan Deliverance — 2026-09-30
 

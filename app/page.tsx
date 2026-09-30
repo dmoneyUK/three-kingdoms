@@ -455,14 +455,21 @@ class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => voi
 
   componentDidCatch(error: Error, info: { componentStack?: string }) {
     const viewer = this.props.room.players.find((player) => player.id === this.props.room.meId);
+    const action = this.props.room.currentAction;
     console.error("[GameRoom render failure]", {
       status: this.props.room.status,
       phase: this.props.room.phase,
-      actionKind: this.props.room.currentAction?.kind ?? null,
+      actionRevision: this.props.room.actionRevision ?? null,
+      currentAction: {
+        kind: action?.kind ?? null,
+        requirement: action?.requirement ?? null,
+        triggerEvent: action?.triggerEvent ?? null,
+        actorId: action?.actorId ?? null,
+      },
       heroId: viewer?.hero ?? null,
-      activeSkillIds: this.props.room.currentAction?.triggerOptions?.map((option) => option.effectId) ?? [],
+      activeSkillProviderIds: action?.triggerOptions?.map((option) => option.effectId) ?? [],
       pendingKind: pendingKind(this.props.room),
-      error,
+      error: { name: error.name, message: error.message, stack: error.stack ?? "" },
       componentStack: info.componentStack ?? "",
     });
     this.setState({ failed: true });
@@ -767,6 +774,8 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const activeSkillTargetId = activeSkillSelectedTargetIds[0] ?? "";
   const activeSkillComplete = Boolean(activeSkillOption && activeSkillStateIsCurrent && (activeSkillSelection ? activeSkillSelectedCardIds.length >= activeSkillSelection.min && activeSkillSelectedCardIds.length <= activeSkillSelection.max : activeSkillTargetSelection) && (activeSkillTargetIds.length === 0 || activeSkillSelectedTargetIds.length >= activeSkillTargetMin && activeSkillSelectedTargetIds.length <= activeSkillTargetMax));
   const activeSkillSubmission = activeSkillOption && activeSkillSelection && activeSkillStateIsCurrent && activeSkillSelectionState ? buildActiveSkillSubmission(activeSkillOption.effectId, activeSkillSelection, activeSkillSelectionState) : activeSkillOption && activeSkillStateIsCurrent ? { providerId: activeSkillOption.effectId, ...(activeSkillSelectedTargetIds.length > 1 ? { targetIds: activeSkillSelectedTargetIds } : activeSkillTargetId ? { targetId: activeSkillTargetId } : {}) } : null;
+  const hasUnseenPresentations = room.timeline.some((event) => event.type !== "message" && event.presentation !== false && !presentedEventIds.has(event.id));
+  const presentationBusy = Boolean(optimisticPlay || activeEvent || eventQueue.length || resolutionClosing || turnNotice || privateDrawCards.length || hasUnseenPresentations);
   const mandatoryChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && option.allowDecline === false) ?? null;
   const choiceTriggerOption = mandatoryChoiceTriggerOption ?? triggerOptions.find((option) => option.selection?.type === "choice") ?? null;
   const selectedTriggerOption = choiceTriggerOption ?? triggerOptions.find((option) => option.effectId === responseProviderId) ?? null;
@@ -842,8 +851,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
   const canRescue = room.phase === "dying" && room.isMyAction;
   const timelineKey = room.timeline.map((event) => event.id).join("|");
-  const hasUnseenPresentations = room.timeline.some((event) => event.type !== "message" && event.presentation !== false && !presentedEventIds.has(event.id));
-  const presentationBusy = Boolean(optimisticPlay || activeEvent || eventQueue.length || resolutionClosing || turnNotice || privateDrawCards.length || hasUnseenPresentations);
   useLayoutEffect(() => {
     const rail = handRailRef.current;
     if (!rail) return;

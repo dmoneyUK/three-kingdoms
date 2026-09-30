@@ -23,6 +23,30 @@ The existing per-seat pseudo-element mapping and fit ratios remain unchanged.
 No gameplay DOM, player state, target controls, equipment/judgement content or
 hit areas changed.
 
+## Current state — shared active hero-skill UI recovery — 2026-09-30
+
+The shared React active hero-skill selection path is now safe at the required
+empty intermediate state. Liu Bei Benevolence and Gan Ning Ambushment/Qixi were
+reproduced through the real GameRoom UI; both failed at the same
+`presentationBusy` use-before-initialization expression before card or target
+selection. The shared presentation-busy derivation now precedes all active
+selection consumers, so activation enters selection mode without rendering a
+recovery screen.
+
+The boundary keeps render exceptions separate from room normalization and logs
+only non-private diagnostics: hero ID, action revision, current-action kind,
+requirement and trigger event, active provider IDs, phase, pending kind, and
+component stack. No provider-specific route or UI protocol was added.
+
+Regression coverage now parameterizes the empty-selection UI contract across
+Benevolence, Ambushment, Lust, Prodigal Healer, and Betrothment, and preserves
+the shared normalized defaults for optional target/card fields. Guan Yu and
+Zhao Yun conversion modes remain on their existing shared controls and must be
+kept in the next full UI audit.
+
+Recommended next work remains Lü Bu / Unrivaled semantic multi-response
+handling, followed by the remaining correctness items below.
+
 ## Current state — Cao Cao Entourage + Sun Quan Deliverance correctness — 2026-09-30
 
 Cao Cao `cao_cao_hujia` (Entourage) now requires `context.hero ===

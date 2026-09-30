@@ -657,3 +657,60 @@ test("Qixi active-skill activation has a safe empty-selection render contract", 
   assert.match(html, /data-player-anchor="p2"[\s\S]*aria-label="Inspect TARGET"/, "the legal opponent is rendered for targeting after activation");
   assert.doesNotMatch(html, /Use Ambushment/, "the inactive skill does not render its submit control before activation");
 });
+
+test("every card-and-target active hero skill has a valid empty-selection UI contract", () => {
+  const activeSkills = [
+    { hero: "liu-bei", skill: "Benevolence", effectId: "liu_bei_rende", label: "Benevolence", cardIds: ["rende-card"], targetIds: ["p2"], min: 1, max: 2, targetMin: 1, targetMax: 1 },
+    { hero: "gan-ning", skill: "Ambushment", effectId: "gan_ning_qixi", label: "Ambushment", cardIds: ["qixi-card"], targetIds: ["p2"], min: 1, max: 1, targetMin: 1, targetMax: 1 },
+    { hero: "diao-chan", skill: "Lust", effectId: "diao_chan_lust", label: "Lust", cardIds: ["lust-card"], targetIds: ["p2", "p3"], min: 1, max: 1, targetMin: 2, targetMax: 2 },
+    { hero: "hua-tuo", skill: "Prodigal Healer", effectId: "hua_tuo_prodigal_healer", label: "Prodigal Healer", cardIds: ["hua-card"], targetIds: ["p2"], min: 1, max: 1, targetMin: 1, targetMax: 1 },
+    { hero: "sun-shangxiang", skill: "Betrothment", effectId: "sun_shangxiang_betrothment", label: "Betrothment", cardIds: ["sun-card-a", "sun-card-b"], targetIds: ["p2"], min: 2, max: 2, targetMin: 1, targetMax: 1 },
+  ];
+
+  for (const activeSkill of activeSkills) {
+    const selection = normalizeActiveCardSkillSelection({
+      type: "cards", min: activeSkill.min, max: activeSkill.max,
+      eligibleCardIds: activeSkill.cardIds, targetIds: activeSkill.targetIds,
+      targetMin: activeSkill.targetMin, targetMax: activeSkill.targetMax,
+    });
+    assert.ok(selection, `${activeSkill.effectId} has a normalized selection`);
+    assert.deepEqual(buildActiveSkillSubmission(activeSkill.effectId, selection, { revision: "empty", effectId: activeSkill.effectId, cardIds: [], targetIds: [] }), { providerId: activeSkill.effectId, cardIds: [] }, `${activeSkill.effectId} does not require a card or target during activation`);
+
+    const room = normalizeRoomData({
+      code: `ACTIVE-${activeSkill.effectId}`, status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+      players: [
+        { id: "p1", name: "ACTIVE HERO", seat: 0, hero: activeSkill.hero, hp: 4, maxHp: 4, alive: true, connected: true, handCount: activeSkill.cardIds.length, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+        { id: "p2", name: "TARGET ONE", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+        { id: "p3", name: "TARGET TWO", seat: 2, hero: "sun-quan", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
+      ],
+      myHand: activeSkill.cardIds.map((id, index) => card(id, index % 2 ? "Dodge" : "Attack")), turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards or use a hero skill", isMyAction: true,
+      currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards or use a hero skill", legalActions: ["trigger"], triggerOptions: [{ effectId: activeSkill.effectId, label: activeSkill.label, selection: { type: "cards", min: activeSkill.min, max: activeSkill.max, eligibleCardIds: activeSkill.cardIds, targetIds: activeSkill.targetIds, targetMin: activeSkill.targetMin, targetMax: activeSkill.targetMax } }] },
+    });
+    assert.ok(room, `${activeSkill.effectId} room normalizes`);
+    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    assert.match(html, new RegExp(`aria-label="${activeSkill.skill}"`), `${activeSkill.effectId} skill button renders`);
+    assert.match(html, new RegExp(`data-hand-card-id="${activeSkill.cardIds[0]}"`), `${activeSkill.effectId} eligible card renders`);
+    assert.match(html, /data-player-anchor="p2"/, `${activeSkill.effectId} target board renders`);
+    assert.doesNotMatch(html, /GAME SCREEN ERROR|Previous game data is no longer compatible/, `${activeSkill.effectId} does not render recovery UI`);
+  }
+
+  assert.match(gameRoomSource, /const presentationBusy = Boolean\(optimisticPlay \|\| activeEvent \|\| eventQueue\.length/);
+  assert.match(gameRoomSource, /const activeSkillTargetIds = activeSkillSelection\?\.targetIds \?\? activeSkillTargetSelection\?\.targetIds \?\? \[\]/);
+  assert.match(gameRoomSource, /const activeSkillSelectedTargetIds = activeSkillStateIsCurrent \? \(activeSkillSelectionState\?\.targetIds \?\? \[\]\)/);
+
+  for (const conversion of [
+    { hero: "guan-yu", skill: "God of War", cardId: "wusheng-card", canPlayAs: "attack" },
+    { hero: "zhao-yun", skill: "Braveheart", cardId: "longdan-card", canPlayAs: "attack" },
+  ]) {
+    const room = normalizeRoomData({
+      code: `CONVERSION-${conversion.hero}`, status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+      players: [{ id: "p1", name: "CONVERSION HERO", seat: 0, hero: conversion.hero, hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" }, { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" }],
+      myHand: [card(conversion.cardId, "Dodge")], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+      currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: conversion.cardId, canPlayAs: conversion.canPlayAs }] },
+    });
+    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    assert.match(html, new RegExp(`aria-label="${conversion.skill}"`), `${conversion.hero} conversion skill renders`);
+    assert.match(html, new RegExp(`data-hand-card-id="${conversion.cardId}"`), `${conversion.hero} conversion card renders`);
+    assert.doesNotMatch(html, /GAME SCREEN ERROR|Previous game data is no longer compatible/);
+  }
+});
