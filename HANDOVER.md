@@ -1,5 +1,22 @@
 # Three Kingdoms — current handover
 
+## Board visual skin integration — 2026-09-30
+
+Step 1 of the approved staged UI integration is now implemented. The current
+`.play-table` in `app/globals.css` uses two CSS background layers:
+`game-board-frame.svg` on top and `game-board-bg.webp` below it. The frame
+is sized to the table bounds and the artwork uses `cover`.
+
+No JSX wrapper or decorative overlay node was added. This deliberately leaves
+all existing measurement code in `TableResolutionSequence`, player anchors,
+draw/discard anchors, equipment/judgement destinations, z-index behavior, and
+pointer/touch handling untouched.
+
+Recommended next work is Step 2 of the visual pass: integrate the shared card
+visual system across both the local `.game-card` path and the shared
+`CardFace` / `.played-card` path, then verify discard/equipment/judgement
+sizes and sequence animations before continuing.
+
 ## Current state — Gan Ning Ambushment UI stability — 2026-09-30
 
 Gan Ning `gan_ning_qixi` activation is hardened at the shared active-skill

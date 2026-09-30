@@ -1,6 +1,7 @@
 # WTK UI Asset Integration Guide
 
-Status: **asset staging — do not apply the full visual refresh yet**  
+Status: **asset staging + incremental integration — do not apply the remaining full visual refresh yet**  
+Integration progress: **Step 1 — board foundation applied**  
 Last updated: **2026-09-23**
 
 This document is the single source of truth for the generated UI assets being prepared for War of the Three Kingdoms. We will keep adding approved assets here. When the user later asks for the final visual integration, review this document and apply the complete set in one coherent pass.
@@ -173,20 +174,13 @@ Primary artwork behind the in-game play surface.
 - interactive elements,
 - outer UI frame.
 
-### Integration intent
+### Integration status
 
-Use it as the background of the existing game-board area:
+**IMPLEMENTED in `app/globals.css`.**
 
-```css
-.game-board-background {
-  position: absolute;
-  inset: 0;
-  background: url('/assets/ui/game-board-bg.webp') center / cover no-repeat;
-  pointer-events: none;
-}
-```
+The existing `.play-table` owns the board artwork directly as a CSS background layer. No extra DOM node was added, so card-flight anchors and gameplay layout are unchanged.
 
-A small amount of cropping is acceptable on unusual aspect ratios. Do not stretch the bitmap disproportionately.
+The board uses `game-board-bg.webp` with `background-size: cover`. A small amount of cropping is acceptable on unusual aspect ratios; do not stretch the bitmap disproportionately.
 
 ---
 
@@ -201,27 +195,12 @@ Decorative antique-gold border overlay for the main game board.
 - restrained geometric corner ornaments.
 
 ### Layering
-Render it above the board background but below all gameplay UI.
 
-```tsx
-<img
-  className="game-board-frame"
-  src="/assets/ui/game-board-frame.svg"
-  alt=""
-  aria-hidden="true"
-/>
-```
+**IMPLEMENTED in `app/globals.css`.**
 
-```css
-.game-board-frame {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  object-fit: fill;
-}
-```
+The frame is the first CSS background layer on the existing `.play-table`, above `game-board-bg.webp` but automatically behind every gameplay child. This avoids an extra overlay element and guarantees the decoration cannot intercept pointer/touch events.
+
+The frame uses `background-size: 100% 100%`; the board artwork below it uses `cover`.
 
 If the board becomes extremely narrow or wide, protect the gameplay controls first. Decoration must adapt to the layout, never the other way around.
 

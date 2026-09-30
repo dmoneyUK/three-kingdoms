@@ -1,5 +1,22 @@
 # War of Three Kingdoms
 
+## Board visual skin integration — 2026-09-30
+
+Started the staged UI asset integration with the lowest-risk board foundation.
+The existing `.play-table` now renders `game-board-bg.webp` as the cover
+background and `game-board-frame.svg` as a full-size upper background layer.
+Both layers live entirely in CSS behind the current gameplay DOM, so no player,
+deck/discard, LocalPlayerDock, response flow, hidden-information behavior, or
+card-flight/landing anchor was changed.
+
+This is intentionally only Step 1 of the staged visual pass. Card frames,
+opponent frames, the local-player frame, and the secondary button remain
+unapplied for now; blocked/missing primary/deck/destructive assets are still not
+substituted.
+
+Current stage: Stage 7 product polish, board skin applied; continue the visual
+pass incrementally with regression checks between steps.
+
 ## UI stability — Gan Ning Ambushment activation — 2026-09-30
 
 Fixed the active-skill render boundary used by Gan Ning's `gan_ning_qixi`
