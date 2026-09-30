@@ -12,6 +12,7 @@ export type KingSkillState = {
   betrothmentUsed?: boolean;
   prodigalHealerUsed?: boolean;
   lustUsed?: boolean;
+  axeOfInsanityUsed?: boolean;
 };
 
 export type ActiveHeroSkillContext = {

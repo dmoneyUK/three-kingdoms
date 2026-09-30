@@ -24,13 +24,14 @@ import { ladyGanDivineWisdomTrigger, ladyGanPrudenceTrigger } from "./heroes/lad
 import { sunShangxiangDaredevilTrigger } from "./heroes/sun-shangxiang-daredevil";
 import { diaoChanBeautyTrigger } from "./heroes/diao-chan";
 import { huaXiongTriumphantTrigger } from "./heroes/hua-xiong-triumphant";
+import { panFengAxeOfInsanityTrigger } from "./heroes/pan-feng-axe";
 
 export type TriggerEvent = "turn_start" | "turn_end" | "draw_phase" | "discard_phase" | "judgement_revealed" | "judgement_effective" | "attack_targeted" | "attack_dodged" | "damage_about_to_apply" | "damage_suffered" | "hero_choice" | "hand_lost" | "equipment_lost" | "stratagem_used" | "hp_recovered";
 /**
  * The event context is deliberately capability-neutral. Providers decide which
  * source/target cards they can use; orchestration only knows the domain event.
  */
-export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; damageCause?: DamageCause; physicalSuit?: Card["suit"]; lostCards?: Card[]; attackUsed?: boolean; targetId?: string; targetIds?: string[]; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; sourceHero?: string | null; sourceHp?: number; sourceMaxHp?: number; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; amountRecovered?: number; recoveryReason?: string; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie" | "cavalry"; effectiveCard?: Card; heroChoiceStage?: "suit" | "card"; heroChoiceGuess?: string; turnEndStage?: "activation" | "equipment" };
+export type TriggerContext = { event: TriggerEvent; sourceId?: string; sourceEquipment: Card[]; sourceHand?: Card[]; sourceJudgement?: Card[]; sourceCards?: Card[]; damageCards?: Card[]; damageCause?: DamageCause; physicalSuit?: Card["suit"]; lostCards?: Card[]; attackUsed?: boolean; targetId?: string; targetIds?: string[]; targetHand?: Card[]; targetEquipment?: Card[]; sourceGender?: "male" | "female" | null; targetGender?: "male" | "female" | null; sourceHero?: string | null; sourceHp?: number; sourceMaxHp?: number; targetHp?: number; turnPlayerId?: string; playPhase?: boolean; skillState?: Record<string, unknown>; playerId?: string; hero?: string | null; targetHero?: string | null; damageAmount?: number; amountRecovered?: number; recoveryReason?: string; judgementCard?: Card; judgementPurpose?: "luoshen" | "overindulgence" | "rations_depleted" | "lightning" | "eight_trigrams" | "ganglie" | "cavalry"; effectiveCard?: Card; heroChoiceStage?: "suit" | "card"; heroChoiceGuess?: string; turnEndStage?: "activation" | "equipment" };
 export type TriggerSelection = { cardId?: unknown; cardIds?: unknown; cardKeys?: unknown; targetId?: unknown; targetIds?: unknown; choice?: unknown };
 export type TriggerSelectionConstraint =
   | { type: "cards"; min: number; max: number; eligibleCardIds: string[]; targetIds?: string[]; targetMin?: number; targetMax?: number }
@@ -46,32 +47,34 @@ export function triggerAllowsDecline(option: Pick<TriggerOption, "allowDecline">
  * decision engine may branch on this small domain vocabulary, never on a
  * weapon or hero provider ID.
  */
-export type TriggerExecution =
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "follow_up_attack"; attackCardId: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "force_damage"; amount: number; consumeCardIds: string[] } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "prevent_damage"; targetCardIds: string[] } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "target_discard"; targetCardId: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "discard_cards"; targetId: string; targetCardIds: string[] } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "damage_player"; targetId: string; amount: number } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "attacker_draw" } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement" } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "deck_reorder" } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "judgement_replacement"; cardId: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "obtain_judgement_card"; playerId: string; cardId: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "legacy_distribution"; playerId: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "gain_target_card"; sourceId: string; targetId: string; targetCardKey: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "gain_damage_cards"; targetId: string; cardIds: string[] } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_guess"; targetId: string; guess: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "fanjian_card"; sourceId: string; targetId: string; targetCardKey: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "draw_phase_modifier"; amount: number; modifierId?: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "draw_phase_replacement"; targetIds: string[] } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "draw_cards"; amount: number } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "recover_player"; playerId: string; amount: number } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "draw_target_cards"; targetId: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "discard_all_hand_recover"; playerId: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "skip_discard" } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "redirect_attack"; targetId: string; discardCardId: string } }
-  | { status: "resolved"; effectId: string; presentation?: TriggerPresentation; outcome: { kind: "continue_event" } };
+type TriggerExecutionOutcome =
+  | { kind: "follow_up_attack"; attackCardId: string }
+  | { kind: "force_damage"; amount: number; consumeCardIds: string[] }
+  | { kind: "prevent_damage"; targetCardIds: string[] }
+  | { kind: "target_discard"; targetCardId: string }
+  | { kind: "discard_cards"; targetId: string; targetCardIds: string[] }
+  | { kind: "damage_player"; targetId: string; amount: number }
+  | { kind: "attacker_draw" }
+  | { kind: "judgement" }
+  | { kind: "deck_reorder" }
+  | { kind: "judgement_replacement"; cardId: string }
+  | { kind: "obtain_judgement_card"; playerId: string; cardId: string }
+  | { kind: "legacy_distribution"; playerId: string }
+  | { kind: "gain_target_card"; sourceId: string; targetId: string; targetCardKey: string }
+  | { kind: "gain_damage_cards"; targetId: string; cardIds: string[] }
+  | { kind: "fanjian_guess"; targetId: string; guess: string }
+  | { kind: "fanjian_card"; sourceId: string; targetId: string; targetCardKey: string }
+  | { kind: "draw_phase_modifier"; amount: number; modifierId?: string }
+  | { kind: "draw_phase_replacement"; targetIds: string[] }
+  | { kind: "draw_cards"; amount: number }
+  | { kind: "recover_player"; playerId: string; amount: number }
+  | { kind: "draw_target_cards"; targetId: string }
+  | { kind: "discard_all_hand_recover"; playerId: string }
+  | { kind: "skip_discard" }
+  | { kind: "redirect_attack"; targetId: string; discardCardId: string }
+  | { kind: "continue_event" }
+  | { kind: "lose_hp"; playerId: string; amount: number };
+export type TriggerExecution = { status: "resolved"; effectId: string; presentation?: TriggerPresentation; stateUpdate?: { key: string; value: boolean }; outcome: TriggerExecutionOutcome };
 export type TriggerPresentation = { label: string };
 export type TriggeredEffect = {
   id: string;
@@ -114,7 +117,7 @@ const zhouYuFanjianChoice: TriggeredEffect = {
 
 import { yueJinDauntlessTrigger } from "./heroes/yue-jin-dauntless";
 
-const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, diaoChanBeautyTrigger, zhenJiLuoshenTrigger, zhugeLiangStargazingTrigger, huangYueyingCultivationTrigger, ladyGanDivineWisdomTrigger, ladyGanPrudenceTrigger, sunShangxiangDaredevilTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, maChaoCavalryTrigger, daQiaoDeflectionTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger, huaXiongTriumphantTrigger];
+const triggers: TriggeredEffect[] = [zhouYuFanjianChoice, zhouYuYingziTrigger, zhangLiaoAssaultTrigger, xuChuBaredBodiedTrigger, luXunSecondWindTrigger, luMengComposureTrigger, yueJinDauntlessTrigger, diaoChanBeautyTrigger, zhenJiLuoshenTrigger, zhugeLiangStargazingTrigger, huangYueyingCultivationTrigger, ladyGanDivineWisdomTrigger, ladyGanPrudenceTrigger, sunShangxiangDaredevilTrigger, simaYiGuicaiTrigger, guoJiaJealousyOfGodTrigger, guoJiaLegacyTrigger, caoCaoJianxiongTrigger, simaYiFankuiTrigger, xiahouDunGanglieTrigger, maChaoCavalryTrigger, daQiaoDeflectionTrigger, yinYangSwordsAttackTargeted, greenDragonBladeDodgedAttackTrigger, rockCleavingAxeDodgedAttackTrigger, frostSwordDamageAboutToApplyTrigger, kirinBowDamageAboutToApplyTrigger, huaXiongTriumphantTrigger, panFengAxeOfInsanityTrigger];
 
 /** Test and future capability modules can extend an event without route edits. */
 export function registerTriggeredEffect(effect: TriggeredEffect) {

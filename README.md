@@ -1,5 +1,29 @@
 # Three Kingdoms
 
+## Stage 6 Pan Feng / Axe of Insanity — 2026-09-30
+
+Pan Feng is complete and enabled in Standard selection at **30/30 heroes**
+and **46/46 printed skills**. This closes the Standard roster; no expansion
+cards, artwork, or adjacent hero work was included.
+
+Axe of Insanity is a mandatory generic `damage_suffered` capability. The
+[official Standard rulebook](https://sjsea-2cstatic.oss-cn-hongkong.aliyuncs.com/instruction/instruction1.pdf)'s
+Passive rule makes it mandatory, and its damage sequence places the comparison after damage and HP deduction. The once-per-
+Play-Phase state is consumed only when a qualifying post-Attack-damage
+activation resolves, not when an Attack is played. It draws exactly two cards
+through canonical refill when the damaged character's post-damage HP is lower;
+otherwise it causes exactly 1 HP loss, not damage, and uses canonical Dying /
+rescue when lethal. The trigger uses semantic source identity and Attack cause,
+so converted Attacks, Borrowed Sword, Da Qiao Deflection, and Halberd flows
+retain the correct source while Duel, group cards, Judgement, HP loss,
+prevention, and Dodge do not qualify. Draw projection remains private to Pan
+Feng, with only hand-count changes public.
+
+The Standard hero reference is now **30/30 implemented, 0 partial, 0 not
+implemented** and **46/46 skills implemented, 0 partial, 0 not implemented**.
+Focused regressions are in `tests/api/pan-feng.test.mjs` and
+`tests/response-capabilities.test.mjs`.
+
 ## Stage 6 Hua Xiong / Triumphant — 2026-09-30
 
 Hua Xiong is complete and enabled in Standard selection at **29/30 heroes**

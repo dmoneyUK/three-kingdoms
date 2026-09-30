@@ -150,7 +150,7 @@ function damageTriggerContext(source: PlayerRow, target: PlayerRow) {
     targetEquipment: equipmentCards(target),
   };
 }
-function damageSufferedTriggerContext(source: PlayerRow | null, target: PlayerRow, amount: number, judgementCard?: Card, damageCards: Card[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"]) {
+function damageSufferedTriggerContext(source: PlayerRow | null, target: PlayerRow, amount: number, judgementCard?: Card, damageCards: Card[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"], skillState: KingSkillState = {}, playPhase = false) {
   return {
     event: "damage_suffered" as const,
     ...(source ? { sourceId: source.id } : {}),
@@ -159,12 +159,16 @@ function damageSufferedTriggerContext(source: PlayerRow | null, target: PlayerRo
     sourceJudgement: source ? parse<Card[]>(source.judgement_json, []) : [],
     ...(source ? { sourceHero: source.hero, sourceHp: source.hp ?? 0, sourceMaxHp: source.max_hp ?? source.hp ?? 0 } : {}),
     targetId: target.id,
+    targetHp: target.hp ?? 0,
     targetHand: parse<Card[]>(target.hand_json, []),
     targetEquipment: equipmentCards(target),
     targetHero: target.hero,
     damageAmount: amount,
     damageCards,
     damageCause,
+    ...(skillState.turnPlayerId ? { turnPlayerId: skillState.turnPlayerId } : {}),
+    playPhase,
+    skillState,
     ...(physicalSuit ? { physicalSuit } : {}),
     ...(judgementCard ? { judgementCard, judgementPurpose: "ganglie" as const } : {}),
   };
@@ -187,11 +191,11 @@ function turnEndTriggerContext(actor: PlayerRow, endingPlayer: PlayerRow, stage:
 function damageTriggerOptions(source?: PlayerRow | null, target?: PlayerRow | null) {
   return source && target ? getTriggeredEffects(damageTriggerContext(source, target)) : [];
 }
-function damageSufferedTriggerOptions(source: PlayerRow | null | undefined, target?: PlayerRow | null, amount = 1, judgementCard?: Card, resolvedEffectIds: readonly string[] = [], damageCards: Card[] = [], resolvedDamagePointEffectIds: readonly string[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"]) {
-  return target ? getTriggeredEffects(damageSufferedTriggerContext(source ?? null, target, amount, judgementCard, damageCards, damageCause, physicalSuit), resolvedEffectIds, resolvedDamagePointEffectIds) : [];
+function damageSufferedTriggerOptions(source: PlayerRow | null | undefined, target?: PlayerRow | null, amount = 1, judgementCard?: Card, resolvedEffectIds: readonly string[] = [], damageCards: Card[] = [], resolvedDamagePointEffectIds: readonly string[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"], skillState: KingSkillState = {}, playPhase = false) {
+  return target ? getTriggeredEffects(damageSufferedTriggerContext(source ?? null, target, amount, judgementCard, damageCards, damageCause, physicalSuit, skillState, playPhase), resolvedEffectIds, resolvedDamagePointEffectIds) : [];
 }
-function damageSufferedActorId(source: PlayerRow | null | undefined, target: PlayerRow, amount: number, damageCards: Card[] = [], resolvedEffectIds: readonly string[] = [], resolvedDamagePointEffectIds: readonly string[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"]) {
-  const context = damageSufferedTriggerContext(source ?? null, target, amount, undefined, damageCards, damageCause, physicalSuit);
+function damageSufferedActorId(source: PlayerRow | null | undefined, target: PlayerRow, amount: number, damageCards: Card[] = [], resolvedEffectIds: readonly string[] = [], resolvedDamagePointEffectIds: readonly string[] = [], damageCause: DamageCause = "other", physicalSuit?: Card["suit"], skillState: KingSkillState = {}, playPhase = false) {
+  const context = damageSufferedTriggerContext(source ?? null, target, amount, undefined, damageCards, damageCause, physicalSuit, skillState, playPhase);
   const options = getTriggeredEffects(context, resolvedEffectIds, resolvedDamagePointEffectIds);
   return options.map((option) => triggerActorId(option.effectId, context) ?? target.id).find((actorId) => actorId === target.id || actorId === source?.id) ?? null;
 }
@@ -831,18 +835,80 @@ async function finishDamageSufferedEvent(room: RoomRow, continuation: DamageSuff
   await continueAfterDying(room.id, continuation.resumePlayerId ?? continuation.sourceId ?? target?.id ?? room.host_player_id);
 }
 
+/** Apply a mandatory zero-choice post-damage capability without creating a
+ * confirmation action. Passive skills are mandatory in the Standard rules;
+ * the semantic outcome still records its provider and turn-state update
+ * before the interrupted damage continuation resumes. */
+async function resolveAutomaticDamageSufferedTrigger(room: RoomRow, continuation: DamageSufferedTriggerContinuation, source: PlayerRow | null, target: PlayerRow, execution: import("../../../game/capabilities/triggers").TriggerExecution, players: PlayerRow[], deck: Card[], discard: Card[], log: string[]) {
+  const state = parse<KingSkillState>(room.skill_state_json, {});
+  const nextState = execution.stateUpdate ? { ...state, [execution.stateUpdate.key]: execution.stateUpdate.value } : state;
+  const nextContinuation = { ...continuation, resolvedEffectIds: [...new Set([...(continuation.resolvedEffectIds ?? []), execution.effectId])], stage: "reaction" as const, secondaryEffectId: undefined, judgementCard: undefined };
+  let nextLog = addTriggeredEffectNotice(log, source?.name ?? target.name, execution.presentation?.label ?? "a passive post-damage effect").log;
+
+  if (execution.outcome.kind === "draw_cards") {
+    if (!source || execution.outcome.amount <= 0) return continueDamageSufferedEvent(room, nextContinuation, players, deck, discard, addLog(nextLog, "The passive post-damage effect has no valid source and ends."));
+    const draw = drawCards(deck, discard, execution.outcome.amount, nextLog);
+    const nextHand = [...parse<Card[]>(source.hand_json, []), ...draw.drawn];
+    nextLog = draw.log;
+    for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, source, drawn);
+    nextLog = addHistory(nextLog, `${source.name} activates Axe of Insanity and draws ${draw.drawn.length} cards.`, source.id);
+    const updatedPlayers = players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(nextHand) } : player);
+    const nextRoom = { ...room, phase: "resolving", pending_json: null, deck_json: JSON.stringify(draw.deck), discard_json: JSON.stringify(draw.discard), log_json: JSON.stringify(nextLog), skill_state_json: JSON.stringify(nextState) };
+    await db().batch([
+      db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), source.id),
+      db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, deck_json = ?, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(draw.deck), JSON.stringify(draw.discard), JSON.stringify(nextState), JSON.stringify(nextLog), room.id),
+    ]);
+    await continueDamageSufferedEvent(nextRoom, nextContinuation, updatedPlayers, draw.deck, draw.discard, nextLog);
+    return;
+  }
+
+  if (execution.outcome.kind === "lose_hp") {
+    if (!source || execution.outcome.playerId !== source.id || execution.outcome.amount !== 1) return continueDamageSufferedEvent(room, nextContinuation, players, deck, discard, addLog(nextLog, "The passive HP-loss effect has no valid source and ends."));
+    // This is explicit HP loss, not sourced damage: do not route it through
+    // resolveSourcedDamage or emit another damage_suffered event.
+    const hp = Math.max(0, (source.hp ?? 0) - execution.outcome.amount);
+    nextLog = addLog(nextLog, `${source.name} loses 1 HP from Axe of Insanity${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
+    const updatedSource = { ...source, hp } satisfies PlayerRow;
+    if (isDying(hp)) {
+      await startDyingRescue(room, null, updatedSource, players, deck, discard, nextLog, [db().prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(nextState), room.id)], source, continuation.resumePhase, undefined, hp, continuation.origin, nextContinuation);
+      return;
+    }
+    const updatedPlayers = players.map((player) => player.id === source.id ? updatedSource : player);
+    const nextRoom = { ...room, phase: "resolving", pending_json: null, skill_state_json: JSON.stringify(nextState), log_json: JSON.stringify(nextLog) };
+    await db().batch([
+      db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, source.id),
+      db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(nextLog), room.id),
+    ]);
+    await continueDamageSufferedEvent(nextRoom, nextContinuation, updatedPlayers, deck, discard, nextLog);
+    return;
+  }
+
+  await continueDamageSufferedEvent(room, nextContinuation, players, deck, discard, nextLog);
+}
+
 async function continueDamageSufferedEvent(room: RoomRow, continuation: DamageSufferedTriggerContinuation, players: PlayerRow[], deck: Card[], discard: Card[], log: string[]) {
   const source = continuation.sourceId ? players.find((player) => player.id === continuation.sourceId) ?? null : null;
   const target = players.find((player) => player.id === continuation.targetId && player.alive) ?? null;
-  const options = target?.alive ? damageSufferedTriggerOptions(source?.alive ? source : null, target, continuation.amount, undefined, continuation.resolvedEffectIds, continuation.damageCards ?? [], continuation.resolvedDamagePointEffectIds, continuation.damageCause ?? "other", continuation.physicalSuit) : [];
+  const skillState = parse<KingSkillState>(room.skill_state_json, {});
+  const playPhase = continuation.resumePhase.startsWith("play");
+  const options = target?.alive ? damageSufferedTriggerOptions(source?.alive ? source : null, target, continuation.amount, undefined, continuation.resolvedEffectIds, continuation.damageCards ?? [], continuation.resolvedDamagePointEffectIds, continuation.damageCause ?? "other", continuation.physicalSuit, skillState, playPhase) : [];
   const baseContinuation: DamageSufferedTriggerContinuation = {
     ...continuation,
     stage: "reaction",
     judgementCard: undefined,
     secondaryEffectId: undefined,
   };
+  const context = target ? damageSufferedTriggerContext(source?.alive ? source : null, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, skillState, playPhase) : null;
+  const automaticOption = options.find((option) => option.allowDecline === false && option.selection === null);
+  if (automaticOption && context) {
+    const execution = resolveTriggeredEffect(automaticOption.effectId, context, {});
+    if (execution) {
+      await resolveAutomaticDamageSufferedTrigger(room, continuation, source?.alive ? source : null, target!, { ...execution, presentation: { label: automaticOption.label } }, players, deck, discard, log);
+      return;
+    }
+  }
   if (target && options.length) {
-    const context = damageSufferedTriggerContext(source?.alive ? source : null, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit);
+    const context = damageSufferedTriggerContext(source?.alive ? source : null, target, continuation.amount, undefined, continuation.damageCards ?? [], continuation.damageCause ?? "other", continuation.physicalSuit, skillState, playPhase);
     const actorId = options.map((option) => triggerActorId(option.effectId, context) ?? target.id).find((candidate) => candidate === target.id || candidate === source?.id) ?? target.id;
     const actor = players.find((player) => player.id === actorId && player.alive) ?? target;
     const presentation = addLogWithId(log, `${actor.name} may use another post-damage reaction, or skip.`);
@@ -2327,6 +2393,8 @@ type SourcedDamageTransition = {
 /** Applies sourced damage, then discovers the generic post-damage event. */
 async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], physicalSuit, origin, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied }: SourcedDamageTransition): Promise<AttackDamageResult> {
   const finalAmount = resolveDamageModifiers({ sourceId: source?.id, sourceHero: source?.hero, cause, baseAmount: amount, turnState: parse<KingSkillState>(room.skill_state_json, {}) });
+  const skillState = parse<KingSkillState>(room.skill_state_json, {});
+  const playPhase = resumePhase.startsWith("play");
   const hp = applyDamage(target.hp ?? 1, finalAmount);
   const description = typeof damageDescription === "function" ? damageDescription(finalAmount) : damageDescription ?? `${target.name} takes ${finalAmount} damage${label !== "Attack" && label ? ` from ${label}` : ""}`;
   const damageLog = addLog(log, `${description}${isDying(hp) ? " and enters Dying. Peach rescue begins in turn order." : "."}`);
@@ -2356,7 +2424,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     const dyingTarget = { ...target, hp } satisfies PlayerRow;
     const dyingSource = source && source.id === target.id ? dyingTarget : source;
     const pendingPostDamageOptions = target.alive
-      ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit)
+      ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase)
       : [];
     const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(resumeGroup || resumeDamageSuffered || resumeTurnEnd);
     await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, resumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined);
@@ -2366,9 +2434,19 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
   const updatedTarget = { ...target, hp } satisfies PlayerRow;
   const updatedPlayers = players.map((player) => player.id === target.id ? updatedTarget : player);
   const updatedSource = source && source.id === target.id ? updatedTarget : source;
-  const postDamageOptions = target.alive ? damageSufferedTriggerOptions(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit) : [];
+  const postDamageOptions = target.alive ? damageSufferedTriggerOptions(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase) : [];
   if (postDamageOptions.length) {
-    const actorId = damageSufferedActorId(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, damageCards, [], [], cause, physicalSuit) ?? updatedTarget.id;
+    const automaticOption = postDamageOptions.find((option) => option.allowDecline === false && option.selection === null);
+    if (automaticOption) {
+      const context = damageSufferedTriggerContext(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, undefined, damageCards, cause, physicalSuit, skillState, playPhase);
+      const execution = resolveTriggeredEffect(automaticOption.effectId, context, {});
+      if (execution) {
+        await db().batch([...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id)]);
+        await resolveAutomaticDamageSufferedTrigger({ ...room, phase: "resolving", pending_json: null, skill_state_json: JSON.stringify(skillState) }, damageContinuation, updatedSource?.alive ? updatedSource : null, updatedTarget, { ...execution, presentation: { label: automaticOption.label } }, updatedPlayers, deck, discard, damageLog);
+        return { kind: "reaction_pending" };
+      }
+    }
+    const actorId = damageSufferedActorId(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, damageCards, [], [], cause, physicalSuit, skillState, playPhase) ?? updatedTarget.id;
     const actor = players.find((player) => player.id === actorId && player.alive) ?? updatedTarget;
     const presentation = addLogWithId(damageLog, `${actor.name} may use a post-damage reaction, or skip.`);
     const pending = damageSufferedTriggerPending(source, updatedTarget, finalAmount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, resumeGroup, resumeDamageSuffered, damageCards, resumeTurnEnd, cause, physicalSuit, actor.id);

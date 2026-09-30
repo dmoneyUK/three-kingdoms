@@ -16,21 +16,20 @@
 
 ## Implementation progress
 
-Re-audited on 2026-09-30 from the Hua Xiong implementation baseline; this
-round completes Hua Xiong.
+Re-audited on 2026-09-30 after the Pan Feng implementation; this round
+completes the Standard roster.
 
-- **Implemented:** 29 / 30 heroes
+- **Implemented:** 30 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 1 / 30 heroes
-- **Implemented skills:** 45 / 46
+- **Not implemented:** 0 / 30 heroes
+- **Implemented skills:** 46 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 1 / 46
+- **Not implemented skills:** 0 / 46
 
-**2026-09-30 implementation note:** `game/heroes.ts` now allow-lists exactly
-these 29 implemented Standard heroes, including Hua Xiong, Diao Chan, Hua Tuo,
-Sun Shangxiang, Lady Gan, Huang Yueying, Zhuge Liang, Gongsun Zan, and Ma Chao.
-Pan Feng remains as Standard roster metadata but is excluded from
-`IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
+**2026-09-30 implementation note:** `game/heroes.ts` now allow-lists all 30
+implemented Standard heroes, including Pan Feng, Hua Xiong, Diao Chan, Hua
+Tuo, Sun Shangxiang, Lady Gan, Huang Yueying, Zhuge Liang, Gongsun Zan, and Ma
+Chao. Gongsun Zan's
 Militia uses the generic server-owned effective-distance capability and is
 covered by pure, API, Quick Test, and normal multiplayer regressions. Lady Gan's
 Divine Wisdom uses `turn_start`; its strict `discardedCount > HP` recovery is
@@ -139,7 +138,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust<br>Beauty Outshining the Moon | Present | Implemented |
 | Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Triumphant | Present | Implemented |
 | Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Militia | Present | Implemented |
-| Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Axe of Insanity | Present | Not implemented |
+| Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Axe of Insanity | Present | Implemented |
 
 ## Detailed hero data
 
@@ -428,11 +427,11 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Pan Feng (潘凤)
 
 - **Runtime ID:** `pan-feng`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **QUN 017**, printed title **General of the Coalition**.
-- **Implementation interpretation:** The once-per-Play-Phase trigger evaluates HP after the [Attack] has dealt damage. If the damaged character's current HP is lower than Pan Feng's current HP, Pan Feng draws 2 cards; otherwise Pan Feng loses 1 HP.
-- **Likely engine shape:** once-per-Play-Phase post-Attack-damage trigger with post-damage HP comparison and draw/HP-loss branch.
-- **Current implementation:** Standard roster metadata exists in `STANDARD_HEROES`, but this hero is excluded from `IMPLEMENTED_STANDARD_HEROES` and new-game selection until the printed skill is implemented.
+- **Verified rule timing:** The official Standard rulebook marks Passive skills as mandatory and resolves HP deduction before After Inflicting Damage. The Axe comparison therefore uses authoritative current HP after the Attack damage has been applied; its HP-loss branch is not damage.
+- **Implementation interpretation:** During the active Play Phase, after Pan Feng's semantic Attack deals positive damage to another character, the mandatory once-per-Play-Phase effect draws exactly 2 cards if the target's current HP is lower than Pan Feng's, otherwise Pan Feng loses exactly 1 HP. The state is consumed on activation/resolution, not when an Attack is played.
+- **Current implementation:** Generic `damage_suffered` provider `pan_feng_axe_of_insanity` uses semantic source/cause, post-damage HP, persisted `axeOfInsanityUsed`, canonical draw/refill, and canonical HP-loss/Dying continuation. Converted Attacks, Borrowed Sword, Da Qiao Deflection, and Halberd flows preserve source identity; non-Attack damage, prevention, zero damage, and Dodge do not qualify. Mandatory zero-choice resolution is automatic, so the UI exposes no unnecessary confirmation.
 
 ## Legacy/non-Standard runtime entries
 

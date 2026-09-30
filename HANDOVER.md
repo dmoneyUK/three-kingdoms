@@ -1,6 +1,43 @@
 # Three Kingdoms project handover
 
-## Current state — Stage 6 Hua Xiong / Triumphant — 2026-09-30
+## Current state — Stage 6 Pan Feng / Axe of Insanity — 2026-09-30
+
+The Standard roster is complete: **30/30 heroes** and **46/46 printed
+skills** are implemented, with zero partial or unimplemented entries. Pan Feng
+(`pan-feng`) is enabled in normal Standard hero selection and Quick Test.
+
+The [official Standard rulebook](https://sjsea-2cstatic.oss-cn-hongkong.aliyuncs.com/instruction/instruction1.pdf)
+was re-opened before implementation. It defines
+Passive skills as mandatory, resolves damage in the order Inflicting Damage,
+Taking Damage, HP Deduction, then After Inflicting Damage, and states that HP
+deduction is not damage. Accordingly, Axe of Insanity is an automatic,
+zero-choice post-damage capability. It compares authoritative post-damage HP;
+lower target HP draws two cards through canonical refill, while equal or higher
+target HP makes Pan Feng lose one HP through the non-damage HP-loss path. A
+lethal loss enters canonical Dying/rescue and resumes the interrupted Attack.
+The `axeOfInsanityUsed` state is consumed on resolved Axe activation and resets
+with the normal next-turn skill state; playing an Attack alone does not consume
+it.
+
+The provider is source-owned and uses semantic `damageCause: "attack"`, actual
+positive damage, another target, and the active Play Phase. It therefore
+supports converted Attacks, Liu Bei source ownership, Borrowed Sword when Pan
+Feng is the forced Attack source, Da Qiao Deflection, and Halberd multi-target
+damage without hero-specific routes or a central damage-engine branch. Duel,
+Barbarian Invasion, Raining Arrows, Judgement, HP loss, prevented/zero damage,
+and Dodged Attacks do not qualify. Draw cards are private to Pan Feng; other
+views receive only the hand-count change.
+
+Dedicated API and capability coverage is in `tests/api/pan-feng.test.mjs` and
+`tests/response-capabilities.test.mjs`, including post-damage equality,
+once-per-Play-Phase, next-phase reset, two-damage event semantics, conversion,
+source ownership, Deflection, Halberd, Dodge/non-Attack exclusions, Dying,
+privacy, reload, and stale replay safety. Full release validation passes in
+this worktree: lint (0 errors, one pre-existing warning), 63 fast tests, 183
+API tests, build, and `git diff --check`. The next milestone is pushing the
+validated commit to `origin/main`.
+
+## Previous state — Stage 6 Hua Xiong / Triumphant — 2026-09-30
 
 Hua Xiong is complete and enabled in Standard selection. The implementation
 count is **29/30 Standard heroes** and **45/46 printed skills**; Pan Feng is

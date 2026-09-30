@@ -417,6 +417,46 @@ test("Hua Xiong Triumphant is a source-owned choice for actual red Attack damage
   assert.equal(getTriggeredEffects(context(undefined)).some((entry) => entry.effectId === "hua_xiong_triumphant"), false, "a conversion with no effective suit is not red");
 });
 
+test("Pan Feng Axe of Insanity follows semantic Attack cause, including converted cards", () => {
+  const context = (effectiveCard, overrides = {}) => ({
+    event: "damage_suffered",
+    sourceId: "pan-feng",
+    sourceHero: "pan-feng",
+    sourceHp: 4,
+    sourceMaxHp: 4,
+    sourceEquipment: [],
+    sourceHand: [],
+    targetId: "target",
+    targetHero: "zhao-yun",
+    targetHp: 2,
+    targetHand: [],
+    targetEquipment: [],
+    damageAmount: 1,
+    damageCause: "attack",
+    playPhase: true,
+    turnPlayerId: "pan-feng",
+    skillState: {},
+    effectiveCard,
+    ...overrides,
+  });
+  for (const effectiveCard of [card("Attack", "physical-attack"), card("Dodge", "zhao-yun-converted-attack")]) {
+    const option = getTriggeredEffects(context(effectiveCard)).find((entry) => entry.effectId === "pan_feng_axe_of_insanity");
+    assert.equal(option?.allowDecline, false);
+    assert.equal(option?.selection, null);
+    assert.deepEqual(resolveTriggeredEffect("pan_feng_axe_of_insanity", context(effectiveCard), {}), {
+      status: "resolved",
+      effectId: "pan_feng_axe_of_insanity",
+      stateUpdate: { key: "axeOfInsanityUsed", value: true },
+      outcome: { kind: "draw_cards", amount: 2 },
+    });
+  }
+  const twoDamageOption = getTriggeredEffects(context(card("Attack", "two-damage-attack"), { damageAmount: 2 })).find((entry) => entry.effectId === "pan_feng_axe_of_insanity");
+  assert.equal(twoDamageOption?.selection, null, "one damage event exposes one Axe opportunity regardless of its amount");
+  assert.equal(getTriggeredEffects(context(card("Attack", "duel-attack"), { damageCause: "duel" })).some((entry) => entry.effectId === "pan_feng_axe_of_insanity"), false);
+  assert.equal(getTriggeredEffects(context(card("Attack", "stale"), { playPhase: false })).some((entry) => entry.effectId === "pan_feng_axe_of_insanity"), false);
+  assert.equal(getTriggeredEffects(context(card("Attack", "used"), { skillState: { axeOfInsanityUsed: true } })).some((entry) => entry.effectId === "pan_feng_axe_of_insanity"), false);
+});
+
 test("converted multi-card metadata preserves only a common physical suit", () => {
   for (const suit of ["♥", "♦", "♠", "♣"]) {
     assert.equal(effectivePhysicalSuit([{ suit }, { suit }]), suit);

@@ -2,6 +2,32 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+## Stage 6 hero capability — Pan Feng / Axe of Insanity — 2026-09-30
+
+Complete on this rules-only round. Pan Feng is enabled at **30 / 30 Standard
+heroes implemented** and **46 / 46 printed skills implemented**; there are no
+partial or unimplemented Standard heroes or skills remaining.
+
+The official Standard rulebook was re-opened before coding. Its Passive rule
+makes Axe of Insanity mandatory, and its damage sequence places the comparison
+after damage and HP deduction. The generic `damage_suffered` provider requires
+Pan Feng as semantic source, actual positive Attack damage to another
+character, and the active Play Phase. It compares live post-damage HP, draws 2
+through canonical refill when the target is lower, or performs exactly 1
+non-damage HP loss when the target is equal or higher. The persisted
+`axeOfInsanityUsed` flag is set only when the activation resolves and resets at
+the next turn's normal skill-state boundary.
+
+Converted Attacks, Borrowed Sword, Da Qiao Deflection, and Halberd targets
+retain semantic source identity. Duel, group cards, Judgement, HP loss,
+prevention, zero damage, and Dodge do not trigger it. Mandatory resolution is
+automatic, so no confirmation UI is invented. API and capability regressions
+cover private draw projection, reload/stale safety, equality, next-phase reset,
+multi-targets, conversion, Dying/rescue, and the required exclusions.
+
+This completes the Standard roster. The next milestone is full release
+validation and pushing the validated commit to `origin/main`.
+
 ## Stage 6 hero capability — Hua Xiong / Triumphant — 2026-09-30
 
 Complete on this rules-only round. Hua Xiong is enabled at **29 / 30 Standard
