@@ -1,5 +1,45 @@
 # Three Kingdoms — current handover
 
+## Approved board-background direction — 2026-09-30
+
+The owner approved the latest board-background reference shown in chat as the
+visual target for the real game board.
+
+Approved visual content:
+- dark forest-green / near-black ink texture,
+- a large central enso / circular brush mark that is visibly readable,
+- shadowed mountain silhouettes along the lower area,
+- broad black ink-brush strokes entering from the corners/edges,
+- restrained antique-gold flecks,
+- quiet enough central contrast for player panels, deck/discard, cards, and
+  animation overlays to remain readable.
+
+Important production rule: do **not** use the uploaded presentation image
+verbatim. The reference image contains presentation-only material that must not
+be baked into the runtime board:
+- the white header area,
+- the "1. Board Background" title,
+- the "War of the Three Kingdoms · UI Asset" label,
+- the baked outer gold border.
+
+Create/replace `public/assets/ui/game-board-bg.webp` with only the interior
+board artwork. Keep `public/assets/ui/game-board-frame.svg` as the separate
+outer frame; its portrait scaling fix using `preserveAspectRatio="none"` is
+already deployed and working.
+
+Target runtime layering remains:
+
+```text
+.play-table
+  -> game-board-frame.svg   (separate decorative frame)
+  -> game-board-bg.webp     (approved ink/enso/mountain artwork)
+  -> existing live game UI
+```
+
+The current deployed `game-board-bg.webp` is considered too subtle/dark to
+show the intended artwork clearly and should be replaced by this approved
+direction before the visual pass is considered complete.
+
 ## Board frame portrait scaling fix — 2026-09-30
 
 Deployed mobile review exposed an SVG scaling issue in the new board frame.
