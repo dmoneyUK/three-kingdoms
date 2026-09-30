@@ -12,6 +12,13 @@ const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url),
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
+test("Legacy distribution keeps private cards static and labels recipients by hero", () => {
+  assert.match(gameRoomSource, /function PrivateCardDistributionDialog[\s\S]*Choose a hero[\s\S]*players\.map\(\(player\) => <option value=\{player\.id\} key=\{player\.id\}>\{heroName\(player\.hero\)\}<\/option>/);
+  assert.match(gameRoomSource, /<div className="legacy-distribution-card"[\s\S]*<CardFace card=\{card\} \/>/, "Legacy uses the real CardFace artwork");
+  assert.match(globalStyleSource, /\.legacy-distribution-card \.played-card\{animation:none;opacity:1;transform:none\}/, "Legacy cards do not use the temporary fade/flight animation");
+  assert.doesNotMatch(gameRoomSource, /<option value=\{player\.id\} key=\{player\.id\}>\{player\.name\}<\/option>/, "Legacy does not expose player names in recipient choices");
+});
+
 test("waiting room starts without lobby readiness controls", () => {
   const room = normalizeRoomData({
     code: "WAIT1", status: "lobby", maxPlayers: 4, isHost: true, meId: "p1", players: [

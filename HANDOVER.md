@@ -1,5 +1,29 @@
 # Three Kingdoms — current handover
 
+## Current state — Guo Jia Legacy distribution UI — 2026-10-01
+
+Fixed the Legacy dialog presentation defect. The real `CardFace` instances
+inside `.legacy-distribution-card` no longer use the temporary played-card
+fade/flight animation, so both privately projected cards remain visible until
+the server successfully resolves the `card_distribution` action. A failed
+request leaves the same unresolved decision and visible cards available for a
+retry.
+
+Recipient selects still submit the unchanged player IDs, but their displayed
+labels now use `heroName(player.hero)` and the placeholder says “Choose a hero”.
+The existing filter supplies only living eligible recipients. Backend Legacy
+timing, privacy, card ownership, per-damage-point repetition, and semantic
+`trigger` submission were not changed.
+
+Focused render-source coverage protects the static Legacy card presentation,
+real CardFace usage, hero-name labels, and player-ID option values. The
+existing Guo Jia API regression remains the authority for private projection,
+atomic distribution, conservation, retries, and repeated damage points.
+
+Recommended next work remains the existing generic Lü Bu / Unrivaled semantic
+multi-response correction. Do not broaden this UI fix into another hero or
+Legacy rules change.
+
 ## Current state — Da Qiao Deflection UI/recovery fix — 2026-09-30
 
 Da Qiao's `daqiao_deflection` capability is now included in the stable

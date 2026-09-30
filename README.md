@@ -1,5 +1,20 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — Guo Jia Legacy distribution UI — 2026-10-01
+
+Fixed the Legacy private card-distribution presentation. The two cards now
+remain fully visible for the lifetime of the unresolved `card_distribution`
+decision, including while recipients are selected or a failed submission is
+shown. The existing server-owned private projection, physical-card transfer,
+per-damage-point repetition, and retry behavior are unchanged.
+
+Legacy recipient choices now display living hero/general names while retaining
+player IDs as the submitted recipient values. A focused frontend regression
+protects the static CardFace presentation and the hero-name option contract.
+
+The next milestone remains the existing generic Lü Bu / Unrivaled semantic
+multi-response correction; no new hero or backend Legacy work was started.
+
 ## Gameplay correctness — Da Qiao Deflection UI/recovery fix — 2026-09-30
 
 Fixed the Da Qiao Deflection interaction so the mapped semantic
