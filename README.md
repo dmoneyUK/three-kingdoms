@@ -1,5 +1,32 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — Da Qiao Deflection UI/recovery fix — 2026-09-30
+
+Fixed the Da Qiao Deflection interaction so the mapped semantic
+`daqiao_deflection` provider is routed through the existing hero-skill panel,
+including `attack_targeted` trigger windows. The profile button is the only
+Deflection activation control; the generic footer still renders unrelated or
+unmapped trigger providers and keeps optional Skip available.
+
+The shared card/target selection mode accepts exactly one server-projected Hand
+or Equipment cost and one projected replacement target, preserves privacy and
+stale action-revision clearing, and submits the canonical `trigger` action.
+The production Recovery crash was a React temporal-dead-zone error: the
+generic footer selected Deflection, then `localEquipmentSelection` read
+`responseDecisionReady` before its later declaration during the rerender.
+The response-readiness derivation now precedes all selection consumers.
+
+Mounted GameRoom coverage reproduces the attack-targeted trigger, asserts the
+single enabled profile button, hand/equipment selection, projected target
+legality, cancel/re-entry, Skip, stale revision reset, exact generic payload,
+and absence of the Recovery screen. An unmapped attack-targeted provider
+continues to use the generic trigger controls. No gameplay route or server
+Deflection logic changed.
+
+The Standard completion count remains **30/30 heroes and 46/46 skills**. The
+next gameplay milestone remains generic Lü Bu / Unrivaled semantic
+multi-response handling; no new hero or artwork work was started.
+
 ## Gameplay correctness — Huang Yueying Cultivation UI correction — 2026-09-30
 
 Confirmed and fixed the shared Cultivation interaction for both

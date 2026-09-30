@@ -572,7 +572,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "yue-jin": { Dauntless: ["yue_jin_dauntless"] },
   "zhou-yu": { Heroic: ["zhou_yu_yingzi"], "Sowing Distrust": ["zhou_yu_fanjian"] },
   "lu-xun": { "Second Wind": ["lu_xun_second_wind"] },
-  daqiao: { Captivating: ["daqiao_captivating"] },
+  daqiao: { Captivating: ["daqiao_captivating"], Deflection: ["daqiao_deflection"] },
   "diao-chan": { Lust: ["diao_chan_lust"] },
   "hua-tuo": { "Prodigal Healer": ["hua_tuo_prodigal_healer"] },
   "sun-shangxiang": { Betrothment: ["sun_shangxiang_betrothment"] },
@@ -761,11 +761,11 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const triggerOptions = room.currentAction?.triggerOptions ?? [];
   const privateDistribution = room.currentAction?.kind === "card_distribution" && room.isMyAction ? room.currentAction.distribution ?? null : null;
   const privateDeckReorder = room.currentAction?.kind === "deck_reorder" && room.isMyAction ? room.currentAction.deckReorder ?? null : null;
-  const activeSkillOptions = (room.currentAction?.kind === "turn" || room.currentAction?.kind === "trigger") && room.isMyAction && room.currentAction?.triggerEvent !== "attack_targeted"
-    ? triggerOptions.filter((option) => option.selection?.type !== "choice")
+  const heroSkillEffectIds = new Set(Object.values(HERO_SKILL_EFFECT_IDS[me?.hero ?? ""] ?? {}).flat());
+  const activeSkillOptions = (room.currentAction?.kind === "turn" || room.currentAction?.kind === "trigger") && room.isMyAction
+    ? triggerOptions.filter((option) => heroSkillEffectIds.has(option.effectId) && option.selection?.type !== "choice")
     : [];
   const activeSkillOption = activeSkillOptions.find((option) => option.effectId === kingSkillId) ?? null;
-  const heroSkillEffectIds = new Set(Object.values(HERO_SKILL_EFFECT_IDS[me?.hero ?? ""] ?? {}).flat());
   const heroTriggerEffectIds = new Set(activeSkillOptions.map((option) => option.effectId).filter((effectId) => heroSkillEffectIds.has(effectId)));
   const activeSkillSelection = normalizeActiveCardSkillSelection(activeSkillOption?.selection ?? null);
   const activeSkillTargetSelection = activeSkillOption?.selection?.type === "target" ? activeSkillOption.selection : null;
@@ -801,12 +801,19 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const triggerSelectionKeys = triggerSelectionUsesChoice ? triggerSelectedKeys : [];
   const triggerChoiceHandCount = triggerSelectionUsesChoice && triggerChoice ? triggerSelection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0;
   const triggerSelectionComplete = Boolean(triggerSelection && ((triggerSelectionUsesCards && triggerSelectedCardIds.length >= triggerSelection.min && triggerSelectedCardIds.length <= triggerSelection.max) || (triggerSelectionUsesChoice && triggerChoice && triggerSelectionKeys.length === triggerChoiceHandCount)));
+  const responseReadyAfterEventId = room.currentAction?.presentation?.readyAfterEventId ?? null;
+  const responseBarrierEvent = responseReadyAfterEventId ? room.timeline.find((event) => event.id === responseReadyAfterEventId) : null;
+  const responsePresentationReady = !responseReadyAfterEventId
+    || responseBarrierEvent?.type === "message"
+    || responseBarrierEvent?.importance === "informational"
+    || presentedEventIds.has(responseReadyAfterEventId);
+  const responseDecisionReady = (canRespond || triggerResponse) && responsePresentationReady;
   const localEquipmentSelection = activeSkillSelection
     ? { eligibleIds: activeSkillSelection.eligibleCardIds, selectedIds: activeSkillSelectedCardIds, max: activeSkillSelection.max, disabled: busy || presentationBusy, onToggle: (cardId: string) => setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(cardId) ? { ...state, cardIds: validIds.filter((id) => id !== cardId) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, cardId] } : { ...state, cardIds: validIds }; }) }
     : triggerResponse && triggerSelectionUsesCards
       ? { eligibleIds: triggerCardOption?.selection?.type === "cards" ? triggerCardOption.selection.eligibleCardIds : [], selectedIds: triggerSelectedCardIds, max: triggerSelectionMax, disabled: busy || !responseDecisionReady, onToggle: (cardId: string) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < triggerSelectionMax ? [...ids, cardId] : ids) }
       : null;
-  const responseCardAllowed = (item: Card) => selectedResponseProvider?.selection?.type === "cards"
+  const responseCardAllowed = (item: Card) => activeSkillSelection ? true : selectedResponseProvider?.selection?.type === "cards"
     ? selectedResponseProvider.selection.eligibleCardIds.includes(item.id)
     : triggerCardOption?.selection?.type === "cards" && triggerCardOption.selection.eligibleCardIds.includes(item.id);
   const heroResponseEffectIds = new Set(Object.values(HERO_SKILL_RESPONSE_IDS[me?.hero ?? ""] ?? {}).flat());
@@ -884,13 +891,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   // expose (or start timing) one provider before the preceding public effect
   // has finished presenting: every provider and the decline branch open
   // together once the decision is visible.
-  const responseReadyAfterEventId = room.currentAction?.presentation?.readyAfterEventId ?? null;
-  const responseBarrierEvent = responseReadyAfterEventId ? room.timeline.find((event) => event.id === responseReadyAfterEventId) : null;
-  const responsePresentationReady = !responseReadyAfterEventId
-    || responseBarrierEvent?.type === "message"
-    || responseBarrierEvent?.importance === "informational"
-    || presentedEventIds.has(responseReadyAfterEventId);
-  const responseDecisionReady = (canRespond || triggerResponse) && responsePresentationReady;
   const triggerTargetSelection = selectedTriggerOption?.selection?.type === "target"
     ? selectedTriggerOption.selection
     : selectedTriggerOption?.selection?.type === "cards" && selectedTriggerOption.selection.targetIds?.length
@@ -906,7 +906,9 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const wushengButtonDisabled = busy || wushengMode === null && (!canUseWushengInPlay && !(responseDecisionReady && canUseWushengInResponse) || canUseWushengInPlay && presentationBusy);
   const longdanButtonDisabled = busy || longdanMode === null && (!canUseLongdanInPlay && !(responseDecisionReady && canUseLongdanInResponse) || canUseLongdanInPlay && presentationBusy);
   useEffect(() => {
-    if (targetSelectionActive) setExpandedOpponentId(null);
+    if (!targetSelectionActive) return;
+    const timer = setTimeout(() => setExpandedOpponentId(null), 0);
+    return () => clearTimeout(timer);
   }, [targetSelectionActive]);
   const heroSkillButtons: HeroSkillButtonModel[] = (localHero?.skills ?? []).map((skill) => {
     if (me?.hero === "guan-yu" && skill.name === "God of War") return {

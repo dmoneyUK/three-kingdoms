@@ -1,5 +1,39 @@
 # Three Kingdoms — current handover
 
+## Current state — Da Qiao Deflection UI/recovery fix — 2026-09-30
+
+Da Qiao's `daqiao_deflection` capability is now included in the stable
+semantic `HERO_SKILL_EFFECT_IDS` mapping and is routed to the hero-profile
+Skills panel even when the authoritative trigger event is `attack_targeted`.
+The generic trigger footer excludes that mapped provider while retaining
+unmapped and equipment/future providers, so only the profile Deflection button
+activates the decision and optional `decline_trigger` remains available.
+
+The profile action reuses the existing active-skill selection state for one
+server-projected Hand or Equipment cost and one projected replacement target.
+Only projected targets are targetable; the original attacker remains excluded.
+Submission remains the generic `trigger` action with provider ID
+`daqiao_deflection`. Action-revision reset and cancel/re-entry clear stale
+local selections.
+
+The production recovery crash was reproduced in mounted `GameRoom` tests. The
+generic footer path selected Deflection and caused a rerender where
+`localEquipmentSelection` read `responseDecisionReady` before that later `const`
+declaration, producing `ReferenceError: Cannot access 'responseDecisionReady'
+before initialization`. Response-readiness calculation now precedes all of its
+selection consumers; the error boundary remains unchanged.
+
+Mounted regressions cover the exact attack-targeted fixture, one-button
+rendering, enabled profile activation, Hand and Equipment cost paths,
+ineligible-card and target blocking, selected-target styling, disabled-until-
+complete submission, exact generic trigger payload, Skip, cancel/re-entry,
+action-revision reload, Recovery-screen exclusion, and unmapped generic
+fallback. Existing Da Qiao API coverage remains the authority for domain
+legality and Attack continuation behavior.
+
+Recommended next work remains the existing generic Lü Bu / Unrivaled semantic
+multi-response correction. Do not add another hero in this fix round.
+
 ## Current state — Huang Yueying Cultivation UI/trigger-prompt correction — 2026-09-30
 
 The Huang Yueying Cultivation UI defect is confirmed fixed. The shared
