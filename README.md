@@ -1,5 +1,18 @@
 # War of Three Kingdoms
 
+## Board frame portrait scaling fix — 2026-09-30
+
+Corrected the staged board-frame integration after deployed mobile review showed
+the gold frame compressed into a smaller landscape rectangle in the centre of
+the portrait play area. The SVG source viewBox is landscape (1672:941), and its
+default SVG aspect-ratio preservation caused internal letterboxing even though
+CSS requested `background-size: 100% 100%`.
+
+`game-board-frame.svg` now uses `preserveAspectRatio="none"`, allowing the
+decorative frame to follow the real `.play-table` bounds on portrait and
+desktop layouts. This is presentation-only; no gameplay layout or animation
+anchors changed.
+
 ## Board visual skin integration — 2026-09-30
 
 Started the staged UI asset integration with the lowest-risk board foundation.

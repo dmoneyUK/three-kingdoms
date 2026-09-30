@@ -200,7 +200,7 @@ Decorative antique-gold border overlay for the main game board.
 
 The frame is the first CSS background layer on the existing `.play-table`, above `game-board-bg.webp` but automatically behind every gameplay child. This avoids an extra overlay element and guarantees the decoration cannot intercept pointer/touch events.
 
-The frame uses `background-size: 100% 100%`; the board artwork below it uses `cover`.
+The frame uses `background-size: 100% 100%`; the board artwork below it uses `cover`. The SVG root also uses `preserveAspectRatio="none"` so the landscape source viewBox stretches to the actual `.play-table` bounds on portrait/mobile boards instead of letterboxing as a smaller centered rectangle.
 
 If the board becomes extremely narrow or wide, protect the gameplay controls first. Decoration must adapt to the layout, never the other way around.
 
@@ -898,6 +898,18 @@ Do not create competing implementation-guide files for the same asset set.
 ---
 
 # 15. Change log
+
+## 2026-09-30 — portrait aspect-ratio frame fix
+
+Corrected:
+- `public/assets/ui/game-board-frame.svg`
+
+Decision:
+- add `preserveAspectRatio="none"` to the SVG root,
+- the frame must follow the actual `.play-table` rectangle on portrait/mobile layouts,
+- do not allow the source 1672:941 viewBox to letterbox into a smaller centered landscape rectangle.
+
+
 
 ## 2026-09-23 — board foundation
 

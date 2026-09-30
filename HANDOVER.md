@@ -1,5 +1,17 @@
 # Three Kingdoms — current handover
 
+## Board frame portrait scaling fix — 2026-09-30
+
+Deployed mobile review exposed an SVG scaling issue in the new board frame.
+Although `.play-table` used `background-size: 100% 100%`, the SVG's
+1672:941 viewBox still used the default `preserveAspectRatio="xMidYMid meet"`.
+On the tall mobile board that preserved the landscape ratio and visually
+letterboxed the ornament into a smaller centred rectangle.
+
+The root SVG now declares `preserveAspectRatio="none"`. The frame therefore
+stretches with the existing play-table box while leaving all current gameplay
+DOM, anchors, z-index relationships, and interactions unchanged.
+
 ## Board visual skin integration — 2026-09-30
 
 Step 1 of the approved staged UI integration is now implemented. The current
