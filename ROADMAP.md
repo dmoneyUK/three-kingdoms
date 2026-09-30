@@ -1,92 +1,199 @@
-# Three Kingdoms — current roadmap
+# War of Three Kingdoms — roadmap
 
-## Current status — 2026-09-30
+## Product position — 2026-09-30
 
-The verified WTK Standard gameplay foundation is implemented:
+The project has moved out of the **Standard content implementation** phase.
 
-- **Standard heroes:** 30 / 30 implemented
-- **Printed Standard hero skills:** 46 / 46 implemented
-- **Verified Standard card identities:** 28 / 28 playable
-- **Physical Standard deck:** canonical 108-card manifest implemented
-- **Core match rules:** turn loop, semantic responses/triggers, damage, Dying/rescue, recovery, Judgement, delayed Stratagems, equipment interactions, match outcome, stale-action rejection, private projection, and Quick Test infrastructure are implemented.
+Current baseline:
 
-The hero-implementation phase is closed. Do not add another Standard hero as a completion task. Remaining Standard work is focused interaction correction and hardening of already implemented rules.
+- **30 / 30 Standard heroes** implemented and selectable.
+- **46 / 46 printed Standard hero skills** implemented.
+- **28 / 28 verified Standard card identities** playable.
+- Canonical **108-card Standard deck** implemented.
+- Semantic response/trigger architecture, canonical damage/Dying/recovery/Judgement flows, delayed Stratagems, equipment interactions, match outcome, private projection, stale/replay rejection, and Quick Test infrastructure are established.
+- GitHub Actions validates `main` and deploys the Cloudflare Worker after validation.
 
-## Active roadmap
+The next roadmap should therefore prioritise **correctness closure and release confidence**, not more Standard content and not another architecture rewrite.
 
-### Priority 1 — Lord-skill role correctness
+---
 
-Fix the two confirmed missing Lord gates:
+## Phase 1 — Close confirmed Standard correctness defects
 
-- **Cao Cao / Entourage:** require authoritative `role === "Lord"` in provider discovery and resolution; correct regressions that currently allow non-Lord Cao Cao.
-- **Sun Quan / Deliverance:** require Sun Quan to be Lord before the Wu-rescuer recovery bonus applies; correct regressions that currently allow non-Lord Sun Quan.
+**Goal:** remove the known rules defects discovered by the completed cross-hero audit.
 
-Keep delegated responses, Dying/recovery, privacy, stale safety, and Quick Test behavior on their existing generic pipelines.
+### 1A. Lord-skill correctness
 
-### Priority 2 — Lü Bu / Unrivaled semantic multi-response correction
+Fix as one small batch:
 
-Correct the generic response architecture so a requirement for two Attacks or Dodges means **two semantic responses**, not “select two physical cards in one provider”.
+- **Cao Cao / Entourage:** require authoritative `role === "Lord"` during both provider discovery and provider resolution.
+- **Sun Quan / Deliverance:** require Sun Quan to be Lord before the Wu-rescuer recovery bonus applies.
 
-The response continuation must track semantic responses remaining independently of provider cost-card count. One successfully resolved provider normally contributes one Attack/Dodge; if another is required, persist and reopen the remaining response decision.
+Update the existing positive tests so their skill owner is explicitly Lord, and add negative non-Lord regressions. Preserve delegated response ownership, ordinary Peach/recovery behavior, Dying continuations, privacy, stale rejection, and Quick Test parity.
 
-Required interaction closure includes:
+**Exit gate:** both skills are impossible for a non-Lord while their Lord behavior remains unchanged.
 
-- two ordinary physical responses;
-- ordinary + converted mixed responses;
-- Serpent Spear: two physical costs = one Attack;
-- Guan Yu God of War;
-- Zhao Yun Braveheart;
-- Zhen Ji Empress Dowager;
-- Eight Trigrams: one successful Judgement = one Dodge;
-- Cao Cao Entourage;
-- Liu Bei Influencing;
-- normal Duel;
-- Diao Chan Lust Duel;
-- reload and stale/replay rejection;
-- private projection and physical-card conservation.
+### 1B. Lü Bu / Unrivaled semantic response-count correction
 
-Do not implement this with Lü-Bu-specific branches in each hero/equipment provider. The correction belongs at the generic semantic response/continuation boundary.
+This is the largest remaining rules change.
 
-### Priority 3 — Huang Gai / Self Sacrifice timing verification
+The current response discovery couples `requirement.count` to a provider's physical-card selection count. Replace that assumption with a generic model in which the pending response tracks **semantic responses remaining**.
 
-Verify the exact WTK ruling for **Self Sacrifice at 1 HP** before changing gameplay.
+Required behavior:
 
-The current `lose_draw` flow can expose the two drawn cards before completing a lethal HP-loss/Dying boundary. If the authoritative ruling confirms HP loss must resolve before the draw, change the flow to: lose 1 HP → if alive draw 2; if at 0 HP enter canonical Dying/rescue → after successful rescue resume Self Sacrifice and draw 2.
+- one ordinary Attack/Dodge = one semantic response;
+- one Guan Yu, Zhao Yun, or Zhen Ji conversion = one semantic response;
+- Serpent Spear's two physical cost cards = one semantic Attack;
+- one successful Eight Trigrams Judgement = one semantic Dodge;
+- one successful Entourage or Influencing delegation = one semantic response;
+- after one response succeeds, reopen/persist the same requirement with the remaining semantic count when more are required.
 
-Reuse a persisted canonical HP-loss/Dying continuation, following the generic pattern already used for Pan Feng. Do not create a separate Huang-Gai Dying engine.
+The correction must work through ordinary Attack, ordinary Duel, Diao Chan Lust Duel, delegated responses, Judgement-backed responses, and converted/virtual cards without provider-specific Lü-Bu branches.
 
-### Priority 4 — Sima Yi / Retaliation hidden-Hand hardening
+Regression coverage must include mixed physical/converted responses, Serpent Spear, Guan Yu, Zhao Yun, Zhen Ji, Eight Trigrams, Entourage, Influencing, reload, stale/double submission, actor privacy, and physical-card conservation.
 
-Make Retaliation's hidden-Hand acquisition authoritative and server-random.
+**Exit gate:** every provider cost is independent of semantic response count, and all two-response Unrivaled paths resolve/resume correctly.
 
-When Sima Yi chooses the target's Hand zone, the server should randomly select one current Hand card. Public Equipment/Judgement cards remain exact selectable cards. Preserve live-state revalidation, private projection, stale safety, and card conservation.
+### 1C. Huang Gai / Self Sacrifice timing
 
-## Rules interpretation pending explicit WTK evidence
+First verify the exact WTK ruling for **Self Sacrifice at 1 HP** from an authoritative source.
 
-Do not change the source zones for **Guan Yu God of War, Zhen Ji Empress Dowager, Gan Ning Ambushment, Da Qiao Captivating, or Hua Tuo First Aid** solely from the English phrase “a card”. Keep the current project interpretation until an explicit WTK ruling/source resolves those source-zone cases.
+If HP loss resolves before the draw, replace the current atomic `lose_draw` ordering with a persisted continuation:
 
-## Completion gate for the active roadmap
+`lose 1 HP → if alive draw 2 → if at 0 enter Dying/rescue → after successful rescue resume and draw 2`.
 
-The Standard implementation count remains **30/30 heroes and 46/46 skills** while these interaction defects are corrected.
+Reuse the canonical HP-loss/Dying machinery rather than creating a Huang-Gai-specific rescue path.
 
-For each confirmed correction:
+**Exit gate:** implementation and deterministic regression agree with the verified WTK timing; no newly drawn card can incorrectly participate in an earlier Dying window.
 
-1. make the smallest generic rules change that fits the established capability architecture;
-2. add focused deterministic regression coverage;
-3. preserve normal multiplayer and Quick Test parity;
-4. preserve server-owned legality, private projection, persisted continuations, stale/replay rejection, and physical-card conservation;
-5. run the relevant capability/API tests, then full validation before release.
+### 1D. Sima Yi / Retaliation hidden-Hand hardening
 
-When the four active priorities above are closed, perform one final Standard interaction regression pass. New expansion gameplay, new artwork, and graphic/theme design require a separately approved roadmap.
+Change Retaliation so selecting the damage source's Hand means **server-random acquisition of one current Hand card**. Do not expose or accept a client-selected hidden Hand position. Public Equipment/Judgement cards remain exact selections.
 
-## Architecture that is already complete — preserve, do not restart
+**Exit gate:** the client cannot influence which hidden Hand card is obtained; live-state validation, privacy and card conservation remain correct.
 
-The supported rules architecture is semantic and capability-driven: `ResponsePending` and `TriggerPending`, generic `respond` / `decline_response` and `trigger` / `decline_trigger`, canonical damage/Dying/recovery/Judgement pipelines, effective distance and target-legality capabilities, equipment-loss continuations, presentation barriers, server-owned legality, private actor projections, and `currentAction` as the authoritative browser contract.
+---
 
-Do not reintroduce provider-specific HTTP actions, legacy pending-state compatibility, or a universal effects DSL.
+## Phase 2 — Standard release-confidence pass
 
-## Completed foundations
+**Goal:** prove the completed Standard ruleset behaves correctly as a whole rather than continuing hero-by-hero implementation.
 
-The following are closed roadmap milestones rather than TODOs: Standard 28-card identity implementation, exact 108-card physical deck reconciliation, core match/Dying/death/outcome rules, semantic response/trigger migration, Standard 30-hero/46-skill implementation, Standard selection allow-list completion, and the prior Step 1 functional UI handover.
+After Phase 1, run a focused integration matrix across the highest-risk shared boundaries:
 
-Expansion sets (including Endless Legends and Kingdom Wars) are outside the active Standard roadmap unless the project owner explicitly changes scope.
+- converted/virtual Attack identity through Attack, Duel, Borrowed Sword, Halberd and red-Attack reactions;
+- damage source/target ownership, prevention/modification, multi-point damage and post-damage triggers;
+- Dying/rescue nested with `hp_recovered` and suspended continuations;
+- Judgement replacement, Eight Trigrams and delayed Stratagem resolution;
+- Equipment loss/replacement, weapon continuations and physical-card conservation;
+- distance modifiers versus independent target-legality capabilities;
+- Negation and Negation-of-Negation around ordinary and delayed Stratagems;
+- reload during an open semantic response/trigger/Judgement decision;
+- wrong-seat, stale and double submission rejection;
+- private projection for Hand cards, provider choices and deck-reorder decisions;
+- Quick Test behavior matching normal multiplayer ownership/rules.
+
+Do not create a giant exhaustive pairwise hero matrix. Add tests only where shared semantic boundaries or previously uncovered compositions justify them.
+
+**Exit gate:** no known P0/P1 Standard rules defect remains, targeted regressions are green, full build/tests/lint are green, and current documentation matches the shipped behavior.
+
+---
+
+## Phase 3 — Release and playtest hardening
+
+**Goal:** make the completed Standard game easier to trust in real multiplayer sessions.
+
+### 3A. End-to-end match smoke coverage
+
+Add a small number of deterministic scenario tests that cross several turns and capabilities instead of testing only isolated card/skill actions. Cover at least:
+
+- game setup → hero selection → opening turn;
+- Attack/response/damage/Dying/rescue → turn continuation;
+- Stratagem/Negation/Judgement → continuation;
+- death → role-based match outcome;
+- reload during a pending decision and successful continuation.
+
+Prefer stable API/Worker tests over brittle browser pixel tests.
+
+### 3B. Runtime integrity checks
+
+Review persisted pending-state boundaries and add inexpensive assertions/tests for impossible states that could strand a room. Prioritise:
+
+- actor exists and is alive when a decision opens;
+- continuation owner/resume player still exists;
+- held physical cards cannot be duplicated into another zone;
+- a resolved decision cannot apply twice;
+- room phase and pending kind remain compatible.
+
+Do not introduce a second state machine or broad framework rewrite.
+
+### 3C. Production validation
+
+For release candidates, require:
+
+```bash
+npm run build
+npm test
+npm run lint
+git diff --check
+```
+
+Then require the GitHub Actions `build-and-test`, Cloudflare deployment and production smoke test to succeed.
+
+**Exit gate:** one clean release candidate completes local validation, CI, deployment and smoke testing with no known Standard blocker.
+
+---
+
+## Phase 4 — Product expansion decision
+
+Do **not** start this phase automatically.
+
+Once Standard correctness and release confidence are closed, choose the next product direction explicitly. Possible future tracks are:
+
+- expansion-set gameplay;
+- multiplayer/product usability improvements;
+- presentation/artwork work;
+- additional automation or test tooling.
+
+Expansion sets such as Endless Legends and Kingdom Wars remain out of scope until explicitly selected. Graphic design/artwork is also separate from the current gameplay roadmap.
+
+Before choosing an expansion track, create a new source-backed scope from the relevant official rules/cards rather than extending Standard assumptions.
+
+---
+
+## Parked rules interpretation
+
+Do not change the source zones for **Guan Yu God of War, Zhen Ji Empress Dowager, Gan Ning Ambushment, Da Qiao Captivating, or Hua Tuo First Aid** solely because the English card wording says “a card”.
+
+The current project interpretation remains in force until an explicit WTK ruling/source resolves those source-zone questions. This is not an active implementation task.
+
+---
+
+## Engineering constraints
+
+Preserve the architecture already established by the project:
+
+- `currentAction` remains the authoritative client decision contract;
+- responses use generic `respond` / `decline_response`;
+- capabilities use generic `trigger` / `decline_trigger`;
+- server state owns legality and revalidates decisions;
+- private information is projected only to the correct actor;
+- persisted continuations resume the interrupted domain effect exactly once;
+- physical cards remain conserved through conversions and suspended effects;
+- Quick Test follows the same gameplay rules as normal multiplayer;
+- no provider-specific HTTP actions;
+- no universal effects DSL;
+- no architecture rewrite merely to fix a local interaction defect.
+
+---
+
+## Definition of Standard gameplay closure
+
+The Standard gameplay milestone is closed for release when:
+
+1. all four Phase 1 work packages are resolved or, for Huang Gai, explicitly closed by the verified ruling;
+2. the Phase 2 interaction pass finds no unresolved P0/P1 Standard rules defect;
+3. Phase 3 end-to-end/integrity coverage is green;
+4. build, full tests, lint and `git diff --check` pass;
+5. GitHub Actions deployment and production smoke checks succeed;
+6. `README.md`, `HANDOVER.md`, `ROADMAP.md`, and the Standard reference accurately describe the shipped rules.
+
+At that point, stop extending Standard implementation by default and select the next product track explicitly.
