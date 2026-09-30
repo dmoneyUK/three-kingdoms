@@ -1,5 +1,28 @@
 # Three Kingdoms — current handover
 
+## Opponent frame asset integration — 2026-09-30
+
+The opponent-frame production assets are now wired into the existing
+`.player-square-${relativeIndex}` layout using CSS pseudo-elements, so no JSX
+or player-state rendering was forked.
+
+Seat mapping:
+- `.player-square-1`: asymmetric frame, normal orientation,
+- `.player-square-2`: symmetric frame,
+- `.player-square-3`: asymmetric frame, decorative image mirrored only.
+
+Fit was checked against the real CSS geometry. The player panel is fixed at a
+2:3 aspect ratio, while the source frames are 493×512 and 506×512. Instead of
+stretching those near-square assets to 2:3, the overlay height is 100% of the
+player panel and its width is 144.4% (asymmetric) or 148.2% (symmetric). At the
+maximum 180×270 panel this produces roughly 260×270 / 267×270 decorative boxes;
+at a 100×150 mobile panel it produces roughly 144×150 / 148×150 boxes. The
+horizontal overhang is visual only and has no pointer events.
+
+No player positions, live content, targeting, state classes, card zones, or
+hit areas changed. Next review should verify the deployed mobile portrait view
+for ornament overlap before moving to the local-player frame.
+
 ## Approved board-background direction — 2026-09-30
 
 The owner approved the latest board-background reference shown in chat as the

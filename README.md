@@ -1,5 +1,20 @@
 # War of Three Kingdoms
 
+## Opponent frame asset integration — 2026-09-30
+
+Applied the approved opponent-frame assets without changing the existing player
+layout or hit areas. Left/right seats use
+`other-player-frame-asymmetric.webp`; the top seat uses
+`other-player-frame-symmetric.webp`, and only the right decorative layer is
+mirrored.
+
+The frame bitmaps are near-square (493×512 and 506×512) while the live opponent
+panels remain 2:3. To avoid deforming the ornament, CSS matches frame height to
+the player panel and lets the art extend horizontally: 144.4% width for the
+asymmetric frame and 148.2% for the symmetric frame. Decorative pseudo-elements
+use `pointer-events: none`; player content, target controls, state borders and
+gameplay logic remain unchanged.
+
 ## Board frame portrait scaling fix — 2026-09-30
 
 Corrected the staged board-frame integration after deployed mobile review showed
