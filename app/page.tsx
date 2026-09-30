@@ -789,7 +789,13 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const mandatoryChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && option.allowDecline === false) ?? null;
   const choiceTriggerOption = mandatoryChoiceTriggerOption ?? triggerOptions.find((option) => option.selection?.type === "choice") ?? null;
   const selectedTriggerOption = choiceTriggerOption ?? triggerOptions.find((option) => option.effectId === responseProviderId) ?? null;
-  const targetCardPickerOption = triggerOptions.find((option) => option.selection?.type === "target_cards") ?? null;
+  // Mapped hero skills (such as Retaliation) must be activated from the
+  // profile before their target-card picker appears. Unmapped semantic
+  // providers retain the generic picker path for equipment and future
+  // effects that have no Skills-panel control.
+  const targetCardPickerOption = activeSkillOption?.selection?.type === "target_cards"
+    ? activeSkillOption
+    : triggerOptions.find((option) => option.selection?.type === "target_cards" && !heroTriggerEffectIds.has(option.effectId)) ?? null;
   const targetCardPickerSelection = targetCardPickerOption?.selection?.type === "target_cards" ? targetCardPickerOption.selection : null;
   const targetCardPickerTarget = targetCardPickerSelection ? room.players.find((player) => player.id === targetCardPickerSelection.targetId) ?? null : null;
   const triggerCardOption = selectedTriggerOption?.selection?.type === "cards" ? selectedTriggerOption : null;
@@ -960,11 +966,11 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
       enabled: Boolean(option),
       active,
       onClick: option ? () => {
-        if (option.selection?.type === "cards" || option.selection?.type === "target") {
+        if (option.selection?.type === "cards" || option.selection?.type === "target" || option.selection?.type === "target_cards") {
           const activating = kingSkillId !== option.effectId;
           setKingSkillId(activating ? option.effectId : "");
           setActiveSkillSelectionState(activating ? { revision: activeActionRevision, effectId: option.effectId, cardIds: [], targetIds: [] } : null);
-          setSerpentSelected([]); setSelected(""); setTargetIds([]);
+          setSerpentSelected([]); setSelected(""); setTargetIds([]); setTriggerSelectedKeys([]);
         } else void onAction("trigger", { providerId: option.effectId });
       } : undefined,
     };

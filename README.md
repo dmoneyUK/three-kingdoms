@@ -1,5 +1,25 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — Sima Yi Retaliation activation UX — 2026-10-01
+
+Fixed Retaliation so a projected `sima_yi_fankui` target-card trigger first
+appears as an enabled, optional Sima Yi Skills-panel button. The target-card
+picker now opens only after the player activates Retaliation; activation and
+cancel/re-entry never submit a server action, and the existing generic
+`trigger` payload remains the final submission contract.
+
+The shared action-revision reset clears the active provider and selected card
+keys. Mounted interaction coverage protects the initial no-picker state,
+optional Skip, activation, eligible-card selection, cancel/re-entry, stale
+revision clearing, and exact `cardKeys` submission. Unmapped target-card
+providers retain the generic picker path. No server rules, private projection,
+or provider-specific route changed.
+
+Current stage remains Stage 7 product polish with Standard gameplay correctness
+maintained. The next gameplay milestone remains the existing generic Lü Bu /
+Unrivaled semantic multi-response correction; no unrelated hero or refactor was
+started.
+
 ## Gameplay correctness — Guo Jia Legacy distribution UI — 2026-10-01
 
 Fixed the Legacy private card-distribution presentation. The two cards now

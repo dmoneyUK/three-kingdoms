@@ -1,5 +1,27 @@
 # Three Kingdoms — current handover
 
+## Current state — Sima Yi Retaliation activation UX — 2026-10-01
+
+Retaliation now uses the shared hero-skill activation mode for its projected
+`target_cards` selection. When Sima Yi owns a `damage_suffered` trigger,
+Retaliation is enabled beside the profile and remains optional; the target-card
+picker is not mounted until the player clicks the skill. Clicking the active
+skill cancels the picker and clears selected keys, while the existing generic
+`trigger` action submits `{ providerId: "sima_yi_fankui", cardKeys }` after an
+eligible card is selected. Action-revision changes clear the provider and all
+local selection state. Unmapped target-card providers retain their generic
+picker fallback.
+
+Mounted interaction coverage verifies the initial enabled/inactive button,
+absence of the picker and trigger submission before activation, activation,
+card selection, cancel/re-entry, revision reset, exact semantic submission,
+and optional Skip. Sima Yi and Wei API regressions remain green; server-owned
+eligibility, privacy, continuation, and card conservation were not changed.
+
+Recommended next work remains the existing generic Lü Bu / Unrivaled semantic
+multi-response correction. Do not broaden this fix into another hero or a
+server rules change.
+
 ## Current state — Guo Jia Legacy distribution UI — 2026-10-01
 
 Fixed the Legacy dialog presentation defect. The real `CardFace` instances
