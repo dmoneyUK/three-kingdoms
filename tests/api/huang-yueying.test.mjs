@@ -1,6 +1,6 @@
 import test from "node:test";
 import {
-  assert, card, createHumanGame, createTestGame, quote, requestAndSettle, setDeck, setHand, setTurn, sql, state,
+  assert, card, createHumanGame, createTestGame, passNegationWindows, query, quote, requestAndSettle, setDeck, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
 
 function player(game, name) {
@@ -13,6 +13,17 @@ function setHero(id, hero) {
 
 function clearHands(game, keepId, keptCards) {
   for (const entry of game.room.players) setHand(entry.id, entry.id === keepId ? keptCards : [], entry.hp ?? 4, entry.maxHp ?? 4);
+}
+
+function physicalCardCopies(roomCode, cardId) {
+  const ids = query(`
+    SELECT json_extract(value,'$.id') FROM rooms,json_each(rooms.deck_json) WHERE rooms.code=${quote(roomCode)}
+    UNION ALL SELECT json_extract(value,'$.id') FROM rooms,json_each(rooms.discard_json) WHERE rooms.code=${quote(roomCode)}
+    UNION ALL SELECT json_extract(value,'$.id') FROM players,json_each(players.hand_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(roomCode)})
+    UNION ALL SELECT json_extract(value,'$.id') FROM players,json_each(players.equipment_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(roomCode)})
+    UNION ALL SELECT json_extract(value,'$.id') FROM players,json_each(players.judgement_json) WHERE players.room_id=(SELECT id FROM rooms WHERE code=${quote(roomCode)})
+  `).split("\n").filter(Boolean);
+  return ids.filter((id) => id === cardId).length;
 }
 
 test("Huang Yueying Cultivation is one optional private draw after a simple Stratagem", { timeout: 30_000 }, async () => {
@@ -112,6 +123,82 @@ test("Cultivation decline, Negation, Duel, group, and delayed Stratagems preserv
   const delayedPlaced = await requestAndSettle("decline_trigger", { code: delayed.code, token: delayed.members[0].token });
   assert.equal(delayedPlaced.data.room.players.find((entry) => entry.id === delayedTarget.id).judgementCards[0].id, delayedCard.id);
   assert.equal(delayedPlaced.data.room.log.filter((entry) => entry.includes("may use Cultivation")).length, 1);
+});
+
+test("accepted Cultivation resumes Overindulgence once and preserves the delayed card", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const host = player(game, "Host"); const target = player(game, "Alice");
+  assert.ok(host && target);
+  setHero(host.id, "huang-yueying");
+  const overindulgence = card("Overindulgence", "cultivation-accepted-overindulgence");
+  const cultivationCard = card("Peach", "cultivation-accepted-overindulgence-draw");
+  const negation = card("Negation", "cultivation-accepted-overindulgence-negation");
+  clearHands(game, host.id, [overindulgence]);
+  setHand(target.id, [negation], target.hp ?? 4, target.maxHp ?? 4);
+  setDeck(game.code, [cultivationCard, card("Attack", "cultivation-accepted-overindulgence-unused")]);
+  setTurn(game.code, host.seat, "play");
+
+  const opened = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: overindulgence.id, targetId: target.id, preserveResponse: true });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.room.currentAction.kind, "trigger");
+  assert.equal(opened.data.room.currentAction.triggerEvent, "stratagem_used");
+  assert.equal(opened.data.room.currentAction.actorId, host.id);
+  assert.deepEqual(opened.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["huang_yueying_cultivation"]);
+  assert.deepEqual(opened.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["huang_yueying_cultivation"]);
+
+  const accepted = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "huang_yueying_cultivation", preserveResponse: true });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  assert.ok(accepted.data.room.myHand.some((held) => held.id === cultivationCard.id), "Cultivation draws exactly one private card");
+  assert.equal(accepted.data.room.log.filter((entry) => entry.includes("uses Cultivation")).length, 1);
+  assert.equal(accepted.data.room.pendingNegation?.cardName, "Overindulgence", "the original Overindulgence Negation continuation remains active");
+
+  await passNegationWindows(game.code, game.members);
+  const settled = (await state(game.code, game.members[0].token)).data;
+  assert.deepEqual(settled.players.find((entry) => entry.id === target.id).judgementCards.map((held) => held.id), [overindulgence.id]);
+  assert.equal(settled.log.filter((entry) => entry.includes("uses Cultivation")).length, 1, "Negation does not retrigger Cultivation");
+  assert.equal(physicalCardCopies(game.code, overindulgence.id), 1, "Overindulgence remains in exactly one physical zone");
+  assert.equal(physicalCardCopies(game.code, cultivationCard.id), 1, "the Cultivation draw remains in exactly one physical zone");
+});
+
+test("accepted Cultivation resumes Burning Bridges target selection once", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const host = player(game, "Host"); const target = player(game, "Alice");
+  assert.ok(host && target);
+  setHero(host.id, "huang-yueying");
+  const burningBridges = card("Dismantle", "cultivation-accepted-burning-bridges");
+  const targetCard = card("Peach", "cultivation-accepted-burning-bridges-target");
+  const cultivationCard = card("Dodge", "cultivation-accepted-burning-bridges-draw");
+  const negation = card("Negation", "cultivation-accepted-burning-bridges-negation");
+  clearHands(game, host.id, [burningBridges]);
+  setHand(target.id, [targetCard, negation], target.hp ?? 4, target.maxHp ?? 4);
+  setDeck(game.code, [cultivationCard, card("Attack", "cultivation-accepted-burning-bridges-unused")]);
+  setTurn(game.code, host.seat, "play");
+
+  const opened = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: burningBridges.id, targetId: target.id, preserveResponse: true });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.room.currentAction.kind, "trigger");
+  assert.equal(opened.data.room.currentAction.triggerEvent, "stratagem_used");
+  assert.equal(opened.data.room.currentAction.actorId, host.id);
+
+  const accepted = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "huang_yueying_cultivation", preserveResponse: true });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  assert.ok(accepted.data.room.myHand.some((held) => held.id === cultivationCard.id), "Cultivation draws exactly one private card");
+  assert.equal(accepted.data.room.log.filter((entry) => entry.includes("uses Cultivation")).length, 1);
+
+  await passNegationWindows(game.code, game.members);
+  const pending = (await state(game.code, game.members[0].token)).data;
+  assert.equal(pending.pendingTargetCard.targetId, target.id);
+  assert.equal(pending.currentAction.actorId, host.id, "Burning Bridges target selection remains source-owned");
+  assert.equal(pending.currentAction.kind, "target_card", `Burning Bridges target continuation: ${JSON.stringify({ currentAction: pending.currentAction, pendingTargetCard: pending.pendingTargetCard, phase: pending.phase })}`);
+  assert.deepEqual(pending.currentAction.legalActions, ["choose_target_card"]);
+
+  const chosen = await requestAndSettle("choose_target_card", { code: game.code, token: game.members[0].token, targetCardZone: "hand", targetCardIndex: 0 });
+  assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+  assert.equal(chosen.data.room.phase, "play");
+  assert.equal(chosen.data.room.log.filter((entry) => entry.includes("uses Cultivation")).length, 1, "the continuation does not retrigger Cultivation");
+  assert.equal(chosen.data.room.myHand.some((held) => held.id === targetCard.id), false);
+  assert.equal(physicalCardCopies(game.code, burningBridges.id), 1, "Burning Bridges remains in exactly one physical zone");
+  assert.equal(physicalCardCopies(game.code, targetCard.id), 1, "the discarded target card remains in exactly one physical zone");
 });
 
 test("Cultivation uses the canonical refill primitive and follows Quick Test acting-seat ownership", { timeout: 30_000 }, async () => {

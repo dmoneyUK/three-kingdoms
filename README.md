@@ -1,5 +1,26 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — Huang Yueying Cultivation UI correction — 2026-09-30
+
+Confirmed and fixed the shared Cultivation interaction for both
+Overindulgence and Burning Bridges. Huang Yueying's projected
+`huang_yueying_cultivation` trigger now has a Skills-panel route that submits
+the canonical `trigger` action, while optional unmapped trigger providers stay
+available through the generic trigger controls. The command prompt now derives
+the acting trigger option and shows the authoritative trigger actor's decision
+instead of falling through to the Attack-response waiting message.
+
+Mounted `GameRoom` coverage verifies enabled Use Cultivation and Skip controls,
+private opponent projection, the corrected prompt, actor ownership, original
+continuation rendering, and the generic unmapped-trigger fallback. API coverage
+verifies accepting one private draw for Overindulgence and Burning Bridges,
+Negation/target-card continuation, stale and decline safety, reload/privacy,
+Quick Test ownership, refill behavior, and physical-card conservation.
+
+The Standard completion count remains **30/30 heroes and 46/46 skills**. The
+next gameplay milestone remains generic Lü Bu / Unrivaled semantic
+multi-response handling; no new hero or artwork work was started.
+
 ## Hero artwork update — 2026-09-30
 
 Added the supplied Lu Xun portrait at `public/hero-lu-xun.jpg` and connected

@@ -576,6 +576,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "diao-chan": { Lust: ["diao_chan_lust"] },
   "hua-tuo": { "Prodigal Healer": ["hua_tuo_prodigal_healer"] },
   "sun-shangxiang": { Betrothment: ["sun_shangxiang_betrothment"] },
+  "huang-yueying": { Cultivation: ["huang_yueying_cultivation"] },
 };
 
 // Response capabilities are projected in currentAction.options rather than
@@ -764,7 +765,8 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
     ? triggerOptions.filter((option) => option.selection?.type !== "choice")
     : [];
   const activeSkillOption = activeSkillOptions.find((option) => option.effectId === kingSkillId) ?? null;
-  const heroTriggerEffectIds = new Set(activeSkillOptions.map((option) => option.effectId));
+  const heroSkillEffectIds = new Set(Object.values(HERO_SKILL_EFFECT_IDS[me?.hero ?? ""] ?? {}).flat());
+  const heroTriggerEffectIds = new Set(activeSkillOptions.map((option) => option.effectId).filter((effectId) => heroSkillEffectIds.has(effectId)));
   const activeSkillSelection = normalizeActiveCardSkillSelection(activeSkillOption?.selection ?? null);
   const activeSkillTargetSelection = activeSkillOption?.selection?.type === "target" ? activeSkillOption.selection : null;
   const activeActionRevision = room.actionRevision ?? "";
@@ -1121,6 +1123,10 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   };
   const chooseBorrowedSwordTarget = (playerId: string) => { if (!canChooseBorrowedSword || presentationBusy || !room.pendingBorrowedSword?.eligibleTargetIds.includes(playerId)) return; void onAction("choose_borrowed_sword_target", { targetId: playerId }); };
   const play = async () => { if (!card || !me || (selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid))) return; const playedCard = card; const definition = cardDefinition(card.kind); const needsTarget = selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "Overindulgence" || card.kind === "RationsDepleted" || card.kind === "BorrowedSword"; const displayTarget = halberdAttack ? targetIds.map((id) => room.players.find((player) => player.id === id)?.name).filter(Boolean).join(", ") : targetPlayer?.name ?? (card.kind === "BumperHarvest" || card.kind === "Oath" ? "All living players" : card.kind === "BarbarianInvasion" || card.kind === "RainingArrows" ? "All other players" : me.name); const optimisticEvent: CardEvent & { type: "card" } = { id: `optimistic-${card.id}`, type: "card", player: me.name, target: displayTarget, card, action: definition.equipmentSlot && !selectedCanPlayAsAttack ? "equip" : "play", ...(selectedCanPlayAsAttack && !isAttackCard(card) ? { playedAs: "attack" } : {}) }; resolutionRevision.current += 1; optimisticallyPresentedCards.current.add(playedCard.id); setResolutionClosing(false); setResolutionEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []); setOptimisticPlay(optimisticEvent); setSelected(""); setTargetIds([]); const accepted = await onAction("play_card", { cardId: playedCard.id, ...(selectedCanPlayAsAttack ? { playAs: "attack" } : {}), ...(needsTarget ? { targetId: target, ...(halberdAttack ? { targetIds } : {}) } : {}) }); if (!accepted) { optimisticallyPresentedCards.current.delete(playedCard.id); setOptimisticPlay(null); setResolutionEvents([]); } };
+  const triggerPromptOption = triggerOptions.find((option) => option.effectId === selectedTriggerOption?.effectId) ?? triggerOptions[0] ?? null;
+  const triggerPrompt = triggerPromptOption
+    ? `Your action · Use ${triggerPromptOption.label}${triggerPromptOption.description ? `: ${triggerPromptOption.description}` : ""}${triggerDeclineAction ? ", or skip" : ""}`
+    : "Your action · choose a trigger";
   const commandPrompt = !responseDecisionReady && (canRespond || triggerResponse) ? "Showing the current game event…"
     : room.status === "finished" ? "The match has ended"
     : room.phase === "dying" && !canRespond ? room.isMyAction ? "Your action · select a Peach and play it, or skip rescue" : "Waiting — no rescue action is required from you"
@@ -1129,6 +1135,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
     : room.pendingBorrowedSword?.stage === "choose_target" ? canChooseBorrowedSword ? "Your action · Borrowed Sword · choose a target for the forced Attack" : `Waiting for ${actor?.name ?? "the Borrowed Sword player"} to choose an Attack target`
     : privateDistribution ? "Your action · Legacy · assign both private cards" : room.currentAction?.kind === "card_distribution" ? `Waiting for ${actor?.name ?? "Guo Jia"} to assign Legacy cards`
     : privateDeckReorder ? "Your action · Stargazing · order the revealed cards" : room.currentAction?.kind === "deck_reorder" ? `Waiting for ${actor?.name ?? "Zhuge Liang"} to complete Stargazing`
+    : room.currentAction?.kind === "trigger" ? room.isMyAction ? triggerPrompt : `Waiting for ${actor?.name ?? "the acting player"} to decide`
     : canRespond ? responseProviderId && selectedResponseProvider && responseSelectionUsesCards ? `Your action · choose ${responseSelection.min === responseSelection.max ? responseSelection.min : `${responseSelection.min}-${responseSelection.max}`} card${responseSelection.max === 1 ? "" : "s"} for ${selectedResponseProvider.label} (${responseSelectedCardIds.length}/${responseSelection.max})` : requiredResponseKind === "Negation" ? `Your action · choose how to Negate ${room.pendingNegation?.responseTarget ?? room.pendingNegation?.cardName ?? "the latest effect"}, or skip` : `Your action · choose how to provide ${requiredResponseKind} for ${room.pendingGroup ? room.pendingGroup.cardKind === "SkyPiercingHalberdAttack" ? "Sky Piercing Halberd Attack" : cardDefinition(room.pendingGroup.cardKind).name : room.pendingDuel ? "the Duel" : "the Attack"}, or skip and take damage`
     : room.phase === "response" ? room.pendingNegation ? `Waiting for Negation · ${room.pendingNegation.responseTarget ?? room.pendingNegation.cardName}` : room.pendingGreenDragon ? `Waiting for ${actor?.name ?? "the attacker"} to decide whether Green Dragon Blade continues` : room.pendingRockCleaving ? `Waiting for ${actor?.name ?? "the attacker"} to decide whether Rock Cleaving Axe forces damage` : room.pendingGroup ? `Waiting for ${actor?.name ?? "the target"} to play ${room.pendingGroup.requiredKind}` : room.pendingDuel ? `Waiting for ${actor?.name ?? "the duelist"} to play Attack` : `Waiting for ${defender?.name ?? "the target"} to answer ${attacker?.name ?? "the attacker"}`
     : room.phase === "discard" && room.isMyTurn ? `Your action · Discard Phase · select ${excessCards} card${excessCards === 1 ? "" : "s"} (${discardSelected.length}/${excessCards})`

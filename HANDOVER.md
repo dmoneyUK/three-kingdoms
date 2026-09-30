@@ -1,5 +1,34 @@
 # Three Kingdoms — current handover
 
+## Current state — Huang Yueying Cultivation UI/trigger-prompt correction — 2026-09-30
+
+The Huang Yueying Cultivation UI defect is confirmed fixed. The shared
+`HERO_SKILL_EFFECT_IDS` map now routes `Cultivation` to
+`huang_yueying_cultivation`, so a null-selection trigger submits directly
+through the semantic `trigger` action. The generic trigger partition only hides
+effects with a real hero-skill mapping; an unmapped future trigger remains
+visible through the generic controls.
+
+`commandPrompt` now handles projected trigger decisions before the ordinary
+response fallback. The acting player sees a provider-derived prompt such as
+“Use Cultivation … or skip”; other seats see that the authoritative trigger
+actor is deciding, never “Waiting for the target to answer the attacker”.
+After Cultivation, the existing semantic continuation remains authoritative:
+Overindulgence re-enters its Negation flow and Burning Bridges re-enters its
+source-owned target-card choice. No card-specific UI or server branch was
+added.
+
+Mounted GameRoom tests cover Overindulgence, Burning Bridges, private controls,
+Skip, actor ownership, continuation rendering, and unmapped generic triggers.
+API tests cover accepted and declined Cultivation, stale/replayed submissions,
+reload/privacy, Quick Test ownership, refill boundaries, Negation behavior,
+target-card continuation, and physical-card conservation.
+
+The Standard milestone remains **30/30 heroes and 46/46 skills**. Recommended
+next work is the existing generic Lü Bu / Unrivaled semantic multi-response
+correction. Keep the semantic protocol, server-owned legality, private
+projection, and persisted continuation boundaries unchanged.
+
 ## Current state — generic cross-phase active-skill target-selection UI fix — 2026-09-30
 
 Zhang Liao Assault now uses the shared semantic active-skill target mode even
