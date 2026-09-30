@@ -930,6 +930,14 @@ Do not create competing implementation-guide files for the same asset set.
 
 # 15. Change log
 
+## 2026-09-30 — Opponent frame anchoring fix
+
+Corrected:
+- `.player-square` now explicitly uses `position: relative`,
+- opponent-frame pseudo-elements are therefore sized and positioned against each individual player panel rather than the surrounding player-board container,
+- the previously calculated 144.4% / 148.2% fit ratios remain unchanged,
+- no player layout, hit area, targeting logic or live content changed.
+
 ## 2026-09-30 — opponent frame integration
 
 Applied:

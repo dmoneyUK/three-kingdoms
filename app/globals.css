@@ -948,7 +948,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
    493:512 art to be 144.4% of panel width and the symmetric 506:512 art to be
    148.2% of panel width. The extra width sits outside the live panel and is
    decorative only. */
-.player-square{isolation:isolate;overflow:visible}
+.player-square{position:relative;isolation:isolate;overflow:visible}
 .player-square-1::before,
 .player-square-2::before,
 .player-square-3::before{

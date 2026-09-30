@@ -1,5 +1,28 @@
 # Three Kingdoms — current handover
 
+## Opponent frame anchoring fix — 2026-09-30
+
+Mobile review immediately exposed that the newly applied opponent frames were
+not visually attached to the opponent cards. Root cause: the decorative
+`::before` layers use absolute positioning, but the integration rule had not
+made `.player-square` a positioned containing block. Their `top`, `left`,
+`height` and percentage widths were therefore resolving against an ancestor
+instead of the individual player panel.
+
+The runtime rule is now:
+
+```css
+.player-square {
+  position: relative;
+  isolation: isolate;
+  overflow: visible;
+}
+```
+
+The existing per-seat pseudo-element mapping and fit ratios remain unchanged.
+No gameplay DOM, player state, target controls, equipment/judgement content or
+hit areas changed.
+
 ## Current state — Cao Cao Entourage + Sun Quan Deliverance correctness — 2026-09-30
 
 Cao Cao `cao_cao_hujia` (Entourage) now requires `context.hero ===

@@ -1,5 +1,18 @@
 # War of Three Kingdoms
 
+## Opponent frame anchoring fix — 2026-09-30
+
+Fixed the first opponent-frame integration after mobile review showed the frame
+art was not visible around the individual player panels. The pseudo-elements
+were absolutely positioned but `.player-square` was not a positioned
+containing block, so their percentage geometry was resolving against an outer
+ancestor instead of each player card.
+
+`.player-square` now explicitly uses `position: relative`. The previously
+calculated frame fit (144.4% asymmetric / 148.2% symmetric width at 100% panel
+height) is unchanged. This is a presentation-only correction; player positions,
+hit areas, targeting, live content and gameplay logic are unchanged.
+
 ## Gameplay correctness — Cao Cao Entourage + Sun Quan Deliverance — 2026-09-30
 
 Corrected the missing Lord-role gates for Cao Cao's Entourage and Sun Quan's
