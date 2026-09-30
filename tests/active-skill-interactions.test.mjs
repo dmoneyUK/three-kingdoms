@@ -34,13 +34,13 @@ function activeSkillRoom(skill) {
   });
 }
 
-function triggerRoom({ meId = "p1", triggerOptions = [{ effectId: "huang_yueying_cultivation", label: "Cultivation", description: "Draw 1 card after using a Stratagem.", selection: null }], pendingNegation = null, currentAction = {} } = {}) {
+function triggerRoom({ meId = "p1", hero = "huang-yueying", playerName = "HUANG YUEYING", code = "CULTIVATION-UI", triggerOptions = [{ effectId: "huang_yueying_cultivation", label: "Cultivation", description: "Draw 1 card after using a Stratagem.", selection: null }], pendingNegation = null, currentAction = {} } = {}) {
   const players = [
-    { id: "p1", name: "HUANG YUEYING", seat: 0, hero: "huang-yueying", hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+    { id: "p1", name: playerName, seat: 0, hero, hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
     { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
   ];
   return normalizeRoomData({
-    code: "CULTIVATION-UI", status: "playing", maxPlayers: 2, isHost: meId === "p1", isTestController: false, meId, myRole: meId === "p1" ? "Lord" : "Rebel", myHeroOptions: [], players,
+    code, status: "playing", maxPlayers: 2, isHost: meId === "p1", isTestController: false, meId, myRole: meId === "p1" ? "Lord" : "Rebel", myHeroOptions: [], players,
     myHand: meId === "p1" ? [card("cultivation-card", "Dismantle")] : [card("target-card", "Peach")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Cultivation follows the Stratagem use", isMyAction: meId === "p1",
     actionRevision: "cultivation-ui-revision", phase: "response", pendingNegation, currentAction: {
       version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Choose a trigger", legalActions: ["trigger", "decline_trigger"], triggerEvent: "stratagem_used", triggerOptions, ...currentAction,
@@ -212,6 +212,32 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
     await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: continuationRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: continuationRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     assert.ok(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for Negation")).length >= 1, "the original continuation remains visible after Cultivation");
     await act(async () => { renderer.unmount(); skipRenderer.unmount(); opponentRenderer.unmount(); });
+});
+
+test("Diao Chan Beauty uses exactly one routed profile control and remains disabled when unavailable", async () => {
+  const beautyOption = { effectId: "diao_chan_beauty_outshining_moon", label: "Beauty Outshining the Moon", selection: null };
+  const room = triggerRoom({ hero: "diao-chan", playerName: "DIAO CHAN", code: "BEAUTY-UI", triggerOptions: [beautyOption], currentAction: { triggerEvent: "turn_end" } });
+  const actionCalls = [];
+  const onAction = async (...args) => { actionCalls.push(args); return true; };
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  const beautyButtons = buttonsContaining(renderer, "Beauty Outshining the Moon");
+  assert.equal(beautyButtons.length, 1, "Beauty has only one rendered control");
+  assert.equal(beautyButtons[0].props["aria-label"], "Beauty Outshining the Moon");
+  assert.equal(beautyButtons[0].props.disabled, false, "Beauty is enabled during its turn-end trigger");
+  assert.equal(buttonsContaining(renderer, "Use Beauty Outshining the Moon").length, 0, "Beauty is not duplicated in generic trigger controls");
+  assert.equal(button(renderer, { children: "Skip" }).props.disabled, false, "optional Beauty keeps Skip available");
+  await act(async () => { beautyButtons[0].props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "diao_chan_beauty_outshining_moon" }]);
+
+  const unavailableRoom = triggerRoom({ hero: "diao-chan", playerName: "DIAO CHAN", code: "BEAUTY-UI-INACTIVE", triggerOptions: [], currentAction: { triggerEvent: "turn_end" } });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: unavailableRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: unavailableRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const inactiveBeauty = button(renderer, { "aria-label": "Beauty Outshining the Moon" });
+  assert.equal(inactiveBeauty.props.disabled, true, "Beauty remains visible but disabled when unavailable");
+  await act(async () => { renderer.unmount(); });
 });
 
 test("an unmapped future trigger remains available through generic trigger controls", async () => {

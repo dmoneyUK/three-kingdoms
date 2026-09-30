@@ -573,7 +573,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "zhou-yu": { Heroic: ["zhou_yu_yingzi"], "Sowing Distrust": ["zhou_yu_fanjian"] },
   "lu-xun": { "Second Wind": ["lu_xun_second_wind"] },
   daqiao: { Captivating: ["daqiao_captivating"], Deflection: ["daqiao_deflection"] },
-  "diao-chan": { Lust: ["diao_chan_lust"] },
+  "diao-chan": { Lust: ["diao_chan_lust"], "Beauty Outshining the Moon": ["diao_chan_beauty_outshining_moon"] },
   "hua-tuo": { "Prodigal Healer": ["hua_tuo_prodigal_healer"] },
   "sun-shangxiang": { Betrothment: ["sun_shangxiang_betrothment"] },
   "huang-yueying": { Cultivation: ["huang_yueying_cultivation"] },

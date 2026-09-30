@@ -1,5 +1,22 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — Diao Chan Beauty skill-control fix — 2026-10-01
+
+Mapped `diao_chan_beauty_outshining_moon` into Diao Chan's existing Skills
+panel routing. Beauty Outshining the Moon now remains visible beside the hero
+profile when unavailable, becomes enabled for the projected optional
+`turn_end` trigger, submits the unchanged semantic `trigger` action, and no
+longer appears as a duplicate generic turn control. Lust and all server-side
+Beauty behavior are unchanged.
+
+Mounted interaction coverage protects the single profile control, exact
+provider submission, optional Skip, and disabled-unavailable state. The
+existing Diao Chan API coverage remains unchanged and green.
+
+Current stage remains Stage 7 product polish with Standard gameplay
+correctness maintained. The next gameplay milestone remains the existing
+generic Lü Bu / Unrivaled semantic multi-response correction.
+
 ## Gameplay correctness — Da Qiao Deflection review closure — 2026-10-01
 
 The Deflection UI now keeps the profile skill button as the only

@@ -1,5 +1,27 @@
 # Three Kingdoms — current handover
 
+## Current state — Diao Chan Beauty skill-control fix — 2026-10-01
+
+Mapped `diao_chan_beauty_outshining_moon` to Diao Chan's existing generic
+hero-profile skill map. Beauty Outshining the Moon is now the only rendered
+Beauty control: it stays visible but disabled without the server-projected
+trigger, enables during Diao Chan's optional own-turn `turn_end` trigger, and
+submits `{ providerId: "diao_chan_beauty_outshining_moon" }` through the
+existing semantic `trigger` action. The generic trigger footer no longer
+duplicates the mapped provider, and Skip remains available.
+
+Added mounted regression coverage for one-button rendering, profile aria
+label, enabled/disabled states, exact submission, and optional Skip. The
+server-side Beauty behavior and existing `tests/api/diao-chan.test.mjs`
+coverage were not changed.
+
+Known boundary: this is a small presentation/routing correction only; no
+server capability, continuation, or Lust behavior changed.
+
+Recommended next work remains the existing generic Lü Bu / Unrivaled semantic
+multi-response correction. Do not broaden this fix into another hero or
+server rules work.
+
 ## Current state — Da Qiao Deflection review closure — 2026-10-01
 
 The shared active hero-skill submission control now uses generic `Confirm`
