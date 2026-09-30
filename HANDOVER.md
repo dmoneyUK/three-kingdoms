@@ -52,6 +52,13 @@ the shared normalized defaults for optional target/card fields. Guan Yu and
 Zhao Yun conversion modes remain on their existing shared controls and must be
 kept in the next full UI audit.
 
+Mounted React interaction coverage now performs the real activation rerender
+for all five generic skills, checks the recovery boundary stays absent, tests
+disabled empty selection, legal card/target selection, cancel/re-entry, and
+asserts the exact generic trigger payload. The UI capability map includes the
+projected Prodigal Healer and Betrothment providers; no server semantics or
+private-card logging changed.
+
 Recommended next work remains Lü Bu / Unrivaled semantic multi-response
 handling, followed by the remaining correctness items below.
 

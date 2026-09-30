@@ -451,7 +451,7 @@ function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "
 
 function pendingKind(room: Room) { return room.pending?.kind ?? null; }
 
-class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => void; children: ReactNode }, { failed: boolean }> {
+export class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
 
   componentDidCatch(error: Error, info: { componentStack?: string }) {
@@ -574,6 +574,8 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "lu-xun": { "Second Wind": ["lu_xun_second_wind"] },
   daqiao: { Captivating: ["daqiao_captivating"] },
   "diao-chan": { Lust: ["diao_chan_lust"] },
+  "hua-tuo": { "Prodigal Healer": ["hua_tuo_prodigal_healer"] },
+  "sun-shangxiang": { Betrothment: ["sun_shangxiang_betrothment"] },
 };
 
 // Response capabilities are projected in currentAction.options rather than

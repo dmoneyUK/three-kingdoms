@@ -13,6 +13,7 @@ const fastTests = [
   "tests/targeting-capabilities.test.mjs",
   "tests/room-safety.test.mjs",
   "tests/room-safety-render.test.mjs",
+  "tests/active-skill-interactions.test.mjs",
 ];
 
 // rendered-html exercises the built SSR bundle, so test:fast includes it when

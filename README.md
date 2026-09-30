@@ -26,6 +26,12 @@ normalization and recovery-screen exclusion. The render boundary diagnostics
 also include action revision, current-action requirements, active provider IDs,
 hero, and component stack without card identities.
 
+Mounted React interaction coverage now clicks each of those five generic active
+skills, verifies the zero-selection disabled state, exercises legal card and
+target selection, cancel/re-entry, and checks the exact generic trigger
+payload. The UI capability map now exposes Prodigal Healer and Betrothment for
+their projected providers; server gameplay semantics are unchanged.
+
 The next gameplay bug-fix milestone remains Lü Bu / Unrivaled semantic
 multi-response handling.
 
