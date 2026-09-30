@@ -1662,7 +1662,8 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
     const recoveryActor = canonicalTrigger?.continuation.kind === "hp_recovered_event" && pending.actorId === canonicalTrigger.continuation.recovery.playerId;
     const equipmentLostActor = canonicalTrigger?.continuation.kind === "equipment_lost_event" && pending.actorId === canonicalTrigger.continuation.loss.playerId;
     const turnEndActor = canonicalTrigger?.continuation.kind === "turn_end_event" && owner.id === canonicalTrigger.continuation.endingPlayerId;
-    if (owner.id !== expectedOwnerId && !borrowedContinuationAttack && !borrowedTriggerContinuation && !postDamageTargetContinuation && !postDamageSourceContinuation && !privateDistributionActor && !heroChoiceTarget && !handLossActor && !recoveryActor && !equipmentLostActor && !turnEndActor) return "The pending action does not belong to the current turn owner.";
+    const judgementTriggerActor = canonicalTrigger && (canonicalTrigger.continuation.kind === "judgement_revealed_event" || canonicalTrigger.continuation.kind === "judgement_effective_event") && pending.actorId === canonicalTrigger.actorId;
+    if (owner.id !== expectedOwnerId && !borrowedContinuationAttack && !borrowedTriggerContinuation && !postDamageTargetContinuation && !postDamageSourceContinuation && !privateDistributionActor && !heroChoiceTarget && !handLossActor && !recoveryActor && !equipmentLostActor && !turnEndActor && !judgementTriggerActor) return "The pending action does not belong to the current turn owner.";
   } else if (room.phase !== "resolving" && pending) {
     return `The ${room.phase ?? "unknown"} phase contains an unexpected pending action.`;
   }

@@ -1,5 +1,18 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — Guo Jia Eight Trigrams Judgement lifecycle — 2026-10-01
+
+Fixed the post-Judgement trigger ownership boundary for Eight Trigrams
+Formation. Guo Jia's red or black Eight Trigrams Judgement now reaches the
+generic `judgement_effective` continuation and can offer Jealousy of God even
+when another seat owns the active turn. The final card still controls whether
+the Attack is Dodged; accepting Jealousy only obtains that final physical card.
+
+Regression coverage includes all four suits, Sima Yi replacement, non-Guo Jia
+Eight Trigrams, Raining Arrows continuation, private Jealousy ownership, and
+exact card conservation. The next milestone remains the existing generic Lü
+Bu / Unrivaled semantic multi-response correction.
+
 ## Gameplay correctness — Diao Chan Beauty skill-control fix — 2026-10-01
 
 Mapped `diao_chan_beauty_outshining_moon` into Diao Chan's existing Skills

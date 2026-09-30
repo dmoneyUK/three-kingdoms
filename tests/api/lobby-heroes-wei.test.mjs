@@ -235,6 +235,117 @@ test("Guo Jia Jealousy of God waits for the final Judgment card and handles Necr
   assert.equal(roomCardCount(declined.game.code, declinedOriginal.id), 1, "a declined final Judgment card follows the normal discard/reshuffle destination");
 });
 
+test("Guo Jia Eight Trigrams enters the post-Judgement Jealousy boundary", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, guoMember] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const guo = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(hostPlayer && guo);
+  sql(`UPDATE players SET hero='guo-jia' WHERE id=${quote(guo.id)}`);
+  setEquipment(guo.id, { armor: card("EightTrigrams", "guo-trigrams-armor") });
+  setHand(hostPlayer.id, [card("Attack", "guo-trigrams-attack")], 4, 4); setHand(guo.id, [], 4, 4);
+  const judgement = { ...card("Peach", "guo-trigrams-heart"), suit: "♥", rank: "Q" };
+  setDeck(game.code, [judgement]); setTurn(game.code, hostPlayer.seat);
+
+  const attack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-guo-trigrams-attack", targetId: guo.id });
+  assert.equal(attack.status, 200, JSON.stringify(attack.data));
+  const judged = await requestAndSettle("respond", { code: game.code, token: guoMember.token, providerId: "eight_trigrams_dodge" });
+  assert.equal(judged.status, 200, JSON.stringify(judged.data));
+  assert.equal(judged.data.room.currentAction.kind, "trigger");
+  assert.equal(judged.data.room.currentAction.triggerEvent, "judgement_effective");
+  assert.deepEqual(judged.data.room.currentAction.triggerOptions.map((option) => option.label), ["Jealousy of God"]);
+
+  const obtained = await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
+  assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
+  assert.ok(obtained.data.room.myHand.some((held) => held.id === judgement.id));
+  assert.equal(discardIds(game.code).includes(judgement.id), false);
+  assert.equal(obtained.data.room.players.find((player) => player.id === guo.id).hp, 4);
+  assert.equal(roomCardCount(game.code, judgement.id), 1);
+});
+
+test("Eight Trigrams uses the final card colour before and after Jealousy", { timeout: 30_000 }, async () => {
+  for (const [suit, succeeds] of [["♦", true], ["♣", false], ["♠", false]]) {
+    const game = await createHumanGame(); const [host, guoMember] = game.members;
+    const hostPlayer = game.room.players.find((player) => player.name === "Host"); const guo = game.room.players.find((player) => player.name === "Alice");
+    assert.ok(hostPlayer && guo);
+    sql(`UPDATE players SET hero='guo-jia' WHERE id=${quote(guo.id)}`);
+    setEquipment(guo.id, { armor: card("EightTrigrams", `guo-trigrams-${suit}-armor`) });
+    setHand(hostPlayer.id, [card("Attack", `guo-trigrams-${suit}-attack`)], 4, 4); setHand(guo.id, [], 4, 4);
+    const judgement = { ...card("Peach", `guo-trigrams-${suit}-judgement`), suit, rank: "8" };
+    setDeck(game.code, [judgement]); setTurn(game.code, hostPlayer.seat);
+    const attack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: `attack-guo-trigrams-${suit}-attack`, targetId: guo.id });
+    assert.equal(attack.status, 200, JSON.stringify(attack.data));
+    const judged = await requestAndSettle("respond", { code: game.code, token: guoMember.token, providerId: "eight_trigrams_dodge" });
+    assert.equal(judged.status, 200, JSON.stringify(judged.data));
+    assert.equal(judged.data.room.currentAction.triggerEvent, "judgement_effective");
+    assert.deepEqual(judged.data.room.currentAction.triggerOptions.map((option) => option.label), ["Jealousy of God"]);
+    const obtained = await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
+    assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
+    assert.ok(obtained.data.room.myHand.some((held) => held.id === judgement.id));
+    assert.equal(roomCardCount(game.code, judgement.id), 1);
+    assert.equal(discardIds(game.code).includes(judgement.id), false);
+    assert.equal(obtained.data.room.players.find((player) => player.id === guo.id).hp, succeeds ? 4 : 3);
+  }
+});
+
+test("Eight Trigrams Jealousy obtains Sima Yi's replacement and discards the original once", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, guoMember, simaMember] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const guo = game.room.players.find((player) => player.name === "Alice"); const sima = game.room.players.find((player) => player.name === "Bob");
+  assert.ok(hostPlayer && guo && sima);
+  sql(`UPDATE players SET hero='guo-jia' WHERE id=${quote(guo.id)}`); sql(`UPDATE players SET hero='simayi' WHERE id=${quote(sima.id)}`);
+  setEquipment(guo.id, { armor: card("EightTrigrams", "guo-replacement-armor") });
+  const original = { ...card("Peach", "guo-replacement-original"), suit: "♣", rank: "4" }; const replacement = { ...card("Dodge", "guo-replacement-final"), suit: "♥", rank: "K" };
+  setHand(hostPlayer.id, [card("Attack", "guo-replacement-attack")], 4, 4); setHand(guo.id, [], 4, 4); setHand(sima.id, [replacement], 4, 4);
+  setDeck(game.code, [original]); setTurn(game.code, hostPlayer.seat);
+  assert.equal((await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-guo-replacement-attack", targetId: guo.id })).status, 200);
+  const revealed = await requestAndSettle("respond", { code: game.code, token: guoMember.token, providerId: "eight_trigrams_dodge" });
+  assert.equal(revealed.data.room.currentAction.triggerEvent, "judgement_revealed");
+  const replaced = await requestAndSettle("trigger", { code: game.code, token: simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
+  assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
+  const replacementView = (await state(game.code, guoMember.token)).data;
+  assert.equal(replacementView.currentAction.triggerEvent, "judgement_effective");
+  assert.deepEqual(replacementView.currentAction.triggerOptions.map((option) => option.label), ["Jealousy of God"]);
+  const obtained = await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
+  assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
+  assert.ok(obtained.data.room.myHand.some((held) => held.id === replacement.id));
+  assert.equal(discardIds(game.code).includes(original.id), true);
+  assert.equal(discardIds(game.code).includes(replacement.id), false);
+  assert.equal(roomCardCount(game.code, original.id), 1); assert.equal(roomCardCount(game.code, replacement.id), 1);
+  assert.equal(obtained.data.room.players.find((player) => player.id === guo.id).hp, 4);
+});
+
+test("non-Guo Jia Eight Trigrams keeps the ordinary response result", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, aliceMember] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host"); const alice = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(hostPlayer && alice);
+  sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(alice.id)}`); setEquipment(alice.id, { armor: card("EightTrigrams", "non-guo-armor") });
+  const judgement = { ...card("Peach", "non-guo-judgement"), suit: "♥", rank: "2" };
+  setHand(hostPlayer.id, [card("Attack", "non-guo-attack")], 4, 4); setHand(alice.id, [], 4, 4); setDeck(game.code, [judgement]); setTurn(game.code, hostPlayer.seat);
+  assert.equal((await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-non-guo-attack", targetId: alice.id })).status, 200);
+  const result = await requestAndSettle("respond", { code: game.code, token: aliceMember.token, providerId: "eight_trigrams_dodge" });
+  assert.equal(result.status, 200, JSON.stringify(result.data)); assert.notEqual(result.data.room.currentAction.triggerEvent, "judgement_effective", JSON.stringify(result.data.room.currentAction));
+  assert.equal(result.data.room.players.find((player) => player.id === alice.id).hp, 4); assert.equal(roomCardCount(game.code, judgement.id), 1);
+});
+
+test("Guo Jia Eight Trigrams resumes the next Raining Arrows target after Jealousy", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host, guoMember, bobMember] = game.members;
+  const source = game.room.players.find((player) => player.name === "Host"); const guo = game.room.players.find((player) => player.name === "Alice"); const bob = game.room.players.find((player) => player.name === "Bob");
+  assert.ok(source && guo && bob);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`); sql(`UPDATE players SET hero='guo-jia' WHERE id=${quote(guo.id)}`); sql(`UPDATE players SET hero='zhao-yun' WHERE id=${quote(bob.id)}`);
+  setEquipment(guo.id, { armor: card("EightTrigrams", "raining-guo-armor") });
+  const judgement = { ...card("Peach", "raining-guo-judgement"), suit: "♥", rank: "3" };
+  setHand(source.id, [card("RainingArrows", "raining-guo-source")], 4, 4); setHand(guo.id, [], 4, 4); setHand(bob.id, [card("Dodge", "raining-bob-dodge")], 4, 4); setDeck(game.code, [judgement]); setTurn(game.code, source.seat);
+  const started = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "rainingarrows-raining-guo-source" });
+  assert.equal(started.status, 200, JSON.stringify(started.data)); await passNegationWindows(game.code, game.members);
+  const guoResponse = await state(game.code, guoMember.token); assert.equal(guoResponse.data.currentAction.kind, "response", JSON.stringify(guoResponse.data.currentAction)); assert.equal(guoResponse.data.currentAction.requirement, "dodge");
+  const judged = await requestAndSettle("respond", { code: game.code, token: guoMember.token, providerId: "eight_trigrams_dodge" });
+  assert.equal(judged.data.room.currentAction.triggerEvent, "judgement_effective", JSON.stringify(judged.data.room.currentAction));
+  const obtained = await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
+  assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
+  const nextTarget = await waitForState(game.code, bobMember.token, (room) => room.currentAction?.kind === "response" && room.currentAction.actorId === bob.id && room.currentAction.options?.length > 0);
+  assert.equal(nextTarget.currentAction.requirement, "dodge", JSON.stringify(nextTarget.currentAction));
+  const bobAnswered = await requestAndSettle("respond", { code: game.code, token: bobMember.token, cardId: "dodge-raining-bob-dodge" });
+  assert.equal(bobAnswered.status, 200, JSON.stringify(bobAnswered.data)); assert.equal(bobAnswered.data.room.phase, "play"); assert.equal(roomCardCount(game.code, judgement.id), 1);
+});
+
 test("Legacy privately distributes top two cards and repeats once per damage point", { timeout: 30_000 }, async () => {
   const firstCards = [card("Peach", "legacy-one-a"), card("Dodge", "legacy-one-b"), card("Attack", "legacy-spare")];
   const one = await openGuoDamage({ deckCards: firstCards });

@@ -1,5 +1,29 @@
 # Three Kingdoms — current handover
 
+## Current state — Guo Jia Eight Trigrams Judgement lifecycle — 2026-10-01
+
+Fixed Guo Jia's missing Jealousy of God interaction after using Eight Trigrams
+Formation to answer a Dodge response. Eight Trigrams already returned the
+generic Judgement resolution, so its revealed card now continues through the
+existing `judgement_revealed` / Necromancy / `judgement_effective` lifecycle;
+the defect was the shared state guard rejecting a semantic post-Judgement
+actor whenever a different seat owned the active turn.
+
+The guard now permits the actor recorded by either generic Judgement trigger
+continuation. No Eight Trigrams-, Heart-, Guo Jia-, or provider-specific route
+branch was added. The final effective card still determines red/black Dodge
+success, Jealousy obtains only that final card, and the original replaced card
+follows its normal destination.
+
+API regressions cover Heart, Diamond, Club, Spade, Sima Yi replacement,
+non-Guo Jia behavior, Raining Arrows resumption, private Jealousy ownership,
+and exact physical-card conservation. Existing generic Guo Jia Judgment and
+Eight Trigrams tests remain in place.
+
+Recommended next work remains the existing generic Lü Bu / Unrivaled semantic
+multi-response correction. Do not broaden this fix into another hero or a
+second Judgement protocol.
+
 ## Current state — Diao Chan Beauty skill-control fix — 2026-10-01
 
 Mapped `diao_chan_beauty_outshining_moon` to Diao Chan's existing generic
