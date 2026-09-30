@@ -30,24 +30,6 @@ substituted.
 Current stage: Stage 7 product polish, board skin applied; continue the visual
 pass incrementally with regression checks between steps.
 
-## UI stability — Gan Ning Ambushment activation — 2026-09-30
-
-Fixed the active-skill render boundary used by Gan Ning's `gan_ning_qixi`
-(`Ambushment`). Card-based active skills now normalize their card IDs, target
-IDs, and target bounds before rendering; Qixi safely defaults absent
-`targetMin`/`targetMax` to one target, including the empty state immediately
-after activation. Submission remains the generic `trigger` contract with
-`providerId`, `cardIds`, and one `targetId`; server-owned legality,
-`room-safety.js`, Burning Bridges Negation, and card conservation are
-unchanged.
-
-The render boundary now logs public phase/action/hero/effect context, the
-exception, and component stack without private card identities, and its copy
-does not misdiagnose a React render exception as incompatible saved data.
-Coverage is in `tests/room-safety-render.test.mjs`, alongside the existing
-Qixi API and room-safety regressions. The next milestone is pushing this
-validated fix to `origin/main`.
-
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
 ## Current status — 2026-09-30
