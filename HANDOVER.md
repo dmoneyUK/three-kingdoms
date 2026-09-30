@@ -1,3 +1,17 @@
+# Current handover — Standard hero implementation complete (2026-09-30)
+
+The completed Standard roster has been reviewed and reconciled with the hero reference. Current authoritative status is **30/30 Standard heroes implemented and 46/46 printed skills implemented**. Pan Feng / Axe of Insanity (1316123a) closes the hero implementation sequence; all Standard heroes are enabled in the shared Standard selection allow-list.
+
+The implementation architecture to preserve is capability-driven: semantic respond/decline_response and trigger/decline_trigger actions, persisted continuations, canonical damage/Dying/recovery/Judgement pipelines, generic distance and target-legality capabilities, physical-card conservation, server-owned legality, private projection, stale/replay rejection, and Quick Test parity with normal multiplayer. Do not add hero-name branches to central rules when a small generic capability/provider contract fits.
+
+## Next work
+
+Do **not** implement another Standard hero. Begin a focused cross-hero/card interaction audit of the completed roster. Start with older implementations and exercise them through newer infrastructure: virtual/converted cards, delegated Attacks/Dodges, multi-target and redirected Attacks, damage-source ownership, nested post-damage reactions, Dying/rescue, hp_recovered, Judgement replacement, delayed Stratagems, Equipment-zone exits, distance/target legality, reload, stale submissions, Quick Test, and privacy. For each verified defect, make the smallest generic correction and add deterministic regression coverage before moving to the next issue.
+
+Documentation source of truth: docs/STANDARD_HERO_REFERENCE.md now records the full-roster audit and **30/30 / 46/46** completion status. Historical stage sections below are retained as implementation history; their old “next hero” recommendations and intermediate counts are historical only and must not override this handover.
+
+---
+
 # Three Kingdoms project handover
 
 ## Current state — Stage 6 Pan Feng / Axe of Insanity — 2026-09-30
