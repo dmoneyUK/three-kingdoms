@@ -34,6 +34,20 @@ ownership, and canonical recovery/refill behavior. Do not begin another hero in
 this handover; the next staged work is a separately approved remaining Standard
 hero after this validated round.
 
+## Latest presentation update — three supplied hero portraits — 2026-09-30
+
+Added and wired the three supplied portraits through the shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer:
+
+- Photo 1: Lady Gan (`public/hero-lady-gan.jpg`)
+- Photo 2: Huang Yueying (`public/hero-huang-yueying.jpg`)
+- Photo 3: Zhou Yu (`public/hero-zhou-yu.jpg`)
+
+The shared path covers hero selection, the locked-in selection state, the local
+hero card, and opponent cards. This remains presentation-only: no gameplay
+rules, projections, selection legality, layout dimensions, or semantic actions
+changed. Lady Gan remains the current completed rules milestone.
+
 ## Latest presentation update — six supplied hero portraits — 2026-09-30
 
 Added and wired the six supplied portraits through the shared

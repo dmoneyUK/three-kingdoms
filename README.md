@@ -29,6 +29,18 @@ multiplayer keep acting-seat ownership and private-card projections intact.
 
 ## Hero artwork update — 2026-09-30
 
+Added the three supplied portraits to the shared `HERO_ART_BY_ID` /
+`HeroPortrait` renderer. Photo 1 replaces Lady Gan, Photo 2 is Huang Yueying,
+and Photo 3 is Zhou Yu. The shared renderer applies the artwork in hero
+selection, locked-in selection, the local hero dock, and opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged. Lady Gan remains
+the current completed Stage 6 rules milestone; no adjacent hero work is part of
+this artwork round.
+
+## Hero artwork update — 2026-09-30
+
 Added the six supplied portraits to the shared `HERO_ART_BY_ID` /
 `HeroPortrait` renderer. Photo 1 is Zhang Liao, Photo 2 replaces Xiahou Dun,
 Photo 3 is Xu Zhu, Photo 4 is Guo Jia, Photo 5 replaces Zhen Ji, and Photo 6
