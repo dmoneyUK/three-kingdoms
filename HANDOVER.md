@@ -1,5 +1,23 @@
 # Three Kingdoms — current handover
 
+## Current state — Gan Ning Ambushment UI stability — 2026-09-30
+
+Gan Ning `gan_ning_qixi` activation is hardened at the shared active-skill
+client boundary. Card selections now have safe `eligibleCardIds` and
+`targetIds` arrays, and absent `targetMin`/`targetMax` default to `1`. The
+empty card/target state after tapping Ambushment renders safely, keeps the
+server-projected black Hand card and legal opponents available, and uses the
+same revision/effect keyed state for the exact generic trigger submission.
+
+`GameRoomErrorBoundary` remains protective but records public phase, action,
+hero, effect IDs, exception, and component stack without private card
+identities; its recovery copy no longer claims saved data is incompatible.
+`game/room-safety.js` and Qixi's server/Negation/target-card flow are
+unchanged. The focused regression is in
+`tests/room-safety-render.test.mjs`; full build, 64 fast tests, 183 API tests,
+lint, and `git diff --check` pass, with one pre-existing lint warning. The
+next milestone is pushing this validated fix to `origin/main`.
+
 ## Current state — 2026-09-30
 
 The Standard hero implementation milestone is complete: **30/30 Standard heroes and 46/46 printed skills are implemented and enabled**. There is no remaining Standard hero implementation task.

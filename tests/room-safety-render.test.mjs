@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, WaitingRoom } from "../app/page.tsx";
+import { buildActiveSkillSubmission, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
@@ -632,4 +632,28 @@ test("a normalized Negation response retains its legal controls", () => {
   assert.match(html, /Play Negation/);
   assert.match(html, />Skip<\/button>/);
   assert.doesNotMatch(html, /Waiting for the latest response state/);
+});
+
+test("Qixi active-skill activation has a safe empty-selection render contract", () => {
+  const selection = normalizeActiveCardSkillSelection({ type: "cards", min: 1, max: 1, eligibleCardIds: ["qixi-black"], targetIds: ["p2"] });
+  assert.deepEqual(selection, { min: 1, max: 1, eligibleCardIds: ["qixi-black"], targetIds: ["p2"], targetMin: 1, targetMax: 1 });
+  assert.ok(selection);
+  assert.deepEqual(buildActiveSkillSubmission("gan_ning_qixi", selection, { revision: "qixi-revision", effectId: "gan_ning_qixi", cardIds: [], targetIds: [] }), { providerId: "gan_ning_qixi", cardIds: [] }, "the zero-selection intermediate state is safe");
+  assert.deepEqual(buildActiveSkillSubmission("gan_ning_qixi", selection, { revision: "qixi-revision", effectId: "gan_ning_qixi", cardIds: ["qixi-black"], targetIds: ["p2"] }), { providerId: "gan_ning_qixi", cardIds: ["qixi-black"], targetId: "p2" });
+
+  const room = normalizeRoomData({
+    code: "QIXUI", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "GAN NING", seat: 0, hero: "gan-ning", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [{ id: "target-weapon", kind: "BlueSteelSword", suit: "♠", rank: "Q" }], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [{ id: "qixi-black", kind: "BorrowedSword", suit: "♣", rank: "K" }], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards or finish the Play Phase", isMyAction: true,
+    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards or finish the Play Phase", legalActions: ["trigger"], triggerOptions: [{ effectId: "gan_ning_qixi", label: "Ambushment", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["qixi-black"], targetIds: ["p2"] } }] },
+  });
+  assert.ok(room);
+  const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(html, /aria-label="Ambushment"[^>]*>/, "Ambushment is rendered from the semantic option");
+  assert.match(html, /data-hand-card-id="qixi-black"[\s\S]*class="game-card borrowedsword black-suit/, "the legal black hand card is rendered");
+  assert.match(html, /data-player-anchor="p2"[\s\S]*aria-label="Inspect TARGET"/, "the legal opponent is rendered for targeting after activation");
+  assert.doesNotMatch(html, /Use Ambushment/, "the inactive skill does not render its submit control before activation");
 });

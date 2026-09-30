@@ -454,12 +454,16 @@ class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => voi
   state = { failed: false };
 
   componentDidCatch(error: Error, info: { componentStack?: string }) {
+    const viewer = this.props.room.players.find((player) => player.id === this.props.room.meId);
     console.error("[GameRoom render failure]", {
       status: this.props.room.status,
       phase: this.props.room.phase,
+      actionKind: this.props.room.currentAction?.kind ?? null,
+      heroId: viewer?.hero ?? null,
+      activeSkillIds: this.props.room.currentAction?.triggerOptions?.map((option) => option.effectId) ?? [],
       pendingKind: pendingKind(this.props.room),
-      error: error.message,
-      component: info.componentStack?.split("\n").find(Boolean) ?? "GameRoom",
+      error,
+      componentStack: info.componentStack ?? "",
     });
     this.setState({ failed: true });
   }
@@ -471,7 +475,7 @@ class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => voi
 
   render() {
     if (!this.state.failed) return this.props.children;
-    return <main className="landing-shell"><section className="entry-card recovery-card"><span className="eyebrow">ROOM RECOVERY</span><h1>Previous game data is no longer compatible.</h1><p>Your saved room could not be rendered safely. Start a new game to continue.</p><button className="gold-button" onClick={this.recover}>Start a new game</button></section></main>;
+    return <main className="landing-shell"><section className="entry-card recovery-card"><span className="eyebrow">GAME SCREEN ERROR</span><h1>The game screen encountered an error.</h1><p>Your room is protected. Start a new game to continue.</p><button className="gold-button" onClick={this.recover}>Start a new game</button></section></main>;
   }
 }
 
@@ -505,6 +509,42 @@ type HeroSkillButtonModel = {
   active: boolean;
   onClick?: () => void;
 };
+
+type ActiveCardSkillSelection = {
+  min: number;
+  max: number;
+  eligibleCardIds: string[];
+  targetIds: string[];
+  targetMin: number;
+  targetMax: number;
+};
+
+// Active card skills share one client contract. Older providers, including
+// Qixi, do not carry targetMin/targetMax because they always choose one
+// target. Keep the intermediate activated state total: no render may depend
+// on a property that is absent before the first card or target is selected.
+export function normalizeActiveCardSkillSelection(selection: TriggerOptionView["selection"]): ActiveCardSkillSelection | null {
+  if (selection?.type !== "cards") return null;
+  const min = Number.isInteger(selection.min) ? selection.min : 1;
+  const max = Number.isInteger(selection.max) ? selection.max : min;
+  const targetMin = Number.isInteger(selection.targetMin) ? selection.targetMin : 1;
+  const targetMax = Number.isInteger(selection.targetMax) ? selection.targetMax : targetMin;
+  return {
+    min,
+    max,
+    eligibleCardIds: Array.isArray(selection.eligibleCardIds) ? selection.eligibleCardIds : [],
+    targetIds: Array.isArray(selection.targetIds) ? selection.targetIds : [],
+    targetMin,
+    targetMax,
+  };
+}
+
+export function buildActiveSkillSubmission(effectId: string, selection: ActiveCardSkillSelection, state: ActiveSkillSelectionState) {
+  const cardIds = state.cardIds.filter((id) => selection.eligibleCardIds.includes(id));
+  const targetIds = state.targetIds.filter((id) => selection.targetIds.includes(id));
+  const targetId = targetIds[0] ?? "";
+  return { providerId: effectId, cardIds, ...(targetIds.length > 1 ? { targetIds } : targetId ? { targetId } : {}) };
+}
 
 // These are stable semantic capability IDs, not display-label matches. A
 // missing entry intentionally leaves the metadata-backed skill visible but
@@ -715,18 +755,18 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
     : [];
   const activeSkillOption = activeSkillOptions.find((option) => option.effectId === kingSkillId) ?? null;
   const heroTriggerEffectIds = new Set(activeSkillOptions.map((option) => option.effectId));
-  const activeSkillSelection = activeSkillOption?.selection?.type === "cards" ? activeSkillOption.selection : null;
+  const activeSkillSelection = normalizeActiveCardSkillSelection(activeSkillOption?.selection ?? null);
   const activeSkillTargetSelection = activeSkillOption?.selection?.type === "target" ? activeSkillOption.selection : null;
   const activeActionRevision = room.actionRevision ?? "";
   const activeSkillStateIsCurrent = Boolean(activeSkillOption && activeSkillSelectionState?.revision === activeActionRevision && activeSkillSelectionState.effectId === activeSkillOption.effectId);
-  const activeSkillSelectedCardIds = activeSkillSelection && activeSkillStateIsCurrent ? activeSkillSelectionState?.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)) ?? [] : [];
+  const activeSkillSelectedCardIds = activeSkillSelection && activeSkillStateIsCurrent ? (activeSkillSelectionState?.cardIds ?? []).filter((id) => activeSkillSelection.eligibleCardIds.includes(id)) : [];
   const activeSkillTargetIds = activeSkillSelection?.targetIds ?? activeSkillTargetSelection?.targetIds ?? [];
   const activeSkillTargetMin = activeSkillSelection?.targetMin ?? (activeSkillTargetSelection?.min ?? 1);
   const activeSkillTargetMax = activeSkillSelection?.targetMax ?? (activeSkillTargetSelection?.max ?? 1);
-  const activeSkillSelectedTargetIds = activeSkillStateIsCurrent ? activeSkillSelectionState?.targetIds.filter((id) => activeSkillTargetIds.includes(id)) ?? [] : [];
+  const activeSkillSelectedTargetIds = activeSkillStateIsCurrent ? (activeSkillSelectionState?.targetIds ?? []).filter((id) => activeSkillTargetIds.includes(id)) : [];
   const activeSkillTargetId = activeSkillSelectedTargetIds[0] ?? "";
   const activeSkillComplete = Boolean(activeSkillOption && activeSkillStateIsCurrent && (activeSkillSelection ? activeSkillSelectedCardIds.length >= activeSkillSelection.min && activeSkillSelectedCardIds.length <= activeSkillSelection.max : activeSkillTargetSelection) && (activeSkillTargetIds.length === 0 || activeSkillSelectedTargetIds.length >= activeSkillTargetMin && activeSkillSelectedTargetIds.length <= activeSkillTargetMax));
-  const activeSkillSubmission = activeSkillOption && activeSkillStateIsCurrent ? { providerId: activeSkillOption.effectId, ...(activeSkillSelection ? { cardIds: activeSkillSelectedCardIds } : {}), ...(activeSkillSelectedTargetIds.length > 1 ? { targetIds: activeSkillSelectedTargetIds } : activeSkillTargetId ? { targetId: activeSkillTargetId } : {}) } : null;
+  const activeSkillSubmission = activeSkillOption && activeSkillSelection && activeSkillStateIsCurrent && activeSkillSelectionState ? buildActiveSkillSubmission(activeSkillOption.effectId, activeSkillSelection, activeSkillSelectionState) : activeSkillOption && activeSkillStateIsCurrent ? { providerId: activeSkillOption.effectId, ...(activeSkillSelectedTargetIds.length > 1 ? { targetIds: activeSkillSelectedTargetIds } : activeSkillTargetId ? { targetId: activeSkillTargetId } : {}) } : null;
   const mandatoryChoiceTriggerOption = triggerOptions.find((option) => option.selection?.type === "choice" && option.allowDecline === false) ?? null;
   const choiceTriggerOption = mandatoryChoiceTriggerOption ?? triggerOptions.find((option) => option.selection?.type === "choice") ?? null;
   const selectedTriggerOption = choiceTriggerOption ?? triggerOptions.find((option) => option.effectId === responseProviderId) ?? null;
