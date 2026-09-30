@@ -69,24 +69,6 @@ visual system across both the local `.game-card` path and the shared
 `CardFace` / `.played-card` path, then verify discard/equipment/judgement
 sizes and sequence animations before continuing.
 
-## Current state — Gan Ning Ambushment UI stability — 2026-09-30
-
-Gan Ning `gan_ning_qixi` activation is hardened at the shared active-skill
-client boundary. Card selections now have safe `eligibleCardIds` and
-`targetIds` arrays, and absent `targetMin`/`targetMax` default to `1`. The
-empty card/target state after tapping Ambushment renders safely, keeps the
-server-projected black Hand card and legal opponents available, and uses the
-same revision/effect keyed state for the exact generic trigger submission.
-
-`GameRoomErrorBoundary` remains protective but records public phase, action,
-hero, effect IDs, exception, and component stack without private card
-identities; its recovery copy no longer claims saved data is incompatible.
-`game/room-safety.js` and Qixi's server/Negation/target-card flow are
-unchanged. The focused regression is in
-`tests/room-safety-render.test.mjs`; full build, 64 fast tests, 183 API tests,
-lint, and `git diff --check` pass, with one pre-existing lint warning. The
-next milestone is pushing this validated fix to `origin/main`.
-
 ## Current state — 2026-09-30
 
 The Standard hero implementation milestone is complete: **30/30 Standard heroes and 46/46 printed skills are implemented and enabled**. There is no remaining Standard hero implementation task.
@@ -141,11 +123,15 @@ Required work: when Retaliation chooses the Hand zone, make the authoritative se
 
 Do not change the source zones for Guan Yu God of War, Zhen Ji Empress Dowager, Gan Ning Ambushment, Da Qiao Captivating, or Hua Tuo First Aid solely because the English card wording says “a card”. The current project reference records deliberate Hand-zone interpretations for some of these, and the available rule material does not clearly resolve every source-zone case. Require an explicit WTK ruling/source before changing them.
 
-## Execution order
+## Execution order and next work
 
-Complete the remaining work in this order: **(1) Cao Cao + Sun Quan Lord gates; (2) generic Unrivaled/multi-response correction; (3) verify and, if confirmed, fix Huang Gai timing; (4) Sima Yi random-Hand hardening.**
+Complete the remaining gameplay corrections in this order: **(1) Cao Cao + Sun Quan Lord gates; (2) generic Unrivaled/multi-response correction; (3) verify and, if confirmed, fix Huang Gai timing; (4) Sima Yi random-Hand hardening.**
 
-After each change, add focused deterministic regressions and re-run the relevant API/capability suites. Do not reduce the implementation status from **30/30 heroes / 46/46 skills** for these defects; they are interaction corrections to completed skills.
+After each correction, add focused deterministic regressions and run the relevant API/capability suites. Do not reduce the implementation status from **30/30 heroes / 46/46 skills**; these are corrections to completed skills.
+
+**After these confirmed gameplay bugs are closed, the next active product work is UX improvement.** Review the actual normal-multiplayer and Quick Test flows and turn the findings into a small functional UX backlog covering action/turn clarity, decision prompts, card and target selection, response/trigger controls, waiting states, mobile/touch usability, feedback for rejected/stale actions, setup/hero selection, match-end flow, and Quick Test perspective switching.
+
+Keep the larger Standard integration matrix and end-to-end/release hardening as **future TODO testing phases**, as defined in `ROADMAP.md`. Graphic/art redesign is separate from functional UX work unless explicitly requested.
 
 ## Out of scope for this handover
 
