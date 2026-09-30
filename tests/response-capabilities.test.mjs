@@ -378,6 +378,44 @@ test("damage_suffered keeps unresolved providers available after one resolves", 
   }
 });
 
+test("Hua Xiong Triumphant is a source-owned choice for actual red Attack damage", () => {
+  const context = (physicalSuit, overrides = {}) => ({
+    event: "damage_suffered",
+    sourceId: "attacker",
+    sourceHero: "guan-yu",
+    sourceHp: 3,
+    sourceMaxHp: 4,
+    sourceEquipment: [],
+    sourceHand: [],
+    targetId: "hua-xiong",
+    targetHero: "huaxiong",
+    targetHand: [],
+    targetEquipment: [],
+    damageAmount: 1,
+    damageCause: "attack",
+    physicalSuit,
+    ...overrides,
+  });
+  for (const suit of ["♥", "♦"]) {
+    const option = getTriggeredEffects(context(suit)).find((entry) => entry.effectId === "hua_xiong_triumphant");
+    assert.deepEqual(option, {
+      effectId: "hua_xiong_triumphant",
+      label: "Triumphant",
+      description: "Recover 1 HP or draw 1 card.",
+      allowDecline: true,
+      selection: { type: "choice", choices: [{ id: "recover", label: "Recover 1 HP" }, { id: "draw", label: "Draw 1 card" }], eligibleHandKeys: [] },
+    });
+    assert.equal(triggerActorId("hua_xiong_triumphant", context(suit)), "attacker");
+    assert.deepEqual(resolveTriggeredEffect("hua_xiong_triumphant", context(suit), { choice: "recover" }).outcome, { kind: "recover_player", playerId: "attacker", amount: 1 });
+    assert.deepEqual(resolveTriggeredEffect("hua_xiong_triumphant", context(suit), { choice: "draw" }).outcome, { kind: "draw_cards", amount: 1 });
+  }
+  for (const suit of ["♠", "♣"]) assert.equal(getTriggeredEffects(context(suit)).some((entry) => entry.effectId === "hua_xiong_triumphant"), false);
+  assert.equal(getTriggeredEffects(context("♥", { damageCause: "duel" })).some((entry) => entry.effectId === "hua_xiong_triumphant"), false);
+  assert.equal(getTriggeredEffects(context("♥", { sourceId: undefined, sourceHero: undefined })).some((entry) => entry.effectId === "hua_xiong_triumphant"), false);
+  assert.deepEqual(getTriggeredEffects(context("♥", { sourceHp: 4 })).find((entry) => entry.effectId === "hua_xiong_triumphant")?.selection.choices, [{ id: "draw", label: "Draw 1 card" }]);
+  assert.equal(getTriggeredEffects(context(undefined)).some((entry) => entry.effectId === "hua_xiong_triumphant"), false, "suitless virtual Attacks do not invent a red suit");
+});
+
 test("a non-terminal trigger outcome reopens the event without naming its provider", () => {
   const pending = {
     kind: "trigger",

@@ -144,7 +144,7 @@ test("every implemented Standard hero is audited through the shared portrait ren
       assert.match(html, /class="hero-art-fallback"/, `${id} keeps the intentional initials fallback until approved artwork exists`);
     }
   }
-  assert.deepEqual(unmappedIds, ["lu-xun"]);
+  assert.deepEqual(unmappedIds, ["lu-xun", "huaxiong"]);
 });
 
 test("hand cards stay naturally packed and compress only when the rail is tight", () => {

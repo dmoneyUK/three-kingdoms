@@ -2,6 +2,30 @@
 
 This roadmap is aligned to the verified WTK Standard reference in `docs/OFFICIAL_CARD_REFERENCE.md`. Standard is the only active ruleset. Expansion cards stay out of scope unless the project owner explicitly changes that priority.
 
+## Stage 6 hero capability — Hua Xiong / Triumphant — 2026-09-30
+
+Complete on this rules-only round. Hua Xiong is enabled at **29 / 30 Standard
+heroes implemented** and **45 / 46 printed skills implemented**. Pan Feng is
+the only remaining hero. No artwork or adjacent hero work is included.
+
+Triumphant is the generic `damage_suffered` provider
+`hua_xiong_triumphant`. After actual damage to Hua Xiong from a living source's
+effective Red-suited Attack, the source owns one optional choice: recover 1 HP,
+draw 1 card, or decline. The provider uses actual target/source identity, not
+the original target or a log entry, and does not trigger for black or suitless
+Attacks, non-Attack damage, prevention, or zero damage. The physical Attack suit
+is carried in the generic damage metadata, so Guan Yu, Zhao Yun, Liu Bei
+Influencing, Borrowed Sword, Da Qiao Deflection, follow-up Attacks, and
+multi-target Halberd flows preserve the correct source and suit. Serpent Spear
+does not invent a suit.
+
+Recovery uses canonical `applyRecovery` and `hp_recovered`; nested Prudence
+resolves before the original damage continuation resumes. The implementation
+is event-level (one opportunity for a two-damage event), source-private, stale
+safe, reload-safe, and shared by Quick Test and multiplayer.
+
+Do not start Pan Feng in this round.
+
 ## Stage 6 hero capability — Diao Chan / Lust + Beauty Outshining the Moon — 2026-09-30
 
 Complete on this rules-only round. Diao Chan is enabled at **28 / 30 Standard

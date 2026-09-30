@@ -1,5 +1,33 @@
 # Three Kingdoms project handover
 
+## Current state — Stage 6 Hua Xiong / Triumphant — 2026-09-30
+
+Hua Xiong is complete and enabled in Standard selection. The implementation
+count is **29/30 Standard heroes** and **45/46 printed skills**; Pan Feng is
+the only remaining hero. This was a rules-only round: no graphic or artwork
+work was started, and Pan Feng was not started.
+
+`hua_xiong_triumphant` is a generic `damage_suffered` TriggeredEffect. It
+requires Hua Xiong to be the actual damaged character, actual damage from a
+living source, `damageCause: "attack"`, and a physical Attack suit of Heart or
+Diamond. The source character is the decision actor and receives a private
+choice of Recover 1 HP, Draw 1 card, or Decline; Hua Xiong never submits the
+choice. Black and suitless Attacks, non-Attack damage, prevented/zero damage,
+and unavailable sources do not open it.
+
+The physical suit is carried through the generic Attack and damage
+continuations, including Guan Yu and Zhao Yun conversions, Liu Bei Influencing
+source ownership, Borrowed Sword, Da Qiao redirection, and multi-target
+Halberd damage. Serpent Spear remains suitless. Recovery uses canonical
+`applyRecovery`/`hp_recovered`; a nested Prudence decision resumes the same
+`damage_suffered` continuation exactly once. One damage event creates one
+opportunity even when its amount is two. Draw uses canonical refill and stays
+private to the actor. Reload, stale/replay rejection, Quick Test ownership,
+and projection privacy use the existing semantic trigger contract.
+
+The next approved work is Pan Feng only; do not begin it as part of this
+handover.
+
 ## Current state — Stage 6 Diao Chan / Lust + Beauty Outshining the Moon — 2026-09-30
 
 Diao Chan is complete and enabled in Standard selection. The implementation

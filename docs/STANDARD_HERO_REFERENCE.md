@@ -16,20 +16,20 @@
 
 ## Implementation progress
 
-Re-audited on 2026-09-30 from Diao Chan baseline
-`faf54b5b15686338d93ada732acb38cdc63b1dd3`; this round completes Diao Chan.
+Re-audited on 2026-09-30 from the Hua Xiong implementation baseline; this
+round completes Hua Xiong.
 
-- **Implemented:** 28 / 30 heroes
+- **Implemented:** 29 / 30 heroes
 - **Partial:** 0 / 30 heroes
-- **Not implemented:** 2 / 30 heroes
-- **Implemented skills:** 44 / 46
+- **Not implemented:** 1 / 30 heroes
+- **Implemented skills:** 45 / 46
 - **Partial skills:** 0 / 46
-- **Not implemented skills:** 2 / 46
+- **Not implemented skills:** 1 / 46
 
 **2026-09-30 implementation note:** `game/heroes.ts` now allow-lists exactly
-these 28 implemented Standard heroes, including Diao Chan, Hua Tuo, Sun Shangxiang, Lady Gan,
-Huang Yueying, Zhuge Liang, Gongsun Zan, and Ma Chao. The 2 remaining generals are present as
-Standard roster metadata but are excluded from
+these 29 implemented Standard heroes, including Hua Xiong, Diao Chan, Hua Tuo,
+Sun Shangxiang, Lady Gan, Huang Yueying, Zhuge Liang, Gongsun Zan, and Ma Chao.
+Pan Feng remains as Standard roster metadata but is excluded from
 `IMPLEMENTED_STANDARD_HEROES` and from new-game hero selection. Gongsun Zan's
 Militia uses the generic server-owned effective-distance capability and is
 covered by pure, API, Quick Test, and normal multiplayer regressions. Lady Gan's
@@ -44,6 +44,14 @@ records, and actual-increase-only `hp_recovered`. Her Daredevil observes the
 generic persisted `equipment_lost` zone transition; Steal and replacement
 qualify, empty-slot equipping does not, and each lost physical Equipment card
 opens one optional Draw-2 continuation.
+
+Hua Xiong's Triumphant is a source-owned `damage_suffered` choice after
+actual damage from an effective Heart/Diamond-suited Attack; it offers Recover
+1 HP, Draw 1 card, or Decline. The physical suit is carried as generic Attack
+metadata, so converted Attacks retain their real card suit while Serpent Spear
+remains suitless. Recovery emits `hp_recovered` only for actual recovery and
+resumes the same damage continuation after nested Prudence. The opportunity is
+per damage event, not per damage point.
 
 Implementation status means the hero's printed Standard skill set has a live gameplay implementation on the audited baseline. Runtime metadata alone does not count as implementation.
 
@@ -128,7 +136,7 @@ The official catalogue uses **Qun**. Runtime compatibility may still encounter t
 | Qun | `hua-tuo` | Hua Tuo | 华佗 | Male | 3 | First Aid<br>Prodigal Healer | Present | Implemented |
 | Qun | `lü-bu` | Lu Bu | 吕布 | Male | 4 | Unrivaled | Present | Implemented |
 | Qun | `diao-chan` | Diao Chan | 貂蝉 | Female | 3 | Lust<br>Beauty Outshining the Moon | Present | Implemented |
-| Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Triumphant | Present | Not implemented |
+| Qun | `huaxiong` | Hua Xiong | 华雄 | Male | 6 | Triumphant | Present | Implemented |
 | Qun | `gongsun-zan` | Gongsun Zan | 公孙瓒 | Male | 4 | Militia | Present | Implemented |
 | Qun | `pan-feng` | Pan Feng | 潘凤 | Male | 4 | Axe of Insanity | Present | Not implemented |
 
@@ -401,11 +409,11 @@ The tables above own roster metadata and exact printed skill wording. The sectio
 ### Hua Xiong (华雄)
 
 - **Runtime ID:** `huaxiong`
-- **Implementation status:** **Not implemented**
+- **Implementation status:** **Implemented**
 - **Verified official Standard card:** **QUN 019**, printed title **The Haughty Gladiator**.
 - **Implementation interpretation:** This is a benefit offered to the character that dealt the qualifying damage: after a Red-suited [Attack] damages Hua Xiong, that source may choose either to recover 1 HP or draw 1 card.
-- **Likely engine shape:** post-damage passive trigger owned by Hua Xiong but resolved as an optional choice for the damage source.
-- **Current implementation:** Metadata only. The previous placeholder warning about older versions of the skill wording is superseded by this verified current card text.
+- **Likely engine shape:** generic `damage_suffered` passive trigger owned by Hua Xiong but resolved as an optional choice for the damage source.
+- **Current implementation:** `hua_xiong_triumphant` opens after actual damage only when the source is living/available, the effective damage cause is Attack, and the physical Attack suit is Heart or Diamond. The source receives private Recover 1 HP / Draw 1 card / Decline choices. Guan Yu and Zhao Yun conversions, Liu Bei Influencing, Borrowed Sword, Da Qiao Deflection, follow-up Attacks, and Halberd preserve effective source and physical suit; Serpent Spear's virtual Attack has no invented suit. Recovery uses canonical `applyRecovery`, emits `hp_recovered` only for a positive increase, and resumes the original damage continuation after nested Prudence. One damage event creates one opportunity. Duel, group non-Attack damage, Judgement, prevention, and zero damage do not trigger it.
 
 ### Gongsun Zan (公孙瓒)
 

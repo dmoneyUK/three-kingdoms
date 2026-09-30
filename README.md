@@ -1,5 +1,25 @@
 # Three Kingdoms
 
+## Stage 6 Hua Xiong / Triumphant — 2026-09-30
+
+Hua Xiong is complete and enabled in Standard selection at **29/30 heroes**
+and **45/46 printed skills**. Pan Feng is the only remaining Standard hero;
+this rules-only round did not start Pan Feng and included no graphic or
+artwork work.
+
+Triumphant is the generic `damage_suffered` provider
+`hua_xiong_triumphant`. It opens only after actual damage to Hua Xiong from a
+living source's effective Attack whose physical card suit is Heart or Diamond.
+The damage source, not Hua Xiong, owns the private optional choice: Recover 1
+HP, Draw 1 card, or Decline. Recovery uses `applyRecovery` and the canonical
+`hp_recovered` continuation, so Lady Gan's Prudence resolves before the same
+damage continuation resumes. The event is one opportunity per damage event,
+preserves converted Attack identity (including Guan Yu, Zhao Yun, Influencing,
+Borrowed Sword, Deflection, and Halberd flows), and treats Serpent Spear's
+suitless virtual Attack as non-red. Reload, stale/replay safety, private draw
+projection, and Quick Test actor ownership remain on the semantic trigger
+contract.
+
 ## Stage 6 Diao Chan / Lust + Beauty Outshining the Moon — 2026-09-30
 
 Diao Chan is complete and enabled in Standard selection at **28/30 heroes** and
