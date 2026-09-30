@@ -1,6 +1,6 @@
 # WTK Standard Hero Reference and Roster Reconciliation
 
-> Status: **authoritative roster and implementation-progress reference for this project**. Printed skill text for all 30 Standard Generals is transcribed from owner-supplied official WTK card screenshots through 2026-09-21; the current official Standard catalogue/API and product/rulebook entry were re-opened for Gongsun Zan on 2026-09-28, and the pre-round implementation baseline was `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`.
+> Status: **authoritative roster and implementation-progress reference for this project**. Full Standard hero implementation audit refreshed on **2026-09-30** after Pan Feng (`1316123a`): **30/30 heroes and 46/46 printed skills are implemented**. Printed skill text for all 30 Standard Generals is transcribed from owner-supplied official WTK card screenshots through 2026-09-21; the current official Standard catalogue/API and product/rulebook entry were re-opened for Gongsun Zan on 2026-09-28, and the pre-round implementation baseline was `main` at `15bd5ee0bb40849bd21f21ab80d460d15357d2f6`.
 > This file records the current WTK **Standard** General roster shown in the official WTK General Card catalogue and the implementation confidence boundary for hero rules.
 
 ## Source and verification policy
@@ -61,6 +61,19 @@ Implementation status means the hero's printed Standard skill set has a live gam
 **Implemented** in this reference. The runtime allow-list is kept in
 `game/heroes.ts`; the complete Standard roster remains readable for metadata
 and saved-room compatibility, but metadata-only heroes cannot be selected.
+
+## Full Standard hero implementation audit — 2026-09-30
+
+All 30 Standard heroes were re-reviewed against the current runtime roster, the printed-skill table in this file, and the completed Stage 6 implementation record. The implementation allow-list in `game/heroes.ts` contains the full 30-hero Standard roster. No Standard hero remains metadata-only, partial, or unimplemented.
+
+| Faction | Heroes reviewed | Result |
+| --- | --- | --- |
+| Wei | Cao Cao, Sima Yi, Xiahou Dun, Zhang Liao, Xu Zhu, Guo Jia, Zhen Ji, Yue Jin | 8/8 implemented |
+| Shu | Liu Bei, Guan Yu, Zhang Fei, Zhuge Liang, Zhao Yun, Ma Chao, Huang Yueying, Lady Gan | 8/8 implemented |
+| Wu | Sun Quan, Gan Ning, Lu Meng, Huang Gai, Zhou Yu, Da Qiao, Lu Xun, Sun Shangxiang | 8/8 implemented |
+| Qun | Hua Tuo, Lu Bu, Diao Chan, Hua Xiong, Gongsun Zan, Pan Feng | 6/6 implemented |
+
+**Audit conclusion:** **30/30 heroes, 46/46 printed skills**. The hero-implementation phase is closed. Further work on Standard heroes should be treated as rules/regression hardening, not as unfinished hero implementation. The next engineering phase is a cross-hero/card interaction audit: verify older skills against the newer semantic response/trigger, recovery, damage, Judgement, equipment-loss, distance, target-legality, Dying/rescue, reload/stale-action, Quick Test, and private-projection infrastructure. Expansion heroes are outside this completion status.
 
 ## Official printed skill text
 
@@ -455,15 +468,4 @@ The following runtime metadata entries are **not** in the Standard roster suppli
 
 ## Next repository change
 
-The player-facing Standard metadata and implemented-hero allow-list are aligned
-with this reference. Resume implementation one General at a time in this order:
-
-1. Continue with the next remaining Standard hero after Da Qiao / Captivating +
-   Deflection, preserving the generic active-skill and `attack_targeted`
-   capability contracts.
-
-This is an engineering sequence, not a replacement rules source. Re-open the
-current official WTK Standard card/rulebook entry before each implementation.
-Preserve stable runtime IDs for saved-room compatibility and keep Quick Test,
-human multiplayer ownership, private projections, stale-action rejection, and
-deterministic regression coverage current.
+The Standard hero implementation phase is complete at **30/30 heroes and 46/46 printed skills**. Do not select another Standard hero for implementation. Next, audit cross-hero and card interactions across the completed roster, prioritising older implementations that predate the current semantic capability architecture. Preserve exact official WTK card wording, server-owned legality, private projections, stale-action rejection, physical-card conservation, reload safety, and Quick Test/normal multiplayer parity. Record any discovered rule gap as a focused correction with deterministic regression coverage.
