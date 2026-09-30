@@ -48,7 +48,7 @@ function triggerRoom({ meId = "p1", triggerOptions = [{ effectId: "huang_yueying
   });
 }
 
-function deflectionRoom({ equipment = false } = {}) {
+function deflectionRoom({ equipment = false, triggerOptions } = {}) {
   const cost = card(equipment ? "deflection-equipment" : "deflection-hand", equipment ? "NioShield" : "Peach", equipment ? "♣" : "♦");
   const ineligible = card("deflection-ineligible", "Attack", "♠");
   const players = [
@@ -61,7 +61,7 @@ function deflectionRoom({ equipment = false } = {}) {
   return normalizeRoomData({
     code: `DEFLECTION-${equipment ? "EQUIPMENT" : "HAND"}`, status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [], players,
     myHand: equipment ? [] : [cost, ineligible], turnSeat: 1, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Da Qiao may use Deflection", isMyAction: true,
-    actionRevision: "deflection-ui-revision", phase: "response", currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Da Qiao may use Deflection, or skip", legalActions: ["trigger", "decline_trigger"], triggerEvent: "attack_targeted", triggerOptions: [{ effectId: "daqiao_deflection", label: "Deflection", description: "Discard 1 card to transfer this Attack.", allowDecline: true, selection }] },
+    actionRevision: "deflection-ui-revision", phase: "response", currentAction: { version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Da Qiao may use Deflection, or skip", legalActions: ["trigger", "decline_trigger"], triggerEvent: "attack_targeted", triggerOptions: triggerOptions ?? [{ effectId: "daqiao_deflection", label: "Deflection", description: "Discard 1 card to transfer this Attack.", allowDecline: true, selection }] },
   });
 }
 
@@ -96,6 +96,12 @@ function nodeWith(renderer, prop, value) { const matches = renderer.root.findAll
 function handCardButton(renderer, cardId) { return nodeWith(renderer, "data-hand-card-id", cardId).findAllByType("button")[0]; }
 function targetButton(renderer, playerId) { return nodeWith(renderer, "data-player-anchor", playerId).findAllByType("button")[0]; }
 function text(renderer, value) { return renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children === value); }
+function buttonsContaining(renderer, value) { return renderer.root.findAllByType("button").filter((node) => String(node.props.children).includes(value)); }
+function assertOnlyDeflectionProfile(renderer) {
+  const matches = buttonsContaining(renderer, "Deflection");
+  assert.equal(matches.length, 1, `expected only the profile Deflection control, got ${matches.map((node) => String(node.props.children)).join(" | ")}`);
+  assert.equal(matches[0].props["aria-label"], "Deflection");
+}
 function recoveryRendered(renderer) { return text(renderer, "GAME SCREEN ERROR").length > 0 || text(renderer, "Previous game data is no longer compatible.").length > 0; }
 
 installRenderEnvironment();
@@ -112,7 +118,7 @@ for (const skill of activeSkills) {
   test(`${skill.label} survives click, selection, cancel, re-entry, and submission`, async () => {
     const { renderer, actionCalls } = await gameTree(skill);
     const skillButton = () => button(renderer, { "aria-label": skill.skill });
-    const useButton = () => button(renderer, { children: `Use ${skill.label}` });
+    const useButton = () => button(renderer, { children: "Confirm" });
 
     await act(async () => { skillButton().props.onClick(); });
     assert.equal(recoveryRendered(renderer), false, `${skill.label} must survive activation rerender`);
@@ -140,7 +146,7 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   const skill = { hero: "zhang-liao", effectId: "zhang_liao_assault", label: "Assault", skill: "Assault", cardIds: [], targetIds: ["p2", "p3"], targetMin: 1, targetMax: 2, selectionType: "target", phase: "draw", triggerEvent: "draw_phase", extraPlayer: { id: "p4", name: "INVALID TARGET" } };
   const { renderer, actionCalls } = await gameTree(skill);
   const skillButton = () => button(renderer, { "aria-label": "Assault" });
-  const useButton = () => button(renderer, { children: "Use Assault" });
+  const useButton = () => button(renderer, { children: "Confirm" });
 
   assert.equal(button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.disabled, false, "inactive Assault preserves inspection controls");
   await act(async () => { button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.onClick(); });
@@ -221,6 +227,27 @@ test("an unmapped future trigger remains available through generic trigger contr
   await act(async () => { renderer.unmount(); });
 });
 
+test("an unmapped attack_targeted trigger stays generic beside mapped Da Qiao Deflection", async () => {
+  const room = deflectionRoom({ triggerOptions: [
+    { effectId: "daqiao_deflection", label: "Deflection", description: "Discard 1 card to transfer this Attack.", allowDecline: true, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["deflection-hand"], targetIds: ["p3"], targetMin: 1, targetMax: 1 } },
+    { effectId: "future_attack_targeted", label: "Future Attack Trigger", description: "Synthetic unmapped attack-targeted provider." },
+  ] });
+  const actionCalls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  assertOnlyDeflectionProfile(renderer);
+  assert.equal(button(renderer, { "aria-label": "Deflection" }).props.disabled, false);
+  const future = button(renderer, { children: "Use Future Attack Trigger" });
+  assert.equal(future.props.disabled, false);
+  assert.equal(buttonsContaining(renderer, "Future Attack Trigger").length, 1, "the unmapped attack_targeted provider uses the generic trigger control");
+  await act(async () => { future.props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "future_attack_targeted" }]);
+  assertOnlyDeflectionProfile(renderer);
+  await act(async () => { renderer.unmount(); });
+});
+
 test("Da Qiao Deflection is one mounted hero control with shared card/target selection", async () => {
   const room = deflectionRoom();
   const actionCalls = [];
@@ -230,7 +257,7 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
   assert.equal(recoveryRendered(renderer), false);
-  assert.equal(text(renderer, "Deflection").length, 1, "only the profile skill button exposes Deflection");
+  assertOnlyDeflectionProfile(renderer);
   const profileButton = button(renderer, { "aria-label": "Deflection" });
   assert.equal(profileButton.props.disabled, false);
   assert.equal(button(renderer, { children: "Skip" }).props.disabled, false);
@@ -240,20 +267,22 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
 
   await act(async () => { profileButton.props.onClick(); });
   assert.equal(recoveryRendered(renderer), false);
-  assert.equal(text(renderer, "Deflection").length, 1);
+  assertOnlyDeflectionProfile(renderer);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Confirm is disabled before selecting a cost and target");
   assert.equal(handCardButton(renderer, "deflection-hand").props.disabled, false);
   assert.equal(handCardButton(renderer, "deflection-ineligible").props.disabled, true, "unprojected cards remain disabled");
   assert.equal(button(renderer, { "aria-label": "Select ATTACKER" }).props.disabled, true);
   assert.equal(button(renderer, { "aria-label": "Select LEGAL TARGET" }).props.disabled, false);
   assert.equal(button(renderer, { "aria-label": "Select OUT OF WINDOW" }).props.disabled, true);
-  assert.equal(button(renderer, { children: "Use Deflection" }).props.disabled, true);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
 
   await act(async () => { handCardButton(renderer, "deflection-hand").props.onClick(); });
-  assert.equal(button(renderer, { children: "Use Deflection" }).props.disabled, true);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Confirm stays disabled with only the cost selected");
   await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
-  assert.equal(button(renderer, { children: "Use Deflection" }).props.disabled, false);
-  await act(async () => { button(renderer, { children: "Use Deflection" }).props.onClick(); });
+  assertOnlyDeflectionProfile(renderer);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "daqiao_deflection", cardIds: ["deflection-hand"], targetId: "p3" }]);
   assert.equal(recoveryRendered(renderer), false);
 
@@ -326,11 +355,12 @@ test("Da Qiao Deflection can select projected Equipment and resets stale selecti
   assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "deflection-equipment" }).length, 0);
   await act(async () => { equipmentButton.props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET" }).props.onClick(); });
-  assert.equal(button(renderer, { children: "Use Deflection" }).props.disabled, false);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
   await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
-  assert.equal(renderer.root.findAllByProps({ children: "Use Deflection" }).length, 0, "cancelling clears the shared selection mode");
+  assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0, "cancelling clears the shared selection mode");
   await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
-  assert.equal(button(renderer, { children: "Use Deflection" }).props.disabled, true, "re-entry starts with no stale cost or target");
+  assertOnlyDeflectionProfile(renderer);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "re-entry starts with no stale cost or target");
   await act(async () => { button(renderer, { children: "Skip" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["decline_trigger"]);
   assert.equal(recoveryRendered(renderer), false);
@@ -338,8 +368,9 @@ test("Da Qiao Deflection can select projected Equipment and resets stale selecti
   const reloaded = normalizeRoomData({ ...room, actionRevision: "deflection-ui-revision-2" });
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: reloaded, onRecover: () => {} }, React.createElement(GameRoom, { room: reloaded, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(renderer.root.findAllByProps({ children: "Use Deflection" }).length, 0, "a new action revision cannot reuse the old selection");
+  assert.equal(renderer.root.findAllByProps({ children: "Confirm" }).length, 0, "a new action revision cannot reuse the old selection");
   await act(async () => { button(renderer, { "aria-label": "Deflection" }).props.onClick(); });
-  assert.equal(button(renderer, { children: "Use Deflection" }).props.disabled, true);
+  assertOnlyDeflectionProfile(renderer);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
   await act(async () => { renderer.unmount(); });
 });

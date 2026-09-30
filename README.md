@@ -1,5 +1,25 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — Da Qiao Deflection review closure — 2026-10-01
+
+The Deflection UI now keeps the profile skill button as the only
+Deflection-labelled activation control. After activation, the shared
+card/target hero-skill mode presents a generic `Confirm` button, with the
+server-projected Hand or Equipment cost and replacement target still
+authoritative. Mounted coverage explicitly checks the before/after one-button
+contract, disabled-until-complete Confirm states, exact semantic submission,
+and optional Skip.
+
+The mounted suite also protects the important fallback boundary: an unmapped
+provider in an `attack_targeted` trigger remains in the generic trigger
+controls while mapped `daqiao_deflection` stays in the profile Skills panel.
+The test-only `seedPlayingGame` fixture retains normal five-character room
+codes and retries D1 `rooms.code` uniqueness conflicts inside the fixture
+endpoint, preventing parallel API tests from failing on random collisions.
+
+This remains the same Da Qiao Deflection fix round; no Lü Bu / Unrivaled work
+was started.
+
 ## Gameplay correctness — Sima Yi Retaliation activation UX — 2026-10-01
 
 Fixed Retaliation so a projected `sima_yi_fankui` target-card trigger first

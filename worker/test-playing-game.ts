@@ -107,6 +107,12 @@ function roomCode() {
   return crypto.randomUUID().replaceAll("-", "").slice(0, 5).toUpperCase();
 }
 
+const MAX_ROOM_CODE_ATTEMPTS = 16;
+
+function isRoomCodeConflict(error: unknown) {
+  return (error instanceof Error ? error.message : String(error)).includes("UNIQUE constraint failed: rooms.code");
+}
+
 export async function seedPlayingGame(db: D1Database, input: SeedPlayingGameInput = {}) {
   const players = (input.players ?? DEFAULT_HEROES.map((hero, index) => ({ hero, role: DEFAULT_ROLES[index] }))).map(normalizePlayer);
   if (players.length !== 4) fixtureError("seedPlayingGame requires exactly four players.");
@@ -119,7 +125,6 @@ export async function seedPlayingGame(db: D1Database, input: SeedPlayingGameInpu
   uniqueCards(players, deck, discard);
 
   const roomId = crypto.randomUUID();
-  const code = roomCode();
   const createdAt = Date.now();
   const credentials = await Promise.all(players.map(async (player) => {
     const playerId = crypto.randomUUID();
@@ -127,16 +132,24 @@ export async function seedPlayingGame(db: D1Database, input: SeedPlayingGameInpu
     return { ...player, id: playerId, token: playerToken, tokenHash: await tokenHash(playerToken), seat: players.indexOf(player) };
   }));
   const host = credentials[0];
-  const statements = [
-    db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at, turn_seat, phase, deck_json, discard_json, log_json, pending_json, skill_state_json, last_activity_at) VALUES (?, ?, ?, 'playing', 4, ?, ?, ?, ?, ?, '[]', NULL, ?, ?)")
-      .bind(roomId, code, host.id, createdAt, turnSeat, phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify({ turnPlayerId: credentials[turnSeat].id }), createdAt),
-    ...credentials.map((player) => db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, role, ready, hero, hp, max_hp, hero_options_json, hand_json, judgement_json, equipment_json, alive, connected_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, '[]', ?, ?, ?, 1, ?)")
-      .bind(player.id, roomId, player.name, player.tokenHash, player.seat, player.role, player.hero, player.hp, player.maxHp, JSON.stringify(player.hand), JSON.stringify(player.judgement), JSON.stringify(player.equipment), createdAt)),
-  ];
-  await db.batch(statements);
-  return {
-    code,
-    roomId,
-    players: credentials.map(({ id, name, seat, role, hero, token }) => ({ id, name, seat, role, hero, token })),
-  };
+  for (let attempt = 0; attempt < MAX_ROOM_CODE_ATTEMPTS; attempt += 1) {
+    const code = roomCode();
+    const statements = [
+      db.prepare("INSERT INTO rooms (id, code, host_player_id, status, max_players, created_at, turn_seat, phase, deck_json, discard_json, log_json, pending_json, skill_state_json, last_activity_at) VALUES (?, ?, ?, 'playing', 4, ?, ?, ?, ?, ?, '[]', NULL, ?, ?)")
+        .bind(roomId, code, host.id, createdAt, turnSeat, phase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify({ turnPlayerId: credentials[turnSeat].id }), createdAt),
+      ...credentials.map((player) => db.prepare("INSERT INTO players (id, room_id, name, token_hash, seat, role, ready, hero, hp, max_hp, hero_options_json, hand_json, judgement_json, equipment_json, alive, connected_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, '[]', ?, ?, ?, 1, ?)")
+        .bind(player.id, roomId, player.name, player.tokenHash, player.seat, player.role, player.hero, player.hp, player.maxHp, JSON.stringify(player.hand), JSON.stringify(player.judgement), JSON.stringify(player.equipment), createdAt)),
+    ];
+    try {
+      await db.batch(statements);
+      return {
+        code,
+        roomId,
+        players: credentials.map(({ id, name, seat, role, hero, token }) => ({ id, name, seat, role, hero, token })),
+      };
+    } catch (error) {
+      if (!isRoomCodeConflict(error) || attempt === MAX_ROOM_CODE_ATTEMPTS - 1) throw error;
+    }
+  }
+  throw new Error("Could not allocate a unique test fixture room code.");
 }

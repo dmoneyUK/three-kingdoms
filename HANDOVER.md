@@ -1,5 +1,28 @@
 # Three Kingdoms — current handover
 
+## Current state — Da Qiao Deflection review closure — 2026-10-01
+
+The shared active hero-skill submission control now uses generic `Confirm`
+after activation, so Da Qiao has exactly one Deflection-labelled control: the
+profile skill button. Confirm remains disabled until the server-projected cost
+and replacement target are selected, then submits the unchanged semantic
+`trigger` action for `daqiao_deflection`; Skip remains the optional
+`decline_trigger` path.
+
+Mounted coverage now asserts both UI states and rejects every other button
+whose label contains “Deflection”. A separate `attack_targeted` fixture pairs
+mapped Deflection with an unmapped synthetic provider and verifies that only
+the unmapped provider remains in generic trigger controls.
+
+The test-only `seedPlayingGame` endpoint now retries bounded D1 room-code
+insert conflicts while preserving the normal five-character code contract.
+This isolates collision hardening from production room creation and removes
+the parallel API-suite flake caused by `UNIQUE constraint failed:
+rooms.code`.
+
+This is still the same Da Qiao fix round. Do not start Lü Bu / Unrivaled until
+the complete validation workflow and deployment gate are green.
+
 ## Current state — Sima Yi Retaliation activation UX — 2026-10-01
 
 Retaliation now uses the shared hero-skill activation mode for its projected
