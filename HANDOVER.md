@@ -1,5 +1,18 @@
 # Three Kingdoms — current handover
 
+## Latest presentation update — Zhao Yun and Ma Chao portraits — 2026-10-01
+
+Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
+`HeroPortrait` renderer:
+
+- Photo 1: Zhao Yun (`public/hero-zhao-yun.jpg`)
+- Photo 2: Ma Chao (`public/hero-ma-chao.jpg`)
+
+The existing shared path covers hero selection, the locked-in selection state,
+the local hero card, and opponent cards. This remains presentation-only: no
+gameplay rules, projections, selection legality, layout dimensions, or semantic
+actions changed.
+
 ## Latest functional UX update — minimized event log — 2026-10-01
 
 The in-game Game Messages event log now initializes collapsed. Players can
