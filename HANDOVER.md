@@ -1,5 +1,19 @@
 # Three Kingdoms — current handover
 
+## Latest presentation update — Cao Cao, Xiahou Dun, and Sima Yi portraits — 2026-10-01
+
+Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
+`HeroPortrait` renderer:
+
+- Photo 1: Cao Cao (`public/hero-cao-cao.jpg`)
+- Photo 2: Xiahou Dun (`public/hero-xiahou-dun.jpg`)
+- Photo 3: Sima Yi (`public/hero-sima-yi.jpg`, shared ID `simayi`)
+
+The existing shared path covers hero selection, the locked-in selection state,
+the local hero card, and opponent cards. This remains presentation-only: no
+gameplay rules, projections, selection legality, layout dimensions, or semantic
+actions changed.
+
 ## Latest presentation update — Lu Xun and Sun Shangxiang portraits — 2026-10-01
 
 Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
