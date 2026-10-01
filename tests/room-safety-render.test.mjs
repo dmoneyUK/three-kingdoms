@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { buildActiveSkillSubmission, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
@@ -11,6 +11,60 @@ const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
 const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
+
+const presentationPlayers = [
+  { id: "p1", name: "Lü Bu", seat: 0 },
+  { id: "p2", name: "Zhao Yun", seat: 1 },
+];
+const presentationRoom = (overrides = {}) => ({
+  players: presentationPlayers, meId: "p1", turnSeat: 0, phase: "play", status: "playing",
+  actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+  currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"] },
+  ...overrides,
+});
+
+test("shared decision presentation keeps turn ownership, action ownership, privacy, and revisions distinct", () => {
+  const normal = buildDecisionPresentation(presentationRoom());
+  assert.equal(normal.primaryStatus, "Lü Bu's turn");
+  assert.equal(normal.supportingInstruction, "Play Phase");
+  assert.equal(normal.isDecision, false);
+
+  const otherTurn = buildDecisionPresentation(presentationRoom({ meId: "p2", isMyAction: false, actionPlayerId: "p1" }));
+  assert.equal(otherTurn.primaryStatus, "Lü Bu's turn");
+  assert.equal(otherTurn.isWaiting, false);
+
+  const response = (actorId, isMyAction, revision = "r1") => buildDecisionPresentation(presentationRoom({ actionPlayerId: actorId, actionReason: "Respond to Attack: play Dodge or use an eligible Dodge alternative, or skip and take 1 damage", isMyAction, actionRevision: revision, currentAction: { version: 3, kind: "response", actorId, deadline: 0, reason: "Respond to Attack", legalActions: ["respond", "decline_response"], requirement: "dodge" } }));
+  const ownResponse = response("p1", true);
+  assert.deepEqual({ primary: ownResponse.primaryStatus, action: ownResponse.actionOwner, active: ownResponse.isViewerRequiredActor }, { primary: "Dodge the Attack", action: "Lü Bu", active: true });
+  const waitingResponse = response("p2", false);
+  assert.match(waitingResponse.primaryStatus, /^WAITING FOR ZHAO YUN$/);
+  assert.equal(waitingResponse.isViewerRequiredActor, false);
+  assert.notEqual(response("p1", true, "r2").supportingInstruction, undefined, "a new action revision still has one presentation model");
+
+  const trigger = buildDecisionPresentation(presentationRoom({ phase: "response", actionReason: "Zhao Yun may use Cultivation, or skip", actionPlayerId: "p2", isMyAction: false, currentAction: { version: 3, kind: "trigger", actorId: "p2", deadline: 0, reason: "Zhao Yun may use Cultivation, or skip", legalActions: ["trigger", "decline_trigger"], triggerOptions: [{ effectId: "cultivation", label: "Cultivation" }] } }));
+  assert.equal(trigger.primaryStatus, "WAITING FOR ZHAO YUN");
+  assert.equal(trigger.actionOwner, "Zhao Yun");
+  const rescue = buildDecisionPresentation(presentationRoom({ phase: "dying", actionReason: "Decide whether to give Peach to Lü Bu", currentAction: { version: 3, kind: "dying", actorId: "p1", deadline: 0, reason: "Decide whether to give Peach to Lü Bu", legalActions: ["give_peach", "skip_rescue"], requirement: "peach" } }));
+  assert.equal(rescue.primaryStatus, "Play Peach");
+  const negate = buildDecisionPresentation(presentationRoom({ phase: "response", actionReason: "Play Negation to cancel Harvest's effect, or pass", currentAction: { version: 3, kind: "response", actorId: "p1", deadline: 0, reason: "Play Negation to cancel Harvest's effect, or pass", legalActions: ["respond", "decline_response"], requirement: "negate" } }));
+  assert.equal(negate.primaryStatus, "Play Negation");
+  const target = buildDecisionPresentation(presentationRoom({ phase: "response", currentAction: { version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose 1 current card", legalActions: ["choose_target_card"] } }));
+  assert.equal(target.primaryStatus, "Choose a target card");
+  const resolving = buildDecisionPresentation(presentationRoom({ phase: "resolving", currentAction: { version: 3, kind: "none", actorId: null, deadline: 0, reason: "Applying the result", legalActions: [] } }));
+  assert.equal(resolving.primaryStatus, "Resolving");
+  assert.equal(resolving.isResolving, true);
+
+  const uxRoom = normalizeRoomData({
+    code: "UX1", status: "playing", maxPlayers: 2, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: presentationPlayers.map((player, index) => ({ ...player, hero: index ? "zhao-yun" : "lü-bu", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: index ? 1 : null, isHost: index === 0, role: index ? "Rebel" : "Lord" })),
+    myHand: [], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
+    currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"] },
+  });
+  const html = renderToStaticMarkup(React.createElement(GameRoom, { room: uxRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
+  assert.match(html, /GAME STATUS/);
+  assert.match(html, /Lü Bu/);
+});
 
 test("Legacy distribution keeps private cards static and labels recipients by hero", () => {
   assert.match(gameRoomSource, /function PrivateCardDistributionDialog[\s\S]*Choose a hero[\s\S]*players\.map\(\(player\) => <option value=\{player\.id\} key=\{player\.id\}>\{heroName\(player\.hero\)\}<\/option>/);

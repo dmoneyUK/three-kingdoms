@@ -1,5 +1,29 @@
 # Three Kingdoms — current handover
 
+## Latest functional UX update — action and decision clarity — 2026-10-01
+
+Implemented UX 1 in `app/page.tsx` with the pure projected-state
+`buildDecisionPresentation` helper. It translates the authoritative
+`currentAction`, `actionPlayerId`, `actionReason`, phase, turn seat, and
+viewer ownership into one status model: phase label, turn owner, action owner,
+primary status, supporting instruction, acting/waiting state, and resolving
+state.
+
+The ownership strip now distinguishes the turn owner from the decision owner.
+The command area has one `role="status"` / polite live region: acting viewers
+see `YOUR DECISION`, waiting viewers see `WAITING FOR <actor>`, and ordinary
+turns show `<player>'s turn` with the current phase. Trigger labels and
+descriptions remain projection-backed; no hero-specific UX branch or client
+legality rule was added. All existing response, trigger, rescue, Negation,
+Judgement, Harvest, target-card, active-skill, and Quick Test submissions are
+unchanged.
+
+Focused render and mounted regressions cover ownership, privacy, normal turns,
+responses, optional triggers, Dying rescue, Negation, target-card selection,
+resolving, action-revision transitions, and the Quick Test acting-seat view.
+Known boundary: selection and control feedback is not part of this round.
+Recommended next work is UX 2 — selection and control feedback.
+
 ## Current state — 2026-10-01
 
 WTK Standard gameplay correctness closure is complete.

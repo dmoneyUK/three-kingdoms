@@ -202,7 +202,7 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
     let opponentRenderer;
     await act(async () => { opponentRenderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: opponentRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: opponentRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for HUANG YUEYING to decide")).length, 1, "opponent waits for the trigger actor");
+    assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("WAITING FOR HUANG YUEYING")).length, 1, "opponent waits for the trigger actor");
     assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for the target to answer the attacker")).length, 0, "the Attack fallback prompt is absent");
     assert.equal(opponentRenderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Use Cultivation")).length, 0, "Cultivation remains private");
     assert.equal(opponentRoom.actionPlayerId, "p1");
@@ -210,7 +210,7 @@ test("Cultivation trigger has a routed skill control, generic prompt, and contin
 
     const continuationRoom = normalizeRoomData({ ...room, isMyAction: false, actionPlayerId: "p2", currentAction: { version: 3, kind: "response", actorId: "p2", deadline: 0, reason: "Negation window", requirement: "negate", legalActions: ["respond", "decline_response"], options: [], triggerOptions: [] }, pendingNegation: { kind: "negation", actorId: "p2", responseTarget: "Stratagem's effect on TARGET", cardName: "Stratagem" }, phase: "response" });
     await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: continuationRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: continuationRoom, busy: false, error: "", onAction, onLeave: () => {} }))); });
-    assert.ok(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Waiting for Negation")).length >= 1, "the original continuation remains visible after Cultivation");
+    assert.ok(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("Negation window")).length >= 1, "the original continuation remains visible after Cultivation");
     await act(async () => { renderer.unmount(); skipRenderer.unmount(); opponentRenderer.unmount(); });
 });
 

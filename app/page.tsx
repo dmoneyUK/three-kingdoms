@@ -1,4 +1,3 @@
-/* eslint-disable jsx-a11y/label-has-associated-control -- compact zone headings are visual labels, not form fields. */
 "use client";
 
 import { Component, FormEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -450,6 +449,78 @@ function OpponentInspectionOverlay({ player, playerHero, judgementInFlight, onCl
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
+export type DecisionPresentation = {
+  phaseLabel: string;
+  turnOwner: string;
+  actionOwner: string;
+  primaryStatus: string;
+  supportingInstruction: string;
+  isViewerRequiredActor: boolean;
+  isWaiting: boolean;
+  isResolving: boolean;
+  isDecision: boolean;
+};
+
+function projectedPlayerName(room: Pick<Room, "players">, playerId: string | null | undefined, fallback: string) {
+  return room.players.find((player) => player.id === playerId)?.name ?? fallback;
+}
+
+function decisionLabel(action: CurrentAction, reason: string) {
+  if (action.kind === "dying" || action.requirement === "peach") return "Play Peach";
+  if (action.kind === "target_card") return "Choose a target card";
+  if (action.kind === "borrowed_sword") return "Choose a target";
+  if (action.kind === "deck_reorder") return "Reorder the deck";
+  if (action.kind === "card_distribution") return "Assign the cards";
+  if (action.kind === "trigger") {
+    const labels = action.triggerOptions?.map((option) => option.label).filter(Boolean) ?? [];
+    return labels.length === 1 ? labels[0] : "Choose an optional ability";
+  }
+  if (action.requirement === "dodge") return "Dodge the Attack";
+  if (action.requirement === "attack") return "Play Attack";
+  if (action.requirement === "negate") return "Play Negation";
+  if (action.kind === "response") return "Choose a response";
+  return reason || "Choose an action";
+}
+
+function decisionInstruction(action: CurrentAction, reason: string) {
+  if (action.kind === "trigger") {
+    const option = action.triggerOptions?.[0];
+    if (option) return `Your action · Use ${option.label}${option.description ? `: ${option.description.replace(/[.!?]\s*$/, "")}` : ""}${action.declineAction === "decline_trigger" || action.legalActions.includes("decline_trigger") ? ", or skip" : ""}`;
+  }
+  return reason || "Make the required choice.";
+}
+
+/**
+ * Translate the authoritative room projection into presentation copy only.
+ * This deliberately does not inspect cards, heroes, or client selections to
+ * decide legality; controls continue to use the projected capabilities below.
+ */
+export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | "turnSeat" | "phase" | "status" | "actionPlayerId" | "actionReason" | "isMyAction" | "currentAction">): DecisionPresentation {
+  const turnOwner = projectedPlayerName(room, room.players.find((player) => player.seat === room.turnSeat)?.id, "The current player");
+  const action = room.currentAction;
+  const actionOwner = projectedPlayerName(room, room.actionPlayerId ?? action?.actorId, "the acting player");
+  const phaseLabel = phaseName(room.phase) || "Game state";
+  const isResolving = room.phase === "resolving" || action?.kind === "none";
+  const isDecision = Boolean(action && action.kind !== "turn" && action.kind !== "none" && action.actorId);
+  const isViewerRequiredActor = Boolean(action && room.isMyAction && isDecision);
+  const isWaiting = Boolean(isDecision && !isViewerRequiredActor);
+  const reason = action?.reason || room.actionReason || "";
+
+  if (room.status === "finished") {
+    return { phaseLabel, turnOwner, actionOwner, primaryStatus: "The match has ended", supportingInstruction: "", isViewerRequiredActor: false, isWaiting: false, isResolving: false, isDecision: false };
+  }
+  if (isResolving) {
+    return { phaseLabel, turnOwner, actionOwner, primaryStatus: "Resolving", supportingInstruction: reason || "The game is applying the current result.", isViewerRequiredActor: false, isWaiting: true, isResolving: true, isDecision: false };
+  }
+  if (isDecision && isViewerRequiredActor) {
+    return { phaseLabel, turnOwner, actionOwner, primaryStatus: decisionLabel(action!, reason), supportingInstruction: decisionInstruction(action!, reason), isViewerRequiredActor: true, isWaiting: false, isResolving: false, isDecision: true };
+  }
+  if (isWaiting) {
+    return { phaseLabel, turnOwner, actionOwner, primaryStatus: `WAITING FOR ${actionOwner.toUpperCase()}`, supportingInstruction: reason || "The current decision belongs to that player.", isViewerRequiredActor: false, isWaiting: true, isResolving: false, isDecision: true };
+  }
+  return { phaseLabel, turnOwner, actionOwner, primaryStatus: `${turnOwner}'s turn`, supportingInstruction: phaseLabel, isViewerRequiredActor: false, isWaiting: false, isResolving: false, isDecision: false };
+}
+
 function pendingKind(room: Room) { return room.pending?.kind ?? null; }
 
 export class GameRoomErrorBoundary extends Component<{ room: Room; onRecover: () => void; children: ReactNode }, { failed: boolean }> {
@@ -719,7 +790,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const targetTableIndex = pickerTarget ? room.players.findIndex((player) => player.id === pickerTarget.id) : -1;
   const targetRelativeIndex = targetTableIndex >= 0 ? (targetTableIndex - myTableIndex + room.players.length) % room.players.length : 0;
   const targetAngle = 180 + (360 / room.players.length) * targetRelativeIndex;
-  const attacker = room.players.find((player) => player.id === room.pendingAttack?.sourceId); const defender = room.players.find((player) => player.id === room.pendingAttack?.targetId);
   const canPlay = room.phase?.startsWith("play") && room.status === "playing";
   const canChooseHarvest = room.phase === "response" && Boolean(room.pendingHarvest) && !room.pendingHarvest?.complete && room.isMyAction;
   const canChooseTargetCard = room.phase === "response" && Boolean(room.pendingTargetCard) && room.isMyAction;
@@ -735,8 +805,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   // old saved rooms and compatibility tests are still supported. A trigger is
   // deliberately separate: it is not a semantic Attack/Dodge/Negation reply.
   const canRespond = responseType !== null && responseType !== "trigger";
-  const duelResponse = responseType === "duel";
-  const negationResponse = responseType === "negation";
   // Canonical trigger decisions render exclusively from currentAction. Legacy
   // pending projections are retained only so an old saved room can be read.
   // Canonical damage reactions are ordinary trigger decisions. The retained
@@ -758,7 +826,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   const responseSelectionComplete = Boolean(selectedResponseProvider && (responseSelectionUsesCards
     ? responseSelectedCardIds.length >= responseSelection.min && responseSelectedCardIds.length <= responseSelection.max
     : selectedResponseProvider.activation === "explicit" && responseProviderId === selectedResponseProvider.providerId));
-  const requiredResponseKind = room.currentAction?.requirement === "negate" ? "Negation" : room.currentAction?.requirement === "attack" ? "Attack" : room.currentAction?.requirement === "dodge" ? "Dodge" : room.currentAction?.requirement === "peach" ? "Peach" : negationResponse ? "Negation" : duelResponse || room.pendingGroup?.requiredKind === "Attack" ? "Attack" : responseType ? "Dodge" : null;
   const triggerOptions = room.currentAction?.triggerOptions ?? [];
   const privateDistribution = room.currentAction?.kind === "card_distribution" && room.isMyAction ? room.currentAction.distribution ?? null : null;
   const privateDeckReorder = room.currentAction?.kind === "deck_reorder" && room.isMyAction ? room.currentAction.deckReorder ?? null : null;
@@ -978,7 +1045,6 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   });
   const responseControlsDisabled = busy || !responseDecisionReady;
   const rescueDecisionReady = canRescue && !presentationBusy;
-  const drawWaitingForPresentation = room.isMyTurn && Boolean(room.phase?.startsWith("draw")) && presentationBusy;
   const sharedHarvestSelection = room.pendingHarvest?.previewCardId && room.pendingHarvest.availableIds.includes(room.pendingHarvest.previewCardId) ? room.pendingHarvest.previewCardId : "";
   const activeHarvestSelection = canChooseHarvest && room.pendingHarvest?.availableIds.includes(harvestSelected) ? harvestSelected : sharedHarvestSelection;
   const harvestSelectedCard = room.pendingHarvest?.revealed.find((choice) => choice.id === activeHarvestSelection);
@@ -1132,27 +1198,9 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   };
   const chooseBorrowedSwordTarget = (playerId: string) => { if (!canChooseBorrowedSword || presentationBusy || !room.pendingBorrowedSword?.eligibleTargetIds.includes(playerId)) return; void onAction("choose_borrowed_sword_target", { targetId: playerId }); };
   const play = async () => { if (!card || !me || (selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid))) return; const playedCard = card; const definition = cardDefinition(card.kind); const needsTarget = selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "Overindulgence" || card.kind === "RationsDepleted" || card.kind === "BorrowedSword"; const displayTarget = halberdAttack ? targetIds.map((id) => room.players.find((player) => player.id === id)?.name).filter(Boolean).join(", ") : targetPlayer?.name ?? (card.kind === "BumperHarvest" || card.kind === "Oath" ? "All living players" : card.kind === "BarbarianInvasion" || card.kind === "RainingArrows" ? "All other players" : me.name); const optimisticEvent: CardEvent & { type: "card" } = { id: `optimistic-${card.id}`, type: "card", player: me.name, target: displayTarget, card, action: definition.equipmentSlot && !selectedCanPlayAsAttack ? "equip" : "play", ...(selectedCanPlayAsAttack && !isAttackCard(card) ? { playedAs: "attack" } : {}) }; resolutionRevision.current += 1; optimisticallyPresentedCards.current.add(playedCard.id); setResolutionClosing(false); setResolutionEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []); setOptimisticPlay(optimisticEvent); setSelected(""); setTargetIds([]); const accepted = await onAction("play_card", { cardId: playedCard.id, ...(selectedCanPlayAsAttack ? { playAs: "attack" } : {}), ...(needsTarget ? { targetId: target, ...(halberdAttack ? { targetIds } : {}) } : {}) }); if (!accepted) { optimisticallyPresentedCards.current.delete(playedCard.id); setOptimisticPlay(null); setResolutionEvents([]); } };
-  const triggerPromptOption = triggerOptions.find((option) => option.effectId === selectedTriggerOption?.effectId) ?? triggerOptions[0] ?? null;
-  const triggerPromptDescription = triggerPromptOption?.description && triggerDeclineAction ? triggerPromptOption.description.replace(/[.!?]\s*$/, "") : triggerPromptOption?.description;
-  const triggerPrompt = triggerPromptOption
-    ? `Your action · Use ${triggerPromptOption.label}${triggerPromptDescription ? `: ${triggerPromptDescription}` : ""}${triggerDeclineAction ? ", or skip" : ""}`
-    : "Your action · choose a trigger";
-  const commandPrompt = !responseDecisionReady && (canRespond || triggerResponse) ? "Showing the current game event…"
-    : room.status === "finished" ? "The match has ended"
-    : room.phase === "dying" && !canRespond ? room.isMyAction ? "Your action · select a Peach and play it, or skip rescue" : "Waiting — no rescue action is required from you"
-    : room.pendingHarvest ? room.pendingHarvest.complete ? "Bumper Harvest · showing all confirmed choices" : canChooseHarvest ? "Your action · choose one revealed Bumper Harvest card" : `Waiting for ${actor?.name ?? "the next player"} to choose from Bumper Harvest`
-    : room.pendingTargetCard ? canChooseTargetCard ? `Your action · choose a current card from ${pendingTargetPlayer?.name ?? "the target"}` : `Waiting for ${actor?.name ?? "the source player"} to choose a target card`
-    : room.pendingBorrowedSword?.stage === "choose_target" ? canChooseBorrowedSword ? "Your action · Borrowed Sword · choose a target for the forced Attack" : `Waiting for ${actor?.name ?? "the Borrowed Sword player"} to choose an Attack target`
-    : privateDistribution ? "Your action · Legacy · assign both private cards" : room.currentAction?.kind === "card_distribution" ? `Waiting for ${actor?.name ?? "Guo Jia"} to assign Legacy cards`
-    : privateDeckReorder ? "Your action · Stargazing · order the revealed cards" : room.currentAction?.kind === "deck_reorder" ? `Waiting for ${actor?.name ?? "Zhuge Liang"} to complete Stargazing`
-    : room.currentAction?.kind === "trigger" ? room.isMyAction ? triggerPrompt : `Waiting for ${actor?.name ?? "the acting player"} to decide`
-    : canRespond ? responseProviderId && selectedResponseProvider && responseSelectionUsesCards ? `Your action · choose ${responseSelection.min === responseSelection.max ? responseSelection.min : `${responseSelection.min}-${responseSelection.max}`} card${responseSelection.max === 1 ? "" : "s"} for ${selectedResponseProvider.label} (${responseSelectedCardIds.length}/${responseSelection.max})` : requiredResponseKind === "Negation" ? `Your action · choose how to Negate ${room.pendingNegation?.responseTarget ?? room.pendingNegation?.cardName ?? "the latest effect"}, or skip` : `Your action · choose how to provide ${requiredResponseKind} for ${room.pendingGroup ? room.pendingGroup.cardKind === "SkyPiercingHalberdAttack" ? "Sky Piercing Halberd Attack" : cardDefinition(room.pendingGroup.cardKind).name : room.pendingDuel ? "the Duel" : "the Attack"}, or skip and take damage`
-    : room.phase === "response" ? room.pendingNegation ? `Waiting for Negation · ${room.pendingNegation.responseTarget ?? room.pendingNegation.cardName}` : room.pendingGreenDragon ? `Waiting for ${actor?.name ?? "the attacker"} to decide whether Green Dragon Blade continues` : room.pendingRockCleaving ? `Waiting for ${actor?.name ?? "the attacker"} to decide whether Rock Cleaving Axe forces damage` : room.pendingGroup ? `Waiting for ${actor?.name ?? "the target"} to play ${room.pendingGroup.requiredKind}` : room.pendingDuel ? `Waiting for ${actor?.name ?? "the duelist"} to play Attack` : `Waiting for ${defender?.name ?? "the target"} to answer ${attacker?.name ?? "the attacker"}`
-    : room.phase === "discard" && room.isMyTurn ? `Your action · Discard Phase · select ${excessCards} card${excessCards === 1 ? "" : "s"} (${discardSelected.length}/${excessCards})`
-    : room.isMyTurn ? room.phase?.startsWith("draw") ? "Your action · Draw Phase" : serpentMode ? `Your action · choose 2 cards for Serpent Spear (${serpentSelected.length}/2), then choose a target` : halberdAttack && targetIds.length === 0 ? `Your action · Sky Piercing Halberd · choose 1 to 3 targets within Attack Range ${me?.attackRange ?? 1}` : halberdAttack ? `Your action · Sky Piercing Halberd · ${targetIds.length}/3 targets selected` : selectedCanPlayAsAttack && !target ? `Your action · Play Phase · choose a target within Attack Range ${me?.attackRange ?? 1}` : card?.kind === "Dismantle" && !target ? "Your action · choose a player with cards" : card?.kind === "Steal" && !target ? "Your action · choose a player within distance 1" : card?.kind === "Duel" && !target ? "Your action · choose any other player" : card?.kind === "Overindulgence" && !target ? "Your action · choose a player without Overindulgence" : card?.kind === "RationsDepleted" && !target ? "Your action · choose a player within distance 1 without Rations Depleted" : room.phase === "play-struck" ? "Your action · Play Phase · Attack used" : "Your action · Play Phase"
-    : `Waiting for ${actor?.name ?? current?.name ?? "another player"}`;
+  const decisionPresentation = buildDecisionPresentation(room);
   return <main className="game-shell"><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button className="text-button" onClick={onLeave}>Exit</button></div></header>
-    <section className="action-strip" aria-live="polite"><div className="action-step"><small>TURN OWNER</small><b>{current?.name ?? "—"}</b></div><span className="action-arrow">→</span><div className="action-step"><small>CURRENT PHASE</small><b>{phaseName(room.phase)}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{drawWaitingForPresentation ? "NEXT TO ACT" : "ACTING NOW"}</small><b>{room.pendingNegation ? room.isMyAction ? `${actor?.name ?? "You"} · YOU` : "Waiting for Negation" : `${actor?.name ?? "—"}${room.isMyAction ? " · YOU" : ""}`}</b><em>{drawWaitingForPresentation ? "Your draw waits until earlier events finish" : room.actionReason}</em></div></section>
+    <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${sequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`}>
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       <button type="button" className="game-exit" onClick={onLeave}>Exit</button>
@@ -1185,7 +1233,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
           <div className="local-hand" data-card-origin-anchor={room.meId} aria-label="Your hand">{(() => { const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1); const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2; const toggleHandCard = (item: Card) => { const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; if (room.phase === "discard") setDiscardSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < excessCards ? [...ids, item.id] : ids); else if (activeSkillSelection) setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(item.id) ? { ...state, cardIds: validIds.filter((id) => id !== item.id) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, item.id] } : { ...state, cardIds: validIds }; }); else if (costSelection) setSerpentSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < responseSelectionLimit ? [...ids, item.id] : ids); else { setSelected((id) => id === item.id ? "" : item.id); setTarget(""); } setTargetCardIndex(null); }; const renderHandCard = (item: Card, index: number) => { const definition = cardDefinition(item.kind); const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; const isSelected = room.phase === "discard" ? discardSelected.includes(item.id) : activeSkillSelection ? activeSkillSelectedCardIds.includes(item.id) : costSelection ? serpentSelected.includes(item.id) : selected === item.id; const singleSelected = !multiSelectMode && isSelected; const maySelect = (room.isMyTurn && (canPlay || room.phase === "discard")) || responseDecisionReady || rescueDecisionReady; const skillModeCardDisabled = Boolean(activeSkillTargetSelection || wushengMode && !wushengEligibleCardIds.has(item.id) || longdanMode && !longdanEligibleCardIds.has(item.id) || activeSkillSelection && !activeSkillSelection.eligibleCardIds.includes(item.id)); const skillModeEligible = wushengMode && wushengEligibleCardIds.has(item.id) || longdanMode && longdanEligibleCardIds.has(item.id) || activeSkillSelection?.eligibleCardIds.includes(item.id) === true; return <div className={`card-slot ${singleSelected ? "single-selected" : ""}`} data-hand-card-id={item.id} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px` }}><div className="hand-card-visual"><button disabled={!maySelect || skillModeCardDisabled || (responseDecisionReady && (canRespond || triggerResponse) && !responseCardAllowed(item)) || (rescueDecisionReady && !canRespond && item.kind !== "Peach")} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}><span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong></button><button type="button" className="card-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); setInfoCard(item); }}>i</button></div></div>; }; return <div ref={handRailRef} className="local-hand-rail" data-hand-layout={handCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: room.myHand.length === 1 ? "center" : "flex-start" }} aria-label="Peek hand cards">{room.myHand.map((item, index) => renderHandCard(item, index))}</div>; })()}</div>
         </div>
       <div className="turn-controls">
-        <span>{commandPrompt}</span>
+        <div className={`decision-status ${decisionPresentation.isViewerRequiredActor ? "decision-status-active" : ""}`} role="status" aria-live="polite" aria-atomic="true"><small>{decisionPresentation.isViewerRequiredActor ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{decisionPresentation.isViewerRequiredActor ? decisionPresentation.primaryStatus : decisionPresentation.isWaiting ? decisionPresentation.supportingInstruction : decisionPresentation.primaryStatus}</strong>{decisionPresentation.isViewerRequiredActor && <em>{decisionPresentation.supportingInstruction}</em>}</div>
         <div>
 
           {rescueDecisionReady && !canRespond && <><button className="primary" disabled={busy || card?.kind !== "Peach"} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button><button className="end" disabled={busy} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button></>}

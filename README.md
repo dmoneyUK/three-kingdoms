@@ -1,5 +1,24 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
+## Functional UX — action and decision clarity — 2026-10-01
+
+Added one pure `buildDecisionPresentation` model for projected room state.
+The game screen now presents turn owner, phase, decision owner, one primary
+live decision/status message, and supporting instructions without deriving
+legality in React. Acting viewers see `YOUR DECISION`; other viewers see
+`WAITING FOR <actor>`, while normal turns keep phase ownership separate from
+response/trigger ownership. Existing semantic controls and payloads are
+unchanged, including Quick Test, rescue, Negation, Judgement, Harvest, and
+target-card decisions.
+
+Focused mounted/render regressions cover normal turns, private and shared
+responses/triggers, rescue, Negation, target selection, resolving state,
+action revisions, ownership differences, and Quick Test perspective.
+
+Current stage remains Stage 7 product polish. UX 1 is complete after the full
+validation gate; the next active milestone is UX 2 — selection and control
+feedback. No gameplay rules, artwork, board graphics, or UX 2 work was added.
+
 ## Gameplay correctness — cross-phase active-skill target selection — 2026-09-30
 
 Fixed the shared opponent targeting UI so semantic active hero skills can
