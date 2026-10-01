@@ -1,5 +1,24 @@
 # Three Kingdoms — current handover
 
+## Latest presentation update — eight supplied hero portraits — 2026-10-01
+
+Replaced the eight supplied portraits through the shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer:
+
+- Photo 1: Liu Bei (`public/hero-liu-bei.jpg`)
+- Photo 2: Zhuge Liang (`public/hero-zhuge-liang.jpg`)
+- Photo 3: Ma Chao (`public/hero-ma-chao.jpg`)
+- Photo 4: Zhao Yun (`public/hero-zhao-yun.jpg`)
+- Photo 5: Guan Yu (`public/hero-guan-yu.jpg`)
+- Photo 6: Zhang Fei (`public/hero-zhang-fei.jpg`)
+- Photo 7: Huang Yueying (`public/hero-huang-yueying.jpg`)
+- Photo 8: Lady Gan (`public/hero-lady-gan.jpg`)
+
+The existing shared path covers hero selection, the locked-in selection state,
+the local hero card, and opponent cards. This remains presentation-only: no
+gameplay rules, projections, selection legality, layout dimensions, or semantic
+actions changed.
+
 ## Latest presentation update — Xiahou Dun portrait — 2026-10-01
 
 Replaced `public/hero-xiahou-dun.jpg` with the supplied portrait. The existing

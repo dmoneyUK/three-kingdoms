@@ -2,6 +2,18 @@
 
 ## Hero artwork update — 2026-10-01
 
+Replaced the eight supplied portraits through the shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer: Photo 1 is Liu Bei, Photo 2 is
+Zhuge Liang, Photo 3 is Ma Chao, Photo 4 is Zhao Yun, Photo 5 is Guan Yu,
+Photo 6 is Zhang Fei, Photo 7 is Huang Yueying, and Photo 8 is Lady Gan. The
+shared renderer applies the artwork in hero selection, locked-in selection,
+the local hero dock, and opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged.
+
+## Hero artwork update — 2026-10-01
+
 Replaced the Xiahou Dun portrait at `public/hero-xiahou-dun.jpg`. It remains
 connected through the shared `HERO_ART_BY_ID` / `HeroPortrait` renderer, so the
 new artwork appears in hero selection, locked-in selection, the local hero
