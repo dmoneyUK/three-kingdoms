@@ -450,7 +450,14 @@ The current codebase remains capability-driven: semantic `respond` / `decline_re
 
 ## Real remaining gameplay work
 
-### 1. Lü Bu / Unrivaled — fix generic semantic multi-response handling
+The Cao Cao/Sun Quan Lord-role correction, Lü Bu/Unrivaled semantic
+multi-response correction, and Sima Yi/Retaliation random-Hand hardening are
+complete and are not remaining work items.
+
+### Completed: Lü Bu / Unrivaled semantic multi-response handling
+
+This correction is complete; the details below are retained as historical
+implementation context rather than remaining work.
 
 This is the largest confirmed interaction defect. The current response layer uses `requirement.count = 2` and filters provider selections by physical selection count. Semantic response count must not be inferred from the number of physical cost cards.
 
@@ -468,13 +475,27 @@ Required architecture: make the response continuation track **semantic responses
 
 Required regression coverage: ordinary + converted mixed responses, Serpent Spear, Guan Yu, Zhao Yun, Zhen Ji, Eight Trigrams, Entourage, Influencing, normal Duel, Diao Chan Lust Duel, reload, stale/replay rejection, privacy, and physical-card conservation.
 
-### 4. Huang Gai / Self Sacrifice — verify 1 HP timing, then fix if confirmed
+### 1. Huang Gai / Self Sacrifice — verify 1 HP timing, then fix if confirmed
 
 Current active-skill execution is represented as `lose_draw`; the audited route currently draws before completing the lethal HP-loss/Dying boundary when Huang Gai starts at 1 HP. This may expose the newly drawn cards before rescue.
 
-Before changing code, verify the exact WTK ruling for Self Sacrifice at 1 HP. If the intended order is HP loss before draw, implement it through a persisted continuation: lose 1 HP; if still alive, draw 2; if HP reaches zero, enter canonical Dying/rescue; after successful rescue, resume the suspended Self Sacrifice and draw 2. Reuse the generic HP-loss/Dying continuation style already used by Pan Feng rather than introducing a Huang-Gai-specific Dying engine.
+The source audit for this task checked `docs/STANDARD_HERO_REFERENCE.md`,
+`game/heroes.ts`, and `docs/OFFICIAL_CARD_REFERENCE.md`. They reproduce the
+printed Self Sacrifice text and general Standard rules, but none states
+whether the HP loss or draw is resolved first at 1 HP. The ruling is therefore
+still unresolved and gameplay was intentionally not changed.
 
-### 5. Sima Yi / Retaliation — make Hand acquisition server-random
+If an authoritative ruling confirms HP loss before draw, implement it through
+a persisted continuation: lose 1 HP; if still alive, draw 2; if HP reaches
+zero, enter Dying/rescue; after successful rescue, resume the suspended Self
+Sacrifice and draw 2. Reuse the generic HP-loss/Dying continuation style
+already used by Pan Feng rather than introducing a Huang-Gai-specific Dying
+engine.
+
+### Completed: Sima Yi / Retaliation random-Hand hardening
+
+This correction is complete; the details below are retained as historical
+implementation context rather than remaining work.
 
 The rules treat obtaining a card from another character's Hand as random, while public Equipment/Judgement cards may be selected deliberately. The current implementation hides Hand identities but allows an opaque positional Hand choice, so the server is not actually choosing the Hand card randomly.
 

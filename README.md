@@ -342,13 +342,15 @@ See:
 
 ## Active gameplay work
 
-The current verified priorities are:
+The Cao Cao/Sun Quan Lord-role correction, Lü Bu/Unrivaled semantic
+multi-response correction, and Sima Yi/Retaliation random-Hand hardening are
+complete. The remaining gameplay-correction gate is **Huang Gai / Self
+Sacrifice**: the project’s authoritative references do not establish whether
+the 1 HP loss is completed before the two-card draw. No gameplay change has
+been made pending that ruling.
 
-1. **Lü Bu / Unrivaled:** correct generic multi-response handling so semantic Attack/Dodge count is independent of provider physical-card cost. This includes conversions, Serpent Spear, Eight Trigrams, delegated responses, normal Duel, and Diao Chan Lust.
-4. **Huang Gai / Self Sacrifice:** verify the authoritative 1-HP timing; if confirmed, make lethal HP loss enter canonical Dying/rescue before the suspended draw resumes.
-5. **Sima Yi / Retaliation:** make hidden-Hand acquisition server-random while keeping public Equipment/Judgement selection exact.
-
-After these items are closed, run a final Standard cross-hero/card interaction regression pass.
+After this ruling is resolved and, if required, implemented and validated,
+functional UX improvement becomes the next active work.
 
 The Standard completion count remains **30/30 heroes and 46/46 skills** while these interaction defects are corrected.
 

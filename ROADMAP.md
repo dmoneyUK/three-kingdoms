@@ -17,13 +17,21 @@ The next roadmap should therefore prioritise **correctness closure and release c
 
 ---
 
-## Phase 1 — Close confirmed Standard correctness defects
+## Phase 1 — Close the remaining Standard correctness gate
 
-**Goal:** remove the known rules defects discovered by the completed cross-hero audit.
+The Cao Cao/Sun Quan Lord-role correction, Lü Bu/Unrivaled semantic
+multi-response correction, and Sima Yi/Retaliation hidden-Hand hardening are
+complete and are no longer Phase-1 work items.
 
-### 1A. Lord-skill correctness
+**Goal:** resolve the remaining rules question discovered by the completed
+cross-hero audit.
 
-Fix as one small batch:
+### Completed: Cao Cao / Sun Quan Lord-role correctness
+
+This item is complete; the historical requirements below are retained for
+traceability only.
+
+Historical requirements:
 
 - **Cao Cao / Entourage:** require authoritative `role === "Lord"` during both provider discovery and provider resolution.
 - **Sun Quan / Deliverance:** require Sun Quan to be Lord before the Wu-rescuer recovery bonus applies.
@@ -32,9 +40,12 @@ Update the existing positive tests so their skill owner is explicitly Lord, and 
 
 **Exit gate:** both skills are impossible for a non-Lord while their Lord behavior remains unchanged.
 
-### 1B. Lü Bu / Unrivaled semantic response-count correction
+### Completed: Lü Bu / Unrivaled semantic response-count correction
 
-This is the largest remaining rules change.
+This item is complete; the historical requirements below are retained for
+traceability only.
+
+Historical requirements:
 
 The current response discovery couples `requirement.count` to a provider's physical-card selection count. Replace that assumption with a generic model in which the pending response tracks **semantic responses remaining**.
 
@@ -55,7 +66,14 @@ Regression coverage must include mixed physical/converted responses, Serpent Spe
 
 ### 1C. Huang Gai / Self Sacrifice timing
 
-First verify the exact WTK ruling for **Self Sacrifice at 1 HP** from an authoritative source.
+The authoritative project material checked so far does not establish the exact
+ordering at 1 HP. `docs/STANDARD_HERO_REFERENCE.md` and `game/heroes.ts`
+reproduce the printed text, “lose 1 HP in order to draw 2 cards”; the project
+reference material does not state whether the draw precedes or follows the HP
+loss/Dying window. `docs/OFFICIAL_CARD_REFERENCE.md` contains the Standard card
+reference and general rule material, but no Huang Gai timing ruling.
+
+Do not change gameplay until an authoritative WTK ruling resolves this.
 
 If HP loss resolves before the draw, replace the current atomic `lose_draw` ordering with a persisted continuation:
 
@@ -65,9 +83,14 @@ Reuse the canonical HP-loss/Dying machinery rather than creating a Huang-Gai-spe
 
 **Exit gate:** implementation and deterministic regression agree with the verified WTK timing; no newly drawn card can incorrectly participate in an earlier Dying window.
 
-### 1D. Sima Yi / Retaliation hidden-Hand hardening
+### Completed: Sima Yi / Retaliation hidden-Hand hardening
 
-Change Retaliation so selecting the damage source's Hand means **server-random acquisition of one current Hand card**. Do not expose or accept a client-selected hidden Hand position. Public Equipment/Judgement cards remain exact selections.
+This item is complete; the historical requirements below are retained for
+traceability only.
+
+Historical requirement: selecting the damage source's Hand means **server-random
+acquisition of one current Hand card**; public Equipment/Judgement cards remain
+exact selections.
 
 **Exit gate:** the client cannot influence which hidden Hand card is obtained; live-state validation, privacy and card conservation remain correct.
 
