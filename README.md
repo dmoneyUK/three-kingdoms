@@ -3,6 +3,17 @@ A web implementation of the **WTK Standard** ruleset, built around authoritative
 ## Hero artwork update — 2026-10-01
 
 Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
+`HeroPortrait` renderer: Photo 1 is Hua Xiong, Photo 2 is Pan Feng, Photo 3
+is Lü Bu, and Photo 4 is Diao Chan. Hua Xiong now also uses the shared portrait
+renderer instead of the initials fallback. The artwork applies in hero
+selection, locked-in selection, the local hero dock, and opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged.
+
+## Hero artwork update — 2026-10-01
+
+Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
 `HeroPortrait` renderer: Photo 1 is Cao Cao, Photo 2 is Xiahou Dun, and Photo
 3 is Sima Yi. The shared renderer applies the artwork in hero selection,
 locked-in selection, the local hero dock, and opponent cards.

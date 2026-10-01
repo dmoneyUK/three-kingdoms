@@ -1,5 +1,21 @@
 # Three Kingdoms — current handover
 
+## Latest presentation update — Hua Xiong, Pan Feng, Lü Bu, and Diao Chan portraits — 2026-10-01
+
+Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
+`HeroPortrait` renderer:
+
+- Photo 1: Hua Xiong (`public/hero-hua-xiong.jpg`)
+- Photo 2: Pan Feng (`public/hero-pan-feng.jpg`)
+- Photo 3: Lü Bu (`public/hero-lv-bu.jpg`)
+- Photo 4: Diao Chan (`public/hero-diao-chan.jpg`)
+
+Hua Xiong now uses the shared portrait renderer rather than the intentional
+initials fallback. The shared path covers hero selection, the locked-in
+selection state, the local hero card, and opponent cards. This remains
+presentation-only: no gameplay rules, projections, selection legality, layout
+dimensions, or semantic actions changed.
+
 ## Latest presentation update — Cao Cao, Xiahou Dun, and Sima Yi portraits — 2026-10-01
 
 Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /

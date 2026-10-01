@@ -105,7 +105,7 @@ test("hero selection shows the effective viewer's private role", () => {
   assert.match(html, /data-hero-art-id="cao-cao"/);
   assert.match(html, /data-hero-art-id="simayi"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
-  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.avif", "hero-zhang-liao.jpg", "hero-zhang-fei.jpg", "hero-zhen-ji.jpg", "hero-xu-chu.jpg", "hero-guo-jia.jpg", "hero-yue-jin.jpg", "hero-ma-chao.jpg", "hero-daqiao.jpg", "hero-zhuge-liang.jpg", "hero-zhao-yun.jpg", "hero-guan-yu.jpg", "hero-gan-ning.jpg", "hero-huang-gai.jpg", "hero-lv-meng.jpg", "hero-lady-gan.jpg", "hero-huang-yueying.jpg", "hero-zhou-yu.jpg", "hero-diao-chan.jpg", "hero-lv-bu.jpg", "hero-hua-tuo.jpg", "hero-sun-shangxiang.jpg", "hero-lu-xun.jpg", "hero-pan-feng.jpg"]) {
+  for (const asset of ["hero-cao-cao.jpg", "hero-liu-bei.jpg", "hero-sun-quan.jpg", "hero-sima-yi.jpg", "hero-xiahou-dun.jpg", "hero-zhang-liao.avif", "hero-zhang-liao.jpg", "hero-zhang-fei.jpg", "hero-zhen-ji.jpg", "hero-xu-chu.jpg", "hero-guo-jia.jpg", "hero-yue-jin.jpg", "hero-ma-chao.jpg", "hero-daqiao.jpg", "hero-zhuge-liang.jpg", "hero-zhao-yun.jpg", "hero-guan-yu.jpg", "hero-gan-ning.jpg", "hero-huang-gai.jpg", "hero-lv-meng.jpg", "hero-lady-gan.jpg", "hero-huang-yueying.jpg", "hero-zhou-yu.jpg", "hero-diao-chan.jpg", "hero-lv-bu.jpg", "hero-hua-tuo.jpg", "hero-sun-shangxiang.jpg", "hero-lu-xun.jpg", "hero-pan-feng.jpg", "hero-hua-xiong.jpg"]) {
     assert.ok(existsSync(new URL(`../public/${asset}`, import.meta.url)), `${asset} is checked in`);
   }
   assert.match(gameRoomSource, /const \[infoHero, setInfoHero\] = useState<Hero \| null>\(null\)/);
@@ -179,6 +179,7 @@ test("every implemented Standard hero is audited through the shared portrait ren
     "diao-chan": "/hero-diao-chan.jpg",
     "lü-bu": "/hero-lv-bu.jpg",
     "hua-tuo": "/hero-hua-tuo.jpg",
+    huaxiong: "/hero-hua-xiong.jpg",
     "sun-shangxiang": "/hero-sun-shangxiang.jpg",
     "lu-xun": "/hero-lu-xun.jpg",
     "pan-feng": "/hero-pan-feng.jpg",
@@ -207,7 +208,7 @@ test("every implemented Standard hero is audited through the shared portrait ren
       assert.match(html, /class="hero-art-fallback"/, `${id} keeps the intentional initials fallback until approved artwork exists`);
     }
   }
-  assert.deepEqual(unmappedIds, ["huaxiong"]);
+  assert.deepEqual(unmappedIds, []);
 });
 
 test("hand cards stay naturally packed and compress only when the rail is tight", () => {

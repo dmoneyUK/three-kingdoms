@@ -48,6 +48,7 @@ export const HERO_ART_BY_ID: Record<string, string> = {
   "diao-chan": "/hero-diao-chan.jpg",
   "lü-bu": "/hero-lv-bu.jpg",
   "hua-tuo": "/hero-hua-tuo.jpg",
+  huaxiong: "/hero-hua-xiong.jpg",
   "sun-shangxiang": "/hero-sun-shangxiang.jpg",
   "lu-xun": "/hero-lu-xun.jpg",
   "pan-feng": "/hero-pan-feng.jpg",
