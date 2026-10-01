@@ -1,5 +1,15 @@
 # War of Three Kingdoms
 
+## Hero artwork update — 2026-10-01
+
+Replaced the Xiahou Dun portrait at `public/hero-xiahou-dun.jpg`. It remains
+connected through the shared `HERO_ART_BY_ID` / `HeroPortrait` renderer, so the
+new artwork appears in hero selection, locked-in selection, the local hero
+dock, and opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged.
+
 ## Gameplay correctness — Lü Bu / Unrivaled semantic multi-response — 2026-10-01
 
 Response requirements now count remaining semantic Attack/Dodge responses,

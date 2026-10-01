@@ -1,5 +1,13 @@
 # Three Kingdoms — current handover
 
+## Latest presentation update — Xiahou Dun portrait — 2026-10-01
+
+Replaced `public/hero-xiahou-dun.jpg` with the supplied portrait. The existing
+shared `HERO_ART_BY_ID` / `HeroPortrait` path continues to cover hero selection,
+the locked-in selection state, the local hero card, and opponent cards. This
+remains presentation-only: no gameplay rules, projections, selection legality,
+layout dimensions, or semantic actions changed.
+
 ## Current state — Lü Bu / Unrivaled semantic multi-response — 2026-10-01
 
 Implemented generic semantic response settlement. `ActionRequirement.count`
