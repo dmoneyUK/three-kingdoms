@@ -1,5 +1,15 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
+## Hero artwork update — 2026-10-01
+
+Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
+`HeroPortrait` renderer: Photo 1 is Lu Xun and Photo 2 is Sun Shangxiang. The
+shared renderer applies the artwork in hero selection, locked-in selection,
+the local hero dock, and opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged.
+
 ## Functional UX — action and decision clarity — 2026-10-01
 
 Added one pure `buildDecisionPresentation` model for projected room state.

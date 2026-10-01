@@ -1,5 +1,18 @@
 # Three Kingdoms — current handover
 
+## Latest presentation update — Lu Xun and Sun Shangxiang portraits — 2026-10-01
+
+Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
+`HeroPortrait` renderer:
+
+- Photo 1: Lu Xun (`public/hero-lu-xun.jpg`)
+- Photo 2: Sun Shangxiang (`public/hero-sun-shangxiang.jpg`)
+
+The existing shared path covers hero selection, the locked-in selection state,
+the local hero card, and opponent cards. This remains presentation-only: no
+gameplay rules, projections, selection legality, layout dimensions, or semantic
+actions changed.
+
 ## Latest functional UX update — action and decision clarity — 2026-10-01
 
 Implemented UX 1 in `app/page.tsx` with the pure projected-state
