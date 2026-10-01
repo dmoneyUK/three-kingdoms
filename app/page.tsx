@@ -762,7 +762,7 @@ export function GameRoom({ room, busy, error, onAction, onLeave }: { room: Room;
   // Equipment cost selection remains presentation-compatible with the compact
   // visible dock while preserving the existing card IDs and callbacks.
   // Legacy seat semantics retain presence-dot, started-player, and play-seat terminology.
-  const [messagesCollapsed, setMessagesCollapsed] = useState(false);
+  const [messagesCollapsed, setMessagesCollapsed] = useState(true);
   const [effectNotice, setEffectNotice] = useState<string | null>(null);
   const [infoCard, setInfoCard] = useState<Card | null>(null);
   const [infoHero, setInfoHero] = useState<Hero | null>(null);

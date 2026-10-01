@@ -1,5 +1,11 @@
 # Three Kingdoms — current handover
 
+## Latest functional UX update — minimized event log — 2026-10-01
+
+The in-game Game Messages event log now initializes collapsed. Players can
+still expand it with the existing accessible control; public message
+projection, privacy, and history behavior are unchanged.
+
 ## Latest presentation update — Hua Xiong, Pan Feng, Lü Bu, and Diao Chan portraits — 2026-10-01
 
 Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /

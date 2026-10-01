@@ -1,5 +1,11 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
+## Functional UX — minimized event log — 2026-10-01
+
+The foldable Game Messages event log now starts minimized by default, keeping
+the board and decision controls clear on entry. The existing expand/collapse
+button and public message history remain unchanged.
+
 ## Hero artwork update — 2026-10-01
 
 Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /

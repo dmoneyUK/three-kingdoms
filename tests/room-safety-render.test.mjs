@@ -12,6 +12,11 @@ const gameRoomSource = readFileSync(new URL("../app/page.tsx", import.meta.url),
 const globalStyleSource = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const sequenceStyleSource = readFileSync(new URL("../app/sequence-overrides.css", import.meta.url), "utf8");
 
+test("game messages start minimized while retaining the fold control", () => {
+  assert.match(gameRoomSource, /const \[messagesCollapsed, setMessagesCollapsed\] = useState\(true\)/);
+  assert.match(gameRoomSource, /aria-label=\{messagesCollapsed \? "Expand game messages" : "Collapse game messages"\}/);
+});
+
 const presentationPlayers = [
   { id: "p1", name: "Lü Bu", seat: 0 },
   { id: "p2", name: "Zhao Yun", seat: 1 },
