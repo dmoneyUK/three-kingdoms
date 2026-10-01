@@ -1,5 +1,24 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — Lü Bu / Unrivaled semantic multi-response — 2026-10-01
+
+Response requirements now count remaining semantic Attack/Dodge responses,
+independently of each provider's physical card cost. Generic settlement
+decrements and reopens the same continuation when another response remains,
+preserves the semantic requester across delegation, and applies the same path
+to Eight Trigrams Judgement and Duel/Lust. Conversions and Serpent Spear each
+contribute one semantic response with their own physical cost.
+
+Regression coverage protects sequential ordinary/conversion Dodges, Eight
+Trigrams, delegated responses, Duel provider mixtures, reload/stale safety,
+actor ownership, private choices, and exact physical-card conservation. The
+full fast/API suite and existing Guo Jia/Sima Yi and Lord regressions remain
+green.
+
+Current stage remains Stage 7 product polish with Standard gameplay correctness
+maintained. Huang Gai and UX work remain outside this change; the next
+milestone is the next separately confirmed Standard gameplay correction.
+
 ## Gameplay correctness — Sima Yi Retaliation random Hand hardening — 2026-10-01
 
 Retaliation now projects the source Hand as one opaque `hand` zone choice;

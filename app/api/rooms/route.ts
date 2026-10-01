@@ -10,7 +10,7 @@ import { resolvePassiveAttackModifiers } from "../../../game/capabilities/passiv
 import { getTriggeredEffects, resolveTriggeredEffect, triggerActorId, triggerAllowsDecline, triggerRepeatsPerDamagePoint } from "../../../game/capabilities/triggers";
 import { IMPLEMENTED_STANDARD_HEROES, STANDARD_HEROES, heroGender, type HeroDefinition } from "../../../game/heroes";
 import { continueTriggerEvent, resumeTriggerContinuation } from "../../../game/decisions/triggers";
-import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../../../game/decisions/responses";
+import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement, responseAfterSemanticSuccess } from "../../../game/decisions/responses";
 import { applySuccessfulNegation } from "../../../game/decisions/negation";
 import { GAMEPLAY_ACTIONS, type CurrentAction, type GameplayAction } from "../../../game/protocol.js";
 import { applyDamage, applyRecovery, isDying, recoveredAmount, recoveryNeeded } from "../../../game/match/dying.js";
@@ -1103,7 +1103,7 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
 
   const responseResume = judgement.resume.kind === "response" ? judgement.resume : null;
   if (!responseResume) return [];
-  const response: ResponsePending = { kind: "response", actorId: responseResume.actorId, requirement: responseResume.requirement, reason: responseResume.reason, ...(responseResume.resolutionId ? { resolutionId: responseResume.resolutionId } : {}), continuation: responseResume.continuation };
+  const response: ResponsePending = { kind: "response", actorId: responseResume.actorId, requirement: responseResume.requirement, reason: responseResume.reason, ...(responseResume.resolutionId ? { resolutionId: responseResume.resolutionId } : {}), ...(responseResume.disabledProviderIds ? { disabledProviderIds: responseResume.disabledProviderIds } : {}), ...(responseResume.delegation ? { delegation: responseResume.delegation } : {}), continuation: responseResume.continuation };
   const judged = { deck, discard, judged: finalCard, log, result: resolveResponseJudgement(finalCard, rule) };
   const sourceId = "sourceId" in response.continuation ? response.continuation.sourceId : "";
   const source = players.find((player) => player.id === sourceId) ?? null;
@@ -1582,6 +1582,13 @@ async function maybeOpenHandLossTrigger(roomId: string, playerId: string, before
 function attackResponse(pending: ResponsePending | null | undefined) {
   if (!pending || pending.kind !== "response" || pending.continuation.kind !== "attack") return null;
   return { response: pending, continuation: pending.continuation as AttackContinuation };
+}
+
+function reopenSemanticResponse(response: ResponsePending, actor: PlayerRow, log: string[], message: string) {
+  const next = responseAfterSemanticSuccess(response);
+  if (!next) return null;
+  const presentation = addLogWithId(log, message);
+  return { pending: withPresentationBarrier({ ...next, actorId: actor.id, deadline: nextResponseDeadline(actor) }, presentation.log, presentation.eventId), log: presentation.log };
 }
 
 function duelResponse(pending: ResponsePending | null | undefined) {
@@ -2212,6 +2219,18 @@ async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePendi
   const judgedResult = judged.result;
   if (judgedResult.status === "satisfied") {
     judged.log = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}. ${resolution.successText}`);
+    const remaining = responseAfterSemanticSuccess(response);
+    if (remaining) {
+      const remainingActor = remaining.actorId === actor.id
+        ? actor
+        : await db().prepare("SELECT * FROM players WHERE id = ? AND alive = 1").bind(remaining.actorId).first<PlayerRow>();
+      if (!remainingActor) return;
+      const reopened = reopenSemanticResponse(response, remainingActor, judged.log, `${remainingActor.name} must provide another Dodge.`);
+      if (!reopened) return;
+      await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+        .bind(serializePending(reopened.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(reopened.log), room.id).run();
+      return;
+    }
     await finishDodgedAttack(nextRoom, source, actor, judged.discard, judged.log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id)], continuation.origin, continuation.resumePlayerId);
     return;
   }
@@ -2244,6 +2263,16 @@ async function applyGroupResponseOutcome(room: RoomRow, response: ResponsePendin
   const nextRoom = { ...room, deck_json: JSON.stringify(judged.deck) };
   if (judgedResult.status === "satisfied") {
     const nextLog = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}. ${resolution.successText}`);
+    const remaining = responseAfterSemanticSuccess(response);
+    if (remaining) {
+      const remainingActor = players.find((player) => player.id === remaining.actorId && player.alive);
+      if (!remainingActor) return;
+      const reopened = reopenSemanticResponse(response, remainingActor, nextLog, `${remainingActor.name} must provide another ${continuation.requiredKind}.`);
+      if (!reopened) return;
+      await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
+        .bind(serializePending(reopened.pending), JSON.stringify(judged.discard), JSON.stringify(reopened.log), room.id).run();
+      return;
+    }
     await finishGroupStep(nextRoom, response, continuation, players, judged.discard, nextLog);
     return;
   }
@@ -2273,8 +2302,20 @@ async function applyDuelResponseOutcome(room: RoomRow, pending: { response: Resp
   const nextRoom = { ...room, deck_json: JSON.stringify(judged.deck) };
   const text = `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}.`;
   if (judgedResult.status === "satisfied") {
-    const nextLog = addLog(judged.log, `${text} ${resolution.successText} Action passes to ${opponent.name}.`);
-    const decision = freshDecision(nextDuelResponse(pending.response, pending.continuation, opponent.id, actor.id, nextResponseDeadline(opponent)), nextLog, `Duel response passes to ${opponent.name}.`);
+    const nextLog = addLog(judged.log, `${text} ${resolution.successText}`);
+    const remaining = responseAfterSemanticSuccess(pending.response);
+    const remainingActor = remaining
+      ? remaining.actorId === actor.id
+        ? actor
+        : await db().prepare("SELECT * FROM players WHERE id = ? AND alive = 1").bind(remaining.actorId).first<PlayerRow>()
+      : null;
+    const nextPending = remaining && remainingActor
+      ? reopenSemanticResponse(pending.response, remainingActor, nextLog, `${remainingActor.name} must provide another Attack.`)
+      : nextDuelResponse(pending.response, pending.continuation, opponent.id, actor.id, nextResponseDeadline(opponent));
+    if (!nextPending) return;
+    const decision = remaining && remainingActor
+      ? freshDecision(nextPending.pending, nextPending.log, "Duel response remains with the same participant.")
+      : freshDecision(nextPending, nextLog, `Duel response passes to ${opponent.name}.`);
     await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
       .bind(serializePending(decision.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(decision.log), room.id).run();
     await advanceDuel(room.id);
@@ -2335,7 +2376,7 @@ async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: Play
     revealedCard: draw.card,
     revealedEventId: presentation.eventId,
     resolutionId: response.resolutionId,
-    resume: { kind: "response", actorId: response.actorId, requirement: response.requirement, reason: response.reason, ...(response.resolutionId ? { resolutionId: response.resolutionId } : {}), continuation },
+    resume: { kind: "response", actorId: response.actorId, requirement: response.requirement, reason: response.reason, ...(response.resolutionId ? { resolutionId: response.resolutionId } : {}), ...(response.disabledProviderIds ? { disabledProviderIds: response.disabledProviderIds } : {}), ...(response.delegation ? { delegation: response.delegation } : {}), continuation },
   };
   await beginJudgementResolution(room, actor, players, judgement, draw.deck, draw.discard, presentation.log);
 }
@@ -4919,14 +4960,21 @@ export async function POST(request: Request) {
         : attackCards.length > 1
           ? addCardGroupEventWithId(log, me.name, attackCards, "play", true, opponent.name)
           : addLogWithId(log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel.`, undefined);
-      log = addLog(presentation.log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel. Action passes to ${opponent.name}.`);
-      const nextPending = attackCards.length
-        ? withPresentationBarrier(nextDuelResponse(pending.response, pending.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent)), log, presentation.eventId)
-        : nextDuelResponse(pending.response, pending.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent));
+      const remaining = responseAfterSemanticSuccess(pending.response);
+      log = addLog(presentation.log, `${me.name} provides an Attack on ${semanticActor.name}'s behalf in the Duel. ${remaining ? `${semanticActor.name} must provide another Attack.` : `Action passes to ${opponent.name}.`}`);
+      const reopened = remaining
+        ? reopenSemanticResponse(pending.response, semanticActor, log, `${semanticActor.name} must provide another Attack.`)
+        : null;
+      const nextPending = reopened
+        ? reopened.pending
+        : attackCards.length
+          ? withPresentationBarrier(nextDuelResponse(pending.response, pending.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent)), log, presentation.eventId)
+          : nextDuelResponse(pending.response, pending.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent));
+      const nextLog = reopened?.log ?? log;
       await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
         turnHistoryAttackWrite(liveRoom, semanticActor),
-        db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(log), room.id),
+        db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(nextLog), room.id),
       ]);
       await advanceDuel(room.id);
     }
@@ -4963,7 +5011,18 @@ export async function POST(request: Request) {
       const responseCards = selectedResponse ? [selectedResponse] : serpentCards; const responseIds = new Set(responseCards.map((card) => card.id)); hand = hand.filter((card) => !responseIds.has(card.id)); const nextContinuation = appendHeldGroupCards(continuation, responseCards);
       log = selectedResponse ? addCardEvent(log, me.name, selectedResponse, me.name, "play", true, groupExecution.playedAs ? { playedAs: groupExecution.playedAs } : undefined) : responseCards.length ? addCardGroupEvent(log, me.name, responseCards, "play") : addLog(log, `${me.name} uses ${groupExecution.providerId} against ${groupCardName(continuation.cardKind)}.`); log = addLog(log, selectedResponse ? `${me.name} plays ${continuation.requiredKind} against ${groupCardName(continuation.cardKind)}.` : responseCards.length ? `${me.name} discards cards with Serpent Spear to form an Attack against ${groupCardName(continuation.cardKind)}.` : `${me.name} satisfies the ${continuation.requiredKind} requirement against ${groupCardName(continuation.cardKind)}.`);
       const settledResponse = { ...response, actorId: semanticActor.id, delegation: undefined, continuation: nextContinuation } satisfies ResponsePending;
-      await finishGroupStep(liveRoom, settledResponse, nextContinuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), ...(continuation.requiredKind === "Attack" ? [turnHistoryAttackWrite(liveRoom, semanticActor)] : [])]);
+      const reopened = responseAfterSemanticSuccess(response)
+        ? reopenSemanticResponse(response, semanticActor, log, `${semanticActor.name} must provide another ${continuation.requiredKind}.`)
+        : null;
+      if (reopened) {
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
+          ...(continuation.requiredKind === "Attack" ? [turnHistoryAttackWrite(liveRoom, semanticActor)] : []),
+          db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(reopened.pending), JSON.stringify(discard), JSON.stringify(reopened.log), room.id),
+        ]);
+      } else {
+        await finishGroupStep(liveRoom, settledResponse, nextContinuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId), ...(continuation.requiredKind === "Attack" ? [turnHistoryAttackWrite(liveRoom, semanticActor)] : [])]);
+      }
     }
     await maybeOpenHandLossTrigger(room.id, costActorId, handBeforeGroup);
     return json({ room: await roomState(code, token) });
@@ -5035,7 +5094,17 @@ export async function POST(request: Request) {
       if (dodgeCards.length === 1) log = addCardEvent(log, me.name, dodgeCards[0], source?.name ?? "Attack", "play", true, responseExecution?.playedAs ? { playedAs: responseExecution.playedAs } : undefined);
       else log = addLogWithId(log, `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"}.` ).log;
       log = addLog(log, dodgeCards.length ? `${me.name} plays Dodge and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.` : `${me.name} uses ${responseExecution?.providerId ?? "a Dodge provider"} and blocks the Attack. Action returns to ${source?.name ?? "the turn owner"}.`);
-      await finishDodgedAttack(liveRoom, source, semanticTarget, discard, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId)], continuation.origin, continuation.resumePlayerId);
+      const reopened = responseAfterSemanticSuccess(response)
+        ? reopenSemanticResponse(response, semanticTarget, log, `${semanticTarget.name} must provide another Dodge.`)
+        : null;
+      if (reopened) {
+        await db.batch([
+          db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
+          db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(reopened.pending), JSON.stringify(discard), JSON.stringify(reopened.log), room.id),
+        ]);
+      } else {
+        await finishDodgedAttack(liveRoom, source, semanticTarget, discard, log, continuation.resumePhase ?? phaseAfterAttack(source), continuation.sequenceStartCardId ?? "", [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId)], continuation.origin, continuation.resumePlayerId);
+      }
       await maybeOpenHandLossTrigger(room.id, me.id, handBeforeResponse);
     } else {
       if (!source?.alive) {

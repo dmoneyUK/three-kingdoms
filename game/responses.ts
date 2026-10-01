@@ -54,8 +54,6 @@ export function getResponseOptions(context: CapabilityContext, requirement: Acti
   const satisfies = requirement.kind;
   const options = providers.filter((provider) => provider.satisfies === satisfies).flatMap((provider) => {
     const option = provider.getOption({ ...context, requirement });
-    const requiredCount = requirement.kind === "attack" || requirement.kind === "dodge" ? requirement.count ?? 1 : 1;
-    if (option && requiredCount > 1 && option.selection && (option.selection.min !== requiredCount || option.selection.max !== requiredCount)) return [];
     return option ? [{ ...option, activation: provider.activation }] : [];
   });
   // The ordinary physical-card route is the sole immediate/default route.

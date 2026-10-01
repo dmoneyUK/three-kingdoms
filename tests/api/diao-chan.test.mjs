@@ -133,6 +133,23 @@ test("Lust enters canonical Attack conversion providers for Guan Yu, Zhao Yun, a
   }
 });
 
+test("Lust Duel uses Lü Bu's semantic Attack count across ordinary and converted providers", async () => {
+  const scenarios = [
+    { hero: "guan-yu", provider: "guan_yu_red_card_attack", firstHand: [{ ...card("Peach", "wushuang-lust-guan-red"), suit: "♥" }, card("Attack", "wushuang-lust-guan-ordinary")], firstSelection: { cardId: "peach-wushuang-lust-guan-red" } },
+    { hero: "zhao-yun", provider: "zhao_yun_dodge_as_attack", firstHand: [card("Dodge", "wushuang-lust-zhao-conversion"), card("Attack", "wushuang-lust-zhao-ordinary")], firstSelection: { cardId: "dodge-wushuang-lust-zhao-conversion" } },
+    { hero: "guan-yu", provider: "serpent_spear_attack", firstHand: [card("Peach", "wushuang-lust-spear-a"), card("Dodge", "wushuang-lust-spear-b"), card("Attack", "wushuang-lust-spear-ordinary")], equipment: { weapon: card("SerpentSpear", "wushuang-lust-spear") }, firstSelection: { cardIds: ["peach-wushuang-lust-spear-a", "dodge-wushuang-lust-spear-b"] } },
+  ];
+  for (const scenario of scenarios) {
+    const game = await createHumanGame(); const setup = configureLust(game, { firstHero: scenario.hero, secondHero: "lü-bu", firstHand: scenario.firstHand }); if (scenario.equipment) setEquipment(setup.first.id, scenario.equipment);
+    const started = await requestAndSettle("trigger", { code: game.code, token: game.members[0].token, providerId: "diao_chan_lust", cardIds: [setup.cost.id], targetIds: [setup.first.id, setup.second.id], preserveResponse: true }); assert.equal(started.status, 200, JSON.stringify(started.data));
+    const first = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: scenario.provider, ...scenario.firstSelection, preserveResponse: true }); assert.equal(first.status, 200, JSON.stringify(first.data));
+    const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)); assert.equal(pending.requirement.count, 1); assert.equal(pending.actorId, setup.first.id); assert.equal(pending.continuation.kind, "duel");
+    const secondCard = scenario.firstHand.at(-1); const second = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: secondCard.id, preserveResponse: true }); assert.equal(second.status, 200, JSON.stringify(second.data));
+    const next = await state(game.code, game.members[2].token); assert.equal(next.data.currentAction.actorId, setup.second.id); assert.equal((await requestAndSettle("decline_response", { code: game.code, token: game.members[2].token })).status, 200);
+    for (const held of scenario.firstHand) assert.equal(roomCardCount(game.code, held.id), 1);
+  }
+});
+
 test("Beauty Outshining the Moon is an optional private own-turn draw and shares turn_end ordering with Yue Jin", async () => {
   const game = await createHumanGame();
   const [diao, yue, other, fourth] = game.room.players;

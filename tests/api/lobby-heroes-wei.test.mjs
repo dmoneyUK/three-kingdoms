@@ -676,6 +676,44 @@ test("Qixi uses the ordinary Burning Bridges Negation and target-card continuati
 test("Lü Bu Wushuang requires two Dodges for an Attack", async () => {
   const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const attack = card("Attack", "wushuang-attack"); const dodges = [card("Dodge", "wushuang-dodge-a"), card("Dodge", "wushuang-dodge-b")];
   sql(`UPDATE players SET hero='lü-bu' WHERE id=${quote(source.id)}`); setHand(source.id, [attack], 4, 4); setHand(target.id, dodges, 4, 4); setTurn(game.code, source.seat);
-  const opened = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data)); const response = await state(game.code, game.members[1].token); assert.equal(response.data.currentAction.requirement, "dodge"); assert.equal(response.data.currentAction.options.find((option) => option.providerId === "card").selection.min, 2);
-  const blocked = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardIds: dodges.map((item) => item.id) }); assert.equal(blocked.status, 200, JSON.stringify(blocked.data)); assert.equal(blocked.data.room.players.find((player) => player.id === target.id).hp, 4);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data)); const response = await state(game.code, game.members[1].token); assert.equal(response.data.currentAction.requirement, "dodge"); assert.equal(response.data.currentAction.options.find((option) => option.providerId === "card").selection.min, 1);
+  const first = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: dodges[0].id, preserveResponse: true }); assert.equal(first.status, 200, JSON.stringify(first.data)); const persisted = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)); assert.equal(persisted.requirement.count, 1); const remaining = await state(game.code, game.members[1].token); assert.equal(remaining.data.currentAction.requirement, "dodge"); assert.equal(remaining.data.currentAction.options.find((option) => option.providerId === "card").selection.min, 1); assert.equal(remaining.data.players.find((player) => player.id === target.id).handCount, 1);
+  const stale = await request("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: dodges[1].id, context: { actionRevision: response.data.actionRevision, meId: target.id, phase: "response", pendingKind: "response", actorId: target.id } }); assert.equal(stale.status, 409);
+  const blocked = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: dodges[1].id }); assert.equal(blocked.status, 200, JSON.stringify(blocked.data)); assert.equal(blocked.data.room.players.find((player) => player.id === target.id).hp, 4);
+});
+
+test("Lü Bu Wushuang accepts conversion providers one semantic Dodge at a time", async () => {
+  for (const scenario of [
+    { hero: "zhao-yun", firstProvider: "zhao_yun_attack_as_dodge", firstKind: "Attack", secondKind: "Dodge" },
+    { hero: "zhen-ji", firstProvider: "zhen_ji_black_card_dodge", firstKind: "Peach", secondKind: "Dodge" },
+  ]) {
+    const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1];
+    const attack = card("Attack", `wushuang-${scenario.hero}-attack`); const first = card(scenario.firstKind, `wushuang-${scenario.hero}-first`, "♠"); const second = card("Dodge", `wushuang-${scenario.hero}-second`);
+    sql(`UPDATE players SET hero='lü-bu' WHERE id=${quote(source.id)}`); sql(`UPDATE players SET hero=${quote(scenario.hero)} WHERE id=${quote(target.id)}`); setHand(source.id, [attack], 4, 4); setHand(target.id, [first, second], 4, 4); setTurn(game.code, source.seat);
+    const opened = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data));
+    const firstResponse = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: scenario.firstProvider, cardId: first.id, preserveResponse: true }); assert.equal(firstResponse.status, 200, JSON.stringify(firstResponse.data));
+    const persisted = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)); assert.equal(persisted.requirement.count, 1); assert.equal(persisted.actorId, target.id);
+    const secondResponse = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: second.id }); assert.equal(secondResponse.status, 200, JSON.stringify(secondResponse.data)); assert.equal(secondResponse.data.room.players.find((player) => player.id === target.id).hp, 4);
+  }
+});
+
+test("Lü Bu Wushuang keeps a delegated Dodge with the requester between semantic responses", async () => {
+  const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const delegate = game.room.players[2];
+  const attack = card("Attack", "wushuang-entourage-attack"); const delegateDodge = card("Dodge", "wushuang-entourage-delegate"); const targetDodge = card("Dodge", "wushuang-entourage-target");
+  sql(`UPDATE players SET hero='lü-bu' WHERE id=${quote(source.id)}`); sql(`UPDATE players SET hero='cao-cao', role='Lord' WHERE id=${quote(target.id)}`); sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(delegate.id)}`);
+  setHand(source.id, [attack], 4, 4); setHand(target.id, [targetDodge], 4, 4); setHand(delegate.id, [delegateDodge], 4, 4); setTurn(game.code, source.seat);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const delegated = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "cao_cao_hujia", preserveResponse: true }); assert.equal(delegated.status, 200, JSON.stringify(delegated.data));
+  const delegateResponse = await state(game.code, game.members[2].token); assert.equal(delegateResponse.data.currentAction.actorId, delegate.id); const answered = await requestAndSettle("respond", { code: game.code, token: game.members[2].token, providerId: "card", cardId: delegateDodge.id, preserveResponse: true }); assert.equal(answered.status, 200, JSON.stringify(answered.data));
+  const persisted = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)); assert.equal(persisted.actorId, target.id); assert.equal(persisted.requirement.count, 1); assert.equal(persisted.delegation, undefined);
+  const finished = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: targetDodge.id }); assert.equal(finished.status, 200, JSON.stringify(finished.data)); assert.equal(finished.data.room.players.find((player) => player.id === target.id).hp, 4);
+});
+
+test("Lü Bu Wushuang reopens after a successful Eight Trigrams Dodge", async () => {
+  const game = await createHumanGame(); const source = game.room.players[0]; const target = game.room.players[1]; const attack = card("Attack", "wushuang-trigrams-attack"); const dodge = card("Dodge", "wushuang-trigrams-dodge");
+  sql(`UPDATE players SET hero='lü-bu' WHERE id=${quote(source.id)}`); setEquipment(target.id, { armor: card("EightTrigrams", "wushuang-trigrams-armor") }); setHand(source.id, [attack], 4, 4); setHand(target.id, [dodge], 4, 4); setDeck(game.code, [{ ...card("Peach", "wushuang-trigrams-judgement"), suit: "♥", rank: "7" }]); setTurn(game.code, source.seat);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id }); assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const judged = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "eight_trigrams_dodge", preserveResponse: true }); assert.equal(judged.status, 200, JSON.stringify(judged.data));
+  const persisted = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)); assert.equal(persisted.requirement.count, 1); assert.equal(persisted.actorId, target.id);
+  const finished = await requestAndSettle("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: dodge.id }); assert.equal(finished.status, 200, JSON.stringify(finished.data)); assert.equal(finished.data.room.players.find((player) => player.id === target.id).hp, 4);
 });

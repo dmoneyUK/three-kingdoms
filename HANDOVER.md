@@ -1,5 +1,29 @@
 # Three Kingdoms — current handover
 
+## Current state — Lü Bu / Unrivaled semantic multi-response — 2026-10-01
+
+Implemented generic semantic response settlement. `ActionRequirement.count`
+is the persisted number of Attack/Dodge responses still required; provider
+selection min/max and physical costs no longer rewrite that semantic count.
+Successful responses either resume the existing continuation or reopen it with
+the decremented count, preserving the continuation and returning delegated
+follow-up decisions to the original semantic requester. Eight Trigrams
+Judgement and Duel/Lust use the same path, while failed Judgement preserves
+the requirement.
+
+Regression coverage includes ordinary and converted Dodges, successful Eight
+Trigrams, delegated Entourage, ordinary/conversion/Serpent Spear Duel,
+Influencing, reload/stale safety, actor ownership, private choices, and exact
+physical-card conservation. `npm test` passed 80 fast tests and 196 API tests;
+build and focused semantic/API suites also passed.
+
+Known boundary: this is generic semantic settlement only. No provider-specific
+routes, artwork, Huang Gai, or UX work was added. Preserve current-action
+authority, private projection, stale/replay rejection, and Quick Test parity.
+
+Recommended next work is the next separately confirmed Standard gameplay
+correction; Huang Gai and UX remain out of scope.
+
 ## Current state — Sima Yi Retaliation random Hand hardening — 2026-10-01
 
 Retaliation preserves the profile-button activation and target-card selection

@@ -7,7 +7,7 @@ import { resolvePassiveAttackModifiers } from "../game/capabilities/passive.ts";
 import { canUseUnlimitedAttacks } from "../game/capabilities/attack-use-limit.ts";
 import { getTriggeredEffects, registerTriggeredEffect, resolveTriggeredEffect, triggerActorId } from "../game/capabilities/triggers.ts";
 import { continueTriggerEvent, createTriggerDecision, resumeTriggerContinuation } from "../game/decisions/triggers.ts";
-import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement } from "../game/decisions/responses.ts";
+import { applyResponseSatisfied, applyResponseDeclined, resolveResponseJudgement, responseAfterSemanticSuccess } from "../game/decisions/responses.ts";
 import { registerTestSemanticCapabilities, testSemanticResponseProviders, testSemanticTriggers } from "../game/capabilities/test-fixtures.ts";
 import { heroGender } from "../game/heroes.ts";
 import { canDeclareAttack, playPhaseAfterAttack } from "../game/rules.ts";
@@ -31,6 +31,23 @@ test("delegated responses keep semantic and cost actors distinct", () => {
   assert.equal(responseCostActor(response), "shu-provider");
   assert.equal(semanticResponseActor({ ...response, delegation: undefined }), "shu-provider");
   assert.equal(responseCostActor({ ...response, delegation: undefined }), "shu-provider");
+});
+
+test("semantic response settlement decrements the persisted requirement without changing physical cost", () => {
+  const pending = {
+    kind: "response",
+    actorId: "delegate",
+    delegation: { kind: "dodge", requesterId: "target", providerId: "cao_cao_hujia", remainingActorIds: [] },
+    requirement: { kind: "dodge", count: 2, sourceId: "source", targetId: "target" },
+    reason: "Dodge",
+    continuation: { kind: "attack", sourceId: "source", targetId: "target", resumePhase: "play" },
+  };
+  const reopened = responseAfterSemanticSuccess(pending);
+  assert.equal(reopened?.actorId, "target");
+  assert.equal(reopened?.requirement.count, 1);
+  assert.equal(reopened?.delegation, undefined);
+  assert.deepEqual(reopened?.continuation, pending.continuation);
+  assert.equal(responseAfterSemanticSuccess({ ...pending, requirement: { ...pending.requirement, count: 1 } }), null);
 });
 
 test("Liu Bei Influencing is Lord-only and follows the normal Attack-use projection", () => {
@@ -74,8 +91,8 @@ test("Wu and Qun hero capabilities project their private costs and Wushuang mult
   const yingziContext = { event: "draw_phase", sourceEquipment: [], sourceHand: [], playerId: "source", hero: "zhou-yu" };
   assert.deepEqual(getTriggeredEffects(yingziContext), [{ effectId: "zhou_yu_yingzi", label: "Heroic", description: "Draw one additional card this Draw Phase.", selection: null, allowDecline: true }]);
   assert.deepEqual(resolveTriggeredEffect("zhou_yu_yingzi", yingziContext, {}).outcome, { kind: "draw_phase_modifier", amount: 1 });
-  assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a"), card("Dodge", "dodge-b")], equipment: [], hero: null }, { kind: "dodge", count: 2 })[0].selection.min, 2);
-  assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a")], equipment: [], hero: null }, { kind: "dodge", count: 2 }).length, 0);
+  assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a"), card("Dodge", "dodge-b")], equipment: [], hero: null }, { kind: "dodge", count: 2 })[0].selection.min, 1);
+  assert.equal(getResponseOptions({ hand: [card("Dodge", "dodge-a")], equipment: [], hero: null }, { kind: "dodge", count: 2 }).length, 1, "one physical Dodge can satisfy one of multiple semantic responses");
 });
 
 test("Da Qiao Captivating exposes only Diamond hand cards and legal Overindulgence targets", () => {

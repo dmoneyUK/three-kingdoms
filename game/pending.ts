@@ -152,6 +152,8 @@ export type JudgementResponseResume = {
   requirement: ActionRequirement;
   reason: string;
   resolutionId?: string;
+  disabledProviderIds?: string[];
+  delegation?: ResponsePending["delegation"];
   continuation: ResponseContinuation;
 };
 export type DamageSufferedJudgementResume = { kind: "damage_suffered"; continuation: DamageSufferedTriggerContinuation };
