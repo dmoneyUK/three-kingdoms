@@ -1,5 +1,15 @@
 # War of Three Kingdoms
 
+## Hero artwork update — 2026-10-01
+
+Added and replaced the two supplied portraits through the shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer: Photo 1 is Pan Feng and Photo 2
+replaces Zhuge Liang. The shared renderer applies the artwork in hero selection,
+locked-in selection, the local hero dock, and opponent cards.
+
+This is a presentation-only update: gameplay rules, projections, selection
+legality, layout dimensions, and semantic actions are unchanged.
+
 ## Gameplay correctness — Guo Jia Eight Trigrams Judgement lifecycle — 2026-10-01
 
 Fixed the post-Judgement trigger ownership boundary for Eight Trigrams

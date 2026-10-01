@@ -1,5 +1,18 @@
 # Three Kingdoms — current handover
 
+## Latest presentation update — two supplied hero portraits — 2026-10-01
+
+Added and wired the two supplied portraits through the shared
+`HERO_ART_BY_ID` / `HeroPortrait` renderer:
+
+- Photo 1: Pan Feng (`public/hero-pan-feng.jpg`)
+- Photo 2: Zhuge Liang (`public/hero-zhuge-liang.jpg`)
+
+The shared path covers hero selection, the locked-in selection state, the local
+hero card, and opponent cards. This remains presentation-only: no gameplay
+rules, projections, selection legality, layout dimensions, or semantic actions
+changed.
+
 ## Current state — Guo Jia Eight Trigrams Judgement lifecycle — 2026-10-01
 
 Fixed Guo Jia's missing Jealousy of God interaction after using Eight Trigrams
