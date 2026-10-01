@@ -4351,7 +4351,9 @@ export async function POST(request: Request) {
           const sourceEquipment = equipmentZone(source);
           const sourceJudgement = parse<Card[]>(source.judgement_json, []);
           const handMatch = /^hand:(\d+)$/.exec(execution.outcome.targetCardKey);
-          const handIndex = handMatch ? Number(handMatch[1]) : -1;
+          const handIndex = execution.outcome.targetCardKey === "hand"
+            ? sourceHand.length > 0 ? crypto.getRandomValues(new Uint32Array(1))[0] % sourceHand.length : -1
+            : handMatch ? Number(handMatch[1]) : -1;
           const selected = handIndex >= 0 ? sourceHand[handIndex] : [...equipmentCards(source), ...sourceJudgement].find((card) => card.id === execution.outcome.targetCardKey);
           if (!selected) return json({ error: "The selected source card is no longer available.", stale: true, room: await roomState(code, token) }, 409);
           retaliationSelection = { sourceHand, sourceHandBefore: [...sourceHand], sourceEquipment, sourceJudgement, selected, handIndex };

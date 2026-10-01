@@ -1,5 +1,23 @@
 # War of Three Kingdoms
 
+## Gameplay correctness — Sima Yi Retaliation random Hand hardening — 2026-10-01
+
+Retaliation now projects the source Hand as one opaque `hand` zone choice;
+the client cannot choose `hand:0`, `hand:1`, or another physical Hand index.
+The existing 746adc5 button-to-selection-window UX is unchanged. Equipment
+and Judgement cards remain individually selectable by their visible IDs.
+
+The server revalidates the live source Playing Area after the trigger request,
+chooses a random physical Hand card with server-side randomness, and then
+performs the existing atomic continuation, private transfer, stale safety, and
+card-conservation flow. API and mounted UI regressions cover the opaque zone,
+privacy, forged indexes, vanished Hands, exact public-card selection, and
+idempotent concurrent submission.
+
+Current stage remains Stage 7 product polish with Standard gameplay correctness
+maintained. The next gameplay milestone remains the existing generic Lü Bu /
+Unrivaled semantic multi-response correction.
+
 ## Hero artwork update — 2026-10-01
 
 Added and replaced the two supplied portraits through the shared

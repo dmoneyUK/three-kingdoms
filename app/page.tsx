@@ -1261,12 +1261,14 @@ export function MandatoryChoiceDialog({ option, selection, hand, selectedChoice,
 
 function TargetCardPicker({ option, selection, target, selectedKeys, disabled, canDecline, error, onToggle, onUse, onDecline }: { option: TriggerOptionView; selection: TargetCardSelection; target: Player; selectedKeys: string[]; disabled: boolean; canDecline: boolean; error: string; onToggle: (key: string) => void; onUse: (keys: string[]) => void; onDecline: () => void }) {
   const validSelectedKeys = selectedKeys.filter((key) => selection.eligibleKeys.includes(key));
+  const randomHandZone = selection.eligibleKeys.includes("hand");
   const handKeys = selection.eligibleKeys
     .filter((key) => /^hand:\d+$/.test(key))
     .sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)));
-  const eligiblePublicKeys = new Set(selection.eligibleKeys.filter((key) => !/^hand:\d+$/.test(key)));
+  const eligiblePublicKeys = new Set(selection.eligibleKeys.filter((key) => key !== "hand" && !/^hand:\d+$/.test(key)));
   const publicCards = [...target.equipmentCards, ...target.judgementCards].filter((item) => eligiblePublicKeys.has(item.id));
   const items = [
+    ...(randomHandZone ? [{ key: "hand", label: "Hand", hidden: true, card: null }] : []),
     ...handKeys.map((key) => ({ key, label: `Hidden hand card ${Number(key.slice(5)) + 1}`, hidden: true, card: null })),
     ...publicCards.map((item) => ({ key: item.id, label: cardDefinition(item.kind).name, hidden: false, card: item })),
   ];

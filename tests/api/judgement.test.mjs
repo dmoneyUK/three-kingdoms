@@ -124,22 +124,40 @@ test("host test flow projects Stauchness privately through the generic currentAc
 });
 
 test("Sima Yi Retaliation uses the generic target-card picker with privacy and exact card conservation", { timeout: 30_000 }, async () => {
-  const game = await openFankuiAttack();
+  const game = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-attack"), card("Peach", "fankui-source-hidden-a"), card("Dodge", "fankui-source-hidden-b")] });
   const pending = (await state(game.code, game.targetMember.token)).data;
   const option = pending.currentAction.triggerOptions.find((entry) => entry.effectId === "sima_yi_fankui");
-  assert.deepEqual(option.selection, { type: "target_cards", targetId: game.source.id, min: 1, max: 1, eligibleKeys: ["hand:0"] });
+  assert.deepEqual(option.selection, { type: "target_cards", targetId: game.source.id, min: 1, max: 1, eligibleKeys: ["hand"] });
   assert.deepEqual(pending.myHand, [], "Sima Yi starts with an empty hand");
   assert.equal(pending.players.find((player) => player.id === game.source.id).handCards.length, 0, "Sima Yi does not receive source hand identities");
   const unrelated = (await state(game.code, game.members[2].token)).data;
   assert.equal(unrelated.players.find((player) => player.id === game.source.id).handCards.length, 0, "unrelated viewers do not receive source hand identities");
 
-  const obtained = await requestAndSettle("trigger", { code: game.code, token: game.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
+  const obtained = await requestAndSettle("trigger", { code: game.code, token: game.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand"] });
   assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
   assert.equal(obtained.data.room.phase, "play-struck");
-  assert.deepEqual(obtained.data.room.myHand.map((held) => held.id), ["peach-fankui-source-hidden"]);
-  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(game.source.id)} AND json_extract(value,'$.id')='peach-fankui-source-hidden'`), "0");
-  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(game.target.id)} AND json_extract(value,'$.id')='peach-fankui-source-hidden'`), "1");
+  const obtainedId = obtained.data.room.myHand[0]?.id;
+  assert.ok(["peach-fankui-source-hidden-a", "dodge-fankui-source-hidden-b"].includes(obtainedId), "the server chooses one actual Hand card");
+  const remainingSourceIds = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(game.source.id)}`)).map((held) => held.id);
+  assert.equal(remainingSourceIds.length, 1, "exactly one source Hand card remains");
+  assert.notEqual(remainingSourceIds[0], obtainedId, "the obtained card is removed from the live source Hand");
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(game.target.id)} AND json_extract(value,'$.id')='${obtainedId}'`), "1");
   assert.equal(obtained.data.room.log.filter((entry) => /obtains a card from Host with Retaliation/.test(entry)).length, 1);
+});
+
+test("Retaliation rejects client-selected Hand indexes and revalidates a vanished Hand", { timeout: 30_000 }, async () => {
+  const forged = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-forged-attack"), card("Peach", "fankui-forged-hidden")] });
+  const forgedResult = await requestAndSettle("trigger", { code: forged.code, token: forged.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
+  assert.equal(forgedResult.status, 409);
+  assert.equal(forgedResult.data.stale, true);
+  assert.equal(forgedResult.data.room.pending.kind, "trigger");
+
+  const vanished = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-vanished-attack"), card("Peach", "fankui-vanished-hidden")] });
+  setHand(vanished.source.id, [], 4, 4);
+  const vanishedResult = await requestAndSettle("trigger", { code: vanished.code, token: vanished.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand"] });
+  assert.equal(vanishedResult.status, 409);
+  assert.equal(vanishedResult.data.stale, true);
+  assert.equal(vanishedResult.data.room.pending.kind, "trigger");
 });
 
 test("Retaliation can obtain an eligible public Equipment or Judgement card and ignores empty sources", { timeout: 30_000 }, async () => {
@@ -171,7 +189,7 @@ test("Retaliation can obtain an eligible public Equipment or Judgement card and 
 test("Retaliation rejects stale source cards, handles a vanished source, and has one concurrent winner", { timeout: 30_000 }, async () => {
   const stale = await openFankuiAttack();
   setHand(stale.source.id, [], 4, 4);
-  const staleResult = await requestAndSettle("trigger", { code: stale.code, token: stale.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
+  const staleResult = await requestAndSettle("trigger", { code: stale.code, token: stale.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand"] });
   assert.equal(staleResult.status, 409);
   assert.equal(staleResult.data.stale, true);
   assert.equal(staleResult.data.room.pending.kind, "trigger");
@@ -186,8 +204,8 @@ test("Retaliation rejects stale source cards, handles a vanished source, and has
 
   const race = await openFankuiAttack({ sourceCards: [card("Attack", "fankui-race-attack"), card("Peach", "fankui-race-hidden")] });
   const [first, second] = await Promise.all([
-    requestAndSettle("trigger", { code: race.code, token: race.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] }),
-    requestAndSettle("trigger", { code: race.code, token: race.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] }),
+    requestAndSettle("trigger", { code: race.code, token: race.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand"] }),
+    requestAndSettle("trigger", { code: race.code, token: race.targetMember.token, providerId: "sima_yi_fankui", cardKeys: ["hand"] }),
   ]);
   assert.equal([first.status, second.status].filter((status) => status === 200).length, 1);
   const loser = [first, second].find((result) => result.status === 409);
@@ -212,8 +230,8 @@ test("host test flow follows Sima Yi only while he owns the Retaliation decision
   assert.equal(attacked.status, 200, JSON.stringify(attacked.data));
   assert.equal(attacked.data.room.meId, sima.id);
   assert.equal(attacked.data.room.currentAction.actorId, sima.id);
-  assert.deepEqual(attacked.data.room.currentAction.triggerOptions[0].selection.eligibleKeys, ["hand:0"]);
-  const obtained = await requestAndSettle("trigger", { code: room.code, token, providerId: "sima_yi_fankui", cardKeys: ["hand:0"] });
+  assert.deepEqual(attacked.data.room.currentAction.triggerOptions[0].selection.eligibleKeys, ["hand"]);
+  const obtained = await requestAndSettle("trigger", { code: room.code, token, providerId: "sima_yi_fankui", cardKeys: ["hand"] });
   assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
   assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(sima.id)} AND json_extract(value,'$.id')='peach-quick-fankui-hidden'`), "1");
   assert.equal(obtained.data.room.meId, source.id);
@@ -286,4 +304,3 @@ test("turn engine completes repeated rounds, rejects duplicate actions, and skip
   const invalidState = await requestAndSettle("draw", { code: game.code, token: defeated.member.token });
   assert.equal(invalidState.status, 409); assert.match(invalidState.data.error, /Game state check failed: The active turn does not belong to a living player/);
 });
-

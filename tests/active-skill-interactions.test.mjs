@@ -75,7 +75,7 @@ function retaliationRoom(actionRevision = "retaliation-ui-revision") {
     myHand: [], turnSeat: 1, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Sima Yi may use Retaliation, or skip", isMyAction: true,
     actionRevision, phase: "response", currentAction: {
       version: 3, kind: "trigger", actorId: "p1", deadline: 0, reason: "Sima Yi may use Retaliation, or skip", legalActions: ["trigger", "decline_trigger"], triggerEvent: "damage_suffered",
-      triggerOptions: [{ effectId: "sima_yi_fankui", label: "Retaliation", description: "Obtain one card from the damage source.", allowDecline: true, selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["hand:0"] } }],
+      triggerOptions: [{ effectId: "sima_yi_fankui", label: "Retaliation", description: "Obtain one card from the damage source.", allowDecline: true, selection: { type: "target_cards", targetId: "p2", min: 1, max: 1, eligibleKeys: ["hand"] } }],
     },
   });
 }
@@ -336,7 +336,7 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(picker().length, 1, "activating Retaliation opens the picker");
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "activation does not submit the trigger");
 
-  const eligibleCard = button(renderer, { "aria-label": "Hidden hand card 1" });
+  const eligibleCard = button(renderer, { "aria-label": "Hand" });
   assert.equal(eligibleCard.props["aria-pressed"], false);
   await act(async () => { eligibleCard.props.onClick(); });
   assert.equal(button(renderer, { children: "Use Retaliation" }).props.disabled, false);
@@ -345,18 +345,18 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(picker().length, 0, "clicking active Retaliation cancels the picker");
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(picker().length, 1);
-  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "re-entry clears selected cards");
+  assert.equal(button(renderer, { "aria-label": "Hand" }).props["aria-pressed"], false, "re-entry clears selected zones");
 
-  await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Hand" }).props.onClick(); });
   const revisedRoom = retaliationRoom("retaliation-ui-revision-2");
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: revisedRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: revisedRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(picker().length, 0, "a new action revision clears active Retaliation");
   await act(async () => { skillButton().props.onClick(); });
-  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "a new action revision clears stale selection");
-  await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
+  assert.equal(button(renderer, { "aria-label": "Hand" }).props["aria-pressed"], false, "a new action revision clears stale selection");
+  await act(async () => { button(renderer, { "aria-label": "Hand" }).props.onClick(); });
   await act(async () => { button(renderer, { children: "Use Retaliation" }).props.onClick(); });
-  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "sima_yi_fankui", cardKeys: ["hand:0"] }]);
+  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "sima_yi_fankui", cardKeys: ["hand"] }]);
 
   const skipRendererRoom = retaliationRoom("retaliation-ui-skip");
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: skipRendererRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: skipRendererRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });

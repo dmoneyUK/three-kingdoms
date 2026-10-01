@@ -268,8 +268,8 @@ test("Sima Yi Retaliation projects only source Playing Area cards and consumes i
     targetHero: "simayi",
     damageAmount: 2,
   };
-  assert.deepEqual(getTriggeredEffects(context), [{ effectId: "sima_yi_fankui", label: "Retaliation", selection: { type: "target_cards", targetId: "source", min: 1, max: 1, eligibleKeys: ["hand:0", equipment.id, judgement.id] } }]);
-  assert.deepEqual(resolveTriggeredEffect("sima_yi_fankui", context, { cardKeys: ["hand:0"] })?.outcome, { kind: "gain_target_card", sourceId: "source", targetId: "sima", targetCardKey: "hand:0" });
+  assert.deepEqual(getTriggeredEffects(context), [{ effectId: "sima_yi_fankui", label: "Retaliation", selection: { type: "target_cards", targetId: "source", min: 1, max: 1, eligibleKeys: ["hand", equipment.id, judgement.id] } }]);
+  assert.deepEqual(resolveTriggeredEffect("sima_yi_fankui", context, { cardKeys: ["hand"] })?.outcome, { kind: "gain_target_card", sourceId: "source", targetId: "sima", targetCardKey: "hand" });
   assert.equal(getTriggeredEffects(context, ["sima_yi_fankui"]).length, 0);
   assert.equal(getTriggeredEffects({ ...context, sourceHand: [], sourceEquipment: [], sourceJudgement: [] }).length, 0);
   assert.equal(getTriggeredEffects({ ...context, targetHero: "cao-cao" }).length, 0);

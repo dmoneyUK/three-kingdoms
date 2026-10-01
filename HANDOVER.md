@@ -1,5 +1,27 @@
 # Three Kingdoms — current handover
 
+## Current state — Sima Yi Retaliation random Hand hardening — 2026-10-01
+
+Retaliation preserves the profile-button activation and target-card selection
+window introduced in 746adc5, but its projected Hand choice is now one opaque
+`hand` zone. The UI no longer renders or submits `hand:0`/`hand:1` choices.
+Equipment and Judgement cards continue to use exact visible-card IDs.
+
+The server accepts the Hand zone only for Retaliation, reloads the live source
+Playing Area during trigger resolution, chooses one physical Hand card with
+authoritative randomness, and applies the existing private transfer and
+continuation path. Empty or changed Hands return stale recovery, and the
+existing CAS claim preserves one concurrent winner and card conservation.
+
+Mounted coverage protects the preserved activation/cancel/re-entry UX and
+opaque Hand submission. API coverage protects random physical selection,
+privacy, forged index rejection, vanished-Hand revalidation, public-zone
+selection, stale safety, and concurrency.
+
+Recommended next work remains the existing generic Lü Bu / Unrivaled semantic
+multi-response correction. Do not broaden this fix into another hero or
+provider-specific gameplay protocol.
+
 ## Latest presentation update — two supplied hero portraits — 2026-10-01
 
 Added and wired the two supplied portraits through the shared

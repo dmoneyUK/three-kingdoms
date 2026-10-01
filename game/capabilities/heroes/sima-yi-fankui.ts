@@ -4,7 +4,7 @@ const id = "sima_yi_fankui";
 
 function eligibleKeys(context: TriggerContext) {
   return [
-    ...(context.sourceHand ?? []).map((_, index) => `hand:${index}`),
+    ...(context.sourceHand?.length ? ["hand"] : []),
     ...(context.sourceEquipment ?? []).map((card) => card.id),
     ...(context.sourceJudgement ?? []).map((card) => card.id),
   ];
