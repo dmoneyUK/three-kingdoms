@@ -18,7 +18,7 @@ import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
-import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupResponsePending, type HarvestPending, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
+import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupResponsePending, type HarvestPending, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
@@ -1727,18 +1727,40 @@ async function continueAfterDefeat(roomId: string, pending: DyingPending) {
 function dyingResumeState(pending: DyingPending, resume?: PlayerRow | null) {
   return pending.resumePending
     ? { phase: "response", pendingJson: serializePending(pending.resumePending) }
+    : pending.resumeEffect
+      ? { phase: "resolving", pendingJson: null }
     : { phase: pending.resumePhase ?? phaseAfterAttack(resume), pendingJson: null };
 }
 
 async function continueDyingResolution(roomId: string, pending: DyingPending) {
   if (await finishIfWon(roomId)) return;
   if (pending.resumePending) await advanceGroup(roomId);
+  else if (pending.resumeEffect) await continueDyingResumeEffect(roomId, pending.resumeEffect);
   else if (pending.resumeTrigger) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
     if (room) await continueDamageSufferedEvent(room, pending.resumeTrigger, rows.results ?? [], parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), parse<string[]>(room.log_json, []));
   }
   else if (!pending.resumePhase?.startsWith("draw")) await continueAfterDying(roomId, pending.resumePlayerId);
+}
+
+/** Resume a small persisted effect after canonical Dying/rescue settles. */
+async function continueDyingResumeEffect(roomId: string, effect: DyingResumeEffect) {
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  if (!room || room.phase !== "resolving" || room.pending_json !== null) return;
+  const player = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(effect.playerId, roomId).first<PlayerRow>();
+  if (!player?.alive) return;
+  const deck = parse<Card[]>(room.deck_json, []);
+  const discard = parse<Card[]>(room.discard_json, []);
+  const log = parse<string[]>(room.log_json, []);
+  const draw = drawCards(deck, discard, effect.amount, log);
+  let nextLog = addHistory(draw.log, `${player.name} ${effect.label} and draws ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"}.`, player.id);
+  for (const drawn of draw.drawn) nextLog = addPrivateDrawEvent(nextLog, player, drawn);
+  const hand = parse<Card[]>(player.hand_json, []);
+  const updated = await db().prepare("UPDATE players SET hand_json = ? WHERE id = ? AND hand_json = ?").bind(JSON.stringify([...hand, ...draw.drawn]), player.id, player.hand_json).run();
+  if ((updated.meta.changes ?? 0) <= 0) return;
+  await db().prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ? AND phase = 'resolving' AND pending_json IS NULL")
+    .bind(JSON.stringify(draw.deck), JSON.stringify(draw.discard), JSON.stringify(nextLog), roomId).run();
 }
 
 async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: PlayerRow | null, source?: PlayerRow | null) {
@@ -1823,9 +1845,9 @@ async function expireDyingRescue(roomId: string) {
   }
 }
 
-async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation) {
+async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect) {
   const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat); const first = order[0];
-  const pending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: first?.id ?? target.id, remainingIds: order.slice(1).map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), reason: `Decide whether to give Peach to ${target.name}` };
+  const pending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: first?.id ?? target.id, remainingIds: order.slice(1).map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
   await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), db().prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id)]);
   await advanceDyingRescue(room.id);
 }
@@ -3686,22 +3708,19 @@ export async function POST(request: Request) {
         ]);
         }
       } else if (execution.outcome.kind === "lose_draw") {
-        const draw = drawCards(deck, discard, execution.outcome.draw, log);
-        deck = draw.deck; discard = draw.discard; log = addHistory(draw.log, `${liveMe.name} uses Self Sacrifice, loses 1 HP, and draws ${draw.drawn.length} cards.`, liveMe.id);
-        for (const drawn of draw.drawn) log = addPrivateDrawEvent(log, liveMe, drawn);
-        const nextHand = [...hand, ...draw.drawn];
         const hp = Math.max(0, (liveMe.hp ?? 1) - execution.outcome.lose);
         const nextState = { ...skillState, turnPlayerId: liveMe.id };
+        const resumeEffect: DyingResumeEffect = { kind: "draw_cards", playerId: liveMe.id, amount: execution.outcome.draw, label: "uses Self Sacrifice" };
         if (hp <= 0) {
           await startDyingRescue(liveRoom, null, { ...liveMe, hp }, livePlayers, deck, discard, log, [
-            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), liveMe.id),
             db.prepare("UPDATE rooms SET skill_state_json = ? WHERE id = ?").bind(JSON.stringify(nextState), room.id),
-          ], liveMe, "play", undefined, hp);
+          ], liveMe, "play", undefined, hp, undefined, undefined, resumeEffect);
         } else {
           await db.batch([
-            db.prepare("UPDATE players SET hand_json = ?, hp = ? WHERE id = ?").bind(JSON.stringify(nextHand), hp, liveMe.id),
-            db.prepare("UPDATE rooms SET phase = 'play', pending_json = NULL, deck_json = ?, discard_json = ?, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(nextState), JSON.stringify(log), room.id),
+            db.prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, liveMe.id),
+            db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, skill_state_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(nextState), JSON.stringify(log), room.id),
           ]);
+          await continueDyingResumeEffect(room.id, resumeEffect);
         }
       }
       return json({ room: await roomState(code, token) });

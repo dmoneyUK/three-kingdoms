@@ -248,7 +248,8 @@ export type TriggerPending = {
   resolvedEffectIds?: string[];
   continuation: TriggerContinuation;
 };
-export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; origin?: AttackOrigin; reason: string };
+export type DyingResumeEffect = { kind: "draw_cards"; playerId: string; amount: number; label: string };
+export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; resumeEffect?: DyingResumeEffect; origin?: AttackOrigin; reason: string };
 export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | CardDistributionPending | DeckReorderPending | ResponsePending | TriggerPending | DyingPending;
 
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {

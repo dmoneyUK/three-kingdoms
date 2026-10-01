@@ -48,8 +48,8 @@ Known boundary: this is generic semantic settlement only. No provider-specific
 routes, artwork, Huang Gai, or UX work was added. Preserve current-action
 authority, private projection, stale/replay rejection, and Quick Test parity.
 
-Recommended next work is the next separately confirmed Standard gameplay
-correction; Huang Gai and UX remain out of scope.
+Recommended next work is functional UX improvement; Huang Gai timing is now
+complete and no further Standard hero correction is active.
 
 ## Current state — Sima Yi Retaliation random Hand hardening — 2026-10-01
 
@@ -494,22 +494,18 @@ Required architecture: make the response continuation track **semantic responses
 
 Required regression coverage: ordinary + converted mixed responses, Serpent Spear, Guan Yu, Zhao Yun, Zhen Ji, Eight Trigrams, Entourage, Influencing, normal Duel, Diao Chan Lust Duel, reload, stale/replay rejection, privacy, and physical-card conservation.
 
-### 1. Huang Gai / Self Sacrifice — verify 1 HP timing, then fix if confirmed
+### Completed: Huang Gai / Self Sacrifice timing correction
 
-Current active-skill execution is represented as `lose_draw`; the audited route currently draws before completing the lethal HP-loss/Dying boundary when Huang Gai starts at 1 HP. This may expose the newly drawn cards before rescue.
+Self Sacrifice now loses 1 HP before drawing. Its persisted generic draw
+continuation is carried by the canonical Dying/rescue pending state when the
+loss reaches 0 HP. Successful Peach or First Aid rescue resumes it exactly
+once; failed rescue defeats Huang Gai without drawing. Nonlethal use loses 1 HP
+and draws two cards normally. The loss is explicit HP loss and never emits
+`damage_suffered`.
 
-The source audit for this task checked `docs/STANDARD_HERO_REFERENCE.md`,
-`game/heroes.ts`, and `docs/OFFICIAL_CARD_REFERENCE.md`. They reproduce the
-printed Self Sacrifice text and general Standard rules, but none states
-whether the HP loss or draw is resolved first at 1 HP. The ruling is therefore
-still unresolved and gameplay was intentionally not changed.
-
-If an authoritative ruling confirms HP loss before draw, implement it through
-a persisted continuation: lose 1 HP; if still alive, draw 2; if HP reaches
-zero, enter Dying/rescue; after successful rescue, resume the suspended Self
-Sacrifice and draw 2. Reuse the generic HP-loss/Dying continuation style
-already used by Pan Feng rather than introducing a Huang-Gai-specific Dying
-engine.
+API regressions cover nonlethal use, lethal ordering, Peach and First Aid
+rescue, reload during Dying, failed rescue, stale/double rescue, refill, and
+physical-card conservation.
 
 ### Completed: Sima Yi / Retaliation random-Hand hardening
 
@@ -526,11 +522,18 @@ Do not change the source zones for Guan Yu God of War, Zhen Ji Empress Dowager, 
 
 ## Execution order and next work
 
-Complete the remaining work in this order: **(1) generic Unrivaled/multi-response correction; (2) verify and, if confirmed, fix Huang Gai timing; (3) Sima Yi random-Hand hardening.**
+The Phase-1 gameplay-correction work is complete: Lord-role legality,
+Unrivaled semantic response count, Retaliation random-Hand selection, and
+Huang Gai timing are all validated.
 
 After each correction, add focused deterministic regressions and run the relevant API/capability suites. Do not reduce the implementation status from **30/30 heroes / 46/46 skills**; these are corrections to completed skills.
 
-**After these confirmed gameplay bugs are closed, the next active product work is UX improvement.** Review the actual normal-multiplayer and Quick Test flows and turn the findings into a small functional UX backlog covering action/turn clarity, decision prompts, card and target selection, response/trigger controls, waiting states, mobile/touch usability, feedback for rejected/stale actions, setup/hero selection, match-end flow, and Quick Test perspective switching.
+**The next active product work is UX improvement.** Review the actual
+normal-multiplayer and Quick Test flows and turn the findings into a small
+functional UX backlog covering action/turn clarity, decision prompts, card and
+target selection, response/trigger controls, waiting states, mobile/touch
+usability, feedback for rejected/stale actions, setup/hero selection,
+match-end flow, and Quick Test perspective switching.
 
 Keep the larger Standard integration matrix and end-to-end/release hardening as **future TODO testing phases**, as defined in `ROADMAP.md`. Graphic/art redesign is separate from functional UX work unless explicitly requested.
 

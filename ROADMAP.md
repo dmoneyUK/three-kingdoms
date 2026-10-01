@@ -17,14 +17,14 @@ The next roadmap should therefore prioritise **correctness closure and release c
 
 ---
 
-## Phase 1 — Close the remaining Standard correctness gate
+## Phase 1 — Standard correctness phase complete
 
 The Cao Cao/Sun Quan Lord-role correction, Lü Bu/Unrivaled semantic
-multi-response correction, and Sima Yi/Retaliation hidden-Hand hardening are
-complete and are no longer Phase-1 work items.
+multi-response correction, Sima Yi/Retaliation hidden-Hand hardening, and
+Huang Gai/Self Sacrifice timing correction are complete.
 
-**Goal:** resolve the remaining rules question discovered by the completed
-cross-hero audit.
+**Goal:** preserve the validated Standard rules corrections and move to
+functional UX improvement.
 
 ### Completed: Cao Cao / Sun Quan Lord-role correctness
 
@@ -66,22 +66,20 @@ Regression coverage must include mixed physical/converted responses, Serpent Spe
 
 ### 1C. Huang Gai / Self Sacrifice timing
 
-The authoritative project material checked so far does not establish the exact
-ordering at 1 HP. `docs/STANDARD_HERO_REFERENCE.md` and `game/heroes.ts`
-reproduce the printed text, “lose 1 HP in order to draw 2 cards”; the project
-reference material does not state whether the draw precedes or follows the HP
-loss/Dying window. `docs/OFFICIAL_CARD_REFERENCE.md` contains the Standard card
-reference and general rule material, but no Huang Gai timing ruling.
-
-Do not change gameplay until an authoritative WTK ruling resolves this.
-
-If HP loss resolves before the draw, replace the current atomic `lose_draw` ordering with a persisted continuation:
+Self Sacrifice now persists a generic draw continuation after losing 1 HP.
+When lethal, the canonical Dying/rescue window opens before either card is
+drawn; successful Peach or First Aid rescue resumes the continuation and draws
+exactly two cards, while defeat draws none. Nonlethal use loses 1 HP and then
+draws two cards normally. The HP loss is explicit HP loss, not damage, so it
+does not emit `damage_suffered`.
 
 `lose 1 HP → if alive draw 2 → if at 0 enter Dying/rescue → after successful rescue resume and draw 2`.
 
 Reuse the canonical HP-loss/Dying machinery rather than creating a Huang-Gai-specific rescue path.
 
-**Exit gate:** implementation and deterministic regression agree with the verified WTK timing; no newly drawn card can incorrectly participate in an earlier Dying window.
+Regression coverage includes nonlethal use, 1 HP Peach and First Aid rescue,
+failed rescue, reload, stale/double rescue, no damage reaction, refill, and
+physical-card conservation. The Phase-1 exit gate is complete.
 
 ### Completed: Sima Yi / Retaliation hidden-Hand hardening
 
@@ -167,7 +165,8 @@ Then require the GitHub Actions `build-and-test`, Cloudflare deployment and prod
 
 ## Next active phase after bug fixes — UX improvement
 
-After the confirmed Phase 1 gameplay defects are fixed, **UX improvement becomes the next active development phase**.
+With the confirmed Phase 1 gameplay defects fixed, **UX improvement is now the
+next active development phase**.
 
 Do not automatically begin the large integration/release-testing phases first. Keep those as future TODO work while UX is improved.
 
@@ -220,8 +219,8 @@ Preserve the architecture already established by the project:
 
 ## Roadmap order
 
-1. **Now:** Phase 1 — close the confirmed Standard correctness defects.
-2. **Next:** UX improvement based on the actual current game flow.
+1. **Complete:** Phase 1 — Standard correctness corrections.
+2. **Now:** UX improvement based on the actual current game flow.
 3. **Future TODO:** Standard integration testing.
 4. **Future TODO:** end-to-end, persistence, release and production validation testing.
 5. **Later:** choose expansion gameplay or another product direction explicitly.

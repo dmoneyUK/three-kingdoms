@@ -38,8 +38,8 @@ full fast/API suite and existing Guo Jia/Sima Yi and Lord regressions remain
 green.
 
 Current stage remains Stage 7 product polish with Standard gameplay correctness
-maintained. Huang Gai and UX work remain outside this change; the next
-milestone is the next separately confirmed Standard gameplay correction.
+maintained. Huang Gai timing is now corrected; the next milestone is
+functional UX improvement.
 
 ## Gameplay correctness — Sima Yi Retaliation random Hand hardening — 2026-10-01
 
@@ -355,16 +355,12 @@ See:
 ## Active gameplay work
 
 The Cao Cao/Sun Quan Lord-role correction, Lü Bu/Unrivaled semantic
-multi-response correction, and Sima Yi/Retaliation random-Hand hardening are
-complete. The remaining gameplay-correction gate is **Huang Gai / Self
-Sacrifice**: the project’s authoritative references do not establish whether
-the 1 HP loss is completed before the two-card draw. No gameplay change has
-been made pending that ruling.
+multi-response correction, Sima Yi/Retaliation random-Hand hardening, and
+Huang Gai/Self Sacrifice timing correction are complete. The gameplay-
+correction phase is complete; functional UX improvement is now the next active
+work.
 
-After this ruling is resolved and, if required, implemented and validated,
-functional UX improvement becomes the next active work.
-
-The Standard completion count remains **30/30 heroes and 46/46 skills** while these interaction defects are corrected.
+The Standard completion count remains **30/30 heroes and 46/46 skills**.
 
 ## Gameplay architecture
 
