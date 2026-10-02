@@ -211,3 +211,61 @@ Then STOP.
 ## Acceptance
 
 FIX1 passes only if Damage evidence is classified without overclaiming, any genuine independent/root Damage claim is backed by a real production path, the physical Duel flow proves public scene equality across two viewers, private controls remain private, existing non-Group/Group semantics remain intact, and all regressions are green.
+
+## C3-03-FIX1 execution result
+
+- Implementation/docs/tests commit: `eadce7147774a232612eade483e56025595667d1` (`test: close C3 damage and duel evidence gaps`).
+- Files changed: `README.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, `tests/api/presentation-v2-engine.test.mjs`, and `tests/api/yue-jin-dauntless.test.mjs`.
+- No gameplay, React/CSS, C2 identity, delayed Lightning behavior, or Dying barrier was changed.
+
+### Damage production inventory and classification
+
+- `app/api/rooms/route.ts:2666` is the shared `resolveSourcedDamage` boundary. Its `inheritedCausal` value comes from explicit causal/resume handles; absent such a handle, `damageSufferedTriggerPending` at line 2726 creates a new `DAMAGE` root through `createCausalRoot`.
+- `app/api/rooms/route.ts:4249-4263` is a real independent/root production path: Yue Jin Dauntless calls `resolveSourcedDamage` without a causal or resume causal handle and labels the effect `Dauntless`. The real Sima Yi and Cao Cao branches now prove this path.
+- `app/api/rooms/route.ts:4369` is a second independent/root production path: Sowing Distrust calls the same boundary without causal input. It was audited but not duplicated as a new fixture because Dauntless already proves the shared production path.
+- `app/api/rooms/route.ts:1137-1152` is not independent/root Damage: delayed Lightning passes `judgement.causal` into `resolveSourcedDamage`; the resulting `DAMAGE` frame intentionally inherits the delayed Judgement interaction, retains Guo Jia as historical origin, and has a null current source.
+- Attack, Duel, Group child Damage, Judgement replacement, and other resumed damage call sites pass existing causal/resume handles or use their established parent/child continuation. They are not independent roots merely because the active frame stage is `DAMAGE`.
+
+### Evidence correction and Duel proof
+
+- Genuine independent/root Damage: **PROVEN** by the real Dauntless engine/API fixture. It asserts one root frame, `DAMAGE` stage, source Yue Jin, target/current participant/resolver/decision actor, interaction/root identity, repeated public scene across Yue Jin and Sima Yi viewers, and final clearing in the no-post-reaction Cao Cao branch. Sima Yi additionally proves continuation through a real Fankui reaction without changing the root identity.
+- Inherited delayed-Lightning `DAMAGE` stage: **PROVEN** as inherited Damage-stage presentation only. The existing Guo Jia fixture proves one Judgement-owned interaction, repeated Legacy re-entry, viewer equality, and final clearing. It is no longer classified as independent/root Damage.
+- Physical Duel: **PROVEN** across two viewers before and after one response handoff. Both viewers receive equal full `interactionScene`, including equal public `decisionActorId`, while response options remain absent from the non-acting viewer. Interaction/root identity remains unchanged.
+
+### Corrected evidence matrix
+
+| Evidence | Result |
+| --- | --- |
+| Attack public scene | PROVEN |
+| Attack response-Judgement continuity | PARTIAL; existing causal support remains without a new child model |
+| Duel public scene and exchange stability | PROVEN |
+| Duel second-viewer equality and public decision actor | PROVEN before and after response handoff |
+| Genuine independent/root Damage | PROVEN through Dauntless; Sowing Distrust shares the audited production entry point |
+| Inherited delayed-Lightning Damage-stage scene | PROVEN, explicitly not independent/root |
+| Judgement | PROVEN |
+| Delayed Judgement fresh activation identity | PROVEN |
+| Historical delayed `originRef` | PARTIAL; not fabricated |
+| Independent/root Negation | PROVEN |
+| Group SAME_FRAME Negation regression | PROVEN |
+| Repeated-read stability | PROVEN across the existing Attack, Duel, Damage, Judgement, Negation, and Group fixtures |
+| Settlement / scene clearing | PROVEN for real terminal Attack, inherited Lightning, and independent Dauntless Damage paths where the fixture reaches settlement |
+| Malformed/non-authoritative fail-closed behavior | PROVEN |
+| Compatibility-field divergence | NONE FOUND |
+
+### Validation
+
+- Focused projector and causality: `node --test tests/presentation-v2.test.mjs tests/presentation-causality.test.mjs` — 29/29.
+- Focused real PresentationV2/Duel/Damage/Judgement tests: `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/presentation-causality.test.mjs,tests/api/lobby-heroes-wei.test.mjs,tests/api/judgement.test.mjs,tests/api/yue-jin-dauntless.test.mjs ... node tests/run-tests.mjs` — 64 tests, 63 passed, 1 assertion was corrected, then the final focused subset `presentation-v2-engine + yue-jin-dauntless` passed 27/27. The final full suite below is the acceptance evidence.
+- Full fast suite: `npm run test:fast` — 113/113.
+- Full API suite: `npm run test:api` — 238/238 across 4 shards.
+- `npm run build` — PASS.
+- `npm run lint` — PASS.
+- `git diff --check` — PASS.
+
+### Remaining C3 gaps
+
+FIX1 is implemented and validated. Remaining boundaries are the historical
+delayed `originRef`, explicit Attack-response-to-Judgement child continuity,
+transition-direction/animation semantics, and the Dying presentation barrier.
+Do not start C3-04, C4, C5, React/CSS migration, or gameplay changes in this
+handoff.
