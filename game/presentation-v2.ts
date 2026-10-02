@@ -246,7 +246,9 @@ function interactionSceneFor(
 ): PresentationInteractionScene | null {
   const activeFrame = groupValues?.activeFrame ?? envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
   if (!groupValues && !envelope) return null;
-  const proven = Boolean(envelope && activeFrame && (!groupValues || groupValues.groupFrame) && envelope.frames.some((frame) => frame.frameId === envelope.checkpoint.frameId));
+  const checkpointFrame = envelope?.frames.find((frame) => frame.frameId === envelope.checkpoint.frameId) ?? null;
+  const coherentCheckpoint = Boolean(activeFrame && checkpointFrame && envelope?.checkpoint.frameId === activeFrame.frameId && envelope.checkpoint.stage === activeFrame.stage);
+  const proven = Boolean(envelope && activeFrame && (!groupValues || groupValues.groupFrame) && coherentCheckpoint);
   const activeCurrent = activeFrame?.current;
   const sourceId = groupValues?.sourceId ?? firstString(activeFrame?.origin.originSourceId, activeCurrent?.currentSourceId);
   const targetIds = groupValues?.targetIds ?? activeFrame?.origin.originalTargetIds ?? [];

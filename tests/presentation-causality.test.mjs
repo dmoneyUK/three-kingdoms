@@ -32,6 +32,17 @@ test("parser rejects structurally impossible envelopes", () => {
   assert.equal(parseCausalEnvelope(JSON.stringify(mismatchedCheckpoint)), null);
 });
 
+test("parser characterization allows a cross-frame checkpoint and projector must defend the boundary", () => {
+  const original = envelope();
+  const second = createCausalFrame({
+    stage: "DAMAGE",
+    origin: { originSourceId: "source", originEffect: "damage", originalTargetIds: ["target"] },
+    current: { currentSourceId: "source", currentEffect: "damage", currentTargetIds: ["target"], resolvingPlayerId: "target" },
+  });
+  const incoherent = { ...original, frames: [original.frames[0], second], checkpoint: { ...original.checkpoint, frameId: second.frameId, stage: second.stage } };
+  assert.ok(parseCausalEnvelope(JSON.stringify(incoherent)));
+});
+
 test("server-owned envelope survives JSON persistence without private viewer state", () => {
   const original = envelope();
   const reloaded = parseCausalEnvelope(JSON.stringify(original));

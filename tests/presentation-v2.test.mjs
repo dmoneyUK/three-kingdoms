@@ -193,6 +193,24 @@ test("C3 Group public semantics stay viewer-equivalent while decision ownership 
   assert.equal(JSON.stringify(first.groupResolution).includes("eligible"), false);
 });
 
+test("C3-02-FIX1 fails closed when the checkpoint belongs to another frame", () => {
+  const pending = flows[3].points[0].pending;
+  const groupFrame = { frameId: "group-frame", parentFrameId: null, stage: "GROUP_RESOLUTION", origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B", "C"] }, current: { currentSourceId: "A", currentEffect: "Raining Arrows", currentTargetIds: ["B"], resolvingPlayerId: "B" } };
+  const damageFrame = { frameId: "damage-frame", parentFrameId: "group-frame", stage: "DAMAGE", origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B"], originRef: { interactionId: "mismatch-interaction", frameId: "group-frame" } }, current: { currentSourceId: "A", currentEffect: "damage", currentTargetIds: ["B"], resolvingPlayerId: "C" } };
+  const base = { version: 1, interactionId: "mismatch-interaction", frames: [groupFrame, damageFrame], activeFrameId: "damage-frame", checkpoint: { checkpointId: "checkpoint-group", frameId: "group-frame", stage: "GROUP_RESOLUTION" }, presentationRevision: 7 };
+  const mismatchedFrame = projectPresentationV2({ pending, currentAction: action({ actorId: "C" }), actionRevision: "mismatch-frame", timeline: [], causalEnvelope: base });
+  assert.equal(mismatchedFrame.interactionScene?.semantics, "UNPROVEN");
+  assert.equal(mismatchedFrame.interactionScene?.interactionId, null);
+  assert.equal(mismatchedFrame.interactionScene?.activeFrameId, null);
+  assert.equal(mismatchedFrame.interactionScene?.checkpointId, null);
+  assert.equal(mismatchedFrame.groupResolution?.semantics, "UNPROVEN");
+
+  const mismatchedStage = projectPresentationV2({ pending, currentAction: action({ actorId: "C" }), actionRevision: "mismatch-stage", timeline: [], causalEnvelope: { ...base, checkpoint: { checkpointId: "checkpoint-stage", frameId: "damage-frame", stage: "GROUP_RESOLUTION" } } });
+  assert.equal(mismatchedStage.interactionScene?.semantics, "UNPROVEN");
+  assert.equal(mismatchedStage.interactionScene?.interactionId, null);
+  assert.equal(mismatchedStage.interactionScene?.checkpointId, null);
+});
+
 test("cardKind on a single-target continuation does not create groupResolution", () => {
   const fixture = flows[0].points[0];
   const projected = projectPresentationV2({

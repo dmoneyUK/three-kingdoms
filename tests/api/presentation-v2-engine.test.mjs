@@ -422,6 +422,11 @@ test("FIX14 malformed Group-to-Damage storage never reconstructs a child authori
   const childFrameId = before.data.causalEnvelope.activeFrameId;
   assert.ok(groupFrameId);
   assert.notEqual(childFrameId, groupFrameId);
+  sql(`UPDATE rooms SET causal_envelope_json = ${quote(JSON.stringify({ ...before.data.causalEnvelope, checkpoint: { checkpointId: "incoherent-checkpoint", frameId: groupFrameId, stage: "GROUP_RESOLUTION" } }))} WHERE code=${quote(setup.code)}`);
+  const incoherent = await state(setup.code, setup.targetMember.token);
+  assert.equal(incoherent.data.causalEnvelope.checkpoint.frameId, groupFrameId);
+  assert.equal(incoherent.data.presentationV2.interactionScene?.semantics, "UNPROVEN");
+  assert.equal(incoherent.data.presentationV2.interactionScene?.interactionId, null);
   sql(`UPDATE rooms SET causal_envelope_json = '{malformed-fix14' WHERE code=${quote(setup.code)}`);
   const declined = await requestAndSettle("decline_trigger", { code: setup.code, token: setup.targetMember.token });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));

@@ -3891,6 +3891,9 @@ interactionScene
 
 The causal identity fields (`interactionId`, frame IDs, checkpoint ID, and
 presentation revision) are copied only from a proven parsed causal envelope.
+That proof additionally requires `checkpoint.frameId === activeFrameId` and
+`checkpoint.stage === activeFrame.stage`; a checkpoint for another existing
+frame is not a valid snapshot and must remain `UNPROVEN`.
 The Group source/effect/ordered target/current-participant semantics are shared
 with the accepted `groupResolution` compatibility projection; the compatibility
 object is derived from the same semantic values and must not diverge. Public

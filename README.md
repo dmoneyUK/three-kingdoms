@@ -20,6 +20,10 @@ snapshot. It is envelope-owned, excludes private CurrentAction controls, and
 characterizes root/same-frame/child-frame structure without inferring visual
 transitions or migrating React.
 
+C3-02-FIX1 closes the authority gate: a scene is `PROVEN` only when the active
+frame and checkpoint share both frame ID and stage. Cross-frame or cross-stage
+stored authority fails closed as `UNPROVEN`.
+
 This is a projector/model/test change only. No React/CSS migration, gameplay
 rule change, Dying presentation barrier, historical `originRef`, or C4/C5 work
 is included. The next milestone is reviewer validation of C3-01; visual UX
