@@ -7,7 +7,7 @@ Design commit: `d7c125a`
 
 Files changed:
 
-- `docs/UX_V2_0C0_CAUSAL_IDENTITY_DESIGN.md`
+- `docs/UX_V2_0C_CAUSAL_IDENTITY_DESIGN.md`
 - `HANDOVER.md`
 
 Design-only work completed. No production gameplay, engine, React, CSS, or
