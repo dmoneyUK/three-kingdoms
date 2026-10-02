@@ -233,6 +233,36 @@ test("C3-03 generic scene projects non-Group causal frame semantics", () => {
   });
 });
 
+test("C4-01 projects a proven Dying barrier from causal authority and public Pending actor", () => {
+  const frame = {
+    frameId: "dying-frame",
+    parentFrameId: "damage-frame",
+    stage: "DYING",
+    origin: { originSourceId: "A", originEffect: "Attack", originalTargetIds: ["B"] },
+    current: { currentSourceId: "A", currentEffect: "damage", currentTargetIds: ["B"], resolvingPlayerId: "C" },
+  };
+  const envelope = { version: 1, interactionId: "dying-interaction", frames: [
+    { frameId: "damage-frame", parentFrameId: null, stage: "DAMAGE", origin: frame.origin, current: frame.current },
+    frame,
+  ], activeFrameId: frame.frameId, checkpoint: { checkpointId: "dying-checkpoint", frameId: frame.frameId, stage: frame.stage }, presentationRevision: 8 };
+  const projected = projectPresentationV2({
+    pending: { kind: "dying", actorId: "C", targetId: "B", sourceId: "A", causal: { interactionId: "dying-interaction", frameId: "dying-frame" } },
+    currentAction: action({ kind: "dying", actorId: null }), actionRevision: "dying-revision", timeline: [], causalEnvelope: envelope,
+  });
+  assert.deepEqual(projected.dyingBarrier, {
+    semantics: "PROVEN", interactionId: "dying-interaction", rootFrameId: "damage-frame", activeFrameId: "dying-frame", parentFrameId: "damage-frame",
+    checkpointId: "dying-checkpoint", presentationRevision: 8, stage: "DYING", dyingPlayerId: "B", rescuerId: "C", decisionActorId: "C", state: "RESCUE_CHOICE",
+  });
+  assert.equal(projected.interactionScene?.decisionActorId, "C");
+  const incoherent = projectPresentationV2({
+    pending: { kind: "dying", actorId: "C", targetId: "B", sourceId: "A", causal: { interactionId: "wrong", frameId: "dying-frame" } },
+    currentAction: action({ kind: "dying", actorId: null }), actionRevision: "dying-bad", timeline: [], causalEnvelope: envelope,
+  });
+  assert.equal(incoherent.dyingBarrier?.semantics, "UNPROVEN");
+  assert.equal(incoherent.dyingBarrier?.interactionId, null);
+  assert.equal(incoherent.dyingBarrier?.decisionActorId, null);
+});
+
 test("cardKind on a single-target continuation does not create groupResolution", () => {
   const fixture = flows[0].points[0];
   const projected = projectPresentationV2({

@@ -115,8 +115,19 @@ test("engine-backed Dying/rescue proves the separate timer arm and reconnect beh
   assert.equal(view.presentationV2.decision.readyAfterEventId, null);
   assert.ok(view.presentationV2.rootContext);
   assert.equal(view.presentationV2.activeContext?.kind, "dying");
+  assert.equal(view.presentationV2.dyingBarrier?.semantics, "PROVEN");
+  assert.equal(view.presentationV2.dyingBarrier?.stage, "DYING");
+  assert.equal(view.presentationV2.dyingBarrier?.dyingPlayerId, dyingPlayer.id);
+  assert.equal(view.presentationV2.dyingBarrier?.rescuerId, bobPlayer.id);
+  assert.equal(view.presentationV2.dyingBarrier?.decisionActorId, bobPlayer.id);
+  assert.equal(view.presentationV2.dyingBarrier?.state, "RESCUE_CHOICE");
   const beforeReconnect = (await state(game.code, game.members[2].token)).data;
   assert.deepEqual(beforeReconnect.presentationV2.rootContext, view.presentationV2.rootContext);
+  assert.deepEqual(beforeReconnect.presentationV2.dyingBarrier, view.presentationV2.dyingBarrier);
+  assert.equal(beforeReconnect.currentAction.options?.some((option) => option.providerId === "card"), true, "the acting rescuer keeps private Peach options after reconnect");
+  const uninvolvedDyingViewer = (await state(game.code, game.members[0].token)).data;
+  assert.deepEqual(uninvolvedDyingViewer.presentationV2.dyingBarrier, view.presentationV2.dyingBarrier);
+  assert.equal(uninvolvedDyingViewer.currentAction.options, undefined, "rescue options remain private to the acting viewer");
   assert.equal(beforeReconnect.currentAction.deadline, 0);
   const armed = await requestAndSettle("start_rescue_timer", { code: game.code, token: bob.token });
   assert.equal(armed.status, 200);
@@ -129,6 +140,47 @@ test("engine-backed Dying/rescue proves the separate timer arm and reconnect beh
   assert.equal(timedOut.status, 200, JSON.stringify(timedOut.data));
   const afterTimeout = (await state(game.code, bob.token)).data;
   assert.ok(afterTimeout.phase !== "resolving" || afterTimeout.currentAction.kind !== "dying", "expired rescue does not leave the same expired decision active");
+});
+
+test("C4-01 Dying skips non-rescuers and advances one causal checkpoint between real rescuers", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, targetMember, bobMember, carolMember] = game.members;
+  const [source, target, bob, carol] = game.room.players;
+  setHand(source.id, [card("Attack", "c4-dying-attack")], 4, 4);
+  setHand(target.id, [], 1, 4);
+  setHand(bob.id, [card("Peach", "c4-dying-bob-peach")], 4, 4);
+  setHand(carol.id, [card("Peach", "c4-dying-carol-peach")], 4, 4);
+  setTurn(game.code, source.seat);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-c4-dying-attack", targetId: target.id, preserveResponse: true });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const declinedAttack = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token, preserveResponse: true });
+  assert.equal(declinedAttack.status, 200, JSON.stringify(declinedAttack.data));
+  await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a", preserveResponse: true });
+  const dying = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", preserveResponse: true });
+  assert.equal(dying.data.room.phase, "dying", JSON.stringify(dying.data.room));
+  const bobView = await waitForState(game.code, bobMember.token, (room) => room.phase === "dying" && room.currentAction.actorId === bob.id);
+  const bobBarrier = bobView.presentationV2.dyingBarrier;
+  assert.equal(bobBarrier?.semantics, "PROVEN");
+  assert.equal(bobBarrier?.dyingPlayerId, target.id);
+  assert.equal(bobBarrier?.decisionActorId, bob.id);
+  assert.equal(bobView.currentAction.options?.some((option) => option.providerId === "card"), true);
+  const uninvolved = await state(game.code, source ? host.token : targetMember.token);
+  assert.deepEqual(uninvolved.data.presentationV2.dyingBarrier, bobBarrier);
+  assert.equal(uninvolved.data.currentAction.options, undefined);
+  const bobSkipped = await request("skip_rescue", { code: game.code, token: bobMember.token });
+  assert.equal(bobSkipped.status, 200, JSON.stringify(bobSkipped.data));
+  const carolView = await waitForState(game.code, carolMember.token, (room) => room.phase === "dying" && room.currentAction.actorId === carol.id);
+  assert.equal(carolView.presentationV2.dyingBarrier?.semantics, "PROVEN");
+  assert.equal(carolView.presentationV2.dyingBarrier?.dyingPlayerId, target.id);
+  assert.equal(carolView.presentationV2.dyingBarrier?.decisionActorId, carol.id);
+  assert.equal(carolView.presentationV2.dyingBarrier?.interactionId, bobBarrier?.interactionId);
+  assert.equal(carolView.presentationV2.dyingBarrier?.rootFrameId, bobBarrier?.rootFrameId);
+  assert.equal(carolView.presentationV2.dyingBarrier?.activeFrameId, bobBarrier?.activeFrameId);
+  assert.notEqual(carolView.presentationV2.dyingBarrier?.checkpointId, bobBarrier?.checkpointId, JSON.stringify({ bob: bobBarrier, carol: carolView.presentationV2.dyingBarrier, pending: authoritativePending(game.code) }));
+  assert.ok((carolView.presentationV2.dyingBarrier?.presentationRevision ?? 0) > (bobBarrier?.presentationRevision ?? 0));
+  const carolOtherViewer = await state(game.code, targetMember.token);
+  assert.deepEqual(carolOtherViewer.data.presentationV2.dyingBarrier, carolView.presentationV2.dyingBarrier);
+  assert.equal(carolOtherViewer.data.currentAction.options, undefined);
 });
 
 test("engine-backed Group damage trigger resumes the Group parent and next participant", { timeout: 30_000 }, async () => {

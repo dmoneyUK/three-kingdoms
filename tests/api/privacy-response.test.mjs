@@ -50,7 +50,7 @@ test("an eligible Negation responder times out as a silent Pass", async () => {
   assert.equal(advanced.data.room.log.some((entry) => /passes the Negation|Checking|Skipping|timed out/.test(entry)), false);
 });
 
-test("Dying rescue gives every living rescuer a private Peach decision", { timeout: 30_000 }, async () => {
+test("Dying rescue exposes only real Peach blockers and skips empty seats", { timeout: 30_000 }, async () => {
   async function lethal(peach) {
     const game = await createHumanGame(); const [sourceMember, targetMember] = game.members; const [source, target] = game.room.players;
     const attack = card("Attack", peach ? "peach-holder-attack" : "peach-empty-attack");
@@ -60,12 +60,13 @@ test("Dying rescue gives every living rescuer a private Peach decision", { timeo
     return { game, sourceMember, targetMember, source, target };
   }
   const empty = await lethal(false); const emptyRescue = (await state(empty.game.code, empty.sourceMember.token)).data;
-  assert.equal(emptyRescue.phase, "dying"); assert.equal(emptyRescue.currentAction.kind, "dying"); assert.deepEqual(emptyRescue.currentAction.legalActions, ["skip_rescue"]);
-  const skipped = await requestAndSettle("skip_rescue", { code: empty.game.code, token: empty.sourceMember.token, preserveResponse: true }); assert.equal(skipped.status, 200); assert.equal(skipped.data.room.phase, "dying");
+  assert.notEqual(emptyRescue.phase, "dying", "no legal Peach blocker is scanned automatically");
+  assert.equal(emptyRescue.presentationV2.dyingBarrier, null);
 
   const holder = await lethal(true); const holderRescue = (await state(holder.game.code, holder.sourceMember.token)).data;
   assert.equal(holderRescue.phase, "dying"); assert.ok(holderRescue.currentAction.legalActions.includes("skip_rescue")); assert.ok(holderRescue.currentAction.legalActions.includes("give_peach"));
   const holderSkipped = await requestAndSettle("skip_rescue", { code: holder.game.code, token: holder.sourceMember.token }); assert.equal(holderSkipped.status, 200);
+  assert.notEqual(holderSkipped.data.room.phase, "dying");
   assert.deepEqual(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(holder.source.id)}`)).map((item) => item.id), ["peach-peach-holder"]);
 });
 

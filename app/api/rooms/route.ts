@@ -1,5 +1,4 @@
 import { env } from "cloudflare:workers";
-import { getRequestExecutionContext } from "vinext/shims/request-context";
 import { cardDefinition, effectivePhysicalSuit, isAttackCard, makeDeck, shuffle } from "../../../game/cards";
 import type { Card, EquipmentZone } from "../../../game/model";
 import { canDeclareAttack as canDeclareAttackFor, effectiveDistanceBetween, nextAliveSeat, playPhaseAfterAttack, playersInTurnOrder } from "../../../game/rules";
@@ -1768,12 +1767,6 @@ function playingStateIssue(room: RoomRow, players: PlayerRow[]) {
   return null;
 }
 
-async function continueInBackground(work: () => Promise<void>) {
-  const context = getRequestExecutionContext();
-  if (context) context.waitUntil(Promise.resolve().then(work));
-  else await work();
-}
-
 async function resetAudit(roomId: string) {
   await db().batch([
     db().prepare("DELETE FROM game_audit"),
@@ -1931,9 +1924,18 @@ async function advanceDyingRescue(roomId: string) {
     if (!room || room.phase !== "dying" || pending?.kind !== "dying") return;
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const players = rows.results ?? [];
     const actor = players.find((player) => player.id === pending.actorId && player.alive); const target = players.find((player) => player.id === pending.targetId); const source = players.find((player) => player.id === pending.sourceId) ?? null;
-    // Every living player in the public rescue order receives a private
-    // decision, even when their current private options are empty.
-    if (actor) return;
+    // Scan automatically over dead/ineligible seats. A public rescue
+    // checkpoint exists only when the current actor has a real Peach
+    // response option; the projector must never expose these scans as fake
+    // decisions.
+    const rescueOptions = actor ? responseDecisionFor(pending, responseContext(actor, players, room.turn_seat))?.options ?? [] : [];
+    if (actor && rescueOptions.length > 0) {
+      const envelope = causalEnvelopeAtStage(room, pending.causal, "DYING", { currentSourceId: pending.sourceId, currentEffect: pending.origin ?? "damage", currentTargetIds: [pending.targetId], resolvingPlayerId: actor.id });
+      if (envelope && JSON.stringify(envelope) !== room.causal_envelope_json) {
+        await causalRoomStateWrite(roomId, { phase: "dying", pending, log: parse<string[]>(room.log_json, []), causalEnvelope: envelope }, room.pending_json).run();
+      }
+      return;
+    }
     const nextId = pending.remainingIds?.[0];
     if (nextId) {
       const nextPending: DyingPending = { ...pending, actorId: nextId, remainingIds: pending.remainingIds.slice(1), deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
@@ -5482,7 +5484,7 @@ export async function POST(request: Request) {
       }
     } else if (pending.remainingIds[0]) {
       const nextPending: DyingPending = { ...pending, actorId: pending.remainingIds[0], remainingIds: pending.remainingIds.slice(1), deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
-      await db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ? WHERE id = ? AND phase = 'resolving'").bind(serializePending(nextPending), room.id).run(); const immediateRoom = await roomState(code, token); await continueInBackground(() => advanceDyingRescue(room.id)); return json({ room: immediateRoom });
+      await db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ? WHERE id = ? AND phase = 'resolving'").bind(serializePending(nextPending), room.id).run(); await advanceDyingRescue(room.id); return json({ room: await roomState(code, token) });
     } else {
       await defeatDyingPlayer(liveRoom, pending, target, source);
     }

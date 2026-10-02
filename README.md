@@ -1,6 +1,16 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C3-04 — 2026-10-02
+## Current stage — UX2.0C4-01 — 2026-10-02
+
+C4-01 implements the server-authoritative Dying/Peach presentation barrier.
+`PresentationV2.dyingBarrier` is proven only from the persisted causal
+envelope and the current legal rescue decision; automatic or ineligible rescue
+scans remain invisible checkpoints. Real rescuer handoffs preserve the
+Interaction/Frame and advance the checkpoint/revision, while Peach options
+remain private to the acting viewer. Successful rescue, no-rescue settlement,
+viewer equality, reconnect/repeated reads, and malformed fail-closed behavior
+are covered. This remains model/projector/test scope: React/CSS migration,
+animation timing, and C4-02 are not started.
 
 C2 is closed and accepted. C3-01 now projects Group/AOE public semantics from
 the authoritative causal envelope: source, ordered affected targets, current

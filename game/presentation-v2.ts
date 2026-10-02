@@ -57,12 +57,28 @@ export type PresentationInteractionScene = {
   continuity: InteractionSceneContinuity;
 };
 
+export type PresentationDyingBarrier = {
+  semantics: "PROVEN" | "UNPROVEN";
+  interactionId: string | null;
+  rootFrameId: string | null;
+  activeFrameId: string | null;
+  parentFrameId: string | null;
+  checkpointId: string | null;
+  presentationRevision: number | null;
+  stage: "DYING" | null;
+  dyingPlayerId: string | null;
+  rescuerId: string | null;
+  decisionActorId: string | null;
+  state: "RESCUE_CHOICE" | "UNPROVEN";
+};
+
 export type PresentationV2 = {
   rootContext: { eventId: string | null; kind: string | null; sourceId: string | null; originalTargetIds: readonly string[]; resolutionId: string | null } | null;
   activeContext: { kind: string | null; stage: string | null; sourceId: string | null; currentTargetIds: readonly string[]; eventIds: readonly string[]; resolutionId: string | null } | null;
   parentContext: { kind: string | null; sourceId: string | null; targetIds: readonly string[]; resumeKind: string | null } | null;
   participants: readonly PresentationParticipant[];
   interactionScene: PresentationInteractionScene | null;
+  dyingBarrier: PresentationDyingBarrier | null;
   groupResolution: {
     semantics: "PROVEN" | "UNPROVEN";
     interactionId: string | null;
@@ -243,6 +259,7 @@ function interactionSceneFor(
   envelope: CausalEnvelope | null,
   currentAction: PresentationV2Input["currentAction"],
   groupValues: GroupProjectionValues | null,
+  pending: unknown,
 ): PresentationInteractionScene | null {
   const activeFrame = groupValues?.activeFrame ?? envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
   if (!groupValues && !envelope) return null;
@@ -253,6 +270,8 @@ function interactionSceneFor(
   const sourceId = groupValues?.sourceId ?? firstString(activeFrame?.origin.originSourceId, activeCurrent?.currentSourceId);
   const targetIds = groupValues?.targetIds ?? activeFrame?.origin.originalTargetIds ?? [];
   const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
+  const pendingRecord = record(pending);
+  const dyingPending = pendingRecord?.kind === "dying" ? pendingRecord : null;
   const relation: InteractionSceneContinuity["relation"] = !proven
     ? "UNPROVEN"
     : activeFrame?.parentFrameId
@@ -273,12 +292,39 @@ function interactionSceneFor(
     effect: groupValues?.effect ?? activeFrame?.origin.originEffect ?? null,
     targetIds,
     currentParticipantId,
-    decisionActorId: currentAction?.actorId ?? null,
+    decisionActorId: dyingPending?.actorId && proven ? dyingPending.actorId : currentAction?.actorId ?? null,
     activeResolverId: activeCurrent?.resolvingPlayerId ?? null,
     activeSourceId: activeCurrent?.currentSourceId ?? null,
     activeTargetIds: activeCurrent?.currentTargetIds ?? [],
     participantIds: groupValues?.participantIds ?? [],
     continuity: { relation, parentFrameId: proven ? activeFrame?.parentFrameId ?? null : null },
+  };
+}
+
+function dyingBarrierFor(envelope: CausalEnvelope | null, pending: unknown): PresentationDyingBarrier | null {
+  const pendingRecord = record(pending);
+  if (pendingRecord?.kind !== "dying") return null;
+  const activeFrame = envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+  const checkpointFrame = envelope?.frames.find((frame) => frame.frameId === envelope.checkpoint.frameId) ?? null;
+  const causal = record(pendingRecord.causal);
+  const proven = Boolean(
+    envelope && activeFrame && activeFrame.stage === "DYING" && checkpointFrame?.frameId === activeFrame.frameId
+      && envelope.checkpoint.stage === activeFrame.stage
+      && causal?.interactionId === envelope.interactionId && causal.frameId === activeFrame.frameId,
+  );
+  return {
+    semantics: proven ? "PROVEN" : "UNPROVEN",
+    interactionId: proven ? envelope?.interactionId ?? null : null,
+    rootFrameId: proven ? envelope?.frames.find((frame) => frame.parentFrameId === null)?.frameId ?? null : null,
+    activeFrameId: proven ? envelope?.activeFrameId ?? null : null,
+    parentFrameId: proven ? activeFrame?.parentFrameId ?? null : null,
+    checkpointId: proven ? envelope?.checkpoint.checkpointId ?? null : null,
+    presentationRevision: proven ? envelope?.presentationRevision ?? null : null,
+    stage: proven ? "DYING" : null,
+    dyingPlayerId: stringValue(pendingRecord.targetId),
+    rescuerId: proven ? stringValue(pendingRecord.actorId) : null,
+    decisionActorId: proven ? stringValue(pendingRecord.actorId) : null,
+    state: proven ? "RESCUE_CHOICE" : "UNPROVEN",
   };
 }
 
@@ -342,7 +388,8 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   if (settlementEvent) relevantIds.push(settlementEvent.id);
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(input.causalEnvelope ?? null, input.pending, group);
-  const interactionScene = interactionSceneFor(input.causalEnvelope ?? null, input.currentAction, groupValues);
+  const interactionScene = interactionSceneFor(input.causalEnvelope ?? null, input.currentAction, groupValues, input.pending);
+  const dyingBarrier = dyingBarrierFor(input.causalEnvelope ?? null, input.pending);
   const rootContext = (root || active || rootEvent) ? {
     eventId: rootEvent?.id ?? null,
     kind: root?.kind ?? active?.kind ?? null,
@@ -356,6 +403,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     parentContext: parent ? { kind: parent.kind, sourceId: parent.sourceId, targetIds: parent.targetIds, resumeKind: parent.kind } : null,
     participants: participants(active, group),
     interactionScene,
+    dyingBarrier,
     groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues) : null,
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,

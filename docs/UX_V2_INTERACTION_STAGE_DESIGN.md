@@ -3989,3 +3989,52 @@ presentation barrier. These are intentionally bounded to later work: C3 does
 not redesign causal identity, add private data, change gameplay, or implement
 React/CSS consumption. C3 is **READY TO CLOSE** pending reviewer acceptance;
 the next authorized boundary is C4's Dying presentation barrier.
+
+### 0.97 UX2.0C4-01 Dying / Peach stable presentation barrier — 2026-10-02
+
+C4-01 adds the first stable public Dying semantic object without moving rescue
+legality into presentation code. `PresentationV2.dyingBarrier` contains the
+proven causal Interaction/Frame/checkpoint/revision, the dying player, and the
+current real rescuer. Its proof requires a parsed envelope whose active frame
+and checkpoint are the same `DYING` frame, plus a `DyingPending` whose causal
+handle points to that active frame. A missing, mismatched, or malformed
+envelope produces `UNPROVEN` with causal IDs and decision actor cleared.
+
+The engine scans the persisted rescue order using the existing semantic Peach
+decision resolver. Dead, empty-handed, or otherwise ineligible seats are
+advanced automatically and do not publish a fake rescue checkpoint. A legal
+rescuer is the only stable barrier. When that rescuer declines and another
+legal rescuer becomes active, the same Interaction/root/active Frame is kept
+while the checkpoint and presentation revision advance and the decision actor
+changes. `CurrentAction` continues to carry private Peach/provider options only
+to the acting viewer; the public barrier never contains card IDs, provider
+choices, or hidden eligibility.
+
+Production flow inventory: `startDyingRescue` creates the ordered
+`DyingPending` and carries the inherited causal handle; `advanceDyingRescue`
+scans to the next legal Peach decision or calls the existing defeat settlement;
+`give_peach` and `skip_rescue` claim the pending state and continue through the
+same scanner; `expireDyingRescue` uses the same ordered continuation; and
+`continueDyingResolution`, `continueAfterDefeat`, and the Group/Damage resume
+helpers return to the parent continuation. `causalEnvelopeAtStage` remains the
+server-only checkpoint writer. No new gameplay rule or client-side legality was
+introduced.
+
+Evidence matrix:
+
+| Evidence | Result | Boundary |
+| --- | --- | --- |
+| Stable Dying focus / first legal rescuer | PROVEN | Real Attack -> Damage -> Dying fixtures. |
+| Empty/dead/ineligible rescue scan | PROVEN | No fake public checkpoint. |
+| Rescuer decline -> next legal rescuer | PROVEN | Same Interaction/Frame; new checkpoint/revision. |
+| Viewer equality / reconnect / repeated read | PROVEN | Public barrier equal; private options remain actor-only. |
+| Successful Peach rescue | PROVEN | Barrier clears after recovery and parent continuation resumes. |
+| Multi-Peach and partial rescue | PROVEN | Existing Dying/concurrency fixtures remain green. |
+| No-rescue/death settlement | PROVEN | Existing ordered-rescue and defeat fixtures. |
+| Parent Damage/Group continuity | PROVEN | Existing Group Damage -> Dying fixtures. |
+| Malformed causal authority | PROVEN | Projector fails closed as `UNPROVEN`. |
+| Dying-triggered child effect | NOT IMPLEMENTED IN GAME | No production path was added for evidence. |
+
+This is still a server model/projector/test boundary. React/CSS consumers,
+animation timing, transition direction, historical `originRef`, and C4-02
+remain outside this slice; C5 is not started.
