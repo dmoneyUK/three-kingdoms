@@ -2,32 +2,46 @@
 
 ## Reviewer status
 
-The submitted UX2.0C2 result is **PARTIAL**. Do not start C3.
+UX2.0C2-FIX remains **PARTIAL**. Do not start C3.
 
-Confirmed from the submitted result:
-- causal handles now propagate through several Pending/Continuation paths;
-- server-owned causal-context helpers were added;
-- Attack/Attack-targeted, Group, Duel, Negation, Damage, Judgement and Borrowed Sword received partial propagation;
-- no React/CSS, Group-classification, Dying-barrier or PresentationV2 migration was started;
-- reported validation: causal-context 2/2, focused causal 8/8, fast 107/107, API 212/212, build/lint/diff-check passed.
+The latest slice materially improves Borrowed Sword runtime causal wiring, but the submitted result itself and repository inspection still show the core C2 acceptance gates are open.
 
-The submitted result explicitly leaves two C2 acceptance gates open:
-1. room causal envelope + Pending/phase/timeline are not yet updated through one consistent authoritative atomic/CAS boundary for all supported transitions;
-2. complete runtime child-Frame creation/resume wiring is not yet finished.
+### Accepted from this slice
 
-These gaps block C3.
+- Real Borrowed Sword target selection now creates an `ATTACK_RESPONSE` child Frame under a `FORCED_ACTION` parent.
+- The child keeps the same `interactionId` and has an explicit `parentFrameId`.
+- Borrowed Sword refusal/invalidation has an explicit parent-resume path.
+- Root Negation and ordinary Attack response entry have additional envelope persistence coverage.
+- No C3 Group classification, Dying barrier, PresentationV2 migration, React/CSS work, or gameplay-rule redesign was introduced.
+- Reported validation remains green: causal-context 2/2, focused causal 8/8, fast 107/107, API 212/212, build/lint/diff-check passed.
+
+### Why C2 is still not accepted
+
+Repository review confirms the C2 document still explicitly lists these as open:
+
+1. centralized envelope persistence is not used by every supported automatic Pending/Continuation transition;
+2. Group-nested damage and independent nested-damage child Frame runtime wiring are not complete;
+3. Damage → Dying causal lifetime lacks the required engine-backed persisted-envelope proof;
+4. Judgement lifetime is not fully proven end-to-end;
+5. delayed activation / `originRef` lifetime remains UNPROVEN;
+6. explicit Interaction settlement / envelope clearing remains unproven;
+7. reconnect / second-viewer / stale-double-action assertions are incomplete for the C2 scenario matrix.
+
+The existing `tests/api/presentation-causality.test.mjs` still mainly proves generic D1 persistence/viewer behavior by manually storing an envelope. That is useful C1 evidence but does not replace real-flow C2 engine evidence.
+
+One additional design caution: `recoverCausalEnvelope()` is described as best-effort recovery from a Pending handle. Do not expand this into heuristic mid-flow reconstruction. C2 identity must originate from authoritative root/child creation and persisted state. Recovery may only preserve already-authoritative IDs from an existing typed causal context, and must never infer missing causal structure from card names/logs.
 
 ---
 
-# NEXT TASK — UX2.0C2-FIX: Close Runtime Causal Propagation
+# NEXT TASK — UX2.0C2-FIX2: Close Remaining Engine-Backed Causal Gates
 
 ## Objective
 
-Finish C2. Convert the current partial causal-reference propagation into authoritative persisted Interaction/Frame lifetime across the supported real gameplay flows.
+Finish the remaining C2 gates. Do not add more broad causal-reference plumbing unless it directly closes one of the evidence gaps below.
 
-Do not expand into C3.
+The goal is to reach a point where C2 can be accepted from **real persisted gameplay flows**, not helper/unit evidence.
 
-## Branch / workflow
+## Workflow
 
 Work only on `ux-v2`.
 
@@ -38,268 +52,232 @@ git checkout ux-v2
 git pull --ff-only origin ux-v2
 ```
 
-Do not merge or modify `main`. Do not self-merge `ux-v2`.
+Do not modify/merge `main`. Do not self-merge.
 
-The Code Agent does **not** clean or replace HANDOVER. When finished, append a concise execution-result section to the bottom of this file and push it with the implementation. The reviewer will clean and replace HANDOVER after review.
+The Code Agent only appends its execution result to this HANDOVER. The reviewer will clean and replace the file after review.
 
-## 1. Audit the partial C2 implementation first
+## Step 1 — build a failing/passing evidence matrix first
 
-Before editing, inspect:
-- `game/causal-context.ts`
-- `game/presentation-causality.ts`
-- `app/api/causal-envelope.ts`
-- all Pending/Continuation causal-reference additions
-- every room SQL write touched by the supported flows
-- existing C1/C2 causal tests
-- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
-
-Create a short table in the C2 doc for each flow:
-- root envelope created?
-- same Frame preserved?
-- child Frame actually created in persisted envelope?
-- parent actually resumed?
-- checkpoint updated?
-- envelope + gameplay state atomic?
-- settlement clears envelope?
-- engine-backed test?
-
-Do not rely on the previous handoff claim; verify code paths.
-
-## 2. Centralize authoritative room causal persistence
-
-Implement the smallest reusable server/orchestrator persistence boundary needed so a semantic transition writes the relevant authoritative state together:
-
-```
-pending_json
-causal_envelope_json
-phase
-log_json / timeline state when changed by the same transition
-```
-
-Requirements:
-- successful semantic transition cannot persist new Pending with stale envelope;
-- cannot persist new envelope with stale Pending;
-- failed/stale/double action must not advance checkpoint/revision or create a Frame;
-- preserve existing stale-command protection;
-- legacy `NULL` envelope remains supported;
-- avoid raw causal-envelope SQL duplicated across many branches.
-
-Use D1 batch/CAS patterns already used by this route. Do not invent a second rules engine.
-
-## 3. Finish authoritative root creation
-
-For every C2-supported independent root, the envelope must be created at authoritative root acceptance, not repaired later by presentation/projector logic.
-
-At minimum verify real supported roots for:
-- Attack;
-- Duel;
-- Negation-capable stratagem root where applicable;
-- Group/AOE root;
-- Borrowed Sword;
-- Judgement/deferred judgement entry where applicable.
-
-If a path is intentionally unsupported in C2, mark it UNPROVEN. Do not synthesize identity from card name, log text, `resolutionId`, or timeline event ID.
-
-## 4. Finish same-Frame runtime propagation
-
-Engine-backed tests must prove same Interaction + same Frame through:
-- Attack response;
-- Duel alternating response actors;
-- Negation and counter-Negation;
-- ordinary Group participant advancement when no independent nested effect starts;
-- Judgement reveal/replacement/effective-result steps that belong to one Judgement Frame.
-
-Checkpoint may change at stable player-facing decisions. `actionRevision` may change independently.
-
-Do not create a child Frame merely because a response uses an Attack card inside Duel.
-
-## 5. Finish REAL child-Frame wiring
-
-This is a hard acceptance gate.
-
-For each real independently resolving nested effect that exists in current gameplay:
-
-### Group nested effect
-- parent Group Frame remains stored;
-- nested effect creates a new child `frameId`;
-- child `parentFrameId` = parent Group Frame;
-- same `interactionId`;
-- child becomes active;
-- after child settlement, parent becomes active again exactly once;
-- new parent checkpoint is created only at the real resume boundary.
-
-### Borrowed Sword
-Expected unless engine evidence disproves it:
-- Borrowed Sword = parent Frame;
-- forced normal Attack = child Frame;
-- child Attack keeps its Frame through Dodge/Damage/Dying;
-- child settlement resumes Borrowed Sword parent;
-- one Interaction across both.
-
-### Nested damage trigger
-If the existing trigger launches an independently resolving effect:
-- create child Frame;
-- preserve parent;
-- resume parent after child settlement.
-
-If engine evidence shows a candidate is not independently resolving, document that and keep it same Frame rather than forcing the design.
-
-Tests must inspect the persisted/public `causalEnvelope`, not only causal handles embedded in Pending.
-
-## 6. Finish Damage → Dying lifetime
-
-For a real lethal Attack path prove:
-- Attack root Interaction survives;
-- Frame remains the same unless an independently resolving child actually starts;
-- Stage moves to DAMAGE then DYING at semantic boundaries;
-- immutable Attack origin survives;
-- current resolver/target reflects Dying/rescue state;
-- reconnect does not regenerate identity;
-- rescue/survival or defeat resumes/settles correctly.
-
-Do NOT change rescue timer semantics.
-Do NOT implement the separate Dying presentation-barrier task yet.
-
-## 7. Finish Group runtime behavior without C3 classification
-
-Do not set final `resolutionSemantics`.
-
-Prove:
-- participant progression keeps parent Group Interaction/Frame;
-- nested child push/resume works;
-- topology/defeat changes do not create a new Interaction by themselves;
-- envelope and Group continuation cannot become torn.
-
-Participant ordering semantics remain C3.
-
-## 8. Judgement runtime lifetime
-
-Prove through the real engine:
-- judgement entry;
-- reveal;
-- replacement/modifier decision if available;
-- effective result;
-- resume to delayed parent.
-
-If Judgement is a nested independent effect, make it a child Frame of its actual parent. Internal Judgement decisions stay within that Judgement Frame unless engine semantics require another independent effect.
-
-## 9. Delayed activation
-
-Use a real implemented delayed/persistent effect if available.
-
-Required semantics:
-- old Interaction settles;
-- later activation starts a NEW `interactionId`;
-- new root Frame;
-- use `originRef` only when authoritative provenance is available;
-- never use `parentFrameId` across two settled/separate Interactions.
-
-If no real path can prove this safely, record `UNPROVEN`; do not fake a test fixture and call it engine evidence.
-
-## 10. Settlement / clear rule
-
-Implement and test one explicit authoritative rule:
-
-Clear/close `causal_envelope_json` only when:
-- root and all child Frames have settled;
-- no synchronous causal work remains;
-- no blocking decision remains.
-
-Do not clear between checkpoints in one Interaction.
-Do not leak a completed Interaction into the next unrelated action.
-
-C2 does not need to solve later UI settlement display; document that as later presentation work.
-
-## 11. Compatibility and corruption behavior
-
-Prove:
-- legacy `NULL` envelope gameplay still works;
-- malformed envelope does not crash gameplay;
-- do not reconstruct malformed/missing causal identity from logs/card names;
-- reconnect/read does not mutate identity;
-- different viewers receive identical public causal identity.
-
-## 12. Required engine-backed evidence matrix
-
-At minimum report each as `PROVEN`, `PARTIAL`, `UNPROVEN`, or `NOT IMPLEMENTED IN GAME`:
+Update `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` before implementation with this exact matrix and current status:
 
 - Attack → Dodge
 - Attack → Damage
 - Attack → Damage → Dying
-- Duel alternating responses
+- Duel alternating responders
 - Negation → counter-Negation
 - Group participant progression
 - Group → nested child → parent resume
 - Borrowed Sword → forced Attack child → parent resume
-- Judgement reveal/replacement/effective/resume
-- nested damage trigger
+- Judgement reveal → replacement → effective result → resume
+- independent nested damage trigger → child → parent resume
 - redirect/current-target mutation
 - delayed future activation
 - settlement/clear
-- stale/double command identity safety
-- reconnect/viewer stability
+- reconnect identity stability
+- second-viewer public identity stability
+- stale/double-action identity safety
+- legacy NULL envelope
+- malformed envelope
 
-C2-FIX is accepted only when all scenarios required by existing implemented engine behavior are proven, or a concrete engine limitation is documented. Do not hide PARTIAL items.
+For each row record:
+`PROVEN | PARTIAL | UNPROVEN | NOT IMPLEMENTED IN GAME`
 
-## 13. Tests
+and name the exact API/engine test that proves it.
 
-Add/extend real API/orchestrator tests. Do not rely only on unit helper tests.
+Do not mark a row PROVEN from helper-only tests.
 
-For stable boundaries assert as relevant:
-```
-interactionId
-activeFrameId
-parentFrameId
-stage
-checkpointId
-presentationRevision
-origin
-current
-```
+## Step 2 — centralize atomic semantic writes
 
-Also assert:
-- identity equality/inequality across boundaries;
-- persisted envelope after reload;
-- parent resume;
-- envelope clearing;
-- stale action does not duplicate identities;
-- second viewer stability.
+Finish the authoritative persistence boundary.
 
-Do not assert literal random UUID values.
+For each supported semantic transition that changes Pending/phase/timeline and causal state, persist the relevant values together:
+- `pending_json`
+- `causal_envelope_json`
+- phase
+- timeline/log when that transition changes it.
 
-## 14. Documentation
+Use existing D1 batch/CAS/stale-action mechanisms.
 
-Update:
-`docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
+Acceptance proof:
+- real API test observes no new Pending with old envelope;
+- stale/repeated command does not create another checkpoint/frame/revision;
+- failed guarded write leaves both gameplay and causal state unchanged.
 
-Include:
-- authoritative transition map;
-- persistence strategy;
-- exact root/child/resume/settlement functions;
-- evidence matrix;
-- remaining UNPROVEN items;
-- deviations from C0/C1.
+Do not scatter ad-hoc repair SQL.
 
-Do not rewrite C0/C1 history.
+## Step 3 — prohibit heuristic envelope reconstruction
 
-## 15. Scope exclusions
+Audit every use of `recoverCausalEnvelope()`.
 
-Do NOT:
-- start C3;
-- classify Group as SEQUENTIAL/ORDERED/GROUP;
-- implement Group order metadata;
-- implement Dying `readyAfterEventId` barrier changes;
-- migrate PresentationV2 to the envelope;
-- modify React/CSS;
-- change game rules to make a causal test pass;
-- repurpose `resolutionId`, event IDs, or `actionRevision`.
+Allowed only when:
+- a typed persisted `CausalContext` already contains authoritative `interactionId` + `frameId`;
+- the recovery recreates the same known identity after legacy/migration storage absence;
+- no parent/child/origin relationship is guessed.
 
-## 16. Validation
+Not allowed:
+- deriving root/frame identity from card kind/name;
+- timeline/log scan;
+- `resolutionId`;
+- event ID;
+- actionRevision;
+- current Pending shape without an authoritative causal handle.
 
-Run and report exact results:
+If a safe reconstruction cannot recreate the full frame tree, prefer legacy/null behavior rather than inventing a partial tree that falsely claims authority.
+
+Add tests for this boundary.
+
+## Step 4 — Attack → Damage → Dying engine proof
+
+Add a real lethal Attack API test.
+
+At stable boundaries assert persisted/public envelope:
+- root Attack creates one interactionId/frameId;
+- response boundary preserves them;
+- Damage Stage uses same Interaction/Frame;
+- Dying Stage uses same Interaction/Frame unless actual independent child work starts;
+- Attack origin source/effect/original target remain unchanged;
+- current resolver/target reflects current Dying decision;
+- reconnect preserves IDs/checkpoint;
+- rescue/survival or defeat reaches correct settlement;
+- final causal envelope clears only after synchronous Interaction work is done.
+
+Do not alter rescue timer behavior.
+Do not implement Dying `readyAfterEventId` in this task.
+
+## Step 5 — Group nested child runtime proof
+
+Use the real Group continuation path already present in the engine.
+
+Prove from persisted envelope:
+1. parent Group Frame active;
+2. participant progression remains same Interaction + parent Frame;
+3. independently resolving nested effect creates a child Frame;
+4. child.parentFrameId = Group Frame;
+5. child becomes active;
+6. child settles;
+7. parent Group Frame resumes exactly once;
+8. checkpoint changes at the actual resume boundary;
+9. no premature Interaction clearing.
+
+Do not classify Group ordering semantics.
+
+If the engine path does not actually represent an independent child effect, document that evidence and select a real independent nested effect instead.
+
+## Step 6 — independent nested-damage trigger proof
+
+Use an existing real damage-trigger flow.
+
+If it independently resolves:
+- push child Frame;
+- same Interaction;
+- explicit parent;
+- settle child;
+- resume parent.
+
+If it is only a modifier/same-effect continuation:
+- keep same Frame;
+- document why.
+
+Do not force child Frames just to satisfy the design.
+
+## Step 7 — Judgement end-to-end proof
+
+Use a real Judgement flow and prove:
+- Judgement entry identity;
+- reveal;
+- replacement/modifier decision where available;
+- effective result;
+- delayed parent resume.
+
+All internal same-effect Judgement decisions keep the Judgement Frame.
+
+If Judgement is itself nested under another active effect, it must have a real parent Frame and resume that parent after settlement.
+
+Test persisted/public envelope at each stable boundary.
+
+## Step 8 — Duel and Negation regression identity proofs
+
+Add/extend engine-backed assertions:
+
+### Duel
+- alternating responder changes actionRevision/checkpoint as appropriate;
+- interactionId and frameId stay stable;
+- response Attack does NOT create child Frame;
+- legacy `resolutionId` changes do not define causal identity.
+
+### Negation
+- original root origin remains immutable;
+- Negation and counter-Negation stay in the correct causal Frame unless engine evidence shows independent child effect;
+- changing public event references does not rewrite interaction/frame/root origin.
+
+## Step 9 — delayed activation
+
+Use a real delayed effect if available.
+
+Required:
+- original Interaction is settled/cleared;
+- later activation starts new interactionId + new root frameId;
+- `originRef` links provenance only when authoritative historical identity was persisted;
+- no parentFrameId crosses Interaction lifetime.
+
+If the engine does not persist enough provenance, mark this row UNPROVEN and document the exact missing authoritative field. Do not add speculative reconstruction.
+
+## Step 10 — explicit settlement/clear rule
+
+Centralize the rule that clears active causal state.
+
+Clear `causal_envelope_json` only when:
+- root + descendants are settled;
+- no synchronous continuation remains;
+- no blocking decision remains.
+
+Test:
+- not cleared while child active;
+- not cleared when parent resumes;
+- cleared after root completion;
+- unrelated next action gets a fresh interactionId;
+- stale/double action after settlement cannot resurrect old envelope.
+
+Do not solve final UI settlement retention here.
+
+## Step 11 — reconnect / viewer / corruption proof
+
+Real-flow API tests must cover:
+- reconnect during Attack/Dying or another active flow keeps identity;
+- acting and waiting viewers see identical public envelope;
+- private CurrentAction options differ without changing public envelope;
+- legacy NULL remains functional;
+- malformed stored envelope does not crash;
+- malformed/missing envelope is not heuristically reconstructed into fake authority.
+
+## Step 12 — Borrowed Sword regression
+
+Keep the new Borrowed Sword child Frame behavior and add enough assertion to ensure later fixes do not regress it:
+- parent FORCED_ACTION;
+- child ATTACK_RESPONSE;
+- same Interaction;
+- explicit parentFrameId;
+- child response/damage remains child Frame;
+- child completion resumes parent;
+- root settlement eventually clears.
+
+## Step 13 — exact evidence requirement
+
+A scenario can be marked PROVEN only when an engine/API test observes the real persisted/public envelope through the relevant transition.
+
+Helper tests prove helper semantics only.
+
+For every PROVEN row, the C2 document must name the test file + test name.
+
+Any still-PARTIAL row must explain exactly what is missing.
+
+## Step 14 — validation
+
+Run and report:
 - causal primitive tests;
+- causal-context tests;
 - causal persistence tests;
-- C2/C2-FIX engine-backed tests;
+- all new C2 engine-backed tests;
 - `tests/presentation-v2.test.mjs`;
 - `tests/api/presentation-v2-engine.test.mjs`;
 - full fast suite;
@@ -308,101 +286,76 @@ Run and report exact results:
 - lint;
 - `git diff --check`.
 
-Any failure must be reported.
+Do not report a suite as passed unless it was actually run after the final code change.
 
-## 17. Execution-result handoff
+## Scope exclusions
 
-The Code Agent must **append only** a concise section at the bottom of this HANDOVER:
+Do NOT:
+- start C3;
+- classify Group SEQUENTIAL/ORDERED/GROUP;
+- add Group ordering metadata;
+- implement Dying presentation barrier;
+- migrate PresentationV2 to causal envelope;
+- modify React/CSS;
+- change gameplay rules merely to make tests pass;
+- repurpose `resolutionId`, event IDs, or `actionRevision`.
+
+## Agent execution-result format
+
+Append only:
 
 ```
 ---
 
-## C2-FIX execution result — <date>
+## C2-FIX2 execution result — <date>
 
 Branch:
 Implementation commit:
 Files changed:
 
-### Completed
-...
-
 ### Evidence matrix
+<all rows and statuses>
+
+### Atomic persistence completed
 ...
 
-### Atomic persistence
+### Attack/Damage/Dying proof
 ...
 
-### Child Frame runtime proof
+### Child Frame proofs
+...
+
+### Judgement/Duel/Negation proof
 ...
 
 ### Settlement/clear proof
 ...
 
-### Tests
+### Reconnect/viewer/stale/corruption proof
+...
+
+### Validation
 ...
 
 ### Remaining PARTIAL / UNPROVEN
 ...
 ```
 
-Do not delete/rewrite the task. The reviewer will clean HANDOVER after reviewing the result.
-
-Commit and push implementation + appended result to `ux-v2`.
-
-## STOP CONDITION
-
-After C2-FIX is pushed:
-
-**STOP.**
-
-Do not start C3.
-Do not perform additional architecture work.
-Wait for reviewer inspection.
+Do not clean or replace HANDOVER.
+Push to `ux-v2` and STOP.
 
 ## Acceptance criteria
 
-C2-FIX passes only if:
-- persisted envelope is authoritative, not merely Pending causal references;
-- semantic gameplay state + causal envelope are atomically consistent;
-- real child Frames are created/resumed in persisted envelope;
-- same-Frame flows preserve Frame identity;
-- Damage/Dying lifetime is engine-backed;
-- Group nested resume is engine-backed without premature order classification;
-- Borrowed Sword child Attack is proven or concretely UNPROVEN;
-- Judgement lifetime is proven;
-- settlement/clear is explicit and tested;
-- reconnect/viewer/stale-command identity safety is tested;
-- legacy NULL/malformed state remains safe;
-- no C3/Dying-barrier/PresentationV2/React work is included;
-- validation passes or failures are explicitly reported.
-
-## Execution result — C2-FIX slice — 2026-10-02
-
-Implemented and validated the Borrowed Sword runtime child-frame slice:
-
-- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` now maps the authoritative route
-  boundaries and records the supported/UNPROVEN flows.
-- Root Negation and ordinary Attack response entry persist the causal envelope
-  with the Pending/phase transition.
-- Real Borrowed Sword target selection creates an `ATTACK_RESPONSE` child
-  Frame under the `FORCED_ACTION` parent in the persisted envelope.
-- Borrowed Sword refusal/invalidation resumes the parent Frame in the guarded
-  room write; the Interaction remains stable.
-- API evidence asserts the persisted child Frame, parent reference, and parent
-  resume. No C3, Dying-barrier, PresentationV2, or React work was added.
-
-Validation:
-
-- C2 causal-context tests: 2/2
-- focused causal tests: 8/8
-- full fast suite: 107/107
-- full API/D1 suite: 212/212
-- `npm run build`: passed
-- `npm run lint`: passed
-- `git diff --check`: passed
-
-C2-FIX remains partial. The remaining acceptance gates are centralized
-envelope/CAS propagation for every supported automatic transition, Group and
-nested-damage child-frame runtime proofs, engine-backed Damage→Dying identity,
-Judgement/delayed activation lifetime, explicit settlement clearing, and full
-legacy/reload/viewer/stale identity assertions. Do not start C3.
+C2-FIX2 is accepted only if:
+- supported semantic transitions keep gameplay state + causal envelope atomically consistent;
+- real Attack→Damage→Dying identity is engine-backed;
+- real Group/nested-effect child push/resume is engine-backed where applicable;
+- independent nested damage semantics are proven rather than assumed;
+- Judgement end-to-end lifetime is engine-backed;
+- Duel/Negation identity invariants are engine-backed;
+- Borrowed Sword child behavior remains proven;
+- settlement/clear is explicit and engine-backed;
+- reconnect/viewer/stale/corruption behavior is tested;
+- no heuristic causal authority is invented;
+- all remaining UNPROVEN items are explicit and justified;
+- no C3/Dying-barrier/PresentationV2/React work begins.
