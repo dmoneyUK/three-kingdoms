@@ -414,10 +414,20 @@ test("delayed Lightning damage keeps one Judgement Interaction across three Lega
   assert.equal(damageRoot.frames[0].current.currentSourceId, null);
   assert.equal(damageRoot.frames[0].current.resolvingPlayerId, guo.id);
   assert.equal(view.currentAction.actorId, guo.id);
+  assert.equal(view.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(view.presentationV2.interactionScene?.stage, "DAMAGE");
+  assert.equal(view.presentationV2.interactionScene?.interactionId, damageRoot.interactionId);
+  assert.equal(view.presentationV2.interactionScene?.rootFrameId, damageRoot.activeFrameId);
+  assert.equal(view.presentationV2.interactionScene?.sourceId, guo.id);
+  assert.deepEqual(view.presentationV2.interactionScene?.targetIds, [guo.id]);
+  assert.equal(view.presentationV2.interactionScene?.currentParticipantId, guo.id);
+  assert.equal(view.presentationV2.interactionScene?.activeResolverId, guo.id);
+  assert.equal(view.presentationV2.interactionScene?.decisionActorId, guo.id);
   const otherViewer = (await state(game.code, game.members[0].token)).data;
   assert.equal(otherViewer.causalEnvelope.interactionId, damageRoot.interactionId, "the inherited Judgement/Damage root is public and viewer-stable");
   assert.equal(otherViewer.causalEnvelope.checkpoint.checkpointId, damageRoot.checkpoint.checkpointId);
   assert.equal(otherViewer.causalEnvelope.presentationRevision, damageRoot.presentationRevision);
+  assert.deepEqual(otherViewer.presentationV2.interactionScene, view.presentationV2.interactionScene);
   const persistedDamage = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   assert.equal(persistedDamage.actorId, guo.id);
   assert.equal(persistedDamage.causal.interactionId, damageRoot.interactionId);
@@ -432,6 +442,7 @@ test("delayed Lightning damage keeps one Judgement Interaction across three Lega
       assert.equal(view.causalEnvelope.interactionId, damageRoot.interactionId, "reopened damage reactions retain the same Interaction");
       assert.equal(view.causalEnvelope.activeFrameId, damageRoot.activeFrameId);
       assert.equal(view.causalEnvelope.presentationRevision, damageRoot.presentationRevision, "same Damage frame does not invent a checkpoint for Legacy re-entry");
+      assert.deepEqual(view.presentationV2.interactionScene, otherViewer.presentationV2.interactionScene, "same Damage frame keeps the public scene stable");
     }
   }
   assert.equal(view.causalEnvelope, null, "the inherited Judgement/Damage root clears at final settlement");

@@ -780,9 +780,14 @@ test("delayed placement settles before a later activation creates a fresh intera
   assert.equal(activationRoot.frames[0].origin.originSourceId, alicePlayer.id);
   assert.equal(activationRoot.frames[0].origin.originEffect, "Overindulgence");
   assert.deepEqual(activationRoot.frames[0].origin.originalTargetIds, [alicePlayer.id]);
-  const repeated = await state(game.code, bob.token);
+  assert.equal(activation.data.room.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(activation.data.room.presentationV2.interactionScene?.stage, activationRoot.frames[0].stage);
+  assert.equal(activation.data.room.presentationV2.interactionScene?.interactionId, activationRoot.interactionId);
+  assert.notEqual(activationRoot.interactionId, placementRoot.interactionId, "delayed placement and activation use fresh causal identity");
+  const repeated = await state(game.code, alice.token);
   assert.equal(repeated.data.causalEnvelope.interactionId, activationRoot.interactionId);
   assert.equal(repeated.data.causalEnvelope.activeFrameId, activationRoot.activeFrameId);
+  assert.deepEqual(repeated.data.presentationV2.interactionScene, activation.data.room.presentationV2.interactionScene);
   const settled = await requestAndSettle("decline_response", { code: game.code, token: bob.token });
   assert.equal(settled.status, 200, JSON.stringify(settled.data));
   assert.equal(settled.data.room.causalEnvelope, null);

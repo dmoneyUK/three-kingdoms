@@ -37,10 +37,19 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.equal(targetView.currentAction.deadline, 0, "response timer is not armed before the existing client-ready action");
   assert.equal(targetView.presentationV2.decision.actionRevision, targetView.actionRevision);
   assert.equal(targetView.presentationV2.decision.resolutionId, targetView.currentAction.presentation.resolutionId);
+  const attackScene = targetView.presentationV2.interactionScene;
+  assert.equal(attackScene?.semantics, "PROVEN");
+  assert.equal(attackScene?.stage, "ATTACK_RESPONSE");
+  assert.equal(attackScene?.sourceId, source.id);
+  assert.deepEqual(attackScene?.targetIds, [target.id]);
+  assert.equal(attackScene?.currentParticipantId, target.id);
+  assert.equal(attackScene?.activeResolverId, target.id);
+  assert.equal(attackScene?.decisionActorId, target.id);
   const otherView = (await state(game.code, game.members[2].token)).data;
   assert.deepEqual(otherView.presentationV2.rootContext, targetView.presentationV2.rootContext);
   assert.deepEqual(otherView.presentationV2.activeContext, targetView.presentationV2.activeContext);
   assert.equal(otherView.currentAction.options, undefined, "private response options remain viewer-private");
+  assert.deepEqual(otherView.presentationV2.interactionScene, attackScene);
   const responded = await requestAndSettle("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: dodge.id });
   assert.equal(responded.status, 200, JSON.stringify(responded.data));
   await assertProjectionMatchesEngine(game.code, sourceMember.token);
@@ -537,6 +546,12 @@ test("engine-backed Duel alternates response actors without changing the root co
   const firstRevision = first.actionRevision;
   assert.equal(first.currentAction.actorId, target.id);
   assert.equal(authoritativePending(game.code).continuation.kind, "duel");
+  assert.equal(first.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(first.presentationV2.interactionScene?.stage, "DUEL_EXCHANGE");
+  assert.equal(first.presentationV2.interactionScene?.sourceId, source.id);
+  assert.deepEqual(first.presentationV2.interactionScene?.targetIds, first.causalEnvelope.frames[0].origin.originalTargetIds);
+  assert.equal(first.presentationV2.interactionScene?.currentParticipantId, target.id);
+  assert.equal(first.presentationV2.interactionScene?.decisionActorId, target.id);
   const answered = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: firstAttack.id });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
   const second = await assertProjectionMatchesEngine(game.code, host.token);
@@ -548,6 +563,12 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.notEqual(second.presentationV2.rootContext?.resolutionId, firstRoot?.resolutionId, "Duel response transitions currently allocate a new legacy resolution reference");
   assert.equal(second.presentationV2.activeContext?.kind, "duel");
   assert.deepEqual(second.presentationV2.activeContext?.currentTargetIds, [target.id]);
+  assert.equal(second.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(second.presentationV2.interactionScene?.interactionId, first.presentationV2.interactionScene?.interactionId);
+  assert.equal(second.presentationV2.interactionScene?.rootFrameId, first.presentationV2.interactionScene?.rootFrameId);
+  assert.equal(second.presentationV2.interactionScene?.stage, "DUEL_EXCHANGE");
+  assert.equal(second.presentationV2.interactionScene?.decisionActorId, source.id);
+  assert.deepEqual((await state(game.code, host.token)).data.presentationV2.interactionScene, second.presentationV2.interactionScene);
 });
 
 test("FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage", { timeout: 30_000 }, async () => {
@@ -751,6 +772,11 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
   assert.equal(first.causalEnvelope.frames.length, 1, "independent top-level Negation has one root frame");
   assert.equal(first.causalEnvelope.frames[0].stage, "NEGATION");
+  assert.equal(first.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(first.presentationV2.interactionScene?.stage, "NEGATION");
+  assert.equal(first.presentationV2.interactionScene?.sourceId, source.id);
+  assert.deepEqual(first.presentationV2.interactionScene?.targetIds, [target.id]);
+  assert.equal(first.presentationV2.interactionScene?.decisionActorId, target.id);
   assert.equal(first.causalEnvelope.activeFrameId, authoritativePending(game.code).causal.frameId);
   assert.equal(first.causalEnvelope.frames.length, 1);
   assert.equal(first.causalEnvelope.frames[0].stage, "NEGATION");
@@ -767,6 +793,11 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.notEqual(counter.presentationV2.rootContext?.eventId, root?.eventId, "Negation currently references a new public event in the counter window");
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
   assert.equal(counter.presentationV2.activeContext?.kind, "negation");
+  assert.equal(counter.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(counter.presentationV2.interactionScene?.stage, "NEGATION");
+  assert.equal(counter.presentationV2.interactionScene?.interactionId, first.presentationV2.interactionScene?.interactionId);
+  assert.equal(counter.presentationV2.interactionScene?.rootFrameId, first.presentationV2.interactionScene?.rootFrameId);
+  assert.equal(counter.presentationV2.interactionScene?.decisionActorId, source.id);
   const counterPending = authoritativePending(game.code);
   assert.equal(counterPending.actorId, source.id);
   assert.equal(counterPending.causal.frameId, counter.causalEnvelope.activeFrameId);
@@ -898,6 +929,12 @@ test("engine-backed Judgement replacement exposes reveal and resume evidence", {
   assert.equal(revealPending.continuation.judgement.causal.frameId, judgementRoot.activeFrameId);
   assert.equal(revealView.presentationV2.activeContext?.kind, "judgement_revealed_event");
   assert.equal(revealView.presentationV2.parentContext?.kind, "delayed");
+  assert.equal(revealView.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(revealView.presentationV2.interactionScene?.stage, "JUDGEMENT");
+  assert.equal(revealView.presentationV2.interactionScene?.interactionId, judgementRoot.interactionId);
+  assert.equal(revealView.presentationV2.interactionScene?.rootFrameId, judgementRoot.activeFrameId);
+  assert.equal(revealView.presentationV2.interactionScene?.activeResolverId, setup.sima.id);
+  assert.equal(revealView.presentationV2.interactionScene?.decisionActorId, setup.sima.id);
   const replaced = await requestAndSettle("trigger", { code: setup.game.code, token: setup.simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
   assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
   const effective = await assertProjectionMatchesEngine(setup.game.code, setup.guoMember.token);
@@ -907,6 +944,10 @@ test("engine-backed Judgement replacement exposes reveal and resume evidence", {
   assert.equal(authoritativePending(setup.game.code).continuation.kind, "judgement_effective_event");
   assert.equal(effective.presentationV2.activeContext?.kind, "judgement_effective_event");
   assert.equal(effective.presentationV2.parentContext?.kind, "delayed");
+  assert.equal(effective.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(effective.presentationV2.interactionScene?.interactionId, revealView.presentationV2.interactionScene?.interactionId);
+  assert.equal(effective.presentationV2.interactionScene?.rootFrameId, revealView.presentationV2.interactionScene?.rootFrameId);
+  assert.equal(effective.presentationV2.interactionScene?.stage, "JUDGEMENT");
   assert.ok(effective.timeline.some((event) => event.id === revealPending.continuation.judgement.revealedEventId));
 });
 

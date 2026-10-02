@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C3-01 — 2026-10-02
+## Current stage — UX2.0C3-03 — 2026-10-02
 
 C2 is closed and accepted. C3-01 now projects Group/AOE public semantics from
 the authoritative causal envelope: source, ordered affected targets, current
@@ -24,9 +24,15 @@ C3-02-FIX1 closes the authority gate: a scene is `PROVEN` only when the active
 frame and checkpoint share both frame ID and stage. Cross-frame or cross-stage
 stored authority fails closed as `UNPROVEN`.
 
+C3-03 generalizes the typed public scene beyond Group for real Attack/Duel,
+independent Damage, Judgement (including delayed activation), and root Negation
+causal frames. Real viewer/reconnect, repeated-read, malformed-state, and
+Group `SAME_FRAME` regressions remain covered; delayed-origin history and
+Attack-response-to-Judgement child continuity remain explicitly partial.
+
 This is a projector/model/test change only. No React/CSS migration, gameplay
 rule change, Dying presentation barrier, historical `originRef`, or C4/C5 work
-is included. The next milestone is reviewer validation of C3-01; visual UX
+is included. The next milestone is reviewer validation of C3-03; visual UX
 consumers remain out of scope.
 
 ## UX2.0C2 — causal propagation round — 2026-10-02

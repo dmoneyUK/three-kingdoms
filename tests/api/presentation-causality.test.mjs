@@ -30,6 +30,17 @@ test("real Attack causal envelope is stable across room reads and viewers", { ti
     assert.equal(view.causalEnvelope.checkpoint.checkpointId, openedEnvelope.checkpoint.checkpointId);
     assert.equal(view.causalEnvelope.presentationRevision, openedEnvelope.presentationRevision);
   }
+  const activeFrame = openedEnvelope.frames.find((frame) => frame.frameId === openedEnvelope.activeFrameId);
+  assert.equal(reloadedActingView.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(reloadedActingView.presentationV2.interactionScene?.interactionId, openedEnvelope.interactionId);
+  assert.equal(reloadedActingView.presentationV2.interactionScene?.rootFrameId, activeFrame.frameId);
+  assert.equal(reloadedActingView.presentationV2.interactionScene?.stage, "ATTACK_RESPONSE");
+  assert.equal(reloadedActingView.presentationV2.interactionScene?.sourceId, source.id);
+  assert.deepEqual(reloadedActingView.presentationV2.interactionScene?.targetIds, [target.id]);
+  assert.equal(reloadedActingView.presentationV2.interactionScene?.currentParticipantId, target.id);
+  assert.equal(reloadedActingView.presentationV2.interactionScene?.activeResolverId, target.id);
+  assert.equal(reloadedActingView.presentationV2.interactionScene?.decisionActorId, target.id);
+  assert.deepEqual(reloadedSecondViewer.presentationV2.interactionScene, reloadedActingView.presentationV2.interactionScene);
 
 });
 
@@ -85,6 +96,7 @@ test("malformed room envelope remains non-authoritative", { timeout: 30_000 }, a
   assert.equal(pendingBeforeCorruption.continuation.causal.interactionId, root.interactionId);
   sql(`UPDATE rooms SET causal_envelope_json=${quote(JSON.stringify({ version: 1, frames: [{ frameId: "forged" }] }))} WHERE code=${quote(game.code)}`);
   assert.equal((await state(game.code, game.members[1].token)).data.causalEnvelope, null);
+  assert.equal((await state(game.code, game.members[1].token)).data.presentationV2.interactionScene, null);
   const continued = await request("respond", { code: game.code, token: game.members[1].token, providerId: "card", cardId: dodge.id });
   assert.equal(continued.status, 200, JSON.stringify(continued.data));
   assert.equal(continued.data.room.causalEnvelope, null, "the continuation does not reconstruct authority from Pending context");

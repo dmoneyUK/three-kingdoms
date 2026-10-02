@@ -3913,3 +3913,27 @@ an otherwise typed Group projection, with causal IDs null. It never reconstructs
 identity from Pending, events, logs, card names, `resolutionId`, or
 `actionRevision`. This remains projector/model/test scope; React/CSS migration
 and the Dying presentation barrier remain later work.
+
+### 0.95 UX2.0C3-03 non-Group semantic matrix — 2026-10-02
+
+The typed scene now uses the same envelope-owned identity boundary for real
+non-Group causal roots. `sourceId`, `effect`, ordered `targetIds`, and the
+current frame roles come from the causal frame origin/current state; only the
+public decision actor is taken from `CurrentAction`. No generic Pending
+reconstruction is used.
+
+| Family | Causal ownership and roles | Settlement / evidence | Known boundary |
+| --- | --- | --- | --- |
+| Attack / Attack Response | Root `ATTACK_RESPONSE`; source and original target come from frame origin; current participant, resolver, and decision actor remain distinct. | `PROVEN`; real Attack/Dodge and viewer/repeated-read fixtures. | Attack-response -> Judgement child continuity is `PARTIAL`. |
+| Duel | Root `DUEL_EXCHANGE`; origin targets retain both Duel participants; active current target/resolver/decision actor alternate by response window. | `PROVEN`; real physical Duel exchange plus repeated-read fixture. | A second viewer's private `CurrentAction` actor is not treated as public causal identity. |
+| Independent/root Damage | Root `DAMAGE`; delayed Lightning supplies source/effect/target and preserves the active frame across legacy opportunities. | `PROVEN`; delayed Lightning and fresh activation fixtures. | Nested Damage-to-Dying presentation remains a later barrier. |
+| Judgement | Root `JUDGEMENT` when the judgement frame is active; source/effect and resolver remain envelope-owned, with decision actor from the live public action. | `PROVEN`; Guo Jia replacement/reveal/resume fixture. Delayed activation gets a fresh causal identity. | Historical delayed `originRef` is `PARTIAL`; an activation may first expose its real `NEGATION` window before Judgement. |
+| Root Negation | Independent `NEGATION`; original source/effect/targets remain available while the counter window changes the live resolver/decision actor. | `PROVEN`; real Dismantle Negation/counter-Negation fixture. | Group and Duel nested Negation remain their established same-frame behavior. |
+| Group compatibility | Existing Group values remain shared with `groupResolution`; Group Negation remains `SAME_FRAME`, and Group -> Damage remains `CHILD_FRAME`. | `PROVEN`; prior C3 Group regressions remain green. | No compatibility-field semantic divergence found. |
+
+Across these families, malformed or incoherent stored authority fails closed and
+does not invent IDs from `resolutionId`, event IDs, Pending, or timers. Repeated
+reads of the same viewer preserve the scene; viewer differences in
+`decisionActorId` reflect the existing private/public `CurrentAction` boundary,
+not a causal identity change. This remains projector/model/test scope only;
+React/CSS, Dying presentation, C3-04, C4, and C5 are out of scope.

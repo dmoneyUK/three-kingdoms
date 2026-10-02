@@ -211,6 +211,28 @@ test("C3-02-FIX1 fails closed when the checkpoint belongs to another frame", () 
   assert.equal(mismatchedStage.interactionScene?.checkpointId, null);
 });
 
+test("C3-03 generic scene projects non-Group causal frame semantics", () => {
+  const frame = {
+    frameId: "attack-frame",
+    parentFrameId: null,
+    stage: "ATTACK_RESPONSE",
+    origin: { originSourceId: "A", originEffect: "Attack", originalTargetIds: ["B"] },
+    current: { currentSourceId: "A", currentEffect: "Attack", currentTargetIds: ["B"], resolvingPlayerId: "B" },
+  };
+  const projected = projectPresentationV2({
+    pending: { kind: "response", actorId: "B", continuation: { kind: "attack", sourceId: "A", targetId: "B" } },
+    currentAction: action({ actorId: "B" }), actionRevision: "attack-scene", timeline: [],
+    causalEnvelope: { version: 1, interactionId: "attack-interaction", frames: [frame], activeFrameId: frame.frameId, checkpoint: { checkpointId: "attack-checkpoint", frameId: frame.frameId, stage: frame.stage }, presentationRevision: 3 },
+  });
+  assert.equal(projected.groupResolution, null);
+  assert.deepEqual(projected.interactionScene, {
+    semantics: "PROVEN", interactionId: "attack-interaction", rootFrameId: "attack-frame", activeFrameId: "attack-frame", parentFrameId: null,
+    checkpointId: "attack-checkpoint", presentationRevision: 3, stage: "ATTACK_RESPONSE", sourceId: "A", effect: "Attack", targetIds: ["B"],
+    currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", activeSourceId: "A", activeTargetIds: ["B"], participantIds: [],
+    continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+  });
+});
+
 test("cardKind on a single-target continuation does not create groupResolution", () => {
   const fixture = flows[0].points[0];
   const projected = projectPresentationV2({
