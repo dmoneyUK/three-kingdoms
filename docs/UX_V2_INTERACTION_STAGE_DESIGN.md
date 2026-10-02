@@ -572,6 +572,663 @@ ENGINE STATE CHANGE
 This architecture is a prerequisite for the rest of UX V2. Seat Topology, Hero Focus, Reaction Chain, Multi-target, AOE, Dying, Judgement, and other visual work must consume stable presentation semantics rather than independently interpreting transient engine transitions.
 
 
+### 0.23 Semantic hierarchy: Interaction -> Frame -> Stage -> Checkpoint
+
+After pressure-testing the stable-presentation model against Borrowed Sword, Duel/Lust, AOE, Dying/rescue, Judgement modification, target redirect, equipment triggers, delayed effects, defeat/topology changes, nested triggered skills, and ordered multi-target resolution, use the following semantic hierarchy:
+
+~~~text
+INTERACTION
+    |
+    +-- Root Event
+    |
+    +-- Causal Frame Stack
+           |
+           +-- Parent Frame(s)
+           |
+           +-- Active Frame
+                  |
+                  +-- Stage
+                         |
+                         +-- Checkpoint
+~~~
+
+Definitions:
+
+- **Interaction** = one continuous causal context that a player can reasonably understand as "the same thing still being resolved."
+- **Causal Frame** = one independently resolving effect inside that Interaction.
+- **Stage** = the player-meaningful resolution phase of the active Frame.
+- **Checkpoint** = the stable player-facing point inside that Stage.
+
+These are presentation semantics, not a replacement for the Engine's execution structures.
+
+### 0.24 Interaction lifetime
+
+Keep the same interactionId while unresolved causal work from the root event is still being synchronously resolved.
+
+Example:
+
+~~~text
+A Attack B
+-> B takes damage
+-> B enters Dying
+-> C may Peach
+-> B survives
+~~~
+
+remains one Interaction. Dying and rescue do not automatically start new Interactions because they are a direct continuation of the unresolved root event.
+
+An Interaction ends when:
+
+- the root effect is settled,
+- all causally nested independently resolving effects are settled,
+- no blocking decision remains,
+- no unresolved synchronous causal work remains.
+
+A later independent gameplay initiation starts a new Interaction.
+
+### 0.25 Deferred and persistent future activation
+
+Causal history may outlive a Presentation Interaction.
+
+If an effect is placed now but activates after the original Interaction has fully settled, do not reopen the old interactionId.
+
+Examples include delayed effects, future turn triggers, and equipment/persistent statuses that activate during a later event.
+
+Use a new Interaction with an optional originRef:
+
+~~~text
+Interaction I35
+rootEvent:
+  Delayed Effect activates on B
+
+originRef:
+  persistent/delayed effect identity
+  optional historical source reference
+~~~
+
+Rule:
+
+~~~text
+synchronous causal continuation
+-> same Interaction
+
+future activation after previous Interaction settled
+-> new Interaction + originRef
+~~~
+
+Historical causality does not imply an indefinitely long Presentation Interaction.
+
+### 0.26 Causal Frame boundary
+
+Do not create a Frame merely because another card was played or another player became involved.
+
+A response that modifies, satisfies, cancels, redirects, or otherwise participates directly in the current effect's resolution normally remains in the same Frame.
+
+Typical same-Frame cases:
+
+- Dodge satisfying an Attack response,
+- Negation / counter-Negation modifying the current trick effect,
+- Peach used as part of the current Dying/rescue protocol,
+- Judgement-card modification,
+- target redirect of the current effect,
+- Duel response cards used to satisfy the Duel exchange,
+- ordinary per-target resolution inside an AOE,
+- ordinary ordered target resolution inside one multi-target effect.
+
+Create a **Child Frame** when a response/trigger launches a new independently resolving effect with its own effect context and resolution lifecycle.
+
+Rule:
+
+~~~text
+modifies/satisfies current effect
+-> SAME FRAME
+
+launches independently resolving effect
+-> CHILD FRAME
+~~~
+
+The decisive concept is the authoritative effect instance and its semantics, not card name.
+
+### 0.27 Borrowed Sword boundary case
+
+Borrowed Sword demonstrates why participant count and card count cannot determine Frame boundaries.
+
+Conceptually:
+
+~~~text
+Interaction I100
+
+Frame F1:
+Borrowed Sword
+Source: A
+primary target: B
+required Attack target: C
+
+Stage:
+FORCED_ACTION
+
+Checkpoint:
+B must make the authoritative Borrowed Sword choice
+~~~
+
+The requirement for B to Attack C belongs to Borrowed Sword's own resolution protocol and remains in F1.
+
+If B's submitted Attack creates a normal independently resolving Attack effect capable of its own Dodge, damage, Dying, and triggered effects, that Attack becomes a Child Frame:
+
+~~~text
+F1 Borrowed Sword
+|
++-- F2 Attack B -> C
+       -> Dodge
+       -> Damage
+       -> Dying
+
+F2 settles
+-> return to F1
+-> continue Borrowed Sword settlement
+~~~
+
+By contrast, an Attack card submitted merely to satisfy a Duel exchange does not become a normal Attack Child Frame if the rules treat it only as the Duel response.
+
+### 0.28 Duel and Lust
+
+Duel should normally remain one Frame:
+
+~~~text
+Interaction I200
+
+Frame F1:
+Duel A <-> B
+
+Stage:
+DUEL_EXCHANGE
+
+Checkpoint C1: A decision
+Checkpoint C2: B decision
+Checkpoint C3: A decision
+...
+~~~
+
+The two Hero positions stay fixed. decisionActor changes; the presentation must not swap the Hero panels on every response.
+
+For an ordered Duel-like hero skill such as Lust, preserve the selected target order as authoritative semantic information:
+
+~~~text
+Lust
+targets:
+  1. A
+  2. B
+
+Stage:
+DUEL_EXCHANGE
+~~~
+
+Do not infer effect order from seat position. Position represents table topology; explicit order represents effect semantics.
+
+### 0.29 Frame stack and nested independent effects
+
+Frames may nest.
+
+Example:
+
+~~~text
+F1 Attack A -> B
+|
++-- B takes damage
+|
++-- F2 B triggered skill -> C
+       |
+       +-- C takes damage
+       |
+       +-- F3 C triggered skill -> D
+~~~
+
+The active Frame is the current independently resolving effect. When a Child Frame settles, return to its Parent Frame and continue authoritative resolution.
+
+A tree is useful for causal history; a stack is useful for current resolution/presentation context.
+
+However:
+
+> **Presentation Frame Stack is not the Engine Pending Stack.**
+
+Do not expose pending objects directly as presentation Frames. One Presentation Frame may span multiple engine pending/action objects, and engine execution structures may not correspond one-to-one with player-meaningful effects.
+
+The Engine/Orchestrator must provide enough authoritative semantic information for the Projector to identify the active effect and causal parent relationship. The Projector must not invent gameplay execution order.
+
+### 0.30 Frame origin vs current effect
+
+A Frame needs an immutable origin and an authoritative current projection.
+
+Example target redirect:
+
+~~~text
+Interaction root:
+A Attack B
+
+Frame F1 origin:
+Attack -> B
+
+Reaction:
+C redirects B -> D
+
+Frame F1 current:
+Attack -> D
+~~~
+
+Do not rewrite the Frame origin after redirect, and do not restore the stale original target when returning from a Child Frame.
+
+Conceptually:
+
+~~~text
+CausalFrame {
+  id
+  parentFrameId?
+  causeNodeId?
+
+  origin {
+    sourceId
+    effect
+    originalTargetIds
+  }
+
+  current {
+    sourceId
+    effect
+    targetIds
+    resolvingPlayerId?
+  }
+
+  resolutionSemantics
+  stage
+}
+~~~
+
+This is conceptual; do not duplicate authoritative game state unnecessarily when implementing the contract.
+
+### 0.31 causeNodeId
+
+When a Child Frame is created, preserve why it exists.
+
+Example:
+
+~~~text
+F1:
+A Attack B
+
+Reaction node N2:
+B takes Damage
+
+F2:
+B damage-triggered Skill -> C
+parentFrameId = F1
+causeNodeId = N2
+~~~
+
+This allows the presentation to explain:
+
+~~~text
+ORIGIN
+A Attack B
+
+CONTEXT
+Triggered by B taking damage
+
+CURRENT
+B Skill -> C
+~~~
+
+without reconstructing causality from timestamps or card names.
+
+### 0.32 Stage is not Engine State
+
+Stage represents a meaningful phase of the active Frame, not every internal transition.
+
+Examples:
+
+~~~text
+Attack Frame
+Stage: ATTACK_RESPONSE
+
+Attack Frame
+Stage: DYING
+
+Duel Frame
+Stage: DUEL_EXCHANGE
+
+AOE Frame
+Stage: AOE_RESOLUTION
+
+Delayed-effect Frame
+Stage: JUDGEMENT
+
+Borrowed Sword Frame
+Stage: FORCED_ACTION
+~~~
+
+This refinement prevents Dying, Judgement, or AOE progress from being mistaken for separate Interactions merely because the presentation composition changes.
+
+Example:
+
+~~~text
+Interaction I1
+Frame F1: Attack A -> B
+Stage: DYING B
+Checkpoint: Waiting for C to rescue
+~~~
+
+If C declines and D becomes the next genuine rescuer:
+
+~~~text
+same Interaction
+same Frame
+same Stage
+new Checkpoint: Waiting for D
+~~~
+
+### 0.33 Nested effects during a special Stage
+
+A special Stage may be temporarily covered by a Child Frame without ending the parent context.
+
+Example:
+
+~~~text
+F1 Attack / Stage: DYING B
+|
++-- F2 B's Dying-triggered Skill -> C
+~~~
+
+While F2 is active, the central Current Effect may show B's Skill -> C, but retain a lightweight breadcrumb such as:
+
+~~~text
+During: B is Dying
+~~~
+
+When F2 settles, return to F1's Dying Stage.
+
+Do not imply that Dying ended merely because a triggered Child Frame temporarily became active.
+
+### 0.34 Reaction Chain hierarchy and default presentation
+
+Causal history may be hierarchical even though the default UI should remain compact.
+
+Data may conceptually represent:
+
+~~~text
+F1 Attack
++-- Damage B
++-- F2 B Skill
+    +-- F3 C Skill
+~~~
+
+Default UI may flatten/collapse this into a readable causal sequence:
+
+~~~text
+A · Attack -> B
+B · Skill
+  -> C · Skill -> D
++ earlier events
+~~~
+
+Do not send preformatted indentation/arrows as authoritative server text. Preserve structured semantics and let the UI decide compact/collapsed rendering.
+
+Third-party participants do not automatically receive full Hero Focus panels merely because they appear in causal history.
+
+### 0.35 AOE and ordered multi-target effects
+
+Ordinary per-target processing in one AOE or multi-target effect normally remains in one Frame.
+
+Example:
+
+~~~text
+Interaction I300
+Frame F1: Group Effect
+Stage: AOE_RESOLUTION
+
+targets:
+B resolved
+C resolved
+D CURRENT
+E pending
+F pending
+
+current.resolvingPlayerId = D
+~~~
+
+Do not create a Frame per target unless processing a target launches a genuinely independent effect.
+
+If C triggers an independent Skill while C is being resolved:
+
+~~~text
+F1 AOE
+|
++-- C [paused/current]
+|
++-- F2 C Skill -> E
+~~~
+
+After F2 settles, return to F1 and continue the Engine-owned target resolution order.
+
+For ordered multi-target selection, preserve explicit target order:
+
+~~~text
+targets:
+1. B
+2. C
+3. D
+~~~
+
+Do not infer order from visual seat position.
+
+### 0.36 Resolution semantics are explicit
+
+Do not infer player-facing simultaneity/order merely from the Engine's implementation loop.
+
+A multi-participant Frame may conceptually expose semantic resolution mode such as:
+
+~~~text
+SEQUENTIAL
+ORDERED
+GROUP
+~~~
+
+- **SEQUENTIAL**: participants are resolved one by one according to authoritative rules.
+- **ORDERED**: explicit gameplay order is meaningful and must be preserved.
+- **GROUP**: rules semantics present the effect as a group/simultaneous outcome even if deterministic internal processing is required.
+
+The Engine/Rules layer owns these semantics. The Projector must not invent ordering from iteration order.
+
+For sequential/group effects, distinguish:
+
+- originalTargetIds: historical/root target set,
+- current/resolving participant,
+- current authoritative participants/eligibility where relevant.
+
+Never reuse originalTargetIds as current legality.
+
+### 0.37 Engine owns Frame/effect execution order
+
+If a Skill creates multiple independently resolving effects, the Projector must not choose their order.
+
+Example:
+
+~~~text
+F1 Skill X
+
+Engine chooses/prescribes:
+push F2 Damage B
+-> settle F2
+push F3 Effect C
+-> settle F3
+return F1
+~~~
+
+The Projector presents the authoritative active Frame. It does not sort child effects, infer next effects, or create gameplay ordering.
+
+### 0.38 Equipment triggers
+
+Equipment effects follow the same Frame rule as all other effects.
+
+If equipment merely modifies the current effect, remain in the same Frame and optionally add a meaningful public Reaction node.
+
+If equipment launches an independently resolving effect, create/project a Child Frame.
+
+If equipment/persistent state activates in a future Interaction after the original event settled, start a new Interaction and preserve an originRef where useful.
+
+Do not keep the Interaction that originally equipped the item alive across turns.
+
+### 0.39 Defeat and topology changes
+
+Defeat may be both a meaningful settlement and an immediate authoritative gameplay topology change.
+
+Example:
+
+~~~text
+A Attack B
+-> B Damage
+-> B Dying
+-> no rescue
+-> B Defeated
+~~~
+
+The current Interaction should be able to present a defeat settlement before disappearing.
+
+However, once the Engine marks B defeated, all gameplay legality, distance, targetability, and subsequent decisions must immediately use the new authoritative game topology.
+
+The client may temporarily retain B's thumbnail as a **presentation-only exit state**:
+
+~~~text
+authoritative:
+  B.alive = false
+  new distance/topology already active
+
+presentation:
+  B seat = EXITING
+  show DEFEATED
+  animate removal/reflow
+~~~
+
+A visually retained defeated seat must never remain selectable, targetable, or part of distance calculations.
+
+If a new actionable CHOICE arrives while the exit animation is still playing, authoritative CHOICE takes priority; cosmetic seat animation may fast-forward.
+
+### 0.40 AOE plus defeat/topology mutation
+
+An Interaction does not freeze gameplay topology.
+
+If B is defeated while an AOE is still resolving and the rules immediately change effective distance/topology, subsequent Skills and target choices must use the newest authoritative state.
+
+Preserve historical facts such as originalTargetIds for explanation, but never use them as current eligibility or distance data.
+
+This is a critical separation:
+
+~~~text
+causal history may be stable
+gameplay legality remains live and authoritative
+~~~
+
+### 0.41 Turn-owner defeat
+
+If the active turn owner is defeated during an Interaction, the Engine may immediately terminate that turn and advance authoritative turn state.
+
+Presentation may still show the meaningful Defeated settlement before visually settling into the next table state.
+
+Do not preserve dead-player controls merely to finish an animation.
+
+If the next authoritative player already has an actionable CHOICE, actionable input takes priority over nonessential defeat animation.
+
+### 0.42 Client presentation priority
+
+Client animation must never reduce a player's effective response opportunity.
+
+Recommended priority:
+
+~~~text
+ACTIONABLE CHOICE / SPECIAL CHOICE   highest
+meaningful settlement               medium
+transition animation                medium
+REST                                low
+cosmetic animation                  lowest
+~~~
+
+If a new actionable CHOICE arrives, cosmetic or nonessential settlement animation may fast-forward. Causal information remains available through the Interaction/Reaction Chain even when animation is shortened.
+
+### 0.43 Consolidated semantic rules
+
+Use these rules when deciding presentation identity:
+
+~~~text
+1. Interaction
+   = continuous player-understandable causal context.
+
+2. Frame
+   = independently resolving effect inside that context.
+
+3. Stage
+   = meaningful phase of the active Frame.
+
+4. Checkpoint
+   = stable player-facing point inside the Stage.
+
+5. Response that modifies/satisfies the current effect
+   = same Frame.
+
+6. Response/trigger that launches an independently resolving effect
+   = Child Frame.
+
+7. Child settles
+   = return to Parent Frame and continue authoritative resolution.
+
+8. Root + descendants settle with no unresolved synchronous causal work
+   = Interaction ends.
+
+9. Future delayed/persistent activation after settlement
+   = new Interaction + originRef.
+
+10. Engine/Rules own effect order, target order, simultaneity semantics,
+    topology, distance, and legality. Presentation never invents them.
+~~~
+
+The practical identity stack is therefore:
+
+~~~text
+interactionId
+activeFrameId
+stage
+checkpointId
+presentationRevision
+actionRevision
+~~~
+
+Each has a distinct purpose. Do not collapse them into one generic UI state or revision.
+
+### 0.44 Pressure-test acceptance criteria
+
+The semantic model is considered suitable for UX V2 only while it can express these cases without card-name-specific React state machines:
+
+- normal Attack -> Dodge,
+- Attack -> Damage -> Dying -> rescue,
+- Negation -> counter-Negation,
+- target redirect,
+- Borrowed Sword with a nested normal Attack effect,
+- Duel / Lust ordered exchange,
+- sequential AOE,
+- ordered multi-target effect,
+- AOE target triggering an independent Child Frame,
+- Dying-triggered independent Skill and return to Dying,
+- Judgement modification,
+- Judgement-triggered independent effect and return,
+- equipment modifier vs independent equipment effect,
+- delayed/persistent future activation via new Interaction + originRef,
+- nested Child Frames,
+- defeat with presentation-only seat exit,
+- defeat/topology mutation during an unresolved group effect,
+- active-turn-player defeat,
+- one Skill producing multiple Engine-ordered independent effects,
+- GROUP semantics where internal Engine order must not be misrepresented as player-facing sequential semantics.
+
+If implementation requires React to infer any of these causal relationships from card names, timers, animation completion, or raw pending-stack shape, stop and extend the authoritative semantic projection instead.
+
+
 ## 1. Seat thumbnails
 
 Seat topology is designed **mobile portrait first**. Its purpose is to preserve relative seating, distance context, targetability, and player status without consuming the central Interaction Stage.
