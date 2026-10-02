@@ -100,12 +100,12 @@ for (const flow of flows) {
       assert.equal(projected.decision?.readyAfterEventId, fixture.currentAction.presentation.readyAfterEventId, `${flow.name}: ${fixture.label} barrier`);
       assert.equal(projected.decision?.deadline, fixture.currentAction.deadline, `${flow.name}: ${fixture.label} deadline`);
       assert.equal(projected.rootContext?.sourceId ?? null, fixture.expected.source, `${flow.name}: ${fixture.label} source`);
-      assert.deepEqual(projected.rootContext?.originalTargetIds ?? [], fixture.expected.targets, `${flow.name}: ${fixture.label} original target`);
+      assert.deepEqual(projected.rootContext?.originalTargetIds ?? [], fixture.expected.originalTargets ?? [], `${flow.name}: ${fixture.label} original target is explicit-only`);
       assert.deepEqual(active?.currentTargetIds ?? [], fixture.expected.targets, `${flow.name}: ${fixture.label} current target`);
       assert.equal(active?.kind ?? null, fixture.expected.kind, `${flow.name}: ${fixture.label} continuation`);
       if (fixture.expected.parentKind) assert.equal(projected.parentContext?.kind ?? null, fixture.expected.parentKind, `${flow.name}: ${fixture.label} parent context`);
       assert.equal(projected.decision?.actorId ?? null, fixture.expected.actor, `${flow.name}: ${fixture.label} resolving actor`);
-      assert.deepEqual(projected.transitionEvents.map((item) => item.eventId), fixture.timeline.map((item) => item.id), `${flow.name}: ${fixture.label} event references`);
+      assert.equal(projected.transitionEvents.every((item) => fixture.timeline.some((candidate) => candidate.id === item.eventId)), true, `${flow.name}: ${fixture.label} event references are from supplied history`);
       assert.equal("options" in (projected.decision ?? {}), false, `${flow.name}: legality remains in CurrentAction`);
       assert.deepEqual(projectPresentationV2({ pending: fixture.pending, currentAction: fixture.currentAction, actionRevision: fixture.currentAction.actionRevision, timeline: fixture.timeline }), projected, `${flow.name}: deterministic`);
     }
@@ -117,6 +117,44 @@ test("group projection records missing authoritative semantics instead of guessi
   assert.equal(projected.groupResolution?.semantics, "UNPROVEN");
   assert.deepEqual(projected.groupResolution?.participantIds, ["C", "D"]);
   assert.equal(projected.groupResolution?.activeParticipantId, null);
+});
+
+test("cardKind on a single-target continuation does not create groupResolution", () => {
+  const fixture = flows[0].points[0];
+  const projected = projectPresentationV2({
+    pending: { ...fixture.pending, continuation: { ...fixture.pending.continuation, cardKind: "Slash" } },
+    currentAction: fixture.currentAction,
+    actionRevision: "r",
+    timeline: fixture.timeline,
+  });
+  assert.equal(projected.groupResolution, null);
+});
+
+test("root target comes from a typed declaration and stays separate from a redirected active target", () => {
+  const projected = projectPresentationV2({
+    pending: {
+      kind: "response",
+      actorId: "D",
+      declaration: { sourceId: "A", targetId: "B", sequenceStartCardId: "attack-card" },
+      continuation: { kind: "attack", sourceId: "A", targetId: "D", sequenceStartCardId: "attack-card" },
+    },
+    currentAction: action({ actorId: "D" }),
+    actionRevision: "redirect",
+    timeline: [event("attack-event", "r1", { card: card("attack-card") })],
+  });
+  assert.deepEqual(projected.rootContext?.originalTargetIds, ["B"]);
+  assert.deepEqual(projected.activeContext?.currentTargetIds, ["D"]);
+});
+
+test("transition references exclude unrelated same-resolution history", () => {
+  const fixture = flows[0].points[0];
+  const projected = projectPresentationV2({
+    pending: fixture.pending,
+    currentAction: fixture.currentAction,
+    actionRevision: "r",
+    timeline: [event("old-unrelated", "r1"), event("attack-event", "r1", { card: card("attack-card") }), event("later-unrelated", "r1")],
+  });
+  assert.deepEqual(projected.transitionEvents.map((item) => item.eventId), ["attack-event"]);
 });
 
 test("viewer projections keep public causal facts equivalent and keep private controls out", () => {

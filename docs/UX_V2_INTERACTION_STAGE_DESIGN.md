@@ -3672,3 +3672,31 @@ The next design discussion should settle **UX2.1 + UX2.2** before coding:
 - how long Reaction Chains collapse / expand on constrained layouts,
 - mobile layout for the same state,
 - whether defeated players remain as a separate compact history strip.
+
+### 0.92 UX2.0B Verification / Fix Gate
+
+This gate preserves the prior review history and does not finalise
+`interactionId`, `frameId`, `checkpointId`, or `presentationRevision`.
+
+- Engine-backed A-I characterization: **PARTIAL**. Real Attack/Dodge,
+  Borrowed Sword forced Attack, viewer reprojection, response timer arming,
+  reconnect, and the single-target Group negative case are covered. The
+  remaining nested stable points retain explicit projector-only fixtures.
+- Root/Active separation: **PARTIAL**. Root targets are explicit-only and
+  cannot be copied from an active target; a universal engine root marker is
+  still open.
+- Group/AOE semantics: **PASS** for detection; **OPEN** for ordering. Only a
+  typed Group continuation creates group presentation, while ordering remains
+  `UNPROVEN`.
+- Causal event scoping: **PASS**. Direct sequence, barrier, parent, and
+  settlement references are bounded; unrelated same-resolution history is
+  excluded.
+- Typed continuation direction: **PARTIAL**. Known discriminators govern
+  parent extraction; missing resume data is not inferred.
+- Timer/barrier proof: **PARTIAL**. Ordinary response arming and reconnect are
+  engine-backed; rescue's separate five-second arm path needs a dedicated
+  real Dying/reconnect/timeout test.
+- Viewer safety and CurrentAction authority: **PASS** for this foundation.
+
+UX2.0C identity design and React migration remain gated on the open engine
+semantics above.

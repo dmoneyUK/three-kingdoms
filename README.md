@@ -1,17 +1,19 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## UX2.0B — Presentation Projector foundation — 2026-10-02
+## UX2.0B-FIX — engine-backed PresentationV2 verification — 2026-10-02
 
-Added an additive pure server-side `presentationV2` projection alongside the
-existing room protocol. It preserves `CurrentAction` as the sole legality and
-private-capability contract, keeps `resolutionId` as legacy/reference metadata,
-and does not introduce final Interaction, Frame, Stage, or Checkpoint
-identities. Deterministic characterization tests cover the nine required
-causal flows, viewer privacy, reconnect/barrier behavior, and timer findings.
+Hardened the additive pure server-side `presentationV2` projection: root
+targets are explicit-only, Group detection requires a typed Group
+continuation, and active/transition references are causally bounded. Added
+engine-backed API tests for Attack/Dodge, Borrowed Sword forced Attack,
+viewer privacy, response timer arming/reconnect, and the single-target Group
+negative case. No final Interaction, Frame, Stage, or Checkpoint identities
+were introduced.
 
-Current stage remains UX2.0 foundation work. The next milestone is review of
-the UX2.0B characterization and projector results before any UX2.0C identity
-finalization or React presentation migration.
+The complete A-I flow matrix remains partly projector-only, rescue timer
+reconnect evidence remains open, and Group ordering remains `UNPROVEN`.
+Next milestone is review of this UX2.0B-FIX gate; do not start UX2.0C or React
+presentation migration yet.
 
 ## Hero artwork update — 2026-10-01
 

@@ -1,26 +1,24 @@
 # Three Kingdoms — current handover
 
-## Latest UX2.0B update — Presentation Projector foundation — 2026-10-02
+## Latest UX2.0B-FIX update — engine-backed PresentationV2 verification — 2026-10-02
 
-On branch `ux-v2`, added `game/presentation-v2.ts` and exposed its additive
-`presentationV2` result from the room projection. The projector is pure,
-timer-free, React-free, and legality-free. It projects conservative root,
-active, immediate parent, participant, group, settlement-reference, and
-transition-reference data from existing Pending/Continuation,
-CurrentAction, and public timeline state.
+On branch `ux-v2`, hardened `game/presentation-v2.ts` and added
+`tests/api/presentation-v2-engine.test.mjs`. Root targets now come only from
+explicit declaration/original fields; Group projection requires a typed Group
+continuation; parent extraction uses known continuation discriminators; and
+active/transition references are causally bounded. The additive room protocol
+and React UI remain unchanged.
 
-Deterministic characterization tests cover Attack/Dodge, Attack/Damage,
-Dying/rescue, AOE progression and nested damage, Duel, Negation,
-Borrowed Sword, Judgement, nested damage triggers, viewer privacy,
-actionRevision separation, reconnect, presentation barriers, timeout data,
-and reduced-motion boundaries. Group ordering remains explicitly
-`UNPROVEN`; no final `interactionId`, `frameId`, `checkpointId`, or
-`presentationRevision` was introduced.
+Engine-backed tests prove real Attack/Dodge, Borrowed Sword forced Attack,
+viewer-private CurrentAction behavior, response timer arming/reconnect, and
+the single-target Group negative case. The nine-flow projector fixtures remain
+characterization evidence; full engine-backed A-I nested coverage and rescue
+timer reconnect evidence remain open and are documented as such.
 
-Full validation passed: build, 96 fast tests, 202 API tests, lint, and
-`git diff --check`. Recommended next work is review of the UX2.0B audit and
-projector before UX2.0C identity design; React migration and visual UX remain
-deferred.
+The timer conclusion is mixed: ordinary response time is unarmed until the
+existing ready action, while rescue has a separate five-second arm path. No
+fairness redesign, final identity IDs, React migration, CSS, or gameplay
+legality change was made. Recommended next work is review before UX2.0C.
 
 ## Latest delivery update — Cloudflare deployment from `ux-v2` — 2026-10-02
 

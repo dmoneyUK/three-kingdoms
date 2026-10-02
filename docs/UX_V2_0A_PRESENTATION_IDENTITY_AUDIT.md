@@ -327,3 +327,58 @@ Stage, or Checkpoint, and it does not add a rendering identity. The next
 identity decision still requires the characterization gaps above plus
 server/projector architecture tests; React migration and visual UX remain
 out of scope.
+
+## UX2.0B Verification Results
+
+This section is separate from the original UX2.0A conclusion and does not
+promote `resolutionId` or introduce final presentation identities.
+
+### ENGINE-BACKED PROVEN
+
+- Real Attack -> Dodge produces a typed `ResponsePending`/`attack`
+  continuation; actor, reason, actionRevision, deadline, readyAfterEventId,
+  source, target, and legacy resolution reference match the room state.
+- Real Borrowed Sword produces the typed `borrowed_sword_attack` continuation.
+  Its parent lifetime is not guessed because the engine does not expose an
+  explicit resume object at that boundary.
+- Real viewer reprojection keeps public PresentationV2 context equivalent and
+  keeps private response options out of another viewer's CurrentAction.
+- Real response timing starts at zero before `start_response_timer`, becomes
+  active after that existing action, and remains stable across reconnect.
+- A real single-target Attack with card metadata does not create
+  `groupResolution`.
+
+### PROJECTOR-ONLY TESTED
+
+The deterministic projector suite retains typed characterization fixtures for
+all A-I flows, root/active redirection, Group/nested damage, Judgement,
+Negation, Duel, Dying, and damage-trigger parent direction. It verifies the
+CurrentAction boundary, viewer equivalence, deterministic reconstruction, and
+that same-resolution unrelated timeline history is excluded.
+
+### STILL UNPROVEN
+
+- Every nested A-I stable point has not yet been driven through one
+  projector-focused real API test. Existing gameplay API coverage is not
+  silently counted as PresentationV2 proof.
+- Rescue timer behavior after a real Dying transition and reconnect during its
+  barrier needs a dedicated end-to-end test. The source path separately arms
+  rescue with five seconds.
+- Universal root/child lifetime, Group ordering/simultaneity, and a bounded
+  transition identity remain engine gaps.
+
+### GATE RESULT
+
+- Root/active separation: **PARTIAL** — explicit-only root targets; no
+  current-target fallback; universal engine root marker remains open.
+- Group detection: **PASS** for the projector boundary, **OPEN** for engine
+  ordering semantics (`UNPROVEN`).
+- Event scoping: **PASS** — only direct sequence/barrier/parent/settlement
+  references are emitted.
+- Typed continuation direction: **PARTIAL** — known discriminators are used;
+  missing resume data stays null.
+- Timer/barrier fairness: **PARTIAL / mixed** — response arming is proven;
+  rescue/reconnect characterization remains open.
+
+The Interaction -> Frame -> Stage -> Checkpoint plan is unchanged. No final
+identity, React migration, CSS change, or gameplay legality change was made.
