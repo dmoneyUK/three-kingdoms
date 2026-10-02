@@ -11,7 +11,7 @@ presentation barriers, or migrate the PresentationV2 projector.
 | Attack | `attackDeclaration()` at authoritative card/provider acceptance | `attackResponseDecision()`, Dodge/decline response continuation | Damage and Dying remain on the attack reference; nested provider work is still being completed | causal handle and room envelope on ordinary response and Attack-targeted entry |
 | Duel | `duelResponseDecision()` | alternating response continuation | response Attack satisfies Duel; it is not a child Frame | explicit root envelope persisted at first response; alternation reuses the Duel frame |
 | Negation | independent `startNegation()` root or nested Group/Duel Negation entry | `advanceNegation()`, `applyNegationResponseOutcome()` | independent root settles directly; nested Group/Duel restores its typed same-frame stage | independent roots create one Interaction; nested Group/Duel keeps one Frame and changes stage/checkpoint |
-| Group/AOE | `groupResponseDecision()` / typed Group continuation | `nextGroupResponse()` and `finishGroupStep()` | `beginGroupTarget()` may launch an independently resolving Attack/Damage path | explicit root envelope persisted at first response; participant progression reuses the Group frame |
+| Group/AOE | `groupResponseDecision()` / typed Group continuation | `nextGroupResponse()` and `finishGroupStep()` | `resolveGroupDamage()` creates one `DAMAGE` child for a real failed participant; `resumeGroupCausalRoom()` restores the parent | FIX14 proves the Raining Arrows failure path; participant progression reuses the Group frame |
 | Borrowed Sword | `startNegation()` → `resolveDeferredStratagem()` | `BorrowedSwordPending` target choice | `choose_borrowed_sword_target` pushes an Attack child; forced Attack settlement resumes parent | real Worker/D1 child push/pop path |
 | Judgement | `beginJudgementResolution()` | reveal, replacement, effective-result continuations | typed response or delayed continuation resumes the owner | causal handle follows the Judgement continuation |
 | Damage | `damageTriggerPending()` / `damageSufferedTriggerPending()` | damage trigger and post-damage continuation | nested Group/Damage resume references are typed | causal handle follows damage records |
@@ -56,8 +56,8 @@ Still open before the C2 acceptance gate can be closed:
   boundaries;
 - add engine assertions for all scenario-matrix IDs at reconnect and second
   viewer boundaries;
-- complete child Frame wiring for Group-nested damage and independent damage
-  triggers;
+- broaden Group-nested Damage coverage beyond the proven Raining Arrows failure
+  path and complete the Dying presentation boundary;
 - prove delayed activation `originRef` history and final settlement clearing.
 
 ## C2-FIX6 ownership evidence — 2026-10-02
@@ -396,3 +396,55 @@ and a database zone audit finds the physical card exactly once.
 | second activation settles without duplicating the card | PROVEN | real decline settles the envelope; player/deck/discard zone audit counts the ID once | no broader card-family matrix |
 | historical delayed originRef | PARTIAL | B origin is freshly derived from the current activation and no old parent is reused | schema has no typed historical `originRef` |
 | synchronous Judgement-Negation parent restore runtime evidence | UNPROVEN | production search finds only the typed branch; `startJudgementNegation()` constructs `{ kind: "root" }` | requires a real production parent entry, not a synthetic fixture |
+
+## C2-FIX14 Group-nested Damage child frame — 2026-10-02
+
+FIX14 closes the real Group failure boundary for the smallest stable Standard
+path: Raining Arrows, participant A successfully responding, participant B
+declining Dodge, B's Xiahou Dun Stauchness Damage/secondary choice, and
+participant C responding afterward. Barbarian Invasion uses the same typed
+Group continuation and enters the same `resolveGroupDamage()` boundary, but
+the focused fixture intentionally proves only the Raining Arrows path rather
+than claiming a second card-specific matrix.
+
+### Production path inventory
+
+| Boundary | Production site | FIX14 behavior/evidence |
+| --- | --- | --- |
+| Group entry | `groupResponseDecision()` and `beginGroupTarget()`; play-card entry at `app/api/rooms/route.ts:5668` | creates one `GROUP_RESOLUTION` root and carries its `CausalContext` in Group Pending |
+| participant failure | canonical Group response branch at `app/api/rooms/route.ts:5294` -> `resolveGroupDamage()` | only a real failed participant enters the independent Damage boundary |
+| child creation | `resolveGroupDamage()` at `app/api/rooms/route.ts:3129` | `childCausalFrame()` creates exactly one `DAMAGE` child when the persisted active frame matches the Group response context; same Interaction, `parentFrameId=FG`, real source/target origin/current state |
+| child Pending | `resolveSourcedDamage()` at `app/api/rooms/route.ts:2641` and `damageSufferedTriggerPending()` | Damage Pending and continuation carry FD; `resumeGroup` separately retains the Group parent handle |
+| child settlement | `finishDamageSufferedEvent()` at `app/api/rooms/route.ts:868` and the no-post-damage branch at `app/api/rooms/route.ts:2724` | `resumeGroupCausalRoom()` calls `resumeCausalFrame()` only when the live envelope is the expected active child, then `finishGroupStep()` continues the stored remaining order |
+| authority boundary | `causalEnvelopeAtStage()` and `parseCausalEnvelope()` | malformed/NULL storage remains non-authoritative; FIX14 does not call `recoverCausalEnvelope()` or rebuild a public frame from Pending |
+
+The parent resume is a guarded in-memory room transition passed into the next
+Group write. It does not recreate FG. `resumeCausalFrame()` switches FD to its
+typed `parentFrameId`, advances one parent checkpoint/revision, and the next
+participant remains the exact `remainingIds[0]` from Group Pending.
+
+### Exact FIX14 evidence matrix
+
+| Requirement | Status | Exact real evidence | Remaining boundary |
+| --- | --- | --- | --- |
+| real Group participant launches independently resolving Damage | PROVEN | `FIX14 Group failure Damage uses one child frame and resumes the next participant` runs Raining Arrows participant B failure into Xiahou Dun's real post-damage trigger | no second card-specific fixture for Barbarian Invasion |
+| nested Damage preserves Group interactionId | PROVEN | same test compares Group root and Damage envelope `interactionId` | none for covered path |
+| nested Damage creates one child frame | PROVEN | same test asserts exactly two frames and one non-root Damage frame | none for covered path |
+| Damage child parentFrameId equals Group frameId | PROVEN | same test asserts `damageFrame.parentFrameId === groupFrame.frameId` | none for covered path |
+| activeFrameId switches Group -> Damage child | PROVEN | target response keeps FG active; B failure asserts FD active while Damage trigger blocks | no browser animation claim |
+| child Pending/Continuation causal points to Damage frame | PROVEN | D1 `pending_json` assertions compare `causal.frameId` and `continuation.causal.frameId` to FD; `resumeGroup` retains FG | none for covered path |
+| blocking child actor matches envelope resolver | PROVEN | test asserts `currentAction.actorId`, Pending `actorId`, and FD `current.resolvingPlayerId` are B | none for covered path |
+| child settlement resumes original Group frame | PROVEN | source-side Stauchness choice returns to FG with `GROUP_RESOLUTION` active and C as next actor | Dying settlement is separate and partial below |
+| parent resume creates one semantic checkpoint/revision | PROVEN | resumed envelope asserts FG checkpoint and `presentationRevision === damageRevision + 1` | none for covered path |
+| Group participant is not duplicated/skipped after resume | PROVEN | final log contains B failure once and C Dodge once; B event precedes C event | none for covered path |
+| multi-participant Group order survives child Damage | PROVEN | A responds, B fails/settles nested Damage, then C responds in the same fixture | none for covered path |
+| Group root settles only after all participants finish | PROVEN | envelope remains at C response and clears only after C settles; `pendingGroup` is then null | none for covered path |
+| nested Damage -> Dying does not lose Group parent | PARTIAL | `resolveSourcedDamage()` passes FD into `startDyingRescue()` and retains `resumePending`; the production Dying continuation still needs a dedicated FD->FG rescue proof | Dying presentation barrier and rescue-parent checkpoint are out of scope |
+| stale/duplicate child decision cannot duplicate frame/Damage | PROVEN | stale context keeps exact Pending; concurrent Stauchness submissions have one 200 winner and one stale 409, with one FD and one Damage transition | none for covered trigger boundary |
+| repeated read preserves active child identity | PROVEN | B repeated GET and Carol's second viewer read compare Interaction, FD, checkpoint and revision | no browser reconnect harness |
+| second viewer sees same public child envelope | PROVEN | Carol receives the same public FG+FD envelope while B's trigger choices remain private | none for covered viewer projection |
+| NULL/malformed Group->Damage never reconstructs authority | PROVEN | `FIX14 malformed Group-to-Damage storage never reconstructs a child authority` corrupts the stored envelope during live FD continuation; API returns 200, public envelope stays null, typed Group handle remains without fabricated authority | no recovery is attempted by design |
+
+C3, historical delayed `originRef`, synchronous Judgement-Negation parent
+restore, React/CSS/presentation migration, and the Dying presentation barrier
+remain outside FIX14.

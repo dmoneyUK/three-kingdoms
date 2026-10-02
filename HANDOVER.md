@@ -94,3 +94,101 @@ Append only a C2-FIX14 execution result with branch/full implementation SHA, fil
 ## Acceptance
 
 FIX14 passes only if a real Group Damage path proves same Interaction, distinct child Damage frame parented to Group, child active while unresolved, child causal context, exact one-time parent resume, no participant duplication/skip, root alive until final settlement, stable reconnect/viewer state, no malformed-state reconstruction, honest evidence, green regressions, and no C3/UI work.
+
+## C2-FIX14 execution result — 2026-10-02
+
+Implementation branch: `ux-v2` (direct branch edits; no worktree). Full
+implementation commit SHA will be recorded in this section immediately before
+push. The implementation is intentionally limited to the real Standard
+Raining Arrows Group-failure path; no C3, React/CSS, historical `originRef`,
+synchronous Judgement-Negation parent gameplay, or Dying presentation barrier
+was started.
+
+### Changed files
+
+- `app/api/rooms/route.ts`
+  - Added `resumeGroupCausalRoom()` as a guarded parent-resume adapter.
+  - `resolveGroupDamage()` now validates the persisted Group envelope and
+    creates exactly one `DAMAGE` child with `childCausalFrame()` at the real
+    failed-participant Damage boundary.
+  - Damage Pending/Continuation carries the child context while `resumeGroup`
+    retains the Group parent context.
+  - Both direct no-post-damage settlement and
+    `finishDamageSufferedEvent()` resume the active child to its typed parent
+    before `finishGroupStep()` continues participant order.
+- `tests/api/presentation-v2-engine.test.mjs`
+  - Added the real multi-participant FIX14 Raining Arrows fixture, repeated
+    reads, second-viewer envelope proof, stale request and concurrent duplicate
+    trigger race, and malformed-envelope continuation proof.
+- `tests/api/concurrency.test.mjs`
+  - Updated the Group duplicate-response regression to retain the settled
+    Damage child in public causal history while asserting the Group parent is
+    active again.
+- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
+  - Added the production path inventory, child/parent semantics and exact
+    FIX14 matrix.
+- `README.md`
+  - Added the concise FIX14 stage/roadmap update and explicit Dying boundary.
+- `HANDOVER.md`
+  - This execution result is local reviewer state and is pushed as requested.
+
+### Production Group -> Damage audit
+
+Entry is `groupResponseDecision()`/`beginGroupTarget()`; the live play-card
+entry calls `beginGroupTarget()` with the root envelope. A canonical failed
+Group response reaches `resolveGroupDamage()` from the Group response handler.
+`resolveGroupDamage()` is the only FIX14 child creation site: it calls
+`childCausalFrame()` only when the stored active envelope matches the Group
+response context, then passes FD to `resolveSourcedDamage()`. The child Pending
+is produced by `damageSufferedTriggerPending()` and retains a separate typed
+`resumeGroup` FG handle. Child settlement reaches `resumeGroupCausalRoom()` in
+the direct Damage path or `finishDamageSufferedEvent()`; both use
+`resumeCausalFrame()` and then `finishGroupStep()`. `causalEnvelopeAtStage()`
+preserves NULL/malformed storage as non-authoritative. `recoverCausalEnvelope()`
+is not used to reconstruct this path.
+
+### Exact FIX14 matrix
+
+| Requirement | Status | Evidence / boundary |
+| --- | --- | --- |
+| real Group participant launches independently resolving Damage | PROVEN | Real Raining Arrows participant B failure opens Xiahou Dun post-damage trigger in `FIX14 Group failure Damage uses one child frame and resumes the next participant` |
+| nested Damage preserves Group interactionId | PROVEN | Group root and Damage envelope IDs are compared |
+| nested Damage creates one child frame | PROVEN | Envelope has exactly FG plus one FD |
+| Damage child parentFrameId equals Group frameId | PROVEN | FD parent is asserted equal to FG |
+| activeFrameId switches Group -> Damage child | PROVEN | FG is active before B failure; FD is active while Damage trigger blocks |
+| child Pending/Continuation causal points to Damage frame | PROVEN | D1 Pending causal and continuation causal point to FD; `resumeGroup` points to FG |
+| blocking child actor matches envelope resolver | PROVEN | currentAction actor, Pending actor and FD resolver are B |
+| child settlement resumes original Group frame | PROVEN | Source-side Stauchness choice returns to FG with C as next actor |
+| parent resume creates one semantic checkpoint/revision | PROVEN | FG checkpoint and exactly `damageRevision + 1` are asserted |
+| Group participant is not duplicated/skipped after resume | PROVEN | B failure and C response each occur once; B log precedes C log |
+| multi-participant Group order survives child Damage | PROVEN | A response -> B nested Damage -> C response in one Interaction |
+| Group root settles only after all participants finish | PROVEN | FG remains at C and clears only after C response |
+| nested Damage -> Dying does not lose Group parent | PARTIAL | FD and `resumePending` reach `startDyingRescue()`; dedicated rescue FD->FG proof remains out of scope |
+| stale/duplicate child decision cannot duplicate frame/Damage | PROVEN | stale context leaves Pending unchanged; concurrent Stauchness commands yield one 200 and one stale 409 |
+| repeated read preserves active child identity | PROVEN | B and Carol reads preserve Interaction, FD, checkpoint and revision |
+| second viewer sees same public child envelope | PROVEN | Carol sees the same public FG+FD envelope while B options remain private |
+| NULL/malformed Group->Damage never reconstructs authority | PROVEN | Live envelope corruption returns 200 with public envelope NULL and no fabricated child; typed Group handle remains only in Pending |
+
+### Validation
+
+Focused command (after `npm run build`):
+
+`GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs GAME_TEST_PORT=3147 GAME_TEST_URL=http://localhost:3147 GAME_TEST_INSPECTOR_PORT=9247 node tests/run-tests.mjs`
+
+Result: 21/21 API tests passed, including the FIX14 child/resume, stale and
+duplicate race, repeated/second-viewer and malformed-storage tests.
+
+Full validation results:
+
+- `npm run test:fast`: 108/108 passed.
+- `npm run test:api`: 236/236 passed across 4 shards.
+- `npm run build`: passed.
+- `npm run lint`: passed.
+- `git diff --check`: passed.
+
+### Remaining C2 work
+
+Historical delayed `originRef` remains PARTIAL, runtime synchronous
+Judgement-Negation parent restoration remains UNPROVEN, and nested
+Damage-to-Dying parent-resume/presentation evidence remains PARTIAL. C3 is not
+started.

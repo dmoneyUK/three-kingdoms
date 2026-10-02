@@ -81,8 +81,13 @@ frame or duplicate card. Judgement Negation/counter-Negation, no-responder
 settlement, Necromancy races, delayed placement-to-activation, and Stauchness
 Damage-parent evidence remain covered. C2 is still partial for historical
 delayed `originRef`, runtime synchronous Judgement-Negation parent construction,
-and the previously deferred Group-nested Damage/Dying presentation work. Do
-not start C3.
+and the Dying presentation barrier. C2-FIX14 now proves the real Raining Arrows
+Group failure path: one Damage child frame preserves the Group Interaction,
+blocks on the real Damage resolver, resumes the exact Group parent once, and
+continues the next participant before clearing at final settlement. Repeated
+viewer reads, stale/duplicate trigger commands, and malformed envelope storage
+are covered; nested Damage-to-Dying remains PARTIAL by scope. The next milestone
+is reviewer validation of FIX14 and the remaining C2 gaps; do not start C3.
 
 ## UX2.0B-FINAL verification — 2026-10-02
 

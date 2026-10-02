@@ -477,6 +477,12 @@ function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackO
   return { value: { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, ignoresArmor: hasBlueSteelSword(source), requiredDodgeCount: attackDodgeCount(source), sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", resumePhase, resumePlayerId: source.id, causal: causal ?? root?.context }, createdEnvelope: root?.envelope ?? null };
 }
 function exactCausalEnvelope(room: RoomRow, createdEnvelope: CausalEnvelope | null): CausalEnvelope | null { return parseCausalEnvelope(room.causal_envelope_json) ?? createdEnvelope; }
+function resumeGroupCausalRoom(room: RoomRow, childCausal?: CausalContext) {
+  const activeEnvelope = parseCausalEnvelope(room.causal_envelope_json);
+  if (!activeEnvelope || !childCausal || activeEnvelope.interactionId !== childCausal.interactionId || activeEnvelope.activeFrameId !== childCausal.frameId) return room;
+  const resumedEnvelope = resumeCausalFrame(activeEnvelope, childCausal).envelope;
+  return { ...room, causal_envelope_json: JSON.stringify(resumedEnvelope) };
+}
 function attackDodgeCount(source?: PlayerRow | null) { return source?.hero === "lü-bu" ? 2 : 1; }
 function attackResponseDecision(declaration: AttackDeclaration, target: PlayerRow): ResponsePending {
   // Response-window entitlement must depend only on public game state.
@@ -884,7 +890,8 @@ async function finishDamageSufferedEvent(room: RoomRow, continuation: DamageSuff
   }
   if (continuation.resumeGroup) {
     const group = continuation.resumeGroup;
-    await finishGroupStep({ ...room, phase: "response", pending_json: serializePending(group) }, group, group.continuation, players, discard, addLog(log, `${players.find((player) => player.id === continuation.targetId)?.name ?? "The damaged character"}'s post-damage reaction ends. The group card continues.`));
+    const resumedRoom = resumeGroupCausalRoom({ ...room, phase: "response", pending_json: serializePending(group) }, continuation.causal);
+    await finishGroupStep(resumedRoom, group, group.continuation, players, discard, addLog(log, `${players.find((player) => player.id === continuation.targetId)?.name ?? "The damaged character"}'s post-damage reaction ends. The group card continues.`));
     return;
   }
   const target = players.find((player) => player.id === continuation.targetId);
@@ -2623,6 +2630,7 @@ type SourcedDamageTransition = {
   damageDescription?: string | ((amount: number) => string);
   writes?: D1PreparedStatement[];
   resumeGroup?: GroupResponsePending;
+  resumeChildCausal?: CausalContext;
   resumePending?: GroupResponsePending;
   resumeDamageSuffered?: DamageSufferedTriggerContinuation;
   resumeTurnEnd?: TurnEndTriggerContinuation;
@@ -2630,7 +2638,7 @@ type SourcedDamageTransition = {
 };
 
 /** Applies sourced damage, then discovers the generic post-damage event. */
-async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied }: SourcedDamageTransition): Promise<AttackDamageResult> {
+async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied }: SourcedDamageTransition): Promise<AttackDamageResult> {
   const inheritedCausal = causal ?? resumeGroup?.causal ?? resumePending?.causal ?? resumeDamageSuffered?.causal ?? resumeTurnEnd?.causal;
   const finalAmount = resolveDamageModifiers({ sourceId: source?.id, sourceHero: source?.hero, cause, baseAmount: amount, turnState: parse<KingSkillState>(room.skill_state_json, {}) });
   const skillState = parse<KingSkillState>(room.skill_state_json, {});
@@ -2713,7 +2721,8 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     return { kind: "damage_applied", hp, log: damageLog };
   }
   if (resumeGroup) {
-    await finishGroupStep(room, resumeGroup, resumeGroup.continuation, updatedPlayers, discard, damageLog, [...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id)]);
+    const resumedRoom = resumeGroupCausalRoom(room, resumeChildCausal);
+    await finishGroupStep(resumedRoom, resumeGroup, resumeGroup.continuation, updatedPlayers, discard, damageLog, [...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id)]);
     return { kind: "damage_applied", hp, log: damageLog };
   }
   if (resumePhase.startsWith("draw")) {
@@ -3123,14 +3132,28 @@ async function resolveGroupDamage(room: RoomRow, response: ResponsePending, cont
   const resumePending = next ?? { ...response, continuation: { ...continuation, remainingIds: [] } };
   const damageCards = groupDamageCards(continuation);
   const attackDamage = continuation.cardKind === "SkyPiercingHalberdAttack";
+  const parentEnvelope = parseCausalEnvelope(room.causal_envelope_json);
+  const child = parentEnvelope && response.causal
+    && parentEnvelope.interactionId === response.causal.interactionId
+    && parentEnvelope.activeFrameId === response.causal.frameId
+    && parentEnvelope.frames.some((frame) => frame.frameId === response.causal?.frameId)
+    ? childCausalFrame(parentEnvelope, {
+      stage: "DAMAGE",
+      causeNodeId: response.causal.frameId,
+      origin: { originSourceId: source.id, originEffect: cardName, originalTargetIds: [actor.id], originRef: { interactionId: response.causal.interactionId, frameId: response.causal.frameId } },
+      current: { currentSourceId: source.id, currentEffect: "damage", currentTargetIds: [actor.id], resolvingPlayerId: actor.id },
+    })
+    : null;
+  const damageRoom = child ? { ...room, causal_envelope_json: JSON.stringify(child.envelope) } : room;
   await resolveSourcedDamage({
-    room, source, target: actor, players, amount: 1, discard,
+    room: damageRoom, source, target: actor, players, amount: 1, discard,
     log,
     resumePhase: continuation.resumePhase,
     resumePlayerId: source.id,
     sequenceStartCardId: continuation.sequenceStartCardId ?? continuation.heldCards?.[0]?.id ?? "",
     damageCards,
-    causal: response.causal,
+    causal: child?.context ?? response.causal,
+    resumeChildCausal: child?.context,
     ...(attackDamage ? { physicalSuit: continuation.physicalSuit, cause: "attack" as const } : {}),
     damageDescription: `${actor.name} does not play ${continuation.requiredKind} and takes 1 damage from ${cardName}`,
     resumeGroup: { ...response, continuation },

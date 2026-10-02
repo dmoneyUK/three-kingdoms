@@ -375,7 +375,7 @@ test("FIX9 Group duplicate response race advances one participant once", { timeo
   assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, JSON.stringify(results));
   assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(opened.bob.id)} AND json_extract(value,'$.id')='${opened.required.toLowerCase()}-fix9-group-race-bob'`), "0");
   const after = await state(opened.code, opened.bobMember.token);
-  assert.equal(after.data.causalEnvelope.frames.length, 1);
+  assert.equal(after.data.causalEnvelope.frames.length, 2, "FIX14 retains the settled Damage child in the public causal history");
   assert.equal(after.data.causalEnvelope.interactionId, prompt.data.causalEnvelope.interactionId);
   assert.equal(after.data.causalEnvelope.activeFrameId, prompt.data.causalEnvelope.activeFrameId);
 });

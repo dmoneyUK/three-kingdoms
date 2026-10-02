@@ -1,7 +1,7 @@
 import test from "node:test";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import {
-  assert, card, createHumanGame, openBorrowedSwordScenario, openGanglieGroup, prepareGuoJudgement, query, quote, request, requestAndSettle, setEquipment, setHand, setTurn, sql, state, waitForState,
+  assert, card, createHumanGame, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
 } from "./test-support.mjs";
 
 function authoritativePending(code) {
@@ -141,6 +141,141 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(next.data.presentationV2.activeContext?.kind, "group");
   assert.equal(next.data.presentationV2.groupResolution?.semantics, "UNPROVEN");
   assert.deepEqual(next.data.presentationV2.groupResolution?.participantIds, nextPending.continuation.remainingIds);
+});
+
+test("FIX14 Group failure Damage uses one child frame and resumes the next participant", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, targetMember, damageMember, finalMember] = game.members;
+  const [source, target, damageTarget, finalTarget] = game.room.players;
+  const group = card("RainingArrows", "fix14-group");
+  const targetDodge = card("Dodge", "fix14-target-dodge");
+  const finalDodge = card("Dodge", "fix14-final-dodge");
+  sql(`UPDATE players SET hero=NULL WHERE id IN (${[target.id, finalTarget.id].map(quote).join(",")})`);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(damageTarget.id)}`);
+  setHand(source.id, [group], 4, 4);
+  setHand(target.id, [targetDodge], 4, 4);
+  setHand(damageTarget.id, [], 4, 4);
+  setHand(finalTarget.id, [finalDodge], 4, 4);
+  setTurn(game.code, source.seat);
+  setDeck(game.code, [{ ...card("Dodge", "fix14-stauchness-judge"), suit: "♠", rank: "7" }]);
+
+  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: group.id });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  await passNegationWindows(game.code, game.members);
+  const beforeTarget = await state(game.code, targetMember.token);
+  assert.equal(beforeTarget.data.currentAction.kind, "response", JSON.stringify(beforeTarget.data));
+  assert.equal(beforeTarget.data.currentAction.actorId, target.id);
+  const groupRoot = beforeTarget.data.causalEnvelope;
+  assert.ok(groupRoot);
+  assert.equal(groupRoot.frames.length, 1);
+  const groupFrame = groupRoot.frames[0];
+  assert.equal(groupRoot.activeFrameId, groupFrame.frameId);
+  assert.equal(groupFrame.stage, "GROUP_RESOLUTION");
+
+  const targetAnswered = await request("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: targetDodge.id });
+  assert.equal(targetAnswered.status, 200, JSON.stringify(targetAnswered.data));
+  assert.equal(targetAnswered.data.room.currentAction.actorId, damageTarget.id);
+  assert.equal(targetAnswered.data.room.causalEnvelope.interactionId, groupRoot.interactionId);
+  assert.equal(targetAnswered.data.room.causalEnvelope.activeFrameId, groupFrame.frameId, JSON.stringify(targetAnswered.data.room.causalEnvelope));
+
+  const damageOpened = await requestAndSettle("decline_response", { code: game.code, token: damageMember.token });
+  assert.equal(damageOpened.status, 200, JSON.stringify(damageOpened.data));
+  assert.equal(damageOpened.data.room.currentAction.kind, "trigger", JSON.stringify(damageOpened.data));
+  assert.equal(damageOpened.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(damageOpened.data.room.currentAction.actorId, damageTarget.id);
+  const damageEnvelope = damageOpened.data.room.causalEnvelope;
+  assert.ok(damageEnvelope);
+  assert.equal(damageEnvelope.interactionId, groupRoot.interactionId);
+  assert.equal(damageEnvelope.frames.length, 2);
+  const damageFrame = damageEnvelope.frames.find((frame) => frame.frameId !== groupFrame.frameId);
+  assert.ok(damageFrame);
+  assert.equal(damageEnvelope.activeFrameId, damageFrame.frameId);
+  assert.equal(damageFrame.stage, "DAMAGE");
+  assert.equal(damageFrame.parentFrameId, groupFrame.frameId);
+  assert.equal(damageFrame.origin.originSourceId, source.id);
+  assert.deepEqual(damageFrame.origin.originalTargetIds, [damageTarget.id]);
+  assert.equal(damageFrame.current.currentTargetIds[0], damageTarget.id);
+  assert.equal(damageFrame.current.resolvingPlayerId, damageTarget.id);
+  const persistedDamage = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(persistedDamage.causal.frameId, damageFrame.frameId);
+  assert.equal(persistedDamage.continuation.causal.frameId, damageFrame.frameId);
+  assert.equal(persistedDamage.continuation.resumeGroup.continuation.causal.frameId, groupFrame.frameId);
+  assert.equal(persistedDamage.actorId, damageTarget.id);
+  const repeatedDamage = await state(game.code, damageMember.token);
+  const otherDamage = await state(game.code, finalMember.token);
+  for (const view of [repeatedDamage.data, otherDamage.data]) {
+    assert.equal(view.causalEnvelope.interactionId, damageEnvelope.interactionId);
+    assert.equal(view.causalEnvelope.activeFrameId, damageFrame.frameId);
+    assert.equal(view.causalEnvelope.checkpoint.frameId, damageFrame.frameId);
+    assert.equal(view.causalEnvelope.presentationRevision, damageEnvelope.presentationRevision);
+  }
+
+  const pendingBeforeTrigger = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
+  const staleTrigger = await request("trigger", {
+    code: game.code,
+    token: damageMember.token,
+    providerId: "xiahou_dun_ganglie",
+    context: { actionRevision: "stale-fix14", meId: damageTarget.id, phase: "response", pendingKind: "trigger", actorId: damageTarget.id },
+  });
+  assert.equal(staleTrigger.status, 409, JSON.stringify(staleTrigger.data));
+  assert.equal(staleTrigger.data.stale, true);
+  assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), pendingBeforeTrigger);
+  const triggerContext = { actionRevision: damageOpened.data.room.actionRevision, meId: damageTarget.id, phase: "response", pendingKind: "trigger", actorId: damageTarget.id };
+  const triggerRace = await Promise.all([
+    request("trigger", { code: game.code, token: damageMember.token, providerId: "xiahou_dun_ganglie", context: triggerContext }),
+    request("trigger", { code: game.code, token: damageMember.token, providerId: "xiahou_dun_ganglie", context: triggerContext }),
+  ]);
+  assert.equal(triggerRace.filter((result) => result.status === 200).length, 1, JSON.stringify(triggerRace));
+  assert.equal(triggerRace.filter((result) => result.status === 409 && result.data.stale).length, 1, JSON.stringify(triggerRace));
+  const judgementOpened = (await state(game.code, sourceMember.token)).data;
+  assert.equal(judgementOpened.currentAction.kind, "trigger", JSON.stringify(judgementOpened));
+  assert.equal(judgementOpened.currentAction.actorId, source.id);
+  assert.equal(judgementOpened.causalEnvelope.activeFrameId, damageFrame.frameId);
+  const damageResolved = await requestAndSettle("trigger", { code: game.code, token: sourceMember.token, providerId: "xiahou_dun_ganglie", choice: "take_damage" });
+  assert.equal(damageResolved.status, 200, JSON.stringify(damageResolved.data));
+  assert.equal(damageResolved.data.room.currentAction.actorId, finalTarget.id);
+  const resumedEnvelope = damageResolved.data.room.causalEnvelope;
+  assert.ok(resumedEnvelope);
+  assert.equal(resumedEnvelope.interactionId, groupRoot.interactionId);
+  assert.equal(resumedEnvelope.activeFrameId, groupFrame.frameId);
+  assert.equal(resumedEnvelope.frames.find((frame) => frame.frameId === groupFrame.frameId)?.stage, "GROUP_RESOLUTION");
+  assert.equal(resumedEnvelope.presentationRevision, damageEnvelope.presentationRevision + 1);
+  assert.equal(resumedEnvelope.checkpoint.frameId, groupFrame.frameId);
+  assert.equal(damageResolved.data.room.players.find((player) => player.id === target.id).handCards.length, 0);
+  assert.equal(damageResolved.data.room.players.find((player) => player.id === damageTarget.id).hp, 3);
+
+  const finalResolved = await requestAndSettle("respond", { code: game.code, token: finalMember.token, cardId: finalDodge.id });
+  assert.equal(finalResolved.status, 200, JSON.stringify(finalResolved.data));
+  assert.equal(finalResolved.data.room.causalEnvelope, null);
+  assert.equal(finalResolved.data.room.pendingGroup, null);
+  assert.equal(finalResolved.data.room.log.filter((entry) => entry.includes("Bob does not play Dodge")).length, 1);
+  assert.equal(finalResolved.data.room.log.filter((entry) => entry.includes("Carol plays Dodge against Raining Arrows")).length, 1);
+  const bobDamageIndex = finalResolved.data.room.log.findIndex((entry) => entry.includes("Bob does not play Dodge"));
+  const carolResponseIndex = finalResolved.data.room.log.findIndex((entry) => entry.includes("Carol plays Dodge against Raining Arrows"));
+  assert.ok(bobDamageIndex >= 0 && bobDamageIndex < carolResponseIndex, "the resumed Group processes Bob once before Carol");
+});
+
+test("FIX14 malformed Group-to-Damage storage never reconstructs a child authority", { timeout: 30_000 }, async () => {
+  const setup = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix14-malformed", judge: { ...card("Dodge", "fix14-malformed-judge"), suit: "♠", rank: "7" } });
+  const before = await state(setup.code, setup.targetMember.token);
+  assert.equal(before.data.currentAction.kind, "trigger", JSON.stringify(before.data));
+  assert.equal(before.data.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(before.data.causalEnvelope.frames.length, 2);
+  const groupFrameId = before.data.causalEnvelope.frames.find((frame) => frame.parentFrameId === null)?.frameId;
+  const childFrameId = before.data.causalEnvelope.activeFrameId;
+  assert.ok(groupFrameId);
+  assert.notEqual(childFrameId, groupFrameId);
+  sql(`UPDATE rooms SET causal_envelope_json = '{malformed-fix14' WHERE code=${quote(setup.code)}`);
+  const declined = await requestAndSettle("decline_trigger", { code: setup.code, token: setup.targetMember.token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  assert.equal(declined.data.room.currentAction.kind, "response", JSON.stringify(declined.data));
+  assert.equal(declined.data.room.currentAction.actorId, setup.bob.id);
+  assert.equal(declined.data.room.causalEnvelope, null, "malformed storage stays non-authoritative and does not fabricate a child or parent envelope");
+  const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(setup.code)}`));
+  assert.equal(pending.causal.interactionId, before.data.causalEnvelope.interactionId);
+  assert.equal(pending.causal.frameId, groupFrameId, "the typed Group continuation survives without reconstructing public authority");
+  assert.notEqual(pending.causal.frameId, childFrameId);
 });
 
 test("FIX9 persists the Group root and keeps nested Negation in the same Frame", { timeout: 30_000 }, async () => {
