@@ -148,6 +148,26 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   assert.equal(child.groupResolution?.decisionActorId, "C");
   assert.equal(child.groupResolution?.activeResolverId, "C");
   assert.deepEqual(child.groupResolution?.activeTargetIds, ["B"]);
+  assert.deepEqual(child.interactionScene, {
+    semantics: "PROVEN",
+    interactionId: "group-interaction",
+    rootFrameId: "group-frame",
+    activeFrameId: "damage-frame",
+    parentFrameId: "group-frame",
+    checkpointId: "checkpoint-damage",
+    presentationRevision: 4,
+    stage: "DAMAGE",
+    sourceId: "A",
+    effect: "Raining Arrows",
+    targetIds: ["B", "C", "D"],
+    currentParticipantId: "B",
+    decisionActorId: "C",
+    activeResolverId: "C",
+    activeSourceId: "A",
+    activeTargetIds: ["B"],
+    participantIds: ["C", "D"],
+    continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" },
+  });
 
   const resumedEnvelope = { ...childEnvelope, activeFrameId: "group-frame", checkpoint: { checkpointId: "checkpoint-group", frameId: "group-frame", stage: "GROUP_RESOLUTION" }, presentationRevision: 5 };
   const resumed = projectPresentationV2({ pending: groupPending, currentAction: action({ actorId: "C" }), actionRevision: "action-next", timeline: [], causalEnvelope: resumedEnvelope });
@@ -159,6 +179,8 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   assert.equal(resumed.groupResolution?.currentParticipantId, "B");
   assert.equal(resumed.groupResolution?.decisionActorId, "C");
   assert.equal(resumed.groupResolution?.activeResolverId, "B");
+  assert.equal(resumed.interactionScene?.continuity.relation, "ROOT_FRAME");
+  assert.equal(resumed.interactionScene?.activeFrameId, "group-frame");
 });
 
 test("C3 Group public semantics stay viewer-equivalent while decision ownership changes", () => {
@@ -180,6 +202,7 @@ test("cardKind on a single-target continuation does not create groupResolution",
     timeline: fixture.timeline,
   });
   assert.equal(projected.groupResolution, null);
+  assert.equal(projected.interactionScene, null);
 });
 
 test("root target comes from a typed declaration and stays separate from a redirected active target", () => {

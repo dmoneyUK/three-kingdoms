@@ -140,9 +140,18 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(nestedView.presentationV2.groupResolution?.stage, "DAMAGE");
   assert.equal(nestedView.presentationV2.groupResolution?.currentParticipantId, nestedPending.continuation.resumeGroup.actorId);
   assert.equal(nestedView.presentationV2.groupResolution?.activeResolverId, nestedView.causalEnvelope.frames.find((frame) => frame.frameId === nestedView.causalEnvelope.activeFrameId)?.current.resolvingPlayerId);
+  assert.equal(nestedView.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(nestedView.presentationV2.interactionScene?.interactionId, nestedView.causalEnvelope.interactionId);
+  assert.equal(nestedView.presentationV2.interactionScene?.rootFrameId, nestedGroupFrame?.frameId);
+  assert.equal(nestedView.presentationV2.interactionScene?.continuity.relation, "CHILD_FRAME");
+  assert.equal(nestedView.presentationV2.interactionScene?.currentParticipantId, nestedView.presentationV2.groupResolution?.currentParticipantId);
+  assert.equal(nestedView.presentationV2.interactionScene?.decisionActorId, nestedView.presentationV2.groupResolution?.decisionActorId);
   assert.deepEqual(nestedView.presentationV2.groupResolution?.targetIds, nestedGroupFrame?.origin.originalTargetIds);
+  const repeated = await state(opened.code, opened.targetMember.token);
+  assert.deepEqual(repeated.data.presentationV2.interactionScene, nestedView.presentationV2.interactionScene);
   const otherViewer = await state(opened.code, opened.bobMember.token);
   assert.deepEqual(otherViewer.data.presentationV2.groupResolution, nestedView.presentationV2.groupResolution);
+  assert.deepEqual(otherViewer.data.presentationV2.interactionScene, nestedView.presentationV2.interactionScene);
   assert.equal(otherViewer.data.currentAction.options, undefined, "viewer-private response options stay outside Group public semantics");
   const resumed = await requestAndSettle("decline_trigger", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
   assert.equal(resumed.status, 200, JSON.stringify(resumed.data));
@@ -159,6 +168,9 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(next.data.presentationV2.groupResolution?.currentParticipantId, opened.bob.id);
   assert.deepEqual(next.data.presentationV2.groupResolution?.participantIds, nextPending.continuation.remainingIds);
   assert.equal(next.data.presentationV2.groupResolution?.groupFrameId, next.data.causalEnvelope.activeFrameId);
+  assert.equal(next.data.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
+  assert.equal(next.data.presentationV2.interactionScene?.rootFrameId, nestedGroupFrame?.frameId);
+  assert.equal(next.data.presentationV2.interactionScene?.checkpointId, next.data.causalEnvelope.checkpoint.checkpointId);
   assert.deepEqual(next.data.presentationV2.groupResolution?.targetIds, next.data.causalEnvelope.frames[0].origin.originalTargetIds);
   const final = await requestAndSettle("decline_response", { code: opened.code, token: opened.bobMember.token, preserveResponse: true });
   assert.equal(final.status, 200, JSON.stringify(final.data));
@@ -167,6 +179,8 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(finalView.data.presentationV2.groupResolution?.currentParticipantId, opened.carol.id);
   assert.equal(finalView.data.presentationV2.groupResolution?.interactionId, next.data.presentationV2.groupResolution?.interactionId);
   assert.equal(finalView.data.presentationV2.groupResolution?.groupFrameId, next.data.presentationV2.groupResolution?.groupFrameId);
+  assert.equal(finalView.data.presentationV2.interactionScene?.interactionId, next.data.presentationV2.interactionScene?.interactionId);
+  assert.equal(finalView.data.presentationV2.interactionScene?.rootFrameId, next.data.presentationV2.interactionScene?.rootFrameId);
 });
 
 test("FIX14 Group failure Damage uses one child frame and resumes the next participant", { timeout: 30_000 }, async () => {
@@ -327,6 +341,9 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   assert.equal(dyingSourceView.presentationV2.groupResolution?.currentParticipantId, damageTarget.id);
   assert.equal(dyingSourceView.presentationV2.groupResolution?.decisionActorId, source.id);
   assert.notEqual(dyingSourceView.presentationV2.groupResolution?.currentParticipantId, dyingSourceView.presentationV2.groupResolution?.decisionActorId);
+  assert.equal(dyingSourceView.presentationV2.interactionScene?.continuity.relation, "CHILD_FRAME");
+  assert.equal(dyingSourceView.presentationV2.interactionScene?.currentParticipantId, damageTarget.id);
+  assert.equal(dyingSourceView.presentationV2.interactionScene?.decisionActorId, source.id);
 
   const rescued = await requestAndSettle("give_peach", { code: game.code, token: sourceMember.token, cardId: peach.id, preserveResponse: true });
   assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
@@ -382,6 +399,11 @@ test("FIX15 Barbarian Invasion uses the same Group Damage child boundary", { tim
   assert.ok(child);
   assert.equal(child.stage, "DAMAGE");
   assert.equal(child.parentFrameId, damage.data.room.causalEnvelope.frames.find((frame) => frame.parentFrameId === null)?.frameId);
+  assert.equal(damage.data.room.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(damage.data.room.presentationV2.interactionScene?.effect, "BarbarianInvasion");
+  assert.equal(damage.data.room.presentationV2.interactionScene?.continuity.relation, "CHILD_FRAME");
+  assert.equal(damage.data.room.presentationV2.interactionScene?.parentFrameId, child.parentFrameId);
+  assert.equal(damage.data.room.presentationV2.interactionScene?.activeTargetIds[0], damageTarget.id);
 
   const resumed = await requestAndSettle("decline_trigger", { code: game.code, token: damageMember.token, preserveResponse: true });
   assert.equal(resumed.status, 200, JSON.stringify(resumed.data));
@@ -409,6 +431,8 @@ test("FIX14 malformed Group-to-Damage storage never reconstructs a child authori
   assert.equal(declined.data.room.presentationV2.groupResolution?.semantics, "UNPROVEN");
   assert.equal(declined.data.room.presentationV2.groupResolution?.interactionId, null);
   assert.equal(declined.data.room.presentationV2.groupResolution?.groupFrameId, null);
+  assert.equal(declined.data.room.presentationV2.interactionScene?.semantics, "UNPROVEN");
+  assert.equal(declined.data.room.presentationV2.interactionScene?.interactionId, null);
   const pending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(setup.code)}`));
   assert.equal(pending.causal.interactionId, before.data.causalEnvelope.interactionId);
   assert.equal(pending.causal.frameId, groupFrameId, "the typed Group continuation survives without reconstructing public authority");
@@ -653,6 +677,8 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(counter.data.causalEnvelope.frames[0].stage, "NEGATION");
   assert.equal(counter.data.presentationV2.groupResolution?.groupFrameId, root.activeFrameId);
   assert.equal(counter.data.presentationV2.groupResolution?.stage, "NEGATION");
+  assert.equal(counter.data.presentationV2.interactionScene?.continuity.relation, "SAME_FRAME");
+  assert.equal(counter.data.presentationV2.interactionScene?.activeFrameId, root.activeFrameId);
   const restored = await requestAndSettle("respond", { code: opened.code, token: opened.targetMember.token, cardId: counterNegation.id, preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
   assert.equal(restored.data.room.causalEnvelope.interactionId, root.interactionId);
@@ -662,6 +688,7 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(restored.data.room.presentationV2.groupResolution?.groupFrameId, root.activeFrameId);
   assert.equal(restored.data.room.presentationV2.groupResolution?.activeFrameId, root.activeFrameId);
   assert.equal(restored.data.room.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
+  assert.equal(restored.data.room.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
 });
 
 test("FIX9 Group NULL and ordinary Duel malformed envelopes stay non-authoritative", { timeout: 30_000 }, async () => {
@@ -669,6 +696,8 @@ test("FIX9 Group NULL and ordinary Duel malformed envelopes stay non-authoritati
   sql(`UPDATE rooms SET causal_envelope_json = NULL WHERE code=${quote(group.code)}`);
   const groupBefore = (await state(group.code, group.targetMember.token)).data;
   assert.equal(groupBefore.causalEnvelope, null);
+  assert.equal(groupBefore.presentationV2.interactionScene?.semantics, "UNPROVEN");
+  assert.equal(groupBefore.presentationV2.interactionScene?.interactionId, null);
   const groupAfter = await requestAndSettle("decline_trigger", { code: group.code, token: group.targetMember.token, preserveResponse: true });
   assert.equal(groupAfter.status, 200, JSON.stringify(groupAfter.data));
   assert.equal(groupAfter.data.room.causalEnvelope, null);

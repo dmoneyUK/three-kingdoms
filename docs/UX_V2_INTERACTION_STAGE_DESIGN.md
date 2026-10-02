@@ -3858,3 +3858,55 @@ identity from Pending, logs, event IDs, card names, phase, or `actionRevision`.
 The public Group summary is viewer-equivalent; viewer-private `CurrentAction`
 controls remain outside it. This contract is projector/model/test scope and
 does not authorize React/CSS migration.
+
+### 0.94 UX2.0C3-02 typed public Interaction Scene — 2026-10-02
+
+`presentationV2.interactionScene` is the reusable public semantic snapshot for
+the future Interaction Stage client. It is a typed projection, not a copy of
+Pending, CurrentAction, the timeline, or the causal envelope:
+
+~~~text
+interactionScene
+  semantics: PROVEN | UNPROVEN
+  interactionId?
+  rootFrameId?
+  activeFrameId?
+  parentFrameId?
+  checkpointId?
+  presentationRevision?
+  stage?
+  sourceId?
+  effect?
+  targetIds[]
+  currentParticipantId?
+  decisionActorId?
+  activeResolverId?
+  activeSourceId?
+  activeTargetIds[]
+  participantIds[]
+  continuity
+    relation: UNPROVEN | ROOT_FRAME | SAME_FRAME | CHILD_FRAME
+    parentFrameId?
+~~~
+
+The causal identity fields (`interactionId`, frame IDs, checkpoint ID, and
+presentation revision) are copied only from a proven parsed causal envelope.
+The Group source/effect/ordered target/current-participant semantics are shared
+with the accepted `groupResolution` compatibility projection; the compatibility
+object is derived from the same semantic values and must not diverge. Public
+decision/resolver roles remain separate, while private CurrentAction options,
+cards, and legality are excluded from the scene.
+
+`CHILD_FRAME` identifies an active frame with an authoritative parent. A Group
+`NEGATION` snapshot on the existing Group frame is `SAME_FRAME`; a Group
+response/resume snapshot on the parent is `ROOT_FRAME` from the current
+snapshot's structural perspective. A single snapshot cannot prove whether a
+root-frame observation is an update or a return from a child, so the projector
+does not invent transition direction, animation timing, or a visual continuity
+event. A later client may compare stable frame/checkpoint/revision values.
+
+NULL or malformed causal authority produces an explicit `UNPROVEN` scene for
+an otherwise typed Group projection, with causal IDs null. It never reconstructs
+identity from Pending, events, logs, card names, `resolutionId`, or
+`actionRevision`. This remains projector/model/test scope; React/CSS migration
+and the Dying presentation barrier remain later work.

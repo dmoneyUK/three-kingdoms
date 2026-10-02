@@ -30,11 +30,39 @@ export type PresentationParticipant = {
   roles: readonly ("source" | "target" | "current_target" | "responder" | "group_participant")[];
 };
 
+export type InteractionSceneContinuity = {
+  relation: "UNPROVEN" | "ROOT_FRAME" | "SAME_FRAME" | "CHILD_FRAME";
+  parentFrameId: string | null;
+};
+
+/** Public, server-owned semantic snapshot for a future Interaction Stage client. */
+export type PresentationInteractionScene = {
+  semantics: "PROVEN" | "UNPROVEN";
+  interactionId: string | null;
+  rootFrameId: string | null;
+  activeFrameId: string | null;
+  parentFrameId: string | null;
+  checkpointId: string | null;
+  presentationRevision: number | null;
+  stage: CausalFrame["stage"] | null;
+  sourceId: string | null;
+  effect: string | null;
+  targetIds: readonly string[];
+  currentParticipantId: string | null;
+  decisionActorId: string | null;
+  activeResolverId: string | null;
+  activeSourceId: string | null;
+  activeTargetIds: readonly string[];
+  participantIds: readonly string[];
+  continuity: InteractionSceneContinuity;
+};
+
 export type PresentationV2 = {
   rootContext: { eventId: string | null; kind: string | null; sourceId: string | null; originalTargetIds: readonly string[]; resolutionId: string | null } | null;
   activeContext: { kind: string | null; stage: string | null; sourceId: string | null; currentTargetIds: readonly string[]; eventIds: readonly string[]; resolutionId: string | null } | null;
   parentContext: { kind: string | null; sourceId: string | null; targetIds: readonly string[]; resumeKind: string | null } | null;
   participants: readonly PresentationParticipant[];
+  interactionScene: PresentationInteractionScene | null;
   groupResolution: {
     semantics: "PROVEN" | "UNPROVEN";
     interactionId: string | null;
@@ -172,14 +200,24 @@ function groupFrameFor(envelope: CausalEnvelope | null, continuation: RecordLike
   return envelope.frames.find((frame) => frame.stage === "GROUP_RESOLUTION" || frame.stage === "NEGATION") ?? null;
 }
 
-function groupPresentation(envelope: CausalEnvelope | null, pending: unknown, currentAction: PresentationV2Input["currentAction"], group: RecordLike | null) {
+type GroupProjectionValues = {
+  groupFrame: CausalFrame | null;
+  activeFrame: CausalFrame | null;
+  cardKind: string;
+  effect: string;
+  sourceId: string | null;
+  targetIds: readonly string[];
+  currentParticipantId: string | null;
+  participantIds: readonly string[];
+  activeParticipantId: string | null;
+};
+
+function groupProjectionValues(envelope: CausalEnvelope | null, pending: unknown, group: RecordLike | null): GroupProjectionValues | null {
   if (!group) return null;
   const groupFrame = groupFrameFor(envelope, group);
   const activeFrame = envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
-  const proven = Boolean(envelope && groupFrame && activeFrame);
   const origin = groupFrame?.origin;
   const current = groupFrame?.current;
-  const activeCurrent = activeFrame?.current;
   const targetIds = origin?.originalTargetIds ?? [];
   const participantIds = strings(group.remainingIds);
   const participantOwnerId = groupParticipantOwner(pending, group);
@@ -189,25 +227,81 @@ function groupPresentation(envelope: CausalEnvelope | null, pending: unknown, cu
     ? firstString(activeFrame.origin.originalTargetIds[0], activeFrame.current.currentTargetIds[0])
     : null;
   return {
-    semantics: proven ? "PROVEN" as const : "UNPROVEN" as const,
-    interactionId: proven ? envelope?.interactionId ?? null : null,
-    groupFrameId: proven ? groupFrame?.frameId ?? null : null,
-    activeFrameId: proven ? envelope?.activeFrameId ?? null : null,
-    parentFrameId: proven ? activeFrame?.parentFrameId ?? null : null,
-    checkpointId: proven ? envelope?.checkpoint.checkpointId ?? null : null,
-    presentationRevision: proven ? envelope?.presentationRevision ?? null : null,
-    stage: proven ? activeFrame?.stage ?? null : null,
+    groupFrame,
+    activeFrame,
     cardKind: firstString(group.cardKind, origin?.originEffect) ?? "group",
     effect: origin?.originEffect ?? firstString(group.cardKind) ?? "group",
     sourceId: firstString(origin?.originSourceId, group.sourceId),
     targetIds,
     currentParticipantId: firstString(childParticipantId, parentParticipantId, participantOwnerId),
+    participantIds,
+    activeParticipantId: firstString(group.activeParticipantId, group.currentParticipantId),
+  };
+}
+
+function interactionSceneFor(
+  envelope: CausalEnvelope | null,
+  currentAction: PresentationV2Input["currentAction"],
+  groupValues: GroupProjectionValues | null,
+): PresentationInteractionScene | null {
+  const activeFrame = groupValues?.activeFrame ?? envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+  if (!groupValues && !envelope) return null;
+  const proven = Boolean(envelope && activeFrame && (!groupValues || groupValues.groupFrame) && envelope.frames.some((frame) => frame.frameId === envelope.checkpoint.frameId));
+  const activeCurrent = activeFrame?.current;
+  const sourceId = groupValues?.sourceId ?? firstString(activeFrame?.origin.originSourceId, activeCurrent?.currentSourceId);
+  const targetIds = groupValues?.targetIds ?? activeFrame?.origin.originalTargetIds ?? [];
+  const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
+  const relation: InteractionSceneContinuity["relation"] = !proven
+    ? "UNPROVEN"
+    : activeFrame?.parentFrameId
+      ? "CHILD_FRAME"
+      : groupValues && activeFrame?.stage === "NEGATION"
+        ? "SAME_FRAME"
+        : "ROOT_FRAME";
+  return {
+    semantics: proven ? "PROVEN" : "UNPROVEN",
+    interactionId: proven ? envelope?.interactionId ?? null : null,
+    rootFrameId: proven ? groupValues?.groupFrame?.frameId ?? envelope?.frames.find((frame) => frame.parentFrameId === null)?.frameId ?? null : null,
+    activeFrameId: proven ? envelope?.activeFrameId ?? null : null,
+    parentFrameId: proven ? activeFrame?.parentFrameId ?? null : null,
+    checkpointId: proven ? envelope?.checkpoint.checkpointId ?? null : null,
+    presentationRevision: proven ? envelope?.presentationRevision ?? null : null,
+    stage: proven ? activeFrame?.stage ?? null : null,
+    sourceId,
+    effect: groupValues?.effect ?? activeFrame?.origin.originEffect ?? null,
+    targetIds,
+    currentParticipantId,
     decisionActorId: currentAction?.actorId ?? null,
     activeResolverId: activeCurrent?.resolvingPlayerId ?? null,
     activeSourceId: activeCurrent?.currentSourceId ?? null,
     activeTargetIds: activeCurrent?.currentTargetIds ?? [],
-    participantIds,
-    activeParticipantId: firstString(group.activeParticipantId, group.currentParticipantId),
+    participantIds: groupValues?.participantIds ?? [],
+    continuity: { relation, parentFrameId: proven ? activeFrame?.parentFrameId ?? null : null },
+  };
+}
+
+function groupPresentation(scene: PresentationInteractionScene | null, groupValues: GroupProjectionValues | null) {
+  if (!scene || !groupValues) return null;
+  return {
+    semantics: scene.semantics,
+    interactionId: scene.interactionId,
+    groupFrameId: scene.rootFrameId,
+    activeFrameId: scene.activeFrameId,
+    parentFrameId: scene.parentFrameId,
+    checkpointId: scene.checkpointId,
+    presentationRevision: scene.presentationRevision,
+    stage: scene.stage,
+    cardKind: groupValues.cardKind,
+    effect: groupValues.effect,
+    sourceId: scene.sourceId,
+    targetIds: scene.targetIds,
+    currentParticipantId: scene.currentParticipantId,
+    decisionActorId: scene.decisionActorId,
+    activeResolverId: scene.activeResolverId,
+    activeSourceId: scene.activeSourceId,
+    activeTargetIds: scene.activeTargetIds,
+    participantIds: scene.participantIds,
+    activeParticipantId: groupValues.activeParticipantId,
   };
 }
 
@@ -245,6 +339,8 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const settlementEvent = input.timeline.find((event) => relevantIds.includes(event.id) && event.finalResult === true) ?? null;
   if (settlementEvent) relevantIds.push(settlementEvent.id);
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
+  const groupValues = groupProjectionValues(input.causalEnvelope ?? null, input.pending, group);
+  const interactionScene = interactionSceneFor(input.causalEnvelope ?? null, input.currentAction, groupValues);
   const rootContext = (root || active || rootEvent) ? {
     eventId: rootEvent?.id ?? null,
     kind: root?.kind ?? active?.kind ?? null,
@@ -257,7 +353,8 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     activeContext: active ? { kind: active.kind, stage: active.stage, sourceId: active.sourceId, currentTargetIds: active.targetIds, eventIds: relevantIds.filter((id) => id === activeEvent?.id || id === barrierId), resolutionId: legacyResolutionId } : null,
     parentContext: parent ? { kind: parent.kind, sourceId: parent.sourceId, targetIds: parent.targetIds, resumeKind: parent.kind } : null,
     participants: participants(active, group),
-    groupResolution: groupCardKind ? groupPresentation(input.causalEnvelope ?? null, input.pending, input.currentAction, group) : null,
+    interactionScene,
+    groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues) : null,
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),

@@ -15,6 +15,11 @@ Group target being processed across Damage and Dying child frames, while
 Real three-participant progression, nested Damage, Peach rescue, same-frame
 Negation, viewer equivalence, and malformed-envelope behavior are covered.
 
+C3-02 formalizes these public semantics as the typed `interactionScene`
+snapshot. It is envelope-owned, excludes private CurrentAction controls, and
+characterizes root/same-frame/child-frame structure without inferring visual
+transitions or migrating React.
+
 This is a projector/model/test change only. No React/CSS migration, gameplay
 rule change, Dying presentation barrier, historical `originRef`, or C4/C5 work
 is included. The next milestone is reviewer validation of C3-01; visual UX
