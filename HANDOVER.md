@@ -1,250 +1,374 @@
-# Three Kingdoms — current handover
+# WTK UX V2 — Current Task Handoff
 
-## UX2.0B-FINAL verification — 2026-10-02
+Updated: 2026-10-02
+Branch: `ux-v2`
 
-Branch: `ux-v2`. The real engine-backed verification now covers:
+This file is intentionally ephemeral. It contains ONLY:
+1. the result of the task that was just reviewed; and
+2. the exact next task for the coding agent.
 
-- Dying/rescue: real lethal damage, rescue decision, separate timer arm,
-  reconnect before and after arm, and timeout advancement;
-- Group/AOE: real damage trigger, typed Group continuation, nested active
-  damage, Group parent, and return to the next participant;
-- Duel: real alternating response actors with action-revision changes;
-- Negation: real original effect, Negation, and counter-Negation;
-- Judgement: real reveal, replacement, effective result, and delayed parent
-  resume;
-- viewer-private CurrentAction projection and deterministic PresentationV2
-  reconstruction.
+When the next task is reviewed, replace this file completely. Do not append historical handoff entries.
 
-The projector change is intentionally narrow: `resumeGroup` is unwrapped only
-when its authoritative continuation is a typed Group continuation. Root target
-projection remains explicit-only. `resolutionId` and public event IDs remain
-legacy/reference metadata: Duel changes resolutionId between alternating
-responses, while Negation can change the directly referenced event across
-counter windows.
+## Reviewed result — UX2.0B-FINAL
 
-Timer conclusion: ordinary response and rescue deadlines are unarmed until
-their existing arm actions, then survive reconnect. The real rescue path does
-not expose `readyAfterEventId`, so presentation-barrier linkage is still
-incomplete; observed rescue time is not consumed before explicit arm.
+The latest engine-backed verification establishes:
 
-Evidence status: UX2.0C is **NOT READY**. Remaining blockers are universal
-root/parent lifetime, explicit barrier metadata for Dying, broader direct
-PresentationV2 traces for the remaining nested flows, and authoritative Group
-ordering semantics. No visual implementation recommendation is made. No
-React, CSS, main-branch, or gameplay-rule work was done.
+- Dying/rescue: the real decision starts with `deadline = 0`; `start_rescue_timer` explicitly arms the deadline; reconnect preserves the armed deadline; timeout advances correctly. No evidence was found that presentation delay consumes rescue time before arm. However, Dying currently exposes no `CurrentAction.presentation.readyAfterEventId`.
+- Group/AOE: a real nested damage/trigger path projects the nested effect as ACTIVE and the typed Group continuation as PARENT, then resumes to the next participant. Group execution ordering semantics remain `UNPROVEN`.
+- Duel: the real response actor and `actionRevision` alternate while root kind/source remain conceptually stable, but the legacy `resolutionId` changes. Therefore `resolutionId` cannot be Interaction identity.
+- Negation/counter-Negation: the original effect remains recoverable, but the directly referenced public event can change and there is no sufficiently typed parent contract for the complete causal relationship.
+- Judgement: real reveal, replacement, effective result, delayed parent, and resume are proven.
+- Nested damage: Group-trigger parent/resume direction is proven.
+- Generic shape probing has been reduced to normalization/unsupported-continuation boundaries.
 
-Validation for this commit: focused projector tests 17/17; engine-backed
-PresentationV2 tests 8/8; full API suite 210/210. Build passed before the API
-run. Full fast suite, lint, and final `git diff --check` remain to be run
-after this documentation update.
+Review decision: **UX2.0C implementation is NOT READY.**
 
-## UX2.0B review — foundation accepted with follow-up gates — 2026-10-02
+This does NOT mean to continue adding unlimited projector fixtures. The remaining problem is now architectural: the engine/orchestrator needs a small authoritative causal-semantic contract. The next task is design-only so that those semantics are specified before implementation.
 
-Reviewed the additive `presentationV2` foundation on `ux-v2`. The direction is retained: server-side/pure presentation projection, `CurrentAction` remains the sole legality authority, `resolutionId` remains legacy/reference metadata, no final Interaction/Frame/Checkpoint IDs are introduced, and React migration remains deferred.
+Known remaining gaps:
+- universal Interaction/root lifetime;
+- authoritative Frame parent/child lifetime;
+- Dying presentation-barrier metadata;
+- authoritative Group ordering/resolution semantics;
+- stable checkpoint/presentation identity distinct from `resolutionId`, `event.id`, and `actionRevision`;
+- a small number of flows still lack a complete direct final-projector trace.
 
-The review found that the current `tests/presentation-v2.test.mjs` scenarios are primarily synthetic projector fixtures rather than real engine/orchestrator end-to-end traces. They are useful characterization of the projector input/output, but they are **not sufficient evidence to finalise UX2.0C identities**.
+## NEXT TASK — UX2.0C0: Minimum Authoritative Causal Contract Design
 
-Before UX2.0C, the next coding task must close these gates:
+### Scope
 
-- drive the real engine/orchestrator through the high-risk causal flows instead of only hand-building Pending objects;
-- preserve immutable root/original targets separately from active/current targets, including redirect/retarget coverage;
-- detect Group/AOE from authoritative semantic continuation state, never merely from the presence of `cardKind`;
-- causally scope `activeContext.eventIds` and `transitionEvents` so unrelated timeline history cannot enter the current scene;
-- replace ambiguous generic resume-field probing with typed/explicit continuation semantics where needed;
-- characterize response/rescue barrier and deadline fairness through the actual runtime lifecycle, including reconnect/poll delay/timeout.
+DESIGN/AUDIT ONLY.
 
-The UX V2 design document now records these as section 0.92 review gates. Do not migrate `app/page.tsx` to `presentationV2` and do not begin visual UX V2 implementation until they pass.
+Do not implement the new causal contract in this task.
 
-Note: the existing handover statement that build/fast/API/lint validation passed is the Agent's reported validation result; this review did not independently execute the repository test suite.
+Read completely before editing:
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `docs/UX_V2_0A_PRESENTATION_IDENTITY_AUDIT.md`
+- this `HANDOVER.md`
+- `game/pending.ts`
+- `game/protocol.d.ts`
+- `game/presentation-v2.ts`
+- relevant orchestration code
+- `tests/api/presentation-v2-engine.test.mjs`
 
+### Git constraints
 
-## Latest UX2.0B-FIX update — engine-backed PresentationV2 verification — 2026-10-02
+Work only on `ux-v2`.
 
-On branch `ux-v2`, hardened `game/presentation-v2.ts` and added
-`tests/api/presentation-v2-engine.test.mjs`. Root targets now come only from
-explicit declaration/original fields; Group projection requires a typed Group
-continuation; parent extraction uses known continuation discriminators; and
-active/transition references are causally bounded. The additive room protocol
-and React UI remain unchanged.
+Do NOT:
+- modify or merge `main`;
+- self-merge `ux-v2`;
+- start React/CSS/visual work;
+- change gameplay rules;
+- introduce production IDs in source code;
+- repurpose `resolutionId`;
+- use `event.id` as Interaction identity;
+- use `actionRevision` as presentation identity;
+- add projector heuristics to hide missing engine semantics.
 
-Engine-backed tests prove real Attack/Dodge, Borrowed Sword forced Attack,
-viewer-private CurrentAction behavior, response timer arming/reconnect, and
-the single-target Group negative case. The nine-flow projector fixtures remain
-characterization evidence; full engine-backed A-I nested coverage and rescue
-timer reconnect evidence remain open and are documented as such.
+### 1. Treat UX2.0B evidence as constraints
 
-The timer conclusion is mixed: ordinary response time is unarmed until the
-existing ready action, while rescue has a separate five-second arm path. No
-fairness redesign, final identity IDs, React migration, CSS, or gameplay
-legality change was made. Recommended next work is review before UX2.0C.
+The design must respect:
 
-## Latest delivery update — Cloudflare deployment from `ux-v2` — 2026-10-02
+- `resolutionId` is legacy/reference metadata, not Interaction/Frame/Checkpoint identity.
+- Duel can change `resolutionId` while remaining the same player-meaningful Duel.
+- `event.id` identifies a persisted public event, not an Interaction.
+- Negation can change its current event reference while the original effect remains causal context.
+- `actionRevision` remains gameplay command/stale validity only.
+- Group nested damage proves ACTIVE child + Group PARENT is representable.
+- Judgement proves ACTIVE judgement + delayed PARENT is representable.
+- Dying/rescue timer is explicitly armed and survives reconnect.
+- Dying currently lacks `readyAfterEventId`.
+- Group ordering semantics are not yet authoritative.
 
-The existing GitHub Actions Cloudflare workflow now validates and deploys pushes
-to both `main` and `ux-v2`. A successful push to either branch applies remote
-D1 migrations, deploys the Worker, and runs the production health smoke tests;
-pull requests targeting either branch remain validation-only. Both branches
-currently target the same Cloudflare Worker and D1 database, so `ux-v2` is a
-live deployment path rather than an isolated preview environment.
+Do not propose a contract that contradicts these facts.
 
-## Latest presentation update — Zhao Yun and Ma Chao portraits — 2026-10-01
+### 2. Design four separate identities
 
-Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
-`HeroPortrait` renderer:
+Specify exact semantics for:
 
-- Photo 1: Zhao Yun (`public/hero-zhao-yun.jpg`)
-- Photo 2: Ma Chao (`public/hero-ma-chao.jpg`)
+`interactionId`
+`frameId`
+`checkpointId`
+`presentationRevision`
 
-The existing shared path covers hero selection, the locked-in selection state,
-the local hero card, and opponent cards. This remains presentation-only: no
-gameplay rules, projections, selection legality, layout dimensions, or semantic
-actions changed.
+For EACH specify:
+- authoritative owner;
+- creation point;
+- lifetime;
+- persistence;
+- public/private status;
+- what changes it;
+- what must NOT change it;
+- reconnect behavior;
+- Quick Test viewer-switch behavior;
+- nested-child behavior.
 
-## Latest functional UX update — minimized event log — 2026-10-01
+No UI-generated/random identity may be authoritative.
 
-The in-game Game Messages event log now initializes collapsed. Players can
-still expand it with the existing accessible control; public message
-projection, privacy, and history behavior are unchanged.
+### 3. Interaction contract
 
-## Latest presentation update — Hua Xiong, Pan Feng, Lü Bu, and Diao Chan portraits — 2026-10-01
+Interaction represents one continuous player-understood causal event.
 
-Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
-`HeroPortrait` renderer:
+Pressure-test the proposed lifetime against:
 
-- Photo 1: Hua Xiong (`public/hero-hua-xiong.jpg`)
-- Photo 2: Pan Feng (`public/hero-pan-feng.jpg`)
-- Photo 3: Lü Bu (`public/hero-lv-bu.jpg`)
-- Photo 4: Diao Chan (`public/hero-diao-chan.jpg`)
+- Attack -> Dodge -> Damage -> Dying -> Peach -> survive/defeat;
+- Duel with alternating Attack requirements;
+- stratagem -> Negation -> counter-Negation -> resume/cancel;
+- Group/AOE -> participant resolution -> nested damage -> resume Group;
+- Borrowed Sword -> forced Attack -> Dodge/damage -> return;
+- Judgement;
+- nested damage trigger;
+- redirect;
+- delayed future activation.
 
-Hua Xiong now uses the shared portrait renderer rather than the intentional
-initials fallback. The shared path covers hero selection, the locked-in
-selection state, the local hero card, and opponent cards. This remains
-presentation-only: no gameplay rules, projections, selection legality, layout
-dimensions, or semantic actions changed.
+Default design rule: synchronous child effects remain inside the same Interaction unless real engine semantics require otherwise.
 
-## Latest presentation update — Cao Cao, Xiahou Dun, and Sima Yi portraits — 2026-10-01
+A delayed/persistent effect activating in a later turn/time must be a NEW Interaction linked by `originRef`; do not reopen the old Interaction.
 
-Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
-`HeroPortrait` renderer:
+### 4. Frame contract
 
-- Photo 1: Cao Cao (`public/hero-cao-cao.jpg`)
-- Photo 2: Xiahou Dun (`public/hero-xiahou-dun.jpg`)
-- Photo 3: Sima Yi (`public/hero-sima-yi.jpg`, shared ID `simayi`)
+Frame means an independently resolving effect inside an Interaction.
 
-The existing shared path covers hero selection, the locked-in selection state,
-the local hero card, and opponent cards. This remains presentation-only: no
-gameplay rules, projections, selection legality, layout dimensions, or semantic
-actions changed.
+Define creation/boundary rules from effect semantics, not implementation call stack or card names.
 
-## Latest presentation update — Lu Xun and Sun Shangxiang portraits — 2026-10-01
+Explicitly decide and justify:
+- Attack response/Dodge: same Attack frame;
+- Duel response Attacks used only to satisfy Duel: same Duel frame;
+- ordinary Negation modifying/cancelling current effect: same frame unless evidence requires otherwise;
+- Group participant response: same Group frame;
+- Group child effect that independently resolves: child frame;
+- Borrowed Sword forced normal Attack: expected child Attack frame if it runs ordinary Attack/Dodge/Damage/Dying semantics;
+- Damage -> Dying: decide same frame/stage versus child frame using player-meaningful semantics.
 
-Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /
-`HeroPortrait` renderer:
+### 5. Immutable origin vs mutable current state
 
-- Photo 1: Lu Xun (`public/hero-lu-xun.jpg`)
-- Photo 2: Sun Shangxiang (`public/hero-sun-shangxiang.jpg`)
+Design immutable frame origin fields such as:
 
-The existing shared path covers hero selection, the locked-in selection state,
-the local hero card, and opponent cards. This remains presentation-only: no
-gameplay rules, projections, selection legality, layout dimensions, or semantic
-actions changed.
+`originSourceId`
+`originEffect`
+`originalTargetIds`
 
-## Latest functional UX update — action and decision clarity — 2026-10-01
+and mutable authoritative current fields such as:
 
-Implemented UX 1 in `app/page.tsx` with the pure projected-state
-`buildDecisionPresentation` helper. It translates the authoritative
-`currentAction`, `actionPlayerId`, `actionReason`, phase, turn seat, and
-viewer ownership into one status model: phase label, turn owner, action owner,
-primary status, supporting instruction, acting/waiting state, and resolving
-state.
+`currentSourceId`
+`currentEffect`
+`currentTargetIds`
+`resolvingPlayerId`
 
-The ownership strip now distinguishes the turn owner from the decision owner.
-The command area has one `role="status"` / polite live region: acting viewers
-see `YOUR DECISION`, waiting viewers see `WAITING FOR <actor>`, and ordinary
-turns show `<player>'s turn` with the current phase. Trigger labels and
-descriptions remain projection-backed; no hero-specific UX branch or client
-legality rule was added. All existing response, trigger, rescue, Negation,
-Judgement, Harvest, target-card, active-skill, and Quick Test submissions are
-unchanged.
+Redirect must support:
 
-Focused render and mounted regressions cover ownership, privacy, normal turns,
-responses, optional triggers, Dying rescue, Negation, target-card selection,
-resolving, action-revision transitions, and the Quick Test acting-seat view.
-Known boundary: selection and control feedback is not part of this round.
-Recommended next work is UX 2 — selection and control feedback.
+original target = B
+current target = D
 
-## Current state — 2026-10-01
+without rewriting historical origin.
 
-WTK Standard gameplay correctness closure is complete.
+Never derive origin from current target as a fallback.
 
-- **30 / 30 Standard heroes** implemented and selectable.
-- **46 / 46 printed Standard hero skills** implemented.
-- **28 / 28 verified Standard card identities** playable.
-- Canonical **108-card Standard deck** implemented.
-- Cao Cao Entourage / Sun Quan Deliverance Lord-role correction is complete.
-- Lü Bu Unrivaled generic semantic multi-response settlement is complete (`c07d6ed`).
-- Sima Yi Retaliation hidden-Hand selection is server-random and hardened (`3a33cb8`).
-- Huang Gai Self Sacrifice HP-loss/Dying/draw ordering is complete (`7dce728`).
+### 6. Parent/child/history links
 
-The completed corrections preserve the established semantic architecture:
-`currentAction` is authoritative; responses use generic `respond` /
-`decline_response`; capabilities use generic `trigger` /
-`decline_trigger`; legality is revalidated by the server; private information
-is projected only to the acting seat; continuations persist interrupted domain
-effects and resume exactly once; Quick Test follows normal multiplayer rules.
+Specify distinct meanings for:
 
-## Next active work — functional UX improvement
+`parentFrameId?`
+`causeNodeId?`
+`originRef?`
 
-Gameplay correction is no longer the active milestone. The next phase is a
-functional UX pass based on the actual current game screen, without changing
-game rules or starting the future integration/release-test phases.
+Required distinction:
+- `parentFrameId`: synchronous nested-resolution parent;
+- `causeNodeId`: semantic/public occurrence that caused the child frame;
+- `originRef`: historical link from a NEW later Interaction to an earlier source.
 
-Start with **action and decision clarity**. The current game screen already has
-authoritative `currentAction`, `actionPlayerId`, `actionReason`, phase,
-response options and trigger options. Improve how those existing facts are
-presented so the player can immediately answer:
+Do not overload one field for all three.
 
-1. Whose turn is it?
-2. Who currently needs to act?
-3. What decision is required?
-4. Which cards/targets are legal?
-5. How can the player confirm or decline?
+### 7. Stage
 
-The first UX task should consolidate the active phase/action/decision message
-into one shared command/status presentation and make the acting player's
-required decision visually dominant. Other seats should see a clear waiting
-message naming the acting character/player. Reuse projected legality; do not
-infer rules in React.
+Stage is semantic state, not an identity.
 
-After that, continue UX in small reviewable steps: card/target selection
-feedback, response/trigger controls, waiting/presentation states, mobile/touch
-usability, stale/error feedback, setup/hero selection, match-end flow and Quick
-Test perspective switching.
+Propose the smallest vocabulary justified by existing authoritative engine states. Possible concepts include ATTACK_RESPONSE, DUEL_EXCHANGE, GROUP_RESOLUTION, DAMAGE, DYING, JUDGEMENT, NEGATION, FORCED_ACTION, but do not adopt names mechanically.
 
-Graphic/art redesign is separate from this functional UX phase.
+For every proposed Stage identify the authoritative engine evidence that determines it.
 
-## Future TODO
+Reject any Stage that requires React/timeline/card-name guessing.
 
-Keep these deferred until after the UX phase:
+### 8. Checkpoint contract
 
-- Standard integration testing across high-risk shared semantic boundaries.
-- End-to-end multi-turn/reload/persistence scenarios.
-- Runtime integrity hardening.
-- Release candidate CI/deployment/production validation.
+Checkpoint is a stable player-facing semantic boundary inside a Stage/Frame.
 
-## Parked rules interpretation
+Specify when it changes.
 
-Do not change the source zones for Guan Yu God of War, Zhen Ji Empress Dowager,
-Gan Ning Ambushment, Da Qiao Captivating, or Hua Tuo First Aid solely because
-the English wording says “a card”. Keep the current interpretation until an
-explicit WTK ruling/source resolves it.
+Pressure-test:
+- Duel responder changes -> new checkpoint, same Duel frame/Interaction;
+- Dying rescuer changes -> new checkpoint;
+- Group advances participant A -> B -> new checkpoint;
+- Negation decision actor changes -> new checkpoint;
+- pure cosmetic/HP rendering changes should not automatically create a checkpoint.
 
-## Engineering constraints
+Do NOT derive `checkpointId` from `actionRevision`.
 
-- Preserve server-owned legality and the existing semantic protocol.
-- Do not add hero/card-specific HTTP actions for UX.
-- Do not create UI-only gameplay rules.
-- Keep private Hand/provider data private.
-- Preserve stale/replay rejection and physical-card conservation.
-- Keep normal multiplayer and Quick Test behavior aligned.
-- Do not start expansion gameplay unless scope is explicitly changed.
+Specify how checkpoint identity is authoritatively created/persisted/reconstructed.
+
+### 9. presentationRevision
+
+Define `presentationRevision` independently from checkpoint and action revision.
+
+It may change when the authoritative projected public presentation materially changes even if checkpoint remains the same.
+
+It must never replace `actionRevision` for gameplay stale-command protection.
+
+Explain with at least two concrete scenarios why both revisions are required.
+
+### 10. Group semantics
+
+Locate where the ENGINE actually owns participant execution order.
+
+Design the minimum authoritative semantic addition required to expose:
+
+`resolutionSemantics: SEQUENTIAL | ORDERED | GROUP`
+
+and where relevant:
+
+`orderedParticipantIds`
+`currentParticipantId`
+`remainingParticipantIds`
+
+The projector must never infer this from:
+- array iteration;
+- seat sorting;
+- card names;
+- timeline order.
+
+Explicitly pressure-test Lust/order-sensitive effects: effect order must survive independently of seat topology.
+
+If `GROUP` means simultaneous semantics, define exactly what that means. Do not introduce it merely because there are multiple targets.
+
+### 11. Dying presentation barrier
+
+Design the minimum authoritative fix for Dying's missing barrier metadata WITHOUT changing the proven timer-arm behavior.
+
+Prefer reusing:
+
+`CurrentAction.presentation.readyAfterEventId`
+
+rather than introducing a Dying-specific field.
+
+Specify:
+- which essential public event should supply the ID;
+- when it is assigned;
+- reconnect behavior;
+- behavior if already presented;
+- relationship to `start_rescue_timer`;
+- why presentation delay cannot silently consume the intended rescue window.
+
+### 12. Transition Event contract
+
+Define the relationship among:
+- persisted timeline `event.id`;
+- Interaction;
+- Frame;
+- Checkpoint;
+- Transition Event.
+
+Transition Events are NOT the Game Log.
+
+Prefer references to authoritative semantic occurrences rather than duplicated prose.
+
+Specify:
+- event identity;
+- causal association;
+- bounded lifetime;
+- reconnect/idempotency;
+- whether replay is required (expected: latest stable snapshot must render without replay).
+
+### 13. Scenario matrix
+
+The design document MUST contain a table with rows:
+
+- Attack/Dodge
+- Attack/Damage/Dying/Peach
+- Duel
+- Negation/counter-Negation
+- AOE normal participant
+- AOE nested damage
+- Borrowed Sword forced Attack
+- Judgement
+- nested damage trigger
+- redirect
+- delayed future activation
+- defeat during Group
+
+Columns:
+
+Interaction lifetime
+Frame(s)
+Parent frame
+Stage(s)
+Checkpoint changes
+Root preserved?
+Group semantics
+Barrier
+Evidence / unresolved issue
+
+Do not mark an unresolved item as proven.
+
+### 14. Migration plan
+
+Design, but do not execute, these implementation slices:
+
+C1 — semantic identity metadata/types
+C2 — propagate Interaction/Frame through orchestrator
+C3 — authoritative Group semantics
+C4 — Dying barrier metadata
+C5 — update PresentationV2 projector
+C6 — engine-backed architecture tests
+C7 — expose final stable PresentationSnapshot contract
+
+React migration occurs only after C7.
+
+Visual UX implementation occurs after the presentation contract is accepted.
+
+### 15. Deliverable
+
+Create:
+
+`docs/UX_V2_0C_CAUSAL_IDENTITY_DESIGN.md`
+
+Do NOT modify `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` during C0. The C0 proposal must be reviewed before it becomes source-of-truth design.
+
+When finished, replace this HANDOVER.md completely again so it contains ONLY:
+
+1. `# WTK UX V2 — Current Task Handoff`
+2. `## Completed task result — UX2.0C0`
+3. branch + commit SHA
+4. files changed
+5. concise design decisions for Interaction/Frame/Stage/Checkpoint/presentationRevision
+6. Group semantics proposal
+7. Dying barrier proposal
+8. unresolved questions/blockers
+9. exact validation performed
+10. `## Awaiting review`
+
+Do not include older handoff history.
+
+Commit and push to `ux-v2`.
+
+STOP after C0.
+
+Do NOT start C1 implementation.
+
+## Acceptance criteria
+
+C0 is complete only if:
+- no production gameplay/UI implementation was changed;
+- all four identities have precise non-overlapping lifetimes;
+- `resolutionId`, `event.id`, and `actionRevision` are explicitly kept separate;
+- root/origin cannot mutate with active target;
+- parent/cause/origin links are differentiated;
+- Group order comes from proposed engine authority, not projector inference;
+- Dying barrier has a concrete authoritative proposal;
+- all required scenarios are pressure-tested;
+- implementation is split into C1-C7;
+- unresolved questions are explicitly listed rather than guessed.
+
+## Awaiting agent execution
+
+After completing the task, STOP and wait for review.
