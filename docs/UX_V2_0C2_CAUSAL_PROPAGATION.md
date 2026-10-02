@@ -313,9 +313,9 @@ continuation handles never reconstruct public authority.
 | Damage-related Judgement preserves parent interaction | PARTIAL | Stauchness continuation carries causal Damage handle and existing API path passes | no dedicated envelope assertion after every provider |
 | Luo River repeated Judgement lifetime is authoritative | PROVEN | `Luoshen repeats real Judgements...` asserts same Interaction/Frame and final clear | none for alternate seat counts |
 | delayed damaging result keeps synchronous damage attached | PROVEN | `source-less Lightning...Legacy opportunities` asserts inherited root through Damage windows | no Group-nested Damage claim |
-| delayed transfer settles activation Interaction | PARTIAL | Lightning transfer gameplay remains covered | no causal envelope assertion at transfer settlement |
-| transferred delayed card later activation gets fresh Interaction | PARTIAL | later delayed activation uses shared fresh-root draw path | no end-to-end ID comparison across two turns |
-| Judgement settlement clears only at true root settlement | PROVEN | delayed Lightning, Luo River, and replacement tests assert settlement boundaries | transfer branch needs causal assertion |
+| delayed transfer settles activation Interaction | PROVEN | FIX13 same-card Lightning fixture asserts NULL after A -> B transfer | none for the covered Lightning path |
+| transferred delayed card later activation gets fresh Interaction | PROVEN | FIX13 activates the exact transferred card and compares A/B interaction and frame IDs | no historical `originRef` persistence |
+| Judgement settlement clears only at true root settlement | PROVEN | delayed Lightning, Luo River, replacement, and FIX13 transfer tests assert settlement boundaries | none for covered flows |
 | repeated read/reconnect preserves Judgement identity | PROVEN | Judgement engine test reads projected state across reveal/replacement | no browser reconnect harness |
 | second viewer sees same public Judgement envelope | PROVEN | engine-backed Judgement projection uses Sima/Guo viewer reads | no private-choice expansion beyond covered fixture |
 | stale/duplicate replacement cannot duplicate causal transition | PARTIAL | existing Pending CAS rejects replay; Judgement-specific causal-ID race not isolated | add dedicated duplicate-replacement fixture |
@@ -326,13 +326,15 @@ remain out of scope.
 
 ## C2-FIX12 settlement and identity evidence — 2026-10-02
 
-FIX12 closes the top-level delayed-Judgement Negation settlement boundary.
+FIX12 closed the top-level delayed-Judgement Negation settlement boundary.
 `restoreNestedNegationStage()` remains limited to Group/Duel parent work; a
-delayed Judgement root clears at true cancellation/settlement, while a typed
-parent resume remains available for synchronous inherited Judgements. The
-standalone envelope-only write in `beginJudgementResolution()` was removed so
-no-responder activation continues through the same authoritative room-write
-or batch path as its first meaningful result.
+delayed Judgement root clears at true cancellation/settlement. The typed
+`causalResume.parent` branch remains reserved/unproven for synchronous
+Judgement-Negation restoration because production currently constructs only the
+root variant in `startJudgementNegation()`. The standalone envelope-only write
+in `beginJudgementResolution()` was removed so no-responder activation
+continues through the same authoritative room-write or batch path as its first
+meaningful result.
 
 ### Settlement-exit classification
 
@@ -342,7 +344,7 @@ or batch path as its first meaningful result.
 | nested Group Negation | RESTORE GROUP_RESOLUTION | FIX9 Group same-frame tests |
 | nested Duel Negation | RESTORE DUEL_EXCHANGE | FIX9 Duel same-frame tests |
 | delayed Judgement no responder | CLEAR ROOT at final result | `delayed Judgement with no responders settles without a fake blocker checkpoint` |
-| delayed Lightning transfer | CLEAR old root; card remains in target Judgement Zone | `Lightning transfer settles its activation before a later fresh activation` |
+| delayed Lightning transfer | CLEAR old root; exact card remains in target Judgement Zone | `Lightning transfer settles its activation before a later fresh activation` |
 | synchronous Stauchness Judgement | RESTORE DAMAGE parent | `Xiahou Dun Stauchness declines or resolves a non-Heart Judgement...` |
 | Necromancy replacement | KEEP current Judgement Interaction/Frame until result | `real Judgement replacement rejects stale and duplicate submissions...` |
 
@@ -361,10 +363,36 @@ or batch path as its first meaningful result.
 | no-responder activation creates no fake blocker checkpoint | PROVEN | no-responder fixture has no Negation Pending and clears root | no browser mid-transaction observation |
 | no-responder activation has atomic authoritative persistence | PROVEN | envelope-only UPDATE removed; final API/D1 state is settled | no browser mid-transaction observation |
 | Lightning transfer clears first activation envelope | PROVEN | transfer fixture asserts NULL after transfer | none |
-| transferred Lightning later activation gets fresh interactionId | PROVEN | later Bob activation compares interaction/frame IDs | none |
+| transferred Lightning later activation gets fresh interactionId | PROVEN | later Bob activation compares interaction/frame IDs for `transfer-persistent` | no historical `originRef` persistence |
 | Judgement stale replacement preserves causal identity | PROVEN | stale request keeps exact Pending JSON and card in Hand | none |
 | duplicate replacement consumes card/transition once | PROVEN | concurrent real Guicai submissions have one winner and one frame | none |
 | Damage-related Judgement preserves parent interaction/frame | PROVEN | real Stauchness path asserts DAMAGE frame after Judgement | none |
 | Damage-related Judgement resumes parent without clearing it | PROVEN | source consequence remains a live Damage trigger | none |
 | NULL/malformed Judgement still never reconstructs authority | PROVEN | existing malformed Judgement envelope regression | none |
 | delayed originRef remains provenance-only or explicitly unsupported | PARTIAL | fresh activation is proven independent; schema has no historical originRef | typed historical originRef remains unsupported |
+
+## C2-FIX13 same-card Lightning lifecycle — 2026-10-02
+
+The corrected API fixture uses one physical `transfer-persistent` Lightning.
+Alice opens its delayed Judgement Negation window and responds; the real
+transfer moves that exact card to Bob, clears Alice's causal envelope, and
+leaves Alice's Judgement Zone empty. The test then changes only hands, turn,
+and deck state. It does not replace Bob's Judgement Zone. Bob later draws and
+activates the same card, opening a new root with fresh interaction and frame
+IDs, `parentFrameId: null`, and Bob-owned Lightning origin. Repeated room reads
+return the same B identity. Bob's real decline resolves the second lifecycle,
+and a database zone audit finds the physical card exactly once.
+
+### Exact FIX13 evidence matrix
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| exact transferred Lightning card persists A -> B | PROVEN | `transfer-persistent` is the only Lightning created in the fixture; immediate post-transfer assertions compare the exact ID and kind | none for this fixture |
+| A activation Interaction settles before B activation | PROVEN | transfer response asserts `causalEnvelope === null` before Bob's later draw | no historical origin link |
+| B activates the same transferred physical card | PROVEN | later timeline activation event carries `transfer-persistent` | none |
+| B activation gets fresh interactionId/frameId | PROVEN | later root IDs differ from A's captured root IDs | none |
+| B activation has no parent frame from A | PROVEN | later root frame asserts `parentFrameId === null` | none |
+| repeated read preserves B activation identity | PROVEN | second Bob room read compares interaction and active-frame IDs | none |
+| second activation settles without duplicating the card | PROVEN | real decline settles the envelope; player/deck/discard zone audit counts the ID once | no broader card-family matrix |
+| historical delayed originRef | PARTIAL | B origin is freshly derived from the current activation and no old parent is reused | schema has no typed historical `originRef` |
+| synchronous Judgement-Negation parent restore runtime evidence | UNPROVEN | production search finds only the typed branch; `startJudgementNegation()` constructs `{ kind: "root" }` | requires a real production parent entry, not a synthetic fixture |

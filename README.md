@@ -72,18 +72,17 @@ effective-result, resume, delayed Lightning damage, Luo River repetition, and
 settlement. Delayed activation creates a fresh root before optional responses;
 Cavalry inherits the unresolved Attack Interaction; malformed envelopes are
 never reconstructed. The broader C2 gate remains partial for delayed
-`originRef`, transfer and Judgement-Negation runtime evidence, nested Damage,
-and the Dying barrier.
+`originRef`, Judgement-Negation runtime evidence, nested Damage, and the Dying
+barrier.
 
-C2-FIX12 closes the reviewed delayed-Judgement gaps: successful Judgement
-Negation and counter-Negation reuse one activation frame and clear it at true
-settlement; placement and later activation have distinct fresh identities;
-no-responder activation avoids a standalone envelope write; Lightning transfer
-settles before a later fresh activation; real Necromancy stale/duplicate races
-are covered; and Stauchness proves Damage-parent resume. C2 remains partial
-only for historical delayed `originRef` persistence and previously deferred
-Group-nested Damage/Dying presentation work. The next milestone is reviewer
-validation of FIX12; do not start C3.
+C2-FIX13 now proves the same physical Lightning card can transfer from A to B,
+settle A's activation, and later create a fresh B interaction without a parent
+frame or duplicate card. Judgement Negation/counter-Negation, no-responder
+settlement, Necromancy races, delayed placement-to-activation, and Stauchness
+Damage-parent evidence remain covered. C2 is still partial for historical
+delayed `originRef`, runtime synchronous Judgement-Negation parent construction,
+and the previously deferred Group-nested Damage/Dying presentation work. Do
+not start C3.
 
 ## UX2.0B-FINAL verification — 2026-10-02
 

@@ -873,13 +873,13 @@ test("Lightning transfer settles its activation before a later fresh activation"
   const alicePlayer = game.room.players.find((player) => player.name === "Alice");
   const bobPlayer = game.room.players.find((player) => player.name === "Bob");
   assert.ok(alice && bob && alicePlayer && bobPlayer);
-  const firstLightning = { ...card("Lightning", "transfer-first"), suit: "♦", rank: "Q" };
-  const firstNegation = card("Negation", "transfer-first-negation");
+  const persistentLightning = { ...card("Lightning", "transfer-persistent"), suit: "♦", rank: "Q" };
+  const firstNegation = card("Negation", "persistent-first-negation");
+  for (const player of game.room.players) setHand(player.id, [], 4, 4);
   setHand(alicePlayer.id, [firstNegation], 4, 4);
-  setHand(bobPlayer.id, [], 4, 4);
-  setJudgement(alicePlayer.id, [firstLightning]);
+  setJudgement(alicePlayer.id, [persistentLightning]);
   setTurn(game.code, alicePlayer.seat, "draw");
-  setDeck(game.code, [card("Dodge", "transfer-first-judge")]);
+  setDeck(game.code, [card("Dodge", "persistent-first-judge")]);
   const first = await requestAndSettle("draw", { code: game.code, token: alice.token });
   assert.equal(first.status, 200, JSON.stringify(first.data));
   const firstRoot = first.data.room.causalEnvelope;
@@ -888,16 +888,17 @@ test("Lightning transfer settles its activation before a later fresh activation"
   const transferred = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: firstNegation.id });
   assert.equal(transferred.status, 200, JSON.stringify(transferred.data));
   assert.equal(transferred.data.room.causalEnvelope, null);
-  assert.deepEqual(transferred.data.room.players.find((player) => player.id === bobPlayer.id).judgementCards.map((card) => card.id), [firstLightning.id]);
+  assert.deepEqual(transferred.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.map((card) => card.id), []);
+  const transferredLightning = transferred.data.room.players.find((player) => player.id === bobPlayer.id).judgementCards;
+  assert.deepEqual(transferredLightning.map((card) => card.id), [persistentLightning.id]);
+  assert.equal(transferredLightning[0].kind, "Lightning");
 
-  const laterNegation = card("Negation", "transfer-later-negation");
-  const laterLightning = { ...card("Lightning", "transfer-later"), suit: "♦", rank: "Q" };
+  const laterNegation = card("Negation", "persistent-later-negation");
   setHand(alicePlayer.id, [], 4, 4);
   setHand(bobPlayer.id, [laterNegation], 4, 4);
   setJudgement(alicePlayer.id, []);
-  setJudgement(bobPlayer.id, [laterLightning]);
   setTurn(game.code, bobPlayer.seat, "draw");
-  setDeck(game.code, [card("Dodge", "transfer-later-judge")]);
+  setDeck(game.code, [{ ...card("Dodge", "persistent-later-judge"), suit: "♥", rank: "7" }]);
   const later = await requestAndSettle("draw", { code: game.code, token: bob.token });
   assert.equal(later.status, 200, JSON.stringify(later.data));
   const laterRoot = later.data.room.causalEnvelope;
@@ -906,10 +907,28 @@ test("Lightning transfer settles its activation before a later fresh activation"
   assert.notEqual(laterRoot.activeFrameId, firstRoot.activeFrameId);
   assert.equal(laterRoot.frames[0].parentFrameId, null);
   assert.equal(laterRoot.frames[0].origin.originSourceId, bobPlayer.id);
-  assert.equal((await state(game.code, bob.token)).data.causalEnvelope.interactionId, laterRoot.interactionId);
+  assert.equal(laterRoot.frames[0].origin.originEffect, "Lightning");
+  assert.deepEqual(laterRoot.frames[0].origin.originalTargetIds, [bobPlayer.id]);
+  const laterActivation = later.data.room.timeline.filter((event) => event.type === "card" && event.card.id === persistentLightning.id).at(-1);
+  assert.equal(laterActivation?.action, "activate");
+  assert.equal(laterActivation?.card.kind, "Lightning");
+  const repeated = await state(game.code, bob.token);
+  assert.equal(repeated.data.causalEnvelope.interactionId, laterRoot.interactionId);
+  assert.equal(repeated.data.causalEnvelope.activeFrameId, laterRoot.activeFrameId);
   const settled = await requestAndSettle("decline_response", { code: game.code, token: bob.token });
   assert.equal(settled.status, 200, JSON.stringify(settled.data));
   assert.equal(settled.data.room.causalEnvelope, null);
+  assert.equal(settled.data.room.pendingNegation, null);
+  const judgementLocations = settled.data.room.players.flatMap((player) => player.judgementCards.filter((card) => card.id === persistentLightning.id).map(() => player.id));
+  const playerZones = game.room.players.flatMap((player) => [
+    ...JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(player.id)}`)),
+    ...JSON.parse(query(`SELECT judgement_json FROM players WHERE id=${quote(player.id)}`)),
+  ]);
+  const deck = JSON.parse(query(`SELECT deck_json FROM rooms WHERE code=${quote(game.code)}`));
+  const discard = JSON.parse(query(`SELECT discard_json FROM rooms WHERE code=${quote(game.code)}`));
+  const physicalLocations = [...playerZones, ...deck, ...discard].filter((candidate) => candidate.id === persistentLightning.id);
+  assert.equal(judgementLocations.length, 1, "the same transferred Lightning remains in one legal Judgement Zone after its later miss");
+  assert.equal(physicalLocations.length, 1, "the persistent Lightning exists in exactly one physical zone after its second lifecycle");
 });
 
 test("delayed Standard cards resolve newest first and stale draws cannot replay them", { timeout: 30_000 }, async () => {
