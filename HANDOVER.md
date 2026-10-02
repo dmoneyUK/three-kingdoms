@@ -4,27 +4,7 @@
 
 HANDOVER.md is tracked remote coordination state. It MUST be committed and pushed to origin/ux-v2. Never keep it local-only, ignore, untrack, revert, discard, or omit it. After implementation append the execution result, push implementation + HANDOVER, git fetch origin, verify origin/ux-v2:HANDOVER.md contains the result, then STOP.
 
-## Reviewer status
-
-UX2.0C5-03-FIX1 implementation `02846df937f225389469993468a46282cdacee68` is **ACCEPTED**.
-
-C5-03 is CLOSED / ACCEPTED.
-
-C5 PresentationV2 projector migration is now CLOSED / ACCEPTED for its defined pre-C6 scope.
-
-Verified closure:
-- stableBoundary is public, typed and fail-closed;
-- CHOICE comes only from proven semantic decision authority;
-- SETTLEMENT remains reserved because current production state has no durable viewer-independent settlement occurrence proof;
-- legacy settlement may remain viewer/control-selected descriptive compatibility data but cannot influence stableBoundary;
-- Borrowed Sword SPECIAL requires Pending causal interaction/frame linkage to the proven scene;
-- Judgement SPECIAL and nested Damage CHILD_FRAME SPECIAL are scene-owned;
-- malformed/unlinked metadata falls back to identity-free REST;
-- CurrentAction does not establish public stable-boundary semantics;
-- settlement and transitionEvents remain explicitly bounded compatibility surfaces for later C7 migration;
-- reported validation is green: focused 50/50, fast 123/123, API 238/238, build/lint/diff-check PASS.
-
-Do not start React/CSS. C6 is the next architecture stage.
+**HANDOVER CLEANLINESS RULE:** This file contains only the current task. Previous tasks, reviewer verdicts, completion summaries, and historical execution results must be removed when the Planner writes the next task. Git history and architecture docs preserve history; HANDOVER does not.
 
 ---
 
@@ -287,3 +267,4 @@ Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin.
 ## Acceptance
 
 C6-01 passes only if every required real interaction family is mapped to engine/API evidence, the matrix proves the accepted causal/participant/boundary invariants without relying on synthetic happy paths, public semantics are viewer-stable and privacy-safe, reconnect/repeated reads are stable, child/resume relationships are explicit, terminal clearing is proven, malformed states fail closed, and all required regressions are green.
+
