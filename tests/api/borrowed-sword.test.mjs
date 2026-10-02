@@ -14,8 +14,15 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
   assert.equal(opened.data.room.currentAction.kind, "borrowed_sword"); assert.deepEqual(opened.data.room.currentAction.legalActions, ["choose_borrowed_sword_target"]); assert.equal(opened.data.room.currentAction.options, undefined);
   const chosen = await requestAndSettle("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id });
   assert.equal(chosen.status, 200); assert.equal(chosen.data.room.pendingBorrowedSword.stage, "force_attack"); assert.equal(chosen.data.room.actionPlayerId, holder.id);
+  const childEnvelope = chosen.data.room.causalEnvelope;
+  assert.ok(childEnvelope, "Borrowed Sword child Attack persists a public causal envelope");
+  assert.equal(childEnvelope.frames.length, 2);
+  assert.equal(childEnvelope.frames.find((frame) => frame.frameId === childEnvelope.activeFrameId).stage, "ATTACK_RESPONSE");
+  assert.equal(childEnvelope.frames.find((frame) => frame.frameId === childEnvelope.activeFrameId).parentFrameId, childEnvelope.frames.find((frame) => frame.frameId !== childEnvelope.activeFrameId).frameId);
   const refused = await requestAndSettle("decline_response", { code: game.code, token: alice.token });
   assert.equal(refused.status, 200, JSON.stringify(refused.data)); assert.equal(refused.data.room.phase, "play"); assert.ok((await state(game.code, host.token)).data.myHand.some((item) => item.id === weapon.id));
+  assert.equal(refused.data.room.causalEnvelope.interactionId, childEnvelope.interactionId);
+  assert.equal(refused.data.room.causalEnvelope.activeFrameId, childEnvelope.frames.find((frame) => frame.frameId !== childEnvelope.activeFrameId).frameId);
 
   setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [attack], 4, 4); setHand(secondTarget.id, [], 4, 4); setEquipment(holder.id, { weapon }); setTurn(game.code, source.seat);
   await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id });
@@ -146,5 +153,4 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
   assert.equal(borrowedLongdan.status, 200, JSON.stringify(borrowedLongdan.data));
   assert.equal(borrowedLongdan.data.room.timeline.find((event) => event.type === "card" && event.card.id === longdanBorrowedDodge.id)?.playedAs, "attack");
 });
-
 

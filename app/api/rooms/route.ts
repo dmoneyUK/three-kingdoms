@@ -26,7 +26,7 @@ import { resolveDamageModifiers, type DamageCause } from "../../../game/capabili
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { projectPresentationV2 } from "../../../game/presentation-v2";
 import { parseCausalEnvelope } from "../../../game/presentation-causality";
-import { createCausalRoot, recoverCausalEnvelope, type CausalContext } from "../../../game/causal-context";
+import { childCausalFrame, createCausalRoot, recoverCausalEnvelope, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 
 export const runtime = "edge";
 
@@ -437,6 +437,14 @@ function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackO
     current: { currentSourceId: source.id, currentEffect: origin, currentTargetIds: [target.id], resolvingPlayerId: target.id },
   });
   return { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, ignoresArmor: hasBlueSteelSword(source), requiredDodgeCount: attackDodgeCount(source), sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", resumePhase, resumePlayerId: source.id, causal: causal ?? root?.context };
+}
+function causalEnvelopeForAttack(room: RoomRow, declaration: AttackDeclaration, resolvingPlayerId: string): string | null {
+  if (room.causal_envelope_json || !declaration.causal) return room.causal_envelope_json;
+  return JSON.stringify(recoverCausalEnvelope(declaration.causal, {
+    stage: "ATTACK_RESPONSE",
+    origin: { originSourceId: declaration.sourceId, originEffect: declaration.origin, originalTargetIds: [declaration.targetId] },
+    current: { currentSourceId: declaration.sourceId, currentEffect: declaration.origin, currentTargetIds: [declaration.targetId], resolvingPlayerId },
+  }));
 }
 function attackDodgeCount(source?: PlayerRow | null) { return source?.hero === "lü-bu" ? 2 : 1; }
 function attackResponseDecision(declaration: AttackDeclaration, target: PlayerRow): ResponsePending {
@@ -2009,7 +2017,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
       log = addLog(log, `${pending.cardName} has no valid Weapon holder, so its effect ends.`);
       await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), roomId).run();
     } else {
-      const next: BorrowedSwordPending = { kind: "borrowed_sword", sourceId: source.id, actorId: source.id, targetId: target.id, holderId: target.id, resumePhase: pending.resumePhase, reason: `Choose a character within ${attackRangeFor(target)} range for ${target.name}'s forced Attack`, stage: "choose_target", weaponId: weapon.id };
+      const next: BorrowedSwordPending = { kind: "borrowed_sword", sourceId: source.id, actorId: source.id, targetId: target.id, holderId: target.id, resumePhase: pending.resumePhase, reason: `Choose a character within ${attackRangeFor(target)} range for ${target.name}'s forced Attack`, stage: "choose_target", weaponId: weapon.id, causal: pending.causal };
       await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(next), JSON.stringify(log), roomId).run();
     }
   } else if (pending.effect.kind === "overindulgence" || pending.effect.kind === "lightning" || pending.effect.kind === "rations_depleted") {
@@ -2118,10 +2126,15 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
   const holdUntilTargetedEffectFinishes = effect.kind === "dismantle" || effect.kind === "steal";
   const sequenceDiscard = holdUntilTargetedEffectFinishes ? discard.filter((discarded) => discarded.id !== card.id) : discard;
   const effectCardName = effect.kind === "dismantle" ? "Burning Bridges" : cardDefinition(card.kind).name;
+  const causalRoot = createCausalRoot({
+    stage: "NEGATION",
+    origin: { originSourceId: source.id, originEffect: effectCardName, originalTargetIds: [effectTargetId] },
+    current: { currentSourceId: source.id, currentEffect: effectCardName, currentTargetIds: [effectTargetId], resolvingPlayerId: responders[0]?.id ?? source.id },
+  });
   const base = { sourceId: source.id, negated: false, cardName: effectCardName, effectTargetId, resumePhase: room.phase ?? "play", effect, responseTarget: `${effectCardName}'s effect on ${targetName}`, chainDepth: 0, resolutionId: latestResolutionId(log), ...(holdUntilTargetedEffectFinishes ? { heldCards: [card] } : {}) };
   const presentation = addLogWithId(log, `Negation window opens for ${base.responseTarget}.`);
   log = presentation.log;
-  const continuation: NegationContinuation = { kind: "negation", sourceId: base.sourceId, remainingIds: [], negated: base.negated, cardName: base.cardName, effectTargetId: base.effectTargetId, resumePhase: base.resumePhase, effect: base.effect, responseTarget: base.responseTarget, chainDepth: base.chainDepth, resolutionId: base.resolutionId, ...(base.heldCards ? { heldCards: base.heldCards } : {}) };
+  const continuation: NegationContinuation = { kind: "negation", sourceId: base.sourceId, remainingIds: [], negated: base.negated, cardName: base.cardName, effectTargetId: base.effectTargetId, resumePhase: base.resumePhase, effect: base.effect, responseTarget: base.responseTarget, chainDepth: base.chainDepth, resolutionId: base.resolutionId, causal: causalRoot.context, ...(base.heldCards ? { heldCards: base.heldCards } : {}) };
   if (!responders.length) {
     await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id), db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(JSON.stringify(deck), JSON.stringify(sequenceDiscard), JSON.stringify(log), room.id)]);
     return resolveDeferredStratagem(room.id, continuation);
@@ -2129,9 +2142,9 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
   const readyAfterEventId = latestDecisionPresentationEventId(log, base.resolutionId);
   const responseContinuation: NegationContinuation = { ...continuation, remainingIds: responders.slice(1).map((player) => player.id) };
   const pending: ResponsePending = readyAfterEventId
-    ? withPresentationBarrier({ kind: "response", actorId: responders[0].id, requirement: negationRequirement(responseContinuation), reason: `Play Negation to cancel ${effectCardName}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(responders[0]), resolutionId: base.resolutionId, continuation: responseContinuation }, log, readyAfterEventId)
-    : { kind: "response", actorId: responders[0].id, requirement: negationRequirement(responseContinuation), reason: `Play Negation to cancel ${effectCardName}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(responders[0]), resolutionId: base.resolutionId, continuation: responseContinuation };
-  await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id), db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(sequenceDiscard), JSON.stringify(log), room.id)]);
+    ? withPresentationBarrier({ kind: "response", actorId: responders[0].id, requirement: negationRequirement(responseContinuation), reason: `Play Negation to cancel ${effectCardName}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(responders[0]), resolutionId: base.resolutionId, causal: causalRoot.context, continuation: responseContinuation }, log, readyAfterEventId)
+    : { kind: "response", actorId: responders[0].id, requirement: negationRequirement(responseContinuation), reason: `Play Negation to cancel ${effectCardName}'s effect on ${targetName}, or pass`, deadline: nextResponseDeadline(responders[0]), resolutionId: base.resolutionId, causal: causalRoot.context, continuation: responseContinuation };
+  await db().batch([db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id), db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(sequenceDiscard), JSON.stringify(log), JSON.stringify(causalRoot.envelope), room.id)]);
   await advanceNegation(room.id);
   return [];
 }
@@ -4881,17 +4894,32 @@ export async function POST(request: Request) {
       await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id).run();
       return json({ room: await roomState(code, token) });
     }
+    const parentEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json)
+      ?? recoverCausalEnvelope(pending.causal, {
+        stage: "FORCED_ACTION",
+        origin: { originSourceId: pending.sourceId, originEffect: "borrowed_sword", originalTargetIds: [pending.targetId] },
+        current: { currentSourceId: pending.sourceId, currentEffect: "borrowed_sword", currentTargetIds: [pending.targetId], resolvingPlayerId: holder.id },
+      });
+    const child = parentEnvelope && pending.causal
+      ? childCausalFrame(parentEnvelope, {
+        stage: "ATTACK_RESPONSE",
+        causeNodeId: pending.causal.frameId,
+        origin: { originSourceId: holder.id, originEffect: "borrowed_sword_attack", originalTargetIds: [chosen.id], originRef: { interactionId: pending.causal.interactionId, frameId: pending.causal.frameId } },
+        current: { currentSourceId: holder.id, currentEffect: "borrowed_sword_attack", currentTargetIds: [chosen.id], resolvingPlayerId: holder.id },
+      })
+      : null;
+    const forcedCausal = child?.context ?? pending.causal;
     const forced: ResponsePending = {
       kind: "response",
       actorId: holder.id,
       requirement: { kind: "attack", sourceId: pending.sourceId, actorId: holder.id },
       reason: `${holder.name} must play Attack against ${chosen.name}, or ${me.name} obtains their Weapon`,
       deadline: nextResponseDeadline(holder),
-      causal: pending.causal,
-      continuation: { kind: "borrowed_sword_attack", sourceId: pending.sourceId, holderId: holder.id, targetId: chosen.id, resumePhase: pending.resumePhase, resumePlayerId: pending.sourceId, weaponId: pending.weaponId ?? weapon.id, origin: "borrowed_sword", causal: pending.causal },
+      causal: forcedCausal,
+      continuation: { kind: "borrowed_sword_attack", sourceId: pending.sourceId, holderId: holder.id, targetId: chosen.id, resumePhase: pending.resumePhase, resumePlayerId: pending.sourceId, weaponId: pending.weaponId ?? weapon.id, origin: "borrowed_sword", causal: forcedCausal },
     };
     log = addLog(log, `${me.name} chooses ${chosen.name} as the target of ${holder.name}'s forced Attack.`);
-    await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ? WHERE id = ?").bind(serializePending(forced), JSON.stringify(log), room.id).run();
+    await db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(forced), JSON.stringify(log), child ? JSON.stringify(child.envelope) : liveRoom.causal_envelope_json, room.id).run();
     return json({ room: await roomState(code, token) });
   }
 
@@ -4916,9 +4944,14 @@ export async function POST(request: Request) {
       const currentSource = await db.prepare("SELECT * FROM players WHERE id = ?").bind(source.id).first<PlayerRow>();
       const weapon = currentHolder ? equipmentZone(currentHolder).weapon : undefined;
       const logBase = parse<string[]>(liveRoom.log_json, []);
+      const activeEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json);
+      const resumedEnvelope = activeEnvelope && continuation.causal
+        ? resumeCausalFrame(activeEnvelope, continuation.causal).envelope
+        : activeEnvelope;
+      const resumedEnvelopeJson = resumedEnvelope ? JSON.stringify(resumedEnvelope) : liveRoom.causal_envelope_json;
       if (!currentHolder || !currentSource || !weapon || weapon.id !== continuation.weaponId) {
         const log = addLog(logBase, `${source.name}'s Borrowed Sword transfer ends because the targeted Weapon changed or disappeared.`);
-        await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(continuation.resumePhase, JSON.stringify(log), room.id).run();
+        await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving'").bind(continuation.resumePhase, JSON.stringify(log), resumedEnvelopeJson, room.id).run();
         return;
       }
       const equipment = equipmentZone(currentHolder); delete equipment.weapon;
@@ -4927,7 +4960,7 @@ export async function POST(request: Request) {
       await db.batch([
         db.prepare("UPDATE players SET equipment_json = ? WHERE id = ?").bind(JSON.stringify(equipment), currentHolder.id),
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), currentSource.id),
-        db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ? WHERE id = ? AND phase = 'resolving'").bind(JSON.stringify(log), room.id),
+        db.prepare("UPDATE rooms SET phase = 'resolving', pending_json = NULL, log_json = ?, causal_envelope_json = ? WHERE id = ? AND phase = 'resolving'").bind(JSON.stringify(log), resumedEnvelopeJson, room.id),
       ]);
       await advanceEquipmentLostEvents(room.id, equipmentLostRecords(currentHolder.id, [weapon], "borrowed_sword"), { kind: "phase", phase: continuation.resumePhase, playerId: continuation.resumePlayerId });
     };
@@ -5101,7 +5134,8 @@ export async function POST(request: Request) {
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(phaseAfterAttack(source), JSON.stringify(discard), JSON.stringify(prevention.log), room.id)]);
       } else {
         const presentation = addLogWithId(log, `${target.name} must respond to ${source.name}'s Influencing Attack.`);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, presentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
+        const responsePending = withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, presentation.eventId);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(responsePending), JSON.stringify(discard), JSON.stringify(presentation.log), causalEnvelopeForAttack(liveRoom, declaration, target.id), room.id)]);
       }
     }
     return json({ room: await roomState(code, token) });
@@ -5436,7 +5470,8 @@ export async function POST(request: Request) {
           return json({ room: await roomState(code, token) });
         }
         const presentation = addLogWithId(log, `${me.name} plays Attack on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, attackPresentation.eventId)), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
+        const responsePending = withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, attackPresentation.eventId);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(responsePending), JSON.stringify(discard), JSON.stringify(presentation.log), causalEnvelopeForAttack(liveRoom, declaration, target.id), room.id)]);
       } else {
         return json({ error: "That card is not playable yet." }, 400);
       }

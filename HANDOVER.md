@@ -375,3 +375,34 @@ C2-FIX passes only if:
 - legacy NULL/malformed state remains safe;
 - no C3/Dying-barrier/PresentationV2/React work is included;
 - validation passes or failures are explicitly reported.
+
+## Execution result — C2-FIX slice — 2026-10-02
+
+Implemented and validated the Borrowed Sword runtime child-frame slice:
+
+- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` now maps the authoritative route
+  boundaries and records the supported/UNPROVEN flows.
+- Root Negation and ordinary Attack response entry persist the causal envelope
+  with the Pending/phase transition.
+- Real Borrowed Sword target selection creates an `ATTACK_RESPONSE` child
+  Frame under the `FORCED_ACTION` parent in the persisted envelope.
+- Borrowed Sword refusal/invalidation resumes the parent Frame in the guarded
+  room write; the Interaction remains stable.
+- API evidence asserts the persisted child Frame, parent reference, and parent
+  resume. No C3, Dying-barrier, PresentationV2, or React work was added.
+
+Validation:
+
+- C2 causal-context tests: 2/2
+- focused causal tests: 8/8
+- full fast suite: 107/107
+- full API/D1 suite: 212/212
+- `npm run build`: passed
+- `npm run lint`: passed
+- `git diff --check`: passed
+
+C2-FIX remains partial. The remaining acceptance gates are centralized
+envelope/CAS propagation for every supported automatic transition, Group and
+nested-damage child-frame runtime proofs, engine-backed Damage→Dying identity,
+Judgement/delayed activation lifetime, explicit settlement clearing, and full
+legacy/reload/viewer/stale identity assertions. Do not start C3.

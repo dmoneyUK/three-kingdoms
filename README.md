@@ -1,20 +1,26 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## UX2.0C2 — causal propagation pass — 2026-10-02
+## UX2.0C2 — causal propagation round — 2026-10-02
 
 C2 propagation is implemented as a backward-compatible causal handle carried by
 real Pending and Continuation records. Root Attack, Group, Duel, Negation, and
 Damage decisions now receive explicit Interaction/Frame references; Judgement,
 Attack-targeted, Damage, and Borrowed Sword continuations preserve those
 references through response and trigger boundaries. Borrowed Sword forced
-Attack records retain the parent reference, while Attack-targeted persistence
-initializes the room-level causal envelope when an older room has none.
+Attack records retain the parent reference. The real Borrowed Sword target
+selection now pushes an `ATTACK_RESPONSE` child Frame under the
+`FORCED_ACTION` parent and its refusal path resumes the parent in the same
+guarded room write. Root Negation and ordinary Attack response entry also
+persist their envelope with the Pending/phase transition.
 
-Added runtime proofs for root identity, nested child identity, typed parent
-resume, immutable origin, and redirected current targets. The full C2 migration
-is not yet a release gate: generic room-envelope CAS updates for every
-automatic transition and the authoritative Dying barrier remain follow-up
-work, covered by the C2 boundary in `HANDOVER.md` and the planned C4 work.
+Added runtime proofs and an engine-backed Borrowed Sword proof for root
+identity, nested child identity, typed parent resume, immutable origin, and
+redirected current targets. The full C2 migration is not yet a release gate:
+generic room-envelope CAS updates for every automatic transition, Group and
+nested-damage child wiring, settlement clearing, and delayed `originRef`
+evidence remain open. Dying barrier work remains explicitly deferred to C4.
+
+See `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` for the authoritative transition map.
 
 ## UX2.0B-FINAL verification — 2026-10-02
 
