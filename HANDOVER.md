@@ -266,3 +266,62 @@ Then STOP.
 ## Acceptance
 
 C3-04 passes if the real Attack -> Judgement path is accurately characterized without inventing causal history, the typed Interaction Scene has consistent field semantics across accepted C3 families, remaining PARTIAL items are explicitly bounded to later stages rather than hidden, no private data or fabricated identity is introduced, all regressions are green, and the evidence is sufficient for the reviewer to decide whether C3 can be formally closed.
+
+## C3-04 execution result
+
+- Implementation/docs/tests commit: `1b7243e22dbba33ce5de383d29dde2ad6439edb3` (`test: close C3 attack judgement characterization`).
+- Files changed: `README.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, and `tests/api/ma-chao.test.mjs`.
+- No gameplay, React/CSS, C2 identity, Dying barrier, or legacy-field removal was implemented.
+
+### Attack -> Judgement production relationship
+
+- The real path is Ma Chao Cavalry's source-owned `attack_targeted` trigger.
+- `beginCavalryJudgement` carries `declaration.causal` into `beginJudgementResolution`.
+- `causalEnvelopeAtStage` changes the existing active frame from `ATTACK_RESPONSE` to `JUDGEMENT`; no child frame or fabricated history is created.
+- `resolveJudgementContinuation` re-stages that same frame to `ATTACK_RESPONSE` and resumes the original `attack_targeted_event`.
+- The relationship is `ROOT_FRAME -> ROOT_FRAME (JUDGEMENT) -> ROOT_FRAME`; interaction/root/active-frame identity stays stable while checkpoint, stage, and presentation revision advance.
+- The real test proves Attack roles, Judgement roles, identity continuity, replacement, exact Dodge resume, two-viewer public-scene equality, and terminal scene clearing. Private controls remain in `CurrentAction`.
+
+### Projector and final audit
+
+- No projector change was required. Existing envelope-owned `interactionScene` already has consistent field meanings across Group/AOE, Attack, Duel, independent Damage, inherited Lightning Damage, Judgement, root Negation, nested same-frame Negation, and Group -> Damage/Dying characterization.
+- Historical delayed `originRef` remains unsupported and is not fabricated.
+- A single snapshot does not claim transition direction; future consumers compare snapshots/checkpoints/revisions.
+- Legacy compatibility audit found no concrete divergence or contradiction.
+
+### Consolidated C3 evidence matrix
+
+| Evidence | Result | Closure impact |
+| --- | --- | --- |
+| Group source/ordered targets/participant progression | PROVEN | Does not block. |
+| Group SAME_FRAME Negation | PROVEN | Does not block. |
+| Group -> Damage child/resume | PROVEN | Does not block; Dying barrier is later. |
+| Dying/Peach current-state characterization | PROVEN | Does not block; barrier belongs to C4. |
+| Attack | PROVEN | Does not block. |
+| Attack -> Judgement continuity | PROVEN | Does not block; same-frame re-staging is production behavior. |
+| Duel exchange | PROVEN | Does not block. |
+| Duel viewer equality | PROVEN | Does not block. |
+| Independent/root Damage | PROVEN | Does not block. |
+| Inherited Lightning Damage | PROVEN | Does not block; not independent/root Damage. |
+| Judgement and delayed fresh activation identity | PROVEN | Does not block. |
+| Historical delayed `originRef` | PARTIAL | Does not block; unsupported history remains unfabricated. |
+| Root Negation and nested same-frame behavior | PROVEN | Does not block. |
+| Viewer equality/repeated-read/reconnect stability | PROVEN | Does not block. |
+| Checkpoint coherence/fail-closed behavior | PROVEN | Does not block. |
+| Settlement/clearing | PROVEN | Does not block for exercised terminal paths. |
+| Legacy compatibility divergence | NONE FOUND | Does not block. |
+| Snapshot-only transition direction | PARTIAL | Does not block; requires future snapshot comparison. |
+
+### Validation
+
+- `node --test tests/presentation-v2.test.mjs tests/presentation-causality.test.mjs` — 29/29.
+- Focused API: `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/presentation-causality.test.mjs,tests/api/ma-chao.test.mjs,tests/api/judgement.test.mjs,tests/api/yue-jin-dauntless.test.mjs,tests/api/stratagems.test.mjs node tests/run-tests.mjs` — 73/73.
+- `npm run test:fast` — 113/113.
+- `npm run test:api` — 238/238 across 4 shards.
+- `npm run build` — PASS.
+- `npm run lint` — PASS.
+- `git diff --check` — PASS.
+
+### Recommendation
+
+**C3 READY TO CLOSE** pending reviewer acceptance. Remaining bounded work is historical delayed `originRef`, snapshot-only transition direction, and the C4 Dying presentation barrier. Do not start C4 implementation until this C3 closure is accepted.
