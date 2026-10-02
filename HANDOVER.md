@@ -203,7 +203,7 @@ FIX1 passes only if every exported PresentationV2 field is explicitly classified
 
 ## C5-01-FIX1 execution result
 
-Implementation commit: pending final commit SHA.
+Implementation commit: `e9f118f`.
 
 Files changed:
 
