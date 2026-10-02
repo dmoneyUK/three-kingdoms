@@ -27,7 +27,7 @@ import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../gam
 import { projectPresentationV2 } from "../../../game/presentation-v2";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
-import { updateCausalFrameCurrent, updateCausalFrameStage } from "../causal-envelope";
+import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
 
 export const runtime = "edge";
 
@@ -81,7 +81,7 @@ function causalEnvelopeAtStage(room: RoomRow, causal: CausalContext | undefined,
   if (!envelope || !causal || envelope.interactionId !== causal.interactionId || envelope.activeFrameId !== causal.frameId) return envelope;
   const frame = envelope.frames.find((candidate) => candidate.frameId === causal.frameId);
   if (!frame) return envelope;
-  return updateCausalFrameStage(updateCausalFrameCurrent(envelope, frame.frameId, current), frame.frameId, stage);
+  return advanceCausalSemanticCheckpoint(envelope, frame.frameId, { stage, current });
 }
 
 async function recordAuditAction(room: RoomRow, actor: PlayerRow | null, actorName: string, action: string) {
@@ -1960,13 +1960,31 @@ async function startJudgementNegation(room: RoomRow, target: PlayerRow, players:
   return true;
 }
 
+function restoreNestedNegationStage(envelope: CausalEnvelope | null, pending: NegationContinuation): CausalEnvelope | null {
+  const causal = pending.causal;
+  if (!envelope || !causal || envelope.interactionId !== causal.interactionId || envelope.activeFrameId !== causal.frameId) return envelope;
+  if (pending.effect.kind === "group") {
+    const group = pending.effect.pending;
+    return advanceCausalSemanticCheckpoint(envelope, causal.frameId, {
+      stage: "GROUP_RESOLUTION",
+      current: { currentSourceId: group.continuation.sourceId, currentEffect: group.continuation.cardKind, currentTargetIds: [group.actorId], resolvingPlayerId: group.actorId },
+    });
+  }
+  if (pending.effect.kind === "duel") {
+    const duel = pending.effect.pending;
+    return advanceCausalSemanticCheckpoint(envelope, causal.frameId, {
+      stage: "DUEL_EXCHANGE",
+      current: { currentSourceId: duel.continuation.sourceId, currentEffect: "duel", currentTargetIds: [duel.continuation.targetId, duel.continuation.opponentId], resolvingPlayerId: duel.actorId },
+    });
+  }
+  return envelope;
+}
+
 async function resolveDeferredStratagem(roomId: string, pending: NegationContinuation): Promise<Card[]> {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   if (!room) return [];
   const storedEnvelope = parseCausalEnvelope(room.causal_envelope_json);
-  const resumedEnvelope = pending.causal?.parentFrameId && storedEnvelope?.activeFrameId === pending.causal.frameId
-    ? resumeCausalFrame(storedEnvelope, pending.causal).envelope
-    : storedEnvelope;
+  const resumedEnvelope = restoreNestedNegationStage(storedEnvelope, pending);
   const resumedRoom = resumedEnvelope ? { ...room, causal_envelope_json: JSON.stringify(resumedEnvelope) } : { ...room, causal_envelope_json: null };
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const players = rows.results ?? []; const source = players.find((player) => player.id === pending.sourceId);
@@ -2171,16 +2189,15 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
   const sequenceDiscard = holdUntilTargetedEffectFinishes ? discard.filter((discarded) => discarded.id !== card.id) : discard;
   const effectCardName = effect.kind === "dismantle" ? "Burning Bridges" : cardDefinition(card.kind).name;
   const inheritedEnvelope = createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json);
-  const canNestUnderInheritedFrame = Boolean(
+  const canReuseInheritedFrame = Boolean(
     inheritedCausal && inheritedEnvelope
       && inheritedEnvelope.interactionId === inheritedCausal.interactionId
       && inheritedEnvelope.activeFrameId === inheritedCausal.frameId
       && inheritedEnvelope.frames.some((frame) => frame.frameId === inheritedCausal.frameId),
   );
-  const nested = canNestUnderInheritedFrame
-    ? childCausalFrame(inheritedEnvelope!, {
+  const sameFrameEnvelope = canReuseInheritedFrame
+    ? advanceCausalSemanticCheckpoint(inheritedEnvelope!, inheritedCausal!.frameId, {
       stage: "NEGATION",
-      origin: { originSourceId: source.id, originEffect: effectCardName, originalTargetIds: [effectTargetId] },
       current: { currentSourceId: source.id, currentEffect: effectCardName, currentTargetIds: [effectTargetId], resolvingPlayerId: responders[0]?.id ?? source.id },
     })
     : null;
@@ -2189,8 +2206,8 @@ async function startNegation(room: RoomRow, source: PlayerRow, players: PlayerRo
     origin: { originSourceId: source.id, originEffect: effectCardName, originalTargetIds: [effectTargetId] },
     current: { currentSourceId: source.id, currentEffect: effectCardName, currentTargetIds: [effectTargetId], resolvingPlayerId: responders[0]?.id ?? source.id },
   });
-  const causal = nested?.context ?? inheritedCausal ?? causalRoot!.context;
-  const envelope = nested?.envelope ?? inheritedEnvelope ?? causalRoot?.envelope ?? null;
+  const causal = inheritedCausal ?? causalRoot!.context;
+  const envelope = sameFrameEnvelope ?? inheritedEnvelope ?? causalRoot?.envelope ?? null;
   const base = { sourceId: source.id, negated: false, cardName: effectCardName, effectTargetId, resumePhase: room.phase ?? "play", effect, responseTarget: `${effectCardName}'s effect on ${targetName}`, chainDepth: 0, resolutionId: latestResolutionId(log), ...(holdUntilTargetedEffectFinishes ? { heldCards: [card] } : {}) };
   const presentation = addLogWithId(log, `Negation window opens for ${base.responseTarget}.`);
   log = presentation.log;
@@ -2448,9 +2465,13 @@ async function applyNegationResponseOutcome(room: RoomRow, pending: { response: 
     : continuation.remainingIds;
   const nextActorId = nextIds[0];
   if (nextActorId) {
-    const next: ResponsePending = { kind: "response", actorId: nextActorId, requirement: negationRequirement(transitioned), reason: success ? `Play Negation on ${actor.name}'s Negation, or pass` : response.reason, deadline: 0, resolutionId: response.resolutionId, continuation: { ...transitioned, remainingIds: nextIds.slice(1) } };
-    await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(serializePending(next), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(nextLog), room.id).run();
+    const nextCausal = transitioned.causal ?? response.causal;
+    const envelope = parseCausalEnvelope(room.causal_envelope_json);
+    const nextEnvelope = success && envelope && nextCausal && envelope.interactionId === nextCausal.interactionId && envelope.activeFrameId === nextCausal.frameId
+      ? advanceCausalSemanticCheckpoint(envelope, nextCausal.frameId, { stage: "NEGATION", current: { currentSourceId: transitioned.sourceId, currentEffect: transitioned.cardName, currentTargetIds: [transitioned.effectTargetId], resolvingPlayerId: nextActorId } })
+      : envelope;
+    const next: ResponsePending = { kind: "response", actorId: nextActorId, requirement: negationRequirement(transitioned), reason: success ? `Play Negation on ${actor.name}'s Negation, or pass` : response.reason, deadline: 0, resolutionId: response.resolutionId, ...(nextCausal ? { causal: nextCausal } : {}), continuation: { ...transitioned, remainingIds: nextIds.slice(1), ...(nextCausal ? { causal: nextCausal } : {}) } };
+    await causalRoomStateWrite(room.id, { phase: "response", pending: next, deck: judged.deck, discard: judged.discard, log: nextLog, causalEnvelope: nextEnvelope }).run();
     await advanceNegation(room.id);
   } else {
     const resolved: ResponsePending = { ...response, continuation: transitioned };
@@ -2968,18 +2989,17 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
   }
   const cardName = groupCardName(continuation.cardKind);
   const parentEnvelope = createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json);
-  const nestedNegation = parentEnvelope
+  const sameFrameNegation = parentEnvelope
     && parentEnvelope.interactionId === continuation.causal.interactionId
     && parentEnvelope.activeFrameId === continuation.causal.frameId
     && parentEnvelope.frames.some((frame) => frame.frameId === continuation.causal.frameId)
-    ? childCausalFrame(parentEnvelope, {
+    ? advanceCausalSemanticCheckpoint(parentEnvelope, continuation.causal.frameId, {
       stage: "NEGATION",
-      origin: { originSourceId: continuation.sourceId, originEffect: cardName, originalTargetIds: [actor.id] },
       current: { currentSourceId: continuation.sourceId, currentEffect: cardName, currentTargetIds: [actor.id], resolvingPlayerId: responders[0].id },
     })
     : null;
-  const negationCausal = nestedNegation?.context ?? continuation.causal;
-  const negationEnvelope = nestedNegation?.envelope ?? parentEnvelope;
+  const negationCausal = continuation.causal;
+  const negationEnvelope = sameFrameNegation ?? parentEnvelope;
   const negationContinuation: NegationContinuation = {
     kind: "negation",
     sourceId: continuation.sourceId,
@@ -4870,12 +4890,18 @@ export async function POST(request: Request) {
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const updatedPlayers = (rows.results ?? []).map((player) => player.id === me.id ? { ...player, hand_json: JSON.stringify(hand) } : player);
       const transitioned = applySuccessfulNegation(continuation, me, consumedCards);
       const responders = playersInNegationOrder(updatedPlayers, nextAliveSeat(updatedPlayers, me.seat));
-      const nextActor = responders[0] ?? me; const next: ResponsePending = { kind: "response", actorId: nextActor.id, requirement: negationRequirement(transitioned), reason: `Play Negation on ${me.name}'s Negation, or pass`, deadline: nextResponseDeadline(nextActor), resolutionId: response.resolutionId, continuation: { ...transitioned, remainingIds: responders.slice(1).map((player) => player.id) } };
+      const nextActor = responders[0] ?? me;
+      const nextCausal = transitioned.causal ?? response.causal;
+      const storedEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json);
+      const nextEnvelope = responders.length && storedEnvelope && nextCausal && storedEnvelope.interactionId === nextCausal.interactionId && storedEnvelope.activeFrameId === nextCausal.frameId
+        ? advanceCausalSemanticCheckpoint(storedEnvelope, nextCausal.frameId, { stage: "NEGATION", current: { currentSourceId: transitioned.sourceId, currentEffect: transitioned.cardName, currentTargetIds: [transitioned.effectTargetId], resolvingPlayerId: nextActor.id } })
+        : storedEnvelope;
+      const next: ResponsePending = { kind: "response", actorId: nextActor.id, requirement: negationRequirement(transitioned), reason: `Play Negation on ${me.name}'s Negation, or pass`, deadline: nextResponseDeadline(nextActor), resolutionId: response.resolutionId, ...(nextCausal ? { causal: nextCausal } : {}), continuation: { ...transitioned, remainingIds: responders.slice(1).map((player) => player.id), ...(nextCausal ? { causal: nextCausal } : {}) } };
       const presentation = addLogWithId(log, `New Negation window opens for ${transitioned.responseTarget}.`);
       log = presentation.log;
       if (!continuation.heldCards) discard.push(...consumedCards);
       const readyAfterEventId = latestDecisionPresentationEventId(log, response.resolutionId);
-      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE rooms SET phase = ?, pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(responders.length ? "response" : "resolving", serializePending(readyAfterEventId ? withPresentationBarrier(next, log, readyAfterEventId) : next), JSON.stringify(discard), JSON.stringify(log), room.id)]);
+      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), causalRoomStateWrite(room.id, { phase: responders.length ? "response" : "resolving", pending: readyAfterEventId ? withPresentationBarrier(next, log, readyAfterEventId) : next, discard, log, causalEnvelope: nextEnvelope })]);
       if (responders.length) await advanceNegation(room.id); else await resolveDeferredStratagem(room.id, next.continuation);
     } else if (continuation.remainingIds[0]) {
       const nextActorId = continuation.remainingIds[0]; const next: ResponsePending = { ...response, actorId: nextActorId, deadline: 0, readyAfterEventId: undefined, continuation: { ...continuation, remainingIds: continuation.remainingIds.slice(1) } };

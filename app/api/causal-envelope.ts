@@ -37,6 +37,19 @@ function checkpointFor(envelope: CausalEnvelope, frameId: FrameId, stage: Presen
   return { checkpointId: createCheckpointId(), frameId, stage };
 }
 
+/** Atomically changes one frame's semantic stage/current boundary. */
+export function advanceCausalSemanticCheckpoint(envelope: CausalEnvelope, frameId: FrameId, input: { stage: PresentationStage; current?: Partial<CausalFrameCurrent> }): CausalEnvelope {
+  const next = copyEnvelope(envelope);
+  const frame = frameOrThrow(next, frameId);
+  const current = input.current
+    ? { ...frame.current, ...input.current, currentTargetIds: input.current.currentTargetIds ? [...input.current.currentTargetIds] : [...frame.current.currentTargetIds] }
+    : frame.current;
+  next.frames = next.frames.map((candidate) => candidate.frameId === frameId ? { ...candidate, stage: input.stage, current } : candidate);
+  next.checkpoint = checkpointFor(next, frameId, input.stage);
+  next.presentationRevision += 1;
+  return next;
+}
+
 /** Explicit semantic boundary: preserves Interaction/Frame and advances public revision. */
 export function advanceCausalCheckpoint(envelope: CausalEnvelope, frameId = envelope.activeFrameId, stage = frameOrThrow(envelope, frameId).stage): CausalEnvelope {
   const next = copyEnvelope(envelope);

@@ -10,7 +10,7 @@ presentation barriers, or migrate the PresentationV2 projector.
 | --- | --- | --- | --- | --- |
 | Attack | `attackDeclaration()` at authoritative card/provider acceptance | `attackResponseDecision()`, Dodge/decline response continuation | Damage and Dying remain on the attack reference; nested provider work is still being completed | causal handle and room envelope on ordinary response and Attack-targeted entry |
 | Duel | `duelResponseDecision()` | alternating response continuation | response Attack satisfies Duel; it is not a child Frame | explicit root envelope persisted at first response; alternation reuses the Duel frame |
-| Negation | independent `startNegation()` root or nested Group/Duel Negation entry | `advanceNegation()`, `applyNegationResponseOutcome()` | independent root settles directly; nested child resumes its typed Group/Duel parent | independent roots create one Interaction; nested Group/Duel uses one child Frame |
+| Negation | independent `startNegation()` root or nested Group/Duel Negation entry | `advanceNegation()`, `applyNegationResponseOutcome()` | independent root settles directly; nested Group/Duel restores its typed same-frame stage | independent roots create one Interaction; nested Group/Duel keeps one Frame and changes stage/checkpoint |
 | Group/AOE | `groupResponseDecision()` / typed Group continuation | `nextGroupResponse()` and `finishGroupStep()` | `beginGroupTarget()` may launch an independently resolving Attack/Damage path | explicit root envelope persisted at first response; participant progression reuses the Group frame |
 | Borrowed Sword | `startNegation()` → `resolveDeferredStratagem()` | `BorrowedSwordPending` target choice | `choose_borrowed_sword_target` pushes an Attack child; forced Attack settlement resumes parent | real Worker/D1 child push/pop path |
 | Judgement | `beginJudgementResolution()` | reveal, replacement, effective-result continuations | typed response or delayed continuation resumes the owner | causal handle follows the Judgement continuation |
@@ -143,48 +143,46 @@ coverage.
 | Group/Duel missing envelope does not reconstruct authority | PARTIAL | shared legacy-null/non-reconstruction rule and route audit | no dedicated malformed Group and Duel fixtures |
 | no Group/Duel normal-path `recoverCausalEnvelope` | PROVEN | production route search has no call site | compatibility helper remains isolated in `game/causal-context.ts` |
 
-## FIX8 Negation nesting decision — 2026-10-02
+## C2-FIX9 same-frame correction — 2026-10-02
 
-Nested Negation inside an active Group or Duel is `CHILD_FRAME`.
+Nested Negation that modifies an active Group or Duel is `SAME_FRAME`. The
+authoritative Group/Duel frame remains active, its stage/current resolver moves
+to `NEGATION` at one semantic checkpoint, and settlement moves the same frame
+back to `GROUP_RESOLUTION` or `DUEL_EXCHANGE` at one further checkpoint.
 
-- Suspended parent owner: the Group participant response or Duel exchange
-  remains in its existing parent Frame.
-- Preserved parent state: the typed `GroupResponsePending` or
-  `ResponsePending` is stored inside the `NegationContinuation.effect` and its
-  parent `CausalContext` remains available through the continuation.
-- Nested owner/lifecycle: Negation owns its own responder order,
-  counter-Negation chain, parity, and settlement boundary before the deferred
-  Group/Duel effect resumes.
-- C0 reason: this is an independently resolving nested effect that suspends a
-  parent and has its own source/effect/resolver lifecycle, so it receives one
-  child Frame rather than mutating the parent into an ambiguous stage.
+- Independent top-level Negation creates its own root Interaction/Frame.
+- Nested Group/Duel Negation keeps the existing `interactionId` and `frameId`;
+  it does not set `parentFrameId` or create a child/root ID.
+- `Pending.causal` and `NegationContinuation.causal` carry the same frame
+  context through every counter-Negation window.
+- `advanceCausalSemanticCheckpoint()` changes stage/current, checkpoint, and
+  presentation revision atomically; automatic ineligible-seat scans do not
+  create visible checkpoints.
+- Borrowed Sword's forced Attack remains the canonical legitimate child-frame
+  case because it launches an independently resolving Attack effect.
 
-The child shares the parent `interactionId`, has a new `frameId` with
-`parentFrameId` set to the Group/Duel frame, and is persisted atomically with
-the first Negation Pending. Every Negation/counter-Negation response stays in
-that child. Settlement switches the active envelope back to the exact parent;
-it never recreates the parent or infers identity from Pending, logs, or
-resolution IDs. Independent top-level Negation remains a new root.
-
-## C2-FIX8 evidence matrix — 2026-10-02
+## C2-FIX9 evidence matrix — 2026-10-02
 
 | Requirement | Status | Exact evidence | Remaining gap |
 | --- | --- | --- | --- |
-| Group first root persisted before participant progression | PROVEN | `FIX8 persists the Group root before participant progression and nests Negation as one child Frame` | none for the covered Raining Arrows entry |
-| Group nested Negation follows FIX8 decision | PROVEN | real Group entry has parent + Negation child Frame | no Group child Damage redesign claimed |
-| Group Negation resumes/preserves exact parent | PROVEN | Group missing/real continuation and child-parent identity assertions | counter card path is not separately asserted |
-| Group stale request preserves causal identity | PROVEN | `FIX8 Group stale response preserves causal identity and card state` | none for covered Group response |
-| Group duplicate response cannot duplicate causal transition | PARTIAL | existing CAS plus Group stale proof | no new Group two-request race assertion |
-| Group malformed/missing continuation does not fabricate authority | PROVEN | `FIX8 Group and ordinary Duel missing envelopes stay non-authoritative` | no malformed-string variant in this slice |
-| ordinary physical Duel root exact persistence | PROVEN | `FIX8 ordinary Duel Negation uses one child Frame and resumes the parent` | none for covered physical Duel |
-| Duel nested Negation follows FIX8 decision | PROVEN | real physical Duel parent + child Frame | none |
-| Duel Negation resumes/preserves exact parent | PROVEN | child active during Negation and parent active after settlement | counter card path is not separately asserted |
-| Duel response Attack remains Duel frame | PROVEN | response progression retains two frames and parent active frame | none |
-| Duel stale request preserves causal identity | PROVEN | `FIX8 ordinary Duel stale response preserves causal identity before valid progression` | none for covered Duel response |
-| Duel duplicate response cannot duplicate causal transition | PARTIAL | existing response CAS and dedicated stale proof | no new Duel two-request race assertion |
-| Duel malformed/missing continuation does not fabricate authority | PROVEN | same Group/Duel missing-envelope real API test | no malformed-string variant in this slice |
-| counter-Negation stays in one nested causal unit | PARTIAL | existing real Negation/counter-Negation suite plus child-frame implementation | dedicated nested counter-card API assertion remains open |
-| nested Negation never creates a new Interaction root | PROVEN | Group/Duel child assertions share parent interactionId | no Judgement nested proof; Judgement remains out of scope |
+| Group root remains one frame during nested Negation | PROVEN | `FIX9 persists the Group root and keeps nested Negation in the same Frame` | none for covered Raining Arrows entry |
+| Group Negation uses NEGATION stage on same frame | PROVEN | same named Group engine/API test | none |
+| Group Negation settlement restores GROUP_RESOLUTION on same frame | PROVEN | same test asserts stage after pass | none |
+| Group counter-Negation stays same interaction/frame | PROVEN | `FIX9 Group counter-Negation stays in one frame and restores Group resolution` | none |
+| Group stale request preserves identity/checkpoint/revision | PROVEN | `FIX9 Group stale response preserves causal identity and card state` | none for covered response |
+| Group duplicate response race cannot duplicate transition | PROVEN | `FIX9 Group duplicate response race advances one participant once` | none |
+| Group missing envelope does not fabricate authority | PROVEN | `FIX9 Group NULL and ordinary Duel malformed envelopes stay non-authoritative` | no malformed Group variant; NULL is covered |
+| physical Duel root remains one frame during nested Negation | PROVEN | `FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage` | none |
+| Duel Negation uses NEGATION stage on same frame | PROVEN | same named physical Duel test | none |
+| Duel Negation settlement restores DUEL_EXCHANGE on same frame | PROVEN | same test asserts stage after pass | none |
+| Duel response Attack remains same Duel frame | PROVEN | same test asserts one frame after Attack | none |
+| Duel counter-Negation stays same interaction/frame | PROVEN | `FIX9 physical Duel counter-Negation stays in one frame and restores the Duel` | none |
+| Duel stale request preserves identity/checkpoint/revision | PROVEN | `FIX9 ordinary Duel stale response preserves causal identity before valid progression` | none |
+| Duel duplicate response race cannot duplicate transition | PROVEN | `FIX9 ordinary Duel duplicate response race advances one exchange once` | none |
+| Duel malformed envelope does not fabricate authority | PROVEN | named FIX9 Group NULL/Duel malformed API test | none |
+| response.causal and continuation.causal align through counter-Negation | PROVEN | physical Duel counter-Negation test plus route propagation assertions | none for covered Duel path |
+| independent top-level Negation still creates its own root | PROVEN | engine-backed independent Dismantle Negation assertions | delayed Judgement remains out of scope |
+| no nested Group/Duel Negation creates child/root IDs | PROVEN | Group/Duel tests assert one frame and stable activeFrameId | Group counter-card path not separately covered |
 
 C3 Group semantics, C4 Dying barrier work, C5 projector migration, and React
 presentation changes remain explicitly out of scope.

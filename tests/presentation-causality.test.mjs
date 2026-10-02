@@ -4,7 +4,7 @@ import {
   causalEnvelopePresentationRevision,
   parseCausalEnvelope,
 } from "../game/presentation-causality.ts";
-import { advanceCausalCheckpoint, advanceCausalPresentationRevision, createCausalEnvelope, createCausalFrame, createChildCausalFrame, resumeCausalParentFrame, switchActiveCausalFrame, updateCausalFrameCurrent, updateCausalFrameStage } from "../app/api/causal-envelope.ts";
+import { advanceCausalCheckpoint, advanceCausalPresentationRevision, advanceCausalSemanticCheckpoint, createCausalEnvelope, createCausalFrame, createChildCausalFrame, resumeCausalParentFrame, switchActiveCausalFrame, updateCausalFrameCurrent, updateCausalFrameStage } from "../app/api/causal-envelope.ts";
 
 function envelope() {
   const frame = createCausalFrame({
@@ -95,4 +95,19 @@ test("checkpoint advancement is explicit and independent from Frame/Interaction 
   assert.equal(publicUpdate.checkpoint.checkpointId, advanced.checkpoint.checkpointId);
   assert.equal(publicUpdate.presentationRevision, advanced.presentationRevision + 1);
   assert.equal(original.checkpoint.checkpointId !== advanced.checkpoint.checkpointId, true);
+});
+
+test("semantic checkpoint changes stage and current atomically once", () => {
+  const frame = createCausalFrame({ stage: "GROUP_RESOLUTION", origin: { originSourceId: "A", originEffect: "RainingArrows", originalTargetIds: ["B"] }, current: { currentSourceId: "A", currentEffect: "RainingArrows", currentTargetIds: ["B"], resolvingPlayerId: "B" } });
+  const original = createCausalEnvelope({ frames: [frame], activeFrameId: frame.frameId, presentationRevision: 4 });
+  const advanced = advanceCausalSemanticCheckpoint(original, frame.frameId, { stage: "NEGATION", current: { currentTargetIds: ["B"], resolvingPlayerId: "C" } });
+  assert.equal(advanced.interactionId, original.interactionId);
+  assert.equal(advanced.activeFrameId, frame.frameId);
+  assert.equal(advanced.frames.length, 1);
+  assert.equal(advanced.frames[0].stage, "NEGATION");
+  assert.equal(advanced.frames[0].origin.originEffect, "RainingArrows");
+  assert.equal(advanced.frames[0].current.resolvingPlayerId, "C");
+  assert.equal(advanced.checkpoint.frameId, frame.frameId);
+  assert.equal(advanced.checkpoint.stage, "NEGATION");
+  assert.equal(advanced.presentationRevision, original.presentationRevision + 1);
 });

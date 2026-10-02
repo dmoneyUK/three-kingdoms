@@ -143,7 +143,7 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.deepEqual(next.data.presentationV2.groupResolution?.participantIds, nextPending.continuation.remainingIds);
 });
 
-test("FIX8 persists the Group root before participant progression and nests Negation as one child Frame", { timeout: 30_000 }, async () => {
+test("FIX9 persists the Group root and keeps nested Negation in the same Frame", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, , bobMember] = game.members;
   const [source, target, bob, carol] = game.room.players;
@@ -156,24 +156,29 @@ test("FIX8 persists the Group root before participant progression and nests Nega
   const initial = started.data.room;
   const root = initial.causalEnvelope;
   assert.ok(root, "the initial Group decision has a public causal envelope");
-  assert.equal(root.frames.length, 2, "the first Group Negation is one child frame");
-  const parent = root.frames.find((frame) => frame.parentFrameId === null);
-  const child = root.frames.find((frame) => frame.parentFrameId !== null);
-  assert.ok(parent && child);
-  assert.equal(child.parentFrameId, parent.frameId);
-  assert.equal(root.activeFrameId, child.frameId);
-  assert.equal(parent.origin.originSourceId, source.id);
-  assert.equal(parent.origin.originEffect, "RainingArrows");
-  assert.deepEqual(parent.origin.originalTargetIds, [bob.id, carol.id]);
+  assert.equal(root.frames.length, 1, "nested Group Negation stays in the Group frame");
+  const frame = root.frames[0];
+  assert.equal(root.activeFrameId, frame.frameId);
+  assert.equal(frame.stage, "NEGATION");
+  assert.equal(frame.origin.originSourceId, source.id);
+  assert.equal(frame.origin.originEffect, "RainingArrows");
+  assert.deepEqual(frame.origin.originalTargetIds, [bob.id, carol.id]);
   const pending = authoritativePending(game.code);
   assert.equal(pending.causal.interactionId, root.interactionId);
-  assert.equal(pending.causal.frameId, child.frameId);
+  assert.equal(pending.causal.frameId, frame.frameId);
+  assert.equal(pending.continuation.causal.frameId, frame.frameId);
   const repeat = (await state(game.code, sourceMember.token)).data;
   assert.equal(repeat.causalEnvelope.interactionId, root.interactionId);
   assert.equal(repeat.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
   const other = (await state(game.code, bobMember.token)).data;
   assert.equal(other.causalEnvelope.interactionId, root.interactionId);
-  assert.equal(other.causalEnvelope.activeFrameId, child.frameId);
+  assert.equal(other.causalEnvelope.activeFrameId, frame.frameId);
+  assert.equal(other.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
+  const settled = await requestAndSettle("decline_response", { code: game.code, token: sourceMember.token, preserveResponse: true });
+  assert.equal(settled.status, 200, JSON.stringify(settled.data));
+  assert.equal(settled.data.room.causalEnvelope.frames.length, 1);
+  assert.equal(settled.data.room.causalEnvelope.activeFrameId, frame.frameId);
+  assert.equal(settled.data.room.causalEnvelope.frames[0].stage, "GROUP_RESOLUTION");
 });
 
 test("engine-backed Duel alternates response actors without changing the root context", { timeout: 30_000 }, async () => {
@@ -204,7 +209,7 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.deepEqual(second.presentationV2.activeContext?.currentTargetIds, [target.id]);
 });
 
-test("FIX8 ordinary Duel Negation uses one child Frame and resumes the parent", { timeout: 30_000 }, async () => {
+test("FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, alice] = game.members;
   const [source, target] = game.room.players;
@@ -217,34 +222,99 @@ test("FIX8 ordinary Duel Negation uses one child Frame and resumes the parent", 
   assert.equal(started.status, 200, JSON.stringify(started.data));
   const root = started.data.room.causalEnvelope;
   assert.ok(root);
-  assert.equal(root.frames.length, 2);
-  const parent = root.frames.find((frame) => frame.parentFrameId === null);
-  const child = root.frames.find((frame) => frame.parentFrameId !== null);
-  assert.ok(parent && child);
-  assert.equal(root.activeFrameId, child.frameId);
+  assert.equal(root.frames.length, 1);
+  const frame = root.frames[0];
+  assert.equal(root.activeFrameId, frame.frameId);
+  assert.equal(frame.stage, "NEGATION");
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
-  assert.equal(authoritativePending(game.code).causal.frameId, child.frameId);
+  assert.equal(authoritativePending(game.code).causal.frameId, frame.frameId);
+  assert.equal(authoritativePending(game.code).continuation.causal.frameId, frame.frameId);
 
   const declined = await requestAndSettle("decline_response", { code: game.code, token: host.token, preserveResponse: true });
   assert.equal(declined.status, 200, JSON.stringify(declined.data));
   const resumed = declined;
   assert.equal(resumed.data.room.pendingDuel.targetId, target.id);
-  assert.equal(resumed.data.room.causalEnvelope.activeFrameId, parent.frameId);
-  assert.equal(resumed.data.room.causalEnvelope.frames.length, 2);
-  assert.equal(JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)).causal.frameId, parent.frameId);
+  assert.equal(resumed.data.room.causalEnvelope.activeFrameId, frame.frameId);
+  assert.equal(resumed.data.room.causalEnvelope.frames.length, 1);
+  assert.equal(resumed.data.room.causalEnvelope.frames[0].stage, "DUEL_EXCHANGE");
+  assert.equal(JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`)).causal.frameId, frame.frameId);
 
   const answered = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id, preserveResponse: true });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
   assert.equal(answered.data.room.pendingDuel.actorId, source.id);
-  assert.equal(answered.data.room.causalEnvelope.activeFrameId, parent.frameId);
-  assert.equal(answered.data.room.causalEnvelope.frames.length, 2, "Duel response Attack does not create a child Frame");
+  assert.equal(answered.data.room.causalEnvelope.activeFrameId, frame.frameId);
+  assert.equal(answered.data.room.causalEnvelope.frames.length, 1, "Duel response Attack does not create a child Frame");
   const finished = await requestAndSettle("decline_response", { code: game.code, token: host.token, preserveResponse: true });
   assert.equal(finished.status, 200, JSON.stringify(finished.data));
   const final = await state(game.code, host.token);
   assert.equal(final.data.causalEnvelope, null);
 });
 
-test("FIX8 Group and ordinary Duel missing envelopes stay non-authoritative", { timeout: 30_000 }, async () => {
+test("FIX9 physical Duel counter-Negation stays in one frame and restores the Duel", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice] = game.members;
+  const [source, target] = game.room.players;
+  const duel = card("Duel", "fix9-duel-counter-root");
+  const firstNegation = card("Negation", "fix9-duel-counter-first");
+  const counterNegation = card("Negation", "fix9-duel-counter-second");
+  const attack = card("Attack", "fix9-duel-counter-attack");
+  setHand(source.id, [duel, firstNegation], 4, 4); setHand(target.id, [counterNegation, attack], 4, 4); setTurn(game.code, source.seat);
+  const opened = await request("play_card", { code: game.code, token: host.token, cardId: duel.id, targetId: target.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const root = opened.data.room.causalEnvelope;
+  assert.equal(root.frames.length, 1);
+  assert.equal(root.frames[0].stage, "NEGATION");
+  const first = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: firstNegation.id, preserveResponse: true });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  const counterPrompt = await state(game.code, alice.token);
+  assert.equal(counterPrompt.data.currentAction.actorId, target.id);
+  const counterPending = authoritativePending(game.code);
+  assert.equal(counterPending.continuation.kind, "negation");
+  assert.equal(counterPending.causal.interactionId, root.interactionId);
+  assert.equal(counterPending.causal.frameId, root.activeFrameId);
+  assert.equal(counterPending.continuation.causal.interactionId, root.interactionId);
+  assert.equal(counterPending.continuation.causal.frameId, root.activeFrameId);
+  assert.equal(counterPrompt.data.causalEnvelope.frames.length, 1);
+  assert.equal(counterPrompt.data.causalEnvelope.frames[0].stage, "NEGATION");
+  const restored = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: counterNegation.id, preserveResponse: true });
+  assert.equal(restored.status, 200, JSON.stringify(restored.data));
+  assert.equal(restored.data.room.pendingDuel.actorId, target.id);
+  assert.equal(restored.data.room.causalEnvelope.interactionId, root.interactionId);
+  assert.equal(restored.data.room.causalEnvelope.activeFrameId, root.activeFrameId);
+  assert.equal(restored.data.room.causalEnvelope.frames.length, 1);
+  assert.equal(restored.data.room.causalEnvelope.frames[0].stage, "DUEL_EXCHANGE");
+});
+
+test("FIX9 Group counter-Negation stays in one frame and restores Group resolution", { timeout: 30_000 }, async () => {
+  const firstNegation = card("Negation", "fix9-group-counter-first");
+  const counterNegation = card("Negation", "fix9-group-counter-second");
+  const opened = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix9-group-counter", judge: { ...card("Dodge", "fix9-group-counter-judge"), suit: "♥", rank: "2" }, sourceExtraCards: [firstNegation], skipNegationWindows: true });
+  setHand(opened.target.id, [counterNegation], 3, 3);
+  const initial = await state(opened.code, opened.sourceMember.token);
+  assert.equal(initial.data.currentAction.actorId, opened.source.id);
+  const root = initial.data.causalEnvelope;
+  assert.equal(root.frames.length, 1);
+  assert.equal(root.frames[0].stage, "NEGATION");
+  const first = await requestAndSettle("respond", { code: opened.code, token: opened.sourceMember.token, cardId: firstNegation.id, preserveResponse: true });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  const counter = await state(opened.code, opened.targetMember.token);
+  assert.equal(counter.data.currentAction.actorId, opened.target.id);
+  const pending = authoritativePending(opened.code);
+  assert.equal(pending.continuation.kind, "negation");
+  assert.equal(pending.causal.interactionId, root.interactionId);
+  assert.equal(pending.causal.frameId, root.activeFrameId);
+  assert.equal(pending.continuation.causal.frameId, root.activeFrameId);
+  assert.equal(counter.data.causalEnvelope.frames.length, 1);
+  assert.equal(counter.data.causalEnvelope.frames[0].stage, "NEGATION");
+  const restored = await requestAndSettle("respond", { code: opened.code, token: opened.targetMember.token, cardId: counterNegation.id, preserveResponse: true });
+  assert.equal(restored.status, 200, JSON.stringify(restored.data));
+  assert.equal(restored.data.room.causalEnvelope.interactionId, root.interactionId);
+  assert.equal(restored.data.room.causalEnvelope.activeFrameId, root.activeFrameId);
+  assert.equal(restored.data.room.causalEnvelope.frames.length, 1);
+  assert.equal(restored.data.room.causalEnvelope.frames[0].stage, "GROUP_RESOLUTION");
+});
+
+test("FIX9 Group NULL and ordinary Duel malformed envelopes stay non-authoritative", { timeout: 30_000 }, async () => {
   const group = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix8-group-missing", judge: { ...card("Dodge", "fix8-group-missing-judge"), suit: "♥", rank: "2" } });
   sql(`UPDATE rooms SET causal_envelope_json = NULL WHERE code=${quote(group.code)}`);
   const groupBefore = (await state(group.code, group.targetMember.token)).data;
@@ -264,7 +334,7 @@ test("FIX8 Group and ordinary Duel missing envelopes stay non-authoritative", { 
   setHand(source.id, [duelCard, sourceAttack], 4, 4); setHand(target.id, [attack], 4, 4); setTurn(duel.code, source.seat);
   const started = await request("play_card", { code: duel.code, token: host.token, cardId: duelCard.id, targetId: target.id });
   assert.equal(started.status, 200, JSON.stringify(started.data));
-  sql(`UPDATE rooms SET causal_envelope_json = NULL WHERE code=${quote(duel.code)}`);
+  sql(`UPDATE rooms SET causal_envelope_json = '{"version":1,"frames":[]}' WHERE code=${quote(duel.code)}`);
   assert.equal((await state(duel.code, alice.token)).data.causalEnvelope, null);
   const answered = await requestAndSettle("respond", { code: duel.code, token: alice.token, providerId: "card", cardId: attack.id, preserveResponse: true });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
@@ -286,6 +356,13 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   const first = await assertProjectionMatchesEngine(game.code, alice.token);
   const root = first.presentationV2.rootContext;
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
+  assert.equal(first.causalEnvelope.frames.length, 1, "independent top-level Negation has one root frame");
+  assert.equal(first.causalEnvelope.frames[0].stage, "NEGATION");
+  assert.equal(first.causalEnvelope.activeFrameId, authoritativePending(game.code).causal.frameId);
+  assert.equal(first.causalEnvelope.frames.length, 1);
+  assert.equal(first.causalEnvelope.frames[0].stage, "NEGATION");
+  assert.equal(authoritativePending(game.code).causal.frameId, first.causalEnvelope.activeFrameId);
+  assert.equal(authoritativePending(game.code).continuation.causal.frameId, first.causalEnvelope.activeFrameId);
   const firstNegation = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-projector-negation-first", preserveResponse: true });
   assert.equal(firstNegation.status, 200, JSON.stringify(firstNegation.data));
   const counter = await assertProjectionMatchesEngine(game.code, host.token);
@@ -297,6 +374,10 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.notEqual(counter.presentationV2.rootContext?.eventId, root?.eventId, "Negation currently references a new public event in the counter window");
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
   assert.equal(counter.presentationV2.activeContext?.kind, "negation");
+  assert.equal(counter.causalEnvelope.frames.length, 1);
+  assert.equal(counter.causalEnvelope.frames[0].stage, "NEGATION");
+  assert.equal(authoritativePending(game.code).causal.frameId, counter.causalEnvelope.activeFrameId);
+  assert.equal(authoritativePending(game.code).continuation.causal.frameId, counter.causalEnvelope.activeFrameId);
   assert.equal(counter.presentationV2.parentContext, null, "engine exposes the negation effect descriptor but not a typed pending parent");
   const restored = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: "negation-projector-negation-counter", preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));

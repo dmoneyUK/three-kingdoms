@@ -323,7 +323,7 @@ test("stale and concurrent response submissions claim each transition once", { t
   assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), "", "the response does not strand the room");
 });
 
-test("FIX8 Group stale response preserves causal identity and card state", { timeout: 30_000 }, async () => {
+test("FIX9 Group stale response preserves causal identity and card state", { timeout: 30_000 }, async () => {
   const opened = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix8-group-stale", judge: { ...card("Dodge", "fix8-group-stale-judge"), suit: "♥", rank: "2" } });
   const advanced = await requestAndSettle("decline_trigger", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
   assert.equal(advanced.status, 200, JSON.stringify(advanced.data));
@@ -338,7 +338,7 @@ test("FIX8 Group stale response preserves causal identity and card state", { tim
   assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(opened.bob.id)} AND json_extract(value,'$.id')='${opened.required.toLowerCase()}-fix8-group-stale-bob'`), "1");
 });
 
-test("FIX8 ordinary Duel stale response preserves causal identity before valid progression", { timeout: 30_000 }, async () => {
+test("FIX9 ordinary Duel stale response preserves causal identity before valid progression", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [host, alice] = game.members;
   const [source, target] = game.room.players;
@@ -358,7 +358,52 @@ test("FIX8 ordinary Duel stale response preserves causal identity before valid p
   const valid = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id, context: { actionRevision: prompt.data.actionRevision, meId: target.id, phase: prompt.data.phase, pendingKind: "response", actorId: target.id }, preserveResponse: true });
   assert.equal(valid.status, 200, JSON.stringify(valid.data));
   assert.equal(valid.data.room.causalEnvelope.interactionId, identity.interactionId);
-  assert.equal(valid.data.room.causalEnvelope.frames.length, 2);
+  assert.equal(valid.data.room.causalEnvelope.frames.length, 1);
+});
+
+test("FIX9 Group duplicate response race advances one participant once", { timeout: 30_000 }, async () => {
+  const opened = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix9-group-race", judge: { ...card("Dodge", "fix9-group-race-judge"), suit: "♥", rank: "2" } });
+  const advanced = await requestAndSettle("decline_trigger", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
+  assert.equal(advanced.status, 200, JSON.stringify(advanced.data));
+  const prompt = await state(opened.code, opened.bobMember.token);
+  const context = { actionRevision: prompt.data.actionRevision, meId: opened.bob.id, phase: prompt.data.phase, pendingKind: "response", actorId: opened.bob.id };
+  const results = await Promise.all([
+    requestAndSettle("respond", { code: opened.code, token: opened.bobMember.token, providerId: "card", cardId: `${opened.required.toLowerCase()}-fix9-group-race-bob`, context, preserveResponse: true }),
+    requestAndSettle("respond", { code: opened.code, token: opened.bobMember.token, providerId: "card", cardId: `${opened.required.toLowerCase()}-fix9-group-race-bob`, context, preserveResponse: true }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 200).length, 1, JSON.stringify(results));
+  assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, JSON.stringify(results));
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(opened.bob.id)} AND json_extract(value,'$.id')='${opened.required.toLowerCase()}-fix9-group-race-bob'`), "0");
+  const after = await state(opened.code, opened.bobMember.token);
+  assert.equal(after.data.causalEnvelope.frames.length, 1);
+  assert.equal(after.data.causalEnvelope.interactionId, prompt.data.causalEnvelope.interactionId);
+  assert.equal(after.data.causalEnvelope.activeFrameId, prompt.data.causalEnvelope.activeFrameId);
+});
+
+test("FIX9 ordinary Duel duplicate response race advances one exchange once", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice] = game.members;
+  const [source, target] = game.room.players;
+  const duel = card("Duel", "fix9-duel-race");
+  const attack = card("Attack", "fix9-duel-race-response");
+  const sourceAttack = card("Attack", "fix9-duel-race-source-response");
+  setHand(source.id, [duel, sourceAttack], 4, 4); setHand(target.id, [attack], 4, 4); setTurn(game.code, source.seat);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: duel.id, targetId: target.id, preserveResponse: true });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const prompt = await state(game.code, alice.token);
+  const context = { actionRevision: prompt.data.actionRevision, meId: target.id, phase: prompt.data.phase, pendingKind: "response", actorId: target.id };
+  const results = await Promise.all([
+    requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id, context, preserveResponse: true }),
+    requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id, context, preserveResponse: true }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 200).length, 1, JSON.stringify(results));
+  assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, JSON.stringify(results));
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(target.id)} AND json_extract(value,'$.id')='${attack.id}'`), "0");
+  const after = await state(game.code, host.token);
+  assert.equal(after.data.pendingDuel.actorId, source.id);
+  assert.equal(after.data.causalEnvelope.frames.length, 1);
+  assert.equal(after.data.causalEnvelope.interactionId, prompt.data.causalEnvelope.interactionId);
+  assert.equal(after.data.causalEnvelope.activeFrameId, prompt.data.causalEnvelope.activeFrameId);
 });
 
 test("stale and concurrent trigger submissions execute optional reactions once", { timeout: 30_000 }, async () => {
