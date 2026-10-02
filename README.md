@@ -50,6 +50,12 @@ a real Dodge continuation, and real Attack evidence is separated from manual
 C1 projection coverage. Attack-targeted Cavalry is proven; other entry variants
 remain individually PARTIAL where no dedicated causal-envelope assertion exists.
 
+C2-FIX7 makes Group/AOE and Duel roots authoritative: each new root returns and
+persists one explicit causal envelope, while participant progression stays in
+the same interaction/frame. Group child semantics, independent Damage,
+Judgement, delayed activation provenance, and the broader automatic-transition
+audit remain open C2 work.
+
 ## UX2.0B-FINAL verification — 2026-10-02
 
 On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue

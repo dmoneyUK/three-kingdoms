@@ -39,6 +39,14 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
   assert.equal(started.data.room.pendingNegation, null);
   assert.equal(started.data.room.pendingDuel.damageCards.length, 0);
   assert.equal(started.data.room.pendingDuel.resumePlayerId, setup.diao.id);
+  const duelRoot = started.data.room.causalEnvelope;
+  assert.ok(duelRoot, "the real Duel root envelope is persisted at the first response boundary");
+  const duelPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(duelPending.causal.interactionId, duelRoot.interactionId);
+  assert.equal(duelPending.causal.frameId, duelRoot.activeFrameId);
+  const duelViewer = (await state(game.code, game.members[2].token)).data;
+  assert.equal(duelViewer.causalEnvelope.interactionId, duelRoot.interactionId);
+  assert.equal(duelViewer.causalEnvelope.checkpoint.checkpointId, duelRoot.checkpoint.checkpointId);
   assert.equal(JSON.stringify(started.data.room.log).includes("stratagem_used"), false);
   assert.equal(JSON.stringify(started.data.room.log).includes("Cultivation"), false);
   assert.equal(discardIds(game.code).includes(setup.cost.id), true);
@@ -46,12 +54,17 @@ test("Lust offers ordered male Duel targets, accepts one Hand cost, bypasses Neg
 
   const firstDeclines = await requestAndSettle("decline_response", { code: game.code, token: game.members[1].token, preserveResponse: true });
   assert.equal(firstDeclines.status, 200, JSON.stringify(firstDeclines.data));
+  if (firstDeclines.data.room.causalEnvelope) {
+    assert.equal(firstDeclines.data.room.causalEnvelope.interactionId, duelRoot.interactionId, "Duel participant progression stays in one Interaction");
+    assert.equal(firstDeclines.data.room.causalEnvelope.frames.length, 1, "Duel response Attack does not create a child Frame");
+  }
   const finished = firstDeclines;
   assert.equal(finished.data.room.players.find((player) => player.id === setup.first.id).hp, 3);
   assert.equal(finished.data.room.players.find((player) => player.id === setup.second.id).hp, 4);
   assert.equal(finished.data.room.players.find((player) => player.id === setup.diao.id).hp, 3);
   assert.ok(finished.data.room.log.some((entry) => entry.includes(`${setup.second.name}`) && entry.includes(`${setup.first.name}`)), JSON.stringify(finished.data.room.log));
   assert.equal(finished.data.room.phase, "play");
+  assert.equal(finished.data.room.causalEnvelope, null, "the settled Duel root clears after the exchange");
   assert.equal(JSON.parse(query(`SELECT skill_state_json FROM rooms WHERE code=${quote(game.code)}`)).lustUsed, true);
 });
 

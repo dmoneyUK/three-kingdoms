@@ -11,11 +11,20 @@ test("Raining Arrows and Barbarian Invasion resume through Xiahou Dun Stauchness
     assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
     assert.equal(skipped.data.room.currentAction.kind, "response");
     assert.equal(skipped.data.room.currentAction.actorId, declined.bob.id, "declining Stauchness resumes the next AOE target");
+    const groupRoot = skipped.data.room.causalEnvelope;
+    assert.ok(groupRoot, "the real Group root envelope remains public after the first participant");
+    const groupPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(declined.code)}`));
+    assert.equal(groupPending.causal.interactionId, groupRoot.interactionId);
+    assert.equal(groupPending.causal.frameId, groupRoot.activeFrameId);
+    const groupViewer = (await state(declined.code, declined.members[1].token)).data;
+    assert.equal(groupViewer.causalEnvelope.interactionId, groupRoot.interactionId);
+    assert.equal(groupViewer.causalEnvelope.checkpoint.checkpointId, groupRoot.checkpoint.checkpointId);
     assert.equal(skipped.data.room.players.find((player) => player.id === declined.target.id).hp, 2);
     const bobAnswered = await requestAndSettle("respond", { code: declined.code, token: declined.bobMember.token, cardId: `${declined.required.toLowerCase()}-ganglie-${kind.toLowerCase()}-decline-bob` });
     const finished = await requestAndSettle("respond", { code: declined.code, token: declined.carolMember.token, cardId: `${declined.required.toLowerCase()}-ganglie-${kind.toLowerCase()}-decline-carol` });
     assert.equal(bobAnswered.status, 200); assert.equal(finished.status, 200, JSON.stringify(finished.data));
     assert.equal(finished.data.room.phase, "play");
+    assert.equal(finished.data.room.causalEnvelope, null, "the settled Group root clears after the final participant");
     assert.equal(discardIds(declined.code).filter((id) => id === `${kind.toLowerCase()}-ganglie-${kind.toLowerCase()}-decline-source`).length, 1, "the held AOE card is discarded exactly once after completion");
 
     const accepted = await openGanglieGroup({ kind, suffix: `ganglie-${kind.toLowerCase()}-accept`, judge: { ...card("Dodge", `ganglie-${kind.toLowerCase()}-accept-judge`), suit: "♠", rank: "7" } });
@@ -674,5 +683,4 @@ test("Guan Yu uses a red hand card as Attack through the normal multiplayer pipe
   assert.equal(blocked.status, 200); assert.equal(discardIds(game.code).filter((id) => id === redPeach.id).length, 1);
   assert.equal((await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: dodge.id })).status, 409, "duplicate response cannot consume either card twice");
 });
-
 

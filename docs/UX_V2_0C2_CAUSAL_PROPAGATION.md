@@ -9,9 +9,9 @@ presentation barriers, or migrate the PresentationV2 projector.
 | Flow | Root / entry | Same-Frame records | Child / resume boundary | Current evidence |
 | --- | --- | --- | --- | --- |
 | Attack | `attackDeclaration()` at authoritative card/provider acceptance | `attackResponseDecision()`, Dodge/decline response continuation | Damage and Dying remain on the attack reference; nested provider work is still being completed | causal handle and room envelope on ordinary response and Attack-targeted entry |
-| Duel | `duelResponseDecision()` | alternating response continuation | response Attack satisfies Duel; it is not a child Frame | causal handle on Duel continuation |
+| Duel | `duelResponseDecision()` | alternating response continuation | response Attack satisfies Duel; it is not a child Frame | explicit root envelope persisted at first response; alternation reuses the Duel frame |
 | Negation | `startNegation()` or typed Group/Judgement Negation creation | `advanceNegation()`, `applyNegationResponseOutcome()` | deferred effect resumes through its typed continuation | root Negation identity and counter-window handle |
-| Group/AOE | `groupResponseDecision()` / typed Group continuation | `nextGroupResponse()` and `finishGroupStep()` | `beginGroupTarget()` may launch an independently resolving Attack/Damage path | Group identity is carried; final C3 semantics are intentionally absent |
+| Group/AOE | `groupResponseDecision()` / typed Group continuation | `nextGroupResponse()` and `finishGroupStep()` | `beginGroupTarget()` may launch an independently resolving Attack/Damage path | explicit root envelope persisted at first response; participant progression reuses the Group frame |
 | Borrowed Sword | `startNegation()` → `resolveDeferredStratagem()` | `BorrowedSwordPending` target choice | `choose_borrowed_sword_target` pushes an Attack child; forced Attack settlement resumes parent | real Worker/D1 child push/pop path |
 | Judgement | `beginJudgementResolution()` | reveal, replacement, effective-result continuations | typed response or delayed continuation resumes the owner | causal handle follows the Judgement continuation |
 | Damage | `damageTriggerPending()` / `damageSufferedTriggerPending()` | damage trigger and post-damage continuation | nested Group/Damage resume references are typed | causal handle follows damage records |
@@ -74,8 +74,8 @@ tests never upgrade a row to PROVEN.
 | `damageSufferedTriggerPending()` | independent post-damage trigger | explicit `{ value, createdEnvelope }` wrapper | response Pending room write | AUTHORITATIVE |
 | `startNegation()` | card Negation | yes | root response room batch | AUTHORITATIVE |
 | `startJudgementNegation()` | delayed Judgement Negation | yes | root response room batch | AUTHORITATIVE |
-| `groupResponseDecision()` | Group/AOE | context only | existing Group persistence callers | CONTEXT_ONLY_BUG; out of FIX4 scenario scope |
-| `duelResponseDecision()` | Duel | context only | existing Duel persistence callers | CONTEXT_ONLY_BUG; out of FIX4 scenario scope |
+| `groupResponseDecision()` | Group/AOE | explicit `{ value, createdEnvelope }` wrapper | ordinary Group and Halberd callers persist the exact envelope with first Pending/phase state | AUTHORITATIVE in FIX7 scope |
+| `duelResponseDecision()` | Duel | explicit `{ value, createdEnvelope }` wrapper | Lust and ordinary Duel callers persist the exact envelope with first Pending/phase state | AUTHORITATIVE in FIX7 scope |
 
 ### Recovery inventory
 
@@ -117,10 +117,31 @@ legacy compatibility/unit code and is not a normal supported-flow authority.
 | Borrowed Sword inherited Attack | PARTIAL | real child identity/CAS tests, but no dedicated root-transport assertion for this FIX6 row |
 | follow-up / inherited Attack | PARTIAL | caller audit and continuation tests; no dedicated envelope assertion |
 
-The centralized room write helper now covers the audited Attack and Damage
-root boundaries. Group/Duel context-only creators remain explicit known bugs
-outside this ownership slice; no Group/Judgement/Duel scenario expansion is
-claimed here.
+The centralized room write helper now covers the audited Attack, Damage,
+Group, and Duel root boundaries. Group/Duel participant progression reuses the
+existing interaction/frame; this slice does not claim Group child semantics,
+Judgement, delayed activation provenance, or global automatic-transition
+coverage.
+
+## C2-FIX7 Group/Duel evidence matrix — 2026-10-02
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| Group new root exact-envelope persistence | PROVEN | real Raining Arrows and Barbarian Invasion API flow | none for covered Group entries |
+| Group Pending context matches envelope | PROVEN | persisted `pending_json` interaction/frame assertions | none |
+| Group participant advance preserves interaction/frame | PROVEN | Xiahou Dun continuation reaches the next AOE responder with the same root | no Group child semantics claimed |
+| Group repeated read/second viewer stable | PROVEN | repeated room read and second viewer assertions in the real AOE flow | no browser reconnect harness |
+| Group stale/double cannot duplicate root | PARTIAL | existing action CAS and stale-response coverage | no dedicated causal-ID assertion on the Group stale row |
+| Group settlement clears root | PROVEN | final AOE responder assertion | none |
+| Duel new root exact-envelope persistence | PROVEN | real Diao Chan Lust API flow | none for covered Duel entries |
+| Duel Pending context matches envelope | PROVEN | persisted `pending_json` interaction/frame assertions | none |
+| Duel alternating responders preserve interaction/frame | PROVEN | real Lust response progression and root identity assertions | no alternate multi-Attack fixture beyond covered flow |
+| Duel response Attack creates no child Frame | PROVEN | Duel continuation asserts one root frame after response progression | none |
+| Duel repeated read/second viewer stable | PROVEN | repeated room read and second viewer assertions | no browser reconnect harness |
+| Duel stale/double cannot duplicate root | PARTIAL | existing Lust stale/duplicate rejection and CAS | no dedicated causal-ID assertion on the stale row |
+| Duel settlement clears root | PROVEN | completed Lust exchange assertion | none |
+| Group/Duel missing envelope does not reconstruct authority | PARTIAL | shared legacy-null/non-reconstruction rule and route audit | no dedicated malformed Group and Duel fixtures |
+| no Group/Duel normal-path `recoverCausalEnvelope` | PROVEN | production route search has no call site | compatibility helper remains isolated in `game/causal-context.ts` |
 
 C3 Group semantics, C4 Dying barrier work, C5 projector migration, and React
 presentation changes remain explicitly out of scope.
