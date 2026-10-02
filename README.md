@@ -60,8 +60,12 @@ C2-FIX9 corrects nested Group/Duel Negation to `SAME_FRAME`: the existing
 Interaction/Frame enters `NEGATION` at one semantic checkpoint and restores
 `GROUP_RESOLUTION` or `DUEL_EXCHANGE` on the same frame. Dedicated Group/Duel
 stale, duplicate-race, NULL/malformed, same-frame, counter-Negation, and
-independent-root proofs are now present; Group counter-Negation remains the
-only explicit partial row in this slice.
+independent-root proofs are now present, including the Group counter-Negation
+flow. C2-FIX10 now selects only the actual Negation blocker and advances the
+same causal frame exactly once on real actor handoff; initial ineligible-seat,
+decline, timeout, and independent-root evidence is present. The broader C2
+gate remains partial for the explicitly listed Judgement, delayed-activation,
+Damage, and Dying boundaries.
 
 ## UX2.0B-FINAL verification — 2026-10-02
 

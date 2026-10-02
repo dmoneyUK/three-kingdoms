@@ -184,5 +184,67 @@ back to `GROUP_RESOLUTION` or `DUEL_EXCHANGE` at one further checkpoint.
 | independent top-level Negation still creates its own root | PROVEN | engine-backed independent Dismantle Negation assertions | delayed Judgement remains out of scope |
 | no nested Group/Duel Negation creates child/root IDs | PROVEN | Group/Duel tests assert one frame and stable activeFrameId | Group counter-card path not separately covered |
 
+## C2-FIX10 Negation decision-actor invariant — 2026-10-02
+
+For a valid causal envelope, `CurrentAction.actorId`, `Pending.actorId`, the
+Negation continuation's causal frame, and
+`activeFrame.current.resolvingPlayerId` describe one actual blocking responder.
+The engine may scan living seats internally, but an ineligible seat is never
+persisted as a player-facing decision checkpoint.
+
+`nextEligibleNegationResponder()` owns the ordered capability scan and returns
+the first living player for whom `canPlayerRespondWithNegation()` is true,
+plus the unscanned ordered candidates after that player. The initial
+`startNegation()`, delayed Judgement entry, and nested Group entry use that
+selection before publishing their first Pending/envelope state.
+
+`advanceNegationDecision()` is the guarded handoff boundary for an existing
+Negation Pending. It preserves Interaction/Frame and `NEGATION`, aligns the
+top-level and continuation causal handles, updates the resolver to the next
+actual blocker, and calls `advanceCausalSemanticCheckpoint()` once. Its CAS
+write commits Pending and causal envelope together. A NULL or malformed
+envelope remains non-authoritative and is never reconstructed.
+
+The `advanceNegation()` scheduler has three explicit cases: arming a deadline
+for the same actor is Pending-only; an expired/ineligible actor scans directly
+to the next actual blocker; and no eligible blocker settles the chain without
+creating a fake responder checkpoint. Successful Negation reset and failed
+judged/semantic responses use the same eligibility rule before opening another
+window. Timeout is therefore the same semantic decline/handoff transition.
+
+### Negation actor-transition inventory
+
+| Transition | Production path | Envelope behavior | Evidence status |
+| --- | --- | --- | --- |
+| initial Negation window | `startNegation()`, delayed Judgement, nested Group entry | choose actual blocker before root/same-frame write | PROVEN for independent root; Group/Duel same-frame paths remain covered |
+| ineligible-seat scan | `advanceNegation()` → `nextEligibleNegationResponder()` | no checkpoint/revision for skipped seats | PROVEN |
+| same-actor deadline arm | `advanceNegation()` / `start_response_timer` | Pending-only, no presentation revision | PROVEN |
+| eligible decline | canonical `decline_response` → `advanceNegationDecision()` | one CAS handoff checkpoint when another blocker exists | PROVEN |
+| eligible timeout | `advanceNegation()` → `advanceNegationDecision()` | same one-checkpoint handoff as decline | PROVEN |
+| successful Negation reset | canonical response and `applyNegationResponseOutcome()` | scan first eligible reset responder; checkpoint only for a real next blocker | PARTIAL: no dedicated real fixture with skipped post-reset seats |
+| failed judged/semantic Negation | `applyNegationResponseOutcome()` | failed response can hand off with aligned causal state | PARTIAL: production path fixed; no real Standard judged-Negation provider fixture |
+| no eligible responders | `advanceNegation()` / deferred settlement | settle or restore parent; no fake responder checkpoint | PROVEN for covered independent and nested flows |
+
+## C2-FIX10 evidence matrix — 2026-10-02
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| initial Negation skips ineligible seats without fake checkpoint | PROVEN | `FIX10 initial Negation skips ineligible seats without a fake blocker checkpoint` | none for the real DrawTwo root |
+| initial real blocker matches Pending and envelope resolver | PROVEN | same FIX10 initial test | none |
+| decline handoff updates Pending + resolver atomically | PROVEN | `FIX10 Negation decline skips an ineligible seat and advances one causal checkpoint` | none for covered root |
+| decline A → skip B → block C advances one checkpoint | PROVEN | same FIX10 decline test asserts stable IDs, one revision, and C resolver | no alternate seat-count fixture |
+| timeout handoff updates Pending + resolver atomically | PROVEN | `FIX10 Negation timeout skips an ineligible seat and advances one causal checkpoint` | none for covered root |
+| timeout with skipped ineligible seats advances one checkpoint | PROVEN | same FIX10 timeout test | no alternate seat-count fixture |
+| deadline arming for same actor does not advance presentation revision | PROVEN | FIX10 initial test arms the blocker and compares revision | none |
+| successful Negation reset selects first eligible counter-responder | PARTIAL | production canonical and judged paths call `nextEligibleNegationResponder()` | no dedicated real reset fixture with an ineligible seat before the counter |
+| counter Pending/continuation/envelope actor context stays aligned | PARTIAL | independent counter test plus FIX9 Group/Duel counter frame assertions | Group/Duel counter tests do not each assert resolver actor after every window |
+| failed judged/semantic response handoff is causally correct | PARTIAL | `applyNegationResponseOutcome()` now scans and advances causal state on actor change | no real Standard judged-Negation provider fixture |
+| independent Negation decline updates resolver correctly | PROVEN | strengthened `engine-backed Negation/counter-Negation keeps the original effect recoverable` | none |
+| nested Group Negation handoff preserves Group interaction/frame | PROVEN | `FIX10 nested Group Negation handoff skips an ineligible target in the same frame` | none for covered Group path |
+| nested Duel Negation handoff preserves Duel interaction/frame | PROVEN | `FIX10 nested Duel Negation handoff skips an ineligible target in the same frame` | none for covered Duel path |
+| no ineligible scan creates new Interaction/Frame | PROVEN | FIX10 initial/decline/timeout tests assert one root and stable IDs | none for covered root |
+| NULL/malformed handoff never reconstructs authority | PROVEN | FIX9 Group NULL/Duel malformed non-authoritative test plus null-preserving handoff code | no separate malformed timeout fixture |
+| README/C2 documentation no longer contradicts FIX9 evidence | PROVEN | README and this document now describe Group counter-Negation as proven and preserve explicit gaps | none |
+
 C3 Group semantics, C4 Dying barrier work, C5 projector migration, and React
 presentation changes remain explicitly out of scope.
