@@ -4093,11 +4093,12 @@ scope.
 
 ### 0.98 UX2.0C5 PresentationV2 projector migration — 2026-10-02
 
-C5 makes the projector consume persisted causal frame metadata wherever the
-metadata is available. Public root, active, and parent scene facts now use the
-authoritative envelope for frame identity, source/current targets, stage,
-checkpoint, revision, and typed parent linkage; legacy `rootContext` and
-`activeContext` kind/continuation shapes remain stable for existing clients.
+C5 makes the typed `interactionScene` consume persisted causal frame metadata
+wherever the metadata is available. Its public facts use the authoritative
+envelope for frame identity, source/current targets, stage, checkpoint,
+revision, and typed parent linkage; legacy `rootContext`, `activeContext`, and
+`parentContext` shapes retain their Pending-first compatibility members for
+existing clients and are not causal authority.
 
 Group discovery no longer recursively searches arbitrary Pending objects or
 selects a Group frame merely because an envelope contains a Group stage. It
@@ -4112,3 +4113,32 @@ facts, explicit Group linkage, fail-closed malformed/cross-frame behavior, and
 real Attack, Group Damage/Dying, Duel, Negation, Borrowed Sword, and Judgement
 paths. React/CSS migration, animation timing, Transition Events as a new
 protocol, and gameplay changes remain outside C5.
+
+### 0.99 UX2.0C5-01-FIX1 authority map and compatibility contract — 2026-10-02
+
+The authoritative public causal semantics for future React consumption are the
+proven typed core: `interactionScene`, `dyingBarrier` when applicable, and
+their envelope-owned interaction/frame/checkpoint/revision plus proven
+decision actor. `CurrentAction` remains legality/control authority. Legacy
+objects below must not reconstruct causal identity when the typed core is
+`UNPROVEN`.
+
+| Field | Current source/authority | Public/viewer boundary | Core replacement | Status | Removal prerequisite |
+| --- | --- | --- | --- | --- | --- |
+| `rootContext` | Mixed: timeline event; Pending kind/resolution; causal envelope source/original targets when present | Public, viewer-stable; descriptive compatibility object | `interactionScene` root frame and identity | DEPRECATE-LATER | All consumers read proven typed root identity and no longer need legacy event/kind fields |
+| `activeContext` | Mixed: Pending-first kind/source/current targets; causal frame supplies stage; timeline supplies event IDs | Public, viewer-stable; explicitly non-authoritative | `interactionScene` active frame/current boundary | DEPRECATE-LATER | Consumers migrate to typed active frame and causal stage |
+| `parentContext` | Typed continuation direction plus Pending-first parent kind/source/targets; causal parent frame is fallback | Public, viewer-stable; explicitly non-authoritative | `interactionScene.continuity` and `parentFrameId` | DEPRECATE-LATER | Consumers use typed parent linkage and continuation semantics |
+| `participants` | Derived from typed Pending context and Group remaining IDs | Public, viewer-stable; no private cards/options | `interactionScene` source/target/participant fields | DERIVE | Core exposes all required participant roles for each supported family |
+| `interactionScene` | Parsed causal envelope, shared coherence proof, typed continuation direction, public Pending decision actor for Dying proof | Public semantic core; viewer-independent; `UNPROVEN` fails closed | N/A; current typed core | KEEP | None for C5; future C7 may wrap it in a stable snapshot |
+| `dyingBarrier` | Parsed causal envelope plus shared `dyingDecisionProof` and public Dying Pending actor | Public semantic core; viewer-independent; no Peach/provider data | N/A; Dying typed core | KEEP | None; retain fail-closed proof and private CurrentAction options |
+| `groupResolution` | Typed Group continuation plus explicit causal Group frame; presentation values from envelope and public continuation | Public compatibility view; no private options; `UNPROVEN` without linkage | `interactionScene` Group frame semantics | DERIVE | Consumers switch to typed scene fields and no longer require duplicate Group object |
+| `decision` | CurrentAction and public action revision/presentation barrier | Viewer-dependent control metadata; private options are excluded here and remain in CurrentAction | CurrentAction for control; `interactionScene.decisionActorId` for semantic identity | KEEP | None; legality must remain CurrentAction-owned |
+| `settlement` | Timeline events selected by bounded legacy event references and `finalResult` | Public descriptive compatibility data; viewer-stable when history is equal | Future typed settlement checkpoint/snapshot | DEPRECATE-LATER | Durable settlement occurrence vocabulary and C7 snapshot exist |
+| `transitionEvents` | Bounded timeline event references selected from current typed/legacy context | Public descriptive compatibility data; not a transition protocol | Future semantic Transition Events/C7 snapshot | DEPRECATE-LATER | Durable occurrence identity and C7 protocol are implemented |
+
+The active/parent precedence is intentional: real engine fixtures and current
+API consumers rely on Pending-first legacy kind/current-target shapes. The
+causal semantic core does not rely on those fields; it remains envelope-owned
+and proves source, targets, stage, frame linkage, checkpoint, revision, and
+decision actor independently. This preserves compatibility without claiming
+that legacy context objects are authoritative causal state.

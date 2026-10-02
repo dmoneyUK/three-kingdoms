@@ -430,9 +430,10 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, input.currentAction, groupValues, input.pending);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
-  // Once causal metadata exists, public context comes from its frames. The
-  // pending-derived values below remain only for legacy rooms without an
-  // envelope and cannot override authoritative causal state.
+  // The typed interactionScene below is the causal authority. These legacy
+  // context objects intentionally retain Pending-first kind/target shapes for
+  // existing consumers; they are descriptive compatibility data and must not
+  // be used to reconstruct causal identity.
   const rootContext = (causalRootFrame || root || active || rootEvent) ? {
     eventId: rootEvent?.id ?? null,
     kind: root?.kind ?? active?.kind ?? causalRootFrame?.stage ?? null,

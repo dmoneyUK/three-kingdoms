@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C5 — 2026-10-02
+## Current stage — UX2.0C5-01-FIX1 — 2026-10-02
 
 C5 updates the server-side `PresentationV2` projector to prefer persisted
 causal root/active/parent frame metadata for public scene facts. Group
@@ -10,10 +10,11 @@ frame guesses no longer create proven presentation state. Legacy context
 shapes and private `CurrentAction` projection remain compatible. React/CSS,
 animation timing, and gameplay changes are not started.
 
-The C5 projector slice is covered by 115/115 fast tests and engine-backed
-causal, Group, Dying, Duel, Negation, Borrowed Sword, and Judgement checks.
-The next milestone is the full C5 validation/push handoff, followed by review
-before any React/CSS migration.
+FIX1 completes the exported-field authority inventory and migration map. The
+legacy context objects remain Pending-first compatibility data; the proven
+`interactionScene`/`dyingBarrier` typed core remains the only causal source
+for future presentation consumers. The next milestone is reviewer acceptance
+of C5-01, before C5-02, C6, or React/CSS migration.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

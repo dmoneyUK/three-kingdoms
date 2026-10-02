@@ -210,6 +210,30 @@ test("C5 does not infer Group authority from arbitrary nested data or frame stag
   assert.equal(projected.interactionScene?.semantics, "UNPROVEN");
 });
 
+test("C5 keeps legacy context precedence separate from the causal semantic core", () => {
+  const projected = projectPresentationV2({
+    pending: { kind: "response", actorId: "B", continuation: { kind: "attack", sourceId: "A", targetId: "B" } },
+    currentAction: action({ actorId: "B" }),
+    actionRevision: "precedence",
+    timeline: [],
+    causalEnvelope: {
+      version: 1,
+      interactionId: "precedence-interaction",
+      frames: [{ frameId: "precedence-frame", parentFrameId: null, stage: "ATTACK_RESPONSE", origin: { originSourceId: "Z", originEffect: "Attack", originalTargetIds: ["C"] }, current: { currentSourceId: "Z", currentEffect: "Attack", currentTargetIds: ["D"], resolvingPlayerId: "B" } }],
+      activeFrameId: "precedence-frame",
+      checkpoint: { checkpointId: "precedence-checkpoint", frameId: "precedence-frame", stage: "ATTACK_RESPONSE" },
+      presentationRevision: 2,
+    },
+  });
+  assert.equal(projected.rootContext?.sourceId, "Z", "root causal source is envelope-owned");
+  assert.deepEqual(projected.rootContext?.originalTargetIds, ["C"], "root causal targets are envelope-owned");
+  assert.equal(projected.activeContext?.sourceId, "A", "legacy active source keeps Pending-first compatibility");
+  assert.deepEqual(projected.activeContext?.currentTargetIds, ["B"], "legacy active targets keep Pending-first compatibility");
+  assert.equal(projected.interactionScene?.sourceId, "Z", "typed semantic source is envelope-owned");
+  assert.deepEqual(projected.interactionScene?.targetIds, ["C"]);
+  assert.deepEqual(projected.interactionScene?.activeTargetIds, ["D"]);
+});
+
 test("C3 Group public semantics stay viewer-equivalent while decision ownership changes", () => {
   const pending = flows[3].points[0].pending;
   const causalEnvelope = { version: 1, interactionId: "viewer-group", frames: [{ frameId: "viewer-group-frame", parentFrameId: null, stage: "GROUP_RESOLUTION", origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B", "C"] }, current: { currentSourceId: "A", currentEffect: "Raining Arrows", currentTargetIds: ["B"], resolvingPlayerId: "B" } }], activeFrameId: "viewer-group-frame", checkpoint: { checkpointId: "viewer-checkpoint", frameId: "viewer-group-frame", stage: "GROUP_RESOLUTION" }, presentationRevision: 2 };

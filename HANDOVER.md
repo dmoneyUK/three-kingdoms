@@ -200,3 +200,46 @@ Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin.
 ## Acceptance
 
 FIX1 passes only if every exported PresentationV2 field is explicitly classified, the active/parent Pending-vs-envelope precedence is intentionally resolved and accurately documented, the migration table is complete, authoritative typed semantics remain fail-closed and viewer-safe, compatibility behavior is preserved or changed only with real evidence, and all required regressions are green.
+
+## C5-01-FIX1 execution result
+
+Implementation commit: pending final commit SHA.
+
+Files changed:
+
+- `game/presentation-v2.ts`
+- `tests/presentation-v2.test.mjs`
+- `README.md`
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `HANDOVER.md`
+
+The complete exported-field inventory and migration table now classify all ten
+`PresentationV2` fields. `interactionScene` and `dyingBarrier` are the proven
+public causal core; `CurrentAction` remains legality/control authority;
+`rootContext`, `activeContext`, `parentContext`, `groupResolution`,
+`participants`, `settlement`, and `transitionEvents` are explicitly classified
+as compatibility or derivation surfaces with documented removal prerequisites.
+
+Precedence decision: real engine/API fixtures show that existing consumers
+depend on Pending-first kind/current-target shapes in `activeContext` and
+`parentContext`. That behavior is preserved intentionally and is now marked
+non-authoritative. The typed `interactionScene` continues to use envelope-owned
+source, target, stage, frame, checkpoint, revision, and resolver facts. A
+focused conflicting-metadata test proves both contracts remain separate.
+
+The authoritative-core statement and migration map are documented in
+`docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; no exported compatibility field was
+removed, no private option was exposed, and no gameplay/React/CSS protocol was
+changed.
+
+Validation:
+
+- `npm run test:fast` — 116/116 PASS
+- `npm run build` — PASS
+- `npm run test:api` — 239/239 PASS across 23 files and 4 shards
+- `npm run lint` — PASS
+- `git diff --check` — PASS
+
+Remaining C5 gaps: compatibility fields remain until their consumers migrate;
+C5-02, C6, C7, React/CSS, final PresentationSnapshot, animation protocol,
+gameplay changes, and historical delayed `originRef` remain out of scope.
