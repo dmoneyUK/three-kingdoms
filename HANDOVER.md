@@ -2,193 +2,209 @@
 
 ## Reviewer status
 
-UX2.0C2-FIX13 is **ACCEPTED**.
+UX2.0C2-FIX14 is **ACCEPTED for its scoped Group -> Damage child-frame contract**.
 
-Reviewed implementation: `37cc4b595ebd6c83c4325a662239b4f1bd04cbc1`.
-Verification report: `0d0e8f23237215336ab8c03074926d200d12ceb3`.
+Reviewed implementation: `d64489b2717828504a6540e66df2dd410e35134c`.
 
-Accepted: the exact transferred Lightning survives Alice to Bob, Alice's activation settles, Bob later activates that same card with a fresh interaction/frame and no parent frame, repeated reads are stable, and the card is not duplicated. Validation: focused 51/51, fast 108/108, API 234/234, build/lint/diff-check pass. Historical delayed originRef remains PARTIAL; synchronous Judgement-Negation parent restore remains runtime UNPROVEN.
+Accepted evidence:
+- real Raining Arrows Group failure creates one DAMAGE child;
+- child keeps Group interactionId and has parentFrameId = Group frame;
+- active frame switches Group -> Damage -> original Group;
+- Damage Pending/Continuation uses child context while resumeGroup retains parent context;
+- real blocking trigger actor aligns with child resolver;
+- stale/concurrent trigger requests do not duplicate the child/Damage;
+- participant order survives A -> B Damage -> C;
+- repeated reads and second viewer preserve public child identity;
+- malformed envelope is not reconstructed;
+- focused 21/21, fast 108/108, API 236/236, build/lint/diff-check pass.
 
-C2 remains open. Do not start C3.
+The PARTIAL nested Damage -> Dying row is acceptable for FIX14 because the Dying presentation barrier is explicitly later work. Do not start C3 yet.
 
 ---
 
-# NEXT TASK — UX2.0C2-FIX14: Group-Nested Damage Child Frame
+# NEXT TASK — UX2.0C2-FIX15: Final C2 Causal Propagation Audit and Closure
 
 ## Objective
 
-Implement and prove the next C0 gap: when a Group participant launches an independently resolving Damage effect, Damage must run as a child frame of the Group frame in the same Interaction, then resume the exact Group parent once.
+Determine whether C2 can be closed after FIX14. This is audit-first. Do not add speculative architecture merely to make a matrix green.
 
-Required model: Group frame FG is GROUP_RESOLUTION. Damage frame FD has the same interactionId, stage DAMAGE, and parentFrameId=FG. While Damage is unresolved FD is active. On settlement, return to FG with one semantic resume checkpoint/revision and continue the exact Group order.
+C2 is complete when every currently implemented gameplay path either:
+1. has authoritative causal propagation appropriate to its semantics, or
+2. is explicitly documented as unsupported/not implemented and cannot leak a false causal identity.
 
-Do not start C3 or solve the Dying presentation barrier.
+Do not implement the later Dying presentation barrier and do not start C3.
 
-## Work
+## Step 1 — build a complete production causal-site inventory
 
-1. Audit real Group paths that can launch Damage: Barbarian Invasion, Hail of Arrows, response failure, and trigger/provider Damage while Group continuation is unresolved. Record entry, participant, Damage call, causal handle, envelope behavior and resume destination. Choose the smallest stable real API path that genuinely has independent settlement/resume semantics.
+Audit production code for every:
+- causal root creation;
+- child-frame creation;
+- frame resume;
+- semantic checkpoint advance;
+- causal clear/settlement;
+- Pending/Continuation causal transport;
+- delayed activation;
+- Damage entry;
+- Group/Duel/Negation/Judgement/Borrowed Sword flow;
+- NULL/malformed compatibility path.
 
-2. Reuse the existing child-frame and parent-resume primitives. Carry only typed server-owned causal context. No full envelope in Pending; no IDs inferred from resolution/event IDs, card names or logs; no hidden carrier; no normal-path authority recovery; NULL/malformed authority is never reconstructed.
+At minimum search:
+`createCausalRoot`, `childCausalFrame`, `resumeCausalFrame`,
+`advanceCausalSemanticCheckpoint`, `causalEnvelopeAtStage`,
+`causalRoomStateWrite`, `causal_envelope_json`,
+`resolveSourcedDamage`, `resolveAttackDamageAboutToApply`,
+`resolveGroupDamage`, `startDyingRescue`, `recoverCausalEnvelope`.
 
-3. At the real independent Damage boundary create exactly one FD, preserve the Group interactionId, set parentFrameId=FG and stage DAMAGE, make FD active, and give it the real Damage source/target origin/current state. Do not create a child merely for HP arithmetic.
+Produce a table mapping production site -> semantic owner -> expected identity -> settlement/resume behavior -> evidence.
 
-4. While the child blocks, Damage Pending/Continuation causal context must point to FD. The Group continuation must retain parent context. Any CurrentAction actor must match the child resolver. Public envelope contains FG+FD.
+## Step 2 — audit remaining independent/automatic Damage
 
-5. At true child settlement switch FD back to the original FG without recreating it. Keep the interactionId, restore GROUP_RESOLUTION and the exact participant/remaining order, and advance exactly one semantic parent-resume checkpoint/revision.
+Classify every `resolveSourcedDamage()` caller as one of:
+- same-frame synchronous Damage;
+- child-frame Damage inside an unresolved parent;
+- independent root Damage;
+- legacy/no-authority path.
 
-6. Mandatory real multi-participant fixture: participant A resolves/responds; participant B fails and launches nested Damage; Damage child resolves; Group resumes; participant C is processed afterward. Prove one interactionId, stable FG, distinct FD, FD.parentFrameId=FG, active frame FG->FD->FG, B exactly once, C exactly once/in order, and root clears only after all participants finish.
+Do not assume every Damage needs a child/root.
 
-7. If a real nested Damage path exposes damage_suffered/source-consequence/another blocking choice, prove Pending causal points to FD and resolver matches CurrentAction. Otherwise mark this PARTIAL with exact code evidence; do not invent gameplay.
+For any implemented path that currently has authoritative parent/root context but violates the C0 identity rules, fix the smallest real defect and add a real API/engine test.
 
-8. If nested Damage naturally enters Dying, only prove the Group parent is not lost and interactionId remains. Do not implement the Dying presentation barrier. Mark PARTIAL if this would broaden scope.
+If no additional defect exists, document why the existing classification is correct.
 
-9. Where a real child command boundary exists, prove stale/duplicate commands cannot create a second child frame or duplicate Damage. If unavailable, mark PARTIAL honestly.
+## Step 3 — Group card-family equivalence
 
-10. NULL/malformed test: corrupt only causal envelope storage during a real Group continuation, continue into Damage, and prove no 500, no authority reconstruction and no fake child frame.
+FIX14 proves Raining Arrows. Audit Barbarian Invasion and other Group damage cards to determine whether they enter the exact same `resolveGroupDamage()` boundary.
 
-11. During active child, repeated GET and a second viewer must preserve the same public interaction/FG/FD/active frame/checkpoint/revision. After child settlement FG resumes once; after final Group settlement envelope clears.
+If they do, add one lightweight real Barbarian Invasion characterization proving it uses the same child/resume mechanism; do not duplicate the full FIX14 race matrix.
 
-## Exact FIX14 matrix
+If a card uses a different production path, test/fix that path separately.
 
-Include exactly these rows with PROVEN/PARTIAL/UNPROVEN/NOT IMPLEMENTED IN GAME:
+## Step 4 — Group Damage -> Dying causal compatibility
 
-- real Group participant launches independently resolving Damage
-- nested Damage preserves Group interactionId
-- nested Damage creates one child frame
-- Damage child parentFrameId equals Group frameId
-- activeFrameId switches Group -> Damage child
-- child Pending/Continuation causal points to Damage frame
-- blocking child actor matches envelope resolver
-- child settlement resumes original Group frame
-- parent resume creates one semantic checkpoint/revision
-- Group participant is not duplicated/skipped after resume
-- multi-participant Group order survives child Damage
-- Group root settles only after all participants finish
-- nested Damage -> Dying does not lose Group parent
-- stale/duplicate child decision cannot duplicate frame/Damage
-- repeated read preserves active child identity
-- second viewer sees same public child envelope
-- NULL/malformed Group->Damage never reconstructs authority
+This is NOT the later presentation-barrier task.
 
-PROVEN requires named real API/engine evidence.
+Create one real lethal Group Damage fixture if current gameplay supports it. Drive rescue/survival or defeat far enough to answer only:
+- Group interactionId survives;
+- Damage child identity is not replaced by a new root;
+- Group parent remains available across Dying;
+- after Dying settles, the correct parent resumes or the Group terminates according to gameplay;
+- no stranded child/root.
 
-## Documentation and audit
+Do not add UI barrier metadata or animation semantics.
 
-Update `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` with Group-parent/Damage-child semantics, child creation boundary, parent resume boundary, participant-order invariant, settlement and honest gaps. Add one concise README FIX14 paragraph.
+If current gameplay genuinely cannot provide a stable real fixture, keep this PARTIAL with exact reason.
 
-Search and report GroupContinuation, Barbarian Invasion, Hail of Arrows, Damage entry helpers, child-frame/resume helpers, Group resume paths and authority-recovery calls. List each production Group->Damage child creation and parent-resume site.
+## Step 5 — historical delayed originRef decision
 
-## Validation
+C0 design describes `originRef` for later delayed/persistent activation. Current runtime schema does not provide typed historical originRef.
 
-Preserve FIX13 Lightning, FIX12 Judgement, FIX10 Negation actor alignment, FIX9 Group/Duel Negation, Attack ownership, Borrowed Sword child/resume, lethal Attack->Damage->Dying->rescue and PresentationV2.
+Make an explicit architecture decision based on current gameplay/storage:
+- If placement/transfer has a stable persisted public provenance identifier that can safely be carried into later activation, implement the minimum typed `originRef` and prove it with the existing same-card delayed/Lightning fixtures.
+- If no such stable authoritative provenance exists, DO NOT synthesize it from timeline/log/card-name/current phase. Document it as intentionally deferred/unsupported and explain why this does not compromise active causal authority.
 
-Run focused Group/Barbarian/Hail/Damage/concurrency/causal/PresentationV2 tests, then `npm run test:fast`, `npm run test:api`, `npm run build`, `npm run lint`, and `git diff --check`. Report exact commands/counts.
+Never misuse `parentFrameId` as historical provenance.
+
+## Step 6 — synchronous Judgement-Negation parent branch decision
+
+Audit whether any production path can actually construct `causalResume.parent`.
+
+If none exists:
+- keep or remove the defensive type based on code clarity;
+- mark runtime evidence NOT IMPLEMENTED IN GAME or UNPROVEN;
+- do not manufacture gameplay to exercise it;
+- ensure docs do not count it as a C2 blocker unless a real production path needs it.
+
+## Step 7 — global settlement audit
+
+For every authoritative root/child family now covered, verify the terminal contract:
+- independent root clears exactly once;
+- child settles then resumes exact parent once;
+- final parent settlement clears envelope;
+- no stale completed stage remains;
+- no new root is created merely to resume;
+- malformed/NULL storage never reconstructs authority.
+
+Pay special attention to early returns, defeat, transfer, no-responder, automatic trigger and no-post-damage branches.
+
+Fix only real production defects found.
+
+## Step 8 — reconnect/viewer/public-private audit
+
+For representative Attack, Group child Damage, Duel, Negation, Judgement, Borrowed Sword child and delayed activation:
+- repeated GET keeps public causal identity stable;
+- second viewer gets the same public envelope;
+- private CurrentAction/options remain viewer-specific;
+- actionRevision is not used as causal identity.
+
+Use existing tests where sufficient; add tests only for actual evidence gaps.
+
+## Step 9 — C2 final evidence matrix
+
+Create a C2-FINAL matrix in `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` covering at least:
+- Attack root/response/Damage/Dying continuity;
+- Group root/participant progression;
+- Group nested Damage child/resume;
+- Barbarian/Hail equivalence;
+- Duel;
+- independent and nested Negation;
+- Borrowed Sword child/resume;
+- Judgement replacement/Negation/no-responder;
+- delayed placement vs later activation;
+- Lightning transfer vs later activation;
+- independent/automatic Damage classifications;
+- settlement clearing;
+- stale/concurrent safety;
+- reconnect/second viewer;
+- NULL/malformed non-reconstruction;
+- historical originRef status;
+- synchronous Judgement-Negation parent status;
+- Group Damage -> Dying compatibility.
+
+Statuses: PROVEN / PARTIAL / UNPROVEN / NOT IMPLEMENTED IN GAME.
+
+A PARTIAL/UNPROVEN row may remain only when it is not required by a currently implemented production path or belongs to a later milestone. Explain the boundary.
+
+## Step 10 — C2 closure decision
+
+At the end, state exactly one:
+- `C2 READY TO CLOSE`
+- `C2 NOT READY TO CLOSE`
+
+If NOT READY, list only concrete production blockers and do not start C3.
+
+If READY, explain which remaining PARTIAL rows are deliberately deferred and why they do not compromise active causal correctness.
+
+Do not declare C3 started.
+
+## Step 11 — docs
+
+Update C2 propagation doc and README to match actual evidence. Remove stale claims that Group nested Damage is still wholly open.
+
+Do not rewrite the UX source-of-truth design.
+
+## Step 12 — validation
+
+Run focused causal suites for Attack, Group/Raining Arrows/Barbarian Invasion, Damage/Dying compatibility, Duel, Negation, Borrowed Sword, Judgement/delayed effects, concurrency and PresentationV2.
+
+Then run:
+- `npm run test:fast`
+- `npm run test:api`
+- `npm run build`
+- `npm run lint`
+- `git diff --check`
+
+Report exact commands/counts.
 
 ## Scope exclusions
 
-Do not start C3; implement historical originRef; invent synchronous Judgement-Negation parent gameplay; solve the Dying presentation barrier; generalize every independent Damage root; migrate PresentationV2; modify React/CSS; or redesign Group gameplay/order.
+Do not start C3; implement the Dying presentation barrier; migrate PresentationV2; modify React/CSS; redesign gameplay; create provenance from logs/events/card names; or broaden into unrelated engine cleanup.
 
 ## Execution result
 
-Append only a C2-FIX14 execution result with branch/full implementation SHA, files changed, path inventory, child creation, causal transport, parent resume, multi-participant proof, blocker/Dying/race/NULL evidence, reconnect/viewer proof, exact matrix, docs/search audit, exact validation results, and remaining C2 work. Push implementation plus appended result to origin/ux-v2 and STOP.
+Append only a `C2-FIX15 execution result` containing full implementation SHA, files changed, complete causal-site inventory, Damage classification, Group-family audit, Group-Dying compatibility, originRef decision, Judgement-parent decision, settlement audit, reconnect/viewer audit, C2-FINAL matrix, validation, and the exact closure decision.
+
+Push implementation plus appended result to `origin/ux-v2` and STOP.
 
 ## Acceptance
 
-FIX14 passes only if a real Group Damage path proves same Interaction, distinct child Damage frame parented to Group, child active while unresolved, child causal context, exact one-time parent resume, no participant duplication/skip, root alive until final settlement, stable reconnect/viewer state, no malformed-state reconstruction, honest evidence, green regressions, and no C3/UI work.
-
-## C2-FIX14 execution result — 2026-10-02
-
-Implementation branch: `ux-v2` (direct branch edits; no worktree). Full
-implementation commit SHA: `d64489b2717828504a6540e66df2dd410e35134c`.
-The implementation is intentionally limited to the real Standard
-Raining Arrows Group-failure path; no C3, React/CSS, historical `originRef`,
-synchronous Judgement-Negation parent gameplay, or Dying presentation barrier
-was started.
-
-### Changed files
-
-- `app/api/rooms/route.ts`
-  - Added `resumeGroupCausalRoom()` as a guarded parent-resume adapter.
-  - `resolveGroupDamage()` now validates the persisted Group envelope and
-    creates exactly one `DAMAGE` child with `childCausalFrame()` at the real
-    failed-participant Damage boundary.
-  - Damage Pending/Continuation carries the child context while `resumeGroup`
-    retains the Group parent context.
-  - Both direct no-post-damage settlement and
-    `finishDamageSufferedEvent()` resume the active child to its typed parent
-    before `finishGroupStep()` continues participant order.
-- `tests/api/presentation-v2-engine.test.mjs`
-  - Added the real multi-participant FIX14 Raining Arrows fixture, repeated
-    reads, second-viewer envelope proof, stale request and concurrent duplicate
-    trigger race, and malformed-envelope continuation proof.
-- `tests/api/concurrency.test.mjs`
-  - Updated the Group duplicate-response regression to retain the settled
-    Damage child in public causal history while asserting the Group parent is
-    active again.
-- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
-  - Added the production path inventory, child/parent semantics and exact
-    FIX14 matrix.
-- `README.md`
-  - Added the concise FIX14 stage/roadmap update and explicit Dying boundary.
-- `HANDOVER.md`
-  - This execution result is local reviewer state and is pushed as requested.
-
-### Production Group -> Damage audit
-
-Entry is `groupResponseDecision()`/`beginGroupTarget()`; the live play-card
-entry calls `beginGroupTarget()` with the root envelope. A canonical failed
-Group response reaches `resolveGroupDamage()` from the Group response handler.
-`resolveGroupDamage()` is the only FIX14 child creation site: it calls
-`childCausalFrame()` only when the stored active envelope matches the Group
-response context, then passes FD to `resolveSourcedDamage()`. The child Pending
-is produced by `damageSufferedTriggerPending()` and retains a separate typed
-`resumeGroup` FG handle. Child settlement reaches `resumeGroupCausalRoom()` in
-the direct Damage path or `finishDamageSufferedEvent()`; both use
-`resumeCausalFrame()` and then `finishGroupStep()`. `causalEnvelopeAtStage()`
-preserves NULL/malformed storage as non-authoritative. `recoverCausalEnvelope()`
-is not used to reconstruct this path.
-
-### Exact FIX14 matrix
-
-| Requirement | Status | Evidence / boundary |
-| --- | --- | --- |
-| real Group participant launches independently resolving Damage | PROVEN | Real Raining Arrows participant B failure opens Xiahou Dun post-damage trigger in `FIX14 Group failure Damage uses one child frame and resumes the next participant` |
-| nested Damage preserves Group interactionId | PROVEN | Group root and Damage envelope IDs are compared |
-| nested Damage creates one child frame | PROVEN | Envelope has exactly FG plus one FD |
-| Damage child parentFrameId equals Group frameId | PROVEN | FD parent is asserted equal to FG |
-| activeFrameId switches Group -> Damage child | PROVEN | FG is active before B failure; FD is active while Damage trigger blocks |
-| child Pending/Continuation causal points to Damage frame | PROVEN | D1 Pending causal and continuation causal point to FD; `resumeGroup` points to FG |
-| blocking child actor matches envelope resolver | PROVEN | currentAction actor, Pending actor and FD resolver are B |
-| child settlement resumes original Group frame | PROVEN | Source-side Stauchness choice returns to FG with C as next actor |
-| parent resume creates one semantic checkpoint/revision | PROVEN | FG checkpoint and exactly `damageRevision + 1` are asserted |
-| Group participant is not duplicated/skipped after resume | PROVEN | B failure and C response each occur once; B log precedes C log |
-| multi-participant Group order survives child Damage | PROVEN | A response -> B nested Damage -> C response in one Interaction |
-| Group root settles only after all participants finish | PROVEN | FG remains at C and clears only after C response |
-| nested Damage -> Dying does not lose Group parent | PARTIAL | FD and `resumePending` reach `startDyingRescue()`; dedicated rescue FD->FG proof remains out of scope |
-| stale/duplicate child decision cannot duplicate frame/Damage | PROVEN | stale context leaves Pending unchanged; concurrent Stauchness commands yield one 200 and one stale 409 |
-| repeated read preserves active child identity | PROVEN | B and Carol reads preserve Interaction, FD, checkpoint and revision |
-| second viewer sees same public child envelope | PROVEN | Carol sees the same public FG+FD envelope while B options remain private |
-| NULL/malformed Group->Damage never reconstructs authority | PROVEN | Live envelope corruption returns 200 with public envelope NULL and no fabricated child; typed Group handle remains only in Pending |
-
-### Validation
-
-Focused command (after `npm run build`):
-
-`GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs GAME_TEST_PORT=3147 GAME_TEST_URL=http://localhost:3147 GAME_TEST_INSPECTOR_PORT=9247 node tests/run-tests.mjs`
-
-Result: 21/21 API tests passed, including the FIX14 child/resume, stale and
-duplicate race, repeated/second-viewer and malformed-storage tests.
-
-Full validation results:
-
-- `npm run test:fast`: 108/108 passed.
-- `npm run test:api`: 236/236 passed across 4 shards.
-- `npm run build`: passed.
-- `npm run lint`: passed.
-- `git diff --check`: passed.
-
-### Remaining C2 work
-
-Historical delayed `originRef` remains PARTIAL, runtime synchronous
-Judgement-Negation parent restoration remains UNPROVEN, and nested
-Damage-to-Dying parent-resume/presentation evidence remains PARTIAL. C3 is not
-started.
+FIX15 passes only if the audit covers all current production causal families, any real blockers found are fixed/tested, remaining partials are honestly bounded, regressions are green, and the closure decision is evidence-based. No C3/UI work.
