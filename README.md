@@ -56,6 +56,12 @@ the same interaction/frame. Group child semantics, independent Damage,
 Judgement, delayed activation provenance, and the broader automatic-transition
 audit remain open C2 work.
 
+C2-FIX8 defines nested Group/Duel Negation as a `CHILD_FRAME`: one shared
+Interaction, one Negation child, and exact parent-frame restoration on
+settlement. Dedicated Group/Duel stale, missing-envelope, initial-entry, and
+ordinary physical Duel proofs are now present; duplicate races and nested
+counter-card proof remain explicitly partial.
+
 ## UX2.0B-FINAL verification — 2026-10-02
 
 On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue

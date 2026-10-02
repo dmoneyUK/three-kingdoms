@@ -404,7 +404,7 @@ export async function openFankuiAttack({ sourceCards = [card("Attack", "fankui-a
   return { ...game, sourceMember, targetMember, source, target, actionPresentation: attack.data.room.currentAction.presentation };
 }
 
-export async function openGanglieGroup({ kind, judge, suffix }) {
+export async function openGanglieGroup({ kind, judge, suffix, sourceExtraCards = [], skipNegationWindows = false }) {
   const game = await createHumanGame();
   const [sourceMember, targetMember, bobMember, carolMember] = game.members;
   const [source, target, bob, carol] = game.room.players;
@@ -412,7 +412,7 @@ export async function openGanglieGroup({ kind, judge, suffix }) {
   sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(target.id)}`);
   sql(`UPDATE players SET hero=NULL WHERE id IN (${quote(bob.id)},${quote(carol.id)})`);
   const required = kind === "RainingArrows" ? "Dodge" : "Attack";
-  setHand(source.id, [card(kind, `${suffix}-source`)], 4, 4);
+  setHand(source.id, [card(kind, `${suffix}-source`), ...sourceExtraCards], 4, 4);
   setHand(target.id, [], 3, 3);
   setHand(bob.id, [card(required, `${suffix}-bob`)], 4, 4);
   setHand(carol.id, [card(required, `${suffix}-carol`)], 4, 4);
@@ -420,14 +420,15 @@ export async function openGanglieGroup({ kind, judge, suffix }) {
   setDeck(game.code, [judge]);
   const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source` });
   assert.equal(started.status, 200, JSON.stringify(started.data));
-  await passNegationWindows(game.code, game.members);
+  if (!skipNegationWindows) await passNegationWindows(game.code, game.members);
   const settled = await state(game.code, sourceMember.token);
+  if (skipNegationWindows) return { ...game, started, sourceMember, targetMember, bobMember, carolMember, source, target, bob, carol, required };
   assert.equal(settled.data.currentAction.kind, "trigger", JSON.stringify(settled.data));
   assert.equal(settled.data.currentAction.triggerEvent, "damage_suffered");
   assert.equal(settled.data.currentAction.actorId, target.id);
   const targetView = (await state(game.code, targetMember.token)).data;
   assert.ok(targetView.currentAction.triggerOptions.some((option) => option.effectId === "xiahou_dun_ganglie"));
-  return { ...game, sourceMember, targetMember, bobMember, carolMember, source, target, bob, carol, required };
+  return { ...game, started, sourceMember, targetMember, bobMember, carolMember, source, target, bob, carol, required };
 }
 
 export let borrowedScenarioCounter = 0;
