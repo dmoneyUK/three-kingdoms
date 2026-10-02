@@ -134,3 +134,56 @@ Push the appended report to `origin/ux-v2` and STOP.
 ## Acceptance
 
 C2 closes only if all mandatory final validation is actually executed and recorded green. Do not start C3 in this task.
+
+## C2-FIX15-VERIFY execution result
+
+Branch: `ux-v2`
+
+Starting HEAD:
+`0a58514dfd764b023a5d8d257d5661e0d5f1aa16`
+
+The starting branch was synchronized with `origin/ux-v2`, had no uncommitted
+changes, and contains reviewed implementation
+`ba75dbf9e8352ea3829faaf398192bd5174dc6c4`.
+
+### Focused causal validation
+
+Command:
+
+```text
+GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/equipment.test.mjs,tests/api/judgement.test.mjs,tests/api/stratagems.test.mjs,tests/api/borrowed-sword.test.mjs,tests/api/concurrency.test.mjs,tests/api/presentation-causality.test.mjs GAME_TEST_PORT=3137 GAME_TEST_URL=http://localhost:3137 GAME_TEST_INSPECTOR_PORT=9229 node tests/run-tests.mjs
+```
+
+Result: **98 passed, 0 failed**. This includes PresentationV2 engine,
+Eight Trigrams response-Judgement causal propagation, Judgement/delayed
+effects, Borrowed Sword, concurrency, viewer causality, lethal Raining Arrows
+Group -> Damage -> Dying -> Peach -> Group continuation, and Barbarian
+Invasion Group-child characterization.
+
+### Mandatory final validation
+
+| Command | Result |
+| --- | --- |
+| `npm run test:fast` | PASS — 108 passed, 0 failed |
+| `npm run test:api` | PASS — 238 passed, 0 failed across 4 shards |
+| `npm run build` | PASS — Vinext build completed |
+| `npm run lint` | PASS — ESLint completed with no errors |
+| `git diff --check` | PASS — no whitespace errors |
+
+No production files changed during verification. Only this handover result is
+being appended.
+
+### Final C2 boundary
+
+- Historical delayed `originRef`: `PARTIAL` / intentionally unsupported;
+  there is no stable typed historical provenance in the current authoritative
+  schema.
+- Synchronous Judgement-Negation parent: `NOT IMPLEMENTED IN GAME`; no
+  production constructor emits it.
+- Dying presentation barrier: later milestone, not part of C2.
+- C3: not started.
+
+No logs, event IDs, card names, current phase, or `actionRevision` are used to
+fabricate causal authority.
+
+`C2 READY TO CLOSE — VERIFIED`
