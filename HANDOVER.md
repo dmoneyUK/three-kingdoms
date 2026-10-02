@@ -416,3 +416,125 @@ FIX9 passes only if:
 - documentation matches the authoritative main UX design;
 - Attack/Borrowed Sword regressions remain green;
 - no C3/UI work begins.
+
+---
+
+## C2-FIX9 execution result — 2026-10-02
+
+Branch: `ux-v2`
+Implementation commit: `992bff9f622a92f41b675c96a9bd0fdcae3a75dd`
+Files changed: `app/api/causal-envelope.ts`, `app/api/rooms/route.ts`, `tests/presentation-causality.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `tests/api/concurrency.test.mjs`, `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`, `README.md`
+
+### Same-frame Negation correction
+
+Nested Group/Duel Negation now reuses the active Group/Duel `interactionId` and
+`frameId`. Entry changes the existing frame to `NEGATION`; settlement restores
+`GROUP_RESOLUTION` or `DUEL_EXCHANGE`. No Group/Duel Negation path calls the
+child-frame helper. Independent top-level Negation still creates one root.
+
+### Semantic checkpoint helper
+
+Added `advanceCausalSemanticCheckpoint()` to atomically update one frame's
+stage/current values, create exactly one checkpoint, and increment
+`presentationRevision` exactly once while preserving origin, interaction, and
+frame identity. The existing stage transition path now uses this helper rather
+than two artificial revisions.
+
+### Group proof
+
+`FIX9 persists the Group root and keeps nested Negation in the same Frame`
+proves one Group frame, `NEGATION` stage, immutable Group origin, matching
+Pending/continuation causal IDs, stable repeated/second-viewer identity, and
+same-frame restoration to `GROUP_RESOLUTION`.
+
+### Physical Duel proof
+
+`FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage`
+proves one physical Duel frame, `NEGATION` stage while blocked,
+`DUEL_EXCHANGE` after settlement, same-frame response Attack, and envelope
+settlement without an Attack child frame.
+
+### Counter-Negation proof
+
+`FIX9 Group counter-Negation stays in one frame and restores Group resolution`
+and `FIX9 physical Duel counter-Negation stays in one frame and restores the
+Duel` prove real Negation/counter-Negation card flows keep one interaction and
+frame, preserve the Group/Duel origin, align `response.causal` with
+`continuation.causal`, and restore the original stage. The counter path now
+copies top-level `response.causal` as well as continuation causal context.
+
+### Group race proof
+
+`FIX9 Group duplicate response race advances one participant once` proves two
+concurrent valid Group responses produce exactly one success and one stale
+loser, consume the physical card once, advance once, and retain one causal
+frame/interaction.
+
+### Duel race proof
+
+`FIX9 ordinary Duel duplicate response race advances one exchange once` proves
+two concurrent physical Duel Attack responses produce exactly one success and
+one stale loser, consume the Attack once, advance one exchange, and retain one
+Duel frame/interaction.
+
+### Missing/malformed proof
+
+`FIX9 Group NULL and ordinary Duel malformed envelopes stay non-authoritative`
+proves Group `causal_envelope_json = NULL` and a structurally malformed Duel
+envelope both project as `causalEnvelope: null`, do not reconstruct authority
+from Pending, do not create guessed IDs/checkpoints, do not 500, and continue
+the card flow safely.
+
+### Exact FIX9 matrix
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| Group root remains one frame during nested Negation | PROVEN | named FIX9 Group same-frame API/engine test | none for covered entry |
+| Group Negation uses NEGATION stage on same frame | PROVEN | named FIX9 Group same-frame test | none |
+| Group Negation settlement restores GROUP_RESOLUTION on same frame | PROVEN | named FIX9 Group same-frame test | none |
+| Group counter-Negation stays same interaction/frame | PROVEN | named FIX9 Group counter-Negation test | none |
+| Group stale request preserves identity/checkpoint/revision | PROVEN | named FIX9 Group stale API test | none for covered response |
+| Group duplicate response race cannot duplicate transition | PROVEN | named FIX9 Group duplicate-race API test | none |
+| Group missing envelope does not fabricate authority | PROVEN | named FIX9 Group NULL continuation test | malformed Group variant not added |
+| physical Duel root remains one frame during nested Negation | PROVEN | named FIX9 physical Duel same-frame test | none |
+| Duel Negation uses NEGATION stage on same frame | PROVEN | named FIX9 physical Duel same-frame test | none |
+| Duel Negation settlement restores DUEL_EXCHANGE on same frame | PROVEN | named FIX9 physical Duel same-frame test | none |
+| Duel response Attack remains same Duel frame | PROVEN | named FIX9 physical Duel same-frame test | none |
+| Duel counter-Negation stays same interaction/frame | PROVEN | named FIX9 Duel counter-Negation test | none |
+| Duel stale request preserves identity/checkpoint/revision | PROVEN | named FIX9 Duel stale API test | none for covered response |
+| Duel duplicate response race cannot duplicate transition | PROVEN | named FIX9 Duel duplicate-race API test | none |
+| Duel malformed envelope does not fabricate authority | PROVEN | named FIX9 malformed Duel API test | none |
+| response.causal and continuation.causal align through counter-Negation | PROVEN | Group/Duel counter-Negation assertions | no Judgement nested proof; out of scope |
+| independent top-level Negation still creates its own root | PROVEN | independent Dismantle Negation engine/API assertions | delayed Judgement remains out of scope |
+| no nested Group/Duel Negation creates child/root IDs | PROVEN | Group/Duel tests assert one frame and stable activeFrameId | none for covered paths |
+
+### Documentation cleanup
+
+`docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` and `README.md` now describe
+same-frame Group/Duel Negation and retain Borrowed Sword as the legitimate
+child-frame example. No main UX design, React, CSS, gameplay rule, or C3 work
+was changed.
+
+### Search audit
+
+- `childCausalFrame` in `app/api/rooms/route.ts`: Borrowed Sword forced Attack only.
+- `resumeCausalFrame` in `app/api/rooms/route.ts`: Borrowed Sword parent resume only.
+- `startNegation(`: independent roots plus typed Duel continuation entry; nested Duel reuses the existing frame.
+- `recoverCausalEnvelope`: no production route call site; helper remains isolated in `game/causal-context.ts`.
+- `Object.defineProperty.*causalEnvelope`: no matches in `app` or `game`.
+
+### Validation
+
+- `npm run build` passed.
+- `npm test` passed: fast `108/108`, API `223/223`.
+- `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs node tests/run-tests.mjs` passed `13/13`.
+- `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/concurrency.test.mjs node tests/run-tests.mjs` passed `29/29`.
+- `npm run lint` passed.
+- `git diff --check` passed.
+
+### Remaining C2 work
+
+Independent Damage fixture, Judgement completion, delayed activation provenance,
+Dying barrier, broader automatic-transition audit, and any pre-existing C2
+coverage gaps remain. C3, UI, React, CSS, and gameplay-rule changes remain out
+of scope.
