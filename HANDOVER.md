@@ -3,243 +3,142 @@
 ## REMOTE HANDOVER RULE — MANDATORY
 
 `HANDOVER.md` is a tracked remote coordination file.
-
 It MUST be committed and pushed to `origin/ux-v2`.
-Do NOT keep HANDOVER.md local-only.
-Do NOT gitignore, untrack, revert, discard, or omit it from pushed work.
-After implementation, append the execution result to THIS file, commit it, push it to `origin/ux-v2`, run `git fetch origin`, verify `origin/ux-v2:HANDOVER.md` contains the appended result, then STOP.
+Do NOT keep it local-only, gitignore it, untrack it, revert it, discard it, or omit it from pushed work.
+After implementation, append the execution result to THIS file, commit and push it to `origin/ux-v2`, run `git fetch origin`, verify `origin/ux-v2:HANDOVER.md` contains the result, then STOP.
 
 ## Reviewer status
 
-UX2.0C3-01 + FIX1 is **ACCEPTED / CLOSED**.
+UX2.0C3-02 is **PARTIAL / NOT ACCEPTED**.
 
 Reviewed implementation:
-- C3-01: `5fcb891199bd0588ecb923f51d87581dba74ac9a`
-- C3-01-FIX1: `bc985397563d2e8c409ab0b843b1723a5ffe3924`
+`419231d09acced82d6ab59af3a044b96e54734f9`
 
-Accepted evidence:
-- authoritative C2 causal envelope drives Group presentation identity;
-- Group source and ordered affected target set remain distinct;
-- `currentParticipantId` now represents the Group participant rather than the active child resolver;
-- `decisionActorId` and `activeResolverId` are separate roles;
-- real A -> B -> C Group progression keeps one interactionId/groupFrameId;
-- nested Damage keeps parent Group context;
-- lethal Group Damage -> Dying -> Peach keeps the damaged Group participant while a different Peach actor decides, then resumes the exact Group parent;
-- nested Group Negation remains SAME_FRAME;
-- second-viewer public Group semantics remain equivalent;
-- NULL/malformed causal state remains UNPROVEN and does not fabricate causal identity.
+Accepted:
+- typed `presentationV2.interactionScene` exists;
+- Group semantic values are shared with compatibility `groupResolution` rather than independently reimplemented;
+- Group source/effect/ordered targets and participant/decision/resolver separation are preserved;
+- real Raining Arrows, Barbarian Invasion, Damage, Dying/Peach and SAME_FRAME Negation fixtures exercise the new scene;
+- viewer equality, repeated reads and NULL/malformed Group authority are covered;
+- no React/CSS/C4 work was started;
+- reported validation: projector 19/19, focused engine 23/23, fast 110/110, API 238/238, build/lint/diff-check PASS.
 
-FIX1 validation reported:
-- projector: 19/19;
-- focused PresentationV2 engine: 23/23;
-- test:fast: 110/110;
-- test:api: 238/238;
-- build: PASS;
-- lint: PASS;
-- git diff --check: PASS.
+### Blocking authority-validation defect
 
-Reviewer note:
-FIX1 adds a recursive Pending fallback (`groupParticipantOwner`) only for Group participant semantic content. It does not create causal interaction/frame/checkpoint authority; those remain envelope-owned. Future C3 work should reduce ad-hoc Pending traversal by introducing a typed public semantic projection contract rather than expanding recursive inference.
+The new generic scene marks an envelope PROVEN using only:
 
-Do not start C4/C5. C3 remains the active milestone.
+`envelope && activeFrame && checkpoint.frameId exists`
+
+but it does **not** require:
+- `checkpoint.frameId === activeFrameId`;
+- `checkpoint.stage === activeFrame.stage`.
+
+The parser validates that the checkpoint references an existing frame and that its stage matches that referenced frame, but it does not require the checkpoint to identify the active frame.
+
+Therefore a structurally parseable but semantically inconsistent envelope can produce:
+- active frame A;
+- checkpoint frame B;
+- scene stage from A;
+- checkpointId from B;
+- semantics = PROVEN.
+
+That violates the C3-02 contract that Interaction -> Frame -> Stage -> Checkpoint is one authoritative semantic snapshot.
+
+The projector must fail closed for this mismatch. Do not weaken the parser or fabricate a repair.
+
+Do not start C3-03/C4/C5.
 
 ---
 
-# NEXT TASK — UX2.0C3-02: Formalize Typed Public Interaction Scene Projection
+# NEXT TASK — UX2.0C3-02-FIX1: Enforce Active Frame / Checkpoint Coherence
 
 ## Objective
 
-Continue C3 by turning the currently Group-specific semantic fields into a typed, reusable public Interaction Scene contract inside PresentationV2.
+Make `interactionScene.semantics === "PROVEN"` require one coherent authoritative snapshot:
 
-This is projector/model/test/documentation work only.
+INTERACTION -> ACTIVE FRAME -> STAGE -> CHECKPOINT
 
-The goal is NOT to migrate React yet. The goal is to establish one stable server-owned public semantic scene that a later client can consume without interpreting raw Pending, CurrentAction, timeline events, or causal-envelope internals.
+A checkpoint belonging to another frame or stage must never be combined with the active frame and labeled PROVEN.
 
-Preserve the accepted C3-01 Group behavior exactly while making the public semantic boundary explicit.
+Keep this fix narrow.
 
-## Step 1 — audit current PresentationV2 semantic duplication
+## Step 1 — characterize the invariant
 
-Inspect:
-- `game/presentation-v2.ts`;
-- current `groupResolution`;
-- `activeContext`, `parentContext`, `participants`, `decision`, `settlement`, and `transitionEvents`;
-- `game/presentation-causality.ts`;
-- C0 scene hierarchy in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`;
-- real C3-01/FIX1 Group fixtures.
+Inspect C2 envelope update helpers and real production envelopes.
 
-Document which existing PresentationV2 fields are:
-1. authoritative public semantic fields;
-2. legacy compatibility fields;
-3. viewer-private/control fields;
-4. timeline/event-derived compatibility fields.
+Confirm the intended stable invariant:
+- `checkpoint.frameId === activeFrameId`;
+- `checkpoint.stage === activeFrame.stage`.
 
-Do not delete legacy fields in this task.
+Document whether every stable API-visible C2 snapshot already satisfies it.
 
-## Step 2 — define a typed public Interaction Scene
+Do not redesign causal identity.
 
-Add a typed public semantic object to PresentationV2 (choose a clear name such as `interactionScene`; follow existing naming conventions if a better one already exists).
+## Step 2 — fail closed in the projector
 
-It must model the C0 hierarchy:
+Update the typed Interaction Scene proof gate.
 
-INTERACTION -> FRAME -> STAGE -> CHECKPOINT
+For PROVEN, require at minimum:
+- envelope exists;
+- activeFrameId resolves to an existing frame;
+- checkpoint frame resolves;
+- checkpoint frame is the active frame;
+- checkpoint stage equals the active frame stage;
+- for Group semantics, the authoritative Group parent frame required by the Group projection also exists.
 
-At minimum expose, when causal authority is PROVEN:
-- semantics/proven status;
-- interactionId;
-- activeFrameId;
-- parentFrameId when applicable;
-- checkpointId;
-- presentationRevision;
-- stage;
-- public source actor;
-- public effect identity;
-- ordered public affected target IDs;
-- current semantic participant/target;
-- decision actor when public;
-- active resolver when public;
-- active source/targets for the current frame;
-- continuity relationship needed to distinguish same-frame update vs child-frame transition.
+If any required coherence condition fails:
+- scene must be UNPROVEN (or absent only if that is already the established no-scene contract);
+- causal identity fields exposed by the scene must be null according to the current UNPROVEN contract;
+- do not combine active-frame semantic fields with a different checkpoint and call it authoritative.
 
-Do not expose private hand/options or raw CurrentAction option payloads.
+Do not synthesize a replacement checkpoint.
 
-Do not copy the entire causal envelope into the scene.
+## Step 3 — add pure projector negative tests
 
-## Step 3 — make causal authority explicit
+Add explicit tests with structurally valid CausalEnvelope objects passed directly to the projector:
 
-Causal identity fields in the new scene must come only from the parsed authoritative causal envelope.
+1. activeFrameId = frame A, checkpoint.frameId = frame B, both frames exist, checkpoint.stage matches B.
+   Expected: interactionScene UNPROVEN and causal IDs null.
 
-NULL/malformed envelope must never produce invented:
-- interactionId;
-- frameId;
-- parentFrameId;
-- checkpointId;
-- presentationRevision.
+2. If TypeScript construction permits a stage mismatch object in the pure JS test, checkpoint references active A but checkpoint.stage differs from A.stage.
+   Expected: UNPROVEN.
 
-Pending may provide typed semantic content only where already accepted/necessary, but it must not manufacture causal identity.
+The tests must prove the projector itself fails closed even when input bypasses `parseCausalEnvelope()`.
 
-Do not use logs, event IDs, card names, phase, resolutionId, or actionRevision as causal identity.
+## Step 4 — parser/API malformed coverage
 
-## Step 4 — preserve Group semantics through the typed scene
+Add/extend parser or API characterization showing persisted malformed/incoherent authority cannot become a PROVEN scene.
 
-Map the accepted C3-01/FIX1 Group contract into the new scene.
+Do not rely only on the pure projector test.
 
-Prove for real Raining Arrows and Barbarian Invasion:
-- source;
-- effect;
-- full ordered affected target set;
-- current Group participant;
-- decision actor;
-- active resolver;
-- stable interactionId/group parent frame;
-- active child Damage frame;
-- resume to same Group frame.
+If `parseCausalEnvelope` already rejects a specific malformed form, assert that and then assert the API scene cannot expose fabricated PROVEN identity.
 
-The existing `groupResolution` compatibility object may remain, but its semantic values should not diverge from the new typed scene.
+If active/checkpoint frame mismatch is currently accepted by the parser, do not silently broaden this task unless the production invariant requires parser hardening. You may harden the parser if it is the smallest correct enforcement point, but keep projector defense-in-depth regardless.
 
-Avoid two independent implementations of the same Group rules. Prefer one semantic projection source with compatibility fields derived from it.
+## Step 5 — regression proof
 
-## Step 5 — encode continuity level semantically
-
-Using the C0 continuity model, make the scene distinguish at least:
-- same-frame semantic/content update;
-- child-frame transition;
-- return/resume to parent frame;
-- interaction transition/terminal absence.
-
-Do not implement visual animations.
-
-Do not derive continuity from actionRevision.
-
-If the existing envelope lacks enough previous-state information to label a transition direction deterministically from one snapshot alone, do NOT invent it. Expose only snapshot facts that allow the client to compare revisions/frames, and document the limitation.
-
-## Step 6 — Group Negation SAME_FRAME
-
-Using real nested Group Negation/counter-Negation:
-- interactionId stable;
-- activeFrameId remains Group frame;
-- stage becomes NEGATION as appropriate;
-- no child frame appears;
-- current Group participant semantics remain correct for the actual production point;
-- decision actor/resolver semantics are separate;
-- returning to GROUP_RESOLUTION does not create a new frame.
-
-## Step 7 — Damage child and Dying characterization
-
-Using real C3 fixtures:
-- Group -> Damage: active child frame with parent Group frame retained;
-- Group -> Damage -> Dying -> Peach: preserve the same Group context and accepted role separation;
-- after rescue: exact Group parent resumes.
-
-Do NOT implement the future Dying presentation barrier.
-Do NOT broaden into C4.
-
-The typed scene must accurately characterize current production state only.
-
-## Step 8 — viewer/public boundary
-
-Prove with two viewers during a state where decision actor differs from Group participant:
-- the new public interaction scene is deep-equal between viewers;
-- private options/cards are not embedded;
-- viewer-specific CurrentAction controls remain outside public semantic identity.
-
-If any proposed field is viewer-private, keep it outside the public scene.
-
-## Step 9 — reconnect/stability
-
-For unchanged authoritative state:
-- repeated reads return deep-equal public interaction scene;
-- checkpointId/presentationRevision remain stable;
-- no IDs are regenerated by projection.
-
-For semantic progression:
-- projector reflects the authoritative checkpoint/revision already persisted by C2;
-- projector itself does not increment identity/revision.
-
-## Step 10 — malformed and legacy compatibility
-
-Test:
-- causal envelope NULL;
-- malformed stored envelope;
-- typed Group Pending still present while causal authority is unavailable.
-
-Expected:
-- new scene is absent or explicitly UNPROVEN according to the chosen typed contract;
-- no causal identity fabricated;
-- existing legacy compatibility fields continue to behave according to current contract;
-- no crash.
-
-## Step 11 — tests
-
-Add focused pure-projector and real engine/API tests covering at minimum:
-- Raining Arrows participant progression;
-- Barbarian Invasion equivalent;
-- Group SAME_FRAME Negation;
+Re-run real:
+- Group root;
+- SAME_FRAME Negation;
 - Group -> Damage child;
-- Group -> Damage -> Dying -> Peach -> Group resume;
-- participant != decisionActor != activeResolver where production permits;
-- second viewer;
-- repeated read;
-- NULL/malformed authority.
+- Dying/Peach;
+- parent resume.
 
-Tests must assert the new typed public scene itself, not merely `causalEnvelope` or old `groupResolution`.
+Assert their active frame/checkpoint remain coherent and scene stays PROVEN.
 
-## Step 12 — documentation
+This must not change accepted C3-01/FIX1 semantics.
 
-Update `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` with:
-- exact typed public Interaction Scene contract;
-- field ownership/source;
-- public vs viewer-private boundary;
-- continuity semantics;
-- legacy compatibility boundary;
-- known later gaps.
+## Step 6 — documentation
 
-README: concise current-stage update only.
+Update the C3-02 Interaction Scene contract to state explicitly:
 
-Do not rewrite C0/C2 history.
+A scene is PROVEN only when checkpoint frame/stage coheres with the active frame/stage.
 
-## Step 13 — validation
+README only if needed; keep it concise.
 
-Run focused PresentationV2/Group/Negation/Damage/Dying tests, then:
+## Step 7 — validation
+
+Run focused projector/causality/PresentationV2 engine tests, then:
 - `npm run test:fast`
 - `npm run test:api`
 - `npm run build`
@@ -248,76 +147,35 @@ Run focused PresentationV2/Group/Negation/Damage/Dying tests, then:
 
 Report exact commands and exact counts.
 
-## Evidence matrix
-
-Report PROVEN / PARTIAL / UNPROVEN / NOT IMPLEMENTED IN GAME for:
-- typed public scene exists;
-- causal IDs envelope-owned;
-- source/effect/ordered targets correct;
-- current participant separated from decision actor/resolver;
-- Group participant progression stable;
-- Group Negation SAME_FRAME;
-- Damage child parent relationship;
-- parent resume;
-- Dying/Peach current-state characterization;
-- second-viewer public equality;
-- repeated-read stability;
-- NULL/malformed non-fabrication;
-- legacy compatibility does not diverge from typed scene.
-
 ## Scope exclusions
 
 Do not:
-- modify React/CSS;
-- implement visual Interaction Stage;
-- implement Dying presentation barrier;
+- change React/CSS;
+- implement visual transitions;
+- implement Dying barrier;
 - change gameplay rules;
-- redesign C2 causal identity;
+- redesign C2 identities;
+- start C3-03/C4/C5;
 - implement historical originRef;
-- start C4/C5;
-- remove legacy PresentationV2 fields wholesale;
-- infer causal identity from Pending/logs/events/card names/resolutionId/actionRevision.
+- infer/repair checkpoint identity from Pending, logs, events, card names, resolutionId, phase, or actionRevision.
 
 ## Execution result
 
-Append only a `C3-02 execution result` containing:
+Append only a `C3-02-FIX1 execution result` with:
 - full implementation SHA;
 - files changed;
-- exact new typed scene contract;
-- source/ownership of every semantic field;
-- compatibility mapping;
-- real fixtures used;
-- evidence matrix;
+- exact coherence invariant enforced;
+- whether parser was changed and why;
+- negative projector evidence;
+- persisted/API malformed evidence;
+- real-flow regression evidence;
 - exact validation commands/counts;
 - remaining C3 gaps.
 
 Push implementation AND appended HANDOVER result to `origin/ux-v2`.
-
-Then run `git fetch origin` and verify `origin/ux-v2:HANDOVER.md` contains the C3-02 execution result.
-
+Then `git fetch origin` and verify the remote HANDOVER contains the result.
 Then STOP.
 
 ## Acceptance
 
-C3-02 passes only if PresentationV2 exposes a stable typed public Interaction Scene driven by authoritative causal identity, preserves accepted Group semantics and role separation, represents SAME_FRAME vs child-frame structure without fabricated transitions, remains viewer-invariant and reconnect-stable, does not leak private controls, does not fabricate identity for malformed/legacy state, and all regressions are green.
-
-## C3-02 execution result
-
-- Full implementation SHA: `419231d09acced82d6ab59af3a044b96e54734f9` (`feat: add typed public interaction scene`, rebased onto the latest remote HANDOVER baseline).
-- Files changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, and `README.md`.
-- Typed public scene: **PROVEN**. `presentationV2.interactionScene` models the public Interaction -> Frame -> Stage -> Checkpoint snapshot with explicit semantics, causal IDs, source/effect/targets, participant/actor/resolver roles, active child context, and structural continuity.
-- Causal IDs envelope-owned: **PROVEN**. `interactionId`, `rootFrameId`, `activeFrameId`, `parentFrameId`, `checkpointId`, and `presentationRevision` are populated only from a proven parsed envelope. NULL or malformed Group authority yields an explicit `UNPROVEN` scene with null causal IDs.
-- Source/effect/ordered targets: **PROVEN** for real Raining Arrows and Barbarian Invasion. Group source/effect/ordered target values are computed once and used to derive both `interactionScene` and legacy `groupResolution`.
-- Participant separation: **PROVEN**. `currentParticipantId`, `decisionActorId`, and `activeResolverId` remain distinct through nested Damage and Dying where production actors differ.
-- Group progression: **PROVEN**. Real Raining Arrows covers A -> B -> C with stable interaction and parent-frame identity; repeated reads are deep-equal.
-- Group Negation SAME_FRAME: **PROVEN**. Nested Group Negation keeps one active frame, projects `SAME_FRAME`, and returns to Group resolution without a new frame.
-- Damage child and parent resume: **PROVEN**. Raining Arrows and Barbarian Invasion expose `CHILD_FRAME` with the Group parent retained, then resume the exact parent frame.
-- Dying/Peach current-state characterization: **PROVEN**. The lethal Group fixture preserves the damaged participant while Peach decision ownership remains separate; the future Dying presentation barrier is not implemented.
-- Viewer/public boundary: **PROVEN**. A second viewer receives deep-equal `interactionScene` public semantics; private CurrentAction controls/cards remain outside it.
-- Repeated-read stability: **PROVEN**. Unchanged authoritative state returns deep-equal scene data and does not regenerate IDs or revisions.
-- NULL/malformed non-fabrication: **PROVEN**. Legacy compatibility remains safe, while both missing and malformed stored causal authority keep the new scene `UNPROVEN`.
-- Legacy compatibility: **PROVEN**. `groupResolution` remains present and is derived from the same semantic projection values as `interactionScene`; no legacy fields were removed.
-- Continuity limitation: **DOCUMENTED / PARTIAL**. `CHILD_FRAME` and Group `NEGATION` `SAME_FRAME` are structural snapshot facts. A single snapshot cannot prove whether a root-frame observation is a same-frame update or a return from a child, so no transition direction or animation timing is invented.
-- Validation: projector `node --test tests/presentation-v2.test.mjs` 19/19; focused engine `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs ... node tests/run-tests.mjs` 23/23; `npm run test:fast` 110/110; final `npm run test:api` 238/238; `npm run build` PASS; `npm run lint` PASS; `git diff --check` PASS.
-
-Implementation and this tracked HANDOVER result must be pushed to `origin/ux-v2`. C3 remains active; do not start C4/C5 or React/CSS migration.
+FIX1 passes only if a mismatched active frame/checkpoint can never produce a PROVEN public Interaction Scene, valid real C2 snapshots remain PROVEN, Group semantics remain unchanged, malformed authority fails closed, and all regressions are green.
