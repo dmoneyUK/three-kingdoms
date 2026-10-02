@@ -322,3 +322,109 @@ FIX6 passes if:
 - no normal production recovery/hidden carrier returns;
 - all required validation passes;
 - no out-of-scope C3/UI work begins.
+
+---
+
+## C2-FIX6 execution result — 2026-10-02
+
+Branch: `ux-v2`
+Implementation commit: `582cf630caedcd6dde47d0cc05fc677891f3f786`
+Files changed: `tests/api/concurrency.test.mjs`, `tests/api/presentation-causality.test.mjs`, `tests/api/ma-chao.test.mjs`, `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`, `README.md`
+
+### Stale/double causal proof
+
+The existing real Attack concurrency test now captures the initial
+`interactionId`, active `frameId`, `checkpointId`, and `presentationRevision`.
+The intentionally stale 409 response asserts all four values are unchanged,
+checks Pending causal interaction/frame IDs, and confirms the Dodge remains in
+the responder hand. The two valid concurrent submissions still produce exactly
+one winner and one stale loser; the Dodge is discarded and logged exactly once.
+If a final envelope remains, its interaction remains the original one; the
+settled path is allowed to clear it.
+
+### Malformed mid-continuation proof
+
+`malformed room envelope remains non-authoritative` now opens a real ordinary
+Attack, records the real Pending/root identity, corrupts only
+`causal_envelope_json`, reads the room, and submits the real Dodge response.
+The API returns 200, the room settles without a 500, the envelope remains
+null, Pending is cleared, and the Dodge is consumed exactly once. Pending was
+not rewritten and no causal helper was called by the test.
+
+### Real Attack read/viewer proof
+
+The previous mixed test is split into `real Attack causal envelope is stable
+across room reads and viewers` and the separate manual C1 projection test.
+Only the real test is cited for C2 ownership. It verifies persisted Pending
+causal IDs and stable interaction/frame/checkpoint/revision values across real
+room reads and a second viewer.
+
+### Attack-targeted proof
+
+`Cavalry is an optional source-owned attack_targeted trigger and Skip preserves
+Dodge` now asserts a real Attack-targeted envelope, Pending causal IDs, and
+stable checkpoint/revision across a repeated read. This is concrete proof for
+the Cavalry entry; other Attack-targeted variants are not generalized from it.
+
+### Entry-variant evidence
+
+| Variant | Status | Evidence |
+| --- | --- | --- |
+| ordinary card Attack | PROVEN | real Attack read/viewer test |
+| Attack-targeted | PROVEN | real Ma Chao Cavalry API test |
+| Halberd / virtual Attack | PARTIAL | caller audit and gameplay coverage; no dedicated envelope assertion |
+| Serpent Spear | PARTIAL | caller audit and gameplay coverage; no dedicated envelope assertion |
+| Influencing Attack | PARTIAL | caller audit and delegated gameplay coverage; no dedicated envelope assertion |
+| Borrowed Sword inherited Attack | PARTIAL | child identity/CAS coverage; no dedicated FIX6 root-transport assertion |
+| follow-up / inherited Attack | PARTIAL | continuation coverage; no dedicated envelope assertion |
+
+### Exact FIX6 matrix
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| normal Attack exact root persistence | PROVEN | real Attack causal envelope test | none |
+| Attack-targeted exact root persistence | PROVEN | Ma Chao Cavalry API test | Cavalry-specific |
+| Attack Pending context matches envelope | PROVEN | real Attack and Cavalry tests | none for covered entries |
+| repeated reads preserve IDs/checkpoint/revision | PROVEN | real Attack and Cavalry tests | none |
+| reconnect/read-after-persistence preserves IDs/checkpoint/revision | PROVEN | repeated production room reads | no browser reconnect harness |
+| second viewer sees same real Attack envelope | PROVEN | real Attack test | none |
+| stale request leaves causal identity unchanged | PROVEN | concurrency API test | none |
+| concurrent duplicate response cannot duplicate causal transition | PROVEN | concurrency and Borrowed Sword CAS tests | none |
+| Attack settlement clears envelope | PROVEN | lethal Attack → Damage → Dying → rescue test | none |
+| next independent root gets fresh IDs | PROVEN | subsequent Attack after rescue | none |
+| Attack-derived Damage reuses root | PROVEN | lethal Damage/Dying test | none |
+| independent Damage exact root persistence | UNPROVEN | no isolated authoritative scenario | source-less Damage fixture remains open |
+| malformed mid-continuation does not fabricate authority | PROVEN | malformed real Dodge continuation test | none for this continuation |
+| legacy NULL continuation remains null | PROVEN | legacy room API test | none |
+| no production normal-path recoverCausalEnvelope | PROVEN | route search audit; only isolated helper definition remains | helper cleanup is outside FIX6 |
+
+### Architecture sanity
+
+- `CausalCreation<T>` remains the explicit carrier; no hidden/non-enumerable
+  envelope property was reintroduced.
+- `app/api/rooms/route.ts` has no production `recoverCausalEnvelope()` call.
+- Pending JSON contains causal context only; malformed or missing persisted
+  authority is not rebuilt from Pending context.
+- The only search hit is the isolated compatibility helper definition in
+  `game/causal-context.ts`; no production route uses it.
+- No Group/Duel/Judgement expansion, C3, React/CSS, PresentationV2 migration,
+  delayed provenance, or Dying barrier work was started.
+
+### Validation
+
+- focused presentation/concurrency/Borrowed Sword/Ma Chao Worker/D1 tests — PASS, 30/30.
+- focused presentation-causality rerun — PASS, 4/4.
+- `npm run test:fast` — PASS, 107/107.
+- `node tests/run-api-suite.mjs` — PASS, 214/214 across 23 files and 4 shards.
+- `npm run build` — PASS.
+- `npm run lint` — PASS.
+- `git diff --check` — PASS.
+- Implementation pushed to `origin/ux-v2` at `582cf630caedcd6dde47d0cc05fc677891f3f786`.
+
+### Remaining C2 work
+
+- Independent Damage exact-root persistence remains `UNPROVEN` and needs a
+  dedicated authoritative source-less Damage fixture.
+- Group/Duel context-only ownership and broader C2 persistence remain open and
+  intentionally outside FIX6.
+- Do not start C3 or UI/PresentationV2 migration from this handoff.
