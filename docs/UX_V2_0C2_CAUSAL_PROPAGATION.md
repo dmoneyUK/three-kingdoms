@@ -60,7 +60,7 @@ Still open before the C2 acceptance gate can be closed:
   triggers;
 - prove delayed activation `originRef` history and final settlement clearing.
 
-## C2-FIX5 ownership evidence — 2026-10-02
+## C2-FIX6 ownership evidence — 2026-10-02
 
 This matrix is intentionally tied to real API/engine evidence. Helper-only
 tests never upgrade a row to PROVEN.
@@ -85,16 +85,37 @@ now keep legacy/missing envelopes as `null` instead of reconstructing a frame
 tree from a context handle. The helper remains available only to isolated
 legacy compatibility/unit code and is not a normal supported-flow authority.
 
-| FIX5 row | Status | Exact evidence |
+### Exact FIX6 matrix
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| normal Attack exact root persistence | PROVEN | `real Attack causal envelope is stable across room reads and viewers` | none |
+| Attack-targeted exact root persistence | PROVEN | `Cavalry is an optional source-owned attack_targeted trigger and Skip preserves Dodge` | this proves Cavalry only |
+| Attack Pending context matches envelope | PROVEN | real Attack test and Cavalry API test | none for covered entries |
+| repeated reads preserve IDs/checkpoint/revision | PROVEN | real Attack test; Cavalry test | none |
+| reconnect/read-after-persistence preserves IDs/checkpoint/revision | PROVEN | real Attack test's repeated production reads | no browser reconnect harness beyond API reads |
+| second viewer sees same real Attack envelope | PROVEN | real Attack test | none |
+| stale request leaves causal identity unchanged | PROVEN | `stale and concurrent response submissions claim each transition once` | none |
+| concurrent duplicate response cannot duplicate causal transition | PROVEN | same concurrency test and Borrowed Sword CAS matrix | none |
+| Attack settlement clears envelope | PROVEN | lethal Attack → Damage → Dying → Peach rescue test | none |
+| next independent root gets fresh IDs | PROVEN | lethal rescue test's subsequent ordinary Attack | none |
+| Attack-derived Damage reuses root | PROVEN | lethal Damage/Dying test | none |
+| independent Damage exact root persistence | UNPROVEN | no isolated authoritative scenario | requires a real source-less Damage root fixture |
+| malformed mid-continuation does not fabricate authority | PROVEN | `malformed room envelope remains non-authoritative` | none for ordinary Dodge continuation |
+| legacy NULL continuation remains null | PROVEN | `legacy room without causal envelope remains null through production room state` | none |
+| no production normal-path recoverCausalEnvelope | PROVEN | route search audit | helper remains only for isolated compatibility code |
+
+### Attack variant audit
+
+| Variant | Status | Evidence / boundary |
 | --- | --- | --- |
-| Normal Attack root survives read/reconnect/second viewer | PROVEN | `tests/api/presentation-causality.test.mjs` production reload/public projection test |
-| Attack → Damage → Dying retains root identity | PROVEN | `tests/api/concurrency.test.mjs` lethal Damage/Dying test |
-| Stale/double response creates one transition | PROVEN | `tests/api/concurrency.test.mjs` and `tests/api/borrowed-sword.test.mjs` CAS tests |
-| Settlement clears the root | PROVEN | lethal rescue and Borrowed Sword refusal tests |
-| Independent Damage root | UNPROVEN | no isolated API scenario currently proves a fresh independent Damage root |
-| Legacy NULL envelope remains null | PROVEN | `tests/api/presentation-causality.test.mjs` legacy-room test |
-| Malformed continuation cannot fabricate authority | PROVEN | parser rejection tests; real gameplay corruption row remains a follow-up |
-| Attack entry variants retain explicit root transport | PROVEN | route audit for ordinary, Influencing, Serpent Spear, Halberd, follow-up, and Borrowed Sword callers |
+| ordinary card Attack | PROVEN | real ordinary Attack persistence/read/viewer test |
+| Attack-targeted | PROVEN | real Ma Chao Cavalry Attack-targeted API test |
+| Halberd / virtual Attack | PARTIAL | caller audit and existing gameplay tests; no dedicated envelope assertion |
+| Serpent Spear | PARTIAL | caller audit and existing gameplay tests; no dedicated envelope assertion |
+| Influencing Attack | PARTIAL | caller audit and delegated gameplay tests; no dedicated envelope assertion |
+| Borrowed Sword inherited Attack | PARTIAL | real child identity/CAS tests, but no dedicated root-transport assertion for this FIX6 row |
+| follow-up / inherited Attack | PARTIAL | caller audit and continuation tests; no dedicated envelope assertion |
 
 The centralized room write helper now covers the audited Attack and Damage
 root boundaries. Group/Duel context-only creators remain explicit known bugs

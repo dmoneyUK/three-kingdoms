@@ -44,6 +44,12 @@ fresh-root, legacy-null, and malformed-envelope regression evidence. The
 independent Damage-root scenario remains explicitly UNPROVEN; Group/Duel and
 other C2 work remain outside this round.
 
+C2-FIX6 closes the missing real Attack ownership proofs: stale response identity
+is checked before settlement, malformed envelope corruption is exercised during
+a real Dodge continuation, and real Attack evidence is separated from manual
+C1 projection coverage. Attack-targeted Cavalry is proven; other entry variants
+remain individually PARTIAL where no dedicated causal-envelope assertion exists.
+
 ## UX2.0B-FINAL verification — 2026-10-02
 
 On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue

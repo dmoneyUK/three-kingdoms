@@ -1,6 +1,6 @@
 import test from "node:test";
 import {
-  assert, card, createHumanGame, quote, request, setDeck, setEquipment, setHand, setTurn, sql, state,
+  assert, card, createHumanGame, query, quote, request, setDeck, setEquipment, setHand, setTurn, sql, state,
 } from "./test-support.mjs";
 
 async function openAttack({ judgement, equipment = {}, targetHand = [card("Dodge", "target-dodge")], targetHero = "zhao-yun" } = {}) {
@@ -22,6 +22,14 @@ async function openAttack({ judgement, equipment = {}, targetHand = [card("Dodge
 test("Cavalry is an optional source-owned attack_targeted trigger and Skip preserves Dodge", async () => {
   const opened = await openAttack({ judgement: { ...card("Attack", "cavalry-black"), suit: "♣", rank: "7" } });
   const trigger = (await state(opened.game.code, opened.sourceMember.token)).data;
+  assert.ok(trigger.causalEnvelope, "Attack-targeted entry retains the real Attack root envelope");
+  const persisted = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(opened.game.code)}`));
+  assert.equal(persisted.causal.interactionId, trigger.causalEnvelope.interactionId);
+  assert.equal(persisted.causal.frameId, trigger.causalEnvelope.activeFrameId);
+  const repeated = (await state(opened.game.code, opened.sourceMember.token)).data;
+  assert.equal(repeated.causalEnvelope.interactionId, trigger.causalEnvelope.interactionId);
+  assert.equal(repeated.causalEnvelope.checkpoint.checkpointId, trigger.causalEnvelope.checkpoint.checkpointId);
+  assert.equal(repeated.causalEnvelope.presentationRevision, trigger.causalEnvelope.presentationRevision);
   assert.equal(trigger.currentAction.kind, "trigger", JSON.stringify(trigger));
   assert.equal(trigger.currentAction.actorId, opened.source.id);
   assert.deepEqual(trigger.currentAction.triggerOptions.map((option) => option.effectId), ["ma_chao_cavalry"]);

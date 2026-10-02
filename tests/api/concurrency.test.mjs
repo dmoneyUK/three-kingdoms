@@ -261,6 +261,14 @@ test("stale and concurrent response submissions claim each transition once", { t
 
   const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-stale-response", targetId: alicePlayer.id });
   assert.equal(opened.status, 200);
+  const root = opened.data.room.causalEnvelope;
+  assert.ok(root, "the stale-response test starts from a real causal root");
+  const rootIdentity = {
+    interactionId: root.interactionId,
+    frameId: root.activeFrameId,
+    checkpointId: root.checkpoint.checkpointId,
+    presentationRevision: root.presentationRevision,
+  };
   const staleContext = {
     actionRevision: opened.data.room.actionRevision,
     meId: hostPlayer.id,
@@ -275,6 +283,16 @@ test("stale and concurrent response submissions claim each transition once", { t
   assert.equal(stale.status, 409);
   assert.equal(stale.data.stale, true);
   assert.equal(stale.data.room.pendingAttack.actorId, alicePlayer.id);
+  assert.deepEqual({
+    interactionId: stale.data.room.causalEnvelope.interactionId,
+    frameId: stale.data.room.causalEnvelope.activeFrameId,
+    checkpointId: stale.data.room.causalEnvelope.checkpoint.checkpointId,
+    presentationRevision: stale.data.room.causalEnvelope.presentationRevision,
+  }, rootIdentity, "a stale request leaves the real causal identity unchanged");
+  const stalePending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(stalePending.continuation.causal.interactionId, rootIdentity.interactionId);
+  assert.equal(stalePending.continuation.causal.frameId, rootIdentity.frameId);
+  assert.equal(query(`SELECT COUNT(*) FROM players,json_each(players.hand_json) WHERE players.id=${quote(alicePlayer.id)} AND json_extract(value,'$.id')='dodge-stale-response'`), "1", "the stale request does not consume the Dodge");
 
   const context = {
     actionRevision: prompt.data.actionRevision,
@@ -294,6 +312,8 @@ test("stale and concurrent response submissions claim each transition once", { t
   assert.ok(losers[0].data.room, "the stale response includes a fresh room projection");
   assert.deepEqual(losers[0].data.room.myHand, [], "the losing response does not leak another private hand");
   assert.ok(losers[0].data.room.players.every((player) => player.handCards.length === 0), "the stale response keeps all other hands private");
+  const settledEnvelopeJson = query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(game.code)}`);
+  if (settledEnvelopeJson) assert.equal(JSON.parse(settledEnvelopeJson).interactionId, rootIdentity.interactionId, "a duplicate cannot create a second causal root");
 
   const finished = await state(game.code, host.token);
   assert.equal(finished.data.players.find((player) => player.id === alicePlayer.id).hp, 4);
