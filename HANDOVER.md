@@ -208,3 +208,50 @@ Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin.
 ## Acceptance
 
 FIX1 passes only if participantRoles contains no CurrentAction-only or guessed parent identities, top-level scene decisionActorId uses the same public semantic authority, all claimed supported families have explicit real-path role evidence or explicit null assertions, viewer-specific controls cannot change public roles, migration status vocabulary is restored, compatibility remains intact, and all required regressions are green.
+
+## Execution result — UX2.0C5-02-FIX1 — 2026-10-02
+
+Implementation commit: `4e30269084b16cec151a28f20c6d2097fd7ba180`.
+
+Changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`,
+`tests/api/presentation-v2-engine.test.mjs`, `tests/api/ma-chao.test.mjs`,
+`tests/api/lobby-heroes-wei.test.mjs`, `README.md`, and
+`docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+
+`semanticDecisionActorId` is now the sole source for both public
+`interactionScene.decisionActorId` and
+`interactionScene.participantRoles.decisionActorId`. It requires a coherent
+envelope/active frame, a persisted actor, matching pending causal interaction
+and frame, matching active resolver, and a known Response or Trigger
+continuation family; Dying keeps its stricter `dyingDecisionProof`. Therefore
+Attack, Duel, Group, Negation, forced Borrowed Sword, Judgement, Damage, and
+known semantic trigger checkpoints can prove a public actor only from server
+state. `CurrentAction` is not read as role evidence. A later Duel or resumed
+Group checkpoint with no matching pending proof explicitly projects a null
+decision actor while retaining a PROVEN scene.
+
+`parentParticipantId` now comes only from a single parent-frame current target
+or typed Group linkage. The child-current-participant fallback was removed; a
+negative synthetic causal test asserts null when neither proof exists.
+
+Real engine evidence now asserts public `participantRoles` for Attack;
+Attack-to-Judgement-to-Attack resume; Duel before and after handoff; Group
+damage, Group Dying, Group resume, and Group Negation; independent Damage;
+Lightning/Judgement-owned Damage; root and counter Negation; Dying before and
+after rescuer handoff; and forced Borrowed Sword. Attack, Duel, Group, and
+Dying retain acting-versus-uninvolved viewer equality checks; the focused C5
+regression proves altered viewer `CurrentAction.actorId` cannot change the
+public decision role. Legacy participants remain derived through their existing
+compatibility shape. The migration map now uses `DEPRECATE-LATER` instead of
+the invalid `RETAIN-COMPAT` status.
+
+Validation: `npm run build` passed; `npm run test:fast` passed 117 tests;
+`npm test` passed (build + 117 fast tests + 238 API tests across 23 files and
+4 shards); `npm run lint` passed; `git diff --check` passed. The initial
+space-separated focused API-file invocation was rejected by the runner (which
+requires comma-separated files) and was not used as validation; the complete
+API suite supplied the real-path proof instead.
+
+Remaining boundary: this completes only the C5-02-FIX1 authority correction.
+Do not begin C6/C7, React/CSS, animation, or gameplay work without separate
+authorization.
