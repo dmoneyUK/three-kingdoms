@@ -272,8 +272,8 @@ C6-01 passes only if every required real interaction family is mapped to engine/
 
 ## Execution result — UX2.0C6-01 CI preflight test correction — 2026-10-02
 
-Implementation commit: pending final commit creation; this result covers the
-source/test change below and the documentation commit that records it.
+Implementation commit: `93223a39404c50e53d322ea177e835362251c3ae`.
+The execution result and documentation are included in that commit.
 
 Changed files: `tests/api/ma-chao.test.mjs`, `README.md`, and `HANDOVER.md`.
 
