@@ -204,3 +204,18 @@ Then STOP.
 ## Acceptance
 
 FIX1 passes only if `currentParticipantId` remains the parent Group participant across nested child resolvers, `decisionActorId` remains separately correct, Group identity/target context remains stable, real Dying/Peach and Negation cases prove the distinction, malformed state remains non-authoritative, and all regressions are green.
+
+## C3-01-FIX1 execution result
+
+- Full implementation SHA: `bc985397563d2e8c409ab0b843b1723a5ffe3924` (`fix: preserve Group participant across child resolvers`).
+- Files changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, and `README.md`.
+- Authoritative source: `currentParticipantId` is taken from the Group parent frame when it has one current target; for a linked `DAMAGE` or `DYING` child, the child frame's authoritative target is used because it identifies the parent participant being processed, never the child `resolvingPlayerId`. A typed Group continuation owner is only the fallback for direct Group decisions. This preserves the parent participant while keeping `decisionActorId` from CurrentAction and `activeResolverId` from the active child frame separate.
+- Before/after: before, active child `resolvingPlayerId` could replace the Group participant. After, Group participant, decision actor, active resolver, and active child targets are distinct projected fields.
+- Real A->B->C evidence: the Raining Arrows engine flow now asserts the initial participant, the next participant after the nested Damage trigger declines, and the third participant after the next response declines. `interactionId` and `groupFrameId` remain stable across all three states.
+- Nested Damage: the real Group Damage child keeps the Group participant equal to the Group continuation target, while `activeResolverId` comes from the active child; source, ordered `targetIds`, parent frame, and child `activeTargetIds` remain stable.
+- Dying/Peach: the lethal Group fixture asserts the damaged Group participant remains `currentParticipantId`, while the different Peach decision actor is `decisionActorId`; after rescue, the exact Group parent resumes and advances to the next participant without a new Group identity.
+- Negation: nested Group Negation remains `SAME_FRAME`; participant selection continues to use the parent Group/typed continuation semantics and never the Negation responder merely because that responder is active.
+- Viewer/malformed: the second-viewer assertion confirms public Group semantics are equivalent while private options stay outside `groupResolution`; NULL/malformed envelopes remain `UNPROVEN`/null and no identity is reconstructed from logs, events, card names, or action revisions.
+- Validation: projector `node --test tests/presentation-v2.test.mjs` 19/19; focused engine `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs ... node tests/run-tests.mjs` 23/23; `npm run test:fast` 110/110; `npm run test:api` 238/238; `npm run build` PASS; `npm run lint` PASS; `git diff --check` PASS.
+
+Implementation and this tracked HANDOVER result must be pushed to `origin/ux-v2`. Stop here; do not start C3-02/C4/C5.
