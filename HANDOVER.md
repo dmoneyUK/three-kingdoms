@@ -479,3 +479,74 @@ FIX5 passes only if:
 - Attack entry variants do not drop or recreate root authority;
 - evidence matrix exactly reflects real tests;
 - no out-of-scope C3/UI work begins.
+
+---
+
+## C2-FIX5 execution result — 2026-10-02
+
+Branch: `ux-v2`
+Implementation commit: `2df83a012f97ef43dcb3c15fc9facdd32db1aa0f`
+Files changed: `app/api/rooms/route.ts`, `tests/api/presentation-causality.test.mjs`, `tests/api/concurrency.test.mjs`, `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`, `README.md`
+
+### Explicit orchestration carrier
+- exact wrapper type(s): `CausalCreation<T> = { value: T; createdEnvelope: CausalEnvelope | null }`; `attackDeclaration`, `damageTriggerPending`, and `damageSufferedTriggerPending` return this wrapper.
+- old hidden-property code removed from: all `Object.defineProperty(..., "causalEnvelope", ...)` runtime carriers in `app/api/rooms/route.ts`; the old `PendingWithCreatedEnvelope` and `AttackDeclarationWithEnvelope` types are gone.
+- caller sites updated: ordinary card Attack, Halberd, Serpent Spear, Influencing, Borrowed Sword, follow-up Attack, Attack-targeted entry, and both Damage trigger creation paths now consume `.value` and pass `.createdEnvelope` explicitly to the room write.
+
+### Search audit
+- recoverCausalEnvelope production calls: none in `app/api/rooms/route.ts`; missing/malformed room envelopes remain null unless the current creator explicitly owns a newly created envelope.
+- hidden causalEnvelope properties: none; the only remaining `causalEnvelope` references are the authoritative room state field and JSON persistence/projection.
+- attackDeclaration callers: 7 audited production call sites, all updated.
+- damageTriggerPending callers: 1 audited production call site, updated.
+- damageSufferedTriggerPending callers: 1 audited production call site, updated.
+
+### Attack identity proof
+- `tests/api/presentation-causality.test.mjs` proves a real ordinary Attack persists one root envelope and keeps identical `interactionId`, active `frameId`, `checkpointId`, and `presentationRevision` across production room reads, reconnect-style reads, and a second viewer.
+- `tests/api/concurrency.test.mjs` proves the real Attack → Damage → Dying chain retains the root Interaction/Frame and original target, then clears the envelope after Peach rescue.
+- The same test opens another Attack after settlement and proves a new `interactionId` and active `frameId`; the settled root is not reused.
+
+### Stale/double proof
+- Existing real Worker/D1 response and trigger CAS tests remain green: one concurrent winner, one stale loser, one physical card in discard, and no stranded Pending state.
+- Borrowed Sword CAS coverage continues to prove stale target/response submissions cannot duplicate the forced Attack transition or alter the causal parent/child settlement.
+
+### Settlement/fresh-root proof
+- Lethal Attack → Damage → Dying → Peach rescue proves settlement clears `causal_envelope_json`; a subsequent ordinary Attack gets a fresh root.
+
+### Independent Damage proof
+- `UNPROVEN / NOT IMPLEMENTED as an isolated FIX5 scenario`: no new test claims an independent Damage root without an Attack ancestor. Existing nested Damage/Dying evidence only proves inherited Attack identity.
+
+### Corruption/legacy proof
+- Legacy room state with `causal_envelope_json = NULL` remains projected as `causalEnvelope: null`.
+- A malformed persisted envelope is rejected by the production room projection and does not fabricate public causal authority; structural parser rejection remains covered by the fast suite.
+- No normal production route calls `recoverCausalEnvelope` to infer identity from prose, resolution IDs, or action revisions.
+
+### Entry-variant audit
+- Ordinary card Attack, Halberd/virtual Attack, Serpent Spear, Influencing, Borrowed Sword, and follow-up Attack callers were audited.
+- New-root entries persist the explicit `createdEnvelope`; inherited continuations use their existing causal context and do not create a second root.
+- No Group/Duel/Judgement expansion, C3 work, React/CSS work, delayed activation work, or Dying barrier work was started.
+
+### FIX5 evidence matrix
+
+| Row | Status | Evidence |
+| --- | --- | --- |
+| Explicit carrier with no hidden property | PROVEN | route search audit plus build/API validation |
+| Normal Attack read/reconnect/second-viewer identity | PROVEN | `tests/api/presentation-causality.test.mjs` |
+| Stale/double response safety | PROVEN | `tests/api/concurrency.test.mjs`, `tests/api/borrowed-sword.test.mjs` |
+| Settlement then fresh root | PROVEN | `tests/api/concurrency.test.mjs` lethal rescue extension |
+| Independent Damage root | UNPROVEN / NOT IMPLEMENTED | no isolated scenario claimed |
+| Legacy NULL and malformed envelope safety | PROVEN | presentation API tests plus causal-envelope parser tests |
+| Attack entry variants | PROVEN | production caller audit and full API suite |
+
+### Validation
+- `npm run build` — PASS.
+- focused Worker/D1 suite for presentation causality, concurrency, and Borrowed Sword — PASS, 18/18 before the final focused additions; final presentation/concurrency rerun PASS, 15/15.
+- `npm run test:fast` — PASS, 107/107.
+- `node tests/run-api-suite.mjs` — PASS, 213/213 across 23 files and 4 shards.
+- `npm run lint` — PASS.
+- `git diff --check` — PASS.
+- Implementation pushed to `origin/ux-v2` at `2df83a012f97ef43dcb3c15fc9facdd32db1aa0f`.
+
+### Remaining C2 work
+- Independent Damage root semantics still require a dedicated authoritative scenario before being marked PROVEN.
+- Group/Duel context-only ownership, broader Judgement/Negation causal persistence, delayed activation provenance, automatic-transition coverage, and final C2 acceptance remain open.
+- Do not start C3 or UI/PresentationV2 migration from this handoff.
