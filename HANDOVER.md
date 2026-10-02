@@ -165,3 +165,57 @@ Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin.
 ## Acceptance
 
 C5-03 passes only if stable-boundary classification is typed, viewer-independent and fail-closed; CHOICE cannot come from viewer controls; unsupported SETTLEMENT authority is not fabricated; settlement/transitionEvents remain clearly bounded compatibility data; REST clears stale identity; stability is proven; and regressions are green.
+
+## Execution result — UX2.0C5-03 — 2026-10-02
+
+Implementation commit: `db34f23af5b9c5d86307b50105d8297a084fbb7d`.
+
+Changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`,
+`tests/api/presentation-v2-engine.test.mjs`, `tests/api/lobby-heroes-wei.test.mjs`,
+`README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+
+Added the typed public `presentationV2.stableBoundary` contract with
+`REST | CHOICE | SETTLEMENT | SPECIAL`, plus proven interaction/checkpoint/
+presentation revision fields and a decision actor only for `CHOICE`.
+
+Authority inventory:
+
+- Attack, Duel, Group/AOE, Group Negation, root/counter Negation, Judgement,
+  Damage, Dying rescue, and forced Borrowed Sword classify as `CHOICE` only
+  when the existing semantic Pending actor, causal interaction/frame, active
+  frame, and resolver prove a real blocked decision. Dying uses the stricter
+  `dyingDecisionProof`.
+- A proven Judgement scene, typed Borrowed Sword continuation, or nested
+  Damage child with no proven blocker is `SPECIAL`; Dying is `CHOICE` when its
+  rescue proof is valid and malformed Dying is not special.
+- `SETTLEMENT` is emitted only when the bounded `finalResult` compatibility
+  event remains attached to a proven live scene. A cleared envelope or timeline
+  event alone cannot restore interaction identity.
+- All unsupported, malformed, cleared, or merely control-looking states are
+  identity-free `REST`. In particular, CurrentAction actor/options cannot
+  upgrade a public boundary to `CHOICE`.
+
+Settlement remains bounded descriptive timeline/finalResult compatibility data.
+`transitionEvents` remain ordered, bounded public timeline references selected
+from the current typed/legacy context; they are viewer/reconnect stable for
+equal history but are not a C7 transition or animation protocol. No event ID,
+resolution ID, action revision, timer, or projector-generated ID is treated as
+causal identity.
+
+Evidence includes pure REST/CHOICE/SETTLEMENT/SPECIAL/fail-closed cases,
+viewer-control divergence, repeated reads, real Attack, Duel, Group child and
+resume, Group/Root Negation, Judgement, Dying rescue handoff, Borrowed Sword,
+delayed Lightning Damage, malformed authority, and acting/uninvolved viewer
+equality. The compatibility migration table now records `stableBoundary` as
+KEEP and retains settlement/transitionEvents as DEPRECATE-LATER compatibility
+fields with explicit C7 prerequisites.
+
+Validation: focused API projector/causality/Lightning suite passed 50/50;
+`npm run test:fast` passed 122/122; full `npm test` passed build + 122 fast
+tests + 238 API tests across 23 files and 4 shards; `npm run build`,
+`npm run lint`, and `git diff --check` passed.
+
+C5-03 is ready for reviewer closure. C5 overall remains open pending reviewer
+acceptance and the future C7 PresentationSnapshot wrapper; no C6/C7, React/CSS,
+animation, gameplay, durable transition IDs, or wholesale compatibility-field
+removal was started.
