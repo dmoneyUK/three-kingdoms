@@ -300,3 +300,24 @@ Then STOP.
 ## Acceptance
 
 C3-02 passes only if PresentationV2 exposes a stable typed public Interaction Scene driven by authoritative causal identity, preserves accepted Group semantics and role separation, represents SAME_FRAME vs child-frame structure without fabricated transitions, remains viewer-invariant and reconnect-stable, does not leak private controls, does not fabricate identity for malformed/legacy state, and all regressions are green.
+
+## C3-02 execution result
+
+- Full implementation SHA: `419231d09acced82d6ab59af3a044b96e54734f9` (`feat: add typed public interaction scene`, rebased onto the latest remote HANDOVER baseline).
+- Files changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, and `README.md`.
+- Typed public scene: **PROVEN**. `presentationV2.interactionScene` models the public Interaction -> Frame -> Stage -> Checkpoint snapshot with explicit semantics, causal IDs, source/effect/targets, participant/actor/resolver roles, active child context, and structural continuity.
+- Causal IDs envelope-owned: **PROVEN**. `interactionId`, `rootFrameId`, `activeFrameId`, `parentFrameId`, `checkpointId`, and `presentationRevision` are populated only from a proven parsed envelope. NULL or malformed Group authority yields an explicit `UNPROVEN` scene with null causal IDs.
+- Source/effect/ordered targets: **PROVEN** for real Raining Arrows and Barbarian Invasion. Group source/effect/ordered target values are computed once and used to derive both `interactionScene` and legacy `groupResolution`.
+- Participant separation: **PROVEN**. `currentParticipantId`, `decisionActorId`, and `activeResolverId` remain distinct through nested Damage and Dying where production actors differ.
+- Group progression: **PROVEN**. Real Raining Arrows covers A -> B -> C with stable interaction and parent-frame identity; repeated reads are deep-equal.
+- Group Negation SAME_FRAME: **PROVEN**. Nested Group Negation keeps one active frame, projects `SAME_FRAME`, and returns to Group resolution without a new frame.
+- Damage child and parent resume: **PROVEN**. Raining Arrows and Barbarian Invasion expose `CHILD_FRAME` with the Group parent retained, then resume the exact parent frame.
+- Dying/Peach current-state characterization: **PROVEN**. The lethal Group fixture preserves the damaged participant while Peach decision ownership remains separate; the future Dying presentation barrier is not implemented.
+- Viewer/public boundary: **PROVEN**. A second viewer receives deep-equal `interactionScene` public semantics; private CurrentAction controls/cards remain outside it.
+- Repeated-read stability: **PROVEN**. Unchanged authoritative state returns deep-equal scene data and does not regenerate IDs or revisions.
+- NULL/malformed non-fabrication: **PROVEN**. Legacy compatibility remains safe, while both missing and malformed stored causal authority keep the new scene `UNPROVEN`.
+- Legacy compatibility: **PROVEN**. `groupResolution` remains present and is derived from the same semantic projection values as `interactionScene`; no legacy fields were removed.
+- Continuity limitation: **DOCUMENTED / PARTIAL**. `CHILD_FRAME` and Group `NEGATION` `SAME_FRAME` are structural snapshot facts. A single snapshot cannot prove whether a root-frame observation is a same-frame update or a return from a child, so no transition direction or animation timing is invented.
+- Validation: projector `node --test tests/presentation-v2.test.mjs` 19/19; focused engine `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs ... node tests/run-tests.mjs` 23/23; `npm run test:fast` 110/110; final `npm run test:api` 238/238; `npm run build` PASS; `npm run lint` PASS; `git diff --check` PASS.
+
+Implementation and this tracked HANDOVER result must be pushed to `origin/ux-v2`. C3 remains active; do not start C4/C5 or React/CSS migration.
