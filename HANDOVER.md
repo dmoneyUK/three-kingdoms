@@ -1,5 +1,25 @@
 # Three Kingdoms — current handover
 
+## UX2.0B review — foundation accepted with follow-up gates — 2026-10-02
+
+Reviewed the additive `presentationV2` foundation on `ux-v2`. The direction is retained: server-side/pure presentation projection, `CurrentAction` remains the sole legality authority, `resolutionId` remains legacy/reference metadata, no final Interaction/Frame/Checkpoint IDs are introduced, and React migration remains deferred.
+
+The review found that the current `tests/presentation-v2.test.mjs` scenarios are primarily synthetic projector fixtures rather than real engine/orchestrator end-to-end traces. They are useful characterization of the projector input/output, but they are **not sufficient evidence to finalise UX2.0C identities**.
+
+Before UX2.0C, the next coding task must close these gates:
+
+- drive the real engine/orchestrator through the high-risk causal flows instead of only hand-building Pending objects;
+- preserve immutable root/original targets separately from active/current targets, including redirect/retarget coverage;
+- detect Group/AOE from authoritative semantic continuation state, never merely from the presence of `cardKind`;
+- causally scope `activeContext.eventIds` and `transitionEvents` so unrelated timeline history cannot enter the current scene;
+- replace ambiguous generic resume-field probing with typed/explicit continuation semantics where needed;
+- characterize response/rescue barrier and deadline fairness through the actual runtime lifecycle, including reconnect/poll delay/timeout.
+
+The UX V2 design document now records these as section 0.92 review gates. Do not migrate `app/page.tsx` to `presentationV2` and do not begin visual UX V2 implementation until they pass.
+
+Note: the existing handover statement that build/fast/API/lint validation passed is the Agent's reported validation result; this review did not independently execute the repository test suite.
+
+
 ## Latest UX2.0B-FIX update — engine-backed PresentationV2 verification — 2026-10-02
 
 On branch `ux-v2`, hardened `game/presentation-v2.ts` and added

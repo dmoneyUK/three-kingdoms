@@ -2356,6 +2356,98 @@ Judgement = on Hero
 ~~~
 
 
+## 0.92 UX2.0B review gate — projector foundation is not yet identity evidence
+
+UX2.0B introduced an additive pure projector in `game/presentation-v2.ts`, route exposure as `presentationV2`, and focused tests. This is a useful foundation, but review found that it must **not** yet be treated as proof of the final Interaction / Frame / Stage / Checkpoint contract.
+
+The current tests are primarily synthetic projector fixtures. They exercise hand-built Pending/Continuation-shaped objects and verify deterministic projection, but they do not yet drive the real engine/orchestrator through all nine flows. Therefore statements such as “proven lifecycle” must be interpreted narrowly as **projector-fixture characterization**, not end-to-end proof of actual runtime creation, propagation, replacement, resume, reconnect, or deadline behavior.
+
+Before UX2.0C finalises semantic identities, add engine-backed characterization tests for the high-risk flows, especially Duel, Borrowed Sword forced Attack, Judgement modifier/resume, Group/AOE nested damage/resume, Dying/rescue, and damage-trigger nested effects.
+
+### 0.92.1 Root context must be immutable
+
+The current foundation derives `rootContext.originalTargetIds` from the active context. That is acceptable only as a temporary placeholder. It does not satisfy the UX V2 invariant that Root Context preserves the original public event when the active/current target later changes.
+
+Redirect/retarget tests must prove:
+
+~~~text
+root original target = unchanged
+active current target = may change
+~~~
+
+The projector must derive the root from authoritative origin/event data, not simply copy the current active target.
+
+### 0.92.2 Group detection must be semantic, not “has cardKind”
+
+The current foundation's generic record inspection can treat a context as Group-like merely because a `cardKind` exists. A normal single-target card may also have a card kind.
+
+Group projection must require an authoritative Group continuation/type or equivalent explicit engine semantic. Never infer Group/AOE solely from card identity or the existence of `cardKind`.
+
+### 0.92.3 Transition events must be causally scoped
+
+`transitionEvents` must not become “all presentable timeline events”. The timeline is history; Transition Events are bounded deltas relevant to the current presentation checkpoint.
+
+The foundation may temporarily reference existing `event.id`, but before client migration it must guarantee that unrelated historical events cannot enter the current Interaction Stage merely because no reliable resolution marker was available.
+
+Similarly, `activeContext.eventIds` must describe the relevant active causal context, not every event sharing a broad/legacy grouping marker when that would cross frame boundaries.
+
+### 0.92.4 Parent direction and continuation semantics require engine-backed tests
+
+Resume data is valuable evidence for parent context, but generic recursive object inspection is not the final semantic contract. The engine/orchestrator owns whether a continuation is:
+
+- the active effect;
+- the parent to resume;
+- a child effect;
+- a Group resume;
+- a trigger resume;
+- or a delayed future interaction.
+
+The projector should eventually consume explicit typed continuation semantics rather than discover causality by probing arbitrary field names.
+
+### 0.92.5 Timer/barrier result remains a guard, not a completed fairness proof
+
+The foundation correctly demonstrates at the data level that a persisted non-zero deadline can exist while a presentation barrier is closed. The synthetic helper test does **not** prove the complete runtime timing behavior.
+
+Before changing timer semantics, test the actual server/client lifecycle for:
+
+- response timer arming;
+- rescue timer arming;
+- delayed essential presentation;
+- reconnect;
+- poll delay;
+- timeout submission;
+- reduced-motion / fast-forward.
+
+The invariant remains:
+
+> **Cosmetic presentation must never silently consume the player's intended usable authoritative decision window.**
+
+### 0.92.6 UX2.0B status after review
+
+Accepted as a **foundation**, not accepted as the final semantic projector contract.
+
+Keep:
+
+- additive `presentationV2`;
+- pure/server-side projection direction;
+- CurrentAction as the only legality authority;
+- no final Interaction/Frame/Checkpoint IDs yet;
+- `resolutionId` as legacy/reference metadata;
+- `event.id` as persisted public-event reference;
+- React migration deferred.
+
+Required before UX2.0C identity finalisation:
+
+1. engine-backed characterization for high-risk causal flows;
+2. immutable-root/redirect coverage;
+3. authoritative Group detection;
+4. causally bounded active/transition event projection;
+5. typed parent/child/resume semantics where generic probing is ambiguous;
+6. end-to-end barrier/deadline fairness characterization.
+
+Do not migrate the Interaction Stage UI onto `presentationV2` until these review gates pass.
+
+
 ## 1. Seat thumbnails
 
 Seat topology is designed **mobile portrait first**. Its purpose is to preserve relative seating, distance context, targetability, and player status without consuming the central Interaction Stage.
