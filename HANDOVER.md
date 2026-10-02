@@ -243,3 +243,77 @@ Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin.
 ## Acceptance
 
 C5-02 passes only if future presentation consumers can obtain all proven public participant roles for the covered interaction families from the typed authoritative scene without reconstructing them from legacy Pending/timeline objects, viewer equality/privacy remains correct, malformed authority fails closed, compatibility behavior is preserved, and all required regressions are green.
+
+---
+
+# UX2.0C5-02 EXECUTION RESULT — 2026-10-02
+
+Implementation commit: `839464073c035f197a2d783a1306dd319382dbaa`.
+
+## Files changed
+
+- `game/presentation-v2.ts`
+- `tests/presentation-v2.test.mjs`
+- `tests/api/presentation-v2-engine.test.mjs`
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `README.md`
+
+## Participant-role inventory
+
+- Attack and Attack response: source, original/effect target, active target,
+  current participant, decision actor, and active resolver.
+- Attack -> Judgement -> Attack resume, Duel, Judgement, root/nested Negation,
+  independent Damage, inherited Lightning Damage, and Dying/rescue: the same
+  roles are exposed only from their proven active frame/current state or the
+  accepted Dying proof; nested scenes also expose a typed parent participant
+  when the continuation proves one.
+- Group/AOE: source, ordered original targets, active/current target,
+  current Group participant, decision actor, active resolver, parent
+  participant for Damage/Dying child scenes, and remaining participant IDs.
+- Group -> Negation, Group -> Damage, and Group -> Damage -> Dying retain the
+  Group role surface through the explicit typed continuation and child frame.
+- Borrowed Sword uses its existing typed source/effect-target frame data; no
+  provider-specific or synthetic role was added.
+
+## Typed contract and evidence
+
+`PresentationInteractionScene.participantRoles` is public and
+viewer-independent with fields `sourceId`, `originalTargetIds`,
+`activeTargetIds`, `currentParticipantId`, `decisionActorId`,
+`activeResolverId`, `parentParticipantId`, and `participantIds`. IDs come
+only from the proven causal envelope, typed Group continuation, or accepted
+Dying proof. The Group child engine fixture proves child target plus remaining
+Group participant IDs and parent participant continuity. Attack and malformed
+Group unit/API fixtures prove non-Group roles and fail-closed empty roles.
+
+Viewer/reconnect assertions continue to compare the complete public scene and
+role surface across repeated reads and different viewers. CurrentAction
+options remain viewer-private and are not copied into participant roles.
+
+## Compatibility and migration
+
+Proven `participants` is now derived from typed participant roles while
+preserving source/current-target/target/group-participant labels. Legacy
+`rootContext`, `activeContext`, `parentContext`, and `groupResolution` remain
+available as compatibility fields; their Pending-first behavior is unchanged
+and they remain non-authoritative. Legacy/unproven rooms retain the existing
+fallback participant projection. The migration table now identifies
+`participantRoles` as the typed replacement and `groupResolution` as retained
+compatibility data.
+
+## Validation
+
+- `npm test` — PASS: build; fast 116/116; API 239/239 across 23 files and 4
+  shards.
+- `npm run lint` — PASS.
+- `git diff --check` — PASS.
+- Focused engine projection — PASS: 24/24.
+
+## Boundaries and reviewer handoff
+
+No gameplay, protocol route, React/CSS, animation, C6, or C7 changes were
+made. C5-02 covers typed role derivation and compatibility projection only.
+Please review causal-role provenance, Group child parent-participant
+semantics, viewer equality/privacy, and the migration-table wording. Remaining
+C5 gaps are reviewer acceptance and any follow-up cleanup required by that
+review; C6/C7/React migration remain unauthorized.
