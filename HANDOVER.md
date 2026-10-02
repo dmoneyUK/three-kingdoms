@@ -240,7 +240,7 @@ C5-01 passes only if the accepted C1-C4 semantic contract is consolidated withou
 
 ## C5-01 execution result
 
-Implementation commit: `fb7edf9`.
+Implementation commit: `e8dfa43`.
 
 Files changed:
 
