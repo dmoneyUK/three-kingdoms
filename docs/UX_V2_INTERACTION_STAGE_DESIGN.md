@@ -1677,6 +1677,316 @@ Presentation Projector without creating a second legality/rules engine.
 ~~~
 
 
+
+### 0.64 Scene continuity invariant
+
+Within one Interaction, preserve the current scene by default. Recompose the Interaction Stage only when the player-meaningful active relationship changes.
+
+A change to `checkpointId`, `actionRevision`, decision actor, HP, status, or Reaction Chain content does not by itself justify moving Hero Focus panels.
+
+Use four client-side semantic transition levels:
+
+~~~text
+LEVEL 0 — CONTENT UPDATE
+LEVEL 1 — FOCUS UPDATE
+LEVEL 2 — FRAME TRANSITION
+LEVEL 3 — INTERACTION TRANSITION
+~~~
+
+These are rendering concepts, not gameplay protocol states.
+
+**Level 0 — Content Update**
+
+Keep geometry unchanged. Update only content such as HP, status, decision highlight, waiting text, Group status, or appended Reaction nodes.
+
+Examples:
+
+~~~text
+B deciding -> B played Dodge
+HP 3 -> HP 2
+Waiting for C -> Waiting for D
+~~~
+
+Hero positions must not move merely because the blocking decision changes.
+
+**Level 1 — Focus Update**
+
+The Interaction and active Frame remain the same, but the current primary/resolving participant or current target changes.
+
+Typical examples:
+
+~~~text
+AOE: C CURRENT -> C RESOLVED, D CURRENT
+Redirect: A Attack B -> current target becomes C
+~~~
+
+Keep Root Context, Group Timeline and surrounding scene geometry stable; transition only the Active Focus relationship.
+
+**Level 2 — Frame Transition**
+
+A Child Frame is pushed or popped while the same Interaction remains active.
+
+Example:
+
+~~~text
+AOE resolving D
+-> D Skill -> E
+-> Child Frame settles
+-> return to AOE resolving D
+~~~
+
+Keep Root Context stable. Compact the parent into a breadcrumb while the child is active, transition only the Active Effect, then visually return to the preserved parent context.
+
+**Level 3 — Interaction Transition**
+
+Only a genuinely new `interactionId` permits a complete scene exit/enter transition.
+
+If a new authoritative CHOICE is already available, it takes priority over completion of the old scene's cosmetic exit animation.
+
+### 0.65 Redirect continuity
+
+An authoritative redirect normally remains the same Interaction and Frame while changing the current semantic target.
+
+Example:
+
+~~~text
+Root:    A Attack B
+Current: A Attack C
+Chain:   X redirected the effect to C
+~~~
+
+Preserve immutable root history while updating the current Focus.
+
+A rule-caused redirect must be represented by authoritative semantic presentation/event data. A stale-client reconciliation is not a redirect and must not create a Reaction Chain node.
+
+~~~text
+RULE-CAUSED CHANGE
+-> semantic Reaction / Transition presentation
+
+STALE CLIENT RECONCILIATION
+-> correct to latest authoritative state
+-> concise state-changed feedback
+-> no invented gameplay event
+~~~
+
+### 0.66 Viewer reprojection is not an Interaction transition
+
+Quick Test or another supported perspective change may substantially change layout because the viewer's own hero must move into the Local Dock instead of appearing centrally.
+
+This is **Viewer Reprojection**, not a new authoritative Interaction.
+
+Do not replay card-play, damage, Reaction, or settlement animations merely because the viewer changed.
+
+Shared public facts remain unchanged; only self-projection and viewer-private controls are recomputed.
+
+### 0.67 Preview adoption
+
+When an unsubmitted Local Selection Preview is confirmed and the server accepts the same semantic action/targets, adopt the existing preview geometry into the authoritative Interaction where practical.
+
+~~~text
+PREVIEW
+YOU -- Attack --> B
+
+CONFIRM / SUBMITTING
+YOU -- Attack --> B
+
+AUTHORITATIVE
+YOU -- Attack --> B
+~~~
+
+Do not unnecessarily clear and re-enter the same Hero Focus.
+
+The visual state may morph from local selected/amber treatment to authoritative active treatment while the public root and Reaction Chain become available.
+
+If the command is rejected, exit the Preview and reconcile to the newest authoritative snapshot. Never create a fake public cancellation/reaction for an action that was never accepted.
+
+### 0.68 Reaction Chain continuity and bounded layout
+
+Reaction nodes append or update within a bounded Resolution Context region. Do not rebuild the entire chain or allow unbounded history growth to push the Active Effect around the screen.
+
+As the chain grows:
+
+1. retain Root Context;
+2. retain current/recent meaningful reactions;
+3. collapse older history behind an Earlier ×N affordance;
+4. preserve current decision clarity;
+5. keep Hero Focus geometry stable where possible.
+
+Reaction Chain collapse/expansion is presentation state and must not alter authoritative causal identity.
+
+### 0.69 Interaction Safe Zone space budget
+
+Treat the central Interaction Safe Zone as three semantic regions with unequal priority:
+
+~~~text
+ROOT CONTEXT
+  compact / stable
+
+ACTIVE EFFECT
+  flexible / highest visual priority
+
+RESOLUTION CONTEXT
+  flexible but bounded
+~~~
+
+Space priority:
+
+~~~text
+Active Effect readability
+> Current Decision clarity
+> current Group progress
+> recent Reaction context
+> old Reaction history
+> decorative metadata
+~~~
+
+When space becomes constrained, reduce in this order:
+
+1. collapse old Reaction detail;
+2. compact Group Resolution detail;
+3. compact secondary metadata;
+4. compact secondary external participants;
+5. compact parent breadcrumb/context;
+6. only then slightly reduce the primary Hero Focus.
+
+Never solve Interaction Stage pressure by making the Local Hand unusable, covering the fixed bottom controls, or moving Side Seat topology into the central safe zone.
+
+### 0.70 Group Timeline continuity
+
+Group Resolution presentation must not change height unpredictably as individual outcomes become available.
+
+Responsive projections may include:
+
+~~~text
+COMFORTABLE
+B -1♥   C CURRENT   D ...   E ...
+
+COMPACT
+B ✓   C ▶   D ·   E ·
+
+CRITICAL
+1/4 resolved · C ▶
+~~~
+
+These are visual projections of the same authoritative semantic state.
+
+The currently resolving participant and the viewer's own affected/decision state must never be hidden by density reduction.
+
+### 0.71 Current Decision is orthogonal to geometry
+
+Current Decision is not a large independent panel that repeatedly appears and disappears.
+
+Project decision state onto the relevant participant and Local Dock:
+
+~~~text
+external decision actor
+-> cyan decision treatment + concise Waiting for X
+
+viewer is decision actor
+-> cyan Local Dock treatment + authoritative controls
+~~~
+
+Changing the decision actor should normally be a Content Update, not a scene reconstruction.
+
+### 0.72 Settlement continuity and actionable-choice priority
+
+Present settlement in the existing scene where possible.
+
+Example:
+
+~~~text
+A -- Attack --> B
+                 -1♥
+~~~
+
+If the same Interaction immediately enters Dying, morph the active scene directly:
+
+~~~text
+B -1♥
+-> B DYING
+~~~
+
+Do not clear the Interaction Stage, show a separate result modal, then rebuild the Dying scene.
+
+If a new authoritative CHOICE becomes available while a cosmetic settlement animation is still running:
+
+~~~text
+ACTIONABLE CHOICE
+> cosmetic settlement animation
+~~~
+
+The animation may finish quickly, fast-forward, or collapse into a static result. It must not block access to the real decision.
+
+This rule must be considered when auditing `readyAfterEventId` and server deadlines.
+
+### 0.73 Client presentation identity
+
+The client may derive rendering-only keys such as:
+
+~~~text
+InteractionKey = interactionId
+EffectKey      = activeFrameId
+FocusKey       = active semantic participant relationship
+ViewerKey      = viewerId
+~~~
+
+A composite SceneKey may be useful for animation/layout continuity, but it is not a protocol field and must never control gameplay legality or stale-action validity.
+
+Do not reset gameplay selection merely because a rendering key changes. Selection reconciliation remains based on authoritative `actionRevision`, `CurrentAction`, phase and projected legality.
+
+Avoid using `actionRevision` as the React key for the whole Interaction Stage; decision revisions inside one causal Interaction should not destroy stable scene geometry.
+
+### 0.74 Animation semantics
+
+Use animation only for meaningful presentation transitions:
+
+~~~text
+ENTER
+MORPH
+EXIT
+~~~
+
+- **ENTER:** a genuinely new public participant/effect enters the current scene.
+- **MORPH:** the same semantic object changes state, for example Target -> Dying or Current -> Resolved.
+- **EXIT:** an Interaction/Frame/participant genuinely leaves the active presentation.
+
+Do not animate every React state change.
+
+Animation must never carry the only copy of important semantic information. Redirect, damage, Dying, decision changes, and other meaningful states must remain understandable in static/reduced-motion presentation.
+
+Respect reduced-motion preferences by replacing spatial motion with restrained crossfade or immediate semantic updates without changing information content.
+
+### 0.75 Continuity acceptance tests
+
+Before visual implementation is considered stable, test:
+
+~~~text
+Attack -> Dodge decision -> Dodge settlement
+Attack -> Damage -> Dying without scene teardown
+Negation -> counter-Negation with stable root relationship
+AOE participant C -> D focus progression
+AOE -> Child Frame -> return to parent
+authoritative target redirect
+Borrowed Sword -> forced Attack Child Frame -> return
+Judgement reveal -> modifier -> result
+Preview -> Confirm -> authoritative adoption
+stale Preview rejection
+Quick Test viewer reprojection
+new CHOICE arriving during settlement animation
+long Reaction Chain collapsing without moving primary Hero Focus
+~~~
+
+For each scenario verify:
+
+- same Interaction does not unnecessarily remount;
+- Root Context remains stable;
+- decision changes do not move Hero panels by themselves;
+- Child Frame push/pop preserves parent context;
+- viewer switching does not replay authoritative events;
+- actionable controls are never delayed for cosmetic continuity;
+- local hand and bottom controls remain protected.
+
+
 ## 1. Seat thumbnails
 
 Seat topology is designed **mobile portrait first**. Its purpose is to preserve relative seating, distance context, targetability, and player status without consuming the central Interaction Stage.
