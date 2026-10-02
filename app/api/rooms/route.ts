@@ -1439,9 +1439,17 @@ async function advanceHpRecoveredEvents(roomId: string, records: RecoveryRecord[
     const target = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.targetId, roomId).first<PlayerRow>();
     if (!target) return;
     if (isDying(target.hp ?? 0)) {
-      await db().prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-        .bind(serializePending(resume.pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
-      await advanceDyingRescue(roomId);
+      const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+      const transition = nextDyingTransition(room, resume.pending, players, [resume.pending.actorId, ...(resume.pending.remainingIds ?? [])]);
+      if (transition.pending) {
+        await causalRoomStateWrite(roomId, { phase: "dying", pending: transition.pending, deck, discard, log, causalEnvelope: transition.causalEnvelope }).run();
+      } else {
+        await causalRoomStateWrite(roomId, { phase: "resolving", pending: null, deck, discard, log, causalEnvelope: null }).run();
+        const settledRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+        const settledTarget = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.targetId, roomId).first<PlayerRow>();
+        const settledSource = resume.pending.sourceId ? await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.sourceId, roomId).first<PlayerRow>() : null;
+        if (settledRoom) await defeatDyingPlayer(settledRoom, resume.pending, settledTarget, settledSource);
+      }
       return;
     }
     const resumePlayer = await db().prepare("SELECT * FROM players WHERE id = ? AND room_id = ?").bind(resume.pending.resumePlayerId, roomId).first<PlayerRow>();
@@ -1930,6 +1938,31 @@ function nextDyingResponder(players: PlayerRow[], pending: DyingPending, candida
   return { actor: players.find((player) => player.id === candidates[index]) ?? null, remainingIds: candidates.slice(index + 1) };
 }
 
+type DyingTransition = { pending: DyingPending | null; causalEnvelope: CausalEnvelope | null };
+
+/** Construct only a final, publishable Dying blocker; never a raw candidate. */
+function nextDyingTransition(room: RoomRow, pending: DyingPending, players: PlayerRow[], candidateIds: string[]): DyingTransition {
+  const next = nextDyingResponder(players, pending, candidateIds, room.turn_seat);
+  if (!next.actor) return { pending: null, causalEnvelope: null };
+  const target = players.find((player) => player.id === pending.targetId);
+  const nextPending: DyingPending = {
+    ...pending,
+    actorId: next.actor.id,
+    remainingIds: next.remainingIds,
+    deadline: 0,
+    reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}`,
+  };
+  return {
+    pending: nextPending,
+    causalEnvelope: causalEnvelopeAtStage(room, nextPending.causal, "DYING", {
+      currentSourceId: nextPending.sourceId,
+      currentEffect: nextPending.origin ?? "damage",
+      currentTargetIds: [nextPending.targetId],
+      resolvingPlayerId: next.actor.id,
+    }),
+  };
+}
+
 async function advanceDyingRescue(roomId: string) {
   for (let guard = 0; guard < 12; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
@@ -1938,11 +1971,9 @@ async function advanceDyingRescue(roomId: string) {
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const players = rows.results ?? [];
     const target = players.find((player) => player.id === pending.targetId); const source = players.find((player) => player.id === pending.sourceId) ?? null;
     const candidates = [pending.actorId, ...(pending.remainingIds ?? [])].filter((id, index, all) => id && all.indexOf(id) === index);
-    const next = nextDyingResponder(players, pending, candidates, room.turn_seat);
-    if (next.actor) {
-      const nextPending: DyingPending = { ...pending, actorId: next.actor.id, remainingIds: next.remainingIds, deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
-      const envelope = causalEnvelopeAtStage(room, nextPending.causal, "DYING", { currentSourceId: nextPending.sourceId, currentEffect: nextPending.origin ?? "damage", currentTargetIds: [nextPending.targetId], resolvingPlayerId: next.actor.id });
-      const moved = await causalRoomStateWrite(roomId, { phase: "dying", pending: nextPending, log: parse<string[]>(room.log_json, []), causalEnvelope: envelope }, room.pending_json).run();
+    const next = nextDyingTransition(room, pending, players, candidates);
+    if (next.pending) {
+      const moved = await causalRoomStateWrite(roomId, { phase: "dying", pending: next.pending, log: parse<string[]>(room.log_json, []), causalEnvelope: next.causalEnvelope }, room.pending_json).run();
       if ((moved.meta.changes ?? 0) > 0) return;
       continue;
     }
@@ -1958,11 +1989,9 @@ async function expireDyingRescue(roomId: string) {
   const claimed = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(roomId, room.pending_json).run(); if ((claimed.meta.changes ?? 0) <= 0) return;
   const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
   const target = players.find((player) => player.id === pending.targetId) ?? null; const source = players.find((player) => player.id === pending.sourceId) ?? null;
-  const next = nextDyingResponder(players, pending, pending.remainingIds ?? [], room.turn_seat);
-  if (next.actor) {
-    const nextPending: DyingPending = { ...pending, actorId: next.actor.id, remainingIds: next.remainingIds, deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
-    const envelope = causalEnvelopeAtStage(room, nextPending.causal, "DYING", { currentSourceId: nextPending.sourceId, currentEffect: nextPending.origin ?? "damage", currentTargetIds: [nextPending.targetId], resolvingPlayerId: next.actor.id });
-    await causalRoomStateWrite(roomId, { phase: "dying", pending: nextPending, log: parse<string[]>(room.log_json, []), causalEnvelope: envelope }).run();
+  const next = nextDyingTransition(room, pending, players, pending.remainingIds ?? []);
+  if (next.pending) {
+    await causalRoomStateWrite(roomId, { phase: "dying", pending: next.pending, log: parse<string[]>(room.log_json, []), causalEnvelope: next.causalEnvelope }, room.pending_json).run();
     await advanceDyingRescue(roomId);
   } else {
     await defeatDyingPlayer(room, pending, target, source);
@@ -1972,8 +2001,8 @@ async function expireDyingRescue(roomId: string) {
 async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext) {
   const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat);
   const basePending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: "", remainingIds: order.map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
-  const next = nextDyingResponder(players, basePending, basePending.remainingIds, room.turn_seat);
-  if (!next.actor) {
+  const next = nextDyingTransition(room, basePending, players, basePending.remainingIds);
+  if (!next.pending) {
     await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), causalRoomStateWrite(room.id, { phase: "resolving", pending: null, deck, discard, log, causalEnvelope: null })]);
     const settledRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
     const settledPlayers = await db().prepare("SELECT * FROM players WHERE id IN (?, ?)").bind(target.id, source?.id ?? target.id).all<PlayerRow>();
@@ -1982,9 +2011,7 @@ async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target:
     if (settledRoom) await defeatDyingPlayer(settledRoom, basePending, settledTarget, settledSource);
     return;
   }
-  const pending: DyingPending = { ...basePending, actorId: next.actor.id, remainingIds: next.remainingIds };
-  const causalEnvelope = causalEnvelopeAtStage(room, causal, "DYING", { currentSourceId: source?.id ?? null, currentEffect: origin ?? "damage", currentTargetIds: [target.id], resolvingPlayerId: next.actor.id });
-  await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), causalRoomStateWrite(room.id, { phase: "dying", pending, deck, discard, log, causalEnvelope })]);
+  await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), causalRoomStateWrite(room.id, { phase: "dying", pending: next.pending, deck, discard, log, causalEnvelope: next.causalEnvelope })]);
 }
 
 async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePending; continuation: DuelContinuation }, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[]) {
@@ -5491,17 +5518,39 @@ export async function POST(request: Request) {
         ]);
         await advanceHpRecoveredEvents(room.id, [{ playerId: pending.targetId, amountRecovered, sourceId: me.id, reason: "peach_rescue" }], { kind: "dying", pending: recoveryPending });
       } else if (isDying(nextHp)) {
-        const nextPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId), db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(log), room.id)]);
-        await advanceDyingRescue(room.id);
+        const rescueBase = { ...resumedPending, actorId: "", remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
+        const transition = nextDyingTransition(liveRoom, rescueBase, players, pending.remainingIds);
+        if (transition.pending) {
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+            db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
+            causalRoomStateWrite(room.id, { phase: "dying", pending: transition.pending, discard, log, causalEnvelope: transition.causalEnvelope }, liveRoom.pending_json),
+          ]);
+        } else {
+          await db.batch([
+            db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
+            db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
+            causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: null }, liveRoom.pending_json),
+          ]);
+          const settledRoom = await db.prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+          const settledPlayers = await db.prepare("SELECT * FROM players WHERE id IN (?, ?)").bind(target.id, source?.id ?? target.id).all<PlayerRow>();
+          const settledTarget = settledPlayers.results?.find((player) => player.id === target.id) ?? target;
+          const settledSource = settledPlayers.results?.find((player) => player.id === source?.id) ?? source;
+          if (settledRoom) await defeatDyingPlayer(settledRoom, resumedPending, settledTarget, settledSource);
+        }
       } else {
         const next = dyingResumeState(resumedPending, resume);
         await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId), causalRoomStateWrite(room.id, { phase: next.phase, pending: next.pendingJson ? resumedPending : null, discard, log, causalEnvelope: liveRoom.causal_envelope_json ? causalEnvelopeAtStage(liveRoom, resumedPending.causal, "DAMAGE", { currentSourceId: pending.sourceId, currentEffect: "damage", currentTargetIds: [pending.targetId], resolvingPlayerId: resumedPending.actorId }) : null })]);
         await continueDyingResolution(room.id, resumedPending);
       }
-    } else if (pending.remainingIds[0]) {
-      const nextPending: DyingPending = { ...pending, actorId: pending.remainingIds[0], remainingIds: pending.remainingIds.slice(1), deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
-      await db.prepare("UPDATE rooms SET phase = 'dying', pending_json = ? WHERE id = ? AND phase = 'resolving'").bind(serializePending(nextPending), room.id).run(); await advanceDyingRescue(room.id); return json({ room: await roomState(code, token) });
+    } else if (pending.remainingIds.length) {
+      const transition = nextDyingTransition(liveRoom, pending, players, pending.remainingIds);
+      if (transition.pending) {
+        await causalRoomStateWrite(room.id, { phase: "dying", pending: transition.pending, log: parse<string[]>(liveRoom.log_json, []), causalEnvelope: transition.causalEnvelope }, liveRoom.pending_json).run();
+      } else {
+        await defeatDyingPlayer(liveRoom, pending, target, source);
+      }
+      return json({ room: await roomState(code, token) });
     } else {
       await defeatDyingPlayer(liveRoom, pending, target, source);
     }

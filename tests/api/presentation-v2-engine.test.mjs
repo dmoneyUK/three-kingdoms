@@ -9,6 +9,21 @@ function authoritativePending(code) {
   return raw ? JSON.parse(raw) : null;
 }
 
+function assertStableDyingPersistence(code) {
+  const pending = authoritativePending(code);
+  const rawEnvelope = query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(code)}`);
+  const envelope = rawEnvelope ? JSON.parse(rawEnvelope) : null;
+  assert.equal(pending?.kind, "dying");
+  assert.ok(envelope);
+  const active = envelope.frames.find((frame) => frame.frameId === envelope.activeFrameId);
+  assert.equal(active?.stage, "DYING");
+  assert.equal(envelope.checkpoint.frameId, active?.frameId);
+  assert.equal(envelope.checkpoint.stage, "DYING");
+  assert.equal(pending.causal?.interactionId, envelope.interactionId);
+  assert.equal(pending.causal?.frameId, active?.frameId);
+  assert.equal(active.current.resolvingPlayerId, pending.actorId);
+}
+
 function assertProjectionMatchesEngine(code, token) {
   return state(code, token).then(({ data: view }) => {
     const expected = projectPresentationV2({ pending: authoritativePending(code), currentAction: view.currentAction, actionRevision: view.actionRevision, timeline: view.timeline, causalEnvelope: view.causalEnvelope });
@@ -158,6 +173,7 @@ test("C4-01 Dying skips non-rescuers and advances one causal checkpoint between 
   await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a", preserveResponse: true });
   const dying = await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_b", preserveResponse: true });
   assert.equal(dying.data.room.phase, "dying", JSON.stringify(dying.data.room));
+  assertStableDyingPersistence(game.code);
   const bobView = await waitForState(game.code, bobMember.token, (room) => room.phase === "dying" && room.currentAction.actorId === bob.id);
   const bobBarrier = bobView.presentationV2.dyingBarrier;
   assert.equal(bobBarrier?.semantics, "PROVEN");
@@ -169,6 +185,7 @@ test("C4-01 Dying skips non-rescuers and advances one causal checkpoint between 
   assert.equal(uninvolved.data.currentAction.options, undefined);
   const bobSkipped = await request("skip_rescue", { code: game.code, token: bobMember.token });
   assert.equal(bobSkipped.status, 200, JSON.stringify(bobSkipped.data));
+  assertStableDyingPersistence(game.code);
   const carolView = await waitForState(game.code, carolMember.token, (room) => room.phase === "dying" && room.currentAction.actorId === carol.id);
   assert.equal(carolView.presentationV2.dyingBarrier?.semantics, "PROVEN");
   assert.equal(carolView.presentationV2.dyingBarrier?.dyingPlayerId, target.id);
