@@ -191,3 +191,50 @@ Push implementation AND appended HANDOVER to origin/ux-v2, fetch, verify remote 
 ## Acceptance
 
 FIX1 passes only if stableBoundary cannot vary because of viewer CurrentAction metadata, SETTLEMENT is either backed by viewer-independent causal authority or intentionally not emitted, Pending-derived SPECIAL requires causal linkage to the proven scene, malformed/unlinked metadata fails closed, compatibility behavior remains bounded, and regressions are green.
+
+## Execution result — UX2.0C5-03-FIX1 — 2026-10-02
+
+Implementation commit: `02846df937f225389469993468a46282cdacee68`.
+
+Changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`,
+`README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+
+Settlement authority conclusion: current production state has no durable,
+viewer-independent public link from a proven scene/checkpoint to a final-result
+occurrence. Semantic `stableBoundary.kind = SETTLEMENT` is therefore reserved
+and intentionally not emitted. Legacy `settlement` continues to use its
+bounded compatibility event/barrier selection, but it cannot upgrade
+`stableBoundary`, resurrect cleared identity, or establish causal authority.
+
+The stable-boundary precedence is now: proven semantic decision -> `CHOICE`;
+proven persistent scene-owned special -> `SPECIAL`; otherwise identity-free
+`REST`. `CurrentAction` actor, options, readyAfterEventId, resolutionId,
+actionRevision, timers, and timeline/finalResult presence do not participate in
+these public classifications. `SETTLEMENT` remains a reserved enum value for
+future durable C7 settlement occurrence semantics.
+
+Borrowed Sword Pending-derived special evidence now requires
+`pending.causal.interactionId` and `pending.causal.frameId` to match the proven
+scene interaction and active frame. A continuation kind alone cannot produce
+`SPECIAL`. Judgement SPECIAL remains scene-stage-owned, and nested Damage
+SPECIAL remains dependent on the already-proven CHILD_FRAME/DAMAGE scene. The
+focused projector suite adds viewer-divergent settlement controls, cleared
+finalResult -> REST, mismatched Borrowed Sword Pending -> not SPECIAL, and
+Dying mismatch -> not CHOICE/SPECIAL. Real Borrowed Sword remains CHOICE and
+real Attack/Duel/Group/Negation/Judgement/Dying/Lightning viewer and reconnect
+evidence remains green.
+
+Documentation distinguishes descriptive settlement selection from semantic
+settlement authority, keeps transitionEvents bounded and non-protocol, records
+the causal-link requirement for Borrowed Sword, and retains only KEEP / DERIVE /
+DEPRECATE-LATER migration statuses.
+
+Validation: focused API projector/causality/Lightning suite passed 50/50;
+`npm run test:fast` passed 123/123; full `npm test` passed build + 123 fast
+tests + 238 API tests across 23 files and 4 shards; `npm run build`,
+`npm run lint`, and `git diff --check` passed.
+
+C5-03-FIX1 is ready for reviewer closure. C5 remains open pending reviewer
+acceptance and future C7 PresentationSnapshot settlement occurrence semantics.
+No C6/C7, React/CSS, gameplay, animation protocol, durable occurrence IDs, or
+wholesale compatibility removal was started.
