@@ -2,56 +2,71 @@
 
 ## Reviewer status
 
-UX2.0C2-FIX8 is **REJECTED AS AN ARCHITECTURAL DIRECTION / PARTIALLY USEFUL IMPLEMENTATION**. Do not start C3.
+UX2.0C2-FIX9 is **PARTIAL / NOT ACCEPTED**. Do not start C3.
 
-Reviewed implementation commit: `cfe36348e6f5bd47f7dcade4bb98276a9d704e75`.
+Reviewed implementation commit:
+`992bff9f622a92f41b675c96a9bd0fdcae3a75dd`
 
-The Agent followed FIX8, but review found that FIX8 itself conflicted with the established UX V2 design source of truth.
+### Accepted from FIX9
 
-### Authoritative design conflict
+The main architectural correction is good and must be preserved:
 
-`docs/UX_V2_INTERACTION_STAGE_DESIGN.md` section **0.26 Causal Frame boundary** explicitly says:
-- responses that modify/satisfy/cancel/redirect the current effect normally stay in the SAME FRAME;
-- Negation/counter-Negation modifying the current trick effect is a typical SAME-FRAME case;
-- Child Frame is for a response/trigger that launches a genuinely independent resolving effect.
+- Group/Duel nested Negation now uses SAME_FRAME semantics.
+- `advanceCausalSemanticCheckpoint()` provides one atomic stage/current/checkpoint/revision update.
+- Group and physical Duel tests now prove one frame through nested Negation.
+- Group/Duel counter-Negation tests prove the counter card does not create another frame/root.
+- top-level `response.causal` is now propagated alongside `continuation.causal` on the successful counter-Negation path.
+- explicit Group and Duel duplicate-response races were added.
+- Group NULL and Duel malformed-envelope continuation safety were added.
+- independent top-level Negation still has one root.
+- Borrowed Sword remains the only current production `childCausalFrame()` / `resumeCausalFrame()` route.
+- reported validation passed: fast 108/108 and API 223/223.
 
-The C0 scenario matrix in `docs/UX_V2_0C_CAUSAL_IDENTITY_DESIGN.md` is consistent with this.
+### Why FIX9 is still not accepted
 
-Therefore FIX8's new rule `Group/Duel nested Negation = CHILD_FRAME` is rejected. Group/Duel Negation modifies/cancels the already-active Group/Duel effect, so it must be represented as a **same-frame NEGATION stage/checkpoint**.
+Review of the actual routing code found an uncovered causal/presentation defect around **Negation actor advancement**.
 
-This is a reviewer/task-spec correction, not an Agent failure.
+The authoritative UX design says the projected decision actor is the player who is genuinely blocking progress. When the real Negation responder changes, the envelope's `current.resolvingPlayerId`, checkpoint, and presentationRevision must change with that decision.
 
-### Useful FIX8 work to preserve
+Current code does not do that consistently:
 
-Adapt rather than discard:
-- real initial Group causal entry fixture;
-- ordinary physical Duel fixture;
-- Group stale identity test;
-- Duel stale identity test;
-- Group/Duel missing-envelope continuation fixture.
+1. `startNegation()` initializes the envelope/current resolver using `responders[0]`, where `responders` is the living reaction order, not necessarily the first player who can actually respond with Negation.
+2. `advanceNegation()` can auto-skip ineligible players by changing only `pending_json`. It does not update `causal_envelope_json`.
+3. When an eligible Negation player declines and `continuation.remainingIds[0]` becomes the next actor, the decline branch updates only Pending/log; the envelope resolver/checkpoint/revision stays on the previous actor.
+4. When `advanceNegation()` advances after a timeout, the same problem exists.
+5. `applyNegationResponseOutcome()` advances the envelope only when `success === true`. If a judged/semantic Negation response fails and control moves to another responder, Pending can change actor without the envelope changing resolver/checkpoint.
+6. Therefore `CurrentAction.actorId` and `causalEnvelope.frames[0].current.resolvingPlayerId` can diverge in a real Negation window.
+7. This also means automatic ineligible-seat scans can leave an obsolete causal current resolver even though the UI should never present those scanned seats as blocking actors.
 
-### Additional code-review defect
+Existing FIX9 tests mostly choose fixtures where the first potential responder is eligible, or exercise successful Negation cards. They do not expose this decision-actor drift.
 
-`applyNegationResponseOutcome()` creates the next counter-Negation `ResponsePending` without copying/setting top-level `causal`, while `continuation.causal` survives. This breaks the intended propagation invariant. FIX9 must correct this and prove it with a real counter-Negation flow.
+### Documentation defect
 
-### Remaining gaps
+README currently says Group counter-Negation is "the only explicit partial row in this slice", while the FIX9 evidence matrix marks that row PROVEN. Correct this inconsistency while doing FIX10.
 
-- Group duplicate/two-request race remained PARTIAL;
-- Duel duplicate/two-request race remained PARTIAL;
-- nested counter-Negation API proof remained PARTIAL;
-- only NULL/missing envelope was proven; structural malformed continuation coverage is still needed.
+The next task is deliberately narrow. Do not move on to Group nested Damage, Judgement, or C3 until Negation decision identity is correct.
 
 ---
 
-# NEXT TASK — UX2.0C2-FIX9: Align Nested Negation with SAME_FRAME Semantics
+# NEXT TASK — UX2.0C2-FIX10: Make Negation Decision Actor and Checkpoint Authoritative
 
 ## Objective
 
-Correct Group/Duel nested Negation to match the authoritative design:
+For every Negation window, public causal state must describe the **actual blocking responder**, not merely the next living seat being scanned.
 
-> Negation and counter-Negation that modify/cancel the current Group or Duel effect stay in the SAME causal Frame. They temporarily change the Frame Stage/checkpoint to NEGATION, then restore the same Frame to GROUP_RESOLUTION or DUEL_EXCHANGE.
+Invariant:
 
-Independent top-level Negation may still create its own root Interaction/Frame.
+> If authoritative `CurrentAction.actorId = P` for a Negation decision and a valid causal envelope exists, the active frame's `current.resolvingPlayerId` must also be `P`, Pending/Continuation causal IDs must match that frame, and the checkpoint/revision must represent that blocking decision.
+
+Automatic scans over players who cannot respond must not create player-facing checkpoints.
+
+When a blocking responder changes from A to B:
+- same Interaction;
+- same Frame;
+- same Stage `NEGATION`;
+- one new checkpoint;
+- presentationRevision +1 exactly once;
+- `current.resolvingPlayerId = B`.
 
 Do not start C3.
 
@@ -59,338 +74,435 @@ Do not start C3.
 
 Work only on `ux-v2`.
 
-Start:
-```text
+At start:
+
+```
 git fetch origin
 git checkout ux-v2
 git pull --ff-only origin ux-v2
 ```
 
-Read before coding:
+Read:
 - this HANDOVER;
-- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` section 0.26;
-- `docs/UX_V2_0C_CAUSAL_IDENTITY_DESIGN.md` scenario matrix;
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` sections 0.8, 0.16, 0.19, 0.26;
+- `docs/UX_V2_0C_CAUSAL_IDENTITY_DESIGN.md`;
 - `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`;
-- `app/api/causal-envelope.ts`;
-- Group/Duel/Negation orchestration in `app/api/rooms/route.ts`.
+- `advanceNegation()`, `startNegation()`, `applyNegationResponseOutcome()`, and the canonical Negation decline/respond path in `app/api/rooms/route.ts`;
+- `advanceCausalSemanticCheckpoint()`.
 
-Do not modify/merge `main`. Do not self-merge. Append execution result only.
+Do not modify or merge `main`.
+Append execution result only; reviewer cleans HANDOVER.
 
-## Step 1 — correct the C2 design note before coding
+## Step 1 — inventory every Negation actor transition before coding
 
-Replace the incorrect active FIX8 CHILD_FRAME decision in `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`.
+Create a short audit in the C2 document or execution notes covering these transitions:
 
-The corrected rule:
-- independent top-level Negation => new root Interaction/Frame;
-- nested Negation directly modifying Group/Duel => SAME FRAME;
-- enter Stage `NEGATION` on existing Group/Duel frame;
-- keep same `interactionId` and `frameId`;
-- advance checkpoint/current resolver only at meaningful blocking decisions;
-- restore same frame to `GROUP_RESOLUTION` or `DUEL_EXCHANGE`;
-- counter-Negation remains same frame/stage;
-- no Negation card creates a child frame by itself.
+| Transition | Current code path | Can actor change? | Must checkpoint change? | Current envelope write? |
+| --- | --- | --- | --- | --- |
+| initial Negation window creation | `startNegation()` / Group entry | yes, after ineligible scan | only when actual blocker established | ... |
+| automatic ineligible-seat scan | `advanceNegation()` | yes internally | NO for skipped seats | ... |
+| arm deadline for same actor | `advanceNegation()` | no | NO | ... |
+| eligible actor declines | canonical decline branch | yes | YES if another actual blocker | ... |
+| eligible actor times out | `advanceNegation()` | yes | YES if another actual blocker | ... |
+| successful Negation resets order | canonical respond / `applyNegationResponseOutcome()` | yes | YES | ... |
+| failed judged/semantic Negation | `applyNegationResponseOutcome()` | possibly | YES if blocker changes | ... |
+| no eligible responders remain | `advanceNegation()` / resolver | resolution resumes | restore parent/root stage, not a fake responder checkpoint | ... |
 
-Do not edit the main UX design to justify the rejected FIX8 implementation.
+Do not claim a row fixed until its Pending and envelope behavior are both understood.
 
-## Step 2 — remove only incorrect Group/Duel Negation child creation
+## Step 2 — select the next **actual eligible** Negation blocker
 
-Rework FIX8 code that creates Negation child frames in:
-- `startNegation(... inheritedCausal ...)`;
-- `beginGroupTarget()`;
-- `resolveDeferredStratagem()` parent-resume logic that exists only because of those child frames.
+Avoid persisting every living seat as a temporary decision owner.
 
-Do NOT disturb legitimate child behavior such as Borrowed Sword forced Attack.
+Introduce/refactor a server-side helper that, given:
+- ordered candidate IDs;
+- players;
+- Negation continuation;
 
-For nested Group/Duel Negation:
-- authoritative envelope already contains Group/Duel frame;
-- Pending uses same `CausalContext`;
-- no new frameId/parentFrameId/interactionId;
-- missing/malformed envelope stays legacy/null and is never reconstructed.
+returns the next living player who can actually respond with Negation plus the remaining ordered candidates after that player.
 
-## Step 3 — atomic semantic checkpoint update
+Example conceptual contract:
 
-Entering/exiting Negation changes stage/current/checkpoint/revision as one player-meaningful boundary.
+```ts
+type NegationDecisionScan = {
+  actor: PlayerRow | null;
+  remainingIds: string[];
+};
 
-If existing helpers would cause multiple artificial `presentationRevision` increments, add a narrow server helper in `app/api/causal-envelope.ts`, e.g. `advanceCausalSemanticCheckpoint(envelope, frameId, {stage,current})`.
+function nextEligibleNegationResponder(
+  players,
+  candidateIds,
+  continuation,
+): NegationDecisionScan
+```
+
+Name may differ.
+
+Requirements:
+- preserve existing reaction order;
+- use existing `canPlayerRespondWithNegation()`; do not reimplement legality;
+- skip dead/ineligible players without exposing them as decision actors;
+- do not change card/hero rules;
+- if no eligible player exists, return no actor and allow automatic settlement.
+
+Use this helper wherever a new blocking Negation responder is selected.
+
+## Step 3 — initial Negation window must point directly to the real blocker
+
+Fix independent `startNegation()` and the Group/Duel nested entry path.
+
+Bad behavior to remove:
+
+```
+envelope.current.resolvingPlayerId = first living seat
+write Pending
+advanceNegation() skips several seats
+Pending.actorId = actual responder
+envelope still points to first seat
+```
 
 Required behavior:
-- same interactionId/frameId;
-- origin unchanged;
-- update stage/current atomically;
-- exactly one new checkpointId;
-- checkpoint.frameId = same frame;
-- checkpoint.stage = new stage;
-- presentationRevision += exactly 1;
-- no new frame.
 
-Add helper unit tests if introduced.
+1. build the typed Negation continuation;
+2. find the first **eligible** responder in authoritative reaction order;
+3. if one exists:
+   - create/reuse causal frame as already designed;
+   - enter/retain `NEGATION` stage;
+   - `current.resolvingPlayerId = eligible actor`;
+   - Pending.actorId = same actor;
+   - response.causal and continuation.causal match envelope;
+   - persist Pending + envelope atomically;
+   - exactly one semantic checkpoint for this first real blocking decision.
+4. if none exists:
+   - do not publish a fake decision checkpoint for scanned seats;
+   - continue automatic Negation settlement/resume using existing gameplay rules;
+   - do not invent a causal root solely for a non-existent player decision beyond whatever root already legitimately represents the effect.
 
-## Step 4 — Group nested Negation same-frame behavior
+For an independent top-level Negation root with no eligible responders, preserve the correct causal lifetime/settlement behavior without leaving a stranded root.
 
-When a real Group target Negation window becomes blocking:
-- same Group interactionId/frameId;
-- Group origin remains original source/effect/targets;
-- stage becomes `NEGATION`;
-- current target is the affected participant;
-- resolvingPlayerId is the real Negation responder;
+## Step 4 — centralize Negation decision handoff
+
+Add one narrow orchestration helper for moving an existing Negation Pending from actor A to actual blocking actor B.
+
+Conceptual behavior:
+
+```ts
+advanceNegationDecision(room, oldPending, nextActor, remainingIds)
+```
+
+It should:
+- preserve interactionId/frameId;
+- preserve Stage `NEGATION`;
+- set Pending.actorId = B;
+- set continuation.remainingIds correctly;
+- keep top-level `response.causal` aligned with `continuation.causal`;
+- if valid envelope authority exists, call `advanceCausalSemanticCheckpoint()` exactly once with `resolvingPlayerId = B`;
+- atomically CAS-write Pending + causal envelope;
+- retain existing stale protection using expected old `pending_json`;
+- if envelope is NULL/malformed, advance legacy gameplay without fabricating authority.
+
+Do not create a new root/frame.
+
+## Step 5 — fix ordinary decline progression
+
+In the canonical Negation decline path:
+
+If current actor declines:
+- scan remaining candidates to the next actual eligible responder;
+- skipped ineligible seats create no checkpoint/revision;
+- if B is found, use the centralized handoff:
+  - Pending.actorId = B;
+  - envelope resolver = B;
+  - new checkpoint;
+  - revision +1 once;
+- if no eligible responder remains, resolve the Negation chain and restore Group/Duel stage (or settle independent root) without a fake intermediate checkpoint.
+
+Do not use raw Pending-only UPDATE when the decision actor changes and causal authority exists.
+
+## Step 6 — fix `advanceNegation()` timeout/automatic progression
+
+Refactor `advanceNegation()` so its jobs are explicit:
+
+### Same actor, deadline unarmed
+Arming the deadline:
+- same actor;
+- same semantic checkpoint;
+- no presentationRevision change;
+- Pending-only deadline update is acceptable.
+
+### Current eligible actor still waiting
+Return; no change.
+
+### Current actor timed out
+Treat timeout as that actor's decline:
+- find next actual eligible blocker;
+- one handoff checkpoint if another blocker exists;
+- or settle if none.
+
+### Ineligible candidate
+Do not persist them as a visible blocking actor. Skip them in the scan.
+
+The final returned room state must never have:
+`CurrentAction.actorId != causalEnvelope.activeFrame.current.resolvingPlayerId`
+for a valid Negation causal envelope.
+
+## Step 7 — fix judged/semantic response progression
+
+Inspect `applyNegationResponseOutcome()`.
+
+Current code only advances the envelope when `success` is true.
+
+Correct rule is based on **decision actor change**, not on whether the provider succeeded.
+
+If a failed judged/semantic response causes control to move from A to B:
+- same interaction/frame;
+- Stage remains `NEGATION`;
+- Pending actor B;
+- resolver B;
 - one semantic checkpoint/revision;
-- `Pending.causal` and `Pending.continuation.causal` both equal the Group frame context.
+- response.causal and continuation.causal aligned.
 
-Automatic ineligible-seat scans must not create visible checkpoints.
+If no practical real provider currently exercises this branch, still fix the production path and mark runtime evidence PARTIAL with exact code evidence. Do not invent gameplay.
 
-After Negation settles:
-- same frame stage returns to `GROUP_RESOLUTION`;
-- same interactionId/frameId;
-- current resolver returns to the affected Group participant;
-- one semantic checkpoint/revision;
-- continue existing Group resolution.
+## Step 8 — real test: initial ineligible seats are never projected as blockers
 
-## Step 5 — Duel nested Negation same-frame behavior
+Create a real top-level or Group/Duel Negation fixture where:
+- the first one or more players in reaction order **cannot** Negate;
+- a later player can.
 
-For ordinary physical Duel:
-- Duel root frame starts as `DUEL_EXCHANGE`;
-- while its Negation window blocks, same frame stage = `NEGATION`;
-- origin stays Duel;
-- resolvingPlayerId tracks actual Negation responder;
-- Pending + continuation use same Duel context.
+After the original API command returns:
+- `currentAction.actorId` is the later eligible player;
+- causal frame `current.resolvingPlayerId` equals that same player;
+- Pending.actorId equals same player;
+- Pending + continuation causal match envelope;
+- no returned state exposes the skipped seat as blocker;
+- frame remains one frame / correct stage;
+- presentationRevision reflects only the meaningful Negation decision, not each skipped seat.
 
-After Negation:
-- same frame stage returns `DUEL_EXCHANGE`;
-- same frameId;
-- current Duel responder restored;
-- Duel response Attack remains same Duel frame and never creates Attack child.
+For a newly-created root whose initial revision is known, assert exact revision delta if practical.
 
-Diao Chan Lust remains correct; do not invent Negation where Lust does not open one.
+## Step 9 — real test: decline A → skip ineligible B → block on C
 
-## Step 6 — counter-Negation propagation bug
+Build a real Negation chain with reaction order:
+- A is eligible and currently blocking;
+- A declines;
+- B is alive but has no legal Negation;
+- C is eligible.
 
-Fix `applyNegationResponseOutcome()`.
+Capture before decline:
+- interactionId;
+- frameId;
+- checkpointId;
+- presentationRevision.
 
-Every Negation/counter Pending with causal authority must have:
-- `response.causal`;
-- `response.continuation.causal`;
-- both equal envelope interactionId/frameId.
+After A declines:
+- CurrentAction.actorId = C;
+- Pending.actorId = C;
+- envelope resolver = C;
+- same interaction/frame;
+- checkpointId changed exactly once;
+- presentationRevision = previous + 1;
+- B was never emitted as a stable blocking checkpoint;
+- A's decline does not create a public Reaction Chain node merely from being a pass.
 
-When a successful Negation resets responder order:
-- remain same interaction/frame;
-- remain stage `NEGATION`;
-- update resolvingPlayerId to next actual blocking responder;
-- advance semantic checkpoint exactly once.
+This is a required acceptance test.
 
-Do not create checkpoints for automatic ineligible scans.
+## Step 10 — real test: timeout handoff
 
-## Step 7 — adapt Group initial-entry proof
+Use existing test seams to place the current Negation deadline in the past or drive the canonical timer-expiry action.
 
-Update the FIX8 Group test. Correct expected state:
-- envelope exists;
-- `frames.length === 1`;
-- root/origin is Group;
-- activeFrameId = Group frame;
-- stage = `NEGATION` while the real Negation decision blocks;
-- Pending causal IDs match Group frame;
-- repeated read preserves interaction/frame/checkpoint/revision;
-- second viewer sees same public envelope;
-- after Negation settles, same frame returns to `GROUP_RESOLUTION`.
+Set up:
+- current responder A is eligible;
+- later responder C is eligible;
+- any B between them is ineligible.
 
-No parent/child assertions.
+After timeout progression:
+- CurrentAction.actorId = C;
+- envelope resolver = C;
+- same interaction/frame;
+- checkpoint changes once;
+- presentationRevision +1 once;
+- no fake B checkpoint;
+- no duplicated Negation effect/card.
 
-## Step 8 — adapt ordinary physical Duel proof
+Do not sleep in tests; use deterministic deadline/test DB setup.
 
-Required real API sequence:
-1. play physical Duel;
-2. envelope has exactly one Duel frame;
-3. while Negation choice is open, same frame stage = `NEGATION`;
-4. Pending + continuation causal IDs match Duel frame;
-5. settle/pass Negation;
-6. same frame stage returns `DUEL_EXCHANGE`;
-7. responder plays Attack;
-8. next responder changes but same Duel frame persists;
-9. frames.length remains 1;
-10. Duel settlement clears envelope.
+## Step 11 — counter-Negation alignment regression
 
-## Step 9 — dedicated counter-Negation API proof
+Keep FIX9 counter-Negation tests and strengthen at least one of them:
 
-Create a reliable real Group or physical Duel fixture:
-- effect opens Negation;
-- responder A plays Negation;
-- responder B plays counter-Negation.
+At each blocking counter window assert:
+- `currentAction.actorId`;
+- Pending.actorId;
+- response.causal frameId;
+- continuation.causal frameId;
+- envelope current.resolvingPlayerId;
 
-Assert after each:
-- same interactionId;
-- same frameId;
-- `frames.length === 1`;
-- stage remains `NEGATION`;
-- response.causal and continuation.causal match envelope;
-- root origin remains immutable Group/Duel;
-- resolvingPlayerId follows actual responder;
-- no new Interaction/root/frame.
+are all the same authoritative decision context.
 
-After chain settles, same frame returns to Group/Duel stage.
+Also assert a successful Negation that resets reaction order reaches the first **eligible** counter-responder directly.
 
-Use real cards/rules. Do not change gameplay legality merely to expose the fixture.
+## Step 12 — independent top-level Negation regression
 
-## Step 10 — explicit Group duplicate race
+Strengthen the existing Dismantle Negation test.
 
-At a real Group participant response:
-- capture valid actionRevision and root IDs;
-- submit same valid response twice concurrently;
-- exactly one success, one stale/conflict;
-- card/effect/log occurs once;
-- participant advances once;
-- no second root/frame;
-- if envelope remains, same interactionId/frameId.
+It currently declines the source and then observes the target.
 
-Do not weaken CAS.
+Add assertions that after source decline:
+- target is CurrentAction.actorId;
+- envelope current.resolvingPlayerId = target;
+- same root interaction/frame;
+- new checkpoint/revision exactly once if target is the next actual blocker.
 
-## Step 11 — explicit Duel duplicate race
+This catches the current Pending-only decline bug in the independent root path.
 
-At ordinary physical Duel response Attack:
-- same valid request twice concurrently;
-- one success, one stale loser;
-- Attack consumed once;
-- Duel advances once;
-- same interactionId/frameId;
-- `frames.length === 1`;
-- no Attack child frame.
+## Step 13 — NULL/malformed compatibility
 
-## Step 12 — NULL + malformed continuation safety
+For one actor-handoff case:
+- NULL or corrupt `causal_envelope_json`;
+- keep Pending causal context;
+- decline/timeout to next actual responder;
+- gameplay may advance;
+- public envelope remains null;
+- no root/frame/checkpoint is reconstructed;
+- no 500.
 
-Preserve useful FIX8 missing-envelope tests and strengthen them.
+This verifies the centralized handoff respects legacy/corrupt rooms.
 
-Required named evidence:
-- Group continuation with `causal_envelope_json = NULL`;
-- physical Duel continuation with structurally malformed persisted envelope.
+## Step 14 — documentation correction
 
-For each:
-- Pending causal context untouched;
-- public `causalEnvelope` = null;
-- continuation does not 500;
-- no envelope reconstructed from Pending;
-- no new root mid-continuation;
-- no guessed IDs/checkpoint;
-- effect/card/log at most once.
+Update `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` with a short section:
 
-DB mutation is allowed only for corruption setup.
+`### Negation decision-actor invariant`
 
-## Step 13 — independent top-level Negation regression
+Document:
+- ineligible-seat scans are engine-internal;
+- only actual eligible blocking responders create decision checkpoints;
+- changing blocking responder advances checkpoint/revision once;
+- arming a deadline for the same responder does not;
+- timeout is semantically a decline/handoff;
+- Pending.actorId and causal current.resolvingPlayerId must agree whenever envelope authority exists.
 
-Add/retain a focused test proving a genuinely independent top-level Negation flow still creates one root envelope with stage `NEGATION`.
+Correct README's contradictory sentence about Group counter-Negation being partial. Do not overclaim.
 
-This ensures the correction does not remove legitimate Negation roots.
+## Step 15 — exact FIX10 evidence matrix
 
-## Step 14 — exact FIX9 evidence matrix
-
-Replace the incorrect FIX8 child-frame matrix with exactly:
+Add exactly:
 
 | Requirement | Status | Exact evidence | Remaining gap |
 | --- | --- | --- | --- |
-| Group root remains one frame during nested Negation | ... | ... | ... |
-| Group Negation uses NEGATION stage on same frame | ... | ... | ... |
-| Group Negation settlement restores GROUP_RESOLUTION on same frame | ... | ... | ... |
-| Group counter-Negation stays same interaction/frame | ... | ... | ... |
-| Group stale request preserves identity/checkpoint/revision | ... | ... | ... |
-| Group duplicate response race cannot duplicate transition | ... | ... | ... |
-| Group missing envelope does not fabricate authority | ... | ... | ... |
-| physical Duel root remains one frame during nested Negation | ... | ... | ... |
-| Duel Negation uses NEGATION stage on same frame | ... | ... | ... |
-| Duel Negation settlement restores DUEL_EXCHANGE on same frame | ... | ... | ... |
-| Duel response Attack remains same Duel frame | ... | ... | ... |
-| Duel counter-Negation stays same interaction/frame | ... | ... | ... |
-| Duel stale request preserves identity/checkpoint/revision | ... | ... | ... |
-| Duel duplicate response race cannot duplicate transition | ... | ... | ... |
-| Duel malformed envelope does not fabricate authority | ... | ... | ... |
-| response.causal and continuation.causal align through counter-Negation | ... | ... | ... |
-| independent top-level Negation still creates its own root | ... | ... | ... |
-| no nested Group/Duel Negation creates child/root IDs | ... | ... | ... |
+| initial Negation skips ineligible seats without fake checkpoint | ... | ... | ... |
+| initial real blocker matches Pending and envelope resolver | ... | ... | ... |
+| decline handoff updates Pending + resolver atomically | ... | ... | ... |
+| decline A → skip B → block C advances one checkpoint | ... | ... | ... |
+| timeout handoff updates Pending + resolver atomically | ... | ... | ... |
+| timeout with skipped ineligible seats advances one checkpoint | ... | ... | ... |
+| deadline arming for same actor does not advance presentation revision | ... | ... | ... |
+| successful Negation reset selects first eligible counter-responder | ... | ... | ... |
+| counter Pending/continuation/envelope actor context stays aligned | ... | ... | ... |
+| failed judged/semantic response handoff is causally correct | ... | ... | ... |
+| independent Negation decline updates resolver correctly | ... | ... | ... |
+| nested Group Negation handoff preserves Group interaction/frame | ... | ... | ... |
+| nested Duel Negation handoff preserves Duel interaction/frame | ... | ... | ... |
+| no ineligible scan creates new Interaction/Frame | ... | ... | ... |
+| NULL/malformed handoff never reconstructs authority | ... | ... | ... |
+| README/C2 documentation no longer contradicts FIX9 evidence | ... | ... | ... |
 
-Statuses: `PROVEN | PARTIAL | UNPROVEN | NOT IMPLEMENTED IN GAME`.
-PROVEN requires named real API/engine evidence.
+Statuses:
+`PROVEN | PARTIAL | UNPROVEN | NOT IMPLEMENTED IN GAME`.
 
-## Step 15 — documentation cleanup
+PROVEN requires named real API/engine evidence. If no real judged-Negation provider exists, that row may remain PARTIAL with precise production-path evidence.
 
-Update:
-- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`;
-- README C2 status.
+## Step 16 — architecture/search audit
 
-Remove/correct active statements saying Group/Duel nested Negation is CHILD_FRAME. Do not leave contradictory active documentation. Git history preserves the rejected experiment.
+Before commit run and summarize:
 
-Keep Borrowed Sword child Attack as the canonical valid child-frame example.
-
-## Step 16 — search/regression audit
-
-Before commit:
-```text
-rg "childCausalFrame" app/api/rooms/route.ts
-rg "resumeCausalFrame" app/api/rooms/route.ts
-rg "startNegation\\(" app/api/rooms/route.ts
+```
+rg "advanceNegation" app/api/rooms/route.ts
+rg "continuation.remainingIds" app/api/rooms/route.ts
+rg "resolvingPlayerId" app/api/rooms/route.ts
+rg "advanceCausalSemanticCheckpoint" app/api/rooms app/api/causal-envelope.ts
 rg "recoverCausalEnvelope" app/api/rooms game
-rg "Object\\.defineProperty.*causalEnvelope" app game
 git status --short
 ```
 
-Explain every remaining Group/Duel-related child/resume hit. Borrowed Sword or genuinely independent effects may remain.
+Specifically identify every production path that can change a Negation actor and show which helper now keeps envelope state aligned.
 
-Must keep green:
+## Step 17 — regression and validation
+
+Must remain green:
+- FIX9 same-frame Group/Duel Negation;
+- Group/Duel counter-Negation;
+- Group/Duel duplicate races;
+- Group NULL/Duel malformed tests;
 - FIX6 Attack ownership/stale/malformed;
 - Attack-targeted Cavalry;
 - lethal Attack→Damage→Dying→rescue;
 - Borrowed Sword child/resume;
-- Group gameplay;
-- Duel/Lust gameplay;
 - PresentationV2 unit/engine.
 
-## Step 17 — validation
+Run:
+- focused Negation actor-handoff tests;
+- focused Group/Duel same-frame tests;
+- concurrency;
+- presentation-causality;
+- Borrowed Sword;
+- Ma Chao;
+- causal primitive/context/persistence;
+- PresentationV2 unit + engine;
+- full `npm run test:fast`;
+- full canonical API suite;
+- `npm run build`;
+- `npm run lint`;
+- `git diff --check`.
 
-Run focused FIX9 Group same-frame tests, physical Duel tests, counter-Negation, Group/Duel races, corruption tests, presentation-causality, concurrency, Borrowed Sword, Ma Chao, causal primitive/context/persistence, PresentationV2 unit/engine, full `npm run test:fast`, full canonical API suite, build, lint, and `git diff --check`.
-
-Report exact commands and counts.
+Report exact commands/counts.
 
 ## Scope exclusions
 
 Do NOT:
 - start C3;
-- change the main UX design to match rejected FIX8;
-- solve Group nested Damage in this slice;
+- solve Group nested Damage yet;
 - implement independent Damage fixture;
-- finish Judgement;
-- add delayed provenance;
+- finish Judgement lifetime;
+- add delayed activation provenance;
 - change Dying barrier;
 - migrate PresentationV2;
 - modify React/CSS;
-- change gameplay rules.
+- change gameplay legality or reaction order.
 
 ## Execution result format
 
 Append only:
 
-```text
+```
 ---
 
-## C2-FIX9 execution result — <date>
+## C2-FIX10 execution result — <date>
 
 Branch:
 Implementation commit:
 Files changed:
 
-### Same-frame Negation correction
+### Negation actor-transition inventory
 ...
-### Semantic checkpoint helper
+### Eligibility scan / handoff implementation
 ...
-### Group proof
+### Initial blocker proof
 ...
-### Physical Duel proof
+### Decline handoff proof
+...
+### Timeout handoff proof
 ...
 ### Counter-Negation proof
 ...
-### Group race proof
+### Judged/semantic failure path
 ...
-### Duel race proof
+### NULL/malformed proof
 ...
-### Missing/malformed proof
+### Exact FIX10 matrix
 ...
-### Exact FIX9 matrix
-...
-### Documentation cleanup
+### Documentation correction
 ...
 ### Search audit
 ...
@@ -400,141 +512,20 @@ Files changed:
 ...
 ```
 
-Report actual pushed full SHA. Push implementation + appended result to `origin/ux-v2` and STOP.
+Report actual pushed full SHA.
+
+Push implementation + appended result to `origin/ux-v2` and STOP.
 
 ## Acceptance criteria
 
-FIX9 passes only if:
-- ordinary nested Group/Duel Negation creates no child Frame;
-- same Group/Duel frame changes to NEGATION stage and restores original stage;
-- interactionId/frameId stay stable through Negation and counter-Negation;
-- top-level Pending causal stays aligned with continuation causal;
-- no counter card creates a new Interaction/frame;
-- dedicated Group and Duel duplicate races prove one causal transition;
-- NULL/malformed continuation does not reconstruct authority;
-- independent top-level Negation still creates a root;
-- documentation matches the authoritative main UX design;
-- Attack/Borrowed Sword regressions remain green;
+FIX10 passes only if:
+- no real Negation room state can expose one Pending actor while causal current resolver names another player;
+- ineligible reaction-order scans never become stable decision checkpoints;
+- decline and timeout handoffs update Pending + envelope causality together;
+- each real blocker change creates exactly one checkpoint/revision;
+- deadline arming for the same blocker creates no presentation revision;
+- counter-Negation reset chooses the first actual eligible responder directly;
+- NULL/malformed authority is never reconstructed;
+- FIX9 SAME_FRAME semantics remain intact;
+- all regression/validation commands pass;
 - no C3/UI work begins.
-
----
-
-## C2-FIX9 execution result — 2026-10-02
-
-Branch: `ux-v2`
-Implementation commit: `992bff9f622a92f41b675c96a9bd0fdcae3a75dd`
-Files changed: `app/api/causal-envelope.ts`, `app/api/rooms/route.ts`, `tests/presentation-causality.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `tests/api/concurrency.test.mjs`, `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`, `README.md`
-
-### Same-frame Negation correction
-
-Nested Group/Duel Negation now reuses the active Group/Duel `interactionId` and
-`frameId`. Entry changes the existing frame to `NEGATION`; settlement restores
-`GROUP_RESOLUTION` or `DUEL_EXCHANGE`. No Group/Duel Negation path calls the
-child-frame helper. Independent top-level Negation still creates one root.
-
-### Semantic checkpoint helper
-
-Added `advanceCausalSemanticCheckpoint()` to atomically update one frame's
-stage/current values, create exactly one checkpoint, and increment
-`presentationRevision` exactly once while preserving origin, interaction, and
-frame identity. The existing stage transition path now uses this helper rather
-than two artificial revisions.
-
-### Group proof
-
-`FIX9 persists the Group root and keeps nested Negation in the same Frame`
-proves one Group frame, `NEGATION` stage, immutable Group origin, matching
-Pending/continuation causal IDs, stable repeated/second-viewer identity, and
-same-frame restoration to `GROUP_RESOLUTION`.
-
-### Physical Duel proof
-
-`FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage`
-proves one physical Duel frame, `NEGATION` stage while blocked,
-`DUEL_EXCHANGE` after settlement, same-frame response Attack, and envelope
-settlement without an Attack child frame.
-
-### Counter-Negation proof
-
-`FIX9 Group counter-Negation stays in one frame and restores Group resolution`
-and `FIX9 physical Duel counter-Negation stays in one frame and restores the
-Duel` prove real Negation/counter-Negation card flows keep one interaction and
-frame, preserve the Group/Duel origin, align `response.causal` with
-`continuation.causal`, and restore the original stage. The counter path now
-copies top-level `response.causal` as well as continuation causal context.
-
-### Group race proof
-
-`FIX9 Group duplicate response race advances one participant once` proves two
-concurrent valid Group responses produce exactly one success and one stale
-loser, consume the physical card once, advance once, and retain one causal
-frame/interaction.
-
-### Duel race proof
-
-`FIX9 ordinary Duel duplicate response race advances one exchange once` proves
-two concurrent physical Duel Attack responses produce exactly one success and
-one stale loser, consume the Attack once, advance one exchange, and retain one
-Duel frame/interaction.
-
-### Missing/malformed proof
-
-`FIX9 Group NULL and ordinary Duel malformed envelopes stay non-authoritative`
-proves Group `causal_envelope_json = NULL` and a structurally malformed Duel
-envelope both project as `causalEnvelope: null`, do not reconstruct authority
-from Pending, do not create guessed IDs/checkpoints, do not 500, and continue
-the card flow safely.
-
-### Exact FIX9 matrix
-
-| Requirement | Status | Exact evidence | Remaining gap |
-| --- | --- | --- | --- |
-| Group root remains one frame during nested Negation | PROVEN | named FIX9 Group same-frame API/engine test | none for covered entry |
-| Group Negation uses NEGATION stage on same frame | PROVEN | named FIX9 Group same-frame test | none |
-| Group Negation settlement restores GROUP_RESOLUTION on same frame | PROVEN | named FIX9 Group same-frame test | none |
-| Group counter-Negation stays same interaction/frame | PROVEN | named FIX9 Group counter-Negation test | none |
-| Group stale request preserves identity/checkpoint/revision | PROVEN | named FIX9 Group stale API test | none for covered response |
-| Group duplicate response race cannot duplicate transition | PROVEN | named FIX9 Group duplicate-race API test | none |
-| Group missing envelope does not fabricate authority | PROVEN | named FIX9 Group NULL continuation test | malformed Group variant not added |
-| physical Duel root remains one frame during nested Negation | PROVEN | named FIX9 physical Duel same-frame test | none |
-| Duel Negation uses NEGATION stage on same frame | PROVEN | named FIX9 physical Duel same-frame test | none |
-| Duel Negation settlement restores DUEL_EXCHANGE on same frame | PROVEN | named FIX9 physical Duel same-frame test | none |
-| Duel response Attack remains same Duel frame | PROVEN | named FIX9 physical Duel same-frame test | none |
-| Duel counter-Negation stays same interaction/frame | PROVEN | named FIX9 Duel counter-Negation test | none |
-| Duel stale request preserves identity/checkpoint/revision | PROVEN | named FIX9 Duel stale API test | none for covered response |
-| Duel duplicate response race cannot duplicate transition | PROVEN | named FIX9 Duel duplicate-race API test | none |
-| Duel malformed envelope does not fabricate authority | PROVEN | named FIX9 malformed Duel API test | none |
-| response.causal and continuation.causal align through counter-Negation | PROVEN | Group/Duel counter-Negation assertions | no Judgement nested proof; out of scope |
-| independent top-level Negation still creates its own root | PROVEN | independent Dismantle Negation engine/API assertions | delayed Judgement remains out of scope |
-| no nested Group/Duel Negation creates child/root IDs | PROVEN | Group/Duel tests assert one frame and stable activeFrameId | none for covered paths |
-
-### Documentation cleanup
-
-`docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` and `README.md` now describe
-same-frame Group/Duel Negation and retain Borrowed Sword as the legitimate
-child-frame example. No main UX design, React, CSS, gameplay rule, or C3 work
-was changed.
-
-### Search audit
-
-- `childCausalFrame` in `app/api/rooms/route.ts`: Borrowed Sword forced Attack only.
-- `resumeCausalFrame` in `app/api/rooms/route.ts`: Borrowed Sword parent resume only.
-- `startNegation(`: independent roots plus typed Duel continuation entry; nested Duel reuses the existing frame.
-- `recoverCausalEnvelope`: no production route call site; helper remains isolated in `game/causal-context.ts`.
-- `Object.defineProperty.*causalEnvelope`: no matches in `app` or `game`.
-
-### Validation
-
-- `npm run build` passed.
-- `npm test` passed: fast `108/108`, API `223/223`.
-- `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs node tests/run-tests.mjs` passed `13/13`.
-- `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/concurrency.test.mjs node tests/run-tests.mjs` passed `29/29`.
-- `npm run lint` passed.
-- `git diff --check` passed.
-
-### Remaining C2 work
-
-Independent Damage fixture, Judgement completion, delayed activation provenance,
-Dying barrier, broader automatic-transition audit, and any pre-existing C2
-coverage gaps remain. C3, UI, React, CSS, and gameplay-rule changes remain out
-of scope.
