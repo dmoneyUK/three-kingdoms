@@ -2,527 +2,249 @@
 
 ## Reviewer status
 
-UX2.0C2-FIX6 is **ACCEPTED for the Attack/Damage ownership slice**.
+UX2.0C2-FIX7 is **PARTIAL / NOT ACCEPTED**. Do not start C3.
 
-Reviewed implementation commit:
-`582cf630caedcd6dde47d0cc05fc677891f3f786`
+Reviewed implementation commit: `48d2c00656f034130597a6710949bc00b01ed08f`.
 
-Do **not** start C3. C2 as a whole is not yet complete.
+Accepted: Group and Duel now use explicit `CausalCreation<T>`; their new roots retain/persist envelopes; Group participant progression and Duel alternation reuse causal context; Duel response Attack is not a child Attack frame; sourced damage inherits Group/Duel context; no production recovery or hidden envelope carrier returned; reported suites pass.
 
-### Accepted evidence
-
-- `CausalCreation<T>` remains the explicit root-envelope carrier; no hidden/non-enumerable carrier returned.
-- No production `recoverCausalEnvelope()` call was reintroduced.
-- Real ordinary Attack proves persisted root identity and Pending-context alignment.
-- Repeated reads and a second viewer preserve interaction/frame/checkpoint/revision.
-- The stale 409 path now proves causal identity and presentationRevision remain unchanged and the Dodge remains unconsumed.
-- Concurrent duplicate response still has one winner/one stale loser and cannot introduce a second causal root.
-- Malformed envelope is now tested during a real Attack continuation; gameplay continues safely and does not reconstruct authority from Pending context.
-- Real C2 Attack evidence is separated from the manual C1 projection test.
-- Real Ma Chao Cavalry Attack-targeted entry proves root/Pending alignment and stable read identity.
-- Lethal Attack→Damage→Dying→rescue retains root identity, clears on settlement, and the next Attack gets fresh IDs.
-- The exact 15-row FIX6 matrix is present and honestly leaves independent Damage UNPROVEN and several Attack variants PARTIAL.
-
-### Remaining C2 blockers
-
-The C2 propagation document still identifies these broader blockers:
-1. Group/AOE root ownership is context-only.
-2. Duel root ownership is context-only.
-3. Group nested child/resume is not fully proven.
-4. independent/nested Damage semantics are incomplete.
-5. Judgement lifetime remains incomplete.
-6. Negation/counter lifetime needs complete real-flow evidence.
-7. delayed activation `originRef` provenance remains unproven.
-8. centralized authoritative envelope persistence is not yet applied/proven across all automatic Pending/Continuation transitions.
-9. final settlement/clear coverage is not global.
-
-The next task addresses only the two explicit context-only root creators first.
+Remaining blockers:
+- dedicated Group stale/double causal-ID proof is still PARTIAL;
+- dedicated Duel stale/double causal-ID proof is still PARTIAL;
+- malformed/missing Group/Duel continuation proof is still PARTIAL;
+- current Group evidence captures useful continuity after first-participant damage/trigger progression, but not the exact initial Group causal state before that progression;
+- ordinary physical Duel passes through shared Stratagem/Negation orchestration and still lacks direct causal-envelope lifetime proof;
+- FIX7 changed `startNegation()` so Group/Duel causal context can be inherited into Negation. We must explicitly decide whether nested Negation is a same-Frame Stage or an independently resolving child Frame. Do not silently treat this as settled architecture.
 
 ---
 
-# NEXT TASK — UX2.0C2-FIX7: Make Group and Duel Roots Authoritative
+# NEXT TASK — UX2.0C2-FIX8: Group/Duel Safety + Nested Negation Semantics
 
-## Objective
+## Goal
 
-Convert `groupResponseDecision()` and `duelResponseDecision()` from context-only root creation to the same explicit authoritative-envelope ownership model already accepted for Attack.
+Close FIX7 safety evidence and define one causal rule:
 
-At the end of this slice:
+When Negation opens while Group or Duel is active, decide from the existing engine lifecycle whether Negation is:
+- `SAME_FRAME_STAGE`, or
+- `CHILD_FRAME`.
 
-> A newly started Group/AOE or Duel root creates exactly one `CausalEnvelope`, returns it explicitly to orchestration, and persists that exact envelope atomically with the first authoritative Pending/phase state.
+Use the C0 rule: a child Frame is for an independently resolving nested effect; Stage is semantic progress within one Frame. If Negation suspends its parent, owns its own responder/counter chain, and resumes the parent only after settlement, default to `CHILD_FRAME` unless code inspection proves otherwise.
 
-Do not implement Group child semantics, Judgement, delayed activation, or C3 in this slice.
+Do not start C3, Judgement completion, delayed activation, UI, or broad Group child work.
 
-## Workflow
+## 1. Inspect and document before coding
 
-Work only on `ux-v2`.
+Trace real code for:
 
-Start with:
+Group card → Group root → target Negation window → counter-Negation → affected target response → next participant.
 
-```
-git fetch origin
-git checkout ux-v2
-git pull --ff-only origin ux-v2
-```
+Physical Duel → Duel root → Negation window → counter-Negation → Duel exchange → alternating Attack responses.
 
-Read:
-- this HANDOVER;
-- `docs/UX_V2_0C_CAUSAL_IDENTITY_DESIGN.md`;
-- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`;
-- accepted Attack implementation around `CausalCreation<T>`, `attackDeclaration()`, and `causalRoomStateWrite()`.
+In `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` add `FIX8 Negation nesting decision` containing:
+- suspended parent owner;
+- Pending/Continuation that preserves parent;
+- Negation responder/counter lifecycle;
+- whether Negation has independent source/effect/resolver;
+- chosen `SAME_FRAME_STAGE` or `CHILD_FRAME`;
+- exact C0 reason.
 
-Do not modify/merge `main`. Do not self-merge.
+Write this decision before implementation.
 
-Append execution result to HANDOVER and push implementation + result to `origin/ux-v2`. Do not clean HANDOVER.
+## 2. Implement the chosen nested-Negation rule
 
-## Architectural rule
+Current FIX7 path can pass inherited Group/Duel causal context directly into `startNegation()`. Do not leave ambiguous identity.
 
-Use the accepted Attack pattern as the reference.
+If `CHILD_FRAME`:
+- start from the authoritative persisted parent envelope;
+- create exactly one child Negation Frame;
+- same interactionId, new frameId;
+- child.parentFrameId = Group/Duel parent frameId;
+- Pending Negation points to child;
+- persist child envelope atomically with Negation Pending;
+- every Negation and counter-Negation response stays in that same child;
+- when the chain settles, resume the exact parent frame using the established parent-resume helper;
+- never recreate the parent.
 
-A serializable Group/Duel Pending or continuation may contain only `CausalContext`.
+If `SAME_FRAME_STAGE`:
+- keep one frameId;
+- update authoritative frame stage/current resolver;
+- restore Group/Duel stage/current after Negation;
+- never create root/child during nested Negation.
 
-A newly created root envelope must travel separately through server orchestration:
+For either choice:
+- nested Negation never calls `createCausalRoot()`;
+- never reconstruct from Pending context;
+- never infer causal identity from resolutionId/event/log/card/actionRevision.
 
-```ts
-type CausalCreation<T> = {
-  value: T;
-  createdEnvelope: CausalEnvelope | null;
-};
-```
+Independent top-level Negation may still create its own root.
 
-Expected behavior:
+## 3. Prove initial Group state directly
 
-```ts
-const root = inheritedCausal ? null : createCausalRoot(...);
+Use real Raining Arrows or Barbarian Invasion.
 
-return {
-  value: {
-    ...serializablePending,
-    causal: inheritedCausal ?? root!.context,
-  },
-  createdEnvelope: root?.envelope ?? null,
-};
-```
+Immediately after initial card action reaches its first Group/Negation decision, before participant damage/trigger progression:
+- assert public envelope exists;
+- prove Group root frame exists;
+- verify origin source/effect/original targets;
+- verify persisted Pending causal IDs point to the expected active frame;
+- capture interactionId, root frameId, checkpointId, presentationRevision;
+- repeated read changes none of them;
+- second viewer sees same public envelope.
 
-The authoritative caller must persist `createdEnvelope` at the first Group/Duel decision boundary.
+If first decision is a Negation child, assert envelope contains Group parent + active Negation child and child.parentFrameId equals Group root frameId.
 
-Never:
-- discard `root.envelope`;
-- reconstruct an envelope from Pending context;
-- put full envelope into Pending JSON;
-- use `resolutionId`, timeline event IDs, actionRevision, card names, or log text as causal identity;
-- attach a hidden/non-enumerable envelope property.
+## 4. Prove ordinary physical Duel
 
-## Step 1 — inventory every Group/Duel creator and caller
+Do not use Diao Chan Lust for this proof.
 
-Before coding, repository-search and document every production caller of:
-- `groupResponseDecision()`;
-- `duelResponseDecision()`;
-- `nextGroupResponse()`;
-- any helper that starts/reopens a Duel responder;
-- any helper that starts a Group/AOE participant response.
+Through normal API:
+1. play physical Duel;
+2. capture Duel root and first Negation decision;
+3. resolve/pass Negation normally;
+4. prove causal state resumes/preserves the original Duel frame;
+5. prove persisted Duel Pending points to Duel frame;
+6. responder plays Attack;
+7. opponent becomes next responder while interactionId and Duel frameId remain unchanged;
+8. prove response Attack did not create a child Attack frame;
+9. settle Duel and prove envelope clears.
 
-For each caller record:
+If nested Negation is CHILD_FRAME, explicitly assert parent/child/resume identities.
 
-`function/path | root or inherited continuation | current causal input | first room persistence boundary | CAS/stale guard | required change`
+## 5. Group stale/double causal proof
 
-Important: distinguish:
-- creation of a new independent Group/Duel root;
-- reopening/advancing an existing same-Frame Group/Duel continuation.
+At a real Group participant decision capture interactionId, activeFrameId, checkpointId, presentationRevision, Pending causal IDs, and responder card state.
 
-Only the former may create a root envelope.
+Send intentionally stale actionRevision/request.
 
-## Step 2 — refactor Group root creation
+Assert:
+- 409/stale according to existing contract;
+- all captured causal values unchanged;
+- Pending unchanged;
+- card not consumed;
+- participant not advanced;
+- no duplicate log/effect.
 
-Change `groupResponseDecision()` or its narrow root-producing wrapper so a newly created Group root returns:
-- serializable Group Pending/Response value;
-- exact `createdEnvelope`.
+Then submit valid response. If practical, send two concurrent valid submissions from one revision: one winner, one stale loser, one effect/card consumption, no second root/frame.
 
-Rules:
-- if caller passes inherited causal context, `createdEnvelope === null`;
-- if this is a genuinely new Group root, create once and return both context + envelope;
-- persist the exact envelope with the first Group Pending/phase state;
-- advancing from participant N to participant N+1 must reuse the existing interaction/frame;
-- `nextGroupResponse()` must not create a new root merely because actor changes;
-- no envelope reconstruction if persisted envelope is absent/malformed.
+## 6. Duel stale/double causal proof
 
-Do **not** decide in this task whether nested target effects need child Frames. Keep existing gameplay semantics.
+Repeat the same proof using ordinary physical Duel:
+- stale response leaves interaction/frame/checkpoint/revision unchanged;
+- Attack card remains;
+- valid response advances opponent but retains Duel frame;
+- duplicate/concurrent response cannot create another root/frame.
 
-## Step 3 — prove Group root through a real API flow
+Generic Attack stale evidence is not sufficient.
 
-Choose one existing real Group/AOE card flow already covered by the game/tests.
+## 7. Malformed/missing continuation proof
 
-Preferred: use an existing Group card fixture that naturally asks multiple players to respond. Do not invent a new card or test-only gameplay rule.
+Create named real tests for both Group and ordinary Duel.
 
-Test the complete root/participant identity:
+While continuation is active:
+- corrupt or NULL only `causal_envelope_json` via DB test seam;
+- keep Pending causal context untouched;
+- room projection must expose causalEnvelope null;
+- continue current gameplay action through API;
+- no 500;
+- do not reconstruct an envelope from Pending;
+- do not create a new root mid-continuation;
+- no guessed IDs/checkpoint;
+- effect/card/log occurs at most once.
 
-1. play the Group/AOE card through the real API;
-2. capture the first public/persisted causal envelope;
-3. assert exactly one root Frame;
-4. assert persisted Pending causal interactionId/frameId match envelope;
-5. capture checkpointId and presentationRevision;
-6. read room again: identity/revision unchanged;
-7. read as another viewer: same public envelope;
-8. resolve/decline first participant according to existing gameplay;
-9. when second participant becomes actor, assert:
-   - same interactionId;
-   - same activeFrameId unless current existing semantics intentionally create a child (do not add one here);
-   - no second root was created;
-   - origin remains the original Group source/effect/target set;
-   - current/resolving actor may update according to existing semantics;
-10. stale/double participant submission must not create a second root;
-11. when the Group root fully settles, assert envelope clears if no child/synchronous continuation remains.
+If continuing without authority is unsafe, use an existing controlled stale/legacy-safe outcome rather than fabricating identity.
 
-If current automatic transitions fail to preserve the envelope, fix only the minimum Group persistence boundary required for this root lifetime.
+## 8. Counter-Negation proof
 
-## Step 4 — refactor Duel root creation
+Use a real Group or Duel flow with Negation answered by Negation.
 
-Apply the same explicit wrapper/ownership rule to `duelResponseDecision()` or a narrow root-producing wrapper.
+Prove:
+- interactionId stays constant;
+- parent Group/Duel identity is retained;
+- no counter card creates a new root;
+- CHILD_FRAME choice: all Negation/counter responses remain in one Negation child frame;
+- SAME_FRAME choice: one parent frame remains active;
+- parent origin stays immutable;
+- current resolver follows responder;
+- settlement returns to parent exactly once.
 
-Rules:
-- new independent Duel => one root envelope;
-- alternating responder changes do not create roots;
-- Attack cards played as Duel responses are **not** child Attack Frames;
-- all alternating responders stay in the same Duel interaction/frame;
-- origin remains the original Duel source/effect/original target;
-- current/resolving player changes as the Duel alternates;
-- no reconstruction from Pending context.
+Never create one frame per Negation card.
 
-## Step 5 — prove Duel alternation through a real API flow
+## 9. Exact FIX8 matrix
 
-Use an existing real Duel API fixture.
-
-Required proof:
-
-1. play Duel normally;
-2. capture persisted root envelope;
-3. Pending causal IDs match root;
-4. first responder plays required Attack;
-5. assert next responder is offered the Duel response;
-6. assert interactionId is unchanged;
-7. assert activeFrameId is unchanged;
-8. assert no child Attack Frame was created for the response Attack;
-9. assert origin is unchanged;
-10. assert current resolving player reflects the current responder if current state is updated at this semantic boundary;
-11. complete Duel through decline/no-Attack/damage using existing rules;
-12. assert the root clears only when the Duel causal interaction settles;
-13. start/read another independent supported root if practical and confirm Duel IDs are not reused.
-
-## Step 6 — stale/double safety for Group and Duel
-
-Use existing actionRevision/CAS mechanisms.
-
-For one Group participant decision and one Duel response decision:
-- capture root identity before submission;
-- submit an intentionally stale command;
-- assert 409/stale according to current API contract;
-- assert interactionId/frameId/checkpointId/presentationRevision unchanged;
-- assert card/response not consumed;
-- then submit valid response;
-- if practical, duplicate concurrently and prove one winner/one stale loser;
-- assert no second causal root/frame is introduced.
-
-Do not change stale semantics solely for these tests.
-
-## Step 7 — malformed/missing envelope compatibility
-
-For Group and Duel, do not add broad new corruption suites.
-
-At minimum prove by code path/a focused test where practical:
-- if a legacy continuation has causal context but persisted envelope is NULL/malformed, it does not reconstruct authority;
-- gameplay follows existing legacy-safe behavior;
-- no new root is created mid-continuation merely because the envelope is missing.
-
-If one shared real corruption test can cover the common helper behavior, use it instead of duplicating tests.
-
-## Step 8 — exact FIX7 evidence matrix
-
-Replace the root-creator section's Group/Duel `CONTEXT_ONLY_BUG` claims with their actual post-change status.
-
-Add this exact matrix:
+Add exactly:
 
 | Requirement | Status | Exact evidence | Remaining gap |
 | --- | --- | --- | --- |
-| Group new root exact-envelope persistence | ... | ... | ... |
-| Group Pending context matches envelope | ... | ... | ... |
-| Group participant advance preserves interaction/frame | ... | ... | ... |
-| Group repeated read/second viewer stable | ... | ... | ... |
-| Group stale/double cannot duplicate root | ... | ... | ... |
-| Group settlement clears root | ... | ... | ... |
-| Duel new root exact-envelope persistence | ... | ... | ... |
-| Duel Pending context matches envelope | ... | ... | ... |
-| Duel alternating responders preserve interaction/frame | ... | ... | ... |
-| Duel response Attack creates no child Frame | ... | ... | ... |
-| Duel repeated read/second viewer stable | ... | ... | ... |
-| Duel stale/double cannot duplicate root | ... | ... | ... |
-| Duel settlement clears root | ... | ... | ... |
-| Group/Duel missing envelope does not reconstruct authority | ... | ... | ... |
-| no Group/Duel normal-path recoverCausalEnvelope | ... | ... | ... |
+| Group first root persisted before participant progression | ... | ... | ... |
+| Group nested Negation follows FIX8 decision | ... | ... | ... |
+| Group Negation resumes/preserves exact parent | ... | ... | ... |
+| Group stale request preserves causal identity | ... | ... | ... |
+| Group duplicate response cannot duplicate causal transition | ... | ... | ... |
+| Group malformed/missing continuation does not fabricate authority | ... | ... | ... |
+| ordinary physical Duel root exact persistence | ... | ... | ... |
+| Duel nested Negation follows FIX8 decision | ... | ... | ... |
+| Duel Negation resumes/preserves exact parent | ... | ... | ... |
+| Duel response Attack remains Duel frame | ... | ... | ... |
+| Duel stale request preserves causal identity | ... | ... | ... |
+| Duel duplicate response cannot duplicate causal transition | ... | ... | ... |
+| Duel malformed/missing continuation does not fabricate authority | ... | ... | ... |
+| counter-Negation stays in one nested causal unit | ... | ... | ... |
+| nested Negation never creates a new Interaction root | ... | ... | ... |
 
-Allowed:
-`PROVEN | PARTIAL | UNPROVEN | NOT IMPLEMENTED IN GAME`.
+Statuses only: `PROVEN | PARTIAL | UNPROVEN | NOT IMPLEMENTED IN GAME`. PROVEN requires named real API/engine evidence.
 
-A row is PROVEN only with a named real API/engine test. Source audit alone is PARTIAL.
+## 10. Documentation consistency
 
-## Step 9 — keep child semantics explicitly out of scope
+Update the transition map to distinguish:
+- independent/root Negation;
+- nested Negation inside Group/Duel.
 
-FIX7 is about **root ownership and same-Frame participant/responder progression**.
+Remove any statement implying every Negation is always a new root.
 
-Do not:
-- invent a Group child Frame;
-- classify all Group nested effects;
-- change Damage child semantics;
-- alter Borrowed Sword;
-- redesign Duel gameplay.
+Judgement nested Negation may be documented as intended to follow the same rule, but remains UNPROVEN unless tested in this slice.
 
-If an existing Group path already enters an independent nested effect and that prevents clean root-settlement testing, stop at the boundary and mark the child/resume row as future C2 work. Do not solve it opportunistically.
+## 11. Regression and validation
 
-## Step 10 — regression requirements
-
-The accepted Attack ownership slice must remain green:
-- real Attack persistence/read/viewer;
-- stale/double Attack;
-- malformed Attack continuation;
-- Attack-targeted Cavalry;
+Keep green:
+- FIX6 Attack ownership/stale/malformed;
+- Cavalry Attack-targeted;
 - lethal Attack→Damage→Dying→rescue;
-- Borrowed Sword causal tests.
+- Borrowed Sword child/resume;
+- existing Group and Duel/Lust gameplay;
+- PresentationV2 unit/engine.
 
-No regression to:
-- hidden envelope carrier;
-- production recovery;
-- Pending full-envelope serialization.
+Run focused Group, ordinary Duel, Lust, Negation/counter tests, presentation-causality, concurrency, Borrowed Sword, Ma Chao, causal primitive/context/persistence, PresentationV2 unit/engine, full `npm run test:fast`, full canonical API suite, build, lint, and `git diff --check`. Report exact commands/counts.
 
-## Step 11 — validation
-
-Run after final changes:
-- focused new Group causal tests;
-- focused new Duel causal tests;
-- presentation-causality;
-- concurrency;
-- Borrowed Sword;
-- Ma Chao;
-- causal primitive/context/persistence;
-- PresentationV2 unit;
-- PresentationV2 engine;
-- full `npm run test:fast`;
-- full `node tests/run-api-suite.mjs`;
-- `npm run build`;
-- `npm run lint`;
-- `git diff --check`.
-
-Report exact commands and counts.
-
-Before commit run:
-```
-rg "groupResponseDecision\(" app game
-rg "duelResponseDecision\(" app game
-rg "recoverCausalEnvelope" app/api/rooms game
-rg "Object\.defineProperty.*causalEnvelope" app game
-git status --short
-```
-
-Summarize all relevant hits.
+Before commit summarize results of searches for:
+- `startNegation(`;
+- `createCausalRoot`;
+- child/resume causal helpers;
+- `recoverCausalEnvelope`;
+- hidden causalEnvelope property patterns.
 
 ## Scope exclusions
 
-Do NOT:
-- start C3;
-- implement Group child/resume semantics beyond preserving the existing root;
-- expand Judgement/Negation;
-- add delayed activation provenance;
-- implement independent Damage fixture solely for FIX7;
-- change Dying presentation barrier;
-- migrate PresentationV2;
-- modify React/CSS;
-- change gameplay rules.
+Do not start C3; do not solve every Group nested Damage case; do not implement independent Damage fixture; do not finish Judgement; do not add delayed provenance; do not change Dying barrier; do not migrate PresentationV2; do not modify React/CSS; do not change gameplay rules.
 
-## Execution-result format
+## Execution result
 
-Append only:
+Append only a `C2-FIX8 execution result` section containing:
+- branch and actual pushed full implementation SHA;
+- files changed;
+- Negation nesting decision;
+- Group first-entry proof;
+- ordinary Duel proof;
+- Group stale/double proof;
+- Duel stale/double proof;
+- Group/Duel corruption proof;
+- counter-Negation proof;
+- exact FIX8 matrix;
+- documentation consistency;
+- validation;
+- remaining C2 work.
 
-```
----
+Push implementation + appended result to `origin/ux-v2` and STOP. Do not clean HANDOVER.
 
-## C2-FIX7 execution result — <date>
+## Acceptance
 
-Branch:
-Implementation commit:
-Files changed:
-
-### Group/Duel caller inventory
-...
-
-### Group ownership implementation
-...
-
-### Group real-flow evidence
-...
-
-### Duel ownership implementation
-...
-
-### Duel real-flow evidence
-...
-
-### Stale/double evidence
-...
-
-### Legacy/malformed behavior
-...
-
-### Exact FIX7 matrix
-...
-
-### Regression/architecture sanity
-...
-
-### Validation
-...
-
-### Remaining C2 work
-...
-```
-
-Report actual pushed full SHA.
-
-Push implementation + appended execution result to `origin/ux-v2` and STOP.
-
-## Acceptance criteria
-
-FIX7 passes only if:
-- a new Group root persists the exact envelope created at root creation;
-- Group participant progression does not create new roots;
-- a new Duel root persists the exact envelope created at root creation;
-- alternating Duel responders remain in one interaction/frame;
-- Duel response Attack is not represented as a child Attack Frame;
-- Pending/Continuation remains context-only;
-- Group/Duel do not reconstruct authority from context;
-- stale/double decisions cannot duplicate causal roots;
-- settlement behavior is proven or honestly PARTIAL at a documented existing nested boundary;
-- exact FIX7 matrix is present without overclaiming;
-- accepted Attack ownership tests remain green;
-- no out-of-scope C3/UI/gameplay redesign occurs.
-
----
-## C2-FIX7 execution result — 2026-10-02
-
-Branch: `ux-v2`
-
-Implementation commit: `48d2c00` (`Make Group and Duel causal roots authoritative`)
-
-Files changed:
-- `app/api/rooms/route.ts`
-- `tests/api/equipment.test.mjs`
-- `tests/api/diao-chan.test.mjs`
-- `README.md`
-- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
-
-### Group/Duel caller inventory
-
-- `groupResponseDecision()` now returns `CausalCreation<GroupResponsePending>`.
-  New ordinary AOE callers are the `BarbarianInvasion`/`RainingArrows` branch
-  and the `SkyPiercingHalberdAttack` branch. The first authoritative boundary
-  is `beginStratagemUse()` → `resumeNormalStratagemUse()` →
-  `beginGroupTarget()`; existing Pending equality and response CAS remain the
-  stale guards.
-- `nextGroupResponse()` is inherited-only and is consumed by
-  `finishGroupStep()`; it does not create a root. `beginGroupTarget()` uses the
-  explicit envelope on the first write and the persisted envelope on
-  participant advancement. `finishGroupStep()` clears it at settlement.
-- `duelResponseDecision()` now returns `CausalCreation<ResponsePending>`.
-  New callers are ordinary Duel card play and `beginLustDuel()`. The first
-  boundary is the direct Lust room write or the shared
-  `beginStratagemUse()` continuation write; alternating response CAS is
-  unchanged.
-- Duel response Attack cards update only Duel Pending; no Attack child Frame
-  is created. `resolveDuelLoss()` and Group damage pass inherited causal
-  context into the common sourced-damage boundary.
-
-### Group ownership implementation
-
-`groupResponseDecision()` creates one root and returns its exact
-`createdEnvelope` beside the serializable Pending value. Callers pass it
-through stratagem/target orchestration, and Group responses, Negation windows,
-and participant advances use `causalRoomStateWrite()` with that envelope. The
-common damage boundary inherits Group context from `resumeGroup`, preventing a
-post-damage reaction from clearing the Group root prematurely.
-
-### Group real-flow evidence
-
-The real `RainingArrows` and `BarbarianInvasion` + Xiahou Dun Stauchness flow
-proves first-root persistence, Pending interaction/frame alignment, repeated
-read, second-viewer public identity, same-root progression to the next
-participant, and final envelope clearing. It covers declined and accepted
-Stauchness paths and existing physical-card settlement assertions.
-
-### Duel ownership implementation
-
-`duelResponseDecision()` creates one root and returns the exact envelope. Lust
-persists it with the first response state; ordinary Duel flows pass it through
-the shared stratagem continuation. Alternating responders retain the same
-Duel context. Duel failure damage explicitly carries the Duel context into
-`resolveSourcedDamage()`, and final settlement clears the root.
-
-### Duel real-flow evidence
-
-The real Diao Chan Lust API flow proves first-root persistence, Pending
-interaction/frame alignment, second-viewer identity, same-root continuation,
-one Frame after the response window, and final settlement clearing. Existing
-Lust conversion, Wushuang, Empty Fortress, equipment-cost, and Quick Test
-coverage remains green.
-
-### Stale/double evidence
-
-Existing response CAS/actionRevision coverage remains active and the full API
-suite proves one winner/one stale loser for competing responses. FIX7 does not
-change stale semantics. Dedicated Group/Duel stale rows do not yet assert all
-causal IDs after the 409, so those matrix rows remain PARTIAL.
-
-### Legacy/malformed behavior
-
-No production normal-path call to `recoverCausalEnvelope()` exists, and no
-hidden/non-enumerable envelope carrier was added. Missing or malformed
-envelopes remain non-authoritative; this slice adds no reconstruction from
-Pending context. Dedicated malformed Group/Duel fixtures remain open, so that
-combined matrix row is PARTIAL.
-
-### Exact FIX7 matrix
-
-The exact 15-row matrix is recorded in
-`docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`:
-
-- Group root persistence, Pending alignment, participant progression,
-  repeated/second-viewer stability, and settlement clearing: PROVEN;
-  stale/double: PARTIAL.
-- Duel root persistence, Pending alignment, alternating progression, no child
-  Frame for response Attack, repeated/second-viewer stability, and settlement
-  clearing: PROVEN; stale/double: PARTIAL.
-- Missing-envelope non-reconstruction: PARTIAL pending dedicated corruption
-  fixtures; no normal-path `recoverCausalEnvelope`: PROVEN.
-
-### Regression/architecture sanity
-
-- `CausalCreation<T>` is explicit and serializable Pending stores only
-  `CausalContext`.
-- Group/Duel participant changes reuse the existing Interaction/Frame.
-- No provider-specific HTTP action, React/CSS migration, Group child semantic
-  redesign, Judgement, delayed provenance, or C3 work was added.
-- Search found only the isolated `recoverCausalEnvelope()` helper definition,
-  with no production route call or hidden envelope carrier.
-
-### Validation
-
-- `npm run build` — passed.
-- `npm run test:fast` — 107/107 passed.
-- `npm run test:api` — 214/214 passed.
-- Focused Group/Duel real-flow run — 26/26 passed.
-- `npm run lint` — passed.
-- `git diff --check` — passed.
-
-### Remaining C2 work
-
-Independent Damage root proof, Group nested-child semantics, complete
-Judgement and Negation lifetime evidence, delayed activation `originRef`,
-centralized automatic Pending/Continuation envelope coverage, dedicated
-Group/Duel malformed and causal-ID stale assertions, and global final
-settlement coverage remain open. C3 and UI/React/CSS migration remain out of
-scope.
+FIX8 passes only if all five areas are real-test proven: initial Group root, ordinary physical Duel root, Group/Duel stale safety, Group/Duel malformed safety, and chosen nested-Negation semantics including counter-Negation and exact parent return. No nested Negation may create a new Interaction root. No out-of-scope C3/UI/gameplay redesign.
