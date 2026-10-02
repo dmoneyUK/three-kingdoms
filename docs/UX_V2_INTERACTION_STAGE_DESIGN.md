@@ -1229,6 +1229,454 @@ The semantic model is considered suitable for UX V2 only while it can express th
 If implementation requires React to infer any of these causal relationships from card names, timers, animation completion, or raw pending-stack shape, stop and extend the authoritative semantic projection instead.
 
 
+
+### 0.48 Presentation Contract audit against the current protocol
+
+Before implementing new visual components, UX V2 must reuse the semantic authority already present in the current protocol and Pending/Continuation model.
+
+The existing `CurrentAction` remains the canonical local decision and legality contract. It already carries the authoritative actor, deadline, legal actions, response requirement/options, trigger options, decline action, and selection constraints. UX V2 must not duplicate these as Presentation fields such as `canRespond`, `canSkip`, `legalTargets`, or hero/card-specific legality flags.
+
+Likewise, the existing Pending/Continuation model already carries substantial causal execution context. Attack, Group/AOE, Duel, Negation, Borrowed Sword, Damage, Judgement, Dying, recovery, and trigger continuations preserve source/target and resume information. In particular, nested fields such as `resumeGroup`, `resumeDamageSuffered`, `resumePending`, `resumeTrigger`, Judgement `resume`, and Dying resume data demonstrate that the Engine already owns nested effect execution. The Presentation Projector must project this information; it must not recreate an independent execution stack.
+
+This leads to the following boundary:
+
+~~~text
+ENGINE / ORCHESTRATOR
+  owns legality, execution, continuation and resolution order
+             |
+             v
+PRESENTATION PROJECTOR
+  projects stable public causal meaning
+             |
+             v
+CLIENT
+  viewer projection, layout, local preview/inspect, animation
+~~~
+
+### 0.49 Active Effect presentation must remain thin
+
+The active Presentation effect is a player-facing projection of an already-authoritative Engine effect. It is not a new gameplay object.
+
+Conceptually it may expose:
+
+~~~text
+activeFrame
+  frameId
+  parentFrameId?
+  stage
+  eventObject?
+  participants[]
+  groupResolution?
+  parentSummary?
+~~~
+
+Participant roles are semantic and may be layered. A player may simultaneously be a source, effect target, primary subject, secondary participant, or currently resolving participant.
+
+Do not encode local legality roles such as:
+
+~~~text
+LEGAL_TARGET
+ILLEGAL_TARGET
+SELECTED
+~~~
+
+inside the authoritative active effect. Those belong to CurrentAction and the Local Selection Session.
+
+Likewise, the server should not prescribe responsive layout sizes such as LARGE / MEDIUM / COMPACT. The Projector provides semantic importance/roles; the client chooses the appropriate visual density for Top Row Mode, Side Column Mode, phone, tablet, or desktop.
+
+The current decision actor should reuse `CurrentAction.actorId` unless implementation tests prove that a separate presentation-level blocking actor is required. Do not duplicate an existing authoritative field merely to make the contract look symmetrical.
+
+### 0.50 Public event object and immutable root
+
+The Interaction Stage needs a structured public representation of the thing being resolved, for example a card, skill, Judgement card, damage occurrence, or public status.
+
+This should reuse existing public card/skill/event descriptors wherever possible rather than copy domain objects into a second model.
+
+The Interaction root is immutable historical context:
+
+~~~text
+rootEvent
+  eventId
+  kind
+  sourceId?
+  originalTargetIds[]
+  object?
+~~~
+
+If a target is redirected, `rootEvent.originalTargetIds` remains unchanged while the active Frame's current effect changes.
+
+Historical root targets must never be reused for current target legality.
+
+~~~text
+Historical presentation only.
+Never use rootEvent.originalTargetIds for gameplay legality.
+~~~
+
+### 0.51 Group-resolution projection
+
+The current `GroupContinuation` already provides authoritative group execution information such as source, card kind, required response and remaining participants. The Presentation Projector may add a public summary suitable for rendering without requiring React to reconstruct the group from Pending state.
+
+Conceptually:
+
+~~~text
+groupResolution
+  semantics: SEQUENTIAL | ORDERED | GROUP
+  participants[]
+  activeParticipantId?
+
+participant
+  playerId
+  status: PENDING | CURRENT | PAUSED | RESOLVED | NO_LONGER_APPLICABLE
+  order?
+  outcome?
+~~~
+
+The exact enum names remain an implementation detail.
+
+`resolutionSemantics` must come from authoritative gameplay semantics. The Projector must not infer player-facing simultaneity/order from the Engine's implementation loop.
+
+A group participant's status is not target legality. Do not add `legal: true/false` here.
+
+Outcome summaries must remain small and public, for example Damage, Avoided, Negated, Recovered, Defeated, Completed, with only necessary public values such as damage amount. Detailed causal history belongs in the Reaction Chain.
+
+### 0.52 Reaction Chain contract
+
+Reaction Chain nodes should be structured semantic records rather than preformatted UI strings or raw Engine log entries.
+
+Conceptually:
+
+~~~text
+ReactionChainNode
+  nodeId
+  frameId
+  causedByNodeId?
+  actorId?
+  kind
+  object?
+  targetIds?
+  outcome?
+~~~
+
+`frameId` associates a meaningful public node with the effect being resolved. `causedByNodeId` or equivalent causal identity can preserve a nested branch without forcing the client to infer causality from timestamps.
+
+The Reaction Chain remains a concise explanation of the active causal interaction. It is not a full Frame tree and not the Game Log.
+
+### 0.53 Parent context is a projection, not another source of truth
+
+When a Child Frame is active, the UI needs a lightweight breadcrumb such as:
+
+~~~text
+During B's Dying
+During Barbarian Invasion · resolving D
+~~~
+
+The server must project this from authoritative continuation/resume context. React must not inspect `resumeGroup`, `resumeDamageSuffered`, `resumePending`, `resumeTrigger`, or Judgement resume variants.
+
+Do not expose an unbounded ancestor stack merely for layout. The stable snapshot normally needs the active Frame, immediate parent summary, root context, and nesting depth. Detailed causal history remains available through semantic history/Reaction Chain data.
+
+### 0.54 Settlement and Transition Event contracts
+
+Settlement should be structured public meaning, not free text and not something React guesses from HP differences.
+
+Conceptually:
+
+~~~text
+settlement
+  frameId
+  outcome
+  subjectIds[]
+~~~
+
+Transition Events are ephemeral presentation deltas used for animation:
+
+~~~text
+transitionEvent
+  eventId
+  frameId?
+  kind
+  subjectIds[]
+  payload?
+~~~
+
+Transition Event identity must be stable/idempotent so React rerenders, polling, and reconnects do not replay the same damage/card/Judgement animation repeatedly.
+
+A single authoritative semantic occurrence may project into stable state, a Reaction Chain node, a Settlement summary, and a Transition Event when each representation serves a different lifetime/purpose. These projections must derive from one authoritative occurrence rather than become independent competing truths.
+
+### 0.55 Reconnect invariant
+
+A latest stable PresentationSnapshot must be independently renderable.
+
+Example: if a viewer reconnects after:
+
+~~~text
+Attack
+-> Damage
+-> Dying
+-> C Peach
+~~~
+
+while B is still Dying and D is now the blocking rescuer, the latest snapshot must be sufficient to render:
+
+~~~text
+Root: A Attack B
+Active: B DYING
+Public causal context: C Peach / relevant chain
+Decision: D
+~~~
+
+The client must not need to replay old Attack, Damage, or Peach animations to reconstruct the correct screen.
+
+Transition Events enhance movement between snapshots; they are not prerequisites for reconstructing stable state.
+
+### 0.56 Quick Test viewer-switch invariant
+
+Changing Quick Test viewer must not rewrite shared public causal facts.
+
+For one authoritative snapshot such as:
+
+~~~text
+A Attack B
+B must decide Dodge / decline
+~~~
+
+viewer A may see B centrally and "Waiting for B"; viewer B projects B into the Local Dock with target + decision treatment; viewer C sees A/B centrally and "Waiting for B".
+
+The following shared facts must remain stable across viewer switching:
+
+~~~text
+rootEvent
+activeFrame
+publicReactionChain
+groupResolution
+settlement
+~~~
+
+Only viewer projection and viewer-private CurrentAction/control data may differ.
+
+### 0.57 Existing client causal reconstruction is migration debt
+
+The current client reconstructs active causal presentation from a combination of Pending projections, card identity, phase and timeline scanning. For example, the existing sequence presentation locates a source from several `pendingX` shapes, derives an expected card/effect, searches backward through timeline events, and slices a presentation sequence.
+
+UX V2 should remove this responsibility from React.
+
+Target architecture:
+
+~~~text
+Existing authoritative Engine
+        |
+        +-- CurrentAction
+        +-- Pending / Continuations
+        +-- semantic public events
+        |
+        v
+Pure server-side Presentation Projector
+        |
+        v
+presentationV2
+        |
+        v
+Interaction Stage
+~~~
+
+Do not delete or rewrite the existing timeline animation system in the first UX2.0 change. Introduce the stable projection alongside it, test it independently, then migrate visual consumers incrementally.
+
+### 0.58 Identity audit before finalising interactionId/frameId
+
+The current code already uses `resolutionId`, timeline event IDs, `readyAfterEventId`, and `actionRevision`. Do not introduce new identity fields until their actual lifetimes have been audited.
+
+Before finalising the contract, trace these identities through:
+
+1. Attack -> Dodge;
+2. Attack -> Damage;
+3. Damage -> Dying -> rescue;
+4. Group/AOE -> response -> damage -> resumeGroup;
+5. Duel exchange;
+6. Negation -> counter-Negation;
+7. Borrowed Sword -> forced Attack;
+8. Judgement -> modifier -> result;
+9. Damage trigger -> secondary effect -> nested damage.
+
+For each flow determine:
+
+~~~text
+where resolutionId is created
+whether it survives the entire causal Interaction
+whether nested independent effects reuse or replace it
+where it is lost
+what readyAfterEventId protects
+whether a decision deadline starts before its presentation barrier opens
+whether actionRevision changes for every real blocking decision
+whether timeline event IDs can support idempotent Transition Events
+~~~
+
+Only then decide whether existing `resolutionId` maps to `interactionId`, `frameId`, or neither.
+
+### 0.59 Presentation barrier safety
+
+The current protocol already exposes:
+
+~~~text
+CurrentAction.presentation
+  resolutionId
+  readyAfterEventId
+~~~
+
+and the client uses `readyAfterEventId` to delay enabling a response/trigger decision until a particular public presentation event has been presented.
+
+Preserve the intent: a new decision should not visually appear before the event that explains it.
+
+However, UX2.0 must verify that a cosmetic presentation barrier does not consume a player's real response window. A server deadline and a client-side presentation gate must not combine to leave the player with less usable decision time.
+
+Actionable CHOICE remains higher priority than cosmetic animation. If necessary, cosmetic presentation must fast-forward rather than delay access to a genuine authoritative choice.
+
+Do not remove the barrier mechanism until its existing semantics and timer interaction have been tested.
+
+### 0.60 CurrentAction, actionRevision and checkpoint identity
+
+`CurrentAction` remains authoritative for local control. `actionRevision` remains authoritative for stale-submission protection and already provides a useful boundary for clearing obsolete local selections/providers.
+
+Do not automatically equate `actionRevision` with `checkpointId`.
+
+A meaningful public settlement may create a new Presentation checkpoint without creating a new local action. Conversely, a decision actor/action revision may change while the same Interaction geometry and Stage remain stable.
+
+Mental model remains:
+
+~~~text
+actionRevision       -> command validity
+checkpointId         -> stable presentation identity
+presentationRevision -> observable presentation change
+interaction/frame    -> causal continuity
+~~~
+
+### 0.61 First Presentation Projector scope
+
+The first Projector does not need to expose a complete causal Frame tree to React.
+
+Prefer the minimum sufficient stable projection:
+
+~~~text
+PresentationSnapshot
+  identity
+    presentationRevision
+    interactionId
+    checkpointId
+
+  rootEvent
+
+  activeFrame
+    frameId
+    parentFrameId?
+    stage
+    eventObject?
+    participants[]
+    parentSummary?
+    groupResolution?
+
+  publicReactionChain[]
+
+  settlement?
+
+  transitionEvents[]
+
+  CurrentAction / existing viewer control contract
+~~~
+
+The complete causal tree may remain internal to the Engine/Projector. The client normally needs root context, active Frame, immediate parent context, meaningful history, and current authoritative controls.
+
+### 0.62 Revised UX2.0 implementation sequence
+
+Do not begin UX2.0 by rewriting Interaction Stage React components.
+
+Use this order:
+
+~~~text
+UX2.0A
+Audit resolutionId, readyAfterEventId,
+timeline event identity and actionRevision lifetimes.
+
+UX2.0B
+Build a pure Presentation Projector over existing
+Game / Pending / CurrentAction / semantic events.
+
+UX2.0C
+Finalise semantic identity:
+Interaction / Frame / Checkpoint.
+
+UX2.0D
+Project:
+Root Event
+Active Effect
+participants
+parent context
+group context
+Reaction Chain
+Settlement
+Transition Events.
+
+UX2.0E
+Run architecture tests without React.
+
+UX2.0F
+Expose presentationV2 in the room protocol.
+
+UX2.1+
+Begin visual Interaction Stage migration.
+~~~
+
+The Projector must not become a second rules engine. It consumes authoritative Engine semantics and produces stable public causal meaning.
+
+### 0.63 Coding-agent audit task
+
+Before implementing the Projector contract, give the coding agent this task:
+
+~~~text
+UX2.0A — AUDIT EXISTING RESOLUTION / PRESENTATION IDENTITY
+
+Do not change gameplay or UX yet.
+
+Trace the lifecycle of:
+- resolutionId
+- readyAfterEventId
+- timeline event IDs
+- actionRevision
+
+through:
+- normal Attack -> Dodge
+- Attack -> Damage
+- Damage -> Dying -> rescue
+- Group/AOE -> response -> damage -> resumeGroup
+- Duel exchange
+- Negation -> counter-Negation
+- Borrowed Sword -> forced Attack
+- Judgement -> modifier -> result
+- Damage trigger -> secondary effect -> nested damage
+
+For each scenario document:
+1. where resolutionId is created,
+2. whether it survives the whole causal interaction,
+3. whether nested independent effects reuse or replace it,
+4. where it is lost,
+5. what readyAfterEventId protects,
+6. whether a decision deadline can begin before the presentation barrier opens,
+7. whether actionRevision changes at every real blocking decision,
+8. whether timeline event IDs are stable enough for idempotent transition events.
+
+Do not introduce interactionId/frameId/checkpointId until this audit shows
+which existing identities can be reused.
+
+Also identify every place in app/page.tsx where React reconstructs causal
+context from:
+- pendingX fields,
+- card names,
+- timeline scanning,
+- phase,
+- timers.
+
+The goal is to move causal interpretation into a pure server-side
+Presentation Projector without creating a second legality/rules engine.
+~~~
+
+
 ## 1. Seat thumbnails
 
 Seat topology is designed **mobile portrait first**. Its purpose is to preserve relative seating, distance context, targetability, and player status without consuming the central Interaction Stage.
@@ -2513,15 +2961,15 @@ When implementation is approved, split it into reviewable steps:
 
 1. **UX2.0 — Stable Presentation Contract:** implement the server-side Presentation Projector contract and validate semantic boundaries, interaction/checkpoint identity, blocking decisions, Transition Events, and Reaction Chain projection before relying on it for visual UX.
 2. **UX2.1 — Mobile-first seat topology:** implement Top Row Mode for 2–4 total players and Side Column Mode for 5–10, including responsive thumbnail variants, protected central safe zone, projected distance, layered seat states, and Quick Test perspective remapping.
-2. **UX2.2 — Local Dock + responsive Hero Focus:** establish the large-hand / large-hero dock hierarchy and fixed bottom guidance bar; add INSPECT / PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus states; use wide horizontal event presentation for Top Row Mode and narrow vertical presentation for Side Column Mode; preserve self-projection and Preview → authoritative-event continuity.
-3. **UX2.3 — Selection controls:** unified Cancel / Confirm state and reset semantics.
-4. **UX2.4 — Multi-target:** projected min/max, deselection, max feedback, ordered-target markers.
-5. **UX2.5 — AOE:** automatic participants plus resolved/current/pending state.
-6. **UX2.6 — Other-player actions:** source/target/current-actor presentation.
-7. **UX2.7 — Local incoming effects:** persistent local red-target state and response controls.
-8. **UX2.8 — Special flows:** Negation, Duel, Dying, Judgement, Steal/Dismantle, Borrowed Sword, target shifting.
-9. **UX2.9 — Mobile and 7–10 player compaction.**
-10. **UX2.10 — Quick Test perspective switching and regression coverage.**
+3. **UX2.2 — Local Dock + responsive Hero Focus:** establish the large-hand / large-hero dock hierarchy and fixed bottom guidance bar; add INSPECT / PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus states; use wide horizontal event presentation for Top Row Mode and narrow vertical presentation for Side Column Mode; preserve self-projection and Preview → authoritative-event continuity.
+4. **UX2.3 — Selection controls:** unified Cancel / Confirm state and reset semantics.
+5. **UX2.4 — Multi-target:** projected min/max, deselection, max feedback, ordered-target markers.
+6. **UX2.5 — AOE:** automatic participants plus resolved/current/pending state.
+7. **UX2.6 — Other-player actions:** source/target/current-actor presentation.
+8. **UX2.7 — Local incoming effects:** persistent local red-target state and response controls.
+9. **UX2.8 — Special flows:** Negation, Duel, Dying, Judgement, Steal/Dismantle, Borrowed Sword, target shifting.
+10. **UX2.9 — Mobile and 7–10 player compaction.**
+11. **UX2.10 — Quick Test perspective switching and regression coverage.**
 
 Do not implement all slices in one change. Review the real screen after UX2.1–UX2.3 before committing to later layout details.
 
