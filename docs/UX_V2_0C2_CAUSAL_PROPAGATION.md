@@ -323,3 +323,48 @@ continuation handles never reconstruct public authority.
 
 C3, UI/React/CSS, Group-nested Damage, and the Dying presentation barrier
 remain out of scope.
+
+## C2-FIX12 settlement and identity evidence — 2026-10-02
+
+FIX12 closes the top-level delayed-Judgement Negation settlement boundary.
+`restoreNestedNegationStage()` remains limited to Group/Duel parent work; a
+delayed Judgement root clears at true cancellation/settlement, while a typed
+parent resume remains available for synchronous inherited Judgements. The
+standalone envelope-only write in `beginJudgementResolution()` was removed so
+no-responder activation continues through the same authoritative room-write
+or batch path as its first meaningful result.
+
+### Settlement-exit classification
+
+| Exit | Causal result | Evidence |
+| --- | --- | --- |
+| top-level delayed Judgement Negation | CLEAR ROOT | `delayed Judgement Negation and counter-Negation reuse one activation frame` |
+| nested Group Negation | RESTORE GROUP_RESOLUTION | FIX9 Group same-frame tests |
+| nested Duel Negation | RESTORE DUEL_EXCHANGE | FIX9 Duel same-frame tests |
+| delayed Judgement no responder | CLEAR ROOT at final result | `delayed Judgement with no responders settles without a fake blocker checkpoint` |
+| delayed Lightning transfer | CLEAR old root; card remains in target Judgement Zone | `Lightning transfer settles its activation before a later fresh activation` |
+| synchronous Stauchness Judgement | RESTORE DAMAGE parent | `Xiahou Dun Stauchness declines or resolves a non-Heart Judgement...` |
+| Necromancy replacement | KEEP current Judgement Interaction/Frame until result | `real Judgement replacement rejects stale and duplicate submissions...` |
+
+### Exact FIX12 evidence matrix
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| successful delayed Judgement Negation clears completed root | PROVEN | real delayed Overindulgence Negation regression | none |
+| Judgement Negation never strands NEGATION stage | PROVEN | same regression asserts final NULL envelope | none |
+| real Judgement Negation reuses activation interaction/frame | PROVEN | delayed Negation fixture checks Pending and envelope IDs | none |
+| real Judgement counter-Negation reuses same frame | PROVEN | two real Negation cards in delayed Judgement fixture | none |
+| Negation settlement resumes Judgement or clears exactly once | PROVEN | counter chain settles once with no Pending/root | none |
+| real delayed placement settles before later activation | PROVEN | placement -> decline -> draw API fixture | none |
+| later delayed activation gets different interactionId from placement | PROVEN | placement/activation root IDs differ | none |
+| delayed activation has no parent frame from old placement | PROVEN | fresh activation has `parentFrameId: null` and fresh origin | none |
+| no-responder activation creates no fake blocker checkpoint | PROVEN | no-responder fixture has no Negation Pending and clears root | no browser mid-transaction observation |
+| no-responder activation has atomic authoritative persistence | PROVEN | envelope-only UPDATE removed; final API/D1 state is settled | no browser mid-transaction observation |
+| Lightning transfer clears first activation envelope | PROVEN | transfer fixture asserts NULL after transfer | none |
+| transferred Lightning later activation gets fresh interactionId | PROVEN | later Bob activation compares interaction/frame IDs | none |
+| Judgement stale replacement preserves causal identity | PROVEN | stale request keeps exact Pending JSON and card in Hand | none |
+| duplicate replacement consumes card/transition once | PROVEN | concurrent real Guicai submissions have one winner and one frame | none |
+| Damage-related Judgement preserves parent interaction/frame | PROVEN | real Stauchness path asserts DAMAGE frame after Judgement | none |
+| Damage-related Judgement resumes parent without clearing it | PROVEN | source consequence remains a live Damage trigger | none |
+| NULL/malformed Judgement still never reconstructs authority | PROVEN | existing malformed Judgement envelope regression | none |
+| delayed originRef remains provenance-only or explicitly unsupported | PARTIAL | fresh activation is proven independent; schema has no historical originRef | typed historical originRef remains unsupported |

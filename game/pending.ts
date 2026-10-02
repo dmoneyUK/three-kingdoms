@@ -4,6 +4,7 @@ import type { JudgementPurpose } from "./decisions/judgement";
 import type { DamageCause } from "./capabilities/damage-modifiers";
 import type { TriggerEvent } from "./capabilities/triggers";
 import type { CausalContext } from "./causal-context";
+import type { CausalFrame, CausalFrameCurrent } from "./presentation-causality";
 
 export type CausalFields = { causal?: CausalContext };
 
@@ -18,7 +19,10 @@ export type BorrowedSwordAttackContinuation = CausalFields & { kind: "borrowed_s
 export type DeferredStratagem =
   | { kind: "draw_two"; cardId: string } | { kind: "oath" } | { kind: "harvest"; chooserIds: string[] } | { kind: "harvest_target"; pending: HarvestPending } | { kind: "borrowed_sword"; targetId: string }
   | { kind: "dismantle"; targetId: string } | { kind: "steal"; targetId: string } | { kind: "duel"; pending: ResponsePending } | { kind: "group"; pending: GroupResponsePending }
-  | { kind: "overindulgence"; targetId: string; cardId: string } | { kind: "lightning"; targetId: string; cardId: string } | { kind: "rations_depleted"; targetId: string; cardId: string } | { kind: "judgement"; targetId: string; cardId: string };
+  | { kind: "overindulgence"; targetId: string; cardId: string } | { kind: "lightning"; targetId: string; cardId: string } | { kind: "rations_depleted"; targetId: string; cardId: string } | { kind: "judgement"; targetId: string; cardId: string; causalResume?: JudgementNegationCausalResume };
+export type JudgementNegationCausalResume =
+  | { kind: "root" }
+  | { kind: "parent"; stage: CausalFrame["stage"]; current: CausalFrameCurrent };
 /** Only effect-resumption data belongs in a canonical response continuation. */
 export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string } & CausalFields;
 export type InfluencingAttackContinuation = { kind: "influencing_attack"; sourceId: string; targetId: string; resumePhase: string; sequenceStartCardId: string; origin: "triggered" } & CausalFields;

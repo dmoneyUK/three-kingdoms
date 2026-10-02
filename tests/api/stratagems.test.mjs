@@ -678,13 +678,133 @@ test("Overindulgence uses the Judgement Zone and skips only a failed target's Pl
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([card("Dodge", "unused-judgement"), card("Attack", "post-negation-draw-1"), card("Attack", "post-negation-draw-2")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
   const judgementWindow = await requestAndSettle("draw", { code: game.code, token: alice.token });
   assert.equal(judgementWindow.status, 200); assert.equal(judgementWindow.data.room.phase, "response"); assert.equal(judgementWindow.data.room.pendingNegation.cardName, "Overindulgence"); assert.equal(judgementWindow.data.room.actionPlayerId, alicePlayer.id);
+  const judgementNegationRoot = judgementWindow.data.room.causalEnvelope;
+  assert.ok(judgementNegationRoot, "delayed Judgement Negation has an authoritative root");
+  assert.equal(judgementNegationRoot.frames[0].stage, "NEGATION");
+  const persistedJudgementNegation = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(persistedJudgementNegation.causal.interactionId, judgementNegationRoot.interactionId);
+  assert.equal(persistedJudgementNegation.causal.frameId, judgementNegationRoot.activeFrameId);
   const judgementCancelled = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-judgement-window" });
   assert.equal(judgementCancelled.status, 200); assert.equal(judgementCancelled.data.room.phase, "draw"); assert.deepEqual(judgementCancelled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
+  assert.equal(judgementCancelled.data.room.causalEnvelope, null, "successful Negation settles the completed delayed Judgement root");
   assert.equal(judgementCancelled.data.room.log.filter((entry) => /Overindulgence's effect on Alice is cancelled by Negation\./.test(entry)).length, 2, "each negated Overindulgence records one cancellation");
   const afterJudgementNegation = await requestAndSettle("draw", { code: game.code, token: alice.token });
   assert.equal(afterJudgementNegation.status, 200); assert.equal(afterJudgementNegation.data.room.phase, "play"); assert.equal(afterJudgementNegation.data.room.timeline.some((event) => event.card?.id === "dodge-unused-judgement"), false, "Negation cancels the delayed effect before a judgement card is drawn");
 
 
+});
+
+test("delayed Judgement Negation and counter-Negation reuse one activation frame", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const alice = game.members.find((member) => member.name === "Alice");
+  const [target, , bobPlayer] = game.room.players;
+  const alicePlayer = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(alice && alicePlayer && bobPlayer);
+  const delayed = { ...card("Overindulgence", "judgement-counter-delayed"), suit: "♥", rank: "6" };
+  const first = card("Negation", "judgement-counter-first");
+  const second = card("Negation", "judgement-counter-second");
+  const causalPending = () => JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  setHand(alicePlayer.id, [first], 4, 4);
+  setHand(bobPlayer.id, [second], 4, 4);
+  setJudgement(alicePlayer.id, [delayed]);
+  setTurn(game.code, alicePlayer.seat, "draw");
+  setDeck(game.code, [{ ...card("Dodge", "judgement-counter-judge"), suit: "♠", rank: "7" }]);
+
+  const opened = await requestAndSettle("draw", { code: game.code, token: alice.token });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.room.currentAction.actorId, alicePlayer.id);
+  const root = opened.data.room.causalEnvelope;
+  assert.ok(root);
+  assert.equal(root.frames[0].stage, "NEGATION");
+  assert.equal(root.checkpoint.stage, "NEGATION");
+  assert.equal(causalPending().continuation.effect.kind, "judgement");
+  assert.equal(causalPending().causal.interactionId, root.interactionId);
+  assert.equal(causalPending().causal.frameId, root.activeFrameId);
+
+  const firstResponse = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: first.id, preserveResponse: true });
+  assert.equal(firstResponse.status, 200, JSON.stringify(firstResponse.data));
+  const counter = await state(game.code, game.members.find((member) => member.name === "Bob").token);
+  assert.equal(counter.data.currentAction.actorId, bobPlayer.id);
+  assert.equal(counter.data.causalEnvelope.interactionId, root.interactionId);
+  assert.equal(counter.data.causalEnvelope.activeFrameId, root.activeFrameId);
+  assert.equal(counter.data.causalEnvelope.frames[0].stage, "NEGATION");
+  assert.notEqual(counter.data.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
+  assert.equal(causalPending().continuation.effect.kind, "judgement");
+  assert.equal(causalPending().causal.interactionId, root.interactionId);
+  assert.equal(causalPending().causal.frameId, root.activeFrameId);
+
+  const settled = await requestAndSettle("respond", { code: game.code, token: game.members.find((member) => member.name === "Bob").token, cardId: second.id });
+  assert.equal(settled.status, 200, JSON.stringify(settled.data));
+  assert.equal(settled.data.room.causalEnvelope, null);
+  assert.equal(settled.data.room.pending, null);
+  assert.deepEqual(settled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
+});
+
+test("delayed placement settles before a later activation creates a fresh interaction", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice, bob] = game.members;
+  const hostPlayer = game.room.players.find((player) => player.name === "Host");
+  const alicePlayer = game.room.players.find((player) => player.name === "Alice");
+  const bobPlayer = game.room.players.find((player) => player.name === "Bob");
+  assert.ok(hostPlayer && alicePlayer && bobPlayer);
+  const delayed = { ...card("Overindulgence", "placement-activation"), suit: "♣", rank: "6" };
+  const placementNegation = card("Negation", "placement-window");
+  setHand(hostPlayer.id, [delayed], 5, 5);
+  setHand(alicePlayer.id, [placementNegation], 4, 4);
+  setHand(bobPlayer.id, [], 4, 4);
+  setTurn(game.code, hostPlayer.seat, "play");
+  const placement = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: delayed.id, targetId: alicePlayer.id });
+  assert.equal(placement.status, 200, JSON.stringify(placement.data));
+  const placementRoot = placement.data.room.causalEnvelope;
+  assert.ok(placementRoot);
+  assert.equal(placementRoot.frames[0].stage, "NEGATION");
+  const placementPrompt = await state(game.code, alice.token);
+  assert.equal(placementPrompt.data.pendingNegation.actorId, alicePlayer.id, JSON.stringify(placementPrompt.data));
+  const placed = await requestAndSettle("decline_response", { code: game.code, token: alice.token });
+  assert.equal(placed.status, 200, JSON.stringify(placed.data));
+  assert.equal(placed.data.room.causalEnvelope, null);
+  assert.deepEqual(placed.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards.map((card) => card.id), [delayed.id]);
+
+  const activationNegation = card("Negation", "activation-window");
+  setHand(alicePlayer.id, [], 4, 4);
+  setHand(bobPlayer.id, [activationNegation], 4, 4);
+  setTurn(game.code, alicePlayer.seat, "draw");
+  setDeck(game.code, [{ ...card("Dodge", "placement-activation-judge"), suit: "♠", rank: "7" }]);
+  const activation = await requestAndSettle("draw", { code: game.code, token: alice.token });
+  assert.equal(activation.status, 200, JSON.stringify(activation.data));
+  const activationRoot = activation.data.room.causalEnvelope;
+  assert.ok(activationRoot);
+  assert.notEqual(activationRoot.interactionId, placementRoot.interactionId);
+  assert.notEqual(activationRoot.activeFrameId, placementRoot.activeFrameId);
+  assert.equal(activationRoot.frames[0].parentFrameId, null);
+  assert.equal(activationRoot.frames[0].origin.originSourceId, alicePlayer.id);
+  assert.equal(activationRoot.frames[0].origin.originEffect, "Overindulgence");
+  assert.deepEqual(activationRoot.frames[0].origin.originalTargetIds, [alicePlayer.id]);
+  const repeated = await state(game.code, bob.token);
+  assert.equal(repeated.data.causalEnvelope.interactionId, activationRoot.interactionId);
+  assert.equal(repeated.data.causalEnvelope.activeFrameId, activationRoot.activeFrameId);
+  const settled = await requestAndSettle("decline_response", { code: game.code, token: bob.token });
+  assert.equal(settled.status, 200, JSON.stringify(settled.data));
+  assert.equal(settled.data.room.causalEnvelope, null);
+});
+
+test("delayed Judgement with no responders settles without a fake blocker checkpoint", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const alice = game.members.find((member) => member.name === "Alice");
+  const alicePlayer = game.room.players.find((player) => player.name === "Alice");
+  assert.ok(alice && alicePlayer);
+  const delayed = { ...card("Overindulgence", "no-responder"), suit: "♣", rank: "6" };
+  setHand(alicePlayer.id, [], 4, 4);
+  for (const player of game.room.players.filter((player) => player.id !== alicePlayer.id)) setHand(player.id, [], 4, 4);
+  setJudgement(alicePlayer.id, [delayed]);
+  setTurn(game.code, alicePlayer.seat, "draw");
+  setDeck(game.code, [{ ...card("Dodge", "no-responder-judge"), suit: "♠", rank: "7" }]);
+  const resolved = await requestAndSettle("draw", { code: game.code, token: alice.token });
+  assert.equal(resolved.status, 200, JSON.stringify(resolved.data));
+  assert.equal(resolved.data.room.pending, null);
+  assert.equal(resolved.data.room.pendingNegation, null);
+  assert.equal(resolved.data.room.causalEnvelope, null);
+  assert.equal(query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(game.code)}`), "");
 });
 
 test("Lightning is placed on self, transfers after a miss, and deals 3 thunder damage on Spade 2-9", { timeout: 30_000 }, async () => {
@@ -705,10 +825,13 @@ test("Lightning is placed on self, transfers after a miss, and deals 3 thunder d
   sql(`UPDATE rooms SET deck_json=${quote(JSON.stringify([card("Dodge", "unused-lightning-judge")]))}, discard_json='[]' WHERE code=${quote(game.code)}`);
   const judgementNegationWindow = await requestAndSettle("draw", { code: game.code, token: alice.token });
   assert.equal(judgementNegationWindow.status, 200); assert.equal(judgementNegationWindow.data.room.pendingNegation.cardName, "Lightning");
+  const lightningActivationRoot = judgementNegationWindow.data.room.causalEnvelope;
+  assert.ok(lightningActivationRoot);
+  assert.equal(lightningActivationRoot.frames[0].stage, "NEGATION");
   const latestLightningEvent = judgementNegationWindow.data.room.timeline.filter((event) => event.type === "card" && event.card.id === "lightning-judgement-window").at(-1);
   assert.equal(latestLightningEvent.action, "activate", "a fresh judgement activation anchors the current Negation presentation instead of the original turn's discards");
   const negatedLightning = (await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "negation-lightning-judgement-window" })).data.room;
-  assert.equal(negatedLightning.phase, "draw"); assert.deepEqual(negatedLightning.players.find((player) => player.id === alicePlayer.id).judgementCards.map((delayed) => delayed.id), ["overindulgence-intact-after-lightning"]); assert.deepEqual(negatedLightning.players.find((player) => player.id === bobPlayer.id).judgementCards.map((delayed) => delayed.id), ["lightning-judgement-window"], "Negated Lightning transfers without drawing a Judgement");
+  assert.equal(negatedLightning.phase, "draw"); assert.equal(negatedLightning.causalEnvelope, null, "the transferred Lightning settles the first activation Interaction"); assert.deepEqual(negatedLightning.players.find((player) => player.id === alicePlayer.id).judgementCards.map((delayed) => delayed.id), ["overindulgence-intact-after-lightning"]); assert.deepEqual(negatedLightning.players.find((player) => player.id === bobPlayer.id).judgementCards.map((delayed) => delayed.id), ["lightning-judgement-window"], "Negated Lightning transfers without drawing a Judgement");
 
   const missedLightning = { ...card("Lightning", "miss"), suit: "♠", rank: "K" }; const missJudge = { ...card("Dodge", "miss-judge"), suit: "♥", rank: "7" };
   setHand(alicePlayer.id, [], 4, 4); setJudgement(alicePlayer.id, [missedLightning]); setJudgement(bobPlayer.id, []); setTurn(game.code, alicePlayer.seat, "draw");
@@ -741,6 +864,52 @@ test("Lightning is placed on self, transfers after a miss, and deals 3 thunder d
   const rescued = await state(game.code, alice.token);
   assert.equal(rescued.data.players.find((player) => player.id === alicePlayer.id).hp, 1, "three Peaches rescue a target from -2 HP");
   assert.equal(rescued.data.players.find((player) => player.id === alicePlayer.id).alive, true);
+});
+
+test("Lightning transfer settles its activation before a later fresh activation", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const alice = game.members.find((member) => member.name === "Alice");
+  const bob = game.members.find((member) => member.name === "Bob");
+  const alicePlayer = game.room.players.find((player) => player.name === "Alice");
+  const bobPlayer = game.room.players.find((player) => player.name === "Bob");
+  assert.ok(alice && bob && alicePlayer && bobPlayer);
+  const firstLightning = { ...card("Lightning", "transfer-first"), suit: "♦", rank: "Q" };
+  const firstNegation = card("Negation", "transfer-first-negation");
+  setHand(alicePlayer.id, [firstNegation], 4, 4);
+  setHand(bobPlayer.id, [], 4, 4);
+  setJudgement(alicePlayer.id, [firstLightning]);
+  setTurn(game.code, alicePlayer.seat, "draw");
+  setDeck(game.code, [card("Dodge", "transfer-first-judge")]);
+  const first = await requestAndSettle("draw", { code: game.code, token: alice.token });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  const firstRoot = first.data.room.causalEnvelope;
+  assert.ok(firstRoot);
+  assert.equal(first.data.room.pendingNegation.actorId, alicePlayer.id);
+  const transferred = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: firstNegation.id });
+  assert.equal(transferred.status, 200, JSON.stringify(transferred.data));
+  assert.equal(transferred.data.room.causalEnvelope, null);
+  assert.deepEqual(transferred.data.room.players.find((player) => player.id === bobPlayer.id).judgementCards.map((card) => card.id), [firstLightning.id]);
+
+  const laterNegation = card("Negation", "transfer-later-negation");
+  const laterLightning = { ...card("Lightning", "transfer-later"), suit: "♦", rank: "Q" };
+  setHand(alicePlayer.id, [], 4, 4);
+  setHand(bobPlayer.id, [laterNegation], 4, 4);
+  setJudgement(alicePlayer.id, []);
+  setJudgement(bobPlayer.id, [laterLightning]);
+  setTurn(game.code, bobPlayer.seat, "draw");
+  setDeck(game.code, [card("Dodge", "transfer-later-judge")]);
+  const later = await requestAndSettle("draw", { code: game.code, token: bob.token });
+  assert.equal(later.status, 200, JSON.stringify(later.data));
+  const laterRoot = later.data.room.causalEnvelope;
+  assert.ok(laterRoot);
+  assert.notEqual(laterRoot.interactionId, firstRoot.interactionId);
+  assert.notEqual(laterRoot.activeFrameId, firstRoot.activeFrameId);
+  assert.equal(laterRoot.frames[0].parentFrameId, null);
+  assert.equal(laterRoot.frames[0].origin.originSourceId, bobPlayer.id);
+  assert.equal((await state(game.code, bob.token)).data.causalEnvelope.interactionId, laterRoot.interactionId);
+  const settled = await requestAndSettle("decline_response", { code: game.code, token: bob.token });
+  assert.equal(settled.status, 200, JSON.stringify(settled.data));
+  assert.equal(settled.data.room.causalEnvelope, null);
 });
 
 test("delayed Standard cards resolve newest first and stale draws cannot replay them", { timeout: 30_000 }, async () => {

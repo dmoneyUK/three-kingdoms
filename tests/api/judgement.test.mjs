@@ -19,6 +19,10 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   });
   const accepted = await requestAndSettle("trigger", { code: resolved.code, token: resolved.targetMember.token, providerId: "xiahou_dun_ganglie" });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const damageResumeEnvelope = accepted.data.room.causalEnvelope;
+  assert.ok(damageResumeEnvelope, "Stauchness Judgement resumes into the live Damage interaction");
+  assert.equal(damageResumeEnvelope.frames[0].stage, "DAMAGE");
+  assert.equal(damageResumeEnvelope.frames[0].origin.originSourceId, resolved.source.id);
   const sourceView = (await state(resolved.code, resolved.sourceMember.token)).data;
   assert.equal(sourceView.currentAction.kind, "trigger");
   assert.equal(sourceView.currentAction.triggerEvent, "damage_suffered");
@@ -39,6 +43,42 @@ test("Xiahou Dun Stauchness declines or resolves a non-Heart Judgement through t
   assert.equal(JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(resolved.source.id)}`)).length, 0);
   for (const id of ["dodge-ganglie-spade-judge", "dodge-ganglie-cost-a", "peach-ganglie-cost-b"]) assert.ok(discardIds(resolved.code).includes(id), `${id} is conserved in discard`);
   assert.equal(discarded.data.room.log.filter((entry) => /takes 1 damage\./.test(entry)).length, 1);
+});
+
+test("real Judgement replacement rejects stale and duplicate submissions without a second causal frame", { timeout: 30_000 }, async () => {
+  const game = await openGanglieAttack({ judge: { ...card("Dodge", "judgement-race-original"), suit: "♠", rank: "9" } });
+  const sima = game.room.players.find((player) => player.name === "Bob");
+  const simaMember = game.members.find((member) => member.name === "Bob");
+  assert.ok(sima && simaMember);
+  sql(`UPDATE players SET hero='simayi' WHERE id=${quote(sima.id)}`);
+  const replacement = { ...card("Dodge", "judgement-race-replacement"), suit: "♠", rank: "7" };
+  setHand(sima.id, [replacement], 3, 3);
+  const opened = await requestAndSettle("trigger", { code: game.code, token: game.targetMember.token, providerId: "xiahou_dun_ganglie" });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const revealed = await state(game.code, simaMember.token);
+  assert.equal(revealed.data.currentAction.triggerEvent, "judgement_revealed");
+  const root = revealed.data.causalEnvelope;
+  const pendingBefore = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
+  const staleContext = { actionRevision: revealed.data.actionRevision - 1, meId: sima.id, phase: "response", pendingKind: "trigger", actorId: sima.id };
+  const stale = await request("trigger", { code: game.code, token: simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id, context: staleContext });
+  assert.equal(stale.status, 409, JSON.stringify(stale.data));
+  assert.equal(stale.data.stale, true);
+  assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), pendingBefore);
+  assert.equal(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(sima.id)}`), "1");
+
+  const context = { actionRevision: revealed.data.actionRevision, meId: sima.id, phase: "response", pendingKind: "trigger", actorId: sima.id };
+  const results = await Promise.all([
+    request("trigger", { code: game.code, token: simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id, context }),
+    request("trigger", { code: game.code, token: simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id, context }),
+  ]);
+  assert.equal(results.filter((result) => result.status === 200).length, 1, JSON.stringify(results));
+  assert.equal(results.filter((result) => result.status === 409 && result.data.stale).length, 1, JSON.stringify(results));
+  const after = await state(game.code, simaMember.token);
+  assert.equal(after.data.causalEnvelope.interactionId, root.interactionId);
+  assert.equal(after.data.causalEnvelope.activeFrameId, root.activeFrameId);
+  assert.equal(after.data.causalEnvelope.frames.length, root.frames.length);
+  assert.equal(query(`SELECT json_array_length(hand_json) FROM players WHERE id=${quote(sima.id)}`), "0");
+  assert.equal(discardIds(game.code).filter((id) => id === replacement.id).length, 1);
 });
 
 test("Stauchness uses the final Guicai card, limits discard choices, and resumes when its source disappears", { timeout: 30_000 }, async () => {

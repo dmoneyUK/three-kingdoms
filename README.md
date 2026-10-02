@@ -75,6 +75,16 @@ never reconstructed. The broader C2 gate remains partial for delayed
 `originRef`, transfer and Judgement-Negation runtime evidence, nested Damage,
 and the Dying barrier.
 
+C2-FIX12 closes the reviewed delayed-Judgement gaps: successful Judgement
+Negation and counter-Negation reuse one activation frame and clear it at true
+settlement; placement and later activation have distinct fresh identities;
+no-responder activation avoids a standalone envelope write; Lightning transfer
+settles before a later fresh activation; real Necromancy stale/duplicate races
+are covered; and Stauchness proves Damage-parent resume. C2 remains partial
+only for historical delayed `originRef` persistence and previously deferred
+Group-nested Damage/Dying presentation work. The next milestone is reviewer
+validation of FIX12; do not start C3.
+
 ## UX2.0B-FINAL verification — 2026-10-02
 
 On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue

@@ -799,10 +799,10 @@ async function beginJudgementResolution(room: RoomRow, target: PlayerRow, player
     ]);
     return [];
   }
-  if (createdEnvelope && !room.causal_envelope_json) {
-    await db().prepare("UPDATE rooms SET causal_envelope_json = ? WHERE id = ?").bind(JSON.stringify(createdEnvelope), room.id).run();
-  }
-  const resumedRoom = createdEnvelope && !room.causal_envelope_json ? { ...room, causal_envelope_json: JSON.stringify(createdEnvelope) } : room;
+  // Keep a newly-created Judgement root in the same authoritative write path
+  // as its first meaningful continuation. A standalone envelope-only write
+  // would expose a half-state between activation and resolution.
+  const resumedRoom = createdEnvelope ? { ...room, causal_envelope_json: JSON.stringify(createdEnvelope) } : room;
   return (await resolveJudgementContinuation(resumedRoom, persistedJudgement, persistedJudgement.revealedCard, players, deck, discard, log, writes)) ?? [];
 }
 
@@ -2002,7 +2002,7 @@ async function startJudgementNegation(room: RoomRow, target: PlayerRow, players:
   const presentation = addCardEventWithId(log, target.name, delayed, target.name, "activate");
   log = presentation.log;
   const cardName = cardDefinition(delayed.kind).name;
-  const eligibility = { kind: "negation" as const, sourceId: target.id, negated: false, cardName, effectTargetId: target.id, resumePhase: room.phase?.startsWith("draw") ? room.phase : "draw", effect: { kind: "judgement" as const, targetId: target.id, cardId: delayed.id }, responseTarget: `${cardName}'s effect on ${target.name}`, chainDepth: 0, remainingIds: [] } satisfies NegationContinuation;
+  const eligibility = { kind: "negation" as const, sourceId: target.id, negated: false, cardName, effectTargetId: target.id, resumePhase: room.phase?.startsWith("draw") ? room.phase : "draw", effect: { kind: "judgement" as const, targetId: target.id, cardId: delayed.id, causalResume: { kind: "root" } }, responseTarget: `${cardName}'s effect on ${target.name}`, chainDepth: 0, remainingIds: [] } satisfies NegationContinuation;
   const first = nextEligibleNegationResponder(players, responders.map((player) => player.id), eligibility);
   const activationRoot = createCausalRoot({ stage: "JUDGEMENT", origin: { originSourceId: target.id, originEffect: cardName, originalTargetIds: [target.id] }, current: { currentSourceId: target.id, currentEffect: cardName, currentTargetIds: [target.id], resolvingPlayerId: null } });
   if (!first.actor) return { handled: false, causalRoot: activationRoot };
@@ -2080,7 +2080,10 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
       }
       discard.push(...heldCards);
       writes.push(db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(remaining), pending.effect.targetId));
-      writes.push(causalRoomStateWrite(roomId, { phase: pending.resumePhase, pending: null, discard, log, causalEnvelope: resumedEnvelope }));
+      const judgementSettlementEnvelope = pending.effect.causalResume?.kind === "parent" && resumedEnvelope && pending.causal
+        ? advanceCausalSemanticCheckpoint(resumedEnvelope, pending.causal.frameId, { stage: pending.effect.causalResume.stage, current: pending.effect.causalResume.current })
+        : null;
+      writes.push(causalRoomStateWrite(roomId, { phase: pending.resumePhase, pending: null, discard, log, causalEnvelope: judgementSettlementEnvelope }));
       if (writes.length) await db().batch(writes);
       return [];
     }
@@ -2152,7 +2155,7 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     } else {
       const judgement = [...parse<Card[]>(target.judgement_json, []), played];
       log = addLog(log, `${played.rank}${played.suit} ${pending.cardName} is placed in ${target.name}'s Judgement Zone.`);
-      await db().batch([db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(judgement), target.id), db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), roomId)]);
+      await db().batch([db().prepare("UPDATE players SET judgement_json = ? WHERE id = ?").bind(JSON.stringify(judgement), target.id), causalRoomStateWrite(roomId, { phase: pending.resumePhase, pending: null, discard, log, causalEnvelope: null })]);
     }
   } else if (pending.effect.kind === "judgement") {
     const target = players.find((player) => player.id === pending.effect.targetId && player.alive);
