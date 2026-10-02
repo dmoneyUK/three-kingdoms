@@ -744,6 +744,315 @@ The server should eventually project enough authoritative public interaction dat
 
 Private choices remain projected only to the player who owns that decision.
 
+## 3C. Responsive Hero Focus and participant presentation
+
+The Interaction Stage must not simply enlarge the existing opponent card. It needs a dedicated public **Hero Focus** presentation whose job is to explain a participant's public state and relationship to the current interaction.
+
+The three layers have different responsibilities:
+
+- **Seat Thumbnail:** find the player, understand seat topology, distance, and lightweight status.
+- **Hero Focus / Interaction Stage:** understand a participant's public state and role in the current event.
+- **Local Player Dock:** operate the viewer's own cards, skills, and decisions.
+
+### Hero Focus information priority
+
+For a focused opponent, prioritise:
+
+1. hero art,
+2. HP / essential hero state,
+3. public skills,
+4. equipment,
+5. Judgement state,
+6. concealed hand count / backs,
+7. lower-priority player metadata.
+
+Hero art should be materially larger than the Seat Thumbnail so that entering Focus has a meaningful visual and immersive benefit.
+
+Opponent hand presentation is informational, not equivalent to the viewer's operational hand. Normally show a compact concealed count / small backs rather than consuming the stage with one back for every card.
+
+### Four Hero Focus states
+
+Use one coherent Hero Focus presentation with four semantic states rather than unrelated modals:
+
+1. **INSPECT**
+   - viewer is voluntarily reading public information,
+   - does not mutate gameplay target selection,
+   - may open skill / equipment / Judgement explanations.
+
+2. **PREVIEW**
+   - local player has selected this participant as an unsubmitted target,
+   - selected Seat Thumbnail and Focus stay synchronised,
+   - clearly distinguish this from an authoritative event,
+   - no public Reaction Chain node exists yet.
+
+3. **ACTIVE**
+   - participant belongs to the authoritative current interaction,
+   - role markers may include source, effect target, decision actor, or resolving participant,
+   - Current Effect and public Reaction Chain are shown as applicable.
+
+4. **SELECTABLE DETAIL**
+   - an authoritative multi-stage choice requires selection from this player's cards / zones,
+   - legal equipment, Judgement cards, or concealed hand positions become individually selectable,
+   - hidden information remains hidden.
+
+Prefer state transitions inside the same visual structure instead of replacing the centre with a separate modal.
+
+### Top Row Mode / wide centre
+
+With 2–4 total players, the Interaction Stage has a relatively wide centre.
+
+For a single external focused participant, use a large central Hero Focus.
+
+For an interaction between two external participants, horizontal semantic presentation is preferred when it fits:
+
+```text
+[SOURCE HERO] ── [CARD / SKILL] ──▶ [TARGET HERO]
+```
+
+If the viewer is one of those semantic participants, do not duplicate the viewer centrally. Project the viewer's role into the Local Player Dock and show only the external participant centrally.
+
+### Side Column Mode / narrow centre
+
+With 5–10 total players, the Interaction Stage is narrower and taller.
+
+Use a portrait-oriented Hero Focus rather than shrinking a wide desktop card.
+
+For two external semantic participants, prefer vertical relationship presentation:
+
+```text
+      [SOURCE]
+          │
+     [CARD/SKILL]
+          │
+          ▼
+      [TARGET]
+```
+
+This is the responsive equivalent of source-left / target-right. Semantic direction remains source → target; only the spatial projection changes.
+
+Do not force two equally large hero panels into a narrow centre if doing so makes the Reaction Chain or current decision unreadable. The current primary Focus / resolving participant may use a **Large Hero Focus**, while the other external participant uses a **Medium Participant Card**.
+
+The hierarchy should communicate who is currently being resolved without losing the root source / target relationship.
+
+### Self-projection rule
+
+The viewer's own hero never appears as a duplicate Hero Focus.
+
+If the viewer is the source:
+
+```text
+      [TARGET HERO]
+            ▲
+            │
+        [CARD/SKILL]
+            │
+           YOU
+       Local Dock
+```
+
+If the viewer is the target:
+
+```text
+       [SOURCE HERO]
+            │
+        [CARD/SKILL]
+            │
+            ▼
+           YOU
+   red Local Dock state
+```
+
+If the viewer is the current decision actor, emphasise the Local Player Dock with the decision treatment and keep private options there.
+
+### Preview to authoritative interaction transition
+
+When the local player confirms a Preview, preserve visual continuity where possible.
+
+Example:
+
+```text
+PREVIEW
+[Zhao Yun]
+YOU ─ Attack ─▶ Zhao Yun
+```
+
+should transition directly into:
+
+```text
+CURRENT EFFECT
+[Zhao Yun]
+YOU ─ [Attack] ─▶ Zhao Yun
+```
+
+without unnecessarily removing and rebuilding the focused hero in another location.
+
+After submission:
+
+- Preview styling ends,
+- authoritative event styling begins,
+- Cancel disappears for the submitted selection,
+- Reaction Chain may now receive the authoritative root node,
+- current decision / resolution presentation follows server state.
+
+**Preview ≠ Event.**
+
+### Public skills
+
+Opponent public skills must remain readable and inspectable but should not look like the viewer's large actionable skill buttons.
+
+- local skill controls communicate "I can do this",
+- opponent skill chips / labels communicate "this player has this public ability".
+
+Detailed public rules may expand on inspect instead of permanently occupying central space.
+
+### Equipment in Hero Focus
+
+Equipment remains compact, but it may be more explicit than on Seat Thumbnails because it can materially affect target decisions.
+
+Each equipment object must retain an independent inspect / selection identity.
+
+Do not flatten equipment into decorative text because it may participate in:
+
+- Steal,
+- Dismantle,
+- Borrowed Sword,
+- replacement,
+- equipment skills,
+- other server-projected card choices.
+
+### Judgement in Hero Focus
+
+In ordinary Inspect / Preview / Active presentation, show persistent delayed/Judgement state as compact overlays or badges associated with the hero.
+
+When Judgement itself becomes the active interaction, promote it into the Interaction Stage and show the revealed card, modifier, and resolution chain.
+
+When an effect requires selecting a Judgement-zone card, SELECTABLE DETAIL may expand those compact indicators into individually selectable cards.
+
+### Concealed opponent hand
+
+Normally use a compact representation such as:
+
+```text
+[card back] ×4
+```
+
+rather than spending central space on four large backs.
+
+When an authoritative choice requires selecting a concealed hand position, expand only as much as necessary:
+
+```text
+HAND
+[back] [back] [back] [back]
+  1      2      3      4
+```
+
+All backs remain indistinguishable unless the server explicitly projects additional information. Entering Hero Focus must never reveal private card identities.
+
+### Inspect versus target selection
+
+Inspection and targeting are independent operations.
+
+During target selection:
+
+- Seat Thumbnail body selects / deselects according to target rules,
+- a dedicated info affordance opens INSPECT,
+- inspecting must not clear, replace, or submit the current target selection.
+
+Outside target selection, the Seat Thumbnail body may open INSPECT.
+
+### SELECTABLE DETAIL continuity
+
+Multi-stage effects such as Steal / Dismantle should not jump into an unrelated generic modal.
+
+Preferred flow:
+
+```text
+select card/skill
+→ choose player
+→ PREVIEW / Confirm as required
+→ authoritative next stage
+→ same Hero Focus becomes SELECTABLE DETAIL
+→ choose legal zone/card
+→ Confirm
+```
+
+The server projection determines which objects are selectable.
+
+A focused player may therefore move naturally from:
+
+```text
+Equipment: [weapon] [armor]
+Hand:      [back] ×4
+Judgement: [delayed effect]
+```
+
+to:
+
+```text
+SELECT ONE LEGAL CARD
+
+Equipment: [weapon]* [armor]*
+Hand:      [back]* [back]* [back]* [back]*
+Judgement: [delayed effect]*
+```
+
+without exposing concealed identities.
+
+### Reaction Chain coexistence
+
+Hero Focus must leave room for Current Effect and Reaction Chain.
+
+In a wide centre, a typical relationship may be:
+
+```text
+[SOURCE] ── [CARD] ──▶ [TARGET]
+
+REACTION CHAIN
+① ...
+② ...
+③ current ▶
+```
+
+In a narrow centre:
+
+```text
+      [SOURCE]
+          ↓
+        [CARD]
+          ↓
+      [TARGET]
+
+──────────────
+ROOT ...
+Earlier ×N ▸
+recent ...
+current ... ▶
+```
+
+When space is constrained:
+
+1. collapse older Reaction Chain detail,
+2. reduce non-primary external participants from Large to Medium / Compact,
+3. compact secondary public metadata,
+4. only then consider reducing the primary Hero Focus.
+
+Do not solve Reaction Chain growth by making the local hand unusable.
+
+### Participant-size hierarchy
+
+Interaction participants do not all require identical full-size hero panels.
+
+Use semantic presentation levels:
+
+- **Large Hero Focus:** current primary focus / resolving participant.
+- **Medium Participant Card:** important source / target whose relationship must remain visible.
+- **Compact Reaction Identity:** third-party reactor whose public action is represented primarily in the Reaction Chain.
+
+A third-party Negation participant, for example, normally does not need another full hero panel merely because they contributed one reaction. Their Seat Thumbnail can receive the appropriate public state while the Reaction Chain records their action.
+
+This prevents complex 5–10 player interactions from filling the centre with enlarged heroes.
+
+
 ## 4. Single-target selection
 
 When the local player selects a card or skill requiring one target:
@@ -989,7 +1298,7 @@ React should primarily render projected legality and public interaction state ra
 When implementation is approved, split it into reviewable steps:
 
 1. **UX2.1 — Mobile-first seat topology:** implement Top Row Mode for 2–4 total players and Side Column Mode for 5–10, including responsive thumbnail variants, protected central safe zone, projected distance, layered seat states, and Quick Test perspective remapping.
-2. **UX2.2 — Local Dock + single-target Interaction Stage:** establish the large-hand / large-hero dock hierarchy, fixed bottom guidance bar, then one selected opponent with public detail and target replacement.
+2. **UX2.2 — Local Dock + responsive Hero Focus:** establish the large-hand / large-hero dock hierarchy and fixed bottom guidance bar; add INSPECT / PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus states; use wide horizontal event presentation for Top Row Mode and narrow vertical presentation for Side Column Mode; preserve self-projection and Preview → authoritative-event continuity.
 3. **UX2.3 — Selection controls:** unified Cancel / Confirm state and reset semantics.
 4. **UX2.4 — Multi-target:** projected min/max, deselection, max feedback, ordered-target markers.
 5. **UX2.5 — AOE:** automatic participants plus resolved/current/pending state.
@@ -1010,7 +1319,10 @@ The next design discussion should settle **UX2.1 + UX2.2** before coding:
 - validate top-row versus side-column thumbnail dimensions, labels, HP, hand count, distance, and status density,
 - validate the minimum protected Interaction Safe Zone width / height without hard-coding desktop assumptions,
 - validate battlefield height above the persistent Local Player Dock,
-- exact single-target Focus dimensions,
+- validate Large / Medium / Compact participant dimensions in both wide-centre and narrow-centre geometry,
+- validate how much hero art can remain visible while public skills/equipment/hand count remain readable,
+- validate PREVIEW → ACTIVE transition without unnecessary hero repositioning,
+- validate SELECTABLE DETAIL for Steal / Dismantle without a separate modal or hidden-information leak,
 - how Current Effect, Reaction Chain, and Current Decision are arranged inside the Interaction Stage,
 - where the Reaction Chain sits relative to enlarged hero panels,
 - how the Interaction Stage coexists with draw / discard / resolution animation,
