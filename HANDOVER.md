@@ -2,220 +2,192 @@
 
 ## REMOTE HANDOVER RULE — MANDATORY
 
-HANDOVER.md is a tracked remote coordination file. It MUST be committed and pushed to origin/ux-v2. Do not keep it local-only, gitignore it, untrack it, revert it, discard it, or omit it. After implementation, append the execution result, commit/push to origin/ux-v2, run git fetch origin, verify origin/ux-v2:HANDOVER.md contains the result, then STOP.
+HANDOVER.md is tracked remote coordination state. Commit and push it to origin/ux-v2. Never keep it local-only, ignore, untrack, revert, discard, or omit it. After implementation append the execution result, push implementation + HANDOVER, git fetch origin, verify origin/ux-v2:HANDOVER.md contains the result, then STOP.
 
 ## Reviewer status
 
-UX2.0C5-02-FIX1 implementation `4e30269084b16cec151a28f20c6d2097fd7ba180` is **ACCEPTED**.
+UX2.0C5-03 implementation `db34f23af5b9c5d86307b50105d8297a084fbb7d` is **PARTIAL — C5-03-FIX1 REQUIRED**.
 
-C5-02 is CLOSED / ACCEPTED.
+Accepted:
+- typed stableBoundary with REST / CHOICE / SETTLEMENT / SPECIAL exists;
+- CHOICE reuses the accepted semantic decision actor and does not read CurrentAction actor/options;
+- REST is identity-free;
+- Judgement SPECIAL is stage-owned by the proven causal scene;
+- settlement/transitionEvents remain compatibility data rather than causal identity;
+- no React/CSS/gameplay/C7 scope creep;
+- reported validation: focused 50/50, fast 122/122, API 238/238, build/lint/diff-check PASS.
 
-Reviewer verified:
-- public decisionActorId no longer comes from CurrentAction;
-- semanticDecisionActorId requires persisted semantic Pending actor, matching causal interaction/frame and active resolver; Dying retains dyingDecisionProof;
-- top-level interactionScene.decisionActorId and participantRoles.decisionActorId share the same proof;
-- parentParticipantId no longer falls back to child currentParticipantId;
-- unsupported optional roles remain null without downgrading a PROVEN scene;
-- migration vocabulary is restored to KEEP / DERIVE / DEPRECATE-LATER;
-- real-path assertions cover Attack/Judgement resume, Duel, Group child/Dying/resume/Negation, Damage, root/counter Negation, Dying rescue handoff, and Borrowed Sword;
-- CurrentAction is no longer passed into interactionSceneFor;
-- no React/CSS/gameplay scope creep occurred;
-- reported validation is green: fast 117/117, API 238/238 in the full npm test run, build/lint/diff-check PASS.
+Blocking issue 1 — SETTLEMENT classification is not viewer-independent.
 
-C5 is NOT closed. The next design gap is stable-boundary classification plus a precise settlement/transitionEvents compatibility boundary. Do not start C6/C7/React.
+`settlementEvent` is selected from `relevantIds`, and `relevantIds` includes `barrierId = input.currentAction?.presentation?.readyAfterEventId`. CurrentAction is viewer/control projection. Therefore a finalResult event reachable only through one viewer's CurrentAction barrier can make that viewer SETTLEMENT while another viewer with the same public causal scene remains REST/SPECIAL.
+
+The new synthetic SETTLEMENT proof actually relies on this path: it supplies CurrentAction.readyAfterEventId = settlement-event. That proves the opposite of the public-boundary requirement.
+
+A public stableBoundary must not depend on a viewer-private/control-only event selector.
+
+Blocking issue 2 — Borrowed Sword SPECIAL can be fabricated by unrelated Pending metadata.
+
+`stableBoundaryFor` currently classifies SPECIAL when:
+`continuationKind === "borrowed_sword_attack"`
+
+but it does not prove that this Pending causal interaction/frame belongs to the proven active scene. A coherent envelope plus an unrelated/mismatched borrowed_sword_attack Pending can therefore upgrade the boundary to SPECIAL.
+
+The same fail-closed principle used for semanticDecisionActorId must apply: Pending-derived SPECIAL evidence needs typed causal linkage to the proven scene. Judgement stage evidence is already scene-owned; Borrowed Sword must not be inferred from an unlinked continuation string.
+
+Do not start C6/C7/React.
 
 ---
 
-# NEXT TASK — UX2.0C5-03: Typed Stable Boundary + Settlement/Transition Compatibility Audit
+# NEXT TASK — UX2.0C5-03-FIX1: Remove Viewer-Control and Unlinked-Pending Authority from Stable Boundary
 
 ## Objective
 
-Add the smallest server-owned semantic contract that classifies the current player-meaningful presentation boundary as REST, CHOICE, SETTLEMENT, or SPECIAL, without creating the final C7 PresentationSnapshot.
+Make stableBoundary genuinely public, viewer-independent and fail-closed.
 
-Audit settlement and transitionEvents so future C7 work has a precise migration boundary. Do not change gameplay or React/CSS.
+No REST/CHOICE/SETTLEMENT/SPECIAL classification may change because one viewer has different CurrentAction metadata. No Pending-derived SPECIAL may be accepted unless that Pending is causally linked to the proven scene.
 
-## Step 1 — inventory real stable boundaries
+Do not broaden scope.
 
-Use existing real fixtures for normal rest/play, Attack, Duel, Group/AOE, Negation, Judgement, Dying rescue, Borrowed Sword, Damage, terminal settlement, and Group child/resume.
+## Step 1 — separate descriptive settlement selection from semantic settlement authority
 
-For each checkpoint record:
-- whether progress is genuinely blocked for input;
-- whether a persistent special context exists;
-- whether it is settled;
-- whether it is simply resting;
-- the authoritative server fact proving that classification.
+Keep legacy `settlement` compatibility behavior if required, but do not pass a CurrentAction/barrier-selected settlement event directly as public semantic authority.
 
-Do not infer CHOICE from a viewer having controls.
+Define a separate settlement proof for stableBoundary.
 
-## Step 2 — define the typed stable-boundary contract
+Requirements:
+- proof must be viewer-independent;
+- CurrentAction.readyAfterEventId, CurrentAction.resolutionId and CurrentAction actor/options cannot establish SETTLEMENT;
+- timeline event/finalResult alone cannot create causal identity;
+- a cleared scene remains identity-free REST even if legacy settlement is populated;
+- if no existing server-owned linkage can prove SETTLEMENT, do not fabricate one: leave typed boundary REST/SPECIAL and document SETTLEMENT as not yet provable.
 
-Add one typed public PresentationV2 semantic field containing at minimum:
-- kind: REST | CHOICE | SETTLEMENT | SPECIAL;
-- proven interactionId/checkpointId/presentationRevision when applicable;
-- decisionActorId only for a proven CHOICE.
+## Step 2 — prove or intentionally bound SETTLEMENT
 
-Reuse interactionScene/dyingBarrier authority. Do not duplicate the full scene or create PresentationSnapshot.
+Audit real production paths for a finalResult while a proven scene remains attached.
 
-If a kind cannot be proved safely, represent that limitation explicitly instead of guessing.
+If there is an authoritative public link from the proven interaction/checkpoint to the final result, encode the smallest proof and test it across viewers.
 
-## Step 3 — CHOICE authority
+If there is not, remove/disable semantic SETTLEMENT emission for that path in C5 and explicitly document:
+- enum value is reserved/contractual;
+- current production authority does not yet prove it;
+- legacy settlement remains descriptive DEPRECATE-LATER;
+- C7 may add durable settlement occurrence semantics.
 
-CHOICE means authoritative progress is genuinely blocked waiting for a real player.
+Do not use resolutionId/event ordering/barrierId as causal proof.
 
-Reuse accepted semantic decision proof:
-- Dying uses dyingDecisionProof;
-- supported response/trigger families use semanticDecisionActorId or stricter shared proof;
-- CurrentAction options are control data, not public causal proof.
+## Step 3 — add viewer-divergent settlement regression
 
-A PROVEN scene with null decisionActorId is not automatically CHOICE. Add a coherent non-blocking negative case.
+Construct the same causal envelope/Pending/timeline for two projections while varying only CurrentAction:
+- viewer A has readyAfterEventId/final-result-related control metadata;
+- viewer B has no such barrier or different control metadata.
 
-## Step 4 — SPECIAL authority
+Assert stableBoundary deep-equal.
 
-Identify only existing persistent special contexts that genuinely require stable special presentation. Assess Dying, Judgement, Borrowed Sword and nested Group contexts from real behavior.
+Legacy `decision` and, if compatibility requires, legacy `settlement` may differ; stableBoundary must not.
 
-Do not label every non-choice interaction SPECIAL. Document the exact supported rule.
+Also add a real API viewer-equality assertion at a settlement-adjacent checkpoint if an existing fixture exposes one.
 
-## Step 5 — SETTLEMENT authority
+## Step 4 — causally prove Pending-derived SPECIAL families
 
-Audit current settlement/finalResult/timeline behavior.
+Create/reuse a helper that validates Pending causal linkage to the proven scene before any Pending continuation kind can establish SPECIAL.
 
-Timeline presence alone must not fabricate causal identity. Settlement must not resurrect a cleared interaction/frame. Repeated settled reads must be stable.
+At minimum validate:
+- pending.causal.interactionId == scene.interactionId;
+- pending.causal.frameId == scene.activeFrameId;
+- active/checkpoint scene is already PROVEN.
 
-If current authority cannot prove a durable SETTLEMENT checkpoint independently of legacy timeline data, keep settlement descriptive and document the limitation rather than fabricating proof. REST plus descriptive settlement compatibility is acceptable when that is what the model supports.
+Borrowed Sword continuation kind alone is insufficient.
 
-## Step 6 — REST authority
+Prefer an existing typed continuation helper if it already proves this relationship. Do not invent a second causal model.
 
-REST means there is no proven blocking/special/settlement semantic boundary.
+## Step 5 — negative Borrowed Sword regression
 
-Prove normal play/rest and representative post-Attack/Duel/Group/Dying cleared states. REST must not carry stale causal IDs.
+Add a projector test with:
+- coherent proven causal scene A;
+- unrelated/mismatched Pending carrying continuation.kind = borrowed_sword_attack for interaction/frame B;
+- no proven decision actor.
 
-## Step 7 — audit settlement compatibility
+Expected: it must NOT classify SPECIAL from that Pending.
 
-Document/test:
-- exact source;
-- viewer stability;
-- whether it may remain populated while typed boundary is REST or authority is unproven;
-- which members are descriptive only;
-- why it cannot reconstruct interaction/frame/checkpoint identity.
+Then keep/add real Borrowed Sword evidence showing a genuinely linked production checkpoint classifies CHOICE or SPECIAL as appropriate.
 
-Derive from typed authority only where behavior-preserving and proven.
+## Step 6 — audit nested Damage SPECIAL
 
-## Step 8 — audit transitionEvents compatibility
+The current CHILD_FRAME + DAMAGE SPECIAL rule is scene-owned and may remain only if the relation/stage are themselves proven by the accepted causal scene.
 
-Document/test:
-- exact bounded timeline source;
-- ordering guarantee;
-- viewer/reconnect stability;
-- repeated-read behavior;
-- that it is not yet the durable C7 transition/animation protocol;
-- event/resolution IDs are not causal identity.
+Add/retain an explicit test showing malformed Group linkage cannot produce SPECIAL.
 
-Do not add animation timing/direction or a new occurrence-ID system.
+Do not read arbitrary Pending continuation metadata to repair a failed typed Group link.
 
-## Step 9 — viewer/reconnect stability
+## Step 7 — authority precedence
 
-For representative CHOICE, SPECIAL and REST:
-- public boundary is deep-equal across acting/uninvolved viewers;
-- repeated reads are deep-equal;
-- private controls may differ without changing classification;
-- projector generates no IDs/revisions.
+Document and test exact precedence:
+1. proven semantic decision -> CHOICE;
+2. proven settlement authority -> SETTLEMENT, only if such authority actually exists;
+3. proven persistent special -> SPECIAL;
+4. otherwise -> identity-free REST.
 
-## Step 10 — fail-closed cases
+Each non-REST branch must state its authoritative source.
 
-Cover null/malformed envelope, checkpoint mismatch, missing active frame, Dying resolver mismatch and Group typed-link failure.
+No viewer CurrentAction field may participate in steps 1–3.
 
-Malformed authority must not become CHOICE/SPECIAL because legacy Pending/timeline/CurrentAction looks suggestive. Compatibility settlement/transition data may remain if required, but cannot upgrade semantic authority.
+## Step 8 — compatibility audit wording
 
-## Step 11 — migration map
+Update docs/migration map so it distinguishes:
+- legacy settlement selection may use compatibility event/barrier references;
+- stableBoundary settlement authority is separate and public;
+- transitionEvents remain descriptive and cannot upgrade boundary;
+- Borrowed Sword SPECIAL requires causal linkage;
+- REST does not mean “no CurrentAction”; it means no proven public stable semantic boundary.
 
-Update rows for interactionScene, dyingBarrier, decision, settlement, transitionEvents and the new stable-boundary field.
+Use only KEEP / DERIVE / DEPRECATE-LATER.
 
-Use only KEEP / DERIVE / DEPRECATE-LATER. State exact remaining C5 gaps.
+## Step 9 — tests
 
-## Step 12 — validation
+Required focused evidence:
+- CHOICE viewer-control divergence remains stable;
+- SETTLEMENT viewer-control divergence;
+- cleared finalResult -> REST;
+- proven Judgement SPECIAL;
+- causally linked Borrowed Sword behavior;
+- mismatched Borrowed Sword Pending -> not SPECIAL;
+- proven nested Damage child SPECIAL where non-blocking;
+- malformed Group child -> not SPECIAL;
+- Dying mismatch -> not CHOICE/SPECIAL;
+- repeated-read/reconnect equality.
 
-Run focused PresentationV2/causality and representative Attack/Duel/Group/Negation/Judgement/Dying/Borrowed Sword/settlement fixtures, then:
+Prefer real engine/API fixtures where available; synthetic tests are appropriate for malformed/mismatch cases.
+
+## Step 10 — validation
+
+Run focused PresentationV2/causality and touched API fixtures, then:
 - npm run test:fast
 - npm run test:api
 - npm run build
 - npm run lint
 - git diff --check
 
-Report exact counts. If API count differs from recent 238/239 reports, call out the difference.
+Report exact counts and explain any API-count change.
 
 ## Scope exclusions
 
-No C6/C7, final PresentationSnapshot, React/CSS, gameplay changes, animation timing/direction, durable transition occurrence IDs, causal redesign, private option exposure, fabricated settlement causal identity, or wholesale compatibility-field removal.
+No C6/C7, final PresentationSnapshot, React/CSS, gameplay changes, animation protocol/timing, durable occurrence IDs, causal redesign, private-option exposure, or wholesale compatibility deletion.
 
 ## Execution result
 
-Append only C5-03 execution result with:
-- full implementation SHA;
-- files changed;
-- stable-boundary inventory and contract;
-- authority rules for REST/CHOICE/SETTLEMENT/SPECIAL;
-- settlement and transitionEvents audits;
-- viewer/reconnect and fail-closed evidence;
-- migration-map changes;
+Append only C5-03-FIX1 result with:
+- implementation SHA and files;
+- settlement authority conclusion;
+- viewer-divergence proof;
+- Borrowed Sword causal-link proof;
+- malformed SPECIAL evidence;
+- precedence;
+- docs/migration changes;
 - exact validation counts;
-- explicit remaining C5 gaps and whether C5 is ready for reviewer closure.
+- remaining C5 gaps.
 
-Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin. Verify origin/ux-v2:HANDOVER.md contains the result. Then STOP.
+Push implementation AND appended HANDOVER to origin/ux-v2, fetch, verify remote HANDOVER, then STOP.
 
 ## Acceptance
 
-C5-03 passes only if stable-boundary classification is typed, viewer-independent and fail-closed; CHOICE cannot come from viewer controls; unsupported SETTLEMENT authority is not fabricated; settlement/transitionEvents remain clearly bounded compatibility data; REST clears stale identity; stability is proven; and regressions are green.
-
-## Execution result — UX2.0C5-03 — 2026-10-02
-
-Implementation commit: `db34f23af5b9c5d86307b50105d8297a084fbb7d`.
-
-Changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`,
-`tests/api/presentation-v2-engine.test.mjs`, `tests/api/lobby-heroes-wei.test.mjs`,
-`README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
-
-Added the typed public `presentationV2.stableBoundary` contract with
-`REST | CHOICE | SETTLEMENT | SPECIAL`, plus proven interaction/checkpoint/
-presentation revision fields and a decision actor only for `CHOICE`.
-
-Authority inventory:
-
-- Attack, Duel, Group/AOE, Group Negation, root/counter Negation, Judgement,
-  Damage, Dying rescue, and forced Borrowed Sword classify as `CHOICE` only
-  when the existing semantic Pending actor, causal interaction/frame, active
-  frame, and resolver prove a real blocked decision. Dying uses the stricter
-  `dyingDecisionProof`.
-- A proven Judgement scene, typed Borrowed Sword continuation, or nested
-  Damage child with no proven blocker is `SPECIAL`; Dying is `CHOICE` when its
-  rescue proof is valid and malformed Dying is not special.
-- `SETTLEMENT` is emitted only when the bounded `finalResult` compatibility
-  event remains attached to a proven live scene. A cleared envelope or timeline
-  event alone cannot restore interaction identity.
-- All unsupported, malformed, cleared, or merely control-looking states are
-  identity-free `REST`. In particular, CurrentAction actor/options cannot
-  upgrade a public boundary to `CHOICE`.
-
-Settlement remains bounded descriptive timeline/finalResult compatibility data.
-`transitionEvents` remain ordered, bounded public timeline references selected
-from the current typed/legacy context; they are viewer/reconnect stable for
-equal history but are not a C7 transition or animation protocol. No event ID,
-resolution ID, action revision, timer, or projector-generated ID is treated as
-causal identity.
-
-Evidence includes pure REST/CHOICE/SETTLEMENT/SPECIAL/fail-closed cases,
-viewer-control divergence, repeated reads, real Attack, Duel, Group child and
-resume, Group/Root Negation, Judgement, Dying rescue handoff, Borrowed Sword,
-delayed Lightning Damage, malformed authority, and acting/uninvolved viewer
-equality. The compatibility migration table now records `stableBoundary` as
-KEEP and retains settlement/transitionEvents as DEPRECATE-LATER compatibility
-fields with explicit C7 prerequisites.
-
-Validation: focused API projector/causality/Lightning suite passed 50/50;
-`npm run test:fast` passed 122/122; full `npm test` passed build + 122 fast
-tests + 238 API tests across 23 files and 4 shards; `npm run build`,
-`npm run lint`, and `git diff --check` passed.
-
-C5-03 is ready for reviewer closure. C5 overall remains open pending reviewer
-acceptance and the future C7 PresentationSnapshot wrapper; no C6/C7, React/CSS,
-animation, gameplay, durable transition IDs, or wholesale compatibility-field
-removal was started.
+FIX1 passes only if stableBoundary cannot vary because of viewer CurrentAction metadata, SETTLEMENT is either backed by viewer-independent causal authority or intentionally not emitted, Pending-derived SPECIAL requires causal linkage to the proven scene, malformed/unlinked metadata fails closed, compatibility behavior remains bounded, and regressions are green.
