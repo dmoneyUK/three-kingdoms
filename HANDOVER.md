@@ -30,6 +30,49 @@ Do not start React/CSS. C6 is the next architecture stage.
 
 # NEXT TASK — UX2.0C6-01: Engine-Backed Presentation Architecture Invariant Matrix
 
+## AUTHORITATIVE IMPLEMENTATION RULES — APPLY BEFORE CODING
+
+These rules are mandatory for C6 and should be treated as the default standard for later semantic/presentation tasks unless a future HANDOVER explicitly overrides one.
+
+1. **Correlation is not authority.** Do not infer a public semantic fact merely because some field usually accompanies it.
+2. **Name the proof source.** Every asserted semantic field/invariant must identify the exact authoritative production source that proves it.
+3. **CurrentAction is control/legality authority, not public semantic authority**, unless this HANDOVER explicitly grants a narrowly defined exception.
+4. **Timeline/eventId/resolutionId/finalResult/actionRevision are descriptive or compatibility data**, not causal identity or public semantic proof unless an accepted contract explicitly proves otherwise.
+5. **Pending-derived semantics require causal linkage.** Validate the Pending interactionId/frameId (and any family-specific ownership requirement) against the already-proven scene before using Pending metadata as semantic evidence.
+6. **Never fill an unknown semantic value with a convenience fallback.** Missing proof must remain null, empty, UNPROVEN, REST, or N/A as appropriate.
+7. **Fail closed.** Malformed, contradictory, stale, viewer-only, or incompletely linked data must not upgrade public semantics.
+8. **Positive claims require real engine/API evidence.** Synthetic tests may supplement malformed/negative/impossible-state coverage but do not count as the primary proof of a real interaction family's positive semantics.
+9. **A green existing fixture is not evidence unless it explicitly asserts the new invariant.** Add the missing assertion instead of citing the test by existence.
+10. **Inventory all affected production paths before changing a transition invariant.** If a semantic invariant can be reached through multiple write/resume/skip/timeout/continuation paths, enumerate them and ensure all paths preserve the same invariant.
+11. **Do not change gameplay to satisfy presentation architecture.** Presentation tests characterize existing accepted game behavior.
+12. **Do not force requested semantics to exist.** If the production architecture cannot prove a proposed state/role/relation, report it as unsupported/N/A/reserved rather than manufacturing authority.
+
+## EVIDENCE LEDGER — REQUIRED OUTPUT
+
+Before implementation is considered complete, maintain a concise evidence ledger for every required C6 matrix row.
+
+Each row must identify:
+
+`family/checkpoint -> exact real fixture/test -> authoritative production source -> explicit assertion(s) -> PASS / N/A / GAP`
+
+Rules:
+- PASS requires an explicit assertion of the C6 invariant, not merely a passing fixture.
+- N/A requires a short reason grounded in production behavior.
+- GAP means the real fixture contradicts or cannot prove the accepted model.
+- Synthetic positive happy paths cannot convert GAP to PASS.
+- The execution result must summarize the ledger and list every GAP/N/A explicitly.
+
+## CONTRADICTION PROTOCOL — DO NOT PATCH AROUND EVIDENCE
+
+If a real engine/API fixture contradicts accepted C1-C5 semantics:
+
+1. Mark that matrix row/cell GAP.
+2. Identify the exact observed production state and the accepted invariant it contradicts.
+3. Do **not** weaken the assertion, change the expected value, add a fallback/heuristic, reclassify authority, or alter gameplay merely to make the matrix green.
+4. A production change is allowed only when the defect is clearly inside the already-accepted presentation projector/orchestrator contract and the smallest fix preserves existing gameplay.
+5. If the correct fix would require a new semantic rule, causal model change, gameplay change, or ambiguous design decision, do not implement it. Report the GAP for reviewer follow-up.
+6. Continue independent matrix rows when safe; do not claim C6 closure while a required GAP remains.
+
 ## Objective
 
 Turn the accepted C1-C5 presentation semantics into an engine-backed architecture regression matrix before C7 creates the final PresentationSnapshot.
