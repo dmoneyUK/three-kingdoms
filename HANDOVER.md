@@ -98,8 +98,8 @@ FIX14 passes only if a real Group Damage path proves same Interaction, distinct 
 ## C2-FIX14 execution result — 2026-10-02
 
 Implementation branch: `ux-v2` (direct branch edits; no worktree). Full
-implementation commit SHA will be recorded in this section immediately before
-push. The implementation is intentionally limited to the real Standard
+implementation commit SHA: `d64489b2717828504a6540e66df2dd410e35134c`.
+The implementation is intentionally limited to the real Standard
 Raining Arrows Group-failure path; no C3, React/CSS, historical `originRef`,
 synchronous Judgement-Negation parent gameplay, or Dying presentation barrier
 was started.
