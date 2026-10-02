@@ -248,3 +248,39 @@ Push implementation + appended result to `origin/ux-v2` and STOP. Do not clean H
 ## Acceptance
 
 FIX8 passes only if all five areas are real-test proven: initial Group root, ordinary physical Duel root, Group/Duel stale safety, Group/Duel malformed safety, and chosen nested-Negation semantics including counter-Negation and exact parent return. No nested Negation may create a new Interaction root. No out-of-scope C3/UI/gameplay redesign.
+
+## C2-FIX8 execution result
+
+- Branch: `ux-v2`
+- Implementation commit: `cfe36348e6f5bd47f7dcade4bb98276a9d704e75`
+- Files changed: `app/api/rooms/route.ts`, `tests/api/concurrency.test.mjs`, `tests/api/harness.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`, `README.md`
+- Decision: nested Group/Duel Negation is `CHILD_FRAME`; it shares the parent `interactionId`, owns one child frame and its responder/counter lifecycle, and restores the exact parent frame on settlement. Independent top-level Negation remains a new root.
+- Group first-entry proof: `FIX8 persists the Group root before participant progression and nests Negation as one child Frame` proves the persisted Group root, one child Negation frame, parentFrameId, active child, original target identity, pending causal identity, and viewer-stable identity.
+- Ordinary Duel proof: `FIX8 ordinary Duel Negation uses one child Frame and resumes the parent` proves physical Duel root, nested child, parent restoration, alternating Duel response, and retention of the same causal interaction.
+- Group stale/double proof: `FIX8 Group stale response preserves causal identity and card state` proves stale rejection, unchanged interaction/frame/checkpoint/revision, and no card consumption. Existing CAS coverage remains; no new two-request Group race was added.
+- Duel stale/double proof: `FIX8 ordinary Duel stale response preserves causal identity before valid progression` proves stale rejection, unchanged identity/card, and valid progression on the same interaction. Existing response CAS coverage remains; no new two-request Duel race was added.
+- Group/Duel corruption proof: `FIX8 Group and ordinary Duel missing envelopes stay non-authoritative` NULLs only the persisted envelope while keeping Pending context, then proves null projection, no 500, no reconstructed root, and safe continuation.
+- Counter-Negation proof: implementation and existing real Negation/counter-Negation coverage preserve one causal unit; a dedicated nested Group/Duel counter-card API assertion remains open because the attempted fixture did not expose the expected counter provider reliably. No new Interaction root is created by the nested implementation.
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| Group first root persisted before participant progression | PROVEN | named FIX8 Group initial-entry engine/API test | none for covered entry |
+| Group nested Negation follows FIX8 decision | PROVEN | Group parent plus one active child Frame | no Group child Damage redesign claimed |
+| Group Negation resumes/preserves exact parent | PROVEN | Group continuation and parent identity assertions | nested counter-card path not separately asserted |
+| Group stale request preserves causal identity | PROVEN | named FIX8 Group stale API test | none for covered response |
+| Group duplicate response cannot duplicate causal transition | PARTIAL | existing CAS plus Group stale proof | no new two-request Group race assertion |
+| Group malformed/missing continuation does not fabricate authority | PROVEN | named Group/Duel missing-envelope API test | malformed-string variant not in this slice |
+| ordinary physical Duel root exact persistence | PROVEN | named FIX8 physical Duel engine/API test | none for covered Duel |
+| Duel nested Negation follows FIX8 decision | PROVEN | physical Duel parent plus child Frame assertions | none |
+| Duel Negation resumes/preserves exact parent | PROVEN | child active before settlement and parent active after | nested counter-card path not separately asserted |
+| Duel response Attack remains Duel frame | PROVEN | valid response retains parent frame and two-frame envelope | none |
+| Duel stale request preserves causal identity | PROVEN | named FIX8 physical Duel stale API test | none for covered response |
+| Duel duplicate response cannot duplicate causal transition | PARTIAL | existing response CAS plus Duel stale proof | no new two-request Duel race assertion |
+| Duel malformed/missing continuation does not fabricate authority | PROVEN | named Group/Duel missing-envelope API test | malformed-string variant not in this slice |
+| counter-Negation stays in one nested causal unit | PARTIAL | existing real counter-Negation suite plus child-frame implementation | dedicated nested counter-card API assertion remains open |
+| nested Negation never creates a new Interaction root | PROVEN | Group/Duel child assertions share parent interactionId | Judgement remains out of scope |
+
+- Documentation consistency: transition map now distinguishes independent Negation roots from nested Group/Duel child frames; README and causal propagation notes state the same `CHILD_FRAME` decision and the explicit partial boundaries.
+- Validation: `npm run build` passed; `npm test` passed with fast 107/107 and API 219/219; focused `presentation-v2-engine.mjs,concurrency.mjs` passed 25/25; focused `equipment.mjs,diao-chan.mjs` passed 26/26; `npm run lint` passed; `git diff --check` passed.
+- Search audit: `startNegation(` has the independent and typed continuation call sites only; `createCausalRoot` remains at independent roots and established typed roots; `childCausalFrame`/`resumeCausalFrame` are used for nested entry and parent restoration; no production `recoverCausalEnvelope` call site; no hidden `Object.defineProperty(... causalEnvelope ...)` pattern.
+- Remaining C2 work: add dedicated nested Group/Duel counter-Negation API proof, add explicit two-request Group and Duel race fixtures, and continue the pre-existing C2 items (independent Damage fixture, Judgement completion, delayed provenance, Dying barrier, and broader automatic-transition audit). C3/UI/React/CSS remain out of scope.
