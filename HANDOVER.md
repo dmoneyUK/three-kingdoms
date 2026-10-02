@@ -6,252 +6,162 @@ HANDOVER.md is a tracked remote coordination file. It MUST be committed and push
 
 ## Reviewer status
 
-UX2.0C5-02 implementation 839464073c035f197a2d783a1306dd319382dbaa is **PARTIAL — C5-02-FIX1 REQUIRED**.
+UX2.0C5-02-FIX1 implementation `4e30269084b16cec151a28f20c6d2097fd7ba180` is **ACCEPTED**.
 
-Accepted:
-- a typed public participantRoles surface was added to interactionScene;
-- fail-closed empty participantRoles are emitted when the generic scene is UNPROVEN;
-- Attack and Group child engine fixtures add useful role evidence;
-- proven legacy participants are derived from participantRoles;
-- no React/CSS/gameplay scope creep;
-- reported validation is green: fast 116/116, API 239/239, focused engine 24/24, build/lint/diff-check PASS.
+C5-02 is CLOSED / ACCEPTED.
 
-Blocking issue 1 — decisionActorId in participantRoles is still taken from CurrentAction for every non-Dying proven scene.
+Reviewer verified:
+- public decisionActorId no longer comes from CurrentAction;
+- semanticDecisionActorId requires persisted semantic Pending actor, matching causal interaction/frame and active resolver; Dying retains dyingDecisionProof;
+- top-level interactionScene.decisionActorId and participantRoles.decisionActorId share the same proof;
+- parentParticipantId no longer falls back to child currentParticipantId;
+- unsupported optional roles remain null without downgrading a PROVEN scene;
+- migration vocabulary is restored to KEEP / DERIVE / DEPRECATE-LATER;
+- real-path assertions cover Attack/Judgement resume, Duel, Group child/Dying/resume/Negation, Damage, root/counter Negation, Dying rescue handoff, and Borrowed Sword;
+- CurrentAction is no longer passed into interactionSceneFor;
+- no React/CSS/gameplay scope creep occurred;
+- reported validation is green: fast 117/117, API 238/238 in the full npm test run, build/lint/diff-check PASS.
 
-Current code:
-decisionActorId: dyingProof ? pending.actorId : dyingPending ? null : currentAction?.actorId ?? null
-
-This violates the C5-02 contract that public participant-role IDs come only from proven causal envelope / accepted family-specific typed continuation proof. CurrentAction remains legality/control authority and can be viewer-dependent. Generic checkpoint coherence does not prove that a viewer's CurrentAction actor is the public semantic decision actor.
-
-The old top-level interactionScene.decisionActorId also still uses this CurrentAction fallback. C5-02 cannot call participantRoles viewer-independent/proven while copying a viewer control actor without a family-specific authority gate.
-
-Blocking issue 2 — parentParticipantId contains an unproven fallback to currentParticipantId.
-
-Current child-frame code uses:
-firstString(parentFrame single target, groupValues.parentParticipantId, currentParticipantId)
-
-If neither the parent frame nor accepted Group parent-participant evidence proves a parent participant, falling back to the current child participant invents a parent role. The task explicitly required unsupported roles to be null/empty rather than guessed.
-
-Blocking issue 3 — migration-map status vocabulary regressed.
-
-C5-01 FIX1 explicitly constrained migration status to KEEP / DERIVE / DEPRECATE-LATER. C5-02 changed groupResolution to RETAIN-COMPAT, introducing an undocumented fourth status. Keep the established vocabulary; retained compatibility should be expressed by KEEP or DEPRECATE-LATER plus its prerequisite/reason.
-
-Blocking issue 4 — evidence breadth is below the task acceptance bar.
-
-The implementation adds direct new role assertions only for Attack and one Group Damage child path, plus synthetic malformed Group. The execution result claims role coverage for Duel, Judgement, independent Damage, inherited Lightning Damage, root/nested Negation, Dying/rescue, Borrowed Sword, Group Negation, Group Dying and resume, but this commit does not add explicit participantRoles assertions for those real paths.
-
-Existing scene equality tests are useful regressions but do not prove each new role field is semantically correct. C5-02 explicitly required real-path role evidence for these families.
-
-Do not start C6/C7/React.
+C5 is NOT closed. The next design gap is stable-boundary classification plus a precise settlement/transitionEvents compatibility boundary. Do not start C6/C7/React.
 
 ---
 
-# NEXT TASK — UX2.0C5-02-FIX1: Prove Decision/Parent Roles and Complete Real-Path Role Evidence
+# NEXT TASK — UX2.0C5-03: Typed Stable Boundary + Settlement/Transition Compatibility Audit
 
 ## Objective
 
-Make participantRoles genuinely authoritative and viewer-independent.
+Add the smallest server-owned semantic contract that classifies the current player-meaningful presentation boundary as REST, CHOICE, SETTLEMENT, or SPECIAL, without creating the final C7 PresentationSnapshot.
 
-No participant role may be populated merely because CurrentAction or a convenient child target contains an ID. Every populated role must have an accepted public semantic proof source.
+Audit settlement and transitionEvents so future C7 work has a precise migration boundary. Do not change gameplay or React/CSS.
 
-Then add real-path evidence for the interaction families claimed by C5-02.
+## Step 1 — inventory real stable boundaries
 
-## Step 1 — inventory decision-actor authority by family
+Use existing real fixtures for normal rest/play, Attack, Duel, Group/AOE, Negation, Judgement, Dying rescue, Borrowed Sword, Damage, terminal settlement, and Group child/resume.
 
-For each supported family inspect the production causal/Pending contract and identify the public semantic source of decisionActorId:
-- Attack response;
-- Duel response;
-- Group/AOE response;
-- Group Negation;
-- root/nested Negation;
-- Judgement choice if any;
-- Damage checkpoint if any;
-- Dying rescue;
-- Borrowed Sword;
-- any other existing response family covered by PresentationV2.
+For each checkpoint record:
+- whether progress is genuinely blocked for input;
+- whether a persistent special context exists;
+- whether it is settled;
+- whether it is simply resting;
+- the authoritative server fact proving that classification.
 
-For each family classify:
-- proven public decision actor source;
-- no public decision actor at this checkpoint;
-- CurrentAction-only control actor.
+Do not infer CHOICE from a viewer having controls.
 
-Do not treat CurrentAction-only actor as authoritative public participant role.
+## Step 2 — define the typed stable-boundary contract
 
-## Step 2 — centralize semantic decision-actor proof
+Add one typed public PresentationV2 semantic field containing at minimum:
+- kind: REST | CHOICE | SETTLEMENT | SPECIAL;
+- proven interactionId/checkpointId/presentationRevision when applicable;
+- decisionActorId only for a proven CHOICE.
 
-Create the smallest helper needed to resolve public semantic decisionActorId from accepted evidence.
+Reuse interactionScene/dyingBarrier authority. Do not duplicate the full scene or create PresentationSnapshot.
 
-Requirements:
-- Dying continues to use dyingDecisionProof;
-- Group uses accepted typed Group continuation/frame ownership where proven;
-- generic frame resolver may be used only if the game contract proves that resolver is the semantic decision actor for that stage/family;
-- otherwise return null;
-- CurrentAction must not be the proof source for participantRoles.
+If a kind cannot be proved safely, represent that limitation explicitly instead of guessing.
 
-Keep CurrentAction as legality/control authority outside the public role proof.
+## Step 3 — CHOICE authority
 
-Audit the existing top-level interactionScene.decisionActorId too. It must not claim stronger authority than participantRoles. Prefer one shared semantic decision-actor value for both.
+CHOICE means authoritative progress is genuinely blocked waiting for a real player.
 
-## Step 3 — remove parent-participant guessing
+Reuse accepted semantic decision proof:
+- Dying uses dyingDecisionProof;
+- supported response/trigger families use semanticDecisionActorId or stricter shared proof;
+- CurrentAction options are control data, not public causal proof.
 
-For child scenes parentParticipantId may come only from:
-- a coherent parent frame whose semantics prove the participant;
-- accepted typed Group parent-participant linkage.
+A PROVEN scene with null decisionActorId is not automatically CHOICE. Add a coherent non-blocking negative case.
 
-Remove fallback to currentParticipantId.
+## Step 4 — SPECIAL authority
 
-Add a negative test where child current participant exists but parent participant is not provable; parentParticipantId must be null.
+Identify only existing persistent special contexts that genuinely require stable special presentation. Assess Dying, Judgement, Borrowed Sword and nested Group contexts from real behavior.
 
-## Step 4 — preserve fail-closed behavior
+Do not label every non-choice interaction SPECIAL. Document the exact supported rule.
 
-For UNPROVEN scenes all participantRoles remain empty/null.
+## Step 5 — SETTLEMENT authority
 
-For a PROVEN scene with no proven decision actor or parent participant:
-- scene remains PROVEN;
-- unsupported role is null;
-- do not downgrade the entire scene solely because an optional role is unavailable.
+Audit current settlement/finalResult/timeline behavior.
 
-Do not recover missing roles from legacy participants, timeline, resolutionId, actionRevision, or viewer CurrentAction.
+Timeline presence alone must not fabricate causal identity. Settlement must not resurrect a cleared interaction/frame. Repeated settled reads must be stable.
 
-## Step 5 — real-path role assertions
+If current authority cannot prove a durable SETTLEMENT checkpoint independently of legacy timeline data, keep settlement descriptive and document the limitation rather than fabricating proof. REST plus descriptive settlement compatibility is acceptable when that is what the model supports.
 
-Extend existing engine/API fixtures with explicit participantRoles assertions for all applicable covered families:
+## Step 6 — REST authority
 
-1. Attack response.
-2. Attack -> Judgement -> Attack resume.
-3. Duel before and after responder handoff.
-4. Group normal participant.
-5. Group -> Negation.
-6. Group -> Damage child.
-7. Group -> Damage -> Dying.
-8. Group resume after child.
-9. Independent Damage.
-10. Inherited Lightning Damage / Judgement-owned Damage.
-11. Root Negation.
-12. Nested Negation.
-13. Dying rescue before and after rescuer handoff.
-14. Borrowed Sword if current production fixture exposes a scene.
+REST means there is no proven blocking/special/settlement semantic boundary.
 
-For any listed path that truly has no public decision/parent role at a checkpoint, assert null explicitly rather than omitting the assertion.
+Prove normal play/rest and representative post-Attack/Duel/Group/Dying cleared states. REST must not carry stale causal IDs.
 
-Use real engine/API paths where they already exist. Synthetic tests may supplement negative/malformed cases only.
+## Step 7 — audit settlement compatibility
 
-## Step 6 — viewer equality/privacy proof
+Document/test:
+- exact source;
+- viewer stability;
+- whether it may remain populated while typed boundary is REST or authority is unproven;
+- which members are descriptive only;
+- why it cannot reconstruct interaction/frame/checkpoint identity.
 
-For at least Attack, Duel, Group and Dying:
-- compare participantRoles across acting viewer and uninvolved viewer;
-- deep-equal public roles;
-- demonstrate that viewer-specific CurrentAction/options can differ without changing participantRoles.
+Derive from typed authority only where behavior-preserving and proven.
 
-Add a targeted regression where possible that supplies different CurrentAction actor/control data to otherwise identical authoritative causal state; participantRoles.decisionActorId must not change unless that actor is independently proven by the semantic family contract.
+## Step 8 — audit transitionEvents compatibility
 
-## Step 7 — legacy participants compatibility
+Document/test:
+- exact bounded timeline source;
+- ordering guarantee;
+- viewer/reconnect stability;
+- repeated-read behavior;
+- that it is not yet the durable C7 transition/animation protocol;
+- event/resolution IDs are not causal identity.
 
-After changing semantic decision/parent proof:
-- verify participantsFromScene still preserves existing observable source/target/current_target/group_participant shape;
-- do not add decision_actor or parent_participant legacy labels unless they already existed;
-- unproven/legacy fallback behavior remains unchanged.
+Do not add animation timing/direction or a new occurrence-ID system.
 
-## Step 8 — fix migration-map vocabulary
+## Step 9 — viewer/reconnect stability
 
-Use only the established statuses:
-- KEEP
-- DERIVE
-- DEPRECATE-LATER
+For representative CHOICE, SPECIAL and REST:
+- public boundary is deep-equal across acting/uninvolved viewers;
+- repeated reads are deep-equal;
+- private controls may differ without changing classification;
+- projector generates no IDs/revisions.
 
-Replace RETAIN-COMPAT for groupResolution with the correct existing status and explain retention in the reason/removal prerequisite.
+## Step 10 — fail-closed cases
 
-Update participantRoles wording so it does not claim CurrentAction-derived IDs are authoritative.
+Cover null/malformed envelope, checkpoint mismatch, missing active frame, Dying resolver mismatch and Group typed-link failure.
 
-## Step 9 — documentation
+Malformed authority must not become CHOICE/SPECIAL because legacy Pending/timeline/CurrentAction looks suggestive. Compatibility settlement/transition data may remain if required, but cannot upgrade semantic authority.
 
-Update the C5-02 section with:
-- per-family decision-actor authority rule;
-- parentParticipantId proof rule;
-- explicit null-when-unprovable rule;
-- real-path evidence summary;
-- corrected migration status.
+## Step 11 — migration map
 
-Do not overclaim unsupported families.
+Update rows for interactionScene, dyingBarrier, decision, settlement, transitionEvents and the new stable-boundary field.
 
-## Step 10 — validation
+Use only KEEP / DERIVE / DEPRECATE-LATER. State exact remaining C5 gaps.
 
-Run focused PresentationV2/causality plus all touched real engine/API fixtures, then:
+## Step 12 — validation
+
+Run focused PresentationV2/causality and representative Attack/Duel/Group/Negation/Judgement/Dying/Borrowed Sword/settlement fixtures, then:
 - npm run test:fast
 - npm run test:api
 - npm run build
 - npm run lint
 - git diff --check
 
-Report exact counts.
+Report exact counts. If API count differs from recent 238/239 reports, call out the difference.
 
 ## Scope exclusions
 
-No C6/C7, React/CSS, gameplay changes, final PresentationSnapshot, new causal IDs, animation protocol, historical originRef fabrication, client legality, or private option exposure.
+No C6/C7, final PresentationSnapshot, React/CSS, gameplay changes, animation timing/direction, durable transition occurrence IDs, causal redesign, private option exposure, fabricated settlement causal identity, or wholesale compatibility-field removal.
 
 ## Execution result
 
-Append only C5-02-FIX1 execution result with:
+Append only C5-03 execution result with:
 - full implementation SHA;
 - files changed;
-- per-family decision-actor authority inventory;
-- semantic decision helper/rules;
-- parent-participant proof change;
-- explicit real-path participantRoles evidence;
-- viewer/privacy evidence;
-- migration-map correction;
+- stable-boundary inventory and contract;
+- authority rules for REST/CHOICE/SETTLEMENT/SPECIAL;
+- settlement and transitionEvents audits;
+- viewer/reconnect and fail-closed evidence;
+- migration-map changes;
 - exact validation counts;
-- remaining C5 gaps.
+- explicit remaining C5 gaps and whether C5 is ready for reviewer closure.
 
 Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin. Verify origin/ux-v2:HANDOVER.md contains the result. Then STOP.
 
 ## Acceptance
 
-FIX1 passes only if participantRoles contains no CurrentAction-only or guessed parent identities, top-level scene decisionActorId uses the same public semantic authority, all claimed supported families have explicit real-path role evidence or explicit null assertions, viewer-specific controls cannot change public roles, migration status vocabulary is restored, compatibility remains intact, and all required regressions are green.
-
-## Execution result — UX2.0C5-02-FIX1 — 2026-10-02
-
-Implementation commit: `4e30269084b16cec151a28f20c6d2097fd7ba180`.
-
-Changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`,
-`tests/api/presentation-v2-engine.test.mjs`, `tests/api/ma-chao.test.mjs`,
-`tests/api/lobby-heroes-wei.test.mjs`, `README.md`, and
-`docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
-
-`semanticDecisionActorId` is now the sole source for both public
-`interactionScene.decisionActorId` and
-`interactionScene.participantRoles.decisionActorId`. It requires a coherent
-envelope/active frame, a persisted actor, matching pending causal interaction
-and frame, matching active resolver, and a known Response or Trigger
-continuation family; Dying keeps its stricter `dyingDecisionProof`. Therefore
-Attack, Duel, Group, Negation, forced Borrowed Sword, Judgement, Damage, and
-known semantic trigger checkpoints can prove a public actor only from server
-state. `CurrentAction` is not read as role evidence. A later Duel or resumed
-Group checkpoint with no matching pending proof explicitly projects a null
-decision actor while retaining a PROVEN scene.
-
-`parentParticipantId` now comes only from a single parent-frame current target
-or typed Group linkage. The child-current-participant fallback was removed; a
-negative synthetic causal test asserts null when neither proof exists.
-
-Real engine evidence now asserts public `participantRoles` for Attack;
-Attack-to-Judgement-to-Attack resume; Duel before and after handoff; Group
-damage, Group Dying, Group resume, and Group Negation; independent Damage;
-Lightning/Judgement-owned Damage; root and counter Negation; Dying before and
-after rescuer handoff; and forced Borrowed Sword. Attack, Duel, Group, and
-Dying retain acting-versus-uninvolved viewer equality checks; the focused C5
-regression proves altered viewer `CurrentAction.actorId` cannot change the
-public decision role. Legacy participants remain derived through their existing
-compatibility shape. The migration map now uses `DEPRECATE-LATER` instead of
-the invalid `RETAIN-COMPAT` status.
-
-Validation: `npm run build` passed; `npm run test:fast` passed 117 tests;
-`npm test` passed (build + 117 fast tests + 238 API tests across 23 files and
-4 shards); `npm run lint` passed; `git diff --check` passed. The initial
-space-separated focused API-file invocation was rejected by the runner (which
-requires comma-separated files) and was not used as validation; the complete
-API suite supplied the real-path proof instead.
-
-Remaining boundary: this completes only the C5-02-FIX1 authority correction.
-Do not begin C6/C7, React/CSS, animation, or gameplay work without separate
-authorization.
+C5-03 passes only if stable-boundary classification is typed, viewer-independent and fail-closed; CHOICE cannot come from viewer controls; unsupported SETTLEMENT authority is not fabricated; settlement/transitionEvents remain clearly bounded compatibility data; REST clears stale identity; stability is proven; and regressions are green.
