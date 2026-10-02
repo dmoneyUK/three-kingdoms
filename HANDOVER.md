@@ -9,169 +9,223 @@ After implementation, append the execution result to THIS file, commit and push 
 
 ## Reviewer status
 
-UX2.0C3-03 is **PARTIAL / NOT ACCEPTED**.
+UX2.0C3-03 + FIX1 is **ACCEPTED / CLOSED**.
 
-Reviewed implementation:
-`26237e3dd165672ccf9b9f69dea76e3ce72948ed`
+Reviewed:
+- C3-03: `26237e3dd165672ccf9b9f69dea76e3ce72948ed`
+- C3-03-FIX1: `eadce7147774a232612eade483e56025595667d1`
 
-Accepted:
-- real Attack scene coverage;
-- physical Duel exchange scene coverage and stable interaction/frame across alternation;
-- real Judgement scene coverage;
-- delayed placement vs activation fresh identity proof;
-- real independent/root Negation coverage;
+Accepted evidence:
+- Attack public scene is engine-backed and viewer-stable;
+- physical Duel keeps one interaction/root frame across exchange and now proves full public scene equality across two viewers before and after a response handoff;
+- Duel public `decisionActorId` is equal across viewers while private response options remain private;
+- Judgement and delayed fresh activation identity are characterized;
+- root/independent Negation is characterized;
 - Group SAME_FRAME/CHILD_FRAME regressions remain intact;
-- malformed authority remains fail-closed;
-- reported focused/full suites are green.
+- malformed/incoherent authority remains fail-closed;
+- delayed Lightning is correctly classified as inherited Judgement-owned DAMAGE-stage presentation, not independent Damage;
+- a genuinely independent/root Damage production path is now proven by Yue Jin Dauntless.
 
-### Blocking issue 1 — Damage evidence is overclassified
+Reviewer verified the Dauntless production classification in source:
+- `resolveSourcedDamage` creates/uses inherited authority only from explicit causal/resume handles;
+- `TurnEndTriggerContinuation` itself has no causal field;
+- Dauntless invokes `resolveSourcedDamage` without `causal`, `resumeGroup`, `resumePending`, or `resumeDamageSuffered`;
+- therefore the Dauntless post-damage reaction creates a genuine new DAMAGE causal root;
+- the real Dauntless fixture proves source/target/roles, two-viewer equality, continuation through Sima Yi Fankui, and clearing in the no-post-reaction Cao Cao branch.
 
-C3-03 reports **Independent/root Damage = PROVEN** using:
+Reported validation:
+- projector/causality: 29/29;
+- final focused PresentationV2 + Dauntless subset: 27/27;
+- test:fast: 113/113;
+- test:api: 238/238;
+- build/lint/diff-check: PASS.
 
-`delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities`
-
-But that fixture explicitly says:
-- “delayed Lightning post-damage reactions retain the Judgement causal root”;
-- “the inherited Judgement/Damage root is public and viewer-stable”.
-
-This is a real DAMAGE-stage scene, but it is not evidence for a universally independent/root Damage interaction. It originates from delayed Lightning/Judgement activation and intentionally retains that causal history.
-
-The C3-03 task explicitly said not to overclaim this exact category.
-
-Therefore the evidence matrix and design doc classification are currently too strong.
-
-### Blocking issue 2 — required Duel second-viewer proof is missing
-
-C3-03 Step 8 required second-viewer equality for:
-- Attack;
-- Duel;
-- one of Damage/Judgement.
-
-The implementation proves Attack and Damage viewer equality, but the Duel additions only prove repeated reads from the host. They do not compare the same Duel `interactionScene` from two different viewers.
-
-This is a required acceptance item, not merely documentation.
-
-Do not start C3-04/C4/C5.
+C3 is not yet globally closed. One final C3 closure slice remains before C4.
 
 ---
 
-# NEXT TASK — UX2.0C3-03-FIX1: Correct Damage Evidence and Complete Duel Viewer Proof
+# NEXT TASK — UX2.0C3-04: Final C3 Semantic Closure and Attack-Judgement Characterization
 
 ## Objective
 
-Close C3-03 without changing gameplay.
+Finish C3 by closing the last actionable Interaction Scene semantic gap and producing a final evidence audit that determines whether C3 can be closed.
 
-1. Correct the classification of the delayed-Lightning DAMAGE evidence.
-2. Determine whether a genuinely independent/root Damage production path already exists and prove it if it does.
-3. Add the missing real Duel second-viewer public-scene equality proof.
+Primary target:
+- Attack response -> Judgement continuity in real production, where supported.
 
-Keep this narrow.
+Also perform a final cross-family consistency audit of the typed public `interactionScene`.
 
-## Step 1 — audit Damage production roots
+Do NOT implement the C4 Dying presentation barrier.
+Do NOT add visual/animation direction state merely to make C3 look complete.
 
-Inspect actual C2 production constructors/call sites that create a causal frame with stage `DAMAGE`.
+## Step 1 — trace real Attack -> Judgement production
 
-Classify each real path as one of:
-- genuinely independent/root Damage;
-- Damage child under another causal frame;
-- inherited/re-staged continuation of an existing interaction such as delayed Judgement;
-- unsupported/no stable production path.
+Inspect the real Attack response flow and all production Judgement entry points associated with Attack, including hero/equipment mechanics that can invoke Judgement during Attack response/targeting.
 
-Do not classify based only on the frame having `parentFrameId === null`. Semantic origin/history matters.
+Identify the strongest existing real engine/API fixture.
 
-Document exact production call sites/typed continuation responsible for the classification.
+Document:
+- the Attack interaction/frame before Judgement;
+- how the Judgement continuation receives causal authority;
+- whether Judgement is SAME_FRAME, CHILD_FRAME, or another currently implemented relationship;
+- activeFrameId/parentFrameId before, during, and after;
+- checkpoint/stage/revision progression;
+- exact resume behavior back to Attack.
 
-## Step 2 — fix delayed Lightning wording/evidence
+Do not infer this from timeline events or legacy resolution IDs.
 
-The existing Lightning/Guo Jia fixture may continue to prove:
-- a real `DAMAGE` stage public scene;
-- stable interaction/frame/checkpoint across repeated Legacy opportunities;
-- viewer equality;
-- final clearing.
+## Step 2 — characterize, do not redesign
 
-But do NOT call it “independent/root Damage” unless Step 1 proves that this is semantically the production model.
+If current C2 production already carries coherent Attack -> Judgement causal continuity:
+- project/assert it through `interactionScene`;
+- preserve the actual relationship already implemented;
+- add only the minimum projector change if a real semantic field is missing.
 
-If it inherits the Judgement activation interaction, label it accordingly in:
-- execution result;
-- C3 non-Group semantic matrix;
-- README if necessary;
-- test description/assertion messages where wording is misleading.
+If current production does NOT model a child/relationship needed to prove continuity:
+- do not invent a new C2 model in C3;
+- mark the boundary PARTIAL with exact code evidence;
+- explain whether it belongs to a later causal-design task or is intentionally unnecessary for PresentationSnapshot.
 
-Do not alter correct causal behavior merely to make the label fit.
+C3 acceptance does not require fabricating unsupported history.
 
-## Step 3 — prove genuine independent/root Damage if production-supported
+## Step 3 — real engine/API proof
 
-If a genuinely independent/root Damage entry point already exists:
-- use a real engine/API fixture;
-- assert `interactionScene.semantics === PROVEN`;
-- assert interaction/root/active/checkpoint/revision;
-- assert source only when production actually has one;
-- assert target/current participant/resolver/decision actor;
-- assert repeated read stability;
-- assert second-viewer equality where applicable;
-- assert settlement/clearing.
+For the strongest real Attack -> Judgement path, assert as much as production supports:
 
-If no such production path exists:
-- mark **NOT IMPLEMENTED IN GAME** or **UNPROVEN**, whichever accurately describes the code;
-- do not create a new gameplay path;
-- do not use a synthetic projector fixture to upgrade the evidence status.
+Before Judgement:
+- Attack interactionId/rootFrameId;
+- ATTACK_RESPONSE or actual Attack stage;
+- source/target/current roles.
 
-Historical source-less Damage must not be inferred from Lightning.
+During Judgement:
+- interactionId continuity or documented fresh identity, exactly as production implements;
+- active frame/stage;
+- parent relationship if present;
+- source/effect/targets;
+- current participant/resolver/decision actor;
+- checkpoint/revision coherence.
 
-## Step 4 — add real Duel second-viewer proof
+After Judgement:
+- exact resume stage/frame;
+- whether the original Attack interaction/frame is restored;
+- no stale Judgement scene after resume.
 
-Extend the existing physical Duel engine fixture.
+Use two viewers at one stable checkpoint if practical.
 
-At a stable Duel response checkpoint:
-- read room state as the acting player;
-- read the same room state as a different viewer;
-- assert the full public `presentationV2.interactionScene` is deep-equal;
-- assert private response options/cards remain outside the public scene;
-- keep interactionId/rootFrameId/checkpoint/revision unchanged.
+## Step 4 — final cross-family Interaction Scene audit
 
-Repeat after at least one Duel response handoff if practical, so decision ownership changes while public semantic identity remains coherent.
-
-Do not compare only legacy `rootContext`.
-
-## Step 5 — verify public decisionActor semantics
-
-Because `interactionScene.decisionActorId` is public, explicitly verify in the Duel second-viewer test that both viewers receive the same decisionActorId at the same checkpoint.
-
-If the current API actually redacts or changes actor identity by viewer, do not force equality; report the concrete conflict and mark C3-03 PARTIAL. Do not leak private options to solve it.
-
-## Step 6 — evidence matrix correction
-
-Re-report:
-- Attack public scene;
-- Attack response-Judgement continuity;
-- Duel scene/exchange stability;
-- Duel second-viewer equality;
-- genuine independent/root Damage;
-- inherited delayed-Lightning DAMAGE-stage scene;
+Audit the accepted C3 families:
+- Group/AOE;
+- Attack;
+- Duel;
+- independent Damage;
+- inherited Lightning Damage;
 - Judgement;
-- delayed Judgement fresh activation;
+- root Negation;
+- nested Group/Duel Negation;
+- Group -> Damage -> Dying current-state characterization.
+
+For each, verify the same field meanings:
+- `interactionId`;
+- `rootFrameId`;
+- `activeFrameId`;
+- `parentFrameId`;
+- `stage`;
+- `sourceId`;
+- `effect`;
+- `targetIds`;
+- `currentParticipantId`;
+- `decisionActorId`;
+- `activeResolverId`;
+- `activeSourceId`;
+- `activeTargetIds`;
+- `continuity.relation`;
+- checkpoint/revision.
+
+Do not change a field merely for naming aesthetics. Fix only concrete semantic divergence.
+
+## Step 5 — legacy compatibility audit
+
+Re-check:
+- `rootContext`;
+- `activeContext`;
+- `parentContext`;
+- `participants`;
+- `decision`;
+- `settlement`;
+- `transitionEvents`;
+- `groupResolution`.
+
+The typed `interactionScene` is the future public semantic contract. Legacy fields may remain, but identify any concrete case where they contradict it.
+
+If a safe small derivation removes a contradiction, fix it.
+Otherwise document the migration gap for C5.
+
+Do not wholesale-remove legacy fields.
+
+## Step 6 — explicitly freeze accepted C3 limitations
+
+Document these as intentional boundaries unless source inspection proves otherwise:
+
+1. Historical delayed `originRef` remains PARTIAL and must not be fabricated.
+2. A single snapshot exposes structural continuity facts but does not claim directional animation such as “enter child” versus “return parent”; the future consumer compares snapshots/revisions.
+3. Dying/Peach has current causal/scene characterization, but the presentation barrier itself belongs to C4.
+4. React/CSS consumption belongs after the later PresentationSnapshot stages.
+
+These are not automatic C3 failures.
+
+## Step 7 — final C3 evidence matrix
+
+Produce one consolidated matrix using:
+PROVEN / PARTIAL / UNPROVEN / NOT IMPLEMENTED IN GAME.
+
+Include:
+- Group source/ordered targets/participant progression;
+- Group SAME_FRAME Negation;
+- Group -> Damage child/resume;
+- Dying/Peach current-state characterization;
+- Attack;
+- Attack -> Judgement continuity;
+- Duel exchange;
+- Duel viewer equality;
+- independent/root Damage;
+- inherited Lightning Damage;
+- Judgement;
+- delayed fresh activation identity;
 - historical delayed originRef;
 - root Negation;
-- Group regressions;
-- repeated-read stability;
-- settlement clearing;
-- malformed fail-closed behavior.
+- viewer equality;
+- repeated-read/reconnect stability;
+- checkpoint coherence/fail-closed;
+- settlement/clearing;
+- legacy compatibility divergence;
+- snapshot-only transition-direction limitation.
 
-Use PROVEN / PARTIAL / UNPROVEN / NOT IMPLEMENTED IN GAME literally.
+For every PARTIAL row, state whether it blocks C3 closure and why.
 
-Do not combine “independent/root Damage” and “Lightning DAMAGE-stage scene” into one row.
+## Step 8 — tests
 
-## Step 7 — documentation
+Add only tests required by the Attack -> Judgement characterization or a concrete final-audit defect.
 
-Correct `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` so the non-Group matrix no longer overstates Damage evidence.
+Do not add redundant synthetic tests just to increase counts.
 
-Record the real production distinction found in Step 1.
+Preserve all accepted C3 regressions.
 
-README only needs a concise correction if its current wording becomes inaccurate.
+## Step 9 — documentation
 
-## Step 8 — validation
+Update `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` with:
+- Attack -> Judgement result;
+- final C3 evidence matrix;
+- explicit C3 closure boundaries;
+- handoff boundary to C4.
 
-Run focused PresentationV2 + Duel + Damage/Judgement tests, then:
+README: concise C3 status only.
+
+Do not rewrite C0/C2 history.
+
+## Step 10 — validation
+
+Run focused PresentationV2 + Attack/Judgement/Group/Duel/Damage/Negation tests, then:
 - `npm run test:fast`
 - `npm run test:api`
 - `npm run build`
@@ -184,25 +238,26 @@ Report exact commands/counts.
 
 Do not:
 - modify React/CSS;
-- add a new Damage gameplay path just to satisfy evidence;
+- implement the Dying presentation barrier;
 - redesign C2 causal identity;
-- change delayed Lightning/Judgement behavior merely to obtain a “root Damage” label;
-- implement Dying barrier;
-- fabricate historical originRef;
-- start C3-04/C4/C5.
+- fabricate historical delayed originRef;
+- add animation-direction state from a single snapshot;
+- change gameplay rules;
+- start C4/C5;
+- remove legacy PresentationV2 fields wholesale.
 
 ## Execution result
 
-Append only a `C3-03-FIX1 execution result` containing:
+Append only a `C3-04 execution result` containing:
 - full implementation SHA;
 - files changed;
-- exact Damage production inventory/classification;
-- whether genuine independent/root Damage exists;
-- corrected Lightning classification;
-- Duel two-viewer evidence;
-- corrected evidence matrix;
-- exact validation commands/counts;
-- remaining C3 gaps.
+- exact Attack -> Judgement production relationship;
+- any projector change and why;
+- final cross-family audit result;
+- legacy compatibility divergences;
+- consolidated C3 evidence matrix;
+- explicit recommendation: `C3 READY TO CLOSE` or `C3 NOT READY TO CLOSE`, with concrete blockers only;
+- exact validation commands/counts.
 
 Push implementation AND appended HANDOVER result to `origin/ux-v2`.
 Then run `git fetch origin` and verify remote HANDOVER contains the result.
@@ -210,62 +265,4 @@ Then STOP.
 
 ## Acceptance
 
-FIX1 passes only if Damage evidence is classified without overclaiming, any genuine independent/root Damage claim is backed by a real production path, the physical Duel flow proves public scene equality across two viewers, private controls remain private, existing non-Group/Group semantics remain intact, and all regressions are green.
-
-## C3-03-FIX1 execution result
-
-- Implementation/docs/tests commit: `eadce7147774a232612eade483e56025595667d1` (`test: close C3 damage and duel evidence gaps`).
-- Files changed: `README.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, `tests/api/presentation-v2-engine.test.mjs`, and `tests/api/yue-jin-dauntless.test.mjs`.
-- No gameplay, React/CSS, C2 identity, delayed Lightning behavior, or Dying barrier was changed.
-
-### Damage production inventory and classification
-
-- `app/api/rooms/route.ts:2666` is the shared `resolveSourcedDamage` boundary. Its `inheritedCausal` value comes from explicit causal/resume handles; absent such a handle, `damageSufferedTriggerPending` at line 2726 creates a new `DAMAGE` root through `createCausalRoot`.
-- `app/api/rooms/route.ts:4249-4263` is a real independent/root production path: Yue Jin Dauntless calls `resolveSourcedDamage` without a causal or resume causal handle and labels the effect `Dauntless`. The real Sima Yi and Cao Cao branches now prove this path.
-- `app/api/rooms/route.ts:4369` is a second independent/root production path: Sowing Distrust calls the same boundary without causal input. It was audited but not duplicated as a new fixture because Dauntless already proves the shared production path.
-- `app/api/rooms/route.ts:1137-1152` is not independent/root Damage: delayed Lightning passes `judgement.causal` into `resolveSourcedDamage`; the resulting `DAMAGE` frame intentionally inherits the delayed Judgement interaction, retains Guo Jia as historical origin, and has a null current source.
-- Attack, Duel, Group child Damage, Judgement replacement, and other resumed damage call sites pass existing causal/resume handles or use their established parent/child continuation. They are not independent roots merely because the active frame stage is `DAMAGE`.
-
-### Evidence correction and Duel proof
-
-- Genuine independent/root Damage: **PROVEN** by the real Dauntless engine/API fixture. It asserts one root frame, `DAMAGE` stage, source Yue Jin, target/current participant/resolver/decision actor, interaction/root identity, repeated public scene across Yue Jin and Sima Yi viewers, and final clearing in the no-post-reaction Cao Cao branch. Sima Yi additionally proves continuation through a real Fankui reaction without changing the root identity.
-- Inherited delayed-Lightning `DAMAGE` stage: **PROVEN** as inherited Damage-stage presentation only. The existing Guo Jia fixture proves one Judgement-owned interaction, repeated Legacy re-entry, viewer equality, and final clearing. It is no longer classified as independent/root Damage.
-- Physical Duel: **PROVEN** across two viewers before and after one response handoff. Both viewers receive equal full `interactionScene`, including equal public `decisionActorId`, while response options remain absent from the non-acting viewer. Interaction/root identity remains unchanged.
-
-### Corrected evidence matrix
-
-| Evidence | Result |
-| --- | --- |
-| Attack public scene | PROVEN |
-| Attack response-Judgement continuity | PARTIAL; existing causal support remains without a new child model |
-| Duel public scene and exchange stability | PROVEN |
-| Duel second-viewer equality and public decision actor | PROVEN before and after response handoff |
-| Genuine independent/root Damage | PROVEN through Dauntless; Sowing Distrust shares the audited production entry point |
-| Inherited delayed-Lightning Damage-stage scene | PROVEN, explicitly not independent/root |
-| Judgement | PROVEN |
-| Delayed Judgement fresh activation identity | PROVEN |
-| Historical delayed `originRef` | PARTIAL; not fabricated |
-| Independent/root Negation | PROVEN |
-| Group SAME_FRAME Negation regression | PROVEN |
-| Repeated-read stability | PROVEN across the existing Attack, Duel, Damage, Judgement, Negation, and Group fixtures |
-| Settlement / scene clearing | PROVEN for real terminal Attack, inherited Lightning, and independent Dauntless Damage paths where the fixture reaches settlement |
-| Malformed/non-authoritative fail-closed behavior | PROVEN |
-| Compatibility-field divergence | NONE FOUND |
-
-### Validation
-
-- Focused projector and causality: `node --test tests/presentation-v2.test.mjs tests/presentation-causality.test.mjs` — 29/29.
-- Focused real PresentationV2/Duel/Damage/Judgement tests: `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/presentation-causality.test.mjs,tests/api/lobby-heroes-wei.test.mjs,tests/api/judgement.test.mjs,tests/api/yue-jin-dauntless.test.mjs ... node tests/run-tests.mjs` — 64 tests, 63 passed, 1 assertion was corrected, then the final focused subset `presentation-v2-engine + yue-jin-dauntless` passed 27/27. The final full suite below is the acceptance evidence.
-- Full fast suite: `npm run test:fast` — 113/113.
-- Full API suite: `npm run test:api` — 238/238 across 4 shards.
-- `npm run build` — PASS.
-- `npm run lint` — PASS.
-- `git diff --check` — PASS.
-
-### Remaining C3 gaps
-
-FIX1 is implemented and validated. Remaining boundaries are the historical
-delayed `originRef`, explicit Attack-response-to-Judgement child continuity,
-transition-direction/animation semantics, and the Dying presentation barrier.
-Do not start C3-04, C4, C5, React/CSS migration, or gameplay changes in this
-handoff.
+C3-04 passes if the real Attack -> Judgement path is accurately characterized without inventing causal history, the typed Interaction Scene has consistent field semantics across accepted C3 families, remaining PARTIAL items are explicitly bounded to later stages rather than hidden, no private data or fabricated identity is introduced, all regressions are green, and the evidence is sufficient for the reviewer to decide whether C3 can be formally closed.
