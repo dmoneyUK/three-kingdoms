@@ -127,6 +127,9 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
 
   const attack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-lethal-damage-trigger-chain", targetId: alicePlayer.id });
   assert.equal(attack.status, 200);
+  const attackEnvelope = attack.data.room.causalEnvelope;
+  assert.ok(attackEnvelope, "Attack root envelope is persisted at the real response boundary");
+  assert.equal(attackEnvelope.frames.length, 1);
   assert.deepEqual(attack.data.room.currentAction.triggerOptions.map((option) => option.effectId), ["test_damage_about_to_apply_a", "test_damage_about_to_apply_b"]);
 
   await requestAndSettle("trigger", { code: game.code, token: host.token, providerId: "test_damage_about_to_apply_a" });
@@ -136,6 +139,12 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.equal(afterB.data.room.pending?.kind, "dying");
   assert.equal(afterB.data.room.currentAction.kind, "dying");
   assert.equal(afterB.data.room.pendingDying.targetId, alicePlayer.id);
+  const dyingEnvelope = afterB.data.room.causalEnvelope;
+  assert.ok(dyingEnvelope, "lethal Damage/Dying keeps the persisted envelope");
+  assert.equal(dyingEnvelope.interactionId, attackEnvelope.interactionId);
+  assert.equal(dyingEnvelope.activeFrameId, attackEnvelope.activeFrameId);
+  assert.equal(dyingEnvelope.frames.find((frame) => frame.frameId === dyingEnvelope.activeFrameId).stage, "DYING");
+  assert.equal(dyingEnvelope.frames.find((frame) => frame.frameId === dyingEnvelope.activeFrameId).origin.originalTargetIds[0], alicePlayer.id);
   assert.equal(afterB.data.room.players.find((player) => player.id === alicePlayer.id).hp, 0);
   assert.equal(afterB.data.room.players.find((player) => player.id === alicePlayer.id).alive, true, "shared Dying keeps the target rescuable");
   assert.equal(afterB.data.room.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1);
@@ -148,6 +157,7 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).hp, 1);
   assert.equal(rescued.data.room.players.find((player) => player.id === alicePlayer.id).alive, true);
   assert.equal(rescued.data.room.pendingDying, null);
+  assert.equal(rescued.data.room.causalEnvelope, null, "settled lethal Interaction clears its envelope after rescue");
   assert.equal(rescued.data.room.currentAction.kind, "turn");
   assert.equal(rescued.data.room.log.filter((entry) => /Alice takes 1 damage/.test(entry)).length, 1, "rescue does not replay damage");
   assert.equal(rescued.data.room.log.filter((entry) => /enters Dying/.test(entry)).length, 1, "Dying begins once");
@@ -482,5 +492,4 @@ test("classic role deaths apply cleanup, rewards, penalties, and victory rules",
   const rebelVictory = await takeDamageIfPending(rebelVictoryGame.code, fallenLordMember.token);
   assert.equal(rebelVictory.data.room.status, "finished"); assert.ok(rebelVictory.data.room.timeline.some((event) => /Rebel victory/.test(event.message ?? "")));
 });
-
 

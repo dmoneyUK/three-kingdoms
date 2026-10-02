@@ -60,29 +60,36 @@ Still open before the C2 acceptance gate can be closed:
   triggers;
 - prove delayed activation `originRef` history and final settlement clearing.
 
-## C2-FIX audit matrix — 2026-10-02
+## C2-FIX2 evidence matrix — 2026-10-02
 
-This is an execution audit, not a claim that the C2 gate is closed. “Partial”
-means the route carries a causal handle or has one proven path, but the full
-runtime lifetime/atomicity matrix is not yet complete. “Unproven” is reserved
-for a flow without an engine-backed proof in this round.
+This matrix is intentionally tied to real API/engine evidence. Helper-only
+tests never upgrade a row to PROVEN.
 
-| Flow | Root envelope | Same frame | Child persisted | Parent resumed | Checkpoint | Atomic room write | Settlement clear | Engine proof |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Attack response | PASS | PASS | N/A | N/A | PARTIAL | PASS for ordinary/targeted entry | PARTIAL | PASS |
-| Duel alternation | PARTIAL | PARTIAL | N/A | N/A | UNPROVEN | PARTIAL | UNPROVEN | UNPROVEN |
-| Negation counter | PASS | PASS | N/A | N/A | PARTIAL | PASS for root entry | PARTIAL | PARTIAL |
-| Group/AOE progression | PARTIAL | PARTIAL | UNPROVEN | UNPROVEN | UNPROVEN | PARTIAL | UNPROVEN | UNPROVEN |
-| Borrowed Sword | PASS | PASS | PASS | PASS | PARTIAL | PASS | PASS for refusal/invalidation | PASS |
-| Judgement/deferred Judgement | PASS for Judgement Negation | PARTIAL | UNPROVEN | UNPROVEN | UNPROVEN | PASS for Judgement Negation entry | UNPROVEN | UNPROVEN |
-| Damage → Dying | UNPROVEN | UNPROVEN | UNPROVEN | UNPROVEN | UNPROVEN | PARTIAL | UNPROVEN | UNPROVEN |
-| Delayed activation | PARTIAL | N/A | UNPROVEN | UNPROVEN | UNPROVEN | PARTIAL | UNPROVEN | UNPROVEN |
+| Flow | Status | Exact API/engine evidence | Missing boundary |
+| --- | --- | --- | --- |
+| Attack → Dodge | PARTIAL | `tests/api/presentation-causality.test.mjs` — `D1 causal envelope survives production room reload and stays public across viewers` | same-frame persisted envelope through Dodge settlement |
+| Attack → Damage | PARTIAL | `tests/api/concurrency.test.mjs` — `lethal damage trigger exhaustion enters shared Dying and Peach rescue exactly once` | damage-stage envelope assertion |
+| Attack → Damage → Dying | PARTIAL | same lethal API test | persisted same Interaction/Frame and final clear |
+| Duel alternating responders | PARTIAL | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Duel alternates response actors without changing the root context` | causalEnvelope, not only PresentationV2 |
+| Negation → counter-Negation | PARTIAL | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Negation/counter-Negation keeps the original effect recoverable` | persisted envelope assertions |
+| Group participant progression | PARTIAL | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant` | persisted Frame/checkpoint assertions |
+| Group → nested child → parent resume | UNPROVEN | same Group test proves typed continuation only | real persisted child Frame |
+| Borrowed Sword → forced Attack child → parent resume | PROVEN | `tests/api/borrowed-sword.test.mjs` — first Borrowed Sword test and CAS matrix | root settlement clear |
+| Judgement reveal → replacement → effective result → resume | PARTIAL | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Judgement replacement exposes reveal and resume evidence` | persisted causalEnvelope at each boundary |
+| Independent nested damage trigger → child → parent resume | UNPROVEN | no real child Frame evidence | determine independent-vs-same-frame semantics |
+| Redirect/current-target mutation | PARTIAL | `tests/causal-context.test.mjs` — `C2 keeps immutable origin while current targets redirect` | real API envelope evidence |
+| Delayed future activation | UNPROVEN | no authoritative historical `originRef` API proof | persisted provenance |
+| Settlement/clear | PARTIAL | Borrowed Sword refusal/invalidation asserts parent resume | root clear after synchronous work |
+| Reconnect identity stability | PARTIAL | `tests/api/presentation-causality.test.mjs` reload/viewer persistence test | real-flow reconnect matrix |
+| Second-viewer public identity stability | PROVEN | same presentation-causality API test | none for generic envelope |
+| Stale/double-action identity safety | PARTIAL | `tests/api/borrowed-sword.test.mjs` CAS matrix | envelope/checkpoint unchanged assertion |
+| Legacy NULL envelope | PROVEN | `tests/api/presentation-causality.test.mjs` — `legacy room without causal envelope remains null through production room state` | none |
+| Malformed envelope | PROVEN | `tests/presentation-causality.test.mjs` — `parser rejects structurally impossible envelopes` | real gameplay malformed-row API test |
 
-The C2-FIX code change centralizes the room write for the audited root entry
-paths (`Attack`, `Attack-targeted`, `Negation`, and Judgement Negation) so
-`phase`, `pending_json`, `log_json`, deck/discard where applicable, and
-`causal_envelope_json` are committed together. The helper is not yet wired to
-every legacy automatic transition; those rows remain explicitly PARTIAL.
+The centralized room write helper currently covers audited root Attack and
+Negation entries. C2-FIX2 must extend it only along transitions represented in
+this matrix; remaining rows stay PARTIAL/UNPROVEN until real persisted
+evidence exists.
 
 C3 Group semantics, C4 Dying barrier work, C5 projector migration, and React
 presentation changes remain explicitly out of scope.

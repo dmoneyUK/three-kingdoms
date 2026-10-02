@@ -366,3 +366,96 @@ C2-FIX3 passes only if:
 - legacy/corrupt state remains safe without fabricated causal structure;
 - remaining UNPROVEN items are explicit;
 - no C3/Dying-barrier/PresentationV2/React work begins.
+
+---
+
+## C2-FIX3 execution result — 2026-10-02
+
+Branch: `ux-v2`
+
+Implementation commit: pending commit and push for reviewer inspection.
+
+Files changed:
+
+- `app/api/rooms/route.ts`
+- `tests/api/concurrency.test.mjs`
+- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
+- `README.md`
+- `HANDOVER.md` (this append-only result)
+
+### Envelope authority changes
+
+- Extended the authoritative damage transition with the existing typed causal
+  context instead of creating a new Damage identity for an Attack continuation.
+- Persisted the same room phase, Pending, log, deck/discard, and envelope
+  together at Damage reaction and Dying entry boundaries.
+- Advanced the active frame to `DAMAGE` and `DYING` only when the persisted
+  envelope already contains the matching authoritative frame; absent or
+  malformed envelopes remain legacy/null.
+- Successful Peach rescue clears the settled causal envelope atomically with
+  the resolving room state. Dying remains in the existing rescue/timer flow.
+
+### recoverCausalEnvelope audit
+
+The remaining route uses are limited to Borrowed Sword/Attack paths where a
+typed persisted `CausalContext` already carries the authoritative
+`interactionId` and `frameId`. No log, card name, `resolutionId`, event ID,
+or `actionRevision` is used to invent identity. Full direct-root persistence
+coverage remains PARTIAL and is not overclaimed here.
+
+### Evidence matrix
+
+The exact required matrix is in
+`docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`. This round upgrades only the real
+lethal Attack → Damage → Dying row from generic PARTIAL evidence to a tested
+same-Interaction/same-Frame path. Group child, independent nested damage,
+delayed `originRef`, and universal automatic-write rows remain UNPROVEN or
+PARTIAL.
+
+### Attack/Damage/Dying proof
+
+`tests/api/concurrency.test.mjs` — `lethal damage trigger exhaustion enters
+shared Dying and Peach rescue exactly once` now asserts:
+
+- Attack response persists one root envelope;
+- Dying preserves `interactionId` and `activeFrameId`;
+- the active frame reaches `DYING` while retaining the original target;
+- successful rescue clears `causalEnvelope` after settlement.
+
+### Child/resume proofs
+
+Borrowed Sword child push/pop remains proven by the prior API tests. This round
+does not force a child Frame for Group or damage reactions whose independent
+nested semantics are not yet represented by the engine.
+
+### Judgement/Duel/Negation proof
+
+Existing PresentationV2 engine tests remain regression evidence only; causal
+envelope assertions for Judgement, Duel, and Negation are still PARTIAL.
+
+### Settlement/clear proof
+
+The lethal rescue path now has an explicit clear assertion. Universal root,
+defeat, delayed-effect, and nested-child settlement clearing remain PARTIAL.
+
+### Compatibility/stale/reconnect proof
+
+Legacy NULL/malformed parsing and existing Borrowed Sword CAS coverage remain
+green. A complete C2 scenario-matrix stale/checkpoint and real-flow reconnect
+proof is still open.
+
+### Validation
+
+- `npm run build`: passed
+- focused concurrency Worker/D1 API tests: 12/12 passed
+- `npm run test:fast`: 107/107 passed
+- `node tests/run-api-suite.mjs`: 212/212 passed
+- `npm run lint`: passed
+- `git diff --check`: passed
+
+### Remaining PARTIAL / UNPROVEN
+
+Universal direct-root envelope authority, Group nested child/resume,
+independent nested-damage semantics, Judgement/Duel/Negation causal-envelope
+assertions, delayed activation `originRef`, full settlement clearing, and the
+complete reconnect/viewer/stale matrix remain open. Do not start C3.

@@ -27,6 +27,10 @@ records an explicit per-flow audit matrix. The acceptance gate remains
 PARTIAL pending automatic-transition coverage, nested damage/Dying lifetime,
 Judgement lifetime, and settlement-clear proofs.
 
+C2-FIX3 adds real lethal Attack → Damage → Dying envelope evidence: the same
+Interaction/Frame is retained through `DYING`, and successful rescue clears
+the settled envelope. The broader C2 gate remains PARTIAL.
+
 ## UX2.0B-FINAL verification — 2026-10-02
 
 On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue
