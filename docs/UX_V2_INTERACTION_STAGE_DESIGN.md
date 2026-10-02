@@ -91,6 +91,295 @@ Most interactions may visually appear as 1v1, but the presentation model must su
 - Lord / delegated responses,
 - third-party triggered abilities.
 
+## 3A. Viewer-centric interaction presentation
+
+All players should see the same public event facts, but the Interaction Stage is presented from the current viewer's perspective.
+
+Core rule: **the viewer's own hero is never duplicated into the Interaction Stage.** The local hero remains in the Local Player Dock.
+
+For an event where A is the source, B is the effect target, and C is a third-party decision actor:
+
+- A's view: show B and C in the Interaction Stage; A remains in the local dock.
+- B's view: show A and C; B remains in the local dock and receives the red target treatment.
+- C's view: show A and B; C remains in the local dock and receives the current-decision treatment.
+- An uninvolved viewer D may see A, B, and C in the Interaction Stage.
+
+The public event relationship must remain stable across viewers:
+
+- original source / target relationship stays visible,
+- current decision actor is highlighted separately,
+- third-party intervention must not rewrite the event as an artificial "C vs A" battle.
+
+The Interaction Stage should use **semantic event positions** rather than attempting to preserve physical seat positions inside the stage. For example, source may be presented to the left and target to the right, while actual table position remains represented by the persistent seat thumbnails.
+
+A player may carry multiple visual roles simultaneously. For example, a player can be both:
+
+- **Red:** current effect target,
+- **Cyan / teal:** current decision actor.
+
+Do not let one role erase the other.
+
+## 3B. Public Reaction Chain
+
+The Interaction Stage must show not only the current decision but also the causal path from the root event to the current state.
+
+Define the Interaction Stage as:
+
+**Current Effect + Public Reaction Chain + Current Decision Context**
+
+Example:
+
+```text
+CURRENT EFFECT
+A ── Attack ──▶ B
+
+REACTION CHAIN
+① A · Attack → B              ✓
+② B · Dodge                   ✓
+③ A · Green Dragon Blade      ▶
+
+CURRENT DECISION
+Waiting for A
+```
+
+### Reaction Chain purpose
+
+The Reaction Chain is **not** the normal Game Log.
+
+- Game Log = historical record of completed events.
+- Reaction Chain = structured explanation of the currently unresolved interaction.
+
+When the interaction settles, the chain may collapse and the final result may be written to normal history.
+
+### Shared public facts
+
+Every viewer should see the same public Reaction Chain order and the same public state-changing actions.
+
+What differs by viewer is only private/local presentation such as:
+
+- the viewer's own hand,
+- available response cards,
+- private skills / providers,
+- local Confirm / Cancel / Skip controls,
+- local guidance.
+
+A viewer who does not own the current decision must see only a public status such as:
+
+```text
+Waiting for C...
+```
+
+They must not see C's private response options.
+
+Only after C submits a public action does that action become a visible Reaction Chain node.
+
+### Root event must remain visible
+
+The root event should remain available even when the chain becomes long.
+
+Example:
+
+```text
+ROOT
+A · Steal → B
+
+... earlier reactions ▸
+
+⑤ C · Negation                ✓
+⑥ D · Negation                ✓
+⑦ E · deciding               ▶
+```
+
+Older chain nodes may be collapsed for space, especially on mobile, but they must remain inspectable. The root event should not disappear.
+
+### Reaction Chain visibility rule
+
+**Do not render ordinary Pass / Skip / Decline actions as Reaction Chain nodes when they produce no independent gameplay effect.**
+
+Do not show:
+
+```text
+C · Pass
+D · Pass
+E · Pass
+```
+
+and do not normally show aggregate noise such as:
+
+```text
+3 players passed
+```
+
+Instead, while a response window is open, show only the current decision actor:
+
+```text
+Waiting for D...
+```
+
+If D declines, advance directly to:
+
+```text
+Waiting for E...
+```
+
+without leaving a visible Pass node.
+
+Pass / decline state may still be retained internally by the engine because it is required to advance response windows correctly.
+
+The local player's Skip / decline control remains visible whenever the authoritative `currentAction` permits it.
+
+The visible Reaction Chain should therefore contain **meaningful state-changing or causally important events**, such as:
+
+- card use,
+- skill activation,
+- Dodge / required response,
+- Negation / counter-Negation,
+- target redirection,
+- Judgement reveal / replacement,
+- damage,
+- Dying,
+- rescue / Peach,
+- other public effects that alter the interaction.
+
+### Long chains
+
+For long interactions, show the root plus the most recent relevant nodes and collapse earlier details.
+
+Target approximately 3–5 visible recent nodes on constrained layouts.
+
+Example:
+
+```text
+ROOT
+A · Attack → B
+
+①–④ Earlier interaction ▸
+⑤ B · Skill                   ✓
+⑥ C · Negation                ✓
+⑦ D · deciding               ▶
+```
+
+### Target redirection
+
+When an effect changes target, update the Current Effect but preserve the causal history.
+
+Example:
+
+```text
+CURRENT EFFECT
+A ── Attack ──▶ C
+
+REACTION CHAIN
+① A · Attack → B             ✓
+② B · Redirect Skill         ✓
+③ Target B → C               ↪
+④ C · Dodge?                 ▶
+```
+
+Do not rewrite history as though A originally targeted C.
+
+### Third-party intervention
+
+Third-party intervention is represented as an addition to the current event, not as a replacement event.
+
+Example:
+
+```text
+PRIMARY EFFECT
+A ── Steal ──▶ B
+
+REACTION CHAIN
+① A · Steal → B              ✓
+② C · Negation               ✓
+③ D · Negation               ✓
+
+CURRENT DECISION
+Waiting for E...
+```
+
+This model must support deeper intervention chains without losing A → B as the root relationship.
+
+### Dying / rescue
+
+A Dying sequence remains causally attached to the event that caused it.
+
+Example:
+
+```text
+ROOT
+A · Attack → B
+
+REACTION CHAIN
+① A · Attack                 ✓
+② B · No Dodge               ✓
+③ B · Takes 1 damage         ✓
+④ B · DYING                  !
+⑤ C · Peach                  ✓
+⑥ D · Rescue decision        ▶
+```
+
+The visual focus may shift to the dying player, but the originating event remains available.
+
+### Judgement
+
+Judgement also uses the same chain model.
+
+Example:
+
+```text
+① Lightning judgement starts ✓
+② Reveal 7♠                  ✓
+③ Sima Yi · Judgement Skill  ✓
+④ Replace with 5♥            ✓
+⑤ Final Judgement            ▶
+```
+
+### Duel
+
+Keep Duel participants in stable visual positions while the decision actor alternates.
+
+Example:
+
+```text
+① A initiates Duel           ✓
+② B · Attack                 ✓
+③ A · Attack                 ✓
+④ B · Attack                 ▶
+```
+
+Do not swap the hero panels each time the responder changes.
+
+### AOE
+
+For AOE, preserve the root group effect while showing sequential resolution.
+
+Example:
+
+```text
+ROOT
+A · Raining Arrows
+
+Affected:
+B ✓   C ✓   D ▶   E ○   F ○
+```
+
+If D's response causes another intervention, that intervention attaches to the current AOE interaction rather than creating an unrelated visual battle.
+
+### Authoritative Reaction Chain
+
+Do not let each browser infer public chain history from animations.
+
+The server should eventually project enough authoritative public interaction data to reconstruct:
+
+- root event,
+- public chain nodes,
+- current effect,
+- current decision actor,
+- current resolving participant,
+- final / settled result.
+
+Private choices remain projected only to the player who owns that decision.
+
 ## 4. Single-target selection
 
 When the local player selects a card or skill requiring one target:
@@ -323,9 +612,13 @@ For future Play-phase targeting, prefer server-projected information such as:
 - target min / max,
 - whether target order is semantically meaningful,
 - automatic all-target semantics,
-- multi-stage target-zone choices.
+- multi-stage target-zone choices,
+- authoritative public root-event information,
+- public Reaction Chain nodes,
+- current effect / resolving participant,
+- current decision actor.
 
-React should primarily render projected legality rather than learn more card-specific rules.
+React should primarily render projected legality and public interaction state rather than learn more card-specific rules or infer chain history from animations.
 
 ## 12. Proposed implementation slices — not approved for implementation yet
 
@@ -352,6 +645,9 @@ The next design discussion should settle **UX2.1 + UX2.2** before coding:
 - portrait / label / distance density,
 - upper battlefield height,
 - exact single-target Focus dimensions,
+- how Current Effect, Reaction Chain, and Current Decision are arranged inside the Interaction Stage,
+- where the Reaction Chain sits relative to enlarged hero panels,
 - how the Interaction Stage coexists with draw / discard / resolution animation,
+- how long Reaction Chains collapse / expand on constrained layouts,
 - mobile layout for the same state,
 - whether defeated players remain as a separate compact history strip.
