@@ -213,7 +213,7 @@ FIX15 passes only if the audit covers all current production causal families, an
 
 Date: 2026-10-02
 Branch: `ux-v2`
-Implementation commit: this changeset (final SHA recorded after commit amendment)
+Implementation commit: `ba75dbf`
 
 ### Result
 
