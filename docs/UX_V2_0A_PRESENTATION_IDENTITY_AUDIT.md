@@ -382,3 +382,55 @@ that same-resolution unrelated timeline history is excluded.
 
 The Interaction -> Frame -> Stage -> Checkpoint plan is unchanged. No final
 identity, React migration, CSS change, or gameplay legality change was made.
+
+## UX2.0B-FINAL Verification Results
+
+This section supersedes the earlier open-gate wording where the real
+engine-backed characterization below provides newer evidence. It does not
+promote `resolutionId` to a presentation identity.
+
+| Scenario | Engine-backed | Root proven | Parent proven | Resume proven | Timer proven | Remaining gap |
+| --- | --- | --- | --- | --- | --- | --- |
+| Attack/Dodge | PASS | PARTIAL | OPEN | PASS | PASS | Explicit historical root target is not universal |
+| Attack/Damage | PARTIAL | PARTIAL | OPEN | PARTIAL | PARTIAL | Direct PresentationV2 checkpoint trace remains incomplete |
+| Dying/Rescue | PASS | PARTIAL | PARTIAL | PASS | PASS | Dying has no `readyAfterEventId`; barrier linkage is absent |
+| AOE/Group | PASS | PARTIAL | PASS | PASS | PARTIAL | Ordering/simultaneity remains `UNPROVEN` |
+| Duel | PASS | PARTIAL | OPEN | PASS | PARTIAL | `resolutionId` changes between alternating responders |
+| Negation | PASS | PARTIAL | OPEN | PASS | PARTIAL | Counter window changes the directly referenced public event |
+| Borrowed Sword | PASS | PARTIAL | OPEN | PARTIAL | PASS | Forced-Attack parent/resume marker is not explicit |
+| Judgement | PASS | PARTIAL | PASS | PASS | PARTIAL | Universal root target and timer semantics remain incomplete |
+| Nested Damage Trigger | PASS | PARTIAL | PASS | PASS | PARTIAL | Evidence is Group-trigger-backed; broader trigger families remain open |
+
+### Engine-backed timer evidence
+
+The real Dying path reaches `DyingPending` without manually constructing
+Pending. Its deadline is initially zero, is armed only by the existing
+`start_rescue_timer` action, survives reconnect unchanged, and expires through
+the existing timer advancement path. In this observed path presentation delay
+does not consume rescue time because the deadline is unarmed beforehand.
+However, Dying currently does not expose `readyAfterEventId`, so the relation
+between rescue readiness and timer arming is not represented as a universal
+barrier contract. The fairness result is therefore **usable time is preserved
+after explicit arm, with a barrier-linkage gap**.
+
+Ordinary response timing is likewise unarmed before the existing client-ready
+action and remains stable after arming and reconnect. This is evidence about
+current behavior, not a timer redesign.
+
+### Proven identity limits
+
+Real Duel alternation changes `resolutionId` while source/kind/target causal
+context remains understandable. Real Negation preserves stable root source,
+kind, original-target projection, and resolution reference while the directly
+referenced public event changes between windows. These observations confirm
+that `resolutionId` and event IDs are legacy/reference metadata, not universal
+Interaction or Frame identities.
+
+### UX2.0C gate result
+
+**NOT READY.** The engine-backed evidence is sufficient to continue bounded
+projector work, but not to design final Interaction -> Frame -> Stage ->
+Checkpoint identities. Universal root lifetime, explicit parent markers for
+some continuation families, Dying barrier metadata, and broader direct
+PresentationV2 traces remain open. No visual implementation recommendation is
+made by this verification task.

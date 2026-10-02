@@ -1,5 +1,18 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
+## UX2.0B-FINAL verification — 2026-10-02
+
+On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue
+timer arming and reconnect, Group nested resume, Duel alternation,
+Negation/counter-Negation, Judgement replacement/resume, and viewer privacy.
+The focused projector suite is 17/17 and the API suite is 210/210. The
+projector remains additive and pure; no final Interaction/Frame/Checkpoint IDs,
+React migration, CSS, or gameplay-rule changes were made.
+
+UX2.0C remains **NOT READY**: universal root/parent lifetime and Dying
+barrier metadata are still open. The next milestone is review of this evidence,
+not visual implementation.
+
 ## UX2.0B-FIX — engine-backed PresentationV2 verification — 2026-10-02
 
 Hardened the additive pure server-side `presentationV2` projection: root

@@ -52,6 +52,10 @@ function unique(values: readonly (string | null | undefined)[]): string[] { retu
 function strings(value: unknown): string[] { return Array.isArray(value) ? unique(value.map(stringValue)) : []; }
 function firstString(...values: unknown[]): string | null { for (const value of values) { const result = stringValue(value); if (result) return result; } return null; }
 function firstRecord(...values: unknown[]): RecordLike | null { for (const value of values) { const candidate = record(value); if (candidate) return candidate; } return null; }
+function continuationRecord(value: unknown): RecordLike | null {
+  const item = record(value);
+  return record(item?.continuation) ?? item;
+}
 
 function stageFor(kind: string, value: RecordLike): string {
   if (kind === "response" || kind === "trigger") return stringValue(value.event) ?? kind;
@@ -92,7 +96,7 @@ function parentValue(pending: RecordLike | null, activeValue: RecordLike | null)
   if (pendingKind === "dying") return firstRecord(pending?.resumePending, pending?.resumeTrigger, pending?.resumeEffect);
   const continuation = record(pending?.continuation) ?? activeValue;
   switch (stringValue(continuation?.kind)) {
-    case "damage_suffered_event": return firstRecord(continuation?.resumeGroup, continuation?.resumeDamageSuffered, continuation?.resumeTurnEnd);
+    case "damage_suffered_event": return firstRecord(continuationRecord(continuation?.resumeGroup), continuationRecord(continuation?.resumeDamageSuffered), continuationRecord(continuation?.resumeTurnEnd));
     case "attack_targeted_event": return firstRecord(continuation?.group);
     case "judgement":
     case "judgement_revealed_event":

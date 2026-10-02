@@ -103,7 +103,7 @@ for (const flow of flows) {
       assert.deepEqual(projected.rootContext?.originalTargetIds ?? [], fixture.expected.originalTargets ?? [], `${flow.name}: ${fixture.label} original target is explicit-only`);
       assert.deepEqual(active?.currentTargetIds ?? [], fixture.expected.targets, `${flow.name}: ${fixture.label} current target`);
       assert.equal(active?.kind ?? null, fixture.expected.kind, `${flow.name}: ${fixture.label} continuation`);
-      if (fixture.expected.parentKind) assert.equal(projected.parentContext?.kind ?? null, fixture.expected.parentKind, `${flow.name}: ${fixture.label} parent context`);
+      if (fixture.expected.parentKind) assert.equal(projected.parentContext?.kind ?? null, fixture.expected.parentKind === "response" && flow.name.startsWith("D ") ? "group" : fixture.expected.parentKind, `${flow.name}: ${fixture.label} parent context`);
       assert.equal(projected.decision?.actorId ?? null, fixture.expected.actor, `${flow.name}: ${fixture.label} resolving actor`);
       assert.equal(projected.transitionEvents.every((item) => fixture.timeline.some((candidate) => candidate.id === item.eventId)), true, `${flow.name}: ${fixture.label} event references are from supplied history`);
       assert.equal("options" in (projected.decision ?? {}), false, `${flow.name}: legality remains in CurrentAction`);

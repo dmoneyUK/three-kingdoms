@@ -1,5 +1,43 @@
 # Three Kingdoms — current handover
 
+## UX2.0B-FINAL verification — 2026-10-02
+
+Branch: `ux-v2`. The real engine-backed verification now covers:
+
+- Dying/rescue: real lethal damage, rescue decision, separate timer arm,
+  reconnect before and after arm, and timeout advancement;
+- Group/AOE: real damage trigger, typed Group continuation, nested active
+  damage, Group parent, and return to the next participant;
+- Duel: real alternating response actors with action-revision changes;
+- Negation: real original effect, Negation, and counter-Negation;
+- Judgement: real reveal, replacement, effective result, and delayed parent
+  resume;
+- viewer-private CurrentAction projection and deterministic PresentationV2
+  reconstruction.
+
+The projector change is intentionally narrow: `resumeGroup` is unwrapped only
+when its authoritative continuation is a typed Group continuation. Root target
+projection remains explicit-only. `resolutionId` and public event IDs remain
+legacy/reference metadata: Duel changes resolutionId between alternating
+responses, while Negation can change the directly referenced event across
+counter windows.
+
+Timer conclusion: ordinary response and rescue deadlines are unarmed until
+their existing arm actions, then survive reconnect. The real rescue path does
+not expose `readyAfterEventId`, so presentation-barrier linkage is still
+incomplete; observed rescue time is not consumed before explicit arm.
+
+Evidence status: UX2.0C is **NOT READY**. Remaining blockers are universal
+root/parent lifetime, explicit barrier metadata for Dying, broader direct
+PresentationV2 traces for the remaining nested flows, and authoritative Group
+ordering semantics. No visual implementation recommendation is made. No
+React, CSS, main-branch, or gameplay-rule work was done.
+
+Validation for this commit: focused projector tests 17/17; engine-backed
+PresentationV2 tests 8/8; full API suite 210/210. Build passed before the API
+run. Full fast suite, lint, and final `git diff --check` remain to be run
+after this documentation update.
+
 ## UX2.0B review — foundation accepted with follow-up gates — 2026-10-02
 
 Reviewed the additive `presentationV2` foundation on `ux-v2`. The direction is retained: server-side/pure presentation projection, `CurrentAction` remains the sole legality authority, `resolutionId` remains legacy/reference metadata, no final Interaction/Frame/Checkpoint IDs are introduced, and React migration remains deferred.

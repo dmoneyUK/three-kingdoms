@@ -3792,3 +3792,36 @@ This gate preserves the prior review history and does not finalise
 
 UX2.0C identity design and React migration remain gated on the open engine
 semantics above.
+
+### 0.92.7 UX2.0B-FINAL gate status — 2026-10-02
+
+This final verification pass preserves all preceding review history. It adds
+real engine-backed evidence without introducing final presentation IDs.
+
+- Dying/rescue timer: **PARTIAL**. Real Dying, explicit rescue arm,
+  reconnect-preserved deadline, and timeout are proven. The route does not
+  currently expose `readyAfterEventId` for Dying, so barrier-to-deadline
+  linkage is not proven as a universal contract.
+- Group parent/resume: **PASS** for the exercised real Group damage-trigger
+  path. Active nested damage returns to the authoritative Group continuation
+  and advances to the next participant. Ordering remains **OPEN** and is kept
+  `UNPROVEN` rather than inferred.
+- Duel actor alternation: **PASS**. Real alternating responses change the
+  actor and action revision while preserving the causal source/kind/target
+  context. `resolutionId` changes and is not promoted.
+- Negation root preservation: **PARTIAL**. Real counter-Negation preserves
+  stable root source/kind/target projection and the legacy resolution
+  reference, but the public event reference changes and the engine does not
+  expose a typed parent at that boundary.
+- Judgement parent/resume: **PASS** for the exercised reveal/replacement path;
+  revealed-event, target, delayed parent, effective result, and resume are
+  authoritative.
+- Nested damage parent/resume: **PASS** for the exercised Group damage trigger
+  path; broader secondary-effect families remain **OPEN**.
+- Viewer privacy and CurrentAction authority: **PASS**. No private-data leak
+  was found in the real multi-viewer checks.
+
+Overall UX2.0C status is **NOT READY**. Identity design still needs a
+universal root/parent lifetime and a bounded barrier/reference contract. No
+React, CSS, visual UX, gameplay-rule, or final identity change is authorized
+by this gate.
