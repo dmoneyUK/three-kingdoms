@@ -1917,30 +1917,33 @@ async function defeatDyingPlayer(room: RoomRow, pending: DyingPending, target?: 
   await continueAfterDefeat(room.id, pending);
 }
 
+/** Find the next real rescue blocker without publishing skipped candidates. */
+function nextDyingResponder(players: PlayerRow[], pending: DyingPending, candidateIds: string[], turnSeat?: number | null) {
+  const candidates = [...candidateIds];
+  const index = candidates.findIndex((id) => {
+    const actor = players.find((player) => player.id === id);
+    if (!actor?.alive) return false;
+    const probe = { ...pending, actorId: id } satisfies DyingPending;
+    return (responseDecisionFor(probe, responseContext(actor, players, turnSeat))?.options.length ?? 0) > 0;
+  });
+  if (index < 0) return { actor: null, remainingIds: [] as string[] };
+  return { actor: players.find((player) => player.id === candidates[index]) ?? null, remainingIds: candidates.slice(index + 1) };
+}
+
 async function advanceDyingRescue(roomId: string) {
   for (let guard = 0; guard < 12; guard++) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
     const pending = parse<Pending | null>(room?.pending_json ?? null, null);
     if (!room || room.phase !== "dying" || pending?.kind !== "dying") return;
     const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>(); const players = rows.results ?? [];
-    const actor = players.find((player) => player.id === pending.actorId && player.alive); const target = players.find((player) => player.id === pending.targetId); const source = players.find((player) => player.id === pending.sourceId) ?? null;
-    // Scan automatically over dead/ineligible seats. A public rescue
-    // checkpoint exists only when the current actor has a real Peach
-    // response option; the projector must never expose these scans as fake
-    // decisions.
-    const rescueOptions = actor ? responseDecisionFor(pending, responseContext(actor, players, room.turn_seat))?.options ?? [] : [];
-    if (actor && rescueOptions.length > 0) {
-      const envelope = causalEnvelopeAtStage(room, pending.causal, "DYING", { currentSourceId: pending.sourceId, currentEffect: pending.origin ?? "damage", currentTargetIds: [pending.targetId], resolvingPlayerId: actor.id });
-      if (envelope && JSON.stringify(envelope) !== room.causal_envelope_json) {
-        await causalRoomStateWrite(roomId, { phase: "dying", pending, log: parse<string[]>(room.log_json, []), causalEnvelope: envelope }, room.pending_json).run();
-      }
-      return;
-    }
-    const nextId = pending.remainingIds?.[0];
-    if (nextId) {
-      const nextPending: DyingPending = { ...pending, actorId: nextId, remainingIds: pending.remainingIds.slice(1), deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
-      const moved = await db().prepare("UPDATE rooms SET pending_json = ? WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(serializePending(nextPending), roomId, room.pending_json).run();
-      if ((moved.meta.changes ?? 0) > 0) continue;
+    const target = players.find((player) => player.id === pending.targetId); const source = players.find((player) => player.id === pending.sourceId) ?? null;
+    const candidates = [pending.actorId, ...(pending.remainingIds ?? [])].filter((id, index, all) => id && all.indexOf(id) === index);
+    const next = nextDyingResponder(players, pending, candidates, room.turn_seat);
+    if (next.actor) {
+      const nextPending: DyingPending = { ...pending, actorId: next.actor.id, remainingIds: next.remainingIds, deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
+      const envelope = causalEnvelopeAtStage(room, nextPending.causal, "DYING", { currentSourceId: nextPending.sourceId, currentEffect: nextPending.origin ?? "damage", currentTargetIds: [nextPending.targetId], resolvingPlayerId: next.actor.id });
+      const moved = await causalRoomStateWrite(roomId, { phase: "dying", pending: nextPending, log: parse<string[]>(room.log_json, []), causalEnvelope: envelope }, room.pending_json).run();
+      if ((moved.meta.changes ?? 0) > 0) return;
       continue;
     }
     const claimed = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(roomId, room.pending_json).run();
@@ -1953,21 +1956,35 @@ async function expireDyingRescue(roomId: string) {
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>(); const pending = parse<Pending | null>(room?.pending_json ?? null, null);
   if (!room || room.phase !== "dying" || pending?.kind !== "dying" || pending.deadline <= 0 || pending.deadline > Date.now()) return;
   const claimed = await db().prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'dying' AND pending_json = ?").bind(roomId, room.pending_json).run(); if ((claimed.meta.changes ?? 0) <= 0) return;
-  const target = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.targetId).first<PlayerRow>(); const source = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.sourceId).first<PlayerRow>();
-  if (pending.remainingIds[0]) {
-    const nextPending: DyingPending = { ...pending, actorId: pending.remainingIds[0], remainingIds: pending.remainingIds.slice(1), deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
-    await db().prepare("UPDATE rooms SET phase = 'dying', pending_json = ? WHERE id = ? AND phase = 'resolving'").bind(serializePending(nextPending), roomId).run(); await advanceDyingRescue(roomId);
+  const players = (await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>()).results ?? [];
+  const target = players.find((player) => player.id === pending.targetId) ?? null; const source = players.find((player) => player.id === pending.sourceId) ?? null;
+  const next = nextDyingResponder(players, pending, pending.remainingIds ?? [], room.turn_seat);
+  if (next.actor) {
+    const nextPending: DyingPending = { ...pending, actorId: next.actor.id, remainingIds: next.remainingIds, deadline: 0, reason: `Decide whether to give Peach to ${target?.name ?? "the dying player"}` };
+    const envelope = causalEnvelopeAtStage(room, nextPending.causal, "DYING", { currentSourceId: nextPending.sourceId, currentEffect: nextPending.origin ?? "damage", currentTargetIds: [nextPending.targetId], resolvingPlayerId: next.actor.id });
+    await causalRoomStateWrite(roomId, { phase: "dying", pending: nextPending, log: parse<string[]>(room.log_json, []), causalEnvelope: envelope }).run();
+    await advanceDyingRescue(roomId);
   } else {
     await defeatDyingPlayer(room, pending, target, source);
   }
 }
 
 async function startDyingRescue(room: RoomRow, source: PlayerRow | null, target: PlayerRow, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], extraWrites: D1PreparedStatement[] = [], resumePlayer: PlayerRow = source ?? target, resumePhase = source ? phaseAfterAttack(source) : "draw", resumePending?: ResponsePending, dyingHp = target.hp ?? 0, origin?: AttackOrigin, resumeTrigger?: DamageSufferedTriggerContinuation, resumeEffect?: DyingResumeEffect, causal?: CausalContext) {
-  const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat); const first = order[0];
-  const pending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: first?.id ?? target.id, remainingIds: order.slice(1).map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
-  const causalEnvelope = causalEnvelopeAtStage(room, causal, "DYING", { currentSourceId: source?.id ?? null, currentEffect: origin ?? "damage", currentTargetIds: [target.id], resolvingPlayerId: first?.id ?? target.id });
+  const order = playersInTurnOrder(players, room.turn_seat ?? source?.seat ?? target.seat);
+  const basePending: DyingPending = { kind: "dying", sourceId: source?.id ?? null, targetId: target.id, actorId: "", remainingIds: order.map((player) => player.id), deadline: 0, resumePlayerId: resumePlayer.id, resumePhase, resumePending, ...(causal ? { causal } : {}), ...(origin ? { origin } : {}), ...(resumeTrigger ? { resumeTrigger } : {}), ...(resumeEffect ? { resumeEffect } : {}), reason: `Decide whether to give Peach to ${target.name}` };
+  const next = nextDyingResponder(players, basePending, basePending.remainingIds, room.turn_seat);
+  if (!next.actor) {
+    await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), causalRoomStateWrite(room.id, { phase: "resolving", pending: null, deck, discard, log, causalEnvelope: null })]);
+    const settledRoom = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(room.id).first<RoomRow>();
+    const settledPlayers = await db().prepare("SELECT * FROM players WHERE id IN (?, ?)").bind(target.id, source?.id ?? target.id).all<PlayerRow>();
+    const settledTarget = settledPlayers.results?.find((player) => player.id === target.id) ?? target;
+    const settledSource = settledPlayers.results?.find((player) => player.id === source?.id) ?? source;
+    if (settledRoom) await defeatDyingPlayer(settledRoom, basePending, settledTarget, settledSource);
+    return;
+  }
+  const pending: DyingPending = { ...basePending, actorId: next.actor.id, remainingIds: next.remainingIds };
+  const causalEnvelope = causalEnvelopeAtStage(room, causal, "DYING", { currentSourceId: source?.id ?? null, currentEffect: origin ?? "damage", currentTargetIds: [target.id], resolvingPlayerId: next.actor.id });
   await db().batch([...extraWrites, db().prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(dyingHp, target.id), causalRoomStateWrite(room.id, { phase: "dying", pending, deck, discard, log, causalEnvelope })]);
-  await advanceDyingRescue(room.id);
 }
 
 async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePending; continuation: DuelContinuation }, loser: PlayerRow, opponent: PlayerRow, discard: Card[], log: string[]) {

@@ -261,6 +261,14 @@ test("C4-01 projects a proven Dying barrier from causal authority and public Pen
   assert.equal(incoherent.dyingBarrier?.semantics, "UNPROVEN");
   assert.equal(incoherent.dyingBarrier?.interactionId, null);
   assert.equal(incoherent.dyingBarrier?.decisionActorId, null);
+  assert.equal(incoherent.interactionScene?.decisionActorId, null, "generic scene shares the fail-closed Dying proof");
+  const resolverMismatch = projectPresentationV2({
+    pending: { kind: "dying", actorId: "C", targetId: "B", sourceId: "A", causal: { interactionId: "dying-interaction", frameId: "dying-frame" } },
+    currentAction: action({ kind: "dying", actorId: null }), actionRevision: "dying-resolver-mismatch", timeline: [],
+    causalEnvelope: { ...envelope, frames: envelope.frames.map((candidate) => candidate.frameId === "dying-frame" ? { ...candidate, current: { ...candidate.current, resolvingPlayerId: "D" } } : candidate) },
+  });
+  assert.equal(resolverMismatch.dyingBarrier?.semantics, "UNPROVEN");
+  assert.equal(resolverMismatch.interactionScene?.decisionActorId, null);
 });
 
 test("cardKind on a single-target continuation does not create groupResolution", () => {

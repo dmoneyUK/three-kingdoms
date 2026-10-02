@@ -184,6 +184,29 @@ function pendingContexts(pending: unknown) {
   return { active, parent, group, root: pendingContext };
 }
 
+type DyingDecisionProof = {
+  pending: RecordLike;
+  activeFrame: CausalFrame;
+};
+
+/**
+ * One proof is shared by the Dying barrier and the generic interaction scene.
+ * Pending is descriptive here: rescue legality is established by the engine
+ * before this state is persisted, while the projector only proves coherence.
+ */
+function dyingDecisionProof(envelope: CausalEnvelope | null, pending: unknown): DyingDecisionProof | null {
+  const pendingRecord = record(pending);
+  if (pendingRecord?.kind !== "dying") return null;
+  const activeFrame = envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+  const checkpointFrame = envelope?.frames.find((frame) => frame.frameId === envelope.checkpoint.frameId) ?? null;
+  const causal = record(pendingRecord.causal);
+  const actorId = stringValue(pendingRecord.actorId);
+  if (!envelope || !activeFrame || activeFrame.stage !== "DYING" || checkpointFrame?.frameId !== activeFrame.frameId
+    || envelope.checkpoint.stage !== "DYING" || causal?.interactionId !== envelope.interactionId
+    || causal.frameId !== activeFrame.frameId || !actorId || activeFrame.current.resolvingPlayerId !== actorId) return null;
+  return { pending: pendingRecord, activeFrame };
+}
+
 function groupContinuation(value: unknown, seen = new Set<object>()): RecordLike | null {
   const item = record(value);
   if (!item || seen.has(item)) return null;
@@ -271,6 +294,7 @@ function interactionSceneFor(
   const targetIds = groupValues?.targetIds ?? activeFrame?.origin.originalTargetIds ?? [];
   const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
   const pendingRecord = record(pending);
+  const dyingProof = dyingDecisionProof(envelope, pending);
   const dyingPending = pendingRecord?.kind === "dying" ? pendingRecord : null;
   const relation: InteractionSceneContinuity["relation"] = !proven
     ? "UNPROVEN"
@@ -292,7 +316,7 @@ function interactionSceneFor(
     effect: groupValues?.effect ?? activeFrame?.origin.originEffect ?? null,
     targetIds,
     currentParticipantId,
-    decisionActorId: dyingPending?.actorId && proven ? dyingPending.actorId : currentAction?.actorId ?? null,
+    decisionActorId: dyingProof ? dyingProof.pending.actorId as string : dyingPending ? null : currentAction?.actorId ?? null,
     activeResolverId: activeCurrent?.resolvingPlayerId ?? null,
     activeSourceId: activeCurrent?.currentSourceId ?? null,
     activeTargetIds: activeCurrent?.currentTargetIds ?? [],
@@ -304,14 +328,9 @@ function interactionSceneFor(
 function dyingBarrierFor(envelope: CausalEnvelope | null, pending: unknown): PresentationDyingBarrier | null {
   const pendingRecord = record(pending);
   if (pendingRecord?.kind !== "dying") return null;
-  const activeFrame = envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
-  const checkpointFrame = envelope?.frames.find((frame) => frame.frameId === envelope.checkpoint.frameId) ?? null;
-  const causal = record(pendingRecord.causal);
-  const proven = Boolean(
-    envelope && activeFrame && activeFrame.stage === "DYING" && checkpointFrame?.frameId === activeFrame.frameId
-      && envelope.checkpoint.stage === activeFrame.stage
-      && causal?.interactionId === envelope.interactionId && causal.frameId === activeFrame.frameId,
-  );
+  const proof = dyingDecisionProof(envelope, pending);
+  const activeFrame = proof?.activeFrame ?? null;
+  const proven = Boolean(proof);
   return {
     semantics: proven ? "PROVEN" : "UNPROVEN",
     interactionId: proven ? envelope?.interactionId ?? null : null,
