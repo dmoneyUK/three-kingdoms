@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C3-03 — 2026-10-02
+## Current stage — UX2.0C3-04 — 2026-10-02
 
 C2 is closed and accepted. C3-01 now projects Group/AOE public semantics from
 the authoritative causal envelope: source, ordered affected targets, current
@@ -31,10 +31,20 @@ repeated-read, malformed-state, and Group `SAME_FRAME` regressions remain
 covered; delayed-origin history and Attack-response-to-Judgement child
 continuity remain explicitly partial.
 
+C3-04 closes the actionable Attack -> Judgement characterization using the
+real Ma Chao Cavalry path. Cavalry re-stages the same Attack frame through
+Judgement and resumes the original Attack response; it does not create a child
+frame. Engine-backed tests prove stage/checkpoint progression, stable causal
+identity, exact Dodge resume, viewer-equivalent public scenes, and settlement
+clearing. The final C3 audit finds no legacy compatibility contradiction and
+recommends **C3 READY TO CLOSE**.
+
 This is a projector/model/test change only. No React/CSS migration, gameplay
 rule change, Dying presentation barrier, historical `originRef`, or C4/C5 work
-is included. The next milestone is reviewer validation of C3-03; visual UX
-consumers remain out of scope.
+is included. Historical delayed `originRef`, snapshot-only transition
+direction, and the Dying presentation barrier remain explicit later
+boundaries. The next authorized milestone is C4's Dying presentation barrier;
+visual UX consumers remain out of scope until then.
 
 ## UX2.0C2 — causal propagation round — 2026-10-02
 

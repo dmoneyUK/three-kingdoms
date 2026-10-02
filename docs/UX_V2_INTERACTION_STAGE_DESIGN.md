@@ -3938,3 +3938,54 @@ reads of the same viewer preserve the scene; viewer differences in
 `decisionActorId` reflect the existing private/public `CurrentAction` boundary,
 not a causal identity change. This remains projector/model/test scope only;
 React/CSS, Dying presentation, C3-04, C4, and C5 are out of scope.
+
+### 0.96 UX2.0C3-04 final semantic closure audit — 2026-10-02
+
+The real Attack -> Judgement path is Ma Chao's source-owned Cavalry
+`attack_targeted` trigger. The Attack root is created before the trigger and
+the Cavalry Judgement carries the same `declaration.causal` context into
+`beginJudgementResolution`. `causalEnvelopeAtStage` re-stages that same active
+frame from `ATTACK_RESPONSE` to `JUDGEMENT`; it does not create a child frame.
+After the result, `resolveJudgementContinuation` re-stages the same frame to
+`ATTACK_RESPONSE` and resumes the original `attack_targeted_event`. The
+production relationship is therefore `ROOT_FRAME -> ROOT_FRAME (JUDGEMENT) ->
+ROOT_FRAME`, with changing checkpoint/stage/revision and stable
+interaction/root/active-frame identity. No legacy resolution ID or timeline
+ordering is used as causal proof.
+
+The real engine test verifies the Attack scene, Judgement scene, identity
+continuity, current roles, replacement continuation, exact resume to Dodge,
+two-viewer public-scene equality after resume, and settlement clearing after a
+red result. No projector change was required: the existing envelope-owned
+`interactionScene` already projects the correct frame and stage semantics.
+
+Final C3 evidence matrix:
+
+| Evidence | Result | Closure impact |
+| --- | --- | --- |
+| Group source, ordered targets, participant progression | PROVEN | Does not block. |
+| Group SAME_FRAME Negation | PROVEN | Does not block. |
+| Group -> Damage child/resume | PROVEN | Does not block; Dying barrier remains separate. |
+| Dying/Peach current-state characterization | PROVEN | Does not block; presentation barrier is C4. |
+| Attack | PROVEN | Does not block. |
+| Attack -> Judgement continuity | PROVEN | Does not block; real Cavalry is same-frame re-staging. |
+| Duel exchange | PROVEN | Does not block. |
+| Duel viewer equality | PROVEN | Does not block. |
+| Independent/root Damage | PROVEN | Does not block. |
+| Inherited Lightning Damage | PROVEN | Does not block; explicitly not independent/root Damage. |
+| Judgement | PROVEN | Does not block. |
+| Delayed fresh activation identity | PROVEN | Does not block. |
+| Historical delayed `originRef` | PARTIAL | Does not block; unsupported history remains unfabricated. |
+| Root Negation | PROVEN | Does not block. |
+| Viewer equality and repeated-read/reconnect stability | PROVEN | Does not block. |
+| Checkpoint coherence and malformed fail-closed behavior | PROVEN | Does not block. |
+| Settlement/scene clearing | PROVEN | Does not block for exercised terminal paths. |
+| Legacy compatibility divergence | NONE FOUND | Does not block; no contradiction was found. |
+| Snapshot-only transition direction | PARTIAL | Does not block; direction requires future snapshot comparison. |
+
+The remaining explicit boundaries are historical delayed `originRef`,
+animation/transition direction from a single snapshot, and the Dying
+presentation barrier. These are intentionally bounded to later work: C3 does
+not redesign causal identity, add private data, change gameplay, or implement
+React/CSS consumption. C3 is **READY TO CLOSE** pending reviewer acceptance;
+the next authorized boundary is C4's Dying presentation barrier.

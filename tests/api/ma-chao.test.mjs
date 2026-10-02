@@ -77,8 +77,16 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   setDeck(game.code, [{ ...card("Attack", "cavalry-original"), suit: "♠", rank: "9" }]);
   setTurn(game.code, source.seat, "play");
   assert.equal((await request("play_card", { code: game.code, token: sourceMember.token, cardId: "attack-cavalry-replacement-attack", targetId: target.id })).status, 200);
-  const attackRoot = (await state(game.code, sourceMember.token)).data.causalEnvelope;
+  const attackView = (await state(game.code, sourceMember.token)).data;
+  const attackRoot = attackView.causalEnvelope;
   assert.ok(attackRoot, "Cavalry starts from the authoritative Attack root");
+  const attackScene = attackView.presentationV2.interactionScene;
+  assert.equal(attackScene.semantics, "PROVEN");
+  assert.equal(attackScene.stage, "ATTACK_RESPONSE");
+  assert.equal(attackScene.continuity.relation, "ROOT_FRAME");
+  assert.equal(attackScene.sourceId, source.id);
+  assert.deepEqual(attackScene.targetIds, [target.id]);
+  assert.equal(attackScene.currentParticipantId, target.id);
   assert.equal((await request("trigger", { code: game.code, token: sourceMember.token, providerId: "ma_chao_cavalry" })).status, 200);
   const revealed = (await state(game.code, simaMember.token)).data;
   assert.equal(revealed.currentAction.triggerEvent, "judgement_revealed", JSON.stringify(revealed));
@@ -86,6 +94,12 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   assert.equal(revealed.causalEnvelope.interactionId, attackRoot.interactionId);
   assert.equal(revealed.causalEnvelope.activeFrameId, attackRoot.activeFrameId);
   assert.equal(revealed.causalEnvelope.frames[0].stage, "JUDGEMENT");
+  assert.equal(revealed.presentationV2.interactionScene.semantics, "PROVEN");
+  assert.equal(revealed.presentationV2.interactionScene.stage, "JUDGEMENT");
+  assert.equal(revealed.presentationV2.interactionScene.continuity.relation, "ROOT_FRAME");
+  assert.equal(revealed.presentationV2.interactionScene.interactionId, attackScene.interactionId);
+  assert.equal(revealed.presentationV2.interactionScene.rootFrameId, attackScene.rootFrameId);
+  assert.equal(revealed.presentationV2.interactionScene.activeFrameId, attackScene.activeFrameId);
   const revealPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   assert.equal(revealPending.causal.interactionId, attackRoot.interactionId);
   const reloaded = (await state(game.code, simaMember.token)).data;
@@ -98,6 +112,7 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   const settled = (await state(game.code, targetMember.token)).data;
   assert.equal(settled.players.find((player) => player.id === target.id).hp, 3, JSON.stringify(settled));
   assert.equal(settled.causalEnvelope, null, "the resumed Attack root settles after Cavalry damage");
+  assert.equal(settled.presentationV2.interactionScene, null, "no stale Judgement scene remains after Attack settlement");
   assert.notEqual(settled.currentAction?.kind, "response", "a red replacement must suppress Dodge");
 });
 
@@ -124,6 +139,16 @@ test("Cavalry keeps Dodge available when Sima Yi replaces the original red Judge
   const dodge = (await state(game.code, targetMember.token)).data;
   assert.equal(dodge.currentAction.kind, "response", JSON.stringify(dodge));
   assert.equal(dodge.currentAction.requirement, "dodge");
+  const sourceWaiting = (await state(game.code, sourceMember.token)).data;
+  const resumedScene = dodge.presentationV2.interactionScene;
+  assert.equal(resumedScene.semantics, "PROVEN");
+  assert.equal(resumedScene.stage, "ATTACK_RESPONSE");
+  assert.equal(resumedScene.continuity.relation, "ROOT_FRAME");
+  assert.equal(resumedScene.interactionId, revealed.presentationV2.interactionScene.interactionId);
+  assert.equal(resumedScene.rootFrameId, revealed.presentationV2.interactionScene.rootFrameId);
+  assert.equal(resumedScene.activeFrameId, revealed.presentationV2.interactionScene.activeFrameId);
+  assert.equal(resumedScene.decisionActorId, target.id);
+  assert.deepEqual(sourceWaiting.presentationV2.interactionScene, resumedScene, "Attack -> Judgement public scene is viewer-equivalent after resume");
 });
 
 test("Cavalry preserves a virtual Serpent Spear Attack identity", async () => {
