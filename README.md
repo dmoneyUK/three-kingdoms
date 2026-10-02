@@ -1,25 +1,18 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C2 FIX15 — 2026-10-02
+## Current stage — UX2.0C3-01 — 2026-10-02
 
-C2 causal propagation is ready to close on `ux-v2`. The final audit now covers
-the production causal roots and Damage callers, including response-Judgement
-failure (which now preserves the Attack causal handle), Group-family
-equivalence for Raining Arrows and Barbarian Invasion, and lethal Group
-Damage -> Dying -> Peach rescue -> parent Group continuation. Focused Worker/D1
-regressions prove the Interaction/Frame identity, child/parent settlement,
-stale safety, reconnect/viewer stability, and NULL/malformed non-reconstruction
-boundaries.
+C2 is closed and accepted. C3-01 now projects Group/AOE public semantics from
+the authoritative causal envelope: source, ordered affected targets, current
+participant, decision actor, stable Group frame, nested Damage child, and
+parent-frame resume. Real Raining Arrows and Barbarian Invasion paths retain
+the same Interaction/Frame identity through Damage and Dying/rescue, while
+NULL/malformed envelopes remain non-authoritative.
 
-Two boundaries remain deliberately outside active C2 authority: historical
-delayed `originRef` is unsupported because the current room schema has no
-typed stable placement provenance, and synchronous Judgement-Negation
-`causalResume.parent` is not implemented by any production constructor (only
-the defensive branch/type exists). Neither is synthesized from logs or card
-names. No C3, React/CSS migration, or Dying presentation barrier was started.
-
-The next milestone is reviewer verification of the pushed FIX15 commit. After
-that, C3 requires explicit approval and a separate scope gate.
+This is a projector/model/test change only. No React/CSS migration, gameplay
+rule change, Dying presentation barrier, historical `originRef`, or C4/C5 work
+is included. The next milestone is reviewer validation of C3-01; visual UX
+consumers remain out of scope.
 
 ## UX2.0C2 — causal propagation round — 2026-10-02
 

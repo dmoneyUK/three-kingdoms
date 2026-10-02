@@ -3435,7 +3435,7 @@ async function roomState(code: string, token?: string) {
     ...(presentation ? { presentation } : {}),
   };
   const projectedTimeline = gameTimeline(rawLog, me?.id);
-  const presentationV2 = projectPresentationV2({ pending, currentAction, actionRevision, timeline: projectedTimeline });
+  const presentationV2 = projectPresentationV2({ pending, currentAction, actionRevision, timeline: projectedTimeline, causalEnvelope });
   return {
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,

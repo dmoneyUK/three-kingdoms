@@ -1,6 +1,6 @@
 import type { CurrentAction } from "./protocol";
+import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
 
-/** UX2.0B foundation contract; no interaction/frame/checkpoint identities. */
 export type PresentationV2Event = {
   id: string;
   type: "message" | "card" | "cards" | string;
@@ -21,6 +21,8 @@ export type PresentationV2Input = {
   currentAction: Pick<CurrentAction, "kind" | "actorId" | "reason" | "deadline" | "declineAction" | "presentation"> | null;
   actionRevision: string;
   timeline: readonly PresentationV2Event[];
+  /** The parsed server-owned causal envelope; never reconstructed by this projector. */
+  causalEnvelope?: CausalEnvelope | null;
 };
 
 export type PresentationParticipant = {
@@ -33,7 +35,26 @@ export type PresentationV2 = {
   activeContext: { kind: string | null; stage: string | null; sourceId: string | null; currentTargetIds: readonly string[]; eventIds: readonly string[]; resolutionId: string | null } | null;
   parentContext: { kind: string | null; sourceId: string | null; targetIds: readonly string[]; resumeKind: string | null } | null;
   participants: readonly PresentationParticipant[];
-  groupResolution: { cardKind: string; sourceId: string | null; semantics: "UNPROVEN"; participantIds: readonly string[]; activeParticipantId: string | null } | null;
+  groupResolution: {
+    semantics: "PROVEN" | "UNPROVEN";
+    interactionId: string | null;
+    groupFrameId: string | null;
+    activeFrameId: string | null;
+    parentFrameId: string | null;
+    checkpointId: string | null;
+    presentationRevision: number | null;
+    stage: CausalFrame["stage"] | null;
+    cardKind: string;
+    effect: string;
+    sourceId: string | null;
+    targetIds: readonly string[];
+    currentParticipantId: string | null;
+    decisionActorId: string | null;
+    activeSourceId: string | null;
+    activeTargetIds: readonly string[];
+    participantIds: readonly string[];
+    activeParticipantId: string | null;
+  } | null;
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
   settlement: { eventId: string; resolutionId: string | null } | null;
   transitionEvents: readonly { eventId: string; type: string; resolutionId: string | null }[];
@@ -118,6 +139,58 @@ function pendingContexts(pending: unknown) {
   return { active, parent, group, root: pendingContext };
 }
 
+function groupContinuation(value: unknown, seen = new Set<object>()): RecordLike | null {
+  const item = record(value);
+  if (!item || seen.has(item)) return null;
+  seen.add(item);
+  if (item.kind === "group") return item;
+  for (const child of Object.values(item)) {
+    const found = groupContinuation(child, seen);
+    if (found) return found;
+  }
+  return null;
+}
+
+function groupFrameFor(envelope: CausalEnvelope | null, continuation: RecordLike | null): CausalFrame | null {
+  if (!envelope) return null;
+  const causal = record(continuation?.causal);
+  const referenced = stringValue(causal?.frameId);
+  if (referenced) return envelope.frames.find((frame) => frame.frameId === referenced) ?? null;
+  return envelope.frames.find((frame) => frame.stage === "GROUP_RESOLUTION" || frame.stage === "NEGATION") ?? null;
+}
+
+function groupPresentation(envelope: CausalEnvelope | null, currentAction: PresentationV2Input["currentAction"], group: RecordLike | null) {
+  if (!group) return null;
+  const groupFrame = groupFrameFor(envelope, group);
+  const activeFrame = envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+  const proven = Boolean(envelope && groupFrame && activeFrame);
+  const origin = groupFrame?.origin;
+  const current = groupFrame?.current;
+  const activeCurrent = activeFrame?.current;
+  const targetIds = origin?.originalTargetIds ?? [];
+  const participantIds = strings(group.remainingIds);
+  return {
+    semantics: proven ? "PROVEN" as const : "UNPROVEN" as const,
+    interactionId: proven ? envelope?.interactionId ?? null : null,
+    groupFrameId: proven ? groupFrame?.frameId ?? null : null,
+    activeFrameId: proven ? envelope?.activeFrameId ?? null : null,
+    parentFrameId: proven ? activeFrame?.parentFrameId ?? null : null,
+    checkpointId: proven ? envelope?.checkpoint.checkpointId ?? null : null,
+    presentationRevision: proven ? envelope?.presentationRevision ?? null : null,
+    stage: proven ? activeFrame?.stage ?? null : null,
+    cardKind: firstString(group.cardKind, origin?.originEffect) ?? "group",
+    effect: origin?.originEffect ?? firstString(group.cardKind) ?? "group",
+    sourceId: firstString(origin?.originSourceId, group.sourceId),
+    targetIds,
+    currentParticipantId: firstString(activeCurrent?.resolvingPlayerId, current?.resolvingPlayerId, group.activeParticipantId, group.currentParticipantId),
+    decisionActorId: currentAction?.actorId ?? null,
+    activeSourceId: activeCurrent?.currentSourceId ?? null,
+    activeTargetIds: activeCurrent?.currentTargetIds ?? [],
+    participantIds,
+    activeParticipantId: firstString(group.activeParticipantId, group.currentParticipantId),
+  };
+}
+
 function eventCardIds(event: PresentationV2Event): string[] { return unique([event.card?.id, ...(event.cards ?? []).map((card) => card.id ?? null)]); }
 function eventForContext(context: Context | null, timeline: readonly PresentationV2Event[], barrierId: string | null): PresentationV2Event | null {
   if (!context) return null;
@@ -141,7 +214,8 @@ function participants(active: Context | null, group: RecordLike | null): Present
 
 /** Pure, deterministic projection. CurrentAction remains the legality authority. */
 export function projectPresentationV2(input: PresentationV2Input): PresentationV2 {
-  const { active, parent, group, root } = pendingContexts(input.pending);
+  const { active, parent, group: directGroup, root } = pendingContexts(input.pending);
+  const group = directGroup ?? groupContinuation(input.pending);
   const barrierId = input.currentAction?.presentation?.readyAfterEventId ?? null;
   const legacyResolutionId = firstString(input.currentAction?.presentation?.resolutionId, active?.resolutionId, parent?.resolutionId, root?.resolutionId);
   const rootEvent = eventForContext(root, input.timeline, barrierId) ?? eventForContext(active, input.timeline, barrierId);
@@ -163,7 +237,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     activeContext: active ? { kind: active.kind, stage: active.stage, sourceId: active.sourceId, currentTargetIds: active.targetIds, eventIds: relevantIds.filter((id) => id === activeEvent?.id || id === barrierId), resolutionId: legacyResolutionId } : null,
     parentContext: parent ? { kind: parent.kind, sourceId: parent.sourceId, targetIds: parent.targetIds, resumeKind: parent.kind } : null,
     participants: participants(active, group),
-    groupResolution: groupCardKind ? { cardKind: groupCardKind, sourceId: firstString(group.sourceId), semantics: "UNPROVEN", participantIds: strings(group.remainingIds), activeParticipantId: firstString(group.activeParticipantId, group.currentParticipantId) } : null,
+    groupResolution: groupCardKind ? groupPresentation(input.causalEnvelope ?? null, input.currentAction, group) : null,
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),

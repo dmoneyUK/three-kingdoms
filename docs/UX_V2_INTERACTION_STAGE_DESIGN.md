@@ -3825,3 +3825,36 @@ Overall UX2.0C status is **NOT READY**. Identity design still needs a
 universal root/parent lifetime and a bounded barrier/reference contract. No
 React, CSS, visual UX, gameplay-rule, or final identity change is authorized
 by this gate.
+
+### 0.93 UX2.0C3-01 Group public semantic contract — 2026-10-02
+
+C3-01 makes the existing server-side `presentationV2` projector consume the
+parsed C2 causal envelope for typed Group continuations. The projector exposes
+one public `groupResolution` summary without copying `CurrentAction` options or
+private card data:
+
+- `interactionId` identifies the whole Group interaction;
+- `groupFrameId` identifies the stable parent Group frame;
+- `activeFrameId`, `parentFrameId`, `stage`, `checkpointId`, and
+  `presentationRevision` describe the currently authoritative frame boundary;
+- `sourceId`, `effect`/`cardKind`, and ordered `targetIds` preserve the Group
+  source/effect/affected-set relationship;
+- `currentParticipantId` identifies the participant currently being resolved;
+- `decisionActorId` remains separate from the public source/target roles;
+- `activeSourceId` and `activeTargetIds` describe a nested active Damage child
+  while the Group target context remains available.
+
+For Group -> Damage, the active frame is the authoritative Damage child and
+the parent Group frame remains identified by `groupFrameId`. On resume, the
+active frame returns to that same Group frame. Group Negation remains
+`SAME_FRAME`; it changes the authoritative stage/checkpoint without creating a
+synthetic presentation child. Real lethal Damage -> Dying -> Peach -> Group
+resume preserves the interaction and parent context, but the Dying
+presentation barrier remains a later milestone.
+
+When the parsed causal envelope is absent or malformed, the projector keeps
+Group detection `UNPROVEN` and does not fabricate interaction/frame/checkpoint
+identity from Pending, logs, event IDs, card names, phase, or `actionRevision`.
+The public Group summary is viewer-equivalent; viewer-private `CurrentAction`
+controls remain outside it. This contract is projector/model/test scope and
+does not authorize React/CSS migration.

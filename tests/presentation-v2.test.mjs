@@ -119,6 +119,56 @@ test("group projection records missing authoritative semantics instead of guessi
   assert.equal(projected.groupResolution?.activeParticipantId, null);
 });
 
+test("C3 Group projection uses the authoritative envelope for stable parent and child semantics", () => {
+  const groupPending = flows[3].points[0].pending;
+  const groupFrame = {
+    frameId: "group-frame",
+    parentFrameId: null,
+    stage: "GROUP_RESOLUTION",
+    origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B", "C", "D"] },
+    current: { currentSourceId: "A", currentEffect: "Raining Arrows", currentTargetIds: ["B"], resolvingPlayerId: "B" },
+  };
+  const damageFrame = {
+    frameId: "damage-frame",
+    parentFrameId: "group-frame",
+    stage: "DAMAGE",
+    origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B"] },
+    current: { currentSourceId: "A", currentEffect: "damage", currentTargetIds: ["B"], resolvingPlayerId: "B" },
+  };
+  const childEnvelope = { version: 1, interactionId: "group-interaction", frames: [groupFrame, damageFrame], activeFrameId: "damage-frame", checkpoint: { checkpointId: "checkpoint-damage", frameId: "damage-frame", stage: "DAMAGE" }, presentationRevision: 4 };
+  const child = projectPresentationV2({ pending: { kind: "trigger", actorId: "B", continuation: { kind: "damage_suffered_event", sourceId: "A", targetId: "B", resumeGroup: groupPending } }, currentAction: action({ actorId: "B", kind: "trigger" }), actionRevision: "action-child", timeline: [], causalEnvelope: childEnvelope });
+  assert.equal(child.groupResolution?.semantics, "PROVEN");
+  assert.equal(child.groupResolution?.interactionId, "group-interaction");
+  assert.equal(child.groupResolution?.groupFrameId, "group-frame");
+  assert.equal(child.groupResolution?.activeFrameId, "damage-frame");
+  assert.equal(child.groupResolution?.parentFrameId, "group-frame");
+  assert.equal(child.groupResolution?.stage, "DAMAGE");
+  assert.deepEqual(child.groupResolution?.targetIds, ["B", "C", "D"]);
+  assert.equal(child.groupResolution?.currentParticipantId, "B");
+  assert.equal(child.groupResolution?.decisionActorId, "B");
+  assert.deepEqual(child.groupResolution?.activeTargetIds, ["B"]);
+
+  const resumedEnvelope = { ...childEnvelope, activeFrameId: "group-frame", checkpoint: { checkpointId: "checkpoint-group", frameId: "group-frame", stage: "GROUP_RESOLUTION" }, presentationRevision: 5 };
+  const resumed = projectPresentationV2({ pending: groupPending, currentAction: action({ actorId: "C" }), actionRevision: "action-next", timeline: [], causalEnvelope: resumedEnvelope });
+  assert.equal(resumed.groupResolution?.interactionId, child.groupResolution?.interactionId);
+  assert.equal(resumed.groupResolution?.groupFrameId, child.groupResolution?.groupFrameId);
+  assert.equal(resumed.groupResolution?.activeFrameId, "group-frame");
+  assert.equal(resumed.groupResolution?.stage, "GROUP_RESOLUTION");
+  assert.equal(resumed.groupResolution?.checkpointId, "checkpoint-group");
+  assert.equal(resumed.groupResolution?.currentParticipantId, "B");
+  assert.equal(resumed.groupResolution?.decisionActorId, "C");
+});
+
+test("C3 Group public semantics stay viewer-equivalent while decision ownership changes", () => {
+  const pending = flows[3].points[0].pending;
+  const causalEnvelope = { version: 1, interactionId: "viewer-group", frames: [{ frameId: "viewer-group-frame", parentFrameId: null, stage: "GROUP_RESOLUTION", origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B", "C"] }, current: { currentSourceId: "A", currentEffect: "Raining Arrows", currentTargetIds: ["B"], resolvingPlayerId: "B" } }], activeFrameId: "viewer-group-frame", checkpoint: { checkpointId: "viewer-checkpoint", frameId: "viewer-group-frame", stage: "GROUP_RESOLUTION" }, presentationRevision: 2 };
+  const first = projectPresentationV2({ pending, currentAction: action({ actorId: "B" }), actionRevision: "private-a", timeline: [], causalEnvelope });
+  const second = projectPresentationV2({ pending, currentAction: action({ actorId: "C" }), actionRevision: "private-b", timeline: [], causalEnvelope });
+  assert.deepEqual({ ...first.groupResolution, decisionActorId: null }, { ...second.groupResolution, decisionActorId: null });
+  assert.notEqual(first.groupResolution?.decisionActorId, second.groupResolution?.decisionActorId);
+  assert.equal(JSON.stringify(first.groupResolution).includes("eligible"), false);
+});
+
 test("cardKind on a single-target continuation does not create groupResolution", () => {
   const fixture = flows[0].points[0];
   const projected = projectPresentationV2({
