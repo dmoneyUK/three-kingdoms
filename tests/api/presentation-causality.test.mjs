@@ -22,6 +22,15 @@ test("D1 causal envelope survives production room reload and stays public across
   assert.equal(persistedPending.continuation.causal.frameId, openedEnvelope.activeFrameId);
   assert.equal(query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(game.code)}`), JSON.stringify(openedEnvelope));
 
+  const reloadedActingView = (await state(game.code, game.members[1].token)).data;
+  const reloadedSecondViewer = (await state(game.code, game.members[2].token)).data;
+  for (const view of [reloadedActingView, reloadedSecondViewer]) {
+    assert.equal(view.causalEnvelope.interactionId, openedEnvelope.interactionId);
+    assert.equal(view.causalEnvelope.activeFrameId, openedEnvelope.activeFrameId);
+    assert.equal(view.causalEnvelope.checkpoint.checkpointId, openedEnvelope.checkpoint.checkpointId);
+    assert.equal(view.causalEnvelope.presentationRevision, openedEnvelope.presentationRevision);
+  }
+
   const frame = createCausalFrame({
     frameId: "persisted-frame",
     stage: "ATTACK_RESPONSE",
@@ -50,4 +59,11 @@ test("legacy room without causal envelope remains null through production room s
   sql(`UPDATE rooms SET causal_envelope_json=NULL WHERE code=${quote(game.code)}`);
   const view = (await state(game.code, game.members[0].token)).data;
   assert.equal(view.causalEnvelope, null);
+});
+
+test("malformed room envelope remains non-authoritative", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  sql(`UPDATE rooms SET causal_envelope_json=${quote(JSON.stringify({ version: 1, frames: [{ frameId: "forged" }] }))} WHERE code=${quote(game.code)}`);
+  const view = (await state(game.code, game.members[0].token)).data;
+  assert.equal(view.causalEnvelope, null, "malformed persisted identity is not projected as authority");
 });

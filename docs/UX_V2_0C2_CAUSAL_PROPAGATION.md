@@ -60,7 +60,7 @@ Still open before the C2 acceptance gate can be closed:
   triggers;
 - prove delayed activation `originRef` history and final settlement clearing.
 
-## C2-FIX4 ownership evidence — 2026-10-02
+## C2-FIX5 ownership evidence — 2026-10-02
 
 This matrix is intentionally tied to real API/engine evidence. Helper-only
 tests never upgrade a row to PROVEN.
@@ -69,9 +69,9 @@ tests never upgrade a row to PROVEN.
 
 | Production creator | Flow | Envelope + context retained | Exact persistence boundary | Status |
 | --- | --- | --- | --- | --- |
-| `attackDeclaration()` | Attack | yes, envelope is non-enumerable and excluded from Pending JSON | first response/Attack-targeted room write | AUTHORITATIVE |
-| `damageTriggerPending()` | independent damage trigger | yes, created envelope is carried outside Pending JSON | response Pending room write | AUTHORITATIVE |
-| `damageSufferedTriggerPending()` | independent post-damage trigger | yes, created envelope is carried outside Pending JSON | response Pending room write | AUTHORITATIVE |
+| `attackDeclaration()` | Attack | explicit `{ value, createdEnvelope }` wrapper | first response/Attack-targeted room write | AUTHORITATIVE |
+| `damageTriggerPending()` | independent damage trigger | explicit `{ value, createdEnvelope }` wrapper | response Pending room write | AUTHORITATIVE |
+| `damageSufferedTriggerPending()` | independent post-damage trigger | explicit `{ value, createdEnvelope }` wrapper | response Pending room write | AUTHORITATIVE |
 | `startNegation()` | card Negation | yes | root response room batch | AUTHORITATIVE |
 | `startJudgementNegation()` | delayed Judgement Negation | yes | root response room batch | AUTHORITATIVE |
 | `groupResponseDecision()` | Group/AOE | context only | existing Group persistence callers | CONTEXT_ONLY_BUG; out of FIX4 scenario scope |
@@ -79,32 +79,22 @@ tests never upgrade a row to PROVEN.
 
 ### Recovery inventory
 
-There are no remaining production routing calls to `recoverCausalEnvelope()`
-after FIX4. Normal Attack, Attack-targeted, Borrowed Sword, and Damage paths
+There are no remaining production routing calls to `recoverCausalEnvelope()`.
+Normal Attack, Attack-targeted, Borrowed Sword, and Damage paths
 now keep legacy/missing envelopes as `null` instead of reconstructing a frame
 tree from a context handle. The helper remains available only to isolated
 legacy compatibility/unit code and is not a normal supported-flow authority.
 
-| Flow | Status | Exact API/engine evidence | Missing boundary |
-| --- | --- | --- | --- |
-| Attack → Dodge | PARTIAL | `tests/api/presentation-causality.test.mjs` — `D1 causal envelope survives production room reload and stays public across viewers` | same-frame persisted envelope through Dodge settlement |
-| Attack → Damage | PARTIAL | `tests/api/concurrency.test.mjs` — `lethal damage trigger exhaustion enters shared Dying and Peach rescue exactly once` | damage-stage envelope assertion |
-| Attack → Damage → Dying | PARTIAL | same lethal API test | persisted same Interaction/Frame and final clear |
-| Duel alternating responders | PARTIAL | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Duel alternates response actors without changing the root context` | causalEnvelope, not only PresentationV2 |
-| Negation → counter-Negation | PARTIAL | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Negation/counter-Negation keeps the original effect recoverable` | persisted envelope assertions |
-| Group participant progression | PARTIAL | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant` | persisted Frame/checkpoint assertions |
-| Group → nested child → parent resume | UNPROVEN | same Group test proves typed continuation only | real persisted child Frame |
-| Borrowed Sword → forced Attack child → parent resume | PROVEN | `tests/api/borrowed-sword.test.mjs` — first Borrowed Sword test and CAS matrix | root settlement clear |
-| Judgement reveal → replacement → effective result → resume | PARTIAL | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Judgement replacement exposes reveal and resume evidence` | persisted causalEnvelope at each boundary |
-| Independent nested damage trigger → child → parent resume | UNPROVEN | no real child Frame evidence | determine independent-vs-same-frame semantics |
-| Redirect/current-target mutation | PARTIAL | `tests/causal-context.test.mjs` — `C2 keeps immutable origin while current targets redirect` | real API envelope evidence |
-| Delayed future activation | UNPROVEN | no authoritative historical `originRef` API proof | persisted provenance |
-| Settlement/clear | PARTIAL | Borrowed Sword refusal/invalidation asserts parent resume | root clear after synchronous work |
-| Reconnect identity stability | PARTIAL | `tests/api/presentation-causality.test.mjs` reload/viewer persistence test | real-flow reconnect matrix |
-| Second-viewer public identity stability | PROVEN | same presentation-causality API test | none for generic envelope |
-| Stale/double-action identity safety | PARTIAL | `tests/api/borrowed-sword.test.mjs` CAS matrix | envelope/checkpoint unchanged assertion |
-| Legacy NULL envelope | PROVEN | `tests/api/presentation-causality.test.mjs` — `legacy room without causal envelope remains null through production room state` | none |
-| Malformed envelope | PROVEN | `tests/presentation-causality.test.mjs` — `parser rejects structurally impossible envelopes` | real gameplay malformed-row API test |
+| FIX5 row | Status | Exact evidence |
+| --- | --- | --- |
+| Normal Attack root survives read/reconnect/second viewer | PROVEN | `tests/api/presentation-causality.test.mjs` production reload/public projection test |
+| Attack → Damage → Dying retains root identity | PROVEN | `tests/api/concurrency.test.mjs` lethal Damage/Dying test |
+| Stale/double response creates one transition | PROVEN | `tests/api/concurrency.test.mjs` and `tests/api/borrowed-sword.test.mjs` CAS tests |
+| Settlement clears the root | PROVEN | lethal rescue and Borrowed Sword refusal tests |
+| Independent Damage root | UNPROVEN | no isolated API scenario currently proves a fresh independent Damage root |
+| Legacy NULL envelope remains null | PROVEN | `tests/api/presentation-causality.test.mjs` legacy-room test |
+| Malformed continuation cannot fabricate authority | PROVEN | parser rejection tests; real gameplay corruption row remains a follow-up |
+| Attack entry variants retain explicit root transport | PROVEN | route audit for ordinary, Influencing, Serpent Spear, Halberd, follow-up, and Borrowed Sword callers |
 
 The centralized room write helper now covers the audited Attack and Damage
 root boundaries. Group/Duel context-only creators remain explicit known bugs

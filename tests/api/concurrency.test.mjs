@@ -163,6 +163,17 @@ test("lethal damage trigger exhaustion enters shared Dying and Peach rescue exac
   assert.equal(rescued.data.room.log.filter((entry) => /enters Dying/.test(entry)).length, 1, "Dying begins once");
   const persisted = query(`SELECT phase || ':' || COALESCE(pending_json, '') FROM rooms WHERE code=${quote(game.code)}`);
   assert.match(persisted, /^play-struck:$/, "the shared rescue pipeline returns to the turn sequence");
+
+  setEquipment(hostPlayer.id, {});
+  const freshAttack = card("Attack", "fresh-root-after-rescue");
+  const freshDodge = card("Dodge", "fresh-root-after-rescue-dodge");
+  setHand(hostPlayer.id, [freshAttack], 4, 4);
+  setHand(alicePlayer.id, [freshDodge], 4, 4);
+  setTurn(game.code, hostPlayer.seat);
+  const reopened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: freshAttack.id, targetId: alicePlayer.id });
+  assert.equal(reopened.status, 200, JSON.stringify(reopened.data));
+  assert.notEqual(reopened.data.room.causalEnvelope.interactionId, attackEnvelope.interactionId, "a settled root is not reused");
+  assert.notEqual(reopened.data.room.causalEnvelope.activeFrameId, attackEnvelope.activeFrameId, "a fresh root gets a fresh frame");
 });
 
 test("Dying uses one ordered rescue pass and does not revisit a passed actor", { timeout: 30_000 }, async () => {
@@ -492,4 +503,3 @@ test("classic role deaths apply cleanup, rewards, penalties, and victory rules",
   const rebelVictory = await takeDamageIfPending(rebelVictoryGame.code, fallenLordMember.token);
   assert.equal(rebelVictory.data.room.status, "finished"); assert.ok(rebelVictory.data.room.timeline.some((event) => /Rebel victory/.test(event.message ?? "")));
 });
-

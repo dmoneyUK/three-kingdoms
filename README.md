@@ -37,6 +37,13 @@ their exact envelope separately from Pending references; the broader C2 gate
 remains PARTIAL while Group/Duel ownership and other scenario evidence stay
 outstanding.
 
+C2-FIX5 replaces the temporary hidden runtime envelope carrier with explicit
+`{ value, createdEnvelope }` wrappers for Attack and Damage root creators. The
+ordinary Attack path now has read/reconnect/viewer, stale/double, settlement,
+fresh-root, legacy-null, and malformed-envelope regression evidence. The
+independent Damage-root scenario remains explicitly UNPROVEN; Group/Duel and
+other C2 work remain outside this round.
+
 ## UX2.0B-FINAL verification — 2026-10-02
 
 On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue
