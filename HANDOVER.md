@@ -396,7 +396,8 @@ legacy/reload/viewer/stale identity assertions. Do not start C3.
 
 Branch: `ux-v2`
 
-Implementation commit: pending commit and push for reviewer inspection.
+Implementation commit: rebased implementation commit; final pushed hash is
+recorded by the branch tip after this rebase.
 
 Files changed:
 
