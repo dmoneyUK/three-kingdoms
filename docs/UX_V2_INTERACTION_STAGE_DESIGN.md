@@ -15,6 +15,563 @@ The screen should have three persistent conceptual layers:
 
 The Local Player Dock should remain stable regardless of whose turn it is.
 
+## 0. Stable Presentation Architecture
+
+UX V2 must not render every authoritative engine transition directly.
+
+The game engine may legitimately move through many short-lived Pending, trigger, response, damage, rescue, and settlement states while resolving one command. Those states matter to gameplay correctness, but most are not meaningful screen states. Rendering them one-for-one would make Hero Focus panels, waiting labels, controls, and Reaction Chain content flicker or repeatedly reflow.
+
+> **The UI renders stable, player-meaningful checkpoints, not engine transitions.**
+
+Game state may be fine-grained. Presentation state must be coarse-grained and semantically stable.
+
+### 0.1 Three-layer responsibility
+
+~~~text
+AUTHORITATIVE GAME ENGINE
+Rules / Pending / Trigger / Response / Damage / Dying / etc.
+                  |
+                  v
+SERVER-SIDE PRESENTATION PROJECTOR
+Suppress transient transitions
+Preserve causal context
+Identify real blocking decisions
+Build public interaction presentation
+                  |
+                  v
+CLIENT UI
+Seat Topology / Interaction Stage / Local Dock / animation
+~~~
+
+- **Game Engine / Orchestrator:** decides what happens, legality, responders, distance, targets, effects, triggers, damage, rescue, and settlement.
+- **Presentation Projector:** decides which already-authoritative facts form the current stable player-facing presentation.
+- **React client:** primarily renders that projection plus local-only selection, inspection, submitting, and animation state.
+
+The Projector must not become a second rules engine. It must not independently decide Attack legality, target distance, Negation eligibility, rescue eligibility, or other gameplay rules.
+
+### 0.2 Stability is semantic, never timer-based
+
+Never define stability by waiting 100/200/300 ms to see whether state changes again.
+
+A state is presentation-stable when authoritative flow reaches a meaningful boundary:
+
+1. engine progress is genuinely blocked waiting for player input;
+2. a meaningful public result has been produced and must be presented;
+3. a persistent special interaction context must remain visible;
+4. the game has returned to a normal observable resting state.
+
+Network latency, server speed, test speed, and animation duration must not change which checkpoints exist.
+
+### 0.3 Do not make the Projector guess whether the Engine will continue
+
+Preferred control flow:
+
+~~~text
+COMMAND
+  -> ENGINE / ORCHESTRATOR
+  -> automatic transitions
+  -> semantic boundary: BLOCKED / SETTLED / RESTING / persistent SPECIAL
+  -> PRESENTATION PROJECTOR
+  -> PresentationSnapshot
+  -> CLIENT
+~~~
+
+The orchestrator knows whether it can continue automatically or requires authoritative input. The Projector should consume that fact instead of inspecting transient states and guessing.
+
+### 0.4 Run until a stable boundary and coalesce intermediate transitions
+
+Example:
+
+~~~text
+A submits Attack on B
+-> validate
+-> consume card
+-> create pending effect
+-> check triggers
+-> check responses
+-> apply automatic effects
+-> B enters Dying
+-> C can actually choose Peach / decline
+-> BLOCKED FOR INPUT
+~~~
+
+Do not publish a complete screen for every intermediate step. Coalesce them into one stable projection:
+
+~~~text
+Root: A Attack B
+Public events:
+  B takes 1 damage
+  B enters Dying
+Current Effect: B is Dying
+Decision Actor: C
+Stable UI: Waiting for C
+~~~
+
+This is **state coalescing**, not artificial delay.
+
+### 0.5 Stable state and Transition Events are different
+
+Suppressing transient states must not discard meaningful animation information.
+
+~~~text
+Presentation update
+= STABLE STATE
++ TRANSITION EVENTS
+~~~
+
+Example:
+
+~~~text
+stable:
+  B is Dying
+  C is blocking progress
+
+transitionEvents:
+  A played Attack
+  B took 1 damage
+  B entered Dying
+~~~
+
+The client may animate those meaningful events and land on the already-known stable Dying scene.
+
+**Animations come from events, not from rendering short-lived engine states as screens.**
+
+### 0.6 Conceptual PresentationSnapshot
+
+The exact TypeScript contract remains an implementation task. The intended shape is:
+
+~~~text
+PresentationSnapshot
+|
++-- identity
+|   +-- presentationRevision
+|   +-- interactionId
+|   +-- checkpointId
+|
++-- stable
+|   +-- kind: REST | CHOICE | SETTLEMENT | SPECIAL
+|
++-- interaction
+|   +-- rootEvent
+|   +-- currentEffect
+|   +-- sourceId
+|   +-- targetIds
+|   +-- resolvingPlayerId
+|   +-- publicReactionChain[]
+|
++-- decision
+|   +-- actorId
+|   +-- reason
+|
++-- localControl
+|   +-- authoritative CurrentAction / thin viewer projection
+|
++-- settlement
+|
++-- transitionEvents[]
+~~~
+
+Do not duplicate existing protocol fields unnecessarily. Reuse the current authoritative action protocol wherever possible.
+
+### 0.7 Four identities have different jobs
+
+**interactionId** — answers: *is this still the same causal interaction?*
+
+Keep it stable across checkpoints belonging to one root interaction. The client uses it to preserve Interaction Stage geometry and participant continuity.
+
+~~~text
+interactionId = attack-483
+
+Attack
+-> response decision
+-> meaningful reaction
+-> damage
+-> Dying
+-> rescue
+-> settlement
+~~~
+
+**checkpointId** — answers: *has this interaction reached a new stable semantic point?*
+
+Examples:
+
+~~~text
+attack-483-response-b
+attack-483-third-party-trigger-c
+attack-483-dying-rescue-d
+attack-483-settlement
+~~~
+
+A new checkpoint does not imply destroying/rebuilding the Interaction Stage.
+
+**presentationRevision** — answers: *did observable presentation information change?*
+
+Internal transitions that do not change player-facing meaning must not require a new presentation revision.
+
+**actionRevision** — retains its existing gameplay purpose: stale-submission protection for authoritative actions and local selections.
+
+Mental model:
+
+~~~text
+interactionId        -> preserve causal stage
+checkpointId         -> stable semantic step
+presentationRevision -> observable presentation update
+actionRevision       -> gameplay submission validity
+~~~
+
+### 0.8 Decision actor means real blocking input
+
+Projected decision.actorId exists only when authoritative progress is genuinely blocked waiting for that player's input.
+
+It must not mean:
+
+- a player currently being checked for a possible trigger,
+- a potential responder with no legal response,
+- the next player in an automatic scan,
+- a temporary pending owner,
+- a participant briefly touched during internal resolution.
+
+Thus:
+
+~~~text
+check C -> no legal response
+check D -> no legal response
+B must choose Dodge / decline
+~~~
+
+projects directly to:
+
+~~~text
+decision.actorId = B
+~~~
+
+Never flash Waiting for C -> Waiting for D -> Waiting for B.
+
+### 0.9 CHOICE is viewer-projected
+
+One authoritative CHOICE checkpoint can look different by viewer.
+
+If B is decision actor, B sees:
+
+~~~text
+YOUR DECISION
+Local Dock: cyan decision treatment
+Respond with Dodge
+[Dodge] [Skip]
+~~~
+
+A/C/D see:
+
+~~~text
+A -- Attack --> B
+Waiting for B...
+~~~
+
+Do not create separate authoritative LOCAL_CHOICE and WAITING_FOR_OTHER_PLAYER states merely for viewer presentation.
+
+### 0.10 Preserve CurrentAction authority
+
+Existing authoritative action concepts include CurrentAction, legalActions, trigger/response options, selection constraints, targetIds, targetMin/targetMax, declineAction, and actionRevision.
+
+Do not replace them with a duplicate UI legality system such as canClickAttack, canTargetZhaoYun, or canSkip.
+
+The Presentation layer may expose or thinly project the viewer's authoritative CurrentAction; gameplay legality remains owned by the existing rules/action system.
+
+### 0.11 Local-only UI sessions stay outside authoritative Presentation
+
+These do not create server checkpoints by themselves:
+
+- unsubmitted card/skill/target selection,
+- Inspect,
+- selection hover/focus,
+- submitting state while a command is in flight,
+- animation queue/progress.
+
+~~~text
+Final UI
+=
+Stable Server Presentation
++ Local Selection Session
++ Local Inspect Session
++ Transition Animation
+~~~
+
+### 0.12 Selection Preview handoff
+
+Before Confirm, selectionSession contains the selected card/skill, targetIds, and local PREVIEW. It is not a public event and creates no public Reaction Chain root.
+
+On Confirm:
+
+1. keep selected Hero Focus and target presentation in place;
+2. mark the local selection as submitting;
+3. remove Cancel / prevent mutation of submitted selection;
+4. optionally show a restrained submitting/resolving affordance;
+5. await authoritative acknowledgement;
+6. hand the visually continuous Preview to the authoritative interaction.
+
+Do not clear the centre immediately and wait for the server to recreate the same target.
+
+If rejected, including stale actionRevision, reconcile against newest authoritative state and show a concise state-changed message. Rejection must not create a fake authoritative interaction.
+
+### 0.13 Transition Events, Reaction Chain, and Game Log are separate
+
+**Transition Events**
+- short-lived;
+- animate movement between stable checkpoints;
+- examples: card played, damage applied, entered Dying, Judgement revealed.
+
+**Public Reaction Chain**
+- lives with the current causal interaction;
+- explains meaningful public actions/results from root to current point;
+- stays concise enough for active play.
+
+**Game Log**
+- game-lifetime audit/history;
+- may contain much more detail;
+- is not the Interaction Stage.
+
+Do not use Game Log as Reaction Chain. Do not use transient engine state as an animation queue.
+
+### 0.14 Pass / decline semantics
+
+Ordinary Pass / Skip / decline should not automatically create a visible Reaction Chain node merely because an authoritative decline action occurred.
+
+Avoid:
+
+~~~text
+A Attack B
+B Skip
+B No Dodge
+Attack resolving
+Damage pending
+B Damage
+~~~
+
+when the meaningful causal presentation is:
+
+~~~text
+A Attack B
+B takes 1 damage
+~~~
+
+Do not hard-code decline_response => invisible in React. A particular rule may make refusal itself a meaningful public choice with independent consequences. The server-side projection decides whether it belongs in the public causal chain.
+
+### 0.15 Attack / Dodge validation
+
+Before Confirm:
+
+~~~text
+LOCAL SELECTION PREVIEW
+
+       [B HERO]
+
+YOU -- Attack --> B
+
+Cancel       Confirm
+~~~
+
+Keep Preview visually stable while submitting.
+
+If Engine reaches a real response decision:
+
+~~~text
+interactionId = I100
+checkpoint = CHOICE
+decision.actorId = B
+root = A Attack B
+~~~
+
+A sees:
+
+~~~text
+       [B HERO]
+
+A -- Attack --> B
+
+Waiting for B...
+~~~
+
+B sees:
+
+~~~text
+       [A HERO]
+          |
+        Attack
+          v
+
+████ LOCAL DOCK ████
+Target: RED
+Decision: CYAN
+
+Respond with Dodge
+[Dodge] [Skip]
+~~~
+
+If B plays Dodge, validation/card consumption/pending closure must not each become a screen. Project the meaningful settlement:
+
+~~~text
+A · Attack -> B
+B · Dodge
+No damage
+~~~
+
+If B declines and damage follows, an ordinary decline need not be a chain node:
+
+~~~text
+A · Attack -> B
+B · Damage -1 HP
+~~~
+
+### 0.16 Negation-chain validation
+
+For A uses Stratagem on B, C may Negate, D may later counter-Negate, preserve A -> B as the root.
+
+When C genuinely blocks progress:
+
+~~~text
+interactionId = I200
+checkpointId = I200-C1
+decision.actorId = C
+
+PRIMARY EVENT
+A -- Stratagem --> B
+
+Waiting for C...
+~~~
+
+After C publicly submits Negation, if Engine later genuinely blocks on D:
+
+~~~text
+interactionId = I200
+checkpointId = I200-C2
+
+Reaction Chain:
+A · Stratagem -> B
+C · Negation
+
+decision.actorId = D
+~~~
+
+Do not rebuild the scene as C vs D. Do not expose automatically checked players as waiting actors. If later declines have no independent causal meaning, do not fill the chain with pass nodes.
+
+### 0.17 Dying / rescue validation
+
+Suppose Attack causes damage, B reaches 0 HP, and rescue priority is checked.
+
+If P2/P3 have no real decision but P4 can choose Peach/decline, project directly to:
+
+~~~text
+Root: original causal action
+Current Effect: B is Dying
+Decision Actor: P4
+
+        [B]
+       DYING
+       HP 0
+
+Waiting for P4...
+~~~
+
+Do not flash Waiting for P2/P3.
+
+If P4 declines and P5 becomes the next genuine blocking rescuer:
+
+- preserve the Dying scene,
+- preserve interactionId,
+- advance checkpointId,
+- change only the semantically different decision context.
+
+The Dying Hero must not repeatedly disappear/reappear as rescue priority advances.
+
+### 0.18 Judgement validation
+
+Judgement may internally include draw, reveal, suit/rank evaluation, modifier checks, priority scans, and effect application. Do not map each step to a top-level UI state.
+
+If a real modifier decision exists:
+
+~~~text
+JUDGEMENT
+
+Target
+  |
+[revealed judgement card]
+
+Waiting for Sima Yi...
+~~~
+
+If nobody can meaningfully modify it, advance directly to the meaningful Judgement result. The reveal may be a Transition Event while the stable snapshot already describes the resulting Judgement context.
+
+### 0.19 Persistent interaction geometry
+
+A checkpoint change inside the same interactionId should normally update content **in place**.
+
+Examples:
+- Attack -> Dodge decision,
+- Stratagem -> Negation -> counter-Negation,
+- Damage -> Dying -> rescue,
+- Judgement reveal -> modifier -> result.
+
+Do not unmount/rebuild the Interaction Stage merely because CurrentAction, trigger ownership, or actionRevision changed. Hero positions and root relationship stay stable unless the meaningful interaction itself changes, such as authoritative target redirect.
+
+### 0.20 Projector implementation constraints
+
+When implementation begins:
+
+- keep projector server-side/authoritative;
+- keep it pure/deterministic where practical;
+- derive presentation from authoritative state and meaningful authoritative events;
+- never introduce timer-based stability;
+- never duplicate legality;
+- never expose another viewer's private response possibilities;
+- never leak concealed hand identities;
+- keep viewer-private localControl separate from shared public interaction facts;
+- make projection testable without React;
+- test the same interaction from source, target, decision actor, and observer perspectives.
+
+### 0.21 Required architecture tests before visual UX implementation
+
+Validate:
+
+1. Attack -> Dodge.
+2. Attack -> no response -> Damage.
+3. Stratagem -> Negation -> counter-Negation.
+4. Damage -> Dying -> multi-player rescue.
+5. Judgement -> modifier -> result.
+6. Target redirect/transfer while preserving original causal history.
+7. Stale local submission/actionRevision rejection.
+8. Quick Test viewer switching without changing public causal facts.
+
+For every scenario assert:
+
+- transient automatic actors never become blocking decision actors;
+- interactionId stays stable across one causal interaction;
+- checkpointId changes only at meaningful stable boundaries;
+- Reaction Chain contains meaningful public causal nodes, not engine-log noise;
+- private options are visible only to entitled viewer;
+- final stable snapshot is sufficient for React without reconstructing gameplay rules.
+
+### 0.22 Architecture invariant
+
+Target:
+
+~~~text
+ENGINE STATE
+  -> RUN AUTOMATIC TRANSITIONS UNTIL SEMANTIC BOUNDARY
+  -> PRESENTATION PROJECTOR
+  -> STABLE PresentationSnapshot + meaningful Transition Events
+  -> REACT
+~~~
+
+Not:
+
+~~~text
+ENGINE STATE CHANGE
+  -> REACT SCREEN CHANGE
+~~~
+
+This architecture is a prerequisite for the rest of UX V2. Seat Topology, Hero Focus, Reaction Chain, Multi-target, AOE, Dying, Judgement, and other visual work must consume stable presentation semantics rather than independently interpreting transient engine transitions.
+
+
 ## 1. Seat thumbnails
 
 Seat topology is designed **mobile portrait first**. Its purpose is to preserve relative seating, distance context, targetability, and player status without consuming the central Interaction Stage.
@@ -1297,7 +1854,8 @@ React should primarily render projected legality and public interaction state ra
 
 When implementation is approved, split it into reviewable steps:
 
-1. **UX2.1 — Mobile-first seat topology:** implement Top Row Mode for 2–4 total players and Side Column Mode for 5–10, including responsive thumbnail variants, protected central safe zone, projected distance, layered seat states, and Quick Test perspective remapping.
+1. **UX2.0 — Stable Presentation Contract:** implement the server-side Presentation Projector contract and validate semantic boundaries, interaction/checkpoint identity, blocking decisions, Transition Events, and Reaction Chain projection before relying on it for visual UX.
+2. **UX2.1 — Mobile-first seat topology:** implement Top Row Mode for 2–4 total players and Side Column Mode for 5–10, including responsive thumbnail variants, protected central safe zone, projected distance, layered seat states, and Quick Test perspective remapping.
 2. **UX2.2 — Local Dock + responsive Hero Focus:** establish the large-hand / large-hero dock hierarchy and fixed bottom guidance bar; add INSPECT / PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus states; use wide horizontal event presentation for Top Row Mode and narrow vertical presentation for Side Column Mode; preserve self-projection and Preview → authoritative-event continuity.
 3. **UX2.3 — Selection controls:** unified Cancel / Confirm state and reset semantics.
 4. **UX2.4 — Multi-target:** projected min/max, deselection, max feedback, ordered-target markers.
