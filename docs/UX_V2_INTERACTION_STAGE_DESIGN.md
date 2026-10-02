@@ -53,22 +53,182 @@ Red must not mean merely "your decision".
 
 ## 2. Local Player Dock
 
-The local player's area occupies the lower portion of the screen and does not move.
+The Local Player Dock is the viewer's persistent operational area. It occupies the lower portion of the screen and must remain stable regardless of turn owner or Interaction Stage complexity.
 
-It contains:
+The dock must not distribute space evenly between all information. Space should follow actual gameplay frequency and readability needs.
 
-- hero portrait and HP,
-- role when locally visible,
-- hero skills,
-- equipment,
-- Judgement Zone,
-- hand,
-- decision / guidance text,
-- Confirm / Cancel / Skip / End controls as applicable.
+### 2.1 Space priority
 
-Core rule: **do not duplicate the local hero in the Interaction Stage when the local player is the target.** Highlight the existing Local Player Dock instead.
+Use this priority when the dock becomes constrained:
 
-When the viewer becomes an effect target, apply a strong red target treatment to the local dock. When the viewer is the required decision actor, show a separate decision treatment.
+1. **Hand — highest priority and largest variable area.**
+2. **Hero art — keep large for identity and immersion.**
+3. **Skills and frequent action controls — large touch/click targets.**
+4. **Bottom guidance and action bar — persistent and always readable.**
+5. **Equipment — compact but still individually inspectable/selectable.**
+6. **Judgement indicators — normally overlaid on the hero rather than reserving a permanent large zone.**
+
+The hand and hero art are the two primary visual areas. Do not shrink either aggressively merely to give equal space to lower-frequency information.
+
+### 2.2 Hand area
+
+The hand changes constantly and requires close inspection, comparison, selection, and repeated interaction. It should receive the largest flexible horizontal area in the Local Player Dock.
+
+Design rules:
+
+- Keep card faces as large as practical.
+- Prefer increasing overlap / fan density as hand size grows rather than continuously shrinking every card.
+- A selected card should rise upward from the hand.
+- Card selection must expand **upward only** and must never cover the bottom guidance/action bar.
+- Preserve enough visible card identity for scanning when cards overlap.
+- Large hands such as 10, 15, or 20 cards require an explicit overflow strategy; prefer large cards with overlap/fan and horizontal navigation over tiny cards.
+- The exact large-hand overflow interaction remains to be validated visually before implementation.
+
+Conceptually:
+
+```text
+few cards    -> large cards, little overlap
+more cards   -> same/near-same card size, increased overlap
+large hand   -> overlap/fan + horizontal navigation
+selected     -> card rises upward
+```
+
+Local hand usability takes precedence over allowing the Interaction Stage or Reaction Chain to consume additional vertical space.
+
+### 2.3 Hero art
+
+The local hero should remain visually large. It is both gameplay identity and a major source of immersion.
+
+Do not reduce the local hero to a small avatar merely to fit more metadata.
+
+The hero area should include the hero's essential stable status, such as name and HP, without covering important artwork unnecessarily.
+
+Core viewer-centric rule: **the local hero is never duplicated in the Interaction Stage.** If the viewer is a source, target, decision actor, or resolving participant, that semantic role is projected onto the Local Player Dock.
+
+### 2.4 Skills and frequent controls
+
+Skills are high-frequency gameplay controls and should use large, easy-to-hit interaction targets.
+
+- Active skills should look actionable when legal.
+- Disabled / unavailable skills should remain identifiable but clearly inactive.
+- Skill names should remain readable without requiring hover.
+- Detailed skill rules may open through inspect/detail behaviour rather than permanently consuming dock space.
+- Do not reduce skills to tiny text links merely to save room.
+
+### 2.5 Equipment
+
+Equipment may be significantly more compact than hand cards or hero art because the number of equipment slots is limited and the information changes less frequently.
+
+Equipment must nevertheless remain separate interactive game objects because equipment may need to be:
+
+- inspected,
+- selected by an effect,
+- replaced,
+- stolen / dismantled,
+- used as a skill source,
+- involved in effects such as Borrowed Sword.
+
+Compact equipment may sit beside or around the hero area, but its identity and selection state must remain readable.
+
+### 2.6 Judgement presentation
+
+Do not reserve a large permanent Judgement Zone in the Local Player Dock.
+
+Delayed / Judgement cards normally appear as compact overlays or badges on the local hero artwork, for example along the top edge of the hero portrait.
+
+This is appropriate because Judgement-related state is important but normally does not require a large continuous interaction area.
+
+When a Judgement actually resolves, promote it into the Interaction Stage where the game can show:
+
+- the delayed effect / Judgement source,
+- the revealed Judgement card,
+- the affected player,
+- any Judgement modifier,
+- the resulting Reaction Chain / current decision.
+
+Therefore:
+
+**persistent Judgement state = hero overlay; active Judgement resolution = Interaction Stage.**
+
+Judgement overlays remain inspectable and, when authoritative legality requires it, selectable.
+
+### 2.7 Persistent bottom guidance/action bar
+
+The lowest part of the Local Player Dock is a fixed guidance/action bar.
+
+This bar is a stable UX anchor and must never be covered by the hand, selected cards, hero artwork, or Interaction Stage.
+
+It may show states such as:
+
+```text
+Your turn · Play Phase                              End Turn
+Attack selected · Select 1 target          Cancel   Confirm
+Select 1–3 targets · Selected 2/3          Cancel   Confirm
+Respond with Dodge                          Confirm   Skip
+Select 2 cards to discard · 1/2            Cancel   Confirm
+Waiting for Zhao Yun...
+```
+
+Rules:
+
+- guidance stays at the bottom rather than above the hand,
+- selected hand cards rise away from it,
+- controls stay in predictable positions where practical,
+- Confirm remains disabled until the current local selection is valid,
+- Cancel and Skip retain their distinct semantics defined later in this document,
+- the bar must remain readable during complex Reaction Chains.
+
+A player who is uncertain what the game currently expects should be able to look at the bottom of the screen and immediately understand the next local action.
+
+### 2.8 Local Dock semantic states
+
+The dock needs layered visual states rather than one generic highlight:
+
+- **Normal** — no special incoming effect or required decision.
+- **Target** — strong red structural treatment when the viewer is currently affected.
+- **Decision** — cyan / teal decision treatment when the viewer currently owns the decision.
+- **Target + Decision** — retain both meanings simultaneously; for example a red target border plus a cyan decision badge/pulse.
+
+A decision highlight must not erase the fact that the viewer is also the current target.
+
+### 2.9 Proposed desktop/tablet composition
+
+The exact dimensions remain subject to visual validation, but the intended hierarchy is:
+
+```text
+┌───────────────────────────────────────────────────────────────┐
+│                                                               │
+│ ┌────────────────┐   ┌─────────────────────────────────────┐  │
+│ │ Judgement      │   │ LARGE SKILLS                        │  │
+│ │ overlays       │   │ [ Skill ] [ Skill ] [ Skill ]       │  │
+│ │                │   │                                     │  │
+│ │   LARGE HERO   │   │          LARGE HAND AREA            │  │
+│ │      ART       │   │                                     │  │
+│ │                │   │ [CARD][CARD][CARD][CARD][CARD]       │  │
+│ │                │   │   overlap / fan when necessary      │  │
+│ └────────────────┘   └─────────────────────────────────────┘  │
+│   compact equipment                                            │
+├───────────────────────────────────────────────────────────────┤
+│ Guidance / current requirement                 action buttons │
+└───────────────────────────────────────────────────────────────┘
+```
+
+This is a hierarchy, not a requirement to hard-code percentages.
+
+The key constraint is that increasing Interaction Stage complexity must not make the hand or primary controls unusably small.
+
+### 2.10 Interaction with the upper stage
+
+The Local Player Dock is persistent while the upper battlefield / Interaction Stage is elastic.
+
+When upper-screen content becomes complex:
+
+- collapse older Reaction Chain detail before shrinking the local hand excessively,
+- use compact third-party reaction identities instead of adding unnecessary full hero panels,
+- preserve the large local hero where practical,
+- preserve large hand cards and skill touch targets,
+- never allow upper-stage expansion to cover the fixed bottom guidance/action bar.
+
 
 ## 3. Interaction Stage
 
@@ -625,7 +785,7 @@ React should primarily render projected legality and public interaction state ra
 When implementation is approved, split it into reviewable steps:
 
 1. **UX2.1 — Seat topology:** fixed 4–10 player thumbnail layout and distance presentation.
-2. **UX2.2 — Single-target Interaction Stage:** one selected opponent, public detail, target replacement.
+2. **UX2.2 — Local Dock + single-target Interaction Stage:** establish the large-hand / large-hero dock hierarchy, fixed bottom guidance bar, then one selected opponent with public detail and target replacement.
 3. **UX2.3 — Selection controls:** unified Cancel / Confirm state and reset semantics.
 4. **UX2.4 — Multi-target:** projected min/max, deselection, max feedback, ordered-target markers.
 5. **UX2.5 — AOE:** automatic participants plus resolved/current/pending state.
