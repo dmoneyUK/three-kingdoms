@@ -22,6 +22,11 @@ evidence remain open. Dying barrier work remains explicitly deferred to C4.
 
 See `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` for the authoritative transition map.
 
+C2-FIX now centralizes the audited Attack and Negation root room writes and
+records an explicit per-flow audit matrix. The acceptance gate remains
+PARTIAL pending automatic-transition coverage, nested damage/Dying lifetime,
+Judgement lifetime, and settlement-clear proofs.
+
 ## UX2.0B-FINAL verification — 2026-10-02
 
 On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue

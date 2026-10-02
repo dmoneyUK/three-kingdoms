@@ -14,6 +14,13 @@ test("D1 causal envelope survives production room reload and stays public across
   setTurn(game.code, source.seat);
   const opened = await request("play_card", { code: game.code, token: game.members[0].token, cardId: attack.id, targetId: target.id });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const openedEnvelope = opened.data.room.causalEnvelope;
+  assert.ok(openedEnvelope, "normal Attack response persists its root causal envelope");
+  assert.equal(openedEnvelope.frames.length, 1);
+  const persistedPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(persistedPending.continuation.causal.interactionId, openedEnvelope.interactionId);
+  assert.equal(persistedPending.continuation.causal.frameId, openedEnvelope.activeFrameId);
+  assert.equal(query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(game.code)}`), JSON.stringify(openedEnvelope));
 
   const frame = createCausalFrame({
     frameId: "persisted-frame",

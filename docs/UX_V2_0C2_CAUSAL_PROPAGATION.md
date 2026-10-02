@@ -60,5 +60,29 @@ Still open before the C2 acceptance gate can be closed:
   triggers;
 - prove delayed activation `originRef` history and final settlement clearing.
 
+## C2-FIX audit matrix — 2026-10-02
+
+This is an execution audit, not a claim that the C2 gate is closed. “Partial”
+means the route carries a causal handle or has one proven path, but the full
+runtime lifetime/atomicity matrix is not yet complete. “Unproven” is reserved
+for a flow without an engine-backed proof in this round.
+
+| Flow | Root envelope | Same frame | Child persisted | Parent resumed | Checkpoint | Atomic room write | Settlement clear | Engine proof |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Attack response | PASS | PASS | N/A | N/A | PARTIAL | PASS for ordinary/targeted entry | PARTIAL | PASS |
+| Duel alternation | PARTIAL | PARTIAL | N/A | N/A | UNPROVEN | PARTIAL | UNPROVEN | UNPROVEN |
+| Negation counter | PASS | PASS | N/A | N/A | PARTIAL | PASS for root entry | PARTIAL | PARTIAL |
+| Group/AOE progression | PARTIAL | PARTIAL | UNPROVEN | UNPROVEN | UNPROVEN | PARTIAL | UNPROVEN | UNPROVEN |
+| Borrowed Sword | PASS | PASS | PASS | PASS | PARTIAL | PASS | PASS for refusal/invalidation | PASS |
+| Judgement/deferred Judgement | PASS for Judgement Negation | PARTIAL | UNPROVEN | UNPROVEN | UNPROVEN | PASS for Judgement Negation entry | UNPROVEN | UNPROVEN |
+| Damage → Dying | UNPROVEN | UNPROVEN | UNPROVEN | UNPROVEN | UNPROVEN | PARTIAL | UNPROVEN | UNPROVEN |
+| Delayed activation | PARTIAL | N/A | UNPROVEN | UNPROVEN | UNPROVEN | PARTIAL | UNPROVEN | UNPROVEN |
+
+The C2-FIX code change centralizes the room write for the audited root entry
+paths (`Attack`, `Attack-targeted`, `Negation`, and Judgement Negation) so
+`phase`, `pending_json`, `log_json`, deck/discard where applicable, and
+`causal_envelope_json` are committed together. The helper is not yet wired to
+every legacy automatic transition; those rows remain explicitly PARTIAL.
+
 C3 Group semantics, C4 Dying barrier work, C5 projector migration, and React
 presentation changes remain explicitly out of scope.

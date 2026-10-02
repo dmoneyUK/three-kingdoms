@@ -359,3 +359,95 @@ C2-FIX2 is accepted only if:
 - no heuristic causal authority is invented;
 - all remaining UNPROVEN items are explicit and justified;
 - no C3/Dying-barrier/PresentationV2/React work begins.
+
+## Execution result — C2-FIX slice — 2026-10-02
+
+Implemented and validated the Borrowed Sword runtime child-frame slice:
+
+- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` now maps the authoritative route
+  boundaries and records the supported/UNPROVEN flows.
+- Root Negation and ordinary Attack response entry persist the causal envelope
+  with the Pending/phase transition.
+- Real Borrowed Sword target selection creates an `ATTACK_RESPONSE` child
+  Frame under the `FORCED_ACTION` parent in the persisted envelope.
+- Borrowed Sword refusal/invalidation resumes the parent Frame in the guarded
+  room write; the Interaction remains stable.
+- API evidence asserts the persisted child Frame, parent reference, and parent
+  resume. No C3, Dying-barrier, PresentationV2, or React work was added.
+
+Validation:
+
+- C2 causal-context tests: 2/2
+- focused causal tests: 8/8
+- full fast suite: 107/107
+- full API/D1 suite: 212/212
+- `npm run build`: passed
+- `npm run lint`: passed
+- `git diff --check`: passed
+
+C2-FIX remains partial. The remaining acceptance gates are centralized
+envelope/CAS propagation for every supported automatic transition, Group and
+nested-damage child-frame runtime proofs, engine-backed Damage→Dying identity,
+Judgement/delayed activation lifetime, explicit settlement clearing, and full
+legacy/reload/viewer/stale identity assertions. Do not start C3.
+
+---
+## C2-FIX execution result — 2026-10-02
+
+Branch: `ux-v2`
+
+Implementation commit: pending commit and push for reviewer inspection.
+
+Files changed:
+
+- `app/api/rooms/route.ts`
+- `tests/api/presentation-causality.test.mjs`
+- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
+- `README.md`
+- `HANDOVER.md` (this append-only result)
+
+Completed:
+
+- Added one authoritative room-state write helper for audited root entries;
+  it commits phase, Pending, log, causal envelope, and deck/discard fields
+  together in one D1 statement and remains batchable with player writes.
+- Wired ordinary Attack response, Attack-targeted entry, root Negation, and
+  Judgement Negation entry through that boundary.
+- Added a real API assertion that ordinary Attack Pending and the persisted
+  public envelope share the same Interaction/Frame, including reload/viewer
+  projection checks.
+- Added the per-flow C2-FIX audit matrix to
+  `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`.
+
+Evidence matrix:
+
+- Attack root/same-frame: PASS for the audited response entries.
+- Negation root: PASS for root entry; automatic continuation coverage remains
+  PARTIAL.
+- Borrowed Sword child push/pop: PASS from the prior slice and retained.
+- Duel, Group/AOE nested child, Damage→Dying, Judgement lifetime, delayed
+  activation, and complete settlement clearing: PARTIAL or UNPROVEN as marked
+  in the audit table; no unsupported completion claim is made.
+
+Atomic persistence: PASS for the four audited root entry paths; the helper is
+not yet applied to every legacy automatic transition, so overall C2 remains
+PARTIAL.
+
+Child Frame runtime proof: Borrowed Sword PASS; Group/nested damage remains
+UNPROVEN.
+
+Settlement/clear proof: Borrowed Sword refusal/invalidation PASS; global
+automatic settlement clearing remains PARTIAL.
+
+Tests:
+
+- `npm run build`: passed
+- `npm run test:fast`: 107/107 passed
+- `node tests/run-api-suite.mjs`: 212/212 passed after the corrected
+  single-file causal assertion; an earlier concurrent rerun was invalidated
+  by a stale port-occupying test process and was rerun cleanly.
+- `npm run lint`: passed
+- `git diff --check`: passed
+
+Remaining PARTIAL / UNPROVEN: see the audit matrix and the reviewer gates
+above. Do not start C3.
