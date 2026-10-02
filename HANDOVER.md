@@ -272,6 +272,88 @@ Files changed:
 
 Push implementation + appended result to `origin/ux-v2` and STOP.
 
+---
+
+## C2-FIX4 execution result — 2026-10-02
+
+Branch: `ux-v2`
+
+Implementation commit: pending commit and push for reviewer inspection.
+
+Files changed:
+
+- `app/api/rooms/route.ts`
+- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
+- `README.md`
+- `HANDOVER.md` (this append-only result)
+
+### Root creator inventory
+
+Added to the causal propagation document. Attack and Damage creators now retain
+the exact created envelope outside Pending JSON; `startNegation()` and
+`startJudgementNegation()` already followed this pattern. Group and Duel
+context-only creators remain explicitly marked `CONTEXT_ONLY_BUG` and were not
+expanded in this FIX4 slice.
+
+### Recovery inventory
+
+Removed all production route calls to `recoverCausalEnvelope()`. Normal
+Attack, Attack-targeted, Borrowed Sword, and Damage paths now keep a missing or
+malformed envelope as `null`; no frame tree is reconstructed from a context
+handle. `rg` confirms no remaining use in `app/api/rooms/route.ts`.
+
+### Attack ownership changes
+
+- `attackDeclaration()` retains the exact newly-created root envelope through
+  a non-enumerable runtime field, so Pending JSON remains reference-only.
+- Ordinary Attack, Serpent Spear, Influencing Attack, and Attack-targeted
+  persistence use that exact envelope through `causalRoomStateWrite()`.
+- The former normal-path `causalEnvelopeForAttack()` recovery behavior now
+  returns only an existing room envelope or the exact root envelope; it never
+  calls recovery.
+
+### Damage ownership changes
+
+- `damageTriggerPending()` and `damageSufferedTriggerPending()` retain a newly
+  created independent root envelope outside Pending JSON.
+- Attack-derived Damage reuses the Attack causal context and does not create a
+  second Damage root.
+- Independent Damage Pending writes persist the exact envelope created by the
+  helper.
+- Borrowed Sword child creation requires an existing persisted parent
+  envelope; it no longer reconstructs one from the child context.
+
+### Evidence matrix
+
+The FIX4 ownership matrix is in
+`docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`. Attack → Damage reuse is proven by the
+lethal API path; root persistence, checkpoint/revision stability, stale/double
+safety, fresh-root settlement, and independent Damage API evidence remain
+PARTIAL as explicitly marked there.
+
+### Identity/legacy/corruption tests
+
+Existing Borrowed Sword CAS, lethal Attack/Dying, public viewer, legacy NULL,
+and malformed parser tests remain green. No heuristic identity source was
+added. Full FIX4 checkpoint/revision stability and malformed
+mid-continuation API coverage remain open.
+
+### Validation
+
+- `npm run build`: passed
+- focused FIX4 API tests: 18/18 passed
+- `npm run test:fast`: 107/107 passed
+- `node tests/run-api-suite.mjs`: 212/212 passed
+- `npm run lint`: passed
+- `git diff --check`: passed
+
+### Remaining C2 work
+
+Group/Duel context-only root ownership, complete checkpoint/revision and
+stale/reconnect assertions, independent Damage root API evidence, Judgement
+causal-envelope lifetime, delayed activation provenance, and global settlement
+clearing remain PARTIAL/UNPROVEN. Do not start C3.
+
 ## Acceptance criteria
 
 FIX4 passes only if:

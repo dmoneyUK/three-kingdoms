@@ -31,6 +31,12 @@ C2-FIX3 adds real lethal Attack → Damage → Dying envelope evidence: the same
 Interaction/Frame is retained through `DYING`, and successful rescue clears
 the settled envelope. The broader C2 gate remains PARTIAL.
 
+C2-FIX4 removes normal-path causal envelope reconstruction from Attack,
+Attack-targeted, Borrowed Sword, and Damage routing. Root creators now carry
+their exact envelope separately from Pending references; the broader C2 gate
+remains PARTIAL while Group/Duel ownership and other scenario evidence stay
+outstanding.
+
 ## UX2.0B-FINAL verification — 2026-10-02
 
 On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue

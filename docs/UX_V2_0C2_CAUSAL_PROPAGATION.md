@@ -60,10 +60,30 @@ Still open before the C2 acceptance gate can be closed:
   triggers;
 - prove delayed activation `originRef` history and final settlement clearing.
 
-## C2-FIX2 evidence matrix — 2026-10-02
+## C2-FIX4 ownership evidence — 2026-10-02
 
 This matrix is intentionally tied to real API/engine evidence. Helper-only
 tests never upgrade a row to PROVEN.
+
+### Root creator inventory
+
+| Production creator | Flow | Envelope + context retained | Exact persistence boundary | Status |
+| --- | --- | --- | --- | --- |
+| `attackDeclaration()` | Attack | yes, envelope is non-enumerable and excluded from Pending JSON | first response/Attack-targeted room write | AUTHORITATIVE |
+| `damageTriggerPending()` | independent damage trigger | yes, created envelope is carried outside Pending JSON | response Pending room write | AUTHORITATIVE |
+| `damageSufferedTriggerPending()` | independent post-damage trigger | yes, created envelope is carried outside Pending JSON | response Pending room write | AUTHORITATIVE |
+| `startNegation()` | card Negation | yes | root response room batch | AUTHORITATIVE |
+| `startJudgementNegation()` | delayed Judgement Negation | yes | root response room batch | AUTHORITATIVE |
+| `groupResponseDecision()` | Group/AOE | context only | existing Group persistence callers | CONTEXT_ONLY_BUG; out of FIX4 scenario scope |
+| `duelResponseDecision()` | Duel | context only | existing Duel persistence callers | CONTEXT_ONLY_BUG; out of FIX4 scenario scope |
+
+### Recovery inventory
+
+There are no remaining production routing calls to `recoverCausalEnvelope()`
+after FIX4. Normal Attack, Attack-targeted, Borrowed Sword, and Damage paths
+now keep legacy/missing envelopes as `null` instead of reconstructing a frame
+tree from a context handle. The helper remains available only to isolated
+legacy compatibility/unit code and is not a normal supported-flow authority.
 
 | Flow | Status | Exact API/engine evidence | Missing boundary |
 | --- | --- | --- | --- |
@@ -86,10 +106,10 @@ tests never upgrade a row to PROVEN.
 | Legacy NULL envelope | PROVEN | `tests/api/presentation-causality.test.mjs` — `legacy room without causal envelope remains null through production room state` | none |
 | Malformed envelope | PROVEN | `tests/presentation-causality.test.mjs` — `parser rejects structurally impossible envelopes` | real gameplay malformed-row API test |
 
-The centralized room write helper currently covers audited root Attack and
-Negation entries. C2-FIX2 must extend it only along transitions represented in
-this matrix; remaining rows stay PARTIAL/UNPROVEN until real persisted
-evidence exists.
+The centralized room write helper now covers the audited Attack and Damage
+root boundaries. Group/Duel context-only creators remain explicit known bugs
+outside this ownership slice; no Group/Judgement/Duel scenario expansion is
+claimed here.
 
 C3 Group semantics, C4 Dying barrier work, C5 projector migration, and React
 presentation changes remain explicitly out of scope.

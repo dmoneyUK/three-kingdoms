@@ -26,7 +26,7 @@ import { resolveDamageModifiers, type DamageCause } from "../../../game/capabili
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { projectPresentationV2 } from "../../../game/presentation-v2";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
-import { childCausalFrame, createCausalRoot, recoverCausalEnvelope, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
+import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { updateCausalFrameCurrent, updateCausalFrameStage } from "../causal-envelope";
 
 export const runtime = "edge";
@@ -235,9 +235,11 @@ function damageSufferedActorId(source: PlayerRow | null | undefined, target: Pla
   const options = getTriggeredEffects(context, resolvedEffectIds, resolvedDamagePointEffectIds);
   return options.map((option) => triggerActorId(option.effectId, context) ?? target.id).find((actorId) => actorId === target.id || actorId === source?.id) ?? null;
 }
-function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase: string, sequenceStartCardId: string, readyAfterEventId?: string, origin?: AttackOrigin, resumePlayerId?: string, physicalSuit?: Card["suit"], causal?: CausalContext): TriggerPending {
-  const resolvedCausal = causal ?? createCausalRoot({ stage: "DAMAGE", origin: { originSourceId: source.id, originEffect: origin ?? "damage", originalTargetIds: [target.id] }, current: { currentSourceId: source.id, currentEffect: origin ?? "damage", currentTargetIds: [target.id], resolvingPlayerId: source.id } }).context;
-  const pending: TriggerPending = {
+type PendingWithCreatedEnvelope = TriggerPending & { causalEnvelope?: CausalEnvelope };
+function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase: string, sequenceStartCardId: string, readyAfterEventId?: string, origin?: AttackOrigin, resumePlayerId?: string, physicalSuit?: Card["suit"], causal?: CausalContext): PendingWithCreatedEnvelope {
+  const root = causal ? null : createCausalRoot({ stage: "DAMAGE", origin: { originSourceId: source.id, originEffect: origin ?? "damage", originalTargetIds: [target.id] }, current: { currentSourceId: source.id, currentEffect: origin ?? "damage", currentTargetIds: [target.id], resolvingPlayerId: source.id } });
+  const resolvedCausal = causal ?? root!.context;
+  const pending: PendingWithCreatedEnvelope = {
     kind: "trigger",
     event: "damage_about_to_apply",
     actorId: source.id,
@@ -246,11 +248,15 @@ function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase:
     causal: resolvedCausal,
     continuation: { kind: "damage_about_to_apply_event", sourceId: source.id, targetId: target.id, resumePhase, sequenceStartCardId, causal: resolvedCausal, ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}), ...(physicalSuit ? { physicalSuit } : {}) },
   };
-  return readyAfterEventId ? withPresentationBarrier(pending, [], readyAfterEventId) : pending;
+  const result = readyAfterEventId ? withPresentationBarrier(pending, [], readyAfterEventId) : pending;
+  if (root) Object.defineProperty(result, "causalEnvelope", { value: root.envelope, enumerable: false });
+  return result;
 }
-function damageSufferedTriggerPending(source: PlayerRow | null, target: PlayerRow, amount: number, resumePhase: string, sequenceStartCardId: string, readyAfterEventId: string | undefined, origin?: AttackOrigin, resumePlayerId?: string, resumeGroup?: GroupResponsePending, resumeDamageSuffered?: DamageSufferedTriggerContinuation, damageCards: Card[] = [], resumeTurnEnd?: TurnEndTriggerContinuation, damageCause: DamageCause = "other", physicalSuit?: Card["suit"], actorId?: string, causalContext?: CausalContext): TriggerPending {
-  const causal = causalContext ?? resumeGroup?.causal ?? resumeDamageSuffered?.causal ?? (source ? createCausalRoot({ stage: "DAMAGE", origin: { originSourceId: source.id, originEffect: damageCause, originalTargetIds: [target.id] }, current: { currentSourceId: source.id, currentEffect: damageCause, currentTargetIds: [target.id], resolvingPlayerId: actorId ?? target.id } }).context : undefined);
-  const pending: TriggerPending = {
+function damageSufferedTriggerPending(source: PlayerRow | null, target: PlayerRow, amount: number, resumePhase: string, sequenceStartCardId: string, readyAfterEventId: string | undefined, origin?: AttackOrigin, resumePlayerId?: string, resumeGroup?: GroupResponsePending, resumeDamageSuffered?: DamageSufferedTriggerContinuation, damageCards: Card[] = [], resumeTurnEnd?: TurnEndTriggerContinuation, damageCause: DamageCause = "other", physicalSuit?: Card["suit"], actorId?: string, causalContext?: CausalContext): PendingWithCreatedEnvelope {
+  const inheritedCausal = causalContext ?? resumeGroup?.causal ?? resumeDamageSuffered?.causal;
+  const root = inheritedCausal || !source ? null : createCausalRoot({ stage: "DAMAGE", origin: { originSourceId: source.id, originEffect: damageCause, originalTargetIds: [target.id] }, current: { currentSourceId: source.id, currentEffect: damageCause, currentTargetIds: [target.id], resolvingPlayerId: actorId ?? target.id } });
+  const causal = inheritedCausal ?? root?.context;
+  const pending: PendingWithCreatedEnvelope = {
     kind: "trigger",
     event: "damage_suffered",
     actorId: actorId ?? target.id,
@@ -259,7 +265,9 @@ function damageSufferedTriggerPending(source: PlayerRow | null, target: PlayerRo
     ...(causal ? { causal } : {}),
     continuation: { kind: "damage_suffered_event", ...(source ? { sourceId: source.id } : {}), targetId: target.id, amount, damagePointIndex: 0, damagePointCount: amount, resumePhase, sequenceStartCardId, stage: "reaction", resolvedEffectIds: [], resolvedDamagePointEffectIds: [], ...(causal ? { causal } : {}), ...(damageCards.length ? { damageCards } : {}), ...(resumePlayerId ? { resumePlayerId } : {}), ...(origin ? { origin } : {}), ...(damageCause !== "other" ? { damageCause } : {}), ...(physicalSuit ? { physicalSuit } : {}), ...(resumeGroup ? { resumeGroup } : {}), ...(resumeDamageSuffered ? { resumeDamageSuffered } : {}), ...(resumeTurnEnd ? { resumeTurnEnd } : {}) },
   };
-  return readyAfterEventId ? withPresentationBarrier(pending, [], readyAfterEventId) : pending;
+  const result = readyAfterEventId ? withPresentationBarrier(pending, [], readyAfterEventId) : pending;
+  if (root) Object.defineProperty(result, "causalEnvelope", { value: root.envelope, enumerable: false });
+  return result;
 }
 function triggerContextFor(pending: TriggerPending, players: PlayerRow[]) {
   const continuation = pending.continuation;
@@ -463,21 +471,20 @@ function addPassiveAttackPreventionNotice(log: string[], source: PlayerRow, targ
   const attackLabel = attack && (attack.suit === "♠" || attack.suit === "♣") ? "black Attack" : "Attack";
   return { log: addLogWithId(log, `${target.name}'s ${prevention.reason} blocks ${source.name}'s ${attackLabel}. No damage is dealt.`, undefined, { effectNotice: true }).log };
 }
-function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackOrigin, physicalCards: Card[], resumePhase: string, attackCard?: Card, causal?: CausalContext): AttackDeclaration {
+type AttackDeclarationWithEnvelope = AttackDeclaration & { causalEnvelope?: CausalEnvelope };
+function attackDeclaration(source: PlayerRow, target: PlayerRow, origin: AttackOrigin, physicalCards: Card[], resumePhase: string, attackCard?: Card, causal?: CausalContext): AttackDeclarationWithEnvelope {
   const root = causal ? null : createCausalRoot({
     stage: "ATTACK_RESPONSE",
     origin: { originSourceId: source.id, originEffect: origin, originalTargetIds: [target.id] },
     current: { currentSourceId: source.id, currentEffect: origin, currentTargetIds: [target.id], resolvingPlayerId: target.id },
   });
-  return { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, ignoresArmor: hasBlueSteelSword(source), requiredDodgeCount: attackDodgeCount(source), sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", resumePhase, resumePlayerId: source.id, causal: causal ?? root?.context };
+  const declaration: AttackDeclarationWithEnvelope = { sourceId: source.id, targetId: target.id, origin, physicalCards, attackCard, ignoresArmor: hasBlueSteelSword(source), requiredDodgeCount: attackDodgeCount(source), sequenceStartCardId: physicalCards[0]?.id ?? attackCard?.id ?? "", resumePhase, resumePlayerId: source.id, causal: causal ?? root?.context };
+  if (root) Object.defineProperty(declaration, "causalEnvelope", { value: root.envelope, enumerable: false });
+  return declaration;
 }
-function causalEnvelopeForAttack(room: RoomRow, declaration: AttackDeclaration, resolvingPlayerId: string): string | null {
-  if (room.causal_envelope_json || !declaration.causal) return room.causal_envelope_json;
-  return JSON.stringify(recoverCausalEnvelope(declaration.causal, {
-    stage: "ATTACK_RESPONSE",
-    origin: { originSourceId: declaration.sourceId, originEffect: declaration.origin, originalTargetIds: [declaration.targetId] },
-    current: { currentSourceId: declaration.sourceId, currentEffect: declaration.origin, currentTargetIds: [declaration.targetId], resolvingPlayerId },
-  }));
+function causalEnvelopeForAttack(room: RoomRow, declaration: AttackDeclarationWithEnvelope): string | null {
+  if (room.causal_envelope_json) return room.causal_envelope_json;
+  return declaration.causalEnvelope ? JSON.stringify(declaration.causalEnvelope) : null;
 }
 function attackDodgeCount(source?: PlayerRow | null) { return source?.hero === "lü-bu" ? 2 : 1; }
 function attackResponseDecision(declaration: AttackDeclaration, target: PlayerRow): ResponsePending {
@@ -518,7 +525,7 @@ async function beginAttackTargeted(room: RoomRow, declaration: AttackDeclaration
   const actor = attackTargetedActor(source, target, resolvedEffectIds, players);
   if (!actor) return false;
   const pending: TriggerPending = withPresentationBarrier({ kind: "trigger", event: "attack_targeted", actorId: actor.id, reason: `${actor.name} may resolve an Attack-targeted ability, or skip`, deadline: nextResponseDeadline(actor), causal: declaration.causal, continuation: { kind: "attack_targeted_event", declaration, causal: declaration.causal, ...(group ? { group } : {}), ...(resolvedEffectIds.length ? { resolvedEffectIds: [...resolvedEffectIds] } : {}) } }, log, eventId);
-  const causalJson = declaration.causal && !room.causal_envelope_json ? JSON.stringify(recoverCausalEnvelope(declaration.causal, { stage: "ATTACK_RESPONSE", origin: { originSourceId: source.id, originEffect: declaration.origin, originalTargetIds: [target.id] }, current: { currentSourceId: source.id, currentEffect: declaration.origin, currentTargetIds: [target.id], resolvingPlayerId: actor.id } })) : room.causal_envelope_json;
+  const causalJson = causalEnvelopeForAttack(room, declaration);
   const envelope = parseCausalEnvelope(causalJson);
   await db().batch([...writes, causalRoomStateWrite(room.id, { phase: "response", pending, discard, log, causalEnvelope: envelope })]);
   return true;
@@ -2584,7 +2591,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     const actor = players.find((player) => player.id === actorId && player.alive) ?? updatedTarget;
     const presentation = addLogWithId(damageLog, `${actor.name} may use a post-damage reaction, or skip.`);
     const pending = damageSufferedTriggerPending(source, updatedTarget, finalAmount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, resumeGroup, resumeDamageSuffered, damageCards, resumeTurnEnd, cause, physicalSuit, actor.id, causal);
-    const causalEnvelope = causalEnvelopeAtStage(room, causal, "DAMAGE", { currentSourceId: source?.id ?? null, currentEffect: label, currentTargetIds: [target.id], resolvingPlayerId: actor.id });
+    const causalEnvelope = pending.causalEnvelope ?? causalEnvelopeAtStage(room, causal, "DAMAGE", { currentSourceId: source?.id ?? null, currentEffect: label, currentTargetIds: [target.id], resolvingPlayerId: actor.id });
     await db().batch([
       ...writes,
       db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id),
@@ -2637,7 +2644,7 @@ async function resolveAttackDamageAboutToApply({ room, source, target, players, 
     await db().batch([
       ...writes,
       db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(sourceHand), source.id),
-      causalRoomStateWrite(room.id, { phase: "response", pending, discard, log: presentation.log, causalEnvelope: causalEnvelopeAtStage(room, causal, "DAMAGE", { currentSourceId: source.id, currentEffect: label, currentTargetIds: [target.id], resolvingPlayerId: source.id }) }),
+      causalRoomStateWrite(room.id, { phase: "response", pending, discard, log: presentation.log, causalEnvelope: pending.causalEnvelope ?? causalEnvelopeAtStage(room, causal, "DAMAGE", { currentSourceId: source.id, currentEffect: label, currentTargetIds: [target.id], resolvingPlayerId: source.id }) }),
     ]);
     return { kind: "reaction_pending" };
   }
@@ -4935,12 +4942,7 @@ export async function POST(request: Request) {
       await db.prepare("UPDATE rooms SET phase = ?, pending_json = NULL, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(log), room.id).run();
       return json({ room: await roomState(code, token) });
     }
-    const parentEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json)
-      ?? recoverCausalEnvelope(pending.causal, {
-        stage: "FORCED_ACTION",
-        origin: { originSourceId: pending.sourceId, originEffect: "borrowed_sword", originalTargetIds: [pending.targetId] },
-        current: { currentSourceId: pending.sourceId, currentEffect: "borrowed_sword", currentTargetIds: [pending.targetId], resolvingPlayerId: holder.id },
-      });
+    const parentEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json);
     const child = parentEnvelope && pending.causal
       ? childCausalFrame(parentEnvelope, {
         stage: "ATTACK_RESPONSE",
@@ -5176,7 +5178,7 @@ export async function POST(request: Request) {
       } else {
         const presentation = addLogWithId(log, `${target.name} must respond to ${source.name}'s Influencing Attack.`);
         const responsePending = withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, presentation.eventId);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(responsePending), JSON.stringify(discard), JSON.stringify(presentation.log), causalEnvelopeForAttack(liveRoom, declaration, target.id), room.id)]);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(nextHand), me.id), turnHistoryAttackWrite(liveRoom, source), causalRoomStateWrite(room.id, { phase: "response", pending: responsePending, discard, log: presentation.log, causalEnvelope: parseCausalEnvelope(causalEnvelopeForAttack(liveRoom, declaration)) })]);
       }
     }
     return json({ room: await roomState(code, token) });
@@ -5337,7 +5339,7 @@ export async function POST(request: Request) {
       const presentation = addLogWithId(log, `Action passes from ${me.name} to ${target.name} for Dodge response.`);
       const readyAfterEventId = latestDecisionPresentationEventId(presentation.log, latestResolutionId(presentation.log));
       const nextPending = readyAfterEventId ? withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, readyAfterEventId) : attackResponseDecision(declaration, target);
-      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(presentation.log), room.id)]);
+      await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), causalRoomStateWrite(room.id, { phase: "response", pending: nextPending, discard, log: presentation.log, causalEnvelope: parseCausalEnvelope(causalEnvelopeForAttack(liveRoom, declaration)) })]);
     } else if (action === "play_card") {
       if (!liveRoom.phase?.startsWith("play")) return json({ error: "Draw before playing a card." }, 409);
       const card = hand.find((item) => item.id === String(body.cardId ?? ""));
@@ -5512,7 +5514,7 @@ export async function POST(request: Request) {
         }
         const presentation = addLogWithId(log, `${me.name} plays Attack on ${target.name}. Action passes from ${me.name} to ${target.name} for Dodge response.`);
         const responsePending = withPresentationBarrier(attackResponseDecision(declaration, target), presentation.log, attackPresentation.eventId);
-        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ?, causal_envelope_json = ? WHERE id = ?").bind(serializePending(responsePending), JSON.stringify(discard), JSON.stringify(presentation.log), causalEnvelopeForAttack(liveRoom, declaration, target.id), room.id)]);
+        await db.batch([db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me), causalRoomStateWrite(room.id, { phase: "response", pending: responsePending, discard, log: presentation.log, causalEnvelope: parseCausalEnvelope(causalEnvelopeForAttack(liveRoom, declaration)) })]);
       } else {
         return json({ error: "That card is not playable yet." }, 400);
       }
