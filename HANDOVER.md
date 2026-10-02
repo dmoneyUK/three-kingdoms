@@ -295,3 +295,55 @@ Then STOP.
 ## Acceptance
 
 C3-03 passes only if the typed public Interaction Scene accurately represents the supported real non-Group causal families without private leaks or invented identity, remains viewer/reconnect stable, fails closed for non-authoritative state, preserves Group semantics, honestly marks unsupported production paths, and all regressions are green.
+
+## C3-03 execution result
+
+- Implementation/docs/tests commit: `26237e3dd165672ccf9b9f69dea76e3ce72948ed` (`test: characterize C3 non-group interaction scenes`).
+- Files changed: `README.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, `tests/presentation-v2.test.mjs`, `tests/api/presentation-causality.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `tests/api/lobby-heroes-wei.test.mjs`, and `tests/api/stratagems.test.mjs`.
+- Scope: the existing typed projector is now covered against real non-Group causal roots; no React/CSS, gameplay, C2 identity, Dying barrier, or legacy-field removal was introduced.
+
+### Semantic ownership and real fixtures
+
+- Attack / Attack Response: `PROVEN` from the authoritative root `ATTACK_RESPONSE` frame; source and original targets come from frame origin, while current participant, resolver, and public decision actor remain distinct. Real Attack/Dodge fixture and causal room-read fixture cover reconnect/repeated reads.
+- Duel: `PROVEN` from the root `DUEL_EXCHANGE` frame; original target IDs preserve both Duel participants and the active participant/resolver/decision actor alternate through the real response exchange. Physical Duel fixture covers repeated reads and legacy root compatibility.
+- Independent/root Damage: `PROVEN` from the delayed Lightning `DAMAGE` frame; source/effect/targets remain envelope-owned through repeated Legacy opportunities and fresh activation. No nested Dying presentation model was added.
+- Judgement: `PROVEN` from the real Guo Jia replacement/reveal/resume fixture; resolver and source/effect remain causal, while the public decision actor follows the live action. Delayed placement/activation uses a fresh causal identity; the activation fixture first exposes its real `NEGATION` window before Judgement.
+- Root Negation: `PROVEN` from the real Dismantle/Negation and counter-Negation fixture; the source/effect/targets remain available while resolver and decision ownership change.
+- Group compatibility: existing Group `SAME_FRAME` Negation and `CHILD_FRAME` Damage behavior remains covered and unchanged.
+
+### Evidence matrix
+
+| Evidence | Result |
+| --- | --- |
+| Attack public scene | PROVEN |
+| Attack response-Judgement continuity | PARTIAL; existing causal support remains, but C3-03 does not invent a new child model |
+| Duel public scene and exchange stability | PROVEN |
+| Independent/root Damage | PROVEN |
+| Judgement | PROVEN |
+| Delayed Judgement fresh activation identity | PROVEN |
+| Historical delayed `originRef` | PARTIAL; not fabricated |
+| Independent/root Negation | PROVEN |
+| Group SAME_FRAME Negation regression | PROVEN |
+| Second-viewer equality | PROVEN for real Attack, Damage, and Group public scene reads; decision actor remains subject to existing private/public CurrentAction projection |
+| Repeated-read stability | PROVEN for Attack, Duel, Damage, Judgement activation, and Group fixtures |
+| Terminal settlement / scene clearing | PROVEN where the real fixture reaches a null causal envelope; no timer-based clearing was added |
+| Malformed/non-authoritative fail-closed behavior | PROVEN; malformed and incoherent authority remains `UNPROVEN` with no fabricated IDs |
+| Compatibility-field divergence | NONE FOUND; Group compatibility values remain derived from shared semantics |
+
+### Validation
+
+- Focused projector and causality: `node --test tests/presentation-v2.test.mjs tests/presentation-causality.test.mjs` — 29/29.
+- Focused real API families: `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/presentation-causality.test.mjs,tests/api/lobby-heroes-wei.test.mjs,tests/api/stratagems.test.mjs ... node tests/run-tests.mjs` — 70/70.
+- Full fast suite: `npm run test:fast` — 113/113.
+- Full API suite: `npm run test:api` — 238/238 across 4 shards.
+- `npm run build` — PASS.
+- `npm run lint` — PASS.
+- `git diff --check` — PASS.
+
+### Remaining C3 gaps and handoff
+
+C3-03 is implemented and validated. Remaining boundaries are the historical
+delayed `originRef`, explicit Attack-response-to-Judgement child continuity,
+transition-direction/animation semantics, and the Dying presentation barrier.
+Do not start C3-04, C4, C5, React/CSS migration, or gameplay changes in this
+handoff.
