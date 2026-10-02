@@ -87,7 +87,19 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   assert.equal(attackScene.sourceId, source.id);
   assert.deepEqual(attackScene.targetIds, [target.id]);
   assert.equal(attackScene.currentParticipantId, target.id);
-  assert.deepEqual(attackScene.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: source.id, activeResolverId: source.id, parentParticipantId: null, participantIds: [] });
+  assert.deepEqual(attackScene.participantRoles, {
+    sourceId: source.id,
+    originalTargetIds: [target.id],
+    activeTargetIds: [target.id],
+    currentParticipantId: target.id,
+    // Cavalry is source-owned, but this ATTACK_RESPONSE frame is resolved by
+    // the target. C5 therefore keeps semantic decision authority fail-closed;
+    // CurrentAction ownership must not be promoted into public identity.
+    decisionActorId: null,
+    activeResolverId: target.id,
+    parentParticipantId: null,
+    participantIds: [],
+  });
   assert.equal((await request("trigger", { code: game.code, token: sourceMember.token, providerId: "ma_chao_cavalry" })).status, 200);
   const revealed = (await state(game.code, simaMember.token)).data;
   assert.equal(revealed.currentAction.triggerEvent, "judgement_revealed", JSON.stringify(revealed));

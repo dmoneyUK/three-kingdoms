@@ -1,25 +1,19 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C5-03 — 2026-10-02
+## Current stage — UX2.0C6-01 verification preflight — 2026-10-02
 
-C5-03 adds the smallest typed `stableBoundary` contract alongside the proven
-`interactionScene`. It classifies a current public boundary as `REST`,
-`CHOICE`, `SETTLEMENT`, or `SPECIAL` using server-owned causal evidence. A
-`CHOICE` requires a proven semantic Pending actor and matching resolver;
-`CurrentAction` remains control-only. Proven Judgement, Borrowed Sword, and
-nested child contexts can remain `SPECIAL` when no blocking actor is proven.
-`SETTLEMENT` remains a reserved contract value in this slice because current
-production state has no viewer-independent durable settlement link;
-`settlement` and `transitionEvents` remain descriptive compatibility
-projections. Borrowed Sword `SPECIAL` also requires Pending causal linkage to
-the proven scene. Cleared or unsupported causal identity falls back to
-identity-free `REST`.
-The C5-02 participant-role contract remains viewer-independent, and malformed
-or missing authority fails closed. React/CSS, animation timing, and gameplay
-changes are not started.
+C5 is closed for its defined pre-C6 scope. C6 verification is now being
+prepared against real Worker/D1/API paths. This preflight repaired an outdated
+Ma Chao Cavalry assertion: the source-owned trigger does not by itself establish
+public decision authority when the active ATTACK_RESPONSE frame is resolved by
+the target. The test now preserves the accepted fail-closed rule: semantic
+`decisionActorId` remains `null`, while `activeResolverId` remains the target.
+No production gameplay, React/CSS, or PresentationSnapshot code changed.
 
-The next milestone is C5-03-FIX1 reviewer acceptance and the remaining C5
-compatibility audit; do not start C6/C7 or React/CSS migration.
+The next milestone is the full C6 invariant matrix: real interaction-family
+coverage for causal continuity, viewer equality/privacy, reconnect and stale
+safety, child/resume boundaries, terminal clearing, and malformed-state
+rejection. C6 is not complete yet and C7/React/CSS remain out of scope.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

@@ -268,3 +268,35 @@ Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin.
 
 C6-01 passes only if every required real interaction family is mapped to engine/API evidence, the matrix proves the accepted causal/participant/boundary invariants without relying on synthetic happy paths, public semantics are viewer-stable and privacy-safe, reconnect/repeated reads are stable, child/resume relationships are explicit, terminal clearing is proven, malformed states fail closed, and all required regressions are green.
 
+---
+
+## Execution result — UX2.0C6-01 CI preflight test correction — 2026-10-02
+
+Implementation commit: pending final commit creation; this result covers the
+source/test change below and the documentation commit that records it.
+
+Changed files: `tests/api/ma-chao.test.mjs`, `README.md`, and `HANDOVER.md`.
+
+The first C6 preflight exposed a stale assertion in the real Ma Chao Cavalry
+Attack -> Judgement fixture. The source-owned `attack_targeted_event` trigger
+does not establish public semantic decision authority at the initial
+`ATTACK_RESPONSE` checkpoint because the authoritative causal frame resolves
+the target. The test now explicitly asserts `decisionActorId: null` and
+`activeResolverId: target.id`. This preserves the C5 proof rule: Pending actor
+and causal `resolvingPlayerId` must agree before a public decision actor or
+`CHOICE` boundary is emitted; CurrentAction ownership is not promoted into
+public identity.
+
+No production gameplay, orchestrator, projector, React/CSS, or
+PresentationSnapshot code changed. No C6 matrix row is claimed complete by
+this preflight; the full engine-backed invariant matrix remains the next task.
+
+Evidence ledger impact: Attack -> Judgement -> Attack resume now has a green
+real API assertion for the initial participant-role authority boundary; the
+remaining C6 identity, checkpoint, viewer, reconnect, child/resume, terminal,
+and malformed-state rows remain to be audited under the task above.
+
+Validation: focused `tests/api/ma-chao.test.mjs` passed 10/10; `npm test`
+passed build, fast 123/123, and API 239/239 across 23 files and 4 shards;
+`npm run lint` and `git diff --check` passed. C6-01 remains open and is not
+ready for reviewer acceptance.
