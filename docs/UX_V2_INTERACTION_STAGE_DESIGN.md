@@ -1987,6 +1987,336 @@ For each scenario verify:
 - local hand and bottom controls remain protected.
 
 
+
+### 0.76 Mobile portrait vertical-space ownership
+
+Mobile portrait is the primary UX V2 layout target. Treat the screen as three vertical ownership regions:
+
+~~~text
+SYSTEM / TOP SAFE AREA
+----------------------
+BATTLEFIELD
+  Seat Topology
+  Interaction Safe Zone
+----------------------
+LOCAL PLAYER DOCK
+  Hero controls
+  Hand Rail
+  Guidance / Action Bar
+----------------------
+BOTTOM SAFE AREA
+~~~
+
+The Local Player Dock is not merely whatever space remains after the Interaction Stage grows. It has a minimum usable space budget.
+
+The Battlefield may compact under pressure, but the game must not solve central presentation growth by shrinking the local player's operational area until cards or controls become unusable.
+
+In Side Column Mode, left/right Seat Columns terminate at the Battlefield/Dock boundary. They never continue beside the Local Dock.
+
+> **The Local Player Dock always owns the full usable screen width.**
+
+### 0.77 Local Dock vertical structure
+
+The Local Dock has three logical regions:
+
+~~~text
+HERO CONTROL STRIP
+  Hero / HP / status / skills / equipment / Judgement
+
+HAND RAIL
+  primary card interaction area
+
+GUIDANCE / ACTION BAR
+  instructions + Cancel / Confirm / Skip / End Turn as applicable
+~~~
+
+Do not implement these as six or more independent vertical rows. Hero, skills, equipment and Judgement should combine horizontally/compactly where possible so the Hand remains the primary operational area.
+
+The Guidance / Action Bar is a protected region. Hand cards, browser safe areas, Hero art, or other Dock content must never cover it.
+
+### 0.78 Local Hero density
+
+Do not continuously shrink the local Hero as hand size increases.
+
+Use a small number of discrete responsive states such as:
+
+~~~text
+NORMAL
+COMPACT
+~~~
+
+NORMAL preserves prominent Hero identity and high-frequency controls. COMPACT reduces secondary Hero presentation when actual viewport height requires it.
+
+Hand count alone must not switch Hero density.
+
+### 0.79 Single-Layer Hand Rail
+
+The Local Hand is always rendered as one horizontal row.
+
+> **Never add a second hand row merely because the player has many cards.**
+
+The Hand Rail uses the following progression:
+
+~~~text
+small hand
+-> normal card spacing
+
+more cards / less available width
+-> increasing horizontal overlap
+
+required overlap exceeds usable limit
+-> clamp overlap
+-> enable horizontal pan
+~~~
+
+Large-hand growth changes navigation, not Local Dock height.
+
+Do not continuously shrink every card until the complete hand fits on screen.
+
+### 0.80 Hand fitting and overflow
+
+Hand fitting is geometry-driven rather than based on fixed card-count thresholds.
+
+Conceptually:
+
+~~~text
+available hand width
+preferred usable card width
+required overlap
+maximum usable overlap
+~~~
+
+If the hand fits while keeping cards readable and tappable, show it without scrolling.
+
+If overlap can make the hand fit without exceeding the maximum usable overlap, use overlap.
+
+If the hand still cannot fit, preserve usable card dimensions and maximum overlap, and place the remaining cards outside the visible viewport. The player reaches those cards by horizontally swiping/panning the Hand Rail.
+
+The 5 / 10 / 15 / 20+ card counts are design and regression benchmarks, not hard-coded mode thresholds.
+
+### 0.81 Horizontal hand navigation
+
+Horizontal swiping allows the player to bring off-screen cards into view.
+
+Example:
+
+~~~text
+[1][2][3][4][5][6][7][8]  ->
+
+swipe
+
+<- [7][8][9][10][11][12][13][14]
+~~~
+
+Cards must retain their usable visual/touch size while panning.
+
+Do not implement overflow by making hidden cards progressively thinner.
+
+The Hand Rail should make additional off-screen content discoverable with restrained edge/overflow affordances when useful, without consuming significant vertical space.
+
+### 0.82 Tap versus swipe
+
+The Hand Rail must distinguish card activation from horizontal navigation.
+
+A normal tap selects/activates according to the current authoritative mode.
+
+A horizontal gesture beyond an appropriate movement threshold pans the hand and must not accidentally select/play the touched card.
+
+Do not hard-code the final gesture threshold in the design specification. Tune it on real touch devices during implementation.
+
+### 0.83 Selected-card visibility
+
+A selected card rises above neighbouring cards, receives higher stacking priority, and remains sufficiently readable.
+
+If the selected card is partially clipped or heavily obscured by overlap, the Hand Rail may make a restrained horizontal adjustment to bring that card sufficiently into view.
+
+Do not jump the rail back to the beginning merely because a card was selected.
+
+Avoid opening a separate full-screen modal merely to show the selected card during normal play.
+
+### 0.84 Hand viewport anchor
+
+Horizontal Hand position is local UI state.
+
+Preserve the Hand viewport across unrelated authoritative presentation updates, including:
+
+- target selection;
+- Reaction Chain changes;
+- decision-actor changes;
+- Interaction Stage Content Updates;
+- ordinary HP/status updates.
+
+Example:
+
+~~~text
+viewer currently sees:
+12 13 14 [15] 16 17 18
+
+card 15 is played/removed
+
+preserve nearby context:
+12 13 14 16 17 18 19
+~~~
+
+Do not reset to cards 1–6 after every React state update.
+
+When the anchor card disappears, prefer the nearest surviving visible card as the next viewport anchor.
+
+Viewer change, new game, or a materially replaced hand may legitimately establish a new anchor.
+
+### 0.85 New cards and hand growth
+
+Drawing cards must not unnecessarily steal the player's current Hand viewport.
+
+If newly added cards are outside the visible portion while the player is actively inspecting/selecting elsewhere, preserve the current viewport and use a restrained new-card/overflow indication if necessary.
+
+Do not automatically pan to the newest card in a way that interrupts an active response or selection.
+
+### 0.86 Multi-card selection
+
+Authoritative multi-card choices use the same Hand Rail.
+
+Selected cards lift and receive clear selected state while remaining in the single row.
+
+Guidance may show:
+
+~~~text
+Select 2 cards · 2/2
+[Cancel]                    [Confirm]
+~~~
+
+or:
+
+~~~text
+Select 1–3 cards · 2/3
+~~~
+
+Minimum/maximum and eligibility remain authoritative CurrentAction/selection data. The Hand Rail must not implement its own gameplay legality.
+
+### 0.87 Eligible and ineligible cards
+
+When the server projects `eligibleCardIds` or equivalent authoritative card eligibility:
+
+- eligible cards remain clearly selectable;
+- ineligible cards are visually subdued;
+- ineligible cards remain in their normal hand positions rather than disappearing.
+
+Hiding ineligible cards would destabilise hand position and make the player's hand harder to understand.
+
+Inspection of an ineligible card may remain available through a non-conflicting inspect gesture/affordance, but it must not look selected or actionable.
+
+### 0.88 Skills, equipment and Judgement under Dock pressure
+
+Skills, equipment and Judgement compact before Hand usability is sacrificed.
+
+High-frequency/currently authoritative skill controls may receive stronger treatment. Other public skills use compact chips/labels or a small rail. Whether a skill is actionable must come from authoritative capability/CurrentAction data, not client inference.
+
+Equipment remains compact and independently inspectable/selectable. Do not render every equipped card as a full-size vertical card in the Local Dock.
+
+Judgement/delayed effects remain compact persistent badges/objects in ordinary Dock state. Promote them into the Interaction Stage when Judgement itself becomes the active interaction.
+
+### 0.89 Vertical pressure
+
+Responsive density should derive from actual usable geometry rather than hand count alone.
+
+A client-only pressure model may use levels such as:
+
+~~~text
+LOW
+MEDIUM
+HIGH
+CRITICAL
+~~~
+
+Inputs may include:
+
+- actual usable viewport height;
+- top/bottom safe-area insets;
+- minimum Local Dock requirements;
+- Hand Rail geometry;
+- Interaction Stage content pressure.
+
+Possible response:
+
+~~~text
+LOW
+Hero NORMAL
+Hand comfortable
+Interaction COMFORTABLE
+
+MEDIUM
+Hero NORMAL
+Hand overlap
+Interaction COMPACT
+
+HIGH
+Hero COMPACT
+Hand overlap/pan
+old Reaction history collapsed
+
+CRITICAL
+Hero COMPACT
+Hand remains minimum-usable
+Interaction shows only highest-priority semantic context
+~~~
+
+These are client layout decisions and must not enter the authoritative server Presentation contract.
+
+### 0.90 Mobile portrait invariants
+
+~~~text
+1. Local Dock always owns the full usable screen width.
+2. Side Seat Columns stop above the Local Dock.
+3. Bottom Guidance/Action Bar is always protected.
+4. Local Hand has a minimum interactive card size.
+5. Hand is always one row.
+6. Hand growth first increases overlap, then uses horizontal pan.
+7. Hand never adds a second row to solve overflow.
+8. Hand does not continuously shrink to expose every card.
+9. Off-screen cards are reached by swiping the Hand Rail.
+10. Selected cards remain readable and can be brought sufficiently into view.
+11. Hand viewport/anchor survives unrelated presentation updates.
+12. Removing/playing a card preserves nearby hand context.
+13. Horizontal swipe must not accidentally trigger card selection.
+14. Hero presentation uses discrete Normal/Compact states.
+15. Skills/equipment/Judgement compact before Hand usability is sacrificed.
+16. Interaction Stage collapses old history before reducing primary Focus.
+17. New authoritative CHOICE outranks cosmetic animation.
+18. Density derives from actual available geometry, not card-count thresholds.
+19. Safe-area insets are part of usable geometry.
+20. Portrait is the primary UX2 target; landscape/tablet/desktop are designed separately.
+~~~
+
+### 0.91 Large-hand validation matrix
+
+Validate the same Hand Rail implementation on real portrait-phone widths with at least:
+
+~~~text
+5 cards
+10 cards
+15 cards
+20 cards
+25+ stress case
+~~~
+
+For each case test:
+
+- no selection;
+- one selected card;
+- multiple selected cards;
+- selected card near each viewport edge;
+- selected card initially partially obscured;
+- horizontal swipe followed by tap;
+- tap followed by target selection;
+- card removed near the viewport anchor;
+- cards drawn while scrolled away from the beginning;
+- response mode with only a subset of eligible cards;
+- authoritative state update while the user is scrolled deep into the hand;
+- reduced-height viewport and safe-area pressure.
+
+Success means the Local Dock height remains stable enough to preserve battlefield continuity while every card remains reachable and operable.
+
+
 ## 1. Seat thumbnails
 
 Seat topology is designed **mobile portrait first**. Its purpose is to preserve relative seating, distance context, targetability, and player status without consuming the central Interaction Stage.
