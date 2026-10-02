@@ -489,3 +489,135 @@ FIX12 passes only if:
 - documentation/matrix do not overclaim;
 - full validation passes;
 - no C3/UI work begins.
+
+---
+
+## C2-FIX12 execution result — 2026-10-02
+
+Branch: `ux-v2`
+Implementation commit: `ca3e227` (`fix causal Judgement settlement and activation races`)
+Files changed: `app/api/rooms/route.ts`, `game/pending.ts`, `tests/api/judgement.test.mjs`, `tests/api/stratagems.test.mjs`, `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`, `README.md`
+
+### Stranded-envelope regression/fix
+
+Added a real delayed Overindulgence Judgement fixture that failed against the
+reviewed FIX11 behavior: successful Negation left the delayed root at stage
+`NEGATION`. The typed `causalResume` field distinguishes a top-level delayed
+Judgement root from a synchronous parent Judgement. Top-level delayed
+Judgement Negation now clears the envelope at completion; Group/Duel restore
+their typed parent stages. Delayed placement success also uses
+`causalRoomStateWrite()` so placement settlement cannot strand its envelope.
+
+### Judgement Negation/counter proof
+
+`delayed Judgement Negation and counter-Negation reuse one activation frame`
+uses two real Negation cards. It asserts root stage, Pending/effect kind,
+interactionId, frameId, checkpoint advancement, counter actor handoff, and
+final root/Pending settlement. One Interaction and one Frame are used for the
+whole chain.
+
+### Placement -> activation identity
+
+`delayed placement settles before a later activation creates a fresh
+interaction` plays a real Overindulgence, declines placement Negation, asserts
+placement envelope clear, then activates the placed card later with a real
+Negation responder. Placement and activation interaction/frame IDs differ;
+the later frame has `parentFrameId: null` and its own delayed-card origin.
+
+### No-responder atomic path
+
+Removed the standalone `UPDATE rooms SET causal_envelope_json = ?` from
+`beginJudgementResolution()`. The no-responder delayed Judgement fixture proves
+there is no fake Negation/trigger Pending, no persisted half-state at the end,
+and the final authoritative room envelope is NULL. Existing legacy/Damage
+draw-resume paths still contain explicit envelope-clearing writes at route
+lines 892 and 1168, and the Damage replacement path has an envelope-only
+resume write at line 1114; these remain outside this top-level delayed
+activation fix and are listed rather than overclaimed.
+
+### Lightning transfer/later activation
+
+`Lightning transfer settles its activation before a later fresh activation`
+asserts that Negation transfer clears A's activation envelope, keeps the
+physical Lightning in B's Judgement Zone, and gives B a different fresh
+interactionId/frameId with no parent frame on later activation.
+
+### Replacement stale/duplicate race
+
+`real Judgement replacement rejects stale and duplicate submissions without a
+second causal frame` uses a real Sima Yi replacement Pending. A stale request
+returns 409 and leaves Pending/card state unchanged. Concurrent duplicate
+submissions produce one success and one stale conflict; the replacement
+settles through one causal Interaction/Frame and consumes one replacement.
+
+### Damage-related Judgement
+
+The real Stauchness/Ganglie fixture now asserts that Judgement result handling
+returns to the existing `DAMAGE` frame and leaves the source-owned secondary
+Damage decision live. No independent Judgement root is created for this
+inherited path.
+
+### Settlement-exit audit
+
+- top-level delayed Judgement Negation: `CLEAR ROOT`;
+- nested Group/Duel Negation: `RESTORE GROUP_RESOLUTION` /
+  `RESTORE DUEL_EXCHANGE`;
+- no-responder delayed activation: `CLEAR ROOT` at true result settlement;
+- delayed Lightning transfer: clear the old activation root, retain the card;
+- synchronous Stauchness Judgement: restore the Damage parent;
+- Necromancy replacement: keep the current Judgement Interaction/Frame until
+  effective result settlement.
+
+### Exact FIX12 matrix
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| successful delayed Judgement Negation clears completed root | PROVEN | real delayed Negation regression | none |
+| Judgement Negation never strands NEGATION stage | PROVEN | final envelope is NULL | none |
+| real Judgement Negation reuses activation interaction/frame | PROVEN | Pending/envelope identity assertions | none |
+| real Judgement counter-Negation reuses same frame | PROVEN | two-card delayed counter fixture | none |
+| real delayed placement settles before later activation | PROVEN | placement/decline/later draw fixture | none |
+| later activation gets different interactionId and no old parent | PROVEN | fresh root ID and `parentFrameId: null` | none |
+| no-responder activation has no fake checkpoint/half-state | PROVEN | no-responder API/D1 fixture and atomic code path | no browser mid-transaction observation |
+| Lightning transfer clears first envelope | PROVEN | transfer fixture | none |
+| later transferred Lightning activation is fresh | PROVEN | later B activation fixture | historical `originRef` unsupported |
+| Judgement stale replacement preserves identity | PROVEN | stale Pending/card assertion | none |
+| duplicate replacement settles once | PROVEN | concurrent real Guicai race | none |
+| Damage-related Judgement preserves/resumes parent | PROVEN | real Stauchness DAMAGE-frame assertion | none for this fixture |
+| NULL/malformed Judgement does not reconstruct authority | PROVEN | existing malformed Judgement regression | none |
+| delayed historical `originRef` | PARTIAL | fresh activation independence is proven | room schema has no typed historical `originRef` |
+
+### Documentation
+
+Updated `README.md` with the concise FIX12 status and next milestone.
+Updated `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` with the delayed settlement
+contract, exit classification, FIX12 evidence matrix, and explicit
+`originRef` boundary. C2 remains partial; C3/UI/React/CSS were not started.
+
+### Search audit
+
+- delayed Judgement roots: `startJudgementNegation()` at route line 2000;
+- delayed Judgement entry/resume: `beginDelayedJudgement()` and
+  `resolveDeferredStratagem()` Judgement branches;
+- parent restoration: `restoreNestedNegationStage()` for Group/Duel and typed
+  `causalResume` for synchronous Judgement parents;
+- root clearing: delayed Judgement, delayed transfer, no-responder result,
+  and true settlement use `causalRoomStateWrite(... causalEnvelope: null)`;
+- normal-path `recoverCausalEnvelope()` search: no route/game call sites;
+- remaining explicit envelope-only writes are the pre-existing Damage/Legacy
+  lines recorded under the no-responder boundary above.
+
+### Validation
+
+- `npm test`: PASS — build, fast tests 108/108, API tests 234/234;
+- `npm run lint`: PASS;
+- `git diff --check`: PASS;
+- focused FIX12 stratagem/Judgement API fixtures: PASS;
+- implementation commit pushed to `origin/ux-v2` together with this handover
+  result.
+
+### Remaining C2 work
+
+Historical delayed `originRef` persistence remains PARTIAL because the current
+room schema has no safe typed field for it. Existing Group-nested Damage and
+Dying presentation-barrier work remain out of scope. Do not start C3.
