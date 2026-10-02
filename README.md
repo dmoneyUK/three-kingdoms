@@ -1,26 +1,21 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C5-02-FIX1 — 2026-10-02
+## Current stage — UX2.0C5-03 — 2026-10-02
 
-C5-02-FIX1 makes the proven `interactionScene` participant roles genuinely
-viewer-independent. The public semantic decision actor now requires a
-persisted Response/Trigger/Dying actor whose causal context and active-frame
-resolver agree; `CurrentAction` remains control-only and cannot populate a
-public role. Parent participants are emitted only from a coherent parent frame
-or typed Group linkage, otherwise they are null. C5-02 extends the scene with a
-viewer-independent
-`participantRoles` contract: source, original and active targets, current
-participant, decision actor, active resolver, parent participant, and proven
-Group participants. Group/AOE, Attack, Duel, Judgement, Damage, Negation,
-Borrowed Sword, and Dying scenes use only causal-envelope or typed-continuation
-evidence; malformed or missing authority fails closed. Legacy participants are
-derived from the typed role surface only where behavior-preserving, while
-Pending-first compatibility contexts remain available. React/CSS, animation
-timing, and gameplay changes are not started.
+C5-03 adds the smallest typed `stableBoundary` contract alongside the proven
+`interactionScene`. It classifies a current public boundary as `REST`,
+`CHOICE`, `SETTLEMENT`, or `SPECIAL` using server-owned causal evidence. A
+`CHOICE` requires a proven semantic Pending actor and matching resolver;
+`CurrentAction` remains control-only. Proven Judgement, Borrowed Sword, and
+nested child contexts can remain `SPECIAL` when no blocking actor is proven.
+Settlement and transitionEvents remain descriptive compatibility projections;
+cleared or unsupported causal identity falls back to identity-free `REST`.
+The C5-02 participant-role contract remains viewer-independent, and malformed
+or missing authority fails closed. React/CSS, animation timing, and gameplay
+changes are not started.
 
-cleanup; do not start C6/C7 or React/CSS migration.
-The next milestone is C5-02-FIX1 reviewer acceptance and any remaining C5
-cleanup; do not start C6/C7 or React/CSS migration.
+The next milestone is C5-03 reviewer acceptance and the remaining C5
+compatibility audit; do not start C6/C7 or React/CSS migration.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

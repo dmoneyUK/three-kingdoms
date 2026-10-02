@@ -84,6 +84,16 @@ export type PresentationDyingBarrier = {
   state: "RESCUE_CHOICE" | "UNPROVEN";
 };
 
+export type PresentationStableBoundaryKind = "REST" | "CHOICE" | "SETTLEMENT" | "SPECIAL";
+
+export type PresentationStableBoundary = {
+  kind: PresentationStableBoundaryKind;
+  interactionId: string | null;
+  checkpointId: string | null;
+  presentationRevision: number | null;
+  decisionActorId: string | null;
+};
+
 export type PresentationV2 = {
   rootContext: { eventId: string | null; kind: string | null; sourceId: string | null; originalTargetIds: readonly string[]; resolutionId: string | null } | null;
   activeContext: { kind: string | null; stage: string | null; sourceId: string | null; currentTargetIds: readonly string[]; eventIds: readonly string[]; resolutionId: string | null } | null;
@@ -115,6 +125,7 @@ export type PresentationV2 = {
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
   settlement: { eventId: string; resolutionId: string | null } | null;
   transitionEvents: readonly { eventId: string; type: string; resolutionId: string | null }[];
+  stableBoundary: PresentationStableBoundary;
 };
 
 type RecordLike = Record<string, unknown>;
@@ -458,6 +469,33 @@ function groupPresentation(scene: PresentationInteractionScene | null, groupValu
   };
 }
 
+function stableBoundaryFor(scene: PresentationInteractionScene | null, pending: unknown, settlementEvent: PresentationV2Event | null): PresentationStableBoundary {
+  const proven = scene?.semantics === "PROVEN";
+  const identity = {
+    interactionId: proven ? scene?.interactionId ?? null : null,
+    checkpointId: proven ? scene?.checkpointId ?? null : null,
+    presentationRevision: proven ? scene?.presentationRevision ?? null : null,
+  };
+  const decisionActorId = proven ? scene?.decisionActorId ?? null : null;
+  if (decisionActorId) return { kind: "CHOICE", ...identity, decisionActorId };
+
+  // A settlement event is descriptive compatibility data unless it is still
+  // attached to a proven live scene. Never resurrect a cleared frame from
+  // timeline/finalResult alone.
+  if (proven && settlementEvent) return { kind: "SETTLEMENT", ...identity, decisionActorId: null };
+
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const continuationKind = stringValue(continuation?.kind);
+  const persistentSpecial = proven && (
+    scene?.stage === "JUDGEMENT"
+    || continuationKind === "borrowed_sword_attack"
+    || (scene?.continuity.relation === "CHILD_FRAME" && scene.stage === "DAMAGE")
+  );
+  if (persistentSpecial) return { kind: "SPECIAL", ...identity, decisionActorId: null };
+  return { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null };
+}
+
 function eventCardIds(event: PresentationV2Event): string[] { return unique([event.card?.id, ...(event.cards ?? []).map((card) => card.id ?? null)]); }
 function eventForContext(context: Context | null, timeline: readonly PresentationV2Event[], barrierId: string | null): PresentationV2Event | null {
   if (!context) return null;
@@ -545,6 +583,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),
+    stableBoundary: stableBoundaryFor(interactionScene, input.pending, settlementEvent),
   };
 }
 

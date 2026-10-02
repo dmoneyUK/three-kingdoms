@@ -424,6 +424,8 @@ test("delayed Lightning damage keeps one Judgement Interaction across three Lega
   assert.equal(view.presentationV2.interactionScene?.activeResolverId, guo.id);
   assert.equal(view.presentationV2.interactionScene?.decisionActorId, guo.id);
   assert.deepEqual(view.presentationV2.interactionScene?.participantRoles, { sourceId: guo.id, originalTargetIds: [guo.id], activeTargetIds: [guo.id], currentParticipantId: guo.id, decisionActorId: guo.id, activeResolverId: guo.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(view.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(view.presentationV2.stableBoundary.decisionActorId, guo.id);
   const otherViewer = (await state(game.code, game.members[0].token)).data;
   assert.equal(otherViewer.causalEnvelope.interactionId, damageRoot.interactionId, "the inherited Judgement/Damage root is public and viewer-stable");
   assert.equal(otherViewer.causalEnvelope.checkpoint.checkpointId, damageRoot.checkpoint.checkpointId);

@@ -224,6 +224,44 @@ test("C5 leaves a Group child parent participant null when no parent proof exist
   assert.equal(projected.interactionScene?.participantRoles.parentParticipantId, null);
 });
 
+function provenBoundaryEnvelope(stage = "ATTACK_RESPONSE", current = { currentSourceId: "A", currentEffect: "Attack", currentTargetIds: ["B"], resolvingPlayerId: "B" }) {
+  const frame = { frameId: "stable-frame", parentFrameId: null, stage, origin: { originSourceId: "A", originEffect: stage, originalTargetIds: ["B"] }, current };
+  return { version: 1, interactionId: "stable-interaction", frames: [frame], activeFrameId: frame.frameId, checkpoint: { checkpointId: "stable-checkpoint", frameId: frame.frameId, stage }, presentationRevision: 9 };
+}
+
+test("C5-03 classifies a proven semantic response as CHOICE independently of viewer controls", () => {
+  const pending = { ...attack, causal: { interactionId: "stable-interaction", frameId: "stable-frame" } };
+  const envelope = provenBoundaryEnvelope();
+  const acting = projectPresentationV2({ pending, currentAction: action({ actorId: "B" }), actionRevision: "choice-a", timeline: [], causalEnvelope: envelope });
+  const waiting = projectPresentationV2({ pending, currentAction: action({ actorId: "C" }), actionRevision: "choice-b" , timeline: [], causalEnvelope: envelope });
+  assert.deepEqual(acting.stableBoundary, { kind: "CHOICE", interactionId: "stable-interaction", checkpointId: "stable-checkpoint", presentationRevision: 9, decisionActorId: "B" });
+  assert.deepEqual(waiting.stableBoundary, acting.stableBoundary);
+  assert.notEqual(acting.decision?.actorId, waiting.decision?.actorId);
+});
+
+test("C5-03 keeps a proven non-blocking Judgement context as SPECIAL", () => {
+  const projected = projectPresentationV2({ pending: null, currentAction: null, actionRevision: "special", timeline: [], causalEnvelope: provenBoundaryEnvelope("JUDGEMENT") });
+  assert.deepEqual(projected.stableBoundary, { kind: "SPECIAL", interactionId: "stable-interaction", checkpointId: "stable-checkpoint", presentationRevision: 9, decisionActorId: null });
+});
+
+test("C5-03 does not upgrade a cleared timeline settlement into causal SETTLEMENT", () => {
+  const projected = projectPresentationV2({ pending: null, currentAction: action({ kind: "none", actorId: null, readyAfterEventId: "settlement-event", declineAction: undefined }), actionRevision: "settled", timeline: [event("settlement-event", "r1", { finalResult: true })] });
+  assert.deepEqual(projected.settlement, { eventId: "settlement-event", resolutionId: "r1" });
+  assert.deepEqual(projected.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
+});
+
+test("C5-03 emits causal SETTLEMENT only while the proven scene remains attached", () => {
+  const projected = projectPresentationV2({ pending: null, currentAction: action({ kind: "none", actorId: null, readyAfterEventId: "settlement-event", declineAction: undefined }), actionRevision: "settled", timeline: [event("settlement-event", "r1", { finalResult: true })], causalEnvelope: provenBoundaryEnvelope() });
+  assert.deepEqual(projected.stableBoundary, { kind: "SETTLEMENT", interactionId: "stable-interaction", checkpointId: "stable-checkpoint", presentationRevision: 9, decisionActorId: null });
+});
+
+test("C5-03 fails closed to identity-free REST for an incoherent Dying authority", () => {
+  const dying = { kind: "dying", actorId: "C", sourceId: "A", targetId: "B", causal: { interactionId: "stable-interaction", frameId: "wrong-frame" } };
+  const projected = projectPresentationV2({ pending: dying, currentAction: action({ kind: "dying", actorId: "C", readyAfterEventId: null, resolutionId: null }), actionRevision: "dying-mismatch", timeline: [], causalEnvelope: provenBoundaryEnvelope("DYING", { currentSourceId: "A", currentEffect: "damage", currentTargetIds: ["B"], resolvingPlayerId: "B" }) });
+  assert.equal(projected.dyingBarrier?.semantics, "UNPROVEN");
+  assert.deepEqual(projected.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
+});
+
 test("C5 keeps legacy context precedence separate from the causal semantic core", () => {
   const projected = projectPresentationV2({
     pending: { kind: "response", actorId: "B", continuation: { kind: "attack", sourceId: "A", targetId: "B" } },

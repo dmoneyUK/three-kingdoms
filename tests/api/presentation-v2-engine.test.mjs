@@ -61,14 +61,17 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.equal(attackScene?.activeResolverId, target.id);
   assert.equal(attackScene?.decisionActorId, target.id);
   assert.deepEqual(attackScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: target.id, activeResolverId: target.id, parentParticipantId: null, participantIds: [] });
+  assert.deepEqual(targetView.presentationV2.stableBoundary, { kind: "CHOICE", interactionId: attackScene?.interactionId, checkpointId: attackScene?.checkpointId, presentationRevision: attackScene?.presentationRevision, decisionActorId: target.id });
   const otherView = (await state(game.code, game.members[2].token)).data;
   assert.deepEqual(otherView.presentationV2.rootContext, targetView.presentationV2.rootContext);
   assert.deepEqual(otherView.presentationV2.activeContext, targetView.presentationV2.activeContext);
   assert.equal(otherView.currentAction.options, undefined, "private response options remain viewer-private");
   assert.deepEqual(otherView.presentationV2.interactionScene, attackScene);
+  assert.deepEqual(otherView.presentationV2.stableBoundary, targetView.presentationV2.stableBoundary);
   const responded = await requestAndSettle("respond", { code: game.code, token: targetMember.token, providerId: "card", cardId: dodge.id });
   assert.equal(responded.status, 200, JSON.stringify(responded.data));
-  await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const settled = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  assert.deepEqual(settled.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
 });
 
 test("engine-backed Borrowed Sword preserves forced Attack continuation and timer barrier", { timeout: 30_000 }, async () => {
@@ -89,6 +92,8 @@ test("engine-backed Borrowed Sword preserves forced Attack continuation and time
   assert.equal(view.presentationV2.interactionScene?.participantRoles.currentParticipantId, scenario.target.id);
   assert.equal(view.presentationV2.interactionScene?.participantRoles.decisionActorId, scenario.holder.id);
   assert.equal(view.presentationV2.interactionScene?.participantRoles.activeResolverId, scenario.holder.id);
+  assert.equal(view.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(view.presentationV2.stableBoundary.decisionActorId, scenario.holder.id);
   const armed = await requestAndSettle("start_response_timer", { code: scenario.game.code, token: scenario.alice.token });
   assert.equal(armed.status, 200);
   const armedView = (await state(scenario.game.code, scenario.alice.token)).data;
@@ -143,6 +148,8 @@ test("engine-backed Dying/rescue proves the separate timer arm and reconnect beh
   assert.equal(view.presentationV2.dyingBarrier?.rescuerId, bobPlayer.id);
   assert.equal(view.presentationV2.dyingBarrier?.decisionActorId, bobPlayer.id);
   assert.equal(view.presentationV2.dyingBarrier?.state, "RESCUE_CHOICE");
+  assert.equal(view.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(view.presentationV2.stableBoundary.decisionActorId, bobPlayer.id);
   assert.equal(view.presentationV2.interactionScene?.participantRoles.sourceId, hostPlayer.id);
   assert.deepEqual(view.presentationV2.interactionScene?.participantRoles.originalTargetIds, [dyingPlayer.id]);
   assert.deepEqual(view.presentationV2.interactionScene?.participantRoles.activeTargetIds, [dyingPlayer.id]);
@@ -193,6 +200,8 @@ test("C4-01 Dying skips non-rescuers and advances one causal checkpoint between 
   assert.equal(bobBarrier?.dyingPlayerId, target.id);
   assert.equal(bobBarrier?.decisionActorId, bob.id);
   assert.equal(bobView.presentationV2.interactionScene?.participantRoles.decisionActorId, bob.id);
+  assert.equal(bobView.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(bobView.presentationV2.stableBoundary.decisionActorId, bob.id);
   assert.equal(bobView.currentAction.options?.some((option) => option.providerId === "card"), true);
   const uninvolved = await state(game.code, source ? host.token : targetMember.token);
   assert.deepEqual(uninvolved.data.presentationV2.dyingBarrier, bobBarrier);
@@ -206,6 +215,8 @@ test("C4-01 Dying skips non-rescuers and advances one causal checkpoint between 
   assert.equal(carolView.presentationV2.dyingBarrier?.decisionActorId, carol.id);
   assert.equal(carolView.presentationV2.interactionScene?.participantRoles.decisionActorId, carol.id);
   assert.equal(carolView.presentationV2.interactionScene?.participantRoles.activeResolverId, carol.id);
+  assert.equal(carolView.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(carolView.presentationV2.stableBoundary.decisionActorId, carol.id);
   assert.equal(carolView.presentationV2.dyingBarrier?.interactionId, bobBarrier?.interactionId);
   assert.equal(carolView.presentationV2.dyingBarrier?.rootFrameId, bobBarrier?.rootFrameId);
   assert.equal(carolView.presentationV2.dyingBarrier?.activeFrameId, bobBarrier?.activeFrameId);
@@ -250,6 +261,8 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
     parentParticipantId: null,
     participantIds: nestedPending.continuation.resumeGroup.continuation.remainingIds
   });
+  assert.equal(nestedView.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(nestedView.presentationV2.stableBoundary.decisionActorId, nestedView.presentationV2.interactionScene?.decisionActorId);
   assert.deepEqual(nestedView.presentationV2.groupResolution?.targetIds, nestedGroupFrame?.origin.originalTargetIds);
   const repeated = await state(opened.code, opened.targetMember.token);
   assert.deepEqual(repeated.data.presentationV2.interactionScene, nestedView.presentationV2.interactionScene);
@@ -268,6 +281,7 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(next.data.presentationV2.groupResolution?.interactionId, next.data.causalEnvelope.interactionId);
   assert.equal(next.data.presentationV2.groupResolution?.groupFrameId, next.data.causalEnvelope.activeFrameId);
   assert.equal(next.data.presentationV2.interactionScene?.participantRoles.decisionActorId, null, "the resumed Group checkpoint has no matching active Pending causal proof");
+  assert.deepEqual(next.data.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
   assert.equal(next.data.presentationV2.interactionScene?.participantRoles.currentParticipantId, opened.bob.id);
   assert.equal(next.data.presentationV2.groupResolution?.activeFrameId, next.data.causalEnvelope.activeFrameId);
   assert.equal(next.data.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
@@ -455,6 +469,8 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   assert.equal(dyingSourceView.presentationV2.interactionScene?.participantRoles.currentParticipantId, damageTarget.id);
   assert.equal(dyingSourceView.presentationV2.interactionScene?.participantRoles.decisionActorId, source.id);
   assert.equal(dyingSourceView.presentationV2.interactionScene?.participantRoles.parentParticipantId, null);
+  assert.equal(dyingSourceView.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(dyingSourceView.presentationV2.stableBoundary.decisionActorId, source.id);
 
   const rescued = await requestAndSettle("give_peach", { code: game.code, token: sourceMember.token, cardId: peach.id, preserveResponse: true });
   assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
@@ -655,6 +671,8 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.equal(first.presentationV2.interactionScene?.currentParticipantId, target.id);
   assert.equal(first.presentationV2.interactionScene?.decisionActorId, target.id);
   assert.deepEqual(first.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id, source.id], activeTargetIds: [target.id, source.id], currentParticipantId: target.id, decisionActorId: target.id, activeResolverId: target.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(first.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(first.presentationV2.stableBoundary.decisionActorId, target.id);
   const firstOtherViewer = await state(game.code, host.token);
   assert.deepEqual(firstOtherViewer.data.presentationV2.interactionScene, first.presentationV2.interactionScene, "Duel public scene is equal across the first response checkpoint");
   assert.equal(firstOtherViewer.data.presentationV2.interactionScene?.decisionActorId, target.id);
@@ -676,6 +694,7 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.equal(second.presentationV2.interactionScene?.stage, "DUEL_EXCHANGE");
   assert.equal(second.presentationV2.interactionScene?.decisionActorId, null, "the later Duel checkpoint has no matching public Pending causal proof");
   assert.equal(second.presentationV2.interactionScene?.participantRoles.decisionActorId, null);
+  assert.deepEqual(second.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
   const secondOtherViewer = await state(game.code, alice.token);
   assert.deepEqual(secondOtherViewer.data.presentationV2.interactionScene, second.presentationV2.interactionScene, "Duel public scene remains equal after response handoff");
   assert.equal(secondOtherViewer.data.presentationV2.interactionScene?.decisionActorId, null);
@@ -819,6 +838,8 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(counter.data.presentationV2.interactionScene?.participantRoles.decisionActorId, opened.target.id);
   assert.equal(counter.data.presentationV2.interactionScene?.participantRoles.activeResolverId, opened.target.id);
   assert.equal(counter.data.presentationV2.interactionScene?.participantRoles.parentParticipantId, null);
+  assert.equal(counter.data.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(counter.data.presentationV2.stableBoundary.decisionActorId, opened.target.id);
   const restored = await requestAndSettle("respond", { code: opened.code, token: opened.targetMember.token, cardId: counterNegation.id, preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
   assert.equal(restored.data.room.causalEnvelope.interactionId, root.interactionId);
@@ -892,6 +913,8 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.deepEqual(first.presentationV2.interactionScene?.targetIds, [target.id]);
   assert.equal(first.presentationV2.interactionScene?.decisionActorId, target.id);
   assert.deepEqual(first.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: target.id, activeResolverId: target.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(first.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(first.presentationV2.stableBoundary.decisionActorId, target.id);
   assert.equal(first.causalEnvelope.activeFrameId, authoritativePending(game.code).causal.frameId);
   assert.equal(first.causalEnvelope.frames.length, 1);
   assert.equal(first.causalEnvelope.frames[0].stage, "NEGATION");
@@ -1052,6 +1075,8 @@ test("engine-backed Judgement replacement exposes reveal and resume evidence", {
   assert.equal(revealView.presentationV2.interactionScene?.activeResolverId, setup.sima.id);
   assert.equal(revealView.presentationV2.interactionScene?.decisionActorId, setup.sima.id);
   assert.deepEqual(revealView.presentationV2.interactionScene?.participantRoles, { sourceId: setup.guo.id, originalTargetIds: [setup.guo.id], activeTargetIds: [setup.guo.id], currentParticipantId: setup.guo.id, decisionActorId: setup.sima.id, activeResolverId: setup.sima.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(revealView.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(revealView.presentationV2.stableBoundary.decisionActorId, setup.sima.id);
   const replaced = await requestAndSettle("trigger", { code: setup.game.code, token: setup.simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
   assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
   const effective = await assertProjectionMatchesEngine(setup.game.code, setup.guoMember.token);
