@@ -87,6 +87,7 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   assert.equal(attackScene.sourceId, source.id);
   assert.deepEqual(attackScene.targetIds, [target.id]);
   assert.equal(attackScene.currentParticipantId, target.id);
+  assert.deepEqual(attackScene.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: source.id, activeResolverId: source.id, parentParticipantId: null, participantIds: [] });
   assert.equal((await request("trigger", { code: game.code, token: sourceMember.token, providerId: "ma_chao_cavalry" })).status, 200);
   const revealed = (await state(game.code, simaMember.token)).data;
   assert.equal(revealed.currentAction.triggerEvent, "judgement_revealed", JSON.stringify(revealed));
@@ -100,6 +101,8 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   assert.equal(revealed.presentationV2.interactionScene.interactionId, attackScene.interactionId);
   assert.equal(revealed.presentationV2.interactionScene.rootFrameId, attackScene.rootFrameId);
   assert.equal(revealed.presentationV2.interactionScene.activeFrameId, attackScene.activeFrameId);
+  assert.equal(revealed.presentationV2.interactionScene.participantRoles.decisionActorId, sima.id);
+  assert.equal(revealed.presentationV2.interactionScene.participantRoles.activeResolverId, sima.id);
   const revealPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   assert.equal(revealPending.causal.interactionId, attackRoot.interactionId);
   const reloaded = (await state(game.code, simaMember.token)).data;
@@ -148,6 +151,7 @@ test("Cavalry keeps Dodge available when Sima Yi replaces the original red Judge
   assert.equal(resumedScene.rootFrameId, revealed.presentationV2.interactionScene.rootFrameId);
   assert.equal(resumedScene.activeFrameId, revealed.presentationV2.interactionScene.activeFrameId);
   assert.equal(resumedScene.decisionActorId, target.id);
+  assert.deepEqual(resumedScene.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: target.id, activeResolverId: target.id, parentParticipantId: null, participantIds: [] });
   assert.deepEqual(sourceWaiting.presentationV2.interactionScene, resumedScene, "Attack -> Judgement public scene is viewer-equivalent after resume");
 });
 

@@ -122,6 +122,7 @@ test("group projection records missing authoritative semantics instead of guessi
 test("C3 Group projection uses the authoritative envelope for stable parent and child semantics", () => {
   const groupPending = {
     ...flows[3].points[0].pending,
+    causal: { interactionId: "group-interaction", frameId: "group-frame" },
     continuation: { ...flows[3].points[0].pending.continuation, causal: { interactionId: "group-interaction", frameId: "group-frame" } },
   };
   const groupFrame = {
@@ -139,7 +140,7 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
     current: { currentSourceId: "A", currentEffect: "damage", currentTargetIds: ["B"], resolvingPlayerId: "C" },
   };
   const childEnvelope = { version: 1, interactionId: "group-interaction", frames: [groupFrame, damageFrame], activeFrameId: "damage-frame", checkpoint: { checkpointId: "checkpoint-damage", frameId: "damage-frame", stage: "DAMAGE" }, presentationRevision: 4 };
-  const child = projectPresentationV2({ pending: { kind: "trigger", actorId: "B", continuation: { kind: "damage_suffered_event", sourceId: "A", targetId: "B", resumeGroup: groupPending } }, currentAction: action({ actorId: "C", kind: "trigger" }), actionRevision: "action-child", timeline: [], causalEnvelope: childEnvelope });
+  const child = projectPresentationV2({ pending: { kind: "trigger", actorId: "C", causal: { interactionId: "group-interaction", frameId: "damage-frame" }, continuation: { kind: "damage_suffered_event", sourceId: "A", targetId: "B", causal: { interactionId: "group-interaction", frameId: "damage-frame" }, resumeGroup: groupPending } }, currentAction: action({ actorId: "C", kind: "trigger" }), actionRevision: "action-child", timeline: [], causalEnvelope: childEnvelope });
   assert.equal(child.groupResolution?.semantics, "PROVEN");
   assert.equal(child.groupResolution?.interactionId, "group-interaction");
   assert.equal(child.groupResolution?.groupFrameId, "group-frame");
@@ -181,7 +182,7 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   assert.equal(resumed.groupResolution?.stage, "GROUP_RESOLUTION");
   assert.equal(resumed.groupResolution?.checkpointId, "checkpoint-group");
   assert.equal(resumed.groupResolution?.currentParticipantId, "B");
-  assert.equal(resumed.groupResolution?.decisionActorId, "C");
+  assert.equal(resumed.groupResolution?.decisionActorId, "B");
   assert.equal(resumed.groupResolution?.activeResolverId, "B");
   assert.equal(resumed.interactionScene?.continuity.relation, "ROOT_FRAME");
   assert.equal(resumed.interactionScene?.activeFrameId, "group-frame");
@@ -212,6 +213,17 @@ test("C5 does not infer Group authority from arbitrary nested data or frame stag
   assert.deepEqual(projected.interactionScene?.participantRoles, { sourceId: null, originalTargetIds: [], activeTargetIds: [], currentParticipantId: null, decisionActorId: null, activeResolverId: null, parentParticipantId: null, participantIds: [] });
 });
 
+test("C5 leaves a Group child parent participant null when no parent proof exists", () => {
+  const groupFrame = { frameId: "parent-group", parentFrameId: null, stage: "GROUP_RESOLUTION", origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B", "C"] }, current: { currentSourceId: "A", currentEffect: "Raining Arrows", currentTargetIds: ["B", "C"], resolvingPlayerId: "B" } };
+  const damageFrame = { frameId: "child-damage", parentFrameId: "parent-group", stage: "DAMAGE", origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B"] }, current: { currentSourceId: "A", currentEffect: "damage", currentTargetIds: ["B"], resolvingPlayerId: "C" } };
+  const causalEnvelope = { version: 1, interactionId: "no-parent-proof", frames: [groupFrame, damageFrame], activeFrameId: "child-damage", checkpoint: { checkpointId: "child-checkpoint", frameId: "child-damage", stage: "DAMAGE" }, presentationRevision: 1 };
+  const groupPending = { kind: "response", actorId: "B", causal: { interactionId: "no-parent-proof", frameId: "parent-group" }, continuation: { kind: "group", cardKind: "RainingArrows", sourceId: "A", remainingIds: ["C"], causal: { interactionId: "no-parent-proof", frameId: "parent-group" } } };
+  const projected = projectPresentationV2({ pending: { kind: "trigger", actorId: "C", causal: { interactionId: "no-parent-proof", frameId: "child-damage" }, continuation: { kind: "damage_suffered_event", sourceId: "A", targetId: "B", causal: { interactionId: "no-parent-proof", frameId: "child-damage" }, resumeGroup: groupPending } }, currentAction: action({ actorId: "B" }), actionRevision: "no-parent-proof", timeline: [], causalEnvelope });
+  assert.equal(projected.interactionScene?.semantics, "PROVEN");
+  assert.equal(projected.interactionScene?.currentParticipantId, "B");
+  assert.equal(projected.interactionScene?.participantRoles.parentParticipantId, null);
+});
+
 test("C5 keeps legacy context precedence separate from the causal semantic core", () => {
   const projected = projectPresentationV2({
     pending: { kind: "response", actorId: "B", continuation: { kind: "attack", sourceId: "A", targetId: "B" } },
@@ -236,13 +248,14 @@ test("C5 keeps legacy context precedence separate from the causal semantic core"
   assert.deepEqual(projected.interactionScene?.activeTargetIds, ["D"]);
 });
 
-test("C3 Group public semantics stay viewer-equivalent while decision ownership changes", () => {
-  const pending = flows[3].points[0].pending;
+test("C5 public participant roles ignore viewer CurrentAction actor changes", () => {
   const causalEnvelope = { version: 1, interactionId: "viewer-group", frames: [{ frameId: "viewer-group-frame", parentFrameId: null, stage: "GROUP_RESOLUTION", origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B", "C"] }, current: { currentSourceId: "A", currentEffect: "Raining Arrows", currentTargetIds: ["B"], resolvingPlayerId: "B" } }], activeFrameId: "viewer-group-frame", checkpoint: { checkpointId: "viewer-checkpoint", frameId: "viewer-group-frame", stage: "GROUP_RESOLUTION" }, presentationRevision: 2 };
+  const pending = { ...flows[3].points[0].pending, causal: { interactionId: "viewer-group", frameId: "viewer-group-frame" }, continuation: { ...flows[3].points[0].pending.continuation, causal: { interactionId: "viewer-group", frameId: "viewer-group-frame" } } };
   const first = projectPresentationV2({ pending, currentAction: action({ actorId: "B" }), actionRevision: "private-a", timeline: [], causalEnvelope });
   const second = projectPresentationV2({ pending, currentAction: action({ actorId: "C" }), actionRevision: "private-b", timeline: [], causalEnvelope });
-  assert.deepEqual({ ...first.groupResolution, decisionActorId: null }, { ...second.groupResolution, decisionActorId: null });
-  assert.notEqual(first.groupResolution?.decisionActorId, second.groupResolution?.decisionActorId);
+  assert.equal(first.interactionScene?.decisionActorId, "B");
+  assert.deepEqual(first.interactionScene?.participantRoles, second.interactionScene?.participantRoles);
+  assert.deepEqual(first.groupResolution, second.groupResolution);
   assert.equal(JSON.stringify(first.groupResolution).includes("eligible"), false);
 });
 
@@ -273,7 +286,7 @@ test("C3-03 generic scene projects non-Group causal frame semantics", () => {
     current: { currentSourceId: "A", currentEffect: "Attack", currentTargetIds: ["B"], resolvingPlayerId: "B" },
   };
   const projected = projectPresentationV2({
-    pending: { kind: "response", actorId: "B", continuation: { kind: "attack", sourceId: "A", targetId: "B" } },
+    pending: { kind: "response", actorId: "B", causal: { interactionId: "attack-interaction", frameId: "attack-frame" }, continuation: { kind: "attack", sourceId: "A", targetId: "B", causal: { interactionId: "attack-interaction", frameId: "attack-frame" } } },
     currentAction: action({ actorId: "B" }), actionRevision: "attack-scene", timeline: [],
     causalEnvelope: { version: 1, interactionId: "attack-interaction", frames: [frame], activeFrameId: frame.frameId, checkpoint: { checkpointId: "attack-checkpoint", frameId: frame.frameId, stage: frame.stage }, presentationRevision: 3 },
   });

@@ -1,8 +1,14 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C5-02 — 2026-10-02
+## Current stage — UX2.0C5-02-FIX1 — 2026-10-02
 
-C5-02 extends the proven `interactionScene` with a viewer-independent
+C5-02-FIX1 makes the proven `interactionScene` participant roles genuinely
+viewer-independent. The public semantic decision actor now requires a
+persisted Response/Trigger/Dying actor whose causal context and active-frame
+resolver agree; `CurrentAction` remains control-only and cannot populate a
+public role. Parent participants are emitted only from a coherent parent frame
+or typed Group linkage, otherwise they are null. C5-02 extends the scene with a
+viewer-independent
 `participantRoles` contract: source, original and active targets, current
 participant, decision actor, active resolver, parent participant, and proven
 Group participants. Group/AOE, Attack, Duel, Judgement, Damage, Negation,
@@ -12,7 +18,8 @@ derived from the typed role surface only where behavior-preserving, while
 Pending-first compatibility contexts remain available. React/CSS, animation
 timing, and gameplay changes are not started.
 
-The next milestone is C5-02 reviewer acceptance and any remaining migration
+cleanup; do not start C6/C7 or React/CSS migration.
+The next milestone is C5-02-FIX1 reviewer acceptance and any remaining C5
 cleanup; do not start C6/C7 or React/CSS migration.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02

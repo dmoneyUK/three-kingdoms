@@ -4129,9 +4129,9 @@ objects below must not reconstruct causal identity when the typed core is
 | `activeContext` | Mixed: Pending-first kind/source/current targets; causal frame supplies stage; timeline supplies event IDs | Public, viewer-stable; explicitly non-authoritative | `interactionScene` active frame/current boundary | DEPRECATE-LATER | Consumers migrate to typed active frame and causal stage |
 | `parentContext` | Typed continuation direction plus Pending-first parent kind/source/targets; causal parent frame is fallback | Public, viewer-stable; explicitly non-authoritative | `interactionScene.continuity` and `parentFrameId` | DEPRECATE-LATER | Consumers use typed parent linkage and continuation semantics |
 | `participants` | Derived from `interactionScene.participantRoles` when proven; Pending fallback for legacy/unproven rooms | Public, viewer-stable; no private cards/options | `interactionScene.participantRoles` | DERIVE | Consumers use typed roles; fallback remains only for legacy/unproven compatibility |
-| `interactionScene` | Parsed causal envelope, shared coherence proof, typed continuation direction, public Pending decision actor for Dying proof | Public semantic core; viewer-independent; `UNPROVEN` fails closed | N/A; current typed core | KEEP | None for C5; future C7 may wrap it in a stable snapshot |
+| `interactionScene` | Parsed causal envelope, shared coherence proof, typed continuation direction, and a causally matched semantic Pending actor | Public semantic core; viewer-independent; `UNPROVEN` fails closed | N/A; current typed core | KEEP | None for C5; future C7 may wrap it in a stable snapshot |
 | `dyingBarrier` | Parsed causal envelope plus shared `dyingDecisionProof` and public Dying Pending actor | Public semantic core; viewer-independent; no Peach/provider data | N/A; Dying typed core | KEEP | None; retain fail-closed proof and private CurrentAction options |
-| `groupResolution` | Typed Group continuation plus explicit causal Group frame; presentation values from envelope and public continuation | Public compatibility view; no private options; `UNPROVEN` without linkage | `interactionScene` Group frame and `participantRoles` | RETAIN-COMPAT | Consumers switch to typed scene fields and no longer require duplicate Group object |
+| `groupResolution` | Typed Group continuation plus explicit causal Group frame; presentation values from envelope and public continuation | Public compatibility view; no private options; `UNPROVEN` without linkage | `interactionScene` Group frame and `participantRoles` | DEPRECATE-LATER | Retain until consumers switch to typed scene fields and no longer require its duplicate compatibility shape |
 | `decision` | CurrentAction and public action revision/presentation barrier | Viewer-dependent control metadata; private options are excluded here and remain in CurrentAction | CurrentAction for control; `interactionScene.decisionActorId` for semantic identity | KEEP | None; legality must remain CurrentAction-owned |
 | `settlement` | Timeline events selected by bounded legacy event references and `finalResult` | Public descriptive compatibility data; viewer-stable when history is equal | Future typed settlement checkpoint/snapshot | DEPRECATE-LATER | Durable settlement occurrence vocabulary and C7 snapshot exist |
 | `transitionEvents` | Bounded timeline event references selected from current typed/legacy context | Public descriptive compatibility data; not a transition protocol | Future semantic Transition Events/C7 snapshot | DEPRECATE-LATER | Durable occurrence identity and C7 protocol are implemented |
@@ -4173,3 +4173,23 @@ labels; legacy contexts and `groupResolution` remain compatibility fields and
 are not causal authority. The migration table therefore marks participant
 roles as the replacement for `participants`, while `groupResolution` remains
 retained until consumers no longer need its compatibility shape.
+
+### 0.101 UX2.0C5-02-FIX1 semantic decision and parent proofs — 2026-10-02
+
+`decisionActorId` is shared by `interactionScene` and `participantRoles`. It
+is populated only when a known persisted Response or Trigger continuation has
+an actor whose causal interaction/frame matches the coherent active frame and
+whose `resolvingPlayerId` is that same actor; Dying continues to require the
+stricter `dyingDecisionProof`. Thus Attack, Duel, Group, Negation, Judgement,
+Damage, and forced Borrowed Sword response checkpoints may expose a public
+decision actor only when their semantic Pending and causal resolver agree.
+`CurrentAction.actorId` remains viewer-specific control state and is never a
+proof source. A coherent scene may therefore have a null decision actor.
+
+For a child scene, `parentParticipantId` comes only from a parent frame with
+exactly one current target or the typed Group parent-participant linkage. It
+does not fall back to the child current participant. Real-path assertions now
+cover Attack, forced Borrowed Sword, Duel handoff, Group damage/Dying/resume,
+root and counter Negation, Judgement reveal/effective checkpoints, and Dying
+viewer privacy; unsupported roles are explicitly asserted null. The migration
+table uses only KEEP, DERIVE, and DEPRECATE-LATER.

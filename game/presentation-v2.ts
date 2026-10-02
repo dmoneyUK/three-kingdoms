@@ -219,6 +219,35 @@ function dyingDecisionProof(envelope: CausalEnvelope | null, pending: unknown): 
   return { pending: pendingRecord, activeFrame };
 }
 
+const RESPONSE_DECISION_CONTINUATIONS = new Set([
+  "attack", "influencing_attack", "group", "duel", "negation", "borrowed_sword_attack",
+]);
+const TRIGGER_DECISION_CONTINUATIONS = new Set([
+  "attack_targeted_event", "attack_dodged_event", "damage_about_to_apply_event", "damage_suffered_event",
+  "turn_start_event", "draw_phase_event", "discard_phase_event", "turn_end_event", "judgement_revealed_event",
+  "judgement_effective_event", "hero_choice_event", "hand_loss_event", "equipment_lost_event",
+  "stratagem_used_event", "hp_recovered_event",
+]);
+
+/**
+ * A public decision actor is established only by the persisted semantic
+ * pending record and its matching causal resolver. CurrentAction remains a
+ * viewer-specific control projection and is deliberately not evidence here.
+ */
+function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unknown, activeFrame: CausalFrame | null, dyingProof: DyingDecisionProof | null): string | null {
+  if (dyingProof) return stringValue(dyingProof.pending.actorId);
+  const item = record(pending);
+  const actorId = stringValue(item?.actorId);
+  const causal = record(item?.causal);
+  const continuation = record(item?.continuation);
+  const continuationKind = stringValue(continuation?.kind);
+  if (!envelope || !activeFrame || !item || !actorId || !causal || causal.interactionId !== envelope.interactionId
+    || causal.frameId !== activeFrame.frameId || activeFrame.current.resolvingPlayerId !== actorId) return null;
+  if (item.kind === "response" && RESPONSE_DECISION_CONTINUATIONS.has(continuationKind ?? "")) return actorId;
+  if (item.kind === "trigger" && TRIGGER_DECISION_CONTINUATIONS.has(continuationKind ?? "")) return actorId;
+  return null;
+}
+
 /**
  * Follow only typed continuation edges. Presentation must not discover a
  * Group by recursively walking arbitrary pending data: that turns an
@@ -309,7 +338,6 @@ function groupProjectionValues(envelope: CausalEnvelope | null, pending: unknown
 
 function interactionSceneFor(
   envelope: CausalEnvelope | null,
-  currentAction: PresentationV2Input["currentAction"],
   groupValues: GroupProjectionValues | null,
   pending: unknown,
 ): PresentationInteractionScene | null {
@@ -325,9 +353,8 @@ function interactionSceneFor(
     ? [...new Set([...(activeFrame?.origin.originalTargetIds ?? []), ...groupValues.targetIds])]
     : targetIds;
   const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
-  const pendingRecord = record(pending);
   const dyingProof = dyingDecisionProof(envelope, pending);
-  const dyingPending = pendingRecord?.kind === "dying" ? pendingRecord : null;
+  const semanticDecisionActor = semanticDecisionActorId(envelope, pending, activeFrame, dyingProof);
   const relation: InteractionSceneContinuity["relation"] = !proven
     ? "UNPROVEN"
     : activeFrame?.parentFrameId
@@ -344,10 +371,10 @@ function interactionSceneFor(
       originalTargetIds: participantRoleTargetIds,
       activeTargetIds: activeCurrent?.currentTargetIds ?? [],
       currentParticipantId,
-      decisionActorId: dyingProof ? dyingProof.pending.actorId as string : dyingPending ? null : currentAction?.actorId ?? null,
+      decisionActorId: semanticDecisionActor,
       activeResolverId: activeCurrent?.resolvingPlayerId ?? null,
       parentParticipantId: groupValues && activeFrame?.frameId !== groupValues.groupFrame?.frameId
-        ? firstString(parentFrame?.current.currentTargetIds.length === 1 ? parentFrame.current.currentTargetIds[0] : null, groupValues?.parentParticipantId, currentParticipantId)
+        ? firstString(parentFrame?.current.currentTargetIds.length === 1 ? parentFrame.current.currentTargetIds[0] : null, groupValues.parentParticipantId)
         : null,
       participantIds: groupValues?.participantIds ?? [],
     }
@@ -374,7 +401,7 @@ function interactionSceneFor(
     effect: groupValues?.effect ?? activeFrame?.origin.originEffect ?? null,
     targetIds,
     currentParticipantId,
-    decisionActorId: dyingProof ? dyingProof.pending.actorId as string : dyingPending ? null : currentAction?.actorId ?? null,
+    decisionActorId: semanticDecisionActor,
     activeResolverId: activeCurrent?.resolvingPlayerId ?? null,
     activeSourceId: activeCurrent?.currentSourceId ?? null,
     activeTargetIds: activeCurrent?.currentTargetIds ?? [],
@@ -486,7 +513,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   if (settlementEvent) relevantIds.push(settlementEvent.id);
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
-  const interactionScene = interactionSceneFor(envelope, input.currentAction, groupValues, input.pending);
+  const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
   // The typed interactionScene below is the causal authority. These legacy
   // context objects intentionally retain Pending-first kind/target shapes for
