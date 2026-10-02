@@ -1,389 +1,206 @@
 # WTK UX V2 — Current Task Handoff
 
+## REMOTE HANDOVER RULE — MANDATORY
+
+`HANDOVER.md` is a tracked remote coordination file.
+
+It MUST be committed and pushed to `origin/ux-v2`.
+Do NOT keep HANDOVER.md local-only.
+Do NOT gitignore, untrack, revert, discard, or omit it from the pushed work.
+After implementation, append the execution result to THIS file, commit it, push it to `origin/ux-v2`, verify the remote branch contains the appended result, then STOP.
+
 ## Reviewer status
 
-UX2.0C2 is **CLOSED / ACCEPTED**.
+UX2.0C3-01 is **PARTIAL — semantic role separation needs one correction**.
 
-Final implementation reviewed:
-`ba75dbf9e8352ea3829faaf398192bd5174dc6c4`
+Reviewed implementation:
+`5fcb891199bd0588ecb923f51d87581dba74ac9a`
 
-Final verification report:
-`6fc71998e3c1a5d815b2fcadab08953e30988b87`
+Accepted:
+- PresentationV2 now consumes the parsed authoritative C2 causal envelope.
+- Group interactionId/groupFrameId/activeFrame/checkpoint/revision are projected from causal authority rather than logs/events/actionRevision.
+- ordered Group targetIds come from the Group frame origin.
+- Group -> Damage child keeps the Group parent available and resumes the same parent frame.
+- nested Group Negation remains SAME_FRAME.
+- NULL/malformed envelope does not fabricate causal identity.
+- repeated/second-viewer public Group semantics are covered.
+- real Raining Arrows, Barbarian Invasion and lethal Group/Dying/rescue fixtures are used.
+- reported validation is green: projector 19/19; focused API 27/27; fast 110/110; API 238/238; build/lint/diff-check PASS.
 
-Final validation:
-- focused causal/API: 98 passed, 0 failed;
-- test:fast: 108 passed, 0 failed;
-- test:api: 238 passed, 0 failed across 4 shards;
-- build: PASS;
-- lint: PASS;
-- git diff --check: PASS;
-- verification changed no production files.
+### Blocking semantic defect
 
-Accepted deferred boundaries:
-- historical delayed originRef remains PARTIAL/intentionally unsupported because there is no stable typed historical provenance;
-- synchronous Judgement-Negation parent is NOT IMPLEMENTED IN GAME;
-- Dying presentation barrier belongs to a later milestone.
+`groupPresentation()` currently computes:
 
-C2 causal propagation is complete for current production gameplay.
+`currentParticipantId = firstString(activeCurrent?.resolvingPlayerId, current?.resolvingPlayerId, group.activeParticipantId, group.currentParticipantId)`
+
+This collapses the Group participant with the active child resolver.
+
+That is not the C3-01 contract. The Group participant is the Group target currently being processed. During nested Damage/Dying, the active child resolver may be a trigger owner or Peach rescuer and can differ from the Group participant.
+
+The implementation already exposes `decisionActorId` separately, but `currentParticipantId` can still switch to the child resolver because active-frame `resolvingPlayerId` has highest precedence.
+
+The lethal Group -> Damage -> Dying fixture asserts stage/identity but does not assert that `currentParticipantId` remains the original Group participant while the Peach decision actor/resolver changes.
+
+Therefore C3-01 cannot yet be accepted.
+
+Do not start C3-02/C4/C5.
 
 ---
 
-# NEXT TASK — UX2.0C3-01: Define and Prove Group Presentation Semantics
+# NEXT TASK — UX2.0C3-01-FIX1: Preserve Group Participant Across Nested Child Resolvers
 
 ## Objective
 
-Begin C3 by converting the now-authoritative Group causal state into stable PresentationV2 semantics.
+Correct the semantic separation between:
+- Group source;
+- Group affected target set;
+- current Group participant;
+- active child source/targets/resolver;
+- decision actor.
 
-This task is NOT a React/UI migration. It is projector/model/test work only.
+Do not redesign C2 causal identity. This should be a small projector/test correction.
 
-The goal is to make Group interactions project a stable public semantic scene that distinguishes:
-- the Group source/effect;
-- the ordered affected target set;
-- the current participant being resolved;
-- a nested Damage child when one exists;
-- return from child Damage to the same Group scene;
-- terminal Group settlement.
+## Step 1 — establish the authoritative Group participant source
 
-Use the C0 source-of-truth interaction design and the completed C2 causal envelope. Do not infer presentation identity from logs, event IDs, card names, phase transitions, or actionRevision.
+Inspect the real typed Group continuation and Group parent frame across:
+- normal Group response;
+- Group -> Damage child;
+- Damage -> post-damage trigger;
+- Damage -> Dying;
+- Peach rescue;
+- return to Group.
 
-## Step 1 — inspect current PresentationV2 Group projection
+Determine which existing authoritative field consistently identifies the Group participant currently being processed.
 
-Audit:
-- `game/presentation-v2.ts`;
-- PresentationV2 types;
-- Group-related projector tests;
-- C0 Group semantics in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`;
-- C2 Group causal envelope/frame fields.
+Prefer the Group parent frame's semantic current target/participant or typed Group continuation state. Do not derive it from logs, card names, event IDs, actionRevision, or the active child resolver.
 
-Document current behavior and gaps before changing code.
+Document the choice in the execution result.
 
-## Step 2 — define the Group public semantic contract
+## Step 2 — fix projector role separation
 
-For one Group Interaction, the projected public scene must stably expose enough semantic information for a future client to render:
+Change `groupPresentation()` so `currentParticipantId` means only:
 
-1. source actor;
-2. Group effect/card semantic identity;
-3. ordered affected target IDs;
-4. current resolving participant;
-5. Group stage/frame identity;
-6. nested child Damage stage/frame identity when active;
-7. return to the same Group parent scene after child settlement;
-8. final terminal transition only when the Group Interaction truly ends.
+**the Group participant/target currently being resolved by the parent Group interaction.**
 
-Do not expose private hand/options.
+It must NOT become:
+- a Damage trigger resolver merely because the Damage child is active;
+- a Peach rescuer during Dying;
+- a Negation responder unless that player is also the Group participant.
 
-Do not redesign engine rules.
+Keep separate semantics for:
+- `decisionActorId` = current CurrentAction actor;
+- active child source/targets;
+- if useful and already justified by the model, an explicit active child resolver field may be added, but do not overload `currentParticipantId`.
 
-## Step 3 — source/targets/current actor separation
+Do not create new causal authority.
 
-The projector must not collapse these concepts:
+## Step 3 — prove normal participant progression
 
-- source: player who created the Group effect;
-- affected targets: public ordered target set;
-- current target/participant: the participant currently being processed;
-- decision actor: player who currently has a response/trigger choice.
+Using a real Raining Arrows or Barbarian Invasion Group flow, prove:
+- source remains source;
+- targetIds remain the full ordered affected set;
+- currentParticipantId is A while A is processed;
+- then B when B is processed;
+- then C when C is processed;
+- interactionId and groupFrameId remain stable.
 
-These may be different players.
+## Step 4 — prove nested Damage separation
 
-Add explicit projector semantics/types only where the existing model cannot represent this correctly.
+For a real Group participant B that fails response and enters Damage child:
+- currentParticipantId remains B;
+- activeFrameId is the Damage child;
+- activeTargetIds identify the Damage target;
+- decisionActorId may equal B or another actor depending on the live decision;
+- Group source/targetIds/groupFrameId remain unchanged.
 
-## Step 4 — stable identity across participant progression
+If a post-damage trigger resolver differs from B, explicitly assert that difference.
 
-Use C2:
-- interactionId for the whole Group interaction;
-- Group frameId for the parent Group scene;
-- checkpointId/presentationRevision for semantic progression.
+## Step 5 — prove Dying/Peach separation
 
-Prove moving A -> B -> C does not create a new Interaction or Group frame.
+Extend the existing lethal Raining Arrows fixture.
 
-Participant progression may advance semantic checkpoint/revision when public meaning changes.
+At Dying:
+- currentParticipantId must remain the Group participant who suffered the Group Damage;
+- decisionActorId must equal the current Peach/rescue decision actor;
+- when the rescuer is a different player, explicitly assert `currentParticipantId !== decisionActorId`;
+- interactionId/groupFrameId remain the Group identities;
+- active child remains the existing Damage/Dying causal child according to current C2 behavior.
 
-Do not key scene continuity from actionRevision.
+After Peach rescue:
+- projector returns to the exact Group parent frame;
+- currentParticipantId advances to the next Group participant;
+- no new Group interaction/frame is created.
 
-## Step 5 — nested Damage child projection
+This is the key acceptance regression.
 
-Use the FIX14/FIX15 real Group->Damage child envelope.
+## Step 6 — Negation separation
 
-While Damage child FD is active:
-- interactionId remains Group interaction;
-- parent Group frame FG remains present;
-- active frame is FD;
-- stage projects DAMAGE;
-- current source/target/resolver come from the active child;
-- Group affected-target context remains available for scene continuity.
+For nested Group Negation:
+- SAME_FRAME remains unchanged;
+- currentParticipantId must represent the Group participant if participant processing has begun;
+- decisionActorId represents the Negation responder;
+- do not let responder handoff rewrite Group participant semantics.
 
-After Damage settles:
-- active frame returns to the exact FG;
-- Group scene resumes rather than appearing as a new Group interaction;
-- current participant advances correctly.
+If initial pre-participant Group Negation genuinely has no current Group participant yet, project null rather than inventing one. Document/test the actual production state.
 
-Do not create synthetic presentation frames.
+## Step 7 — public/viewer invariant
 
-## Step 6 — Group Negation SAME_FRAME compatibility
+Repeat one second-viewer assertion where currentParticipantId and decisionActorId differ.
 
-Preserve the accepted C2 rule: nested Group Negation is SAME_FRAME, not a child frame.
+The public Group semantic fields must match between viewers; viewer-private options remain outside groupResolution.
 
-Add/adjust projector evidence showing:
-- Group interaction/frame identity remains stable;
-- stage/current semantic state may change for Negation;
-- after Negation settlement projection returns to Group resolution without a fake child frame.
+## Step 8 — malformed compatibility
 
-## Step 7 — Group Damage -> Dying boundary
+Retain C3-01 behavior:
+- NULL/malformed causal authority => UNPROVEN/null causal identity;
+- do not reconstruct identity/participant from logs/events/card names/actionRevision.
 
-Do not implement the later Dying presentation barrier.
+## Step 9 — tests and validation
 
-Characterize current projection for real lethal Group Damage -> Dying -> Peach -> Group resume.
-
-Require only:
-- same interactionId;
-- Group parent remains available;
-- active child/current semantic state does not lose the Group causal context;
-- after rescue, projector returns to the original Group frame.
-
-If the current PresentationV2 model cannot express a future Dying barrier, document that as later work rather than broadening C3-01.
-
-## Step 8 — reconnect and viewer invariants
-
-Using real engine/API-backed snapshots:
-- repeated projection of unchanged state is byte/deep equal for public Group semantics;
-- second viewer sees the same public Group source/targets/frame/checkpoint semantics;
-- viewer-private currentAction/options remain outside public Group semantic identity.
-
-## Step 9 — malformed/legacy compatibility
-
-When causal envelope is NULL/malformed:
-- projector must not fabricate Group interaction/frame identity from Pending, logs, card names, resolutionId, event IDs or actionRevision;
-- legacy presentation fields may remain available only according to existing compatibility contract;
-- no crash.
-
-## Step 10 — tests
-
-Add focused projector/engine-backed tests for at least:
-- Raining Arrows A -> B -> C participant progression;
-- Barbarian Invasion equivalent;
-- Group nested SAME_FRAME Negation;
-- Group -> Damage child -> Group resume;
-- Group -> Damage -> Dying -> Peach -> Group resume characterization;
-- repeated read;
-- second viewer;
-- NULL/malformed envelope.
-
-Prefer extending existing PresentationV2 engine fixtures rather than duplicating game setup.
-
-## Step 11 — documentation
-
-Update the appropriate UX V2 presentation/design document with the exact C3 Group projection contract and remaining later-stage gaps.
-
-Do not rewrite C0 or C2 history.
-
-README should receive only a concise current-stage update.
-
-## Step 12 — validation
-
-Run focused PresentationV2/Group/Negation/Damage/Dying tests, then:
+Run focused projector + PresentationV2 engine tests, then:
 - `npm run test:fast`
 - `npm run test:api`
 - `npm run build`
 - `npm run lint`
 - `git diff --check`
 
-Report exact commands/counts.
-
-## Evidence matrix
-
-Append an exact C3-01 matrix with:
-- Group source projected correctly;
-- ordered affected targets projected;
-- current participant distinct from source/target set;
-- Group interaction/frame stable across participants;
-- semantic checkpoint/revision progression;
-- nested Group Negation remains SAME_FRAME;
-- Damage child becomes active without losing Group parent;
-- Damage settlement returns to same Group frame;
-- lethal Damage/Dying/rescue preserves Group causal context;
-- repeated projection stable;
-- second viewer public semantics identical;
-- NULL/malformed does not fabricate identity.
-
-Use PROVEN / PARTIAL / UNPROVEN / NOT IMPLEMENTED IN GAME.
+Report exact commands and exact pass/fail counts.
 
 ## Scope exclusions
 
 Do not:
 - modify React/CSS;
 - implement visual Interaction Stage;
-- implement Dying presentation barrier;
+- implement the Dying presentation barrier;
 - change gameplay rules;
 - redesign causal identity;
 - implement historical originRef;
-- start C4/C5;
-- infer semantic identity from logs/events/card names/actionRevision.
+- start C3-02/C4/C5;
+- infer semantic roles from logs/events/card names/actionRevision.
 
 ## Execution result
 
-Append only a `C3-01 execution result` with full implementation SHA, files changed, projector contract, type changes, real fixtures, exact evidence matrix, validation results and remaining C3 work.
+Append only a `C3-01-FIX1 execution result` containing:
+- full implementation SHA;
+- files changed;
+- authoritative source chosen for currentParticipantId and why;
+- before/after semantic behavior;
+- real A->B->C evidence;
+- nested Damage role-separation evidence;
+- lethal Dying/Peach role-separation evidence;
+- Negation behavior;
+- second-viewer evidence;
+- malformed behavior;
+- exact validation results.
 
-Push implementation plus appended result to `origin/ux-v2` and STOP.
+Push implementation AND this appended HANDOVER result to `origin/ux-v2`.
+
+Before stopping, run:
+`git fetch origin`
+and verify that `origin/ux-v2:HANDOVER.md` contains the `C3-01-FIX1 execution result`.
+
+Then STOP.
 
 ## Acceptance
 
-C3-01 passes only if Group public presentation semantics are driven by authoritative C2 causal identity, remain stable across participant progression and nested child/resume, preserve SAME_FRAME Negation semantics, do not leak private controls, do not fabricate identity in malformed/legacy state, and all regressions are green.
-
-## C2-FIX15-VERIFY execution result
-
-Branch: `ux-v2`
-
-Starting HEAD:
-`ccce65429a51cdb82d0eb2673e816f06f5798131`
-
-Focused command:
-
-```text
-GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/equipment.test.mjs,tests/api/judgement.test.mjs,tests/api/stratagems.test.mjs,tests/api/borrowed-sword.test.mjs,tests/api/concurrency.test.mjs,tests/api/presentation-causality.test.mjs GAME_TEST_PORT=3137 GAME_TEST_URL=http://localhost:3137 GAME_TEST_INSPECTOR_PORT=9229 node tests/run-tests.mjs
-```
-
-Result: **98 passed, 0 failed**. This covered PresentationV2 engine,
-Eight Trigrams response-Judgement causal propagation, Judgement and delayed
-effects, Borrowed Sword, concurrency, viewer causality, lethal Raining Arrows
-Group -> Damage -> Dying -> Peach -> Group continuation, and Barbarian
-Invasion Group-child characterization.
-
-Mandatory final validation:
-
-| Command | Result |
-| --- | --- |
-| `npm run test:fast` | PASS — 108 passed, 0 failed |
-| `npm run test:api` | PASS — 238 passed, 0 failed across 4 shards |
-| `npm run build` | PASS — Vinext build completed |
-| `npm run lint` | PASS — ESLint completed with no errors |
-| `git diff --check` | PASS — no whitespace errors |
-
-No production files changed during verification. Only this handover result
-was appended.
-
-Final C2 boundary:
-
-- Historical delayed `originRef`: `PARTIAL` / intentionally unsupported;
-  there is no stable typed historical provenance in the current authoritative
-  schema.
-- Synchronous Judgement-Negation parent: `NOT IMPLEMENTED IN GAME`; no
-  production constructor emits it.
-- Dying presentation barrier: later milestone, not part of C2.
-- C3: not started by this verification task.
-
-No logs, event IDs, card names, current phase, or `actionRevision` are used to
-fabricate causal authority.
-
-`C2 READY TO CLOSE — VERIFIED`
-
-## C3-01 execution result
-
-Branch: `ux-v2`
-
-Starting HEAD:
-`cf60373910f1985c361fec7eb8d6e40d6abba531`
-
-Implementation commit:
-`5fcb891 feat: project Group presentation semantics`
-
-Files changed:
-
-- `game/presentation-v2.ts`
-- `app/api/rooms/route.ts`
-- `tests/presentation-v2.test.mjs`
-- `tests/api/presentation-v2-engine.test.mjs`
-- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
-- `README.md`
-
-Implementation:
-
-- `projectPresentationV2` now consumes the parsed server-owned C2
-  `causalEnvelope`; it never reconstructs identity from logs, event IDs, card
-  names, phase, or `actionRevision`.
-- Typed Group continuations are projected as `groupResolution` with
-  `interactionId`, stable `groupFrameId`, `activeFrameId`, `parentFrameId`,
-  `checkpointId`, `presentationRevision`, active `stage`, Group source/effect,
-  ordered `targetIds`, `currentParticipantId`, separate `decisionActorId`, and
-  active child source/target semantics.
-- Group -> Damage keeps the Group parent frame available while the real Damage
-  child is active; resume returns to the exact Group frame.
-- Group Negation remains SAME_FRAME; it changes stage/checkpoint semantics
-  without creating a synthetic presentation child.
-- Missing or malformed causal authority remains `UNPROVEN` with null causal
-  identity fields. Private `CurrentAction` options are not copied into the
-  public Group projection.
-
-Type changes:
-
-- `PresentationV2Input.causalEnvelope?: CausalEnvelope | null`.
-- `PresentationV2.groupResolution` now carries proven public Group causal
-  semantics while retaining the legacy `participantIds` and
-  `activeParticipantId` fields for compatibility.
-- The room route passes its already-parsed `causalEnvelope` into the pure
-  projector.
-
-Real fixtures and focused evidence:
-
-- Raining Arrows Group -> Damage -> Group resume and next participant.
-- Barbarian Invasion Group -> Damage child boundary.
-- lethal Raining Arrows Group -> Damage -> Dying -> Peach -> Group resume.
-- Group nested Negation and counter-Negation remain SAME_FRAME.
-- repeated room reads and second-viewer public Group projection equality.
-- malformed/NULL causal envelope does not fabricate Group identity.
-- pure projector parent/child, viewer, and no-authority characterization.
-
-C3-01 evidence matrix:
-
-| Evidence | Result |
-| --- | --- |
-| Group source projected correctly | PROVEN |
-| Ordered affected targets projected | PROVEN |
-| Current participant distinct from source/target set | PROVEN |
-| Group interaction/frame stable across participants | PROVEN |
-| Semantic checkpoint/revision progression | PROVEN |
-| Nested Group Negation remains SAME_FRAME | PROVEN |
-| Damage child active without losing Group parent | PROVEN |
-| Damage settlement returns to same Group frame | PROVEN |
-| Lethal Damage/Dying/rescue preserves Group causal context | PROVEN |
-| Repeated projection stable | PROVEN |
-| Second-viewer public semantics identical | PROVEN |
-| NULL/malformed does not fabricate identity | PROVEN |
-
-Validation:
-
-Focused projector command:
-
-```text
-node --test tests/presentation-v2.test.mjs
-```
-
-Result: **19 passed, 0 failed**.
-
-Focused Worker/D1 command:
-
-```text
-GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/presentation-causality.test.mjs GAME_TEST_PORT=3137 GAME_TEST_URL=http://localhost:3137 GAME_TEST_INSPECTOR_PORT=9229 node tests/run-tests.mjs
-```
-
-Result: **27 passed, 0 failed**.
-
-Mandatory validation:
-
-| Command | Result |
-| --- | --- |
-| `npm run test:fast` | PASS — 110 passed, 0 failed |
-| `npm run test:api` | PASS — 238 passed, 0 failed across 4 shards |
-| `npm run build` | PASS — Vinext build completed |
-| `npm run lint` | PASS — ESLint completed with no errors |
-| `git diff --check` | PASS — no whitespace errors |
-
-Boundaries retained:
-
-- React/CSS and visual Interaction Stage migration: NOT IMPLEMENTED.
-- Dying presentation barrier: deferred to a later milestone; C3-01 only
-  preserves causal context through the existing Dying flow.
-- Historical delayed `originRef`: PARTIAL / intentionally unsupported.
-- Gameplay rules and causal identity design: unchanged.
-- C4/C5: not started.
-
-`C3-01 IMPLEMENTED — REVIEWER VALIDATION PENDING`
+FIX1 passes only if `currentParticipantId` remains the parent Group participant across nested child resolvers, `decisionActorId` remains separately correct, Group identity/target context remains stable, real Dying/Peach and Negation cases prove the distinction, malformed state remains non-authoritative, and all regressions are green.
