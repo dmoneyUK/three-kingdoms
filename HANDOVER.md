@@ -401,3 +401,128 @@ FIX7 passes only if:
 - exact FIX7 matrix is present without overclaiming;
 - accepted Attack ownership tests remain green;
 - no out-of-scope C3/UI/gameplay redesign occurs.
+
+---
+## C2-FIX7 execution result — 2026-10-02
+
+Branch: `ux-v2`
+
+Implementation commit: `48d2c00` (`Make Group and Duel causal roots authoritative`)
+
+Files changed:
+- `app/api/rooms/route.ts`
+- `tests/api/equipment.test.mjs`
+- `tests/api/diao-chan.test.mjs`
+- `README.md`
+- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
+
+### Group/Duel caller inventory
+
+- `groupResponseDecision()` now returns `CausalCreation<GroupResponsePending>`.
+  New ordinary AOE callers are the `BarbarianInvasion`/`RainingArrows` branch
+  and the `SkyPiercingHalberdAttack` branch. The first authoritative boundary
+  is `beginStratagemUse()` → `resumeNormalStratagemUse()` →
+  `beginGroupTarget()`; existing Pending equality and response CAS remain the
+  stale guards.
+- `nextGroupResponse()` is inherited-only and is consumed by
+  `finishGroupStep()`; it does not create a root. `beginGroupTarget()` uses the
+  explicit envelope on the first write and the persisted envelope on
+  participant advancement. `finishGroupStep()` clears it at settlement.
+- `duelResponseDecision()` now returns `CausalCreation<ResponsePending>`.
+  New callers are ordinary Duel card play and `beginLustDuel()`. The first
+  boundary is the direct Lust room write or the shared
+  `beginStratagemUse()` continuation write; alternating response CAS is
+  unchanged.
+- Duel response Attack cards update only Duel Pending; no Attack child Frame
+  is created. `resolveDuelLoss()` and Group damage pass inherited causal
+  context into the common sourced-damage boundary.
+
+### Group ownership implementation
+
+`groupResponseDecision()` creates one root and returns its exact
+`createdEnvelope` beside the serializable Pending value. Callers pass it
+through stratagem/target orchestration, and Group responses, Negation windows,
+and participant advances use `causalRoomStateWrite()` with that envelope. The
+common damage boundary inherits Group context from `resumeGroup`, preventing a
+post-damage reaction from clearing the Group root prematurely.
+
+### Group real-flow evidence
+
+The real `RainingArrows` and `BarbarianInvasion` + Xiahou Dun Stauchness flow
+proves first-root persistence, Pending interaction/frame alignment, repeated
+read, second-viewer public identity, same-root progression to the next
+participant, and final envelope clearing. It covers declined and accepted
+Stauchness paths and existing physical-card settlement assertions.
+
+### Duel ownership implementation
+
+`duelResponseDecision()` creates one root and returns the exact envelope. Lust
+persists it with the first response state; ordinary Duel flows pass it through
+the shared stratagem continuation. Alternating responders retain the same
+Duel context. Duel failure damage explicitly carries the Duel context into
+`resolveSourcedDamage()`, and final settlement clears the root.
+
+### Duel real-flow evidence
+
+The real Diao Chan Lust API flow proves first-root persistence, Pending
+interaction/frame alignment, second-viewer identity, same-root continuation,
+one Frame after the response window, and final settlement clearing. Existing
+Lust conversion, Wushuang, Empty Fortress, equipment-cost, and Quick Test
+coverage remains green.
+
+### Stale/double evidence
+
+Existing response CAS/actionRevision coverage remains active and the full API
+suite proves one winner/one stale loser for competing responses. FIX7 does not
+change stale semantics. Dedicated Group/Duel stale rows do not yet assert all
+causal IDs after the 409, so those matrix rows remain PARTIAL.
+
+### Legacy/malformed behavior
+
+No production normal-path call to `recoverCausalEnvelope()` exists, and no
+hidden/non-enumerable envelope carrier was added. Missing or malformed
+envelopes remain non-authoritative; this slice adds no reconstruction from
+Pending context. Dedicated malformed Group/Duel fixtures remain open, so that
+combined matrix row is PARTIAL.
+
+### Exact FIX7 matrix
+
+The exact 15-row matrix is recorded in
+`docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`:
+
+- Group root persistence, Pending alignment, participant progression,
+  repeated/second-viewer stability, and settlement clearing: PROVEN;
+  stale/double: PARTIAL.
+- Duel root persistence, Pending alignment, alternating progression, no child
+  Frame for response Attack, repeated/second-viewer stability, and settlement
+  clearing: PROVEN; stale/double: PARTIAL.
+- Missing-envelope non-reconstruction: PARTIAL pending dedicated corruption
+  fixtures; no normal-path `recoverCausalEnvelope`: PROVEN.
+
+### Regression/architecture sanity
+
+- `CausalCreation<T>` is explicit and serializable Pending stores only
+  `CausalContext`.
+- Group/Duel participant changes reuse the existing Interaction/Frame.
+- No provider-specific HTTP action, React/CSS migration, Group child semantic
+  redesign, Judgement, delayed provenance, or C3 work was added.
+- Search found only the isolated `recoverCausalEnvelope()` helper definition,
+  with no production route call or hidden envelope carrier.
+
+### Validation
+
+- `npm run build` — passed.
+- `npm run test:fast` — 107/107 passed.
+- `npm run test:api` — 214/214 passed.
+- Focused Group/Duel real-flow run — 26/26 passed.
+- `npm run lint` — passed.
+- `git diff --check` — passed.
+
+### Remaining C2 work
+
+Independent Damage root proof, Group nested-child semantics, complete
+Judgement and Negation lifetime evidence, delayed activation `originRef`,
+centralized automatic Pending/Continuation envelope coverage, dedicated
+Group/Duel malformed and causal-ID stale assertions, and global final
+settlement coverage remain open. C3 and UI/React/CSS migration remain out of
+scope.
