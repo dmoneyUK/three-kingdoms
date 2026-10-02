@@ -275,3 +275,115 @@ No logs, event IDs, card names, current phase, or `actionRevision` are used to
 fabricate causal authority.
 
 `C2 READY TO CLOSE — VERIFIED`
+
+## C3-01 execution result
+
+Branch: `ux-v2`
+
+Starting HEAD:
+`cf60373910f1985c361fec7eb8d6e40d6abba531`
+
+Implementation commit:
+`5fcb891 feat: project Group presentation semantics`
+
+Files changed:
+
+- `game/presentation-v2.ts`
+- `app/api/rooms/route.ts`
+- `tests/presentation-v2.test.mjs`
+- `tests/api/presentation-v2-engine.test.mjs`
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `README.md`
+
+Implementation:
+
+- `projectPresentationV2` now consumes the parsed server-owned C2
+  `causalEnvelope`; it never reconstructs identity from logs, event IDs, card
+  names, phase, or `actionRevision`.
+- Typed Group continuations are projected as `groupResolution` with
+  `interactionId`, stable `groupFrameId`, `activeFrameId`, `parentFrameId`,
+  `checkpointId`, `presentationRevision`, active `stage`, Group source/effect,
+  ordered `targetIds`, `currentParticipantId`, separate `decisionActorId`, and
+  active child source/target semantics.
+- Group -> Damage keeps the Group parent frame available while the real Damage
+  child is active; resume returns to the exact Group frame.
+- Group Negation remains SAME_FRAME; it changes stage/checkpoint semantics
+  without creating a synthetic presentation child.
+- Missing or malformed causal authority remains `UNPROVEN` with null causal
+  identity fields. Private `CurrentAction` options are not copied into the
+  public Group projection.
+
+Type changes:
+
+- `PresentationV2Input.causalEnvelope?: CausalEnvelope | null`.
+- `PresentationV2.groupResolution` now carries proven public Group causal
+  semantics while retaining the legacy `participantIds` and
+  `activeParticipantId` fields for compatibility.
+- The room route passes its already-parsed `causalEnvelope` into the pure
+  projector.
+
+Real fixtures and focused evidence:
+
+- Raining Arrows Group -> Damage -> Group resume and next participant.
+- Barbarian Invasion Group -> Damage child boundary.
+- lethal Raining Arrows Group -> Damage -> Dying -> Peach -> Group resume.
+- Group nested Negation and counter-Negation remain SAME_FRAME.
+- repeated room reads and second-viewer public Group projection equality.
+- malformed/NULL causal envelope does not fabricate Group identity.
+- pure projector parent/child, viewer, and no-authority characterization.
+
+C3-01 evidence matrix:
+
+| Evidence | Result |
+| --- | --- |
+| Group source projected correctly | PROVEN |
+| Ordered affected targets projected | PROVEN |
+| Current participant distinct from source/target set | PROVEN |
+| Group interaction/frame stable across participants | PROVEN |
+| Semantic checkpoint/revision progression | PROVEN |
+| Nested Group Negation remains SAME_FRAME | PROVEN |
+| Damage child active without losing Group parent | PROVEN |
+| Damage settlement returns to same Group frame | PROVEN |
+| Lethal Damage/Dying/rescue preserves Group causal context | PROVEN |
+| Repeated projection stable | PROVEN |
+| Second-viewer public semantics identical | PROVEN |
+| NULL/malformed does not fabricate identity | PROVEN |
+
+Validation:
+
+Focused projector command:
+
+```text
+node --test tests/presentation-v2.test.mjs
+```
+
+Result: **19 passed, 0 failed**.
+
+Focused Worker/D1 command:
+
+```text
+GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/presentation-causality.test.mjs GAME_TEST_PORT=3137 GAME_TEST_URL=http://localhost:3137 GAME_TEST_INSPECTOR_PORT=9229 node tests/run-tests.mjs
+```
+
+Result: **27 passed, 0 failed**.
+
+Mandatory validation:
+
+| Command | Result |
+| --- | --- |
+| `npm run test:fast` | PASS — 110 passed, 0 failed |
+| `npm run test:api` | PASS — 238 passed, 0 failed across 4 shards |
+| `npm run build` | PASS — Vinext build completed |
+| `npm run lint` | PASS — ESLint completed with no errors |
+| `git diff --check` | PASS — no whitespace errors |
+
+Boundaries retained:
+
+- React/CSS and visual Interaction Stage migration: NOT IMPLEMENTED.
+- Dying presentation barrier: deferred to a later milestone; C3-01 only
+  preserves causal context through the existing Dying flow.
+- Historical delayed `originRef`: PARTIAL / intentionally unsupported.
+- Gameplay rules and causal identity design: unchanged.
+- C4/C5: not started.
+
+`C3-01 IMPLEMENTED — REVIEWER VALIDATION PENDING`
