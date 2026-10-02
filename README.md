@@ -25,10 +25,11 @@ frame and checkpoint share both frame ID and stage. Cross-frame or cross-stage
 stored authority fails closed as `UNPROVEN`.
 
 C3-03 generalizes the typed public scene beyond Group for real Attack/Duel,
-independent Damage, Judgement (including delayed activation), and root Negation
-causal frames. Real viewer/reconnect, repeated-read, malformed-state, and
-Group `SAME_FRAME` regressions remain covered; delayed-origin history and
-Attack-response-to-Judgement child continuity remain explicitly partial.
+independent Damage, inherited delayed-Lightning Damage, Judgement (including
+delayed activation), and root Negation causal frames. Real viewer/reconnect,
+repeated-read, malformed-state, and Group `SAME_FRAME` regressions remain
+covered; delayed-origin history and Attack-response-to-Judgement child
+continuity remain explicitly partial.
 
 This is a projector/model/test change only. No React/CSS migration, gameplay
 rule change, Dying presentation barrier, historical `originRef`, or C4/C5 work

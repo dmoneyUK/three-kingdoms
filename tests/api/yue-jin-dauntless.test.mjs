@@ -98,6 +98,24 @@ test("Dauntless falls back to sourced damage and preserves Sima Yi, Xiahou Dun, 
   const simaDamage = await requestAndSettle("trigger", { code: simaGame.code, token: simaGame.members[1].token, providerId: "yue_jin_dauntless", cardId: "peach-dauntless-sima-cost", preserveResponse: true });
   assert.equal(simaDamage.data.room.currentAction.actorId, sima.target.id);
   const simaView = await state(simaGame.code, simaGame.members[0].token);
+  const independentDamageRoot = simaView.data.causalEnvelope;
+  assert.ok(independentDamageRoot, "Dauntless creates an independent Damage causal root");
+  assert.equal(independentDamageRoot.frames.length, 1);
+  assert.equal(independentDamageRoot.frames[0].parentFrameId, null);
+  assert.equal(independentDamageRoot.frames[0].stage, "DAMAGE");
+  assert.equal(independentDamageRoot.frames[0].origin.originSourceId, sima.yue.id);
+  assert.deepEqual(independentDamageRoot.frames[0].origin.originalTargetIds, [sima.target.id]);
+  assert.equal(simaView.data.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(simaView.data.presentationV2.interactionScene?.interactionId, independentDamageRoot.interactionId);
+  assert.equal(simaView.data.presentationV2.interactionScene?.rootFrameId, independentDamageRoot.activeFrameId);
+  assert.equal(simaView.data.presentationV2.interactionScene?.stage, "DAMAGE");
+  assert.equal(simaView.data.presentationV2.interactionScene?.sourceId, sima.yue.id);
+  assert.deepEqual(simaView.data.presentationV2.interactionScene?.targetIds, [sima.target.id]);
+  assert.equal(simaView.data.presentationV2.interactionScene?.currentParticipantId, sima.target.id);
+  assert.equal(simaView.data.presentationV2.interactionScene?.activeResolverId, sima.target.id);
+  assert.equal(simaView.data.presentationV2.interactionScene?.decisionActorId, sima.target.id);
+  const simaOtherViewer = await state(simaGame.code, simaGame.members[1].token);
+  assert.deepEqual(simaOtherViewer.data.presentationV2.interactionScene, simaView.data.presentationV2.interactionScene);
   assert.ok(simaView.data.currentAction.triggerOptions?.[0], JSON.stringify(simaView.data));
   assert.equal(simaView.data.currentAction.triggerOptions[0].effectId, "sima_yi_fankui");
   const retaliation = await requestAndSettle("trigger", { code: simaGame.code, token: simaGame.members[0].token, providerId: "sima_yi_fankui", cardKeys: ["hand"] });
@@ -113,6 +131,7 @@ test("Dauntless falls back to sourced damage and preserves Sima Yi, Xiahou Dun, 
   assert.equal(caoDamage.status, 200, JSON.stringify(caoDamage.data));
   assert.equal(caoDamage.data.room.players.find((player) => player.id === cao.target.id).hp, 3);
   assert.equal(caoDamage.data.room.players.find((player) => player.id === cao.target.id).handCount, 0, "no physical damage card means no Treachery option");
+  assert.equal(caoDamage.data.room.presentationV2.interactionScene, null, "independent Dauntless Damage clears when no post-damage reaction exists");
   assert.ok(discardIds(caoGame.code).includes("peach-dauntless-cao-cost"));
 
   const guoGame = await createHumanGame();

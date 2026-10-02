@@ -552,6 +552,10 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.deepEqual(first.presentationV2.interactionScene?.targetIds, first.causalEnvelope.frames[0].origin.originalTargetIds);
   assert.equal(first.presentationV2.interactionScene?.currentParticipantId, target.id);
   assert.equal(first.presentationV2.interactionScene?.decisionActorId, target.id);
+  const firstOtherViewer = await state(game.code, host.token);
+  assert.deepEqual(firstOtherViewer.data.presentationV2.interactionScene, first.presentationV2.interactionScene, "Duel public scene is equal across the first response checkpoint");
+  assert.equal(firstOtherViewer.data.presentationV2.interactionScene?.decisionActorId, target.id);
+  assert.equal(firstOtherViewer.data.currentAction.options, undefined, "Duel response options remain private to the acting viewer");
   const answered = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: firstAttack.id });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
   const second = await assertProjectionMatchesEngine(game.code, host.token);
@@ -568,7 +572,10 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.equal(second.presentationV2.interactionScene?.rootFrameId, first.presentationV2.interactionScene?.rootFrameId);
   assert.equal(second.presentationV2.interactionScene?.stage, "DUEL_EXCHANGE");
   assert.equal(second.presentationV2.interactionScene?.decisionActorId, source.id);
-  assert.deepEqual((await state(game.code, host.token)).data.presentationV2.interactionScene, second.presentationV2.interactionScene);
+  const secondOtherViewer = await state(game.code, alice.token);
+  assert.deepEqual(secondOtherViewer.data.presentationV2.interactionScene, second.presentationV2.interactionScene, "Duel public scene remains equal after response handoff");
+  assert.equal(secondOtherViewer.data.presentationV2.interactionScene?.decisionActorId, source.id);
+  assert.equal(secondOtherViewer.data.currentAction.options, undefined, "the second Duel response options remain private to the acting viewer");
 });
 
 test("FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage", { timeout: 30_000 }, async () => {
