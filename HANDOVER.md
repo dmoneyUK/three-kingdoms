@@ -228,3 +228,50 @@ Push implementation plus appended result to `origin/ux-v2` and STOP.
 ## Acceptance
 
 C3-01 passes only if Group public presentation semantics are driven by authoritative C2 causal identity, remain stable across participant progression and nested child/resume, preserve SAME_FRAME Negation semantics, do not leak private controls, do not fabricate identity in malformed/legacy state, and all regressions are green.
+
+## C2-FIX15-VERIFY execution result
+
+Branch: `ux-v2`
+
+Starting HEAD:
+`ccce65429a51cdb82d0eb2673e816f06f5798131`
+
+Focused command:
+
+```text
+GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/equipment.test.mjs,tests/api/judgement.test.mjs,tests/api/stratagems.test.mjs,tests/api/borrowed-sword.test.mjs,tests/api/concurrency.test.mjs,tests/api/presentation-causality.test.mjs GAME_TEST_PORT=3137 GAME_TEST_URL=http://localhost:3137 GAME_TEST_INSPECTOR_PORT=9229 node tests/run-tests.mjs
+```
+
+Result: **98 passed, 0 failed**. This covered PresentationV2 engine,
+Eight Trigrams response-Judgement causal propagation, Judgement and delayed
+effects, Borrowed Sword, concurrency, viewer causality, lethal Raining Arrows
+Group -> Damage -> Dying -> Peach -> Group continuation, and Barbarian
+Invasion Group-child characterization.
+
+Mandatory final validation:
+
+| Command | Result |
+| --- | --- |
+| `npm run test:fast` | PASS — 108 passed, 0 failed |
+| `npm run test:api` | PASS — 238 passed, 0 failed across 4 shards |
+| `npm run build` | PASS — Vinext build completed |
+| `npm run lint` | PASS — ESLint completed with no errors |
+| `git diff --check` | PASS — no whitespace errors |
+
+No production files changed during verification. Only this handover result
+was appended.
+
+Final C2 boundary:
+
+- Historical delayed `originRef`: `PARTIAL` / intentionally unsupported;
+  there is no stable typed historical provenance in the current authoritative
+  schema.
+- Synchronous Judgement-Negation parent: `NOT IMPLEMENTED IN GAME`; no
+  production constructor emits it.
+- Dying presentation barrier: later milestone, not part of C2.
+- C3: not started by this verification task.
+
+No logs, event IDs, card names, current phase, or `actionRevision` are used to
+fabricate causal authority.
+
+`C2 READY TO CLOSE — VERIFIED`
