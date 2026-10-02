@@ -1,5 +1,14 @@
 # Three Kingdoms — current handover
 
+## Latest delivery update — Cloudflare deployment from `ux-v2` — 2026-10-02
+
+The existing GitHub Actions Cloudflare workflow now validates and deploys pushes
+to both `main` and `ux-v2`. A successful push to either branch applies remote
+D1 migrations, deploys the Worker, and runs the production health smoke tests;
+pull requests targeting either branch remain validation-only. Both branches
+currently target the same Cloudflare Worker and D1 database, so `ux-v2` is a
+live deployment path rather than an isolated preview environment.
+
 ## Latest presentation update — Zhao Yun and Ma Chao portraits — 2026-10-01
 
 Replaced the supplied portraits through the shared `HERO_ART_BY_ID` /

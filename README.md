@@ -200,6 +200,8 @@ git diff --check
 
 Production deployment is handled through the repository's GitHub Actions / Cloudflare workflow. The repository instructions in `AGENTS.md` are authoritative for contribution, validation, and deployment requirements.
 
+Pushes to `main` and `ux-v2` run the full validation gate and, when successful, apply remote D1 migrations, deploy the Cloudflare Worker, and run production smoke tests. Pull requests targeting either branch run validation only.
+
 Do not deploy through ChatGPT Sites.
 
 ## Project documentation

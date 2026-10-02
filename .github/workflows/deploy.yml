@@ -2,9 +2,9 @@
 
    on:
      push:
-       branches: [main]
+       branches: [main, ux-v2]
      pull_request:
-       branches: [main]
+       branches: [main, ux-v2]
 
    concurrency:
      group: cloudflare-deploy-${{ github.ref }}
@@ -26,7 +26,7 @@
 
      deploy:
        needs: build-and-test
-       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ux-v2')
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v4
