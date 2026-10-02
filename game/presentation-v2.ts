@@ -207,27 +207,43 @@ function dyingDecisionProof(envelope: CausalEnvelope | null, pending: unknown): 
   return { pending: pendingRecord, activeFrame };
 }
 
-function groupContinuation(value: unknown, seen = new Set<object>()): RecordLike | null {
-  const item = record(value);
-  if (!item || seen.has(item)) return null;
-  seen.add(item);
-  if (item.kind === "group") return item;
-  for (const child of Object.values(item)) {
-    const found = groupContinuation(child, seen);
-    if (found) return found;
+/**
+ * Follow only typed continuation edges. Presentation must not discover a
+ * Group by recursively walking arbitrary pending data: that turns an
+ * incidental nested object into public causal authority.
+ */
+function typedGroupContinuation(pending: unknown): RecordLike | null {
+  const item = record(pending);
+  if (!item) return null;
+  if (item.kind === "response" && record(item.continuation)?.kind === "group") return record(item.continuation);
+  if (item.kind === "response" && record(item.continuation)?.kind === "negation") {
+    const effect = record(record(item.continuation)?.effect);
+    const groupPending = record(effect?.pending);
+    if (record(groupPending?.continuation)?.kind === "group") return record(groupPending.continuation);
+  }
+  if (item.kind === "trigger") {
+    const continuation = record(item.continuation);
+    if (continuation?.kind === "damage_suffered_event") {
+      const resumeGroup = record(continuation.resumeGroup);
+      if (record(resumeGroup?.continuation)?.kind === "group") return record(resumeGroup.continuation);
+    }
+  }
+  if (item.kind === "dying") {
+    const resumePending = record(item.resumePending);
+    if (record(resumePending?.continuation)?.kind === "group") return record(resumePending.continuation);
+    const resumeTrigger = record(item.resumeTrigger);
+    const resumeGroup = record(resumeTrigger?.resumeGroup);
+    if (record(resumeGroup?.continuation)?.kind === "group") return record(resumeGroup.continuation);
   }
   return null;
 }
 
-function groupParticipantOwner(value: unknown, group: RecordLike | null, seen = new Set<object>()): string | null {
-  const item = record(value);
-  if (!item || seen.has(item)) return null;
-  seen.add(item);
-  if (item.continuation === group) return firstString(item.actorId);
-  for (const child of Object.values(item)) {
-    const found = groupParticipantOwner(child, group, seen);
-    if (found) return found;
-  }
+function typedGroupParticipantOwner(pending: unknown): string | null {
+  const item = record(pending);
+  if (!item) return null;
+  if (item.kind === "response") return stringValue(item.actorId);
+  if (item.kind === "trigger") return stringValue(item.actorId);
+  if (item.kind === "dying") return stringValue(item.actorId);
   return null;
 }
 
@@ -235,8 +251,7 @@ function groupFrameFor(envelope: CausalEnvelope | null, continuation: RecordLike
   if (!envelope) return null;
   const causal = record(continuation?.causal);
   const referenced = stringValue(causal?.frameId);
-  if (referenced) return envelope.frames.find((frame) => frame.frameId === referenced) ?? null;
-  return envelope.frames.find((frame) => frame.stage === "GROUP_RESOLUTION" || frame.stage === "NEGATION") ?? null;
+  return referenced ? envelope.frames.find((frame) => frame.frameId === referenced) ?? null : null;
 }
 
 type GroupProjectionValues = {
@@ -259,7 +274,7 @@ function groupProjectionValues(envelope: CausalEnvelope | null, pending: unknown
   const current = groupFrame?.current;
   const targetIds = origin?.originalTargetIds ?? [];
   const participantIds = strings(group.remainingIds);
-  const participantOwnerId = groupParticipantOwner(pending, group);
+  const participantOwnerId = typedGroupParticipantOwner(pending);
   const parentParticipantId = current?.currentTargetIds.length === 1 ? current.currentTargetIds[0] : null;
   const childParticipantId = activeFrame && activeFrame.frameId !== groupFrame?.frameId && activeFrame.parentFrameId === groupFrame?.frameId
     && (activeFrame.stage === "DAMAGE" || activeFrame.stage === "DYING")
@@ -396,7 +411,13 @@ function participants(active: Context | null, group: RecordLike | null): Present
 /** Pure, deterministic projection. CurrentAction remains the legality authority. */
 export function projectPresentationV2(input: PresentationV2Input): PresentationV2 {
   const { active, parent, group: directGroup, root } = pendingContexts(input.pending);
-  const group = directGroup ?? groupContinuation(input.pending);
+  const group = directGroup ?? typedGroupContinuation(input.pending);
+  const envelope = input.causalEnvelope ?? null;
+  const causalRootFrame = envelope?.frames.find((frame) => frame.parentFrameId === null) ?? null;
+  const causalActiveFrame = envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+  const causalParentFrame = causalActiveFrame?.parentFrameId
+    ? envelope?.frames.find((frame) => frame.frameId === causalActiveFrame.parentFrameId) ?? null
+    : null;
   const barrierId = input.currentAction?.presentation?.readyAfterEventId ?? null;
   const legacyResolutionId = firstString(input.currentAction?.presentation?.resolutionId, active?.resolutionId, parent?.resolutionId, root?.resolutionId);
   const rootEvent = eventForContext(root, input.timeline, barrierId) ?? eventForContext(active, input.timeline, barrierId);
@@ -406,20 +427,31 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const settlementEvent = input.timeline.find((event) => relevantIds.includes(event.id) && event.finalResult === true) ?? null;
   if (settlementEvent) relevantIds.push(settlementEvent.id);
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
-  const groupValues = groupProjectionValues(input.causalEnvelope ?? null, input.pending, group);
-  const interactionScene = interactionSceneFor(input.causalEnvelope ?? null, input.currentAction, groupValues, input.pending);
-  const dyingBarrier = dyingBarrierFor(input.causalEnvelope ?? null, input.pending);
-  const rootContext = (root || active || rootEvent) ? {
+  const groupValues = groupProjectionValues(envelope, input.pending, group);
+  const interactionScene = interactionSceneFor(envelope, input.currentAction, groupValues, input.pending);
+  const dyingBarrier = dyingBarrierFor(envelope, input.pending);
+  // Once causal metadata exists, public context comes from its frames. The
+  // pending-derived values below remain only for legacy rooms without an
+  // envelope and cannot override authoritative causal state.
+  const rootContext = (causalRootFrame || root || active || rootEvent) ? {
     eventId: rootEvent?.id ?? null,
-    kind: root?.kind ?? active?.kind ?? null,
-    sourceId: root?.sourceId ?? active?.sourceId ?? null,
-    originalTargetIds: root?.originalTargetIds ?? [],
+    kind: root?.kind ?? active?.kind ?? causalRootFrame?.stage ?? null,
+    sourceId: causalRootFrame?.origin.originSourceId ?? root?.sourceId ?? active?.sourceId ?? null,
+    originalTargetIds: causalRootFrame?.origin.originalTargetIds ?? root?.originalTargetIds ?? [],
     resolutionId: legacyResolutionId,
   } : null;
+  const activeContext = causalActiveFrame
+    ? { kind: active?.kind ?? causalActiveFrame.stage, stage: causalActiveFrame.stage, sourceId: active?.sourceId ?? causalActiveFrame.current.currentSourceId, currentTargetIds: active?.targetIds ?? causalActiveFrame.current.currentTargetIds, eventIds: relevantIds.filter((id) => id === activeEvent?.id || id === barrierId), resolutionId: legacyResolutionId }
+    : active
+      ? { kind: active.kind, stage: active.stage, sourceId: active.sourceId, currentTargetIds: active.targetIds, eventIds: relevantIds.filter((id) => id === activeEvent?.id || id === barrierId), resolutionId: legacyResolutionId }
+      : null;
+  const parentContext = causalParentFrame
+    ? { kind: parent?.kind ?? causalParentFrame.stage, sourceId: parent?.sourceId ?? causalParentFrame.origin.originSourceId, targetIds: parent?.targetIds ?? causalParentFrame.origin.originalTargetIds, resumeKind: parent?.kind ?? causalParentFrame.stage }
+    : parent ? { kind: parent.kind, sourceId: parent.sourceId, targetIds: parent.targetIds, resumeKind: parent.kind } : null;
   return {
     rootContext,
-    activeContext: active ? { kind: active.kind, stage: active.stage, sourceId: active.sourceId, currentTargetIds: active.targetIds, eventIds: relevantIds.filter((id) => id === activeEvent?.id || id === barrierId), resolutionId: legacyResolutionId } : null,
-    parentContext: parent ? { kind: parent.kind, sourceId: parent.sourceId, targetIds: parent.targetIds, resumeKind: parent.kind } : null,
+    activeContext,
+    parentContext,
     participants: participants(active, group),
     interactionScene,
     dyingBarrier,

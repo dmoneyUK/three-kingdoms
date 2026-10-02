@@ -4090,3 +4090,25 @@ to the acting viewer. Full gameplay, privacy, stale-submission, reconnect,
 and parent-continuation regressions remain green. C4-02, C5, React/CSS,
 animation timing, and unsupported Dying-triggered child effects remain out of
 scope.
+
+### 0.98 UX2.0C5 PresentationV2 projector migration — 2026-10-02
+
+C5 makes the projector consume persisted causal frame metadata wherever the
+metadata is available. Public root, active, and parent scene facts now use the
+authoritative envelope for frame identity, source/current targets, stage,
+checkpoint, revision, and typed parent linkage; legacy `rootContext` and
+`activeContext` kind/continuation shapes remain stable for existing clients.
+
+Group discovery no longer recursively searches arbitrary Pending objects or
+selects a Group frame merely because an envelope contains a Group stage. It
+follows only typed continuation edges (`resumeGroup`, Dying resume, and the
+Group Negation effect) and requires the continuation's causal frame reference.
+Missing linkage remains `UNPROVEN` and does not fabricate public Group
+semantics. `CurrentAction` remains the private legality/control projection and
+was not changed.
+
+Focused coverage proves legacy compatibility, viewer-independent causal scene
+facts, explicit Group linkage, fail-closed malformed/cross-frame behavior, and
+real Attack, Group Damage/Dying, Duel, Negation, Borrowed Sword, and Judgement
+paths. React/CSS migration, animation timing, Transition Events as a new
+protocol, and gameplay changes remain outside C5.

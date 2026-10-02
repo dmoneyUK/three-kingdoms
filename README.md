@@ -1,6 +1,21 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C4-01 — 2026-10-02
+## Current stage — UX2.0C5 — 2026-10-02
+
+C5 updates the server-side `PresentationV2` projector to prefer persisted
+causal root/active/parent frame metadata for public scene facts. Group
+discovery now follows only typed continuation edges and requires an explicit
+causal frame reference; arbitrary pending-object scans and stage-based Group
+frame guesses no longer create proven presentation state. Legacy context
+shapes and private `CurrentAction` projection remain compatible. React/CSS,
+animation timing, and gameplay changes are not started.
+
+The C5 projector slice is covered by 115/115 fast tests and engine-backed
+causal, Group, Dying, Duel, Negation, Borrowed Sword, and Judgement checks.
+The next milestone is the full C5 validation/push handoff, followed by review
+before any React/CSS migration.
+
+## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 
 C4-01-FIX2 completes the atomic Dying/Peach rescue handoff boundary. Initial
 entry, skip, timeout, continued rescue, and automatic resume all select the

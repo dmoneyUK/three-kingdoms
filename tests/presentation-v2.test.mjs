@@ -120,7 +120,10 @@ test("group projection records missing authoritative semantics instead of guessi
 });
 
 test("C3 Group projection uses the authoritative envelope for stable parent and child semantics", () => {
-  const groupPending = flows[3].points[0].pending;
+  const groupPending = {
+    ...flows[3].points[0].pending,
+    continuation: { ...flows[3].points[0].pending.continuation, causal: { interactionId: "group-interaction", frameId: "group-frame" } },
+  };
   const groupFrame = {
     frameId: "group-frame",
     parentFrameId: null,
@@ -181,6 +184,30 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   assert.equal(resumed.groupResolution?.activeResolverId, "B");
   assert.equal(resumed.interactionScene?.continuity.relation, "ROOT_FRAME");
   assert.equal(resumed.interactionScene?.activeFrameId, "group-frame");
+});
+
+test("C5 does not infer Group authority from arbitrary nested data or frame stage", () => {
+  const pending = {
+    kind: "trigger",
+    actorId: "B",
+    continuation: {
+      kind: "damage_suffered_event",
+      sourceId: "A",
+      targetId: "B",
+      resumeGroup: { kind: "response", actorId: "B", continuation: { kind: "group", cardKind: "RainingArrows", sourceId: "A", remainingIds: ["C"] } },
+    },
+  };
+  const envelope = {
+    version: 1,
+    interactionId: "strict-group",
+    frames: [{ frameId: "group-frame", parentFrameId: null, stage: "GROUP_RESOLUTION", origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B", "C"] }, current: { currentSourceId: "A", currentEffect: "Raining Arrows", currentTargetIds: ["B"], resolvingPlayerId: "B" } }],
+    activeFrameId: "group-frame",
+    checkpoint: { checkpointId: "strict-checkpoint", frameId: "group-frame", stage: "GROUP_RESOLUTION" },
+    presentationRevision: 1,
+  };
+  const projected = projectPresentationV2({ pending, currentAction: action(), actionRevision: "strict", timeline: [], causalEnvelope: envelope });
+  assert.equal(projected.groupResolution?.semantics, "UNPROVEN");
+  assert.equal(projected.interactionScene?.semantics, "UNPROVEN");
 });
 
 test("C3 Group public semantics stay viewer-equivalent while decision ownership changes", () => {

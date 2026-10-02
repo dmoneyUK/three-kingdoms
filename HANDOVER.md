@@ -237,3 +237,60 @@ Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin.
 ## Acceptance
 
 C5-01 passes only if the accepted C1-C4 semantic contract is consolidated without changing gameplay, authoritative public fields have clear source/proof ownership, legacy compatibility fields are explicitly classified and cannot be mistaken for authoritative causal semantics, public/private boundaries remain correct, malformed authority remains fail-closed, regressions are green, and the migration map is concrete enough to drive the next C5 slice.
+
+## C5-01 execution result
+
+Implementation commit: `fb7edf9`.
+
+Files changed:
+
+- `game/presentation-v2.ts`
+- `tests/presentation-v2.test.mjs`
+- `README.md`
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `HANDOVER.md`
+
+PresentationV2 field inventory and authority result:
+
+- `interactionScene` public causal facts prefer persisted root/active/parent
+  frames, checkpoint, stage, and presentation revision.
+- `rootContext`, `activeContext`, and `parentContext` retain their existing
+  descriptive kind/continuation shapes for compatibility; their causal
+  source/target values use envelope metadata when present.
+- `groupResolution` follows only typed continuation edges and requires the
+  continuation causal frame reference. Missing linkage is `UNPROVEN`.
+- `decision` remains a CurrentAction-derived compatibility/control object;
+  private legal options are unchanged and are not copied into the public
+  semantic core.
+
+Shared projector refactors removed recursive arbitrary-pending scans,
+stage-only Group-frame selection, and object-identity participant discovery.
+Typed edges cover direct Group, Group Negation, nested Group Damage, and Dying
+resume paths. A focused regression proves nested data and a Group stage alone
+cannot fabricate proven Group semantics.
+
+Compatibility divergences found and fixed: causal frame stages were initially
+allowed to overwrite legacy context kinds and frame-wide target arrays were
+allowed to replace legacy current-target shapes; both were corrected so the
+causal scene gains authoritative metadata without changing existing context
+contracts. The migration map remains mechanical: keep compatibility fields,
+derive semantic scene fields from the envelope, and deprecate only after a
+later React/C7 consumer proves it no longer depends on legacy shapes.
+
+Viewer/privacy and fail-closed evidence: 115/115 fast tests pass; 24/24
+focused engine-backed PresentationV2 tests pass; the final API suite passes
+239/239 across 23 files and 4 shards. Existing viewer equality, private
+CurrentAction isolation, malformed/null envelope, cross-frame checkpoint, and
+Dying actor/resolver fail-closed proofs remain green.
+
+Validation:
+
+- `npm run build` — PASS
+- `npm run test:fast` — 115/115 PASS
+- `npm run test:api` — 239/239 PASS across 23 files and 4 shards
+- `npm run lint` — PASS
+- `git diff --check` — PASS
+
+Remaining C5 gaps: compatibility fields are retained; Transition Events are
+not a new protocol; React/CSS migration, final C7 snapshot, animation timing,
+gameplay changes, and historical delayed `originRef` remain out of scope.
