@@ -67,12 +67,13 @@ decline, timeout, and independent-root evidence is present. The broader C2
 gate remains partial for the explicitly listed Judgement, delayed-activation,
 Damage, and Dying boundaries.
 
-C2 independent-Damage evidence now proves a source-less Lightning damage root:
-its `DAMAGE` Interaction/Frame is created with a null source, persisted beside
-the real `damage_suffered` Pending, retained through private Legacy distribution
-and repeated damage-point windows, visible identically to another viewer, and
-cleared at final settlement. Judgement lifetime, delayed activation provenance,
-nested Damage, and Dying boundaries remain partial.
+C2-FIX11 now carries Judgement causal handles through reveal, Necromancy,
+effective-result, resume, delayed Lightning damage, Luo River repetition, and
+settlement. Delayed activation creates a fresh root before optional responses;
+Cavalry inherits the unresolved Attack Interaction; malformed envelopes are
+never reconstructed. The broader C2 gate remains partial for delayed
+`originRef`, transfer and Judgement-Negation runtime evidence, nested Damage,
+and the Dying barrier.
 
 ## UX2.0B-FINAL verification — 2026-10-02
 

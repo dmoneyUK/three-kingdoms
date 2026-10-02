@@ -124,7 +124,7 @@ export type DeckReorderPending = {
   reason: string;
   deadline?: number;
 };
-export type TurnStartTriggerContinuation = {
+export type TurnStartTriggerContinuation = CausalFields & {
   kind: "turn_start_event";
   playerId: string;
   resolvedEffectIds?: string[];

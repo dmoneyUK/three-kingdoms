@@ -556,3 +556,147 @@ Judgement lifetime/provenance, delayed activation `originRef`, Group-nested
 Damage child semantics, broader automatic-transition coverage, and Dying
 barrier work remain open or explicitly deferred. Stop here after pushing this
 validated task; do not start C3/UI.
+
+## C2-FIX11 execution result — 2026-10-02
+
+Branch: `ux-v2`
+Implementation commit: `PENDING — fill with the full source/docs/tests commit SHA before push`
+Handover commit: appended after the implementation commit
+Files changed in this round: `app/api/rooms/route.ts`, `game/pending.ts`, `tests/api/lobby-heroes-wei.test.mjs`, `tests/api/ma-chao.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `tests/api/stratagems.test.mjs`, `README.md`, `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
+
+### Judgement path inventory
+
+- Overindulgence, Rations Depleted, and Lightning now enter the shared delayed
+  path from `startJudgementNegation()` to `beginDelayedJudgement()` and the
+  typed delayed resume. The activation root is created before the optional
+  Negation scan; no responder is required for root creation.
+- Cavalry enters `beginCavalryJudgement()` while the Attack-targeted parent is
+  unresolved and resumes through the original Attack declaration.
+- Stauchness/Ganglie enters from `damage_suffered` and resumes the exact
+  damage continuation; the Judgement handle is inherited rather than rebuilt.
+- Luo River enters through `resolveTurnStartLuoshen()`. Repeated Judgements
+  carry the same causal handle through the turn-start continuation until the
+  loop settles.
+- Response/provider Judgement enters through `applyResponseOutcome()` and
+  resumes the typed Attack, Group, Duel, or Negation continuation. Every
+  `JudgementContinuation.resume.kind` is covered: `delayed`, `attack_targeted`,
+  `damage_suffered`, `luoshen`, and `response`.
+
+### Causal transport and checkpoints
+
+`JudgementContinuation` already had the minimal `CausalFields` shape; FIX11
+now populates it consistently. `TurnStartTriggerContinuation` also carries
+the optional `CausalContext` needed by repeated Luo River Judgements. Reveal,
+deck movement, result calculation, and capability scans do not create fake
+checkpoints. `beginJudgementResolution()` writes top-level Pending causal,
+continuation causal, and the public envelope together. A real replacement
+actor advances the `JUDGEMENT` resolver once; malformed or missing envelopes
+remain non-authoritative and are never recovered from a handle.
+
+### Delayed activation and provenance
+
+`startJudgementNegation()` now creates a fresh `JUDGEMENT` root before looking
+for a Negation actor. `beginDelayedJudgement()` receives that exact root, so a
+later delayed activation cannot reopen its placement Interaction. The current
+room schema has no typed historical `originRef`; this is documented as a
+PARTIAL provenance boundary rather than encoded in logs or IDs. The earlier
+independent-Damage wording is corrected here: the real source-less Lightning
+fixture is delayed Judgement -> Damage inheritance, with null current Damage
+source and the delayed activation owner retained in origin history.
+
+### Cavalry and Necromancy
+
+Cavalry copies the Attack declaration's causal context into its Judgement,
+keeps one Interaction/Frame through reveal and replacement, and restores the
+Attack stage before canonical continuation. Necromancy replacement/effective
+result Pending records align actor, continuation handle, and envelope resolver;
+the replacement card creates no root or child frame. The engine-backed
+Judgement replacement and Ma Chao tests prove this real path.
+
+### Judgement Negation and Damage-related resume
+
+Judgement Negation uses the activation root created before the eligibility
+scan; it no longer creates a `NEGATION` root that displaces Judgement. When a
+real blocker exists, the frame advances to `NEGATION`; when none exists,
+resolution continues without a fake decision. Stauchness/Ganglie effective
+result Pending and continuation carry the inherited Damage handle, and resume
+uses the `DAMAGE` stage. Delayed Lightning passes the Judgement handle into
+synchronous source-less Damage and holds the envelope through Legacy windows.
+
+### Luo River and settlement
+
+Luo River repeated Judgements remain in one active Judgement Interaction and
+Frame, and its turn-start continuation keeps the same resolver context. Loop
+completion, decline, and no-card completion clear the envelope atomically.
+Delayed Judgement settlement clears only after the delayed card's synchronous
+work completes; Cavalry restores Attack authority; Damage-related paths return
+to the parent damage event. Transfer gameplay remains covered but lacks a
+dedicated causal ID assertion.
+
+### Reconnect, stale, and malformed safety
+
+The real Judgement replacement test reads reveal and effective states from
+different viewers and asserts stable Interaction/Frame identity. Existing CAS
+claims reject stale/replayed Pending submissions. The added malformed test
+corrupts only `causal_envelope_json`, declines the real Judgement continuation,
+and proves a 200 response, null public envelope, and no stranded response.
+The Judgement-specific duplicate-race ID assertion remains PARTIAL.
+
+### Exact FIX11 matrix
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| delayed activation starts fresh Interaction | PARTIAL | shared draw path creates the root before optional response scan | no dedicated placement-to-activation ID comparison |
+| delayed activation never reuses placement Interaction | PARTIAL | explicit fresh-root argument to `beginDelayedJudgement()` | no end-to-end two-ID fixture |
+| delayed provenance/originRef is historical only | PARTIAL | activation origin is separate from placement state | no typed room `originRef` |
+| delayed Judgement root exists before optional modifier | PROVEN | engine-backed delayed Judgement replacement test | no-responder revision assertion absent |
+| no replacement actor creates no fake decision checkpoint | PARTIAL | immediate no-actor branch in `beginJudgementResolution()` | no dedicated unchanged-revision fixture |
+| replacement Pending actor matches envelope resolver | PROVEN | engine-backed Judgement and Cavalry replacement tests | provider breadth |
+| Necromancy replacement stays same Judgement frame | PROVEN | `engine-backed Judgement replacement exposes reveal and resume evidence` | none for covered path |
+| effective result preserves Judgement causal lifetime | PROVEN | same test observes `judgement_effective_event` on same frame | no separate provider matrix |
+| Judgement Negation does not create a second root | PARTIAL | shared activation root passed through `startJudgementNegation()` | no real Judgement-Negation fixture |
+| counter-Negation remains same Judgement frame | PARTIAL | FIX10 handoff plus Judgement causal integration | no real Standard counter fixture |
+| Cavalry Judgement preserves Attack interaction | PROVEN | `Cavalry uses the shared Judgement replacement continuation` | none for covered path |
+| Cavalry resume returns to Attack causal context | PROVEN | same test verifies resumed red-result Attack behavior | no separate stale replacement row |
+| Damage-related Judgement preserves parent interaction | PARTIAL | Stauchness/Ganglie typed continuation and resume code | no per-provider envelope assertion |
+| Luo River repeated Judgement lifetime is authoritative | PROVEN | `Luoshen repeats real Judgements...` same Interaction/Frame and clear | no alternate seat-count fixture |
+| delayed damaging result keeps synchronous damage attached | PROVEN | delayed Lightning + three Legacy windows test | no Group-nested Damage claim |
+| delayed transfer settles activation Interaction | PARTIAL | existing Lightning transfer gameplay test | no causal settlement assertion |
+| transferred delayed card later activation gets fresh Interaction | PARTIAL | shared delayed draw path | no cross-turn ID comparison |
+| Judgement settlement clears only at true root settlement | PROVEN | delayed Lightning, Luo River, and replacement evidence | transfer branch assertion absent |
+| repeated read/reconnect preserves Judgement identity | PROVEN | reveal/effective viewer reads in engine-backed test | no browser reconnect harness |
+| second viewer sees same public Judgement envelope | PROVEN | Sima/Guo projected reads share the public envelope | broader private-choice matrix absent |
+| stale/duplicate replacement cannot duplicate causal transition | PARTIAL | existing Pending CAS replay protection | no dedicated Judgement race assertion |
+| NULL/malformed Judgement does not reconstruct authority | PROVEN | `malformed Judgement envelope stays non-authoritative through legacy resume` | none for transfer corruption |
+
+### Documentation and search audit
+
+Updated `README.md` and `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` with the FIX11
+state, path inventory, delayed NEW Interaction rule, SAME_FRAME replacement,
+Luo River lifetime, delayed Lightning inheritance, and explicit PARTIAL rows.
+The production search covered every `JudgementContinuation` constructor,
+`beginJudgementResolution()`, `beginDelayedJudgement()`,
+`resolveJudgementContinuation()`, `resolveTurnStartLuoshen()`, causal root/
+checkpoint helpers, `resolutionId`/`revealedEventId`, and
+`recoverCausalEnvelope()`. No normal route calls `recoverCausalEnvelope()`.
+
+### Validation
+
+- `npm run test:fast` — `108/108` passed.
+- `npm run test:api` — `229/229` passed across four shards (`55 + 29 + 52 + 93`).
+- Focused FIX11 suite — `78/78` passed:
+  `GAME_TEST_FILES=tests/api/stratagems.test.mjs,tests/api/presentation-v2-engine.test.mjs,tests/api/judgement.test.mjs,tests/api/ma-chao.test.mjs,tests/api/lobby-heroes-wei.test.mjs node tests/run-tests.mjs`.
+- `npm run build` passed.
+- `npm run lint` passed.
+- `git diff --check` passed.
+
+### Remaining C2 work
+
+Delayed historical `originRef` storage and real placement-to-activation ID
+proof, real Judgement-Negation/counter-Negation runtime fixtures, delayed
+Lightning transfer causal proof, duplicate-replacement causal race evidence,
+standalone source-less Damage classification, Group-nested Damage, broader
+automatic-transition coverage, and the Dying presentation barrier remain
+PARTIAL or open. C3, PresentationV2 migration, React, and CSS remain out of
+scope. Push only this `ux-v2` implementation plus this handover result, then
+stop.

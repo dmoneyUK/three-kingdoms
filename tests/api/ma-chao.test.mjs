@@ -77,17 +77,27 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
   setDeck(game.code, [{ ...card("Attack", "cavalry-original"), suit: "♠", rank: "9" }]);
   setTurn(game.code, source.seat, "play");
   assert.equal((await request("play_card", { code: game.code, token: sourceMember.token, cardId: "attack-cavalry-replacement-attack", targetId: target.id })).status, 200);
+  const attackRoot = (await state(game.code, sourceMember.token)).data.causalEnvelope;
+  assert.ok(attackRoot, "Cavalry starts from the authoritative Attack root");
   assert.equal((await request("trigger", { code: game.code, token: sourceMember.token, providerId: "ma_chao_cavalry" })).status, 200);
   const revealed = (await state(game.code, simaMember.token)).data;
   assert.equal(revealed.currentAction.triggerEvent, "judgement_revealed", JSON.stringify(revealed));
   assert.equal(revealed.currentAction.actorId, sima.id);
+  assert.equal(revealed.causalEnvelope.interactionId, attackRoot.interactionId);
+  assert.equal(revealed.causalEnvelope.activeFrameId, attackRoot.activeFrameId);
+  assert.equal(revealed.causalEnvelope.frames[0].stage, "JUDGEMENT");
+  const revealPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(revealPending.causal.interactionId, attackRoot.interactionId);
   const reloaded = (await state(game.code, simaMember.token)).data;
   assert.equal(reloaded.currentAction.triggerEvent, "judgement_revealed", JSON.stringify(reloaded));
   assert.equal(reloaded.currentAction.actorId, sima.id);
+  assert.equal(reloaded.causalEnvelope.interactionId, attackRoot.interactionId);
+  assert.equal(reloaded.causalEnvelope.presentationRevision, revealed.causalEnvelope.presentationRevision);
   const replaced = await request("trigger", { code: game.code, token: simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
   assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
   const settled = (await state(game.code, targetMember.token)).data;
   assert.equal(settled.players.find((player) => player.id === target.id).hp, 3, JSON.stringify(settled));
+  assert.equal(settled.causalEnvelope, null, "the resumed Attack root settles after Cavalry damage");
   assert.notEqual(settled.currentAction?.kind, "response", "a red replacement must suppress Dodge");
 });
 

@@ -522,12 +522,16 @@ test("Luoshen repeats real Judgements before delayed-card Judgements and preserv
   const first = await requestAndSettle("trigger", { code: sequence.code, token: sequence.token, providerId: "zhen_ji_luoshen" });
   assert.equal(first.status, 200, JSON.stringify(first.data));
   assert.equal(first.data.room.phase, "response");
+  const luoshenRoot = first.data.room.causalEnvelope;
+  assert.ok(luoshenRoot, "the first Luo River Judgement creates an authoritative root");
   assert.deepEqual(first.data.room.myHand.map((held) => held.id), [sevenSpades.id]);
   assert.equal(first.data.room.currentAction.triggerEvent, "turn_start");
   assert.equal(first.data.room.deckCount, 5);
 
   const second = await requestAndSettle("trigger", { code: sequence.code, token: sequence.token, providerId: "zhen_ji_luoshen" });
   assert.equal(second.status, 200, JSON.stringify(second.data));
+  assert.equal(second.data.room.causalEnvelope.interactionId, luoshenRoot.interactionId, "repeated Luo River Judgements stay in one Interaction");
+  assert.equal(second.data.room.causalEnvelope.activeFrameId, luoshenRoot.activeFrameId, "repeated Luo River Judgements stay in one Frame");
   assert.deepEqual(second.data.room.myHand.map((held) => held.id), [sevenSpades.id, fourClubs.id]);
   assert.equal(second.data.room.currentAction.triggerEvent, "turn_start");
   assert.equal(second.data.room.deckCount, 4);
@@ -535,6 +539,7 @@ test("Luoshen repeats real Judgements before delayed-card Judgements and preserv
   const third = await requestAndSettle("trigger", { code: sequence.code, token: sequence.token, providerId: "zhen_ji_luoshen" });
   assert.equal(third.status, 200, JSON.stringify(third.data));
   assert.equal(third.data.room.phase, "draw");
+  assert.equal(third.data.room.causalEnvelope, null, "the Luo River Interaction clears when the loop ends");
   assert.equal(third.data.room.pending, null);
   assert.deepEqual(third.data.room.myHand.map((held) => held.id), [sevenSpades.id, fourClubs.id]);
   assert.deepEqual(discardIds(sequence.code), [queenHearts.id]);

@@ -374,7 +374,7 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   const firstDistribution = await distributeLegacy(two, two.guo.id);
   assert.equal(firstDistribution.room.players.find((player) => player.id === two.guo.id).handCount, 2);
   const secondTriggerView = (await state(two.game.code, two.guoMember.token)).data;
-  assert.equal(secondTriggerView.currentAction.kind, "trigger", "a 2-damage event opens a second independent Legacy opportunity");
+  assert.equal(secondTriggerView.currentAction.kind, "trigger", "a 2-damage event opens a second Legacy opportunity");
   assert.ok(secondTriggerView.currentAction.triggerOptions.some((option) => option.effectId === "guo_jia_legacy"));
   await requestAndSettle("trigger", { code: two.game.code, token: two.guoMember.token, providerId: "guo_jia_legacy" });
   const secondDistribution = await distributeLegacy(two, two.guo.id);
@@ -384,7 +384,7 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   assert.deepEqual(totalHeld.map((held) => held.id), ["peach-legacy-two-a", "dodge-legacy-two-b", "attack-legacy-two-c", "peach-legacy-two-d"]);
 });
 
-test("source-less Lightning damage can open three independent Legacy opportunities", { timeout: 30_000 }, async () => {
+test("delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [source, guo] = game.room.players;
   const guoMember = game.members[1];
@@ -405,17 +405,17 @@ test("source-less Lightning damage can open three independent Legacy opportuniti
     view = (await state(game.code, guoMember.token)).data;
   }
   const damageRoot = view.causalEnvelope;
-  assert.ok(damageRoot, "source-less Lightning post-damage reactions create an independent causal root");
+  assert.ok(damageRoot, "delayed Lightning post-damage reactions retain the Judgement causal root");
   assert.equal(damageRoot.frames.length, 1);
   assert.equal(damageRoot.activeFrameId, damageRoot.frames[0].frameId);
   assert.equal(damageRoot.frames[0].stage, "DAMAGE");
-  assert.equal(damageRoot.frames[0].origin.originSourceId, null, "Lightning keeps its source-less origin");
+  assert.equal(damageRoot.frames[0].origin.originSourceId, guo.id, "Lightning keeps the delayed activation owner as historical origin");
   assert.deepEqual(damageRoot.frames[0].origin.originalTargetIds, [guo.id]);
   assert.equal(damageRoot.frames[0].current.currentSourceId, null);
   assert.equal(damageRoot.frames[0].current.resolvingPlayerId, guo.id);
   assert.equal(view.currentAction.actorId, guo.id);
   const otherViewer = (await state(game.code, game.members[0].token)).data;
-  assert.equal(otherViewer.causalEnvelope.interactionId, damageRoot.interactionId, "the independent Damage root is public and viewer-stable");
+  assert.equal(otherViewer.causalEnvelope.interactionId, damageRoot.interactionId, "the inherited Judgement/Damage root is public and viewer-stable");
   assert.equal(otherViewer.causalEnvelope.checkpoint.checkpointId, damageRoot.checkpoint.checkpointId);
   assert.equal(otherViewer.causalEnvelope.presentationRevision, damageRoot.presentationRevision);
   const persistedDamage = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
@@ -434,7 +434,7 @@ test("source-less Lightning damage can open three independent Legacy opportuniti
       assert.equal(view.causalEnvelope.presentationRevision, damageRoot.presentationRevision, "same Damage frame does not invent a checkpoint for Legacy re-entry");
     }
   }
-  assert.equal(view.causalEnvelope, null, "the independent Damage root clears at final settlement");
+  assert.equal(view.causalEnvelope, null, "the inherited Judgement/Damage root clears at final settlement");
   assert.equal(view.players.find((player) => player.id === guo.id).hp, 1);
   const lightningHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(guo.id)}`));
   assert.ok(legacyCards.every((card) => lightningHand.some((held) => held.id === card.id)), "all three Legacy resolutions transfer their own next two cards");
