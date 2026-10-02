@@ -11,20 +11,20 @@ export type PresentationStage =
 export type ResolutionSemantics = "SEQUENTIAL" | "ORDERED" | "GROUP";
 
 export type CausalOriginRef = { interactionId?: InteractionId; frameId?: FrameId; causeNodeId?: CauseNodeId };
-export type CausalFrameOrigin = { originSourceId: string | null; originEffect: string; originalTargetIds: string[]; originRef?: CausalOriginRef };
-export type CausalFrameCurrent = { currentSourceId: string | null; currentEffect: string; currentTargetIds: string[]; resolvingPlayerId: string | null };
+export type CausalFrameOrigin = { readonly originSourceId: string | null; readonly originEffect: string; readonly originalTargetIds: readonly string[]; readonly originRef?: CausalOriginRef };
+export type CausalFrameCurrent = { readonly currentSourceId: string | null; readonly currentEffect: string; readonly currentTargetIds: readonly string[]; readonly resolvingPlayerId: string | null };
 export type CausalFrame = {
-  frameId: FrameId;
-  parentFrameId?: FrameId | null;
-  causeNodeId?: CauseNodeId;
-  stage: PresentationStage;
-  origin: CausalFrameOrigin;
-  current: CausalFrameCurrent;
+  readonly frameId: FrameId;
+  readonly parentFrameId?: FrameId | null;
+  readonly causeNodeId?: CauseNodeId;
+  readonly stage: PresentationStage;
+  readonly origin: CausalFrameOrigin;
+  readonly current: CausalFrameCurrent;
 };
 export type CausalCheckpoint = { checkpointId: CheckpointId; frameId: FrameId; stage: PresentationStage };
 export type CausalEnvelope = {
-  version: 1;
-  interactionId: InteractionId;
+  readonly version: 1;
+  readonly interactionId: InteractionId;
   frames: CausalFrame[];
   activeFrameId: FrameId;
   checkpoint: CausalCheckpoint;
@@ -54,7 +54,14 @@ export function parseCausalEnvelope(value: string | null | undefined): CausalEnv
   try {
     const parsed: unknown = JSON.parse(value);
     if (!isRecord(parsed) || parsed.version !== 1 || typeof parsed.interactionId !== "string" || typeof parsed.activeFrameId !== "string" || !Number.isInteger(parsed.presentationRevision) || parsed.presentationRevision < 0 || !Array.isArray(parsed.frames) || !parsed.frames.every(validFrame) || !isRecord(parsed.checkpoint) || typeof parsed.checkpoint.checkpointId !== "string" || typeof parsed.checkpoint.frameId !== "string" || !STAGES.has(parsed.checkpoint.stage as PresentationStage)) return null;
-    return parsed.frames.some((frame) => frame.frameId === parsed.activeFrameId) ? parsed as unknown as CausalEnvelope : null;
+    const frames = parsed.frames as CausalFrame[];
+    const frameIds = frames.map((frame) => frame.frameId);
+    const uniqueFrameIds = new Set(frameIds);
+    if (uniqueFrameIds.size !== frameIds.length || !uniqueFrameIds.has(parsed.activeFrameId) || !uniqueFrameIds.has(parsed.checkpoint.frameId)) return null;
+    if (frames.some((frame) => frame.parentFrameId === frame.frameId || frame.parentFrameId !== undefined && frame.parentFrameId !== null && !uniqueFrameIds.has(frame.parentFrameId))) return null;
+    const checkpointFrame = frames.find((frame) => frame.frameId === parsed.checkpoint.frameId);
+    if (!checkpointFrame || checkpointFrame.stage !== parsed.checkpoint.stage) return null;
+    return parsed as unknown as CausalEnvelope;
   } catch { return null; }
 }
 
