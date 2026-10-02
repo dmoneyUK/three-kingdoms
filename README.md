@@ -1,5 +1,26 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
+## Current stage — UX2.0C2 FIX15 — 2026-10-02
+
+C2 causal propagation is ready to close on `ux-v2`. The final audit now covers
+the production causal roots and Damage callers, including response-Judgement
+failure (which now preserves the Attack causal handle), Group-family
+equivalence for Raining Arrows and Barbarian Invasion, and lethal Group
+Damage -> Dying -> Peach rescue -> parent Group continuation. Focused Worker/D1
+regressions prove the Interaction/Frame identity, child/parent settlement,
+stale safety, reconnect/viewer stability, and NULL/malformed non-reconstruction
+boundaries.
+
+Two boundaries remain deliberately outside active C2 authority: historical
+delayed `originRef` is unsupported because the current room schema has no
+typed stable placement provenance, and synchronous Judgement-Negation
+`causalResume.parent` is not implemented by any production constructor (only
+the defensive branch/type exists). Neither is synthesized from logs or card
+names. No C3, React/CSS migration, or Dying presentation barrier was started.
+
+The next milestone is reviewer verification of the pushed FIX15 commit. After
+that, C3 requires explicit approval and a separate scope gate.
+
 ## UX2.0C2 — causal propagation round — 2026-10-02
 
 C2 propagation is implemented as a backward-compatible causal handle carried by

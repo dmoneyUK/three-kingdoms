@@ -256,6 +256,106 @@ test("FIX14 Group failure Damage uses one child frame and resumes the next parti
   assert.ok(bobDamageIndex >= 0 && bobDamageIndex < carolResponseIndex, "the resumed Group processes Bob once before Carol");
 });
 
+test("FIX15 lethal Group Damage survives Peach rescue with the parent frame available", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, targetMember, damageMember, finalMember] = game.members;
+  const [source, target, damageTarget, finalTarget] = game.room.players;
+  const group = card("RainingArrows", "fix15-dying-group");
+  const peach = card("Peach", "fix15-dying-peach");
+  sql(`UPDATE players SET hero=NULL WHERE id IN (${[target.id, damageTarget.id, finalTarget.id].map(quote).join(",")})`);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+  setHand(source.id, [group, peach], 4, 4);
+  setHand(target.id, [], 3, 3);
+  setHand(damageTarget.id, [], 1, 4);
+  setHand(finalTarget.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+  setDeck(game.code, [{ ...card("Dodge", "fix15-dying-judge"), suit: "♠", rank: "7" }]);
+
+  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: group.id, preserveResponse: true });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  await passNegationWindows(game.code, game.members);
+  const groupRoot = (await state(game.code, sourceMember.token)).data.causalEnvelope;
+  assert.ok(groupRoot);
+
+  const firstResponse = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token, preserveResponse: true });
+  assert.equal(firstResponse.status, 200, JSON.stringify(firstResponse.data));
+  const damageResponse = (await state(game.code, damageMember.token)).data;
+  assert.equal(damageResponse.currentAction.kind, "response", JSON.stringify(damageResponse));
+  assert.equal(damageResponse.currentAction.actorId, damageTarget.id);
+
+  const dying = await requestAndSettle("decline_response", { code: game.code, token: damageMember.token });
+  assert.equal(dying.status, 200, JSON.stringify(dying.data));
+  assert.equal(dying.data.room.phase, "dying", JSON.stringify(dying.data.room));
+  const dyingSourceView = (await state(game.code, sourceMember.token)).data;
+  assert.equal(dyingSourceView.currentAction.kind, "dying", JSON.stringify(dyingSourceView));
+  assert.equal(dyingSourceView.currentAction.actorId, source.id);
+  const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(dyingPending.resumePending.continuation.kind, "group");
+  assert.notEqual(dyingPending.causal.frameId, groupRoot.activeFrameId);
+  assert.equal(dying.data.room.causalEnvelope.activeFrameId, dyingPending.causal.frameId);
+
+  const rescued = await requestAndSettle("give_peach", { code: game.code, token: sourceMember.token, cardId: peach.id, preserveResponse: true });
+  assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
+  assert.equal(rescued.data.room.players.find((player) => player.id === damageTarget.id).hp, 1);
+  assert.equal(rescued.data.room.currentAction.kind, "response", JSON.stringify(rescued.data.room));
+  assert.equal(rescued.data.room.currentAction.actorId, finalTarget.id);
+  assert.ok(rescued.data.room.causalEnvelope, query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(rescued.data.room.causalEnvelope.interactionId, groupRoot.interactionId);
+  assert.equal(rescued.data.room.causalEnvelope.activeFrameId, groupRoot.activeFrameId);
+  assert.ok(rescued.data.room.causalEnvelope.presentationRevision > groupRoot.presentationRevision, "Dying settlement advances the causal presentation revision");
+  assert.ok(rescued.data.room.causalEnvelope.frames.length >= 2);
+  assert.ok(rescued.data.room.causalEnvelope.frames.some((frame) => frame.frameId === groupRoot.activeFrameId && frame.stage === "GROUP_RESOLUTION"));
+  const resumedPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(resumedPending.continuation.kind, "group");
+
+  const finished = await requestAndSettle("decline_response", { code: game.code, token: finalMember.token, preserveResponse: true });
+  assert.equal(finished.status, 200, JSON.stringify(finished.data));
+  assert.equal(finished.data.room.pendingGroup, null);
+  assert.equal(finished.data.room.causalEnvelope, null);
+  assert.ok(finished.data.room.log.some((entry) => entry.includes("Carol does not play Dodge")));
+});
+
+test("FIX15 Barbarian Invasion uses the same Group Damage child boundary", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, targetMember, damageMember] = game.members;
+  const [source, target, damageTarget, finalTarget] = game.room.players;
+  const invasion = card("BarbarianInvasion", "fix15-barbarian-group");
+  const targetAttack = card("Attack", "fix15-barbarian-response");
+  sql(`UPDATE players SET hero=NULL WHERE id IN (${[target.id, finalTarget.id].map(quote).join(",")})`);
+  sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+  sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(damageTarget.id)}`);
+  setHand(source.id, [invasion], 4, 4);
+  setHand(target.id, [targetAttack], 3, 3);
+  setHand(damageTarget.id, [], 4, 4);
+  setHand(finalTarget.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+  setDeck(game.code, [{ ...card("Dodge", "fix15-barbarian-judge"), suit: "♠", rank: "7" }]);
+
+  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: invasion.id, preserveResponse: true });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  await passNegationWindows(game.code, game.members);
+  const first = (await state(game.code, targetMember.token)).data;
+  assert.equal(first.currentAction.requirement, "attack", JSON.stringify(first));
+  const answered = await requestAndSettle("respond", { code: game.code, token: targetMember.token, cardId: targetAttack.id, preserveResponse: true });
+  assert.equal(answered.status, 200, JSON.stringify(answered.data));
+  await passNegationWindows(game.code, game.members);
+
+  const damage = await requestAndSettle("decline_response", { code: game.code, token: damageMember.token, preserveResponse: true });
+  assert.equal(damage.status, 200, JSON.stringify(damage.data));
+  assert.equal(damage.data.room.currentAction.kind, "trigger", JSON.stringify(damage.data.room));
+  assert.equal(damage.data.room.causalEnvelope.frames.length, 2);
+  const child = damage.data.room.causalEnvelope.frames.find((frame) => frame.parentFrameId);
+  assert.ok(child);
+  assert.equal(child.stage, "DAMAGE");
+  assert.equal(child.parentFrameId, damage.data.room.causalEnvelope.frames.find((frame) => frame.parentFrameId === null)?.frameId);
+
+  const resumed = await requestAndSettle("decline_trigger", { code: game.code, token: damageMember.token, preserveResponse: true });
+  assert.equal(resumed.status, 200, JSON.stringify(resumed.data));
+  assert.equal(resumed.data.room.currentAction.kind, "response", JSON.stringify(resumed.data.room));
+  assert.equal(resumed.data.room.currentAction.actorId, finalTarget.id);
+  assert.equal(resumed.data.room.causalEnvelope.activeFrameId, child.parentFrameId);
+});
+
 test("FIX14 malformed Group-to-Damage storage never reconstructs a child authority", { timeout: 30_000 }, async () => {
   const setup = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix14-malformed", judge: { ...card("Dodge", "fix14-malformed-judge"), suit: "♠", rank: "7" } });
   const before = await state(setup.code, setup.targetMember.token);

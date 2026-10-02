@@ -618,10 +618,17 @@ test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement 
   const redResult = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge" });
   assert.equal(redResult.status, 200); assert.equal(redResult.data.room.pendingAttack, null); assert.equal(redResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4);
 
+  sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(alicePlayer.id)}`);
   setHand(hostPlayer.id, [card("Attack", "trigrams-black")], 4, 4); setDeck(game.code, [{ ...card("Peach", "judgement-black"), suit: "♣", rank: "8" }]); setTurn(game.code, hostPlayer.seat);
-  const blackAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-trigrams-black", targetId: alicePlayer.id });
-  assert.equal(blackAttack.status, 200); const blackResult = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge" });
+  const blackAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-trigrams-black", targetId: alicePlayer.id, preserveResponse: true });
+  assert.equal(blackAttack.status, 200); const blackRoot = blackAttack.data.room.causalEnvelope; assert.ok(blackRoot);
+  const blackResult = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge", preserveResponse: true });
   assert.equal(blackResult.status, 200); assert.equal(blackResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3); assert.ok(blackResult.data.room.log.some((entry) => /Eight Trigrams Formation/.test(entry)));
+  assert.equal(blackResult.data.room.currentAction.kind, "trigger");
+  assert.equal(blackResult.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(blackResult.data.room.causalEnvelope.interactionId, blackRoot.interactionId, "failed Judgement damage stays in the Attack Interaction");
+  assert.equal(blackResult.data.room.causalEnvelope.activeFrameId, blackRoot.activeFrameId, "failed Judgement damage stays in the Attack Frame");
+  await requestAndSettle("decline_trigger", { code: game.code, token: alice.token });
 
   const simaMember = game.members.find((member) => member.name === "Bob"); const simaPlayer = game.room.players.find((player) => player.name === "Bob");
   assert.ok(simaMember && simaPlayer);
@@ -683,4 +690,3 @@ test("Guan Yu uses a red hand card as Attack through the normal multiplayer pipe
   assert.equal(blocked.status, 200); assert.equal(discardIds(game.code).filter((id) => id === redPeach.id).length, 1);
   assert.equal((await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: dodge.id })).status, 409, "duplicate response cannot consume either card twice");
 });
-

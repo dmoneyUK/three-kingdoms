@@ -1787,8 +1787,29 @@ async function continueAfterDying(roomId: string, sourceId: string) {
   // Human turn endings are committed by the explicit end_turn/discard action.
 }
 
+/** Restore the Group parent before a lethal Group Damage continuation resumes. */
+async function resumeGroupAfterDying(roomId: string, pending: DyingPending) {
+  if (!pending.resumePending || !pending.causal) return;
+  const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
+  if (!room) return;
+  const resumed = resumeGroupCausalRoom(room, pending.causal);
+  const envelope = parseCausalEnvelope(resumed.causal_envelope_json);
+  if (!envelope || resumed.causal_envelope_json === room.causal_envelope_json) return;
+  const stored = parse<Pending | null>(room.pending_json, null);
+  const groupPending = stored?.kind === "response" ? stored : pending.resumePending;
+  await causalRoomStateWrite(roomId, {
+    phase: "response",
+    pending: groupPending,
+    deck: parse<Card[]>(room.deck_json, []),
+    discard: parse<Card[]>(room.discard_json, []),
+    log: parse<string[]>(room.log_json, []),
+    causalEnvelope: envelope,
+  }, room.pending_json).run();
+}
+
 async function continueAfterDefeat(roomId: string, pending: DyingPending) {
   if (await finishIfWon(roomId)) return;
+  if (pending.resumePending) await resumeGroupAfterDying(roomId, pending);
   const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   if (!room) return;
@@ -1825,7 +1846,10 @@ function dyingResumeState(pending: DyingPending, resume?: PlayerRow | null) {
 
 async function continueDyingResolution(roomId: string, pending: DyingPending) {
   if (await finishIfWon(roomId)) return;
-  if (pending.resumePending) await advanceGroup(roomId);
+  if (pending.resumePending) {
+    await resumeGroupAfterDying(roomId, pending);
+    await advanceGroup(roomId);
+  }
   else if (pending.resumeEffect) await continueDyingResumeEffect(roomId, pending.resumeEffect);
   else if (pending.resumeTrigger) {
     const room = await db().prepare("SELECT * FROM rooms WHERE id = ?").bind(roomId).first<RoomRow>();
@@ -2446,6 +2470,7 @@ async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePendi
     damageCards: continuation.damageCards,
     physicalSuit: continuation.physicalSuit,
     origin: continuation.origin,
+    causal: response.causal,
     cause: "attack",
     damageDescription: (amount) => `${actor.name} takes ${amount} damage from the Attack`,
     writes: [db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id)],
@@ -5437,10 +5462,13 @@ export async function POST(request: Request) {
       hand = hand.filter((card) => card.id !== peach.id); const resumedPending = appendDyingSequenceCard(pending, peach); const discard = pending.resumePending ? parse<Card[]>(liveRoom.discard_json, []) : [...parse<Card[]>(liveRoom.discard_json, []), peach]; let log = parse<string[]>(liveRoom.log_json, []); const firstAid = selectedExecution?.providerId === "hua_tuo_first_aid"; const jiuyuan = !firstAid && target?.hero === "sun-quan" && target.role === "Lord" && target.id !== me.id && me.hero ? STANDARD_HEROES.find((hero) => hero.id === me.hero)?.faction === "Wu" : false; const recoveryAmount = jiuyuan ? 2 : 1; const beforeHp = target?.hp ?? 0; const maxHp = target?.max_hp ?? beforeHp; const nextHp = applyRecovery(beforeHp, recoveryAmount, maxHp); const amountRecovered = recoveredAmount(beforeHp, maxHp, recoveryAmount); log = addCardEvent(log, me.name, peach, target?.name ?? "the dying player", undefined, undefined, firstAid ? { playedAs: "peach" } : undefined); log = addLog(log, firstAid ? `${me.name} uses ${peach.rank}${peach.suit} as Peach with First Aid to rescue ${target?.name ?? "the dying player"}, restoring ${amountRecovered} HP (${nextHp} HP).` : `${me.name} gives Peach to ${target?.name ?? "the dying player"}${jiuyuan ? "; Deliverance provides an additional recovery" : ""}, restoring ${amountRecovered} HP (${nextHp} HP).`);
       if (amountRecovered > 0) {
         const recoveryPending = { ...resumedPending, actorId: pending.actorId, remainingIds: pending.remainingIds, deadline: 0 } satisfies DyingPending;
+        const recoveryEnvelope = pending.resumePending && pending.causal
+          ? causalEnvelopeAtStage(liveRoom, pending.causal, "DYING", { currentSourceId: pending.sourceId, currentEffect: "peach_rescue", currentTargetIds: [pending.targetId], resolvingPlayerId: pending.actorId })
+          : null;
         await db.batch([
           db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id),
           db.prepare("UPDATE players SET hp = ?, alive = 1 WHERE id = ?").bind(nextHp, pending.targetId),
-          causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: null }),
+          causalRoomStateWrite(room.id, { phase: "resolving", pending: null, discard, log, causalEnvelope: recoveryEnvelope }),
         ]);
         await advanceHpRecoveredEvents(room.id, [{ playerId: pending.targetId, amountRecovered, sourceId: me.id, reason: "peach_rescue" }], { kind: "dying", pending: recoveryPending });
       } else if (isDying(nextHp)) {

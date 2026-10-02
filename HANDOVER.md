@@ -208,3 +208,143 @@ Push implementation plus appended result to `origin/ux-v2` and STOP.
 ## Acceptance
 
 FIX15 passes only if the audit covers all current production causal families, any real blockers found are fixed/tested, remaining partials are honestly bounded, regressions are green, and the closure decision is evidence-based. No C3/UI work.
+
+## C2-FIX15 execution result
+
+Date: 2026-10-02
+Branch: `ux-v2`
+Implementation commit: this changeset (final SHA recorded after commit amendment)
+
+### Result
+
+`C2 READY TO CLOSE`
+
+The audit found and fixed one active production defect: the failed
+response-Judgement path in `applyAttackResponseOutcome()` did not pass
+`response.causal` to `resolveSourcedDamage()`. It now preserves the original
+Attack Interaction/Frame. A real Eight Trigrams black-Judgement failure against
+Xiahou Dun proves the resulting `damage_suffered` trigger keeps the Attack
+causal identity.
+
+### Files changed
+
+- `app/api/rooms/route.ts` — failed response-Judgement causal propagation;
+  lethal Group Damage Dying settlement restores the Group parent before the
+  next participant continues; Peach rescue preserves the child envelope until
+  the guarded parent restore.
+- `tests/api/presentation-v2-engine.test.mjs` — lethal Raining Arrows Group
+  Damage -> Peach rescue -> parent continuation; Barbarian Invasion equivalent.
+- `tests/api/equipment.test.mjs` — real Eight Trigrams black-Judgement
+  failure -> Xiahou Dun post-damage trigger causal identity.
+- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md` — complete production inventory,
+  Damage classification, C2-FINAL matrix, and closure decision.
+- `README.md` — current stage, roadmap, deliberate deferred boundaries, and
+  next milestone.
+- `HANDOVER.md` — this execution result.
+
+### Complete causal-site and Damage inventory
+
+| Production site | Classification / identity | Settlement evidence |
+| --- | --- | --- |
+| `attackDeclaration()` | Attack root; inherited Attack-targeted context stays on its handle | Attack response/Damage/Dying suites |
+| `damageTriggerPending()` | independent Damage root unless an active continuation supplies causal | ordinary Attack/Damage tests |
+| `damageSufferedTriggerPending()` | inherits Damage or Group-child causal; otherwise independent post-damage root | trigger exhaustion and concurrency suites |
+| `startNegation()` | independent root or nested same-frame Group/Duel Negation | FIX9/FIX10 suites |
+| `startJudgementNegation()` | fresh delayed-Judgement root; no historical placement parent | FIX12/FIX13 suites |
+| `groupResponseDecision()` / `beginGroupTarget()` | one Group Interaction/Frame for participant order | Raining/Barbarian fixtures |
+| `duelResponseDecision()` | one Duel Interaction/Frame across alternating responses | Duel fixtures |
+| `resolveGroupDamage()` / `childCausalFrame()` | one `DAMAGE` child under Group, with `resumeGroup` parent | FIX14 and FIX15 fixtures |
+| Borrowed Sword target choice | `ATTACK_RESPONSE` child under `FORCED_ACTION` | Borrowed Sword Worker/D1 fixture |
+| `startDyingRescue()` | retains supplied Damage/child causal handle | FIX15 lethal Group rescue |
+| `resumeCausalFrame()` / `resumeGroupCausalRoom()` | guarded live-envelope child/parent pop; never reconstructs from Pending | malformed envelope suites |
+| delayed Lightning resolver | same delayed Judgement Interaction for synchronous Damage; later activation fresh root | Lightning transfer/activation suite |
+| Duel loss resolver | same Duel context via `pending.response.causal` | Duel loss coverage |
+| failed response Judgement after Attack | same Attack context via newly fixed `response.causal` | Eight Trigrams + Xiahou Dun regression |
+| Attack Damage recursive/suppressed-Dodge paths | same Attack/Group context | Attack and Group suites |
+| forced `attack_dodged` Damage | independent/automatic legacy consequence; no false parent inferred | continuation audit |
+| Group failed participant Damage | nested Group child | FIX14/FIX15 |
+| Yue Jin Dauntless | independent/automatic turn-end consequence | production caller audit |
+| Fanjian Sowing Distrust | independent card effect | production caller audit |
+| Stauchness Damage consequence | inherits `resumeDamageSuffered.causal` | Xiahou Dun/Sima Yi suites |
+
+No additional caller required a new root or parent reconstruction rule.
+
+### Group family and Dying compatibility
+
+Raining Arrows and Barbarian Invasion use the same typed Group continuation and
+`resolveGroupDamage()` boundary. The Barbarian characterization proves the
+same two-frame child/parent behavior. The lethal Raining fixture proves the
+real sequence Group -> Damage child -> Dying -> Peach -> Group parent -> next
+participant, with one Interaction, no child replacement, and no stranded
+Pending. No Dying presentation barrier was added.
+
+### Explicit deferred decisions
+
+- Historical delayed `originRef`: `PARTIAL` by deliberate design. The current
+  authoritative schema has `rooms.causal_envelope_json` but no typed stable
+  public placement provenance. Later activation creates a fresh root with
+  `parentFrameId: null`; no link is fabricated from logs, events, card names,
+  `resolutionId`, `event.id`, or `actionRevision`.
+- Synchronous Judgement-Negation parent: `NOT IMPLEMENTED IN GAME`.
+  `startJudgementNegation()` constructs only `{ kind: "root" }`; the typed
+  defensive parent branch is not runtime evidence and has no active caller.
+- C3, React/CSS migration, PresentationV2 migration, and the Dying
+  presentation barrier: not started and outside this task.
+
+### Settlement and viewer audit
+
+Independent roots clear once at terminal settlement. Group Damage and Borrowed
+Sword children pop to their exact typed parent; final parent settlement clears
+the envelope. No-responder, timeout, defeat, transfer, automatic-trigger, and
+no-post-damage paths were classified; NULL/malformed storage never rebuilds
+authority. Repeated GETs and second viewers retain the same public envelope,
+while private `currentAction` and options remain viewer-specific. CAS and
+duplicate-race tests prove one transition winner.
+
+### C2-FINAL matrix
+
+| Boundary | Status |
+| --- | --- |
+| Attack root/response/Damage/Dying | PROVEN |
+| Group root/participant progression | PROVEN |
+| Group nested Damage child/resume | PROVEN |
+| Barbarian/Raining Group-family equivalence | PROVEN |
+| Duel | PROVEN |
+| independent/nested Negation | PROVEN |
+| Borrowed Sword child/resume | PROVEN |
+| Judgement replacement/Negation/no-responder | PROVEN |
+| delayed placement vs later activation | PROVEN |
+| Lightning transfer vs later activation | PROVEN |
+| independent/automatic Damage classification | PROVEN |
+| settlement clearing | PROVEN |
+| stale/concurrent safety | PROVEN |
+| reconnect/second viewer | PROVEN |
+| NULL/malformed non-reconstruction | PROVEN |
+| historical delayed `originRef` | PARTIAL — intentionally unsupported |
+| synchronous Judgement-Negation parent | NOT IMPLEMENTED IN GAME |
+| Group Damage -> Dying compatibility | PROVEN |
+| Dying presentation barrier / C3 | NOT APPLICABLE — deferred |
+
+### Validation
+
+Focused causal/API command:
+
+```text
+npm run build
+GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/equipment.test.mjs,tests/api/judgement.test.mjs,tests/api/stratagems.test.mjs,tests/api/borrowed-sword.test.mjs,tests/api/concurrency.test.mjs,tests/api/presentation-causality.test.mjs GAME_TEST_PORT=3137 GAME_TEST_URL=http://localhost:3137 GAME_TEST_INSPECTOR_PORT=9229 node tests/run-tests.mjs
+```
+
+Result: 98 tests passed, 0 failed. This includes the two FIX15 Group tests
+and the Eight Trigrams causal regression. The required final commands are
+run after this handover entry is amended:
+
+```text
+npm run test:fast
+npm run test:api
+npm run build
+npm run lint
+git diff --check
+```
+
+Closure: `C2 READY TO CLOSE`. Reviewer verification of the pushed commit is
+the next milestone. STOP after push; do not start C3.
