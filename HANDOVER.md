@@ -63,6 +63,72 @@ Do not modify/merge `main`. Do not self-merge.
 
 Append execution result only. Reviewer will clean HANDOVER after review.
 
+## Implementation guidance — read this before coding
+
+The reviewer expects a small orchestration refactor, not a gameplay redesign.
+
+Current problematic pattern from FIX4:
+
+```ts
+const declaration = { ... causal: root.context };
+Object.defineProperty(declaration, "causalEnvelope", { value: root.envelope, enumerable: false });
+return declaration;
+```
+
+Do **not** keep this pattern.
+
+Preferred shape:
+
+```ts
+type CausalCreation<T> = {
+  value: T;
+  createdEnvelope: CausalEnvelope | null;
+};
+
+function attackDeclaration(...): CausalCreation<AttackDeclaration> {
+  const root = causal ? null : createCausalRoot(...);
+  return {
+    value: {
+      ...,
+      causal: causal ?? root!.context,
+    },
+    createdEnvelope: root?.envelope ?? null,
+  };
+}
+```
+
+Then the authoritative caller must explicitly destructure it:
+
+```ts
+const { value: declaration, createdEnvelope } = attackDeclaration(...);
+const envelope =
+  parseCausalEnvelope(liveRoom.causal_envelope_json) ??
+  createdEnvelope;
+
+await db().batch([
+  ...playerWrites,
+  causalRoomStateWrite(room.id, {
+    phase: "response",
+    pending,
+    discard,
+    log,
+    causalEnvelope: envelope,
+  }),
+]);
+```
+
+This is illustrative, not mandatory syntax. Preserve the existing gameplay behavior and types where possible.
+
+Important distinction:
+
+- `createdEnvelope` exists only when this helper created a new root now.
+- an inherited `CausalContext` means the authoritative envelope must already exist in room state; do not create another envelope.
+- if inherited context exists but room envelope is missing/malformed, continue safely as legacy/null. Do not reconstruct.
+- never serialize `createdEnvelope` inside Pending/Continuation.
+- never attach it to a serializable object via hidden/non-enumerable property.
+
+For helpers such as `withPresentationBarrier(...)`, pass only the serializable `value`. Keep the wrapper/envelope in the caller's local orchestration scope.
+
 ## Step 1 — replace hidden ad-hoc envelope properties with an explicit orchestration result
 
 Do not attach `causalEnvelope` as a non-enumerable property to objects whose domain type is a serializable Pending/AttackDeclaration.
@@ -89,6 +155,28 @@ Requirements:
 
 Names may differ; architecture must be explicit.
 
+## Step 1A — enumerate and update every caller before testing
+
+Before changing signatures, use repository search to find **every** caller of:
+- `attackDeclaration()`;
+- `damageTriggerPending()`;
+- `damageSufferedTriggerPending()`;
+- `causalEnvelopeForAttack()`.
+
+Update all callers in the same slice. Do not leave mixed return contracts.
+
+After refactor, search for:
+- `Object.defineProperty(.*causalEnvelope`;
+- `.causalEnvelope` on AttackDeclaration/Pending runtime objects;
+- `recoverCausalEnvelope` in production routing.
+
+Expected result:
+- no hidden envelope carrier;
+- no production recovery call;
+- envelope references in route orchestration are explicit locals/wrapper fields only.
+
+Document the caller inventory in the execution result.
+
 ## Step 2 — Attack root exact-envelope proof
 
 For a normal real Attack API flow, prove:
@@ -102,7 +190,28 @@ For a normal real Attack API flow, prove:
 
 Use the real persisted Attack root, not manual SQL envelope injection.
 
+### Test procedure
+
+Use an existing API test harness that starts a real game and gives a player an Attack. Do not create a synthetic envelope.
+
+At the first response boundary:
+1. read the acting player's room state;
+2. capture `causalEnvelope`;
+3. assert it is non-null and has exactly one root Frame;
+4. capture `interactionId`, `activeFrameId`, `checkpoint.checkpointId`, and `presentationRevision`;
+5. read the persisted Pending through the existing DB/test seam and assert its causal context has the same interactionId/frameId.
+
+Then:
+6. GET/read room state again as the same player;
+7. read as the other player;
+8. simulate reconnect using the existing test mechanism rather than creating a new envelope;
+9. assert all four captured public identity values remain exactly equal.
+
+A room read must never increment `presentationRevision` or create a checkpoint.
+
 ## Step 3 — stale/double response proof
+
+Prefer the same real Attack fixture from Step 2 so this test proves one continuous causal lifetime.
 
 Use a real Attack response.
 
@@ -118,7 +227,21 @@ Assert after the stale attempt:
 
 Do not weaken CAS/stale protection to make the test pass.
 
+If the API requires `actionRevision`, capture the valid revision before the first response and reuse the stale revision for the second submission.
+
+Record:
+- first HTTP status;
+- second HTTP status;
+- established error code/message;
+- envelope before first response;
+- envelope after first response;
+- envelope after stale response.
+
+The exact HTTP code is determined by existing API behavior; do not change it merely to match this task.
+
 ## Step 4 — settlement then fresh root
+
+Use two genuine gameplay roots in the same room. Do not clear/set `causal_envelope_json` manually for this proof.
 
 Complete one Attack Interaction to settlement.
 
@@ -130,6 +253,15 @@ Assert:
 - no parentFrameId or originRef incorrectly links the two independent Interactions.
 
 This is lifetime identity, not presentation retention.
+
+Recommended simple path:
+- Attack #1 is fully resolved/settled;
+- assert public/persisted causal envelope is null;
+- advance gameplay only as required by existing rules until a player can start Attack #2 or another already-supported root;
+- start root #2 normally;
+- compare IDs.
+
+If current turn/card setup makes a second Attack impractical, use another existing supported root such as a normal Negation/Judgement-Negation entry only if it is naturally reachable through the API fixture. Do not bypass gameplay rules just to manufacture the proof.
 
 ## Step 5 — independent Damage root real API proof
 
@@ -148,6 +280,8 @@ If no practical route exists in current game:
 
 ## Step 6 — malformed envelope mid-continuation
 
+This is the one FIX5 test where direct DB corruption is intentionally allowed.
+
 Create/drive a real supported continuation, then corrupt only the stored envelope to a structurally malformed value using the test DB seam.
 
 Continue gameplay.
@@ -161,7 +295,7 @@ Assert:
 
 This SQL mutation is allowed only to test corruption handling; it is not evidence of normal causal creation.
 
-## Step 7 — verify wrapper survives all Attack entry variants
+## Step 7 — verify wrapper reaches persistence for all Attack entry variants
 
 Audit real callers for:
 - normal Attack;
@@ -176,6 +310,11 @@ For each:
 - no wrapper is accidentally dropped by spread/copy/barrier helpers.
 
 Add focused tests where current API coverage is missing and practical.
+
+Create a small audit table in the C2 document with columns:
+`Variant | root created here? | wrapper-producing helper | first persistence function | test evidence | status`.
+
+Do not mark a variant PROVEN merely because TypeScript compiles. It must have either a real API test or be explicitly PARTIAL.
 
 ## Step 8 — exact FIX5 evidence matrix
 
@@ -214,6 +353,27 @@ Keep a separate short “Remaining after FIX5” section naming:
 
 Do not work on those in this slice.
 
+## Step 9A — required implementation sanity checks
+
+Before the full suite, verify all of these manually/search-based:
+
+```
+# illustrative searches; adapt command syntax if needed
+rg "recoverCausalEnvelope" app game
+rg "Object\.defineProperty.*causalEnvelope" app game
+rg "causalEnvelope" app/api/rooms/route.ts
+rg "attackDeclaration\(" app/api/rooms/route.ts
+rg "damageTriggerPending\(" app/api/rooms/route.ts
+rg "damageSufferedTriggerPending\(" app/api/rooms/route.ts
+```
+
+The execution result must summarize what each search found. Do not paste huge search output.
+
+Expected:
+- `recoverCausalEnvelope` may exist as a helper in `game/causal-context.ts`/tests, but no supported production routing call;
+- no `Object.defineProperty(...causalEnvelope...)`;
+- every root-producing helper caller explicitly handles its returned created envelope.
+
 ## Step 10 — validation
 
 Run after final change:
@@ -231,6 +391,10 @@ Run after final change:
 - `git diff --check`.
 
 Report exact counts.
+
+If a named npm script does not exist, run the closest existing command used by the repository and report the exact command. Do not claim a suite was run if it was not.
+
+After tests pass, run `git status --short` and ensure only intended files are changed before committing.
 
 ## Scope exclusions
 
@@ -259,7 +423,16 @@ Implementation commit:
 Files changed:
 
 ### Explicit orchestration carrier
-...
+- exact wrapper type(s):
+- old hidden-property code removed from:
+- caller sites updated:
+
+### Search audit
+- recoverCausalEnvelope production calls:
+- hidden causalEnvelope properties:
+- attackDeclaration callers:
+- damageTriggerPending callers:
+- damageSufferedTriggerPending callers:
 
 ### Attack identity proof
 ...
