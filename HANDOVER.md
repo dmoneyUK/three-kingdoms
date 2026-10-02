@@ -560,7 +560,7 @@ validated task; do not start C3/UI.
 ## C2-FIX11 execution result — 2026-10-02
 
 Branch: `ux-v2`
-Implementation commit: `PENDING — fill with the full source/docs/tests commit SHA before push`
+Implementation commit: `931e207dd330b0e42eab0577391a0186b2d1d138`
 Handover commit: appended after the implementation commit
 Files changed in this round: `app/api/rooms/route.ts`, `game/pending.ts`, `tests/api/lobby-heroes-wei.test.mjs`, `tests/api/ma-chao.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `tests/api/stratagems.test.mjs`, `README.md`, `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
 
