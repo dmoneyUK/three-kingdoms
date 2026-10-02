@@ -37,3 +37,68 @@ Close FIX13 only if the same-card audit and all required validation pass, exact 
 ## Scope exclusions
 
 Do not start C3, redesign Lightning/Judgement, implement originRef, solve Group nested Damage, solve Dying presentation barrier, migrate PresentationV2, or modify React/CSS.
+
+---
+
+## C2-FIX13-VERIFY execution result — 2026-10-02
+
+Branch: `ux-v2`
+Reviewed commit: `37cc4b595ebd6c83c4325a662239b4f1bd04cbc1`
+Verification-fix commit: none; the reviewed implementation required no code correction.
+Files changed: `HANDOVER.md` only
+
+### Same-card audit
+
+The reviewed FIX13 fixture contains one Lightning creation, `transfer-persistent`, at `tests/api/stratagems.test.mjs:876`. The audit command:
+
+```
+rg "transfer-first|transfer-later|transfer-persistent" tests/api/stratagems.test.mjs
+```
+
+returns only that `transfer-persistent` creation. There is no `transfer-first`, no `transfer-later`, no second Lightning creation, no `setJudgement(bobPlayer.id, ...)` after transfer, and no SQL replacement of Bob's `judgement_json` after transfer. The later timeline assertion also references `persistentLightning.id`.
+
+### causalResume audit
+
+The command:
+
+```
+rg "causalResume|kind: \"parent\"|kind: \"root\"" app game tests docs README.md
+```
+
+finds production construction only at `app/api/rooms/route.ts:2005` with `causalResume: { kind: "root" }`. The `kind: "parent"` branch remains typed and defensively handled, but no production path constructs it. Synchronous Judgement-Negation parent restore therefore remains runtime UNPROVEN and was not synthesized in a test.
+
+### Focused validation
+
+Command:
+
+```
+GAME_TEST_FILES=tests/api/stratagems.test.mjs,tests/api/judgement.test.mjs,tests/api/presentation-v2-engine.test.mjs GAME_TEST_PORT=3140 GAME_TEST_URL=http://localhost:3140 GAME_TEST_INSPECTOR_PORT=9240 node tests/run-tests.mjs
+```
+
+Result: PASS, 51/51. This includes the corrected same-card Lightning test, delayed Judgement Negation/counter-Negation, delayed placement -> activation, no-responder Judgement, stale/duplicate Judgement replacement, and Stauchness Damage-parent coverage.
+
+### Full validation
+
+- `npm run build` — PASS
+- `npm run test:fast` — PASS, 108/108
+- `npm run test:api` — PASS, 234/234
+- `npm run lint` — PASS
+- `git diff --check` — PASS
+
+### Exact FIX13 matrix
+
+| Requirement | Status | Exact evidence | Remaining gap |
+| --- | --- | --- | --- |
+| exact transferred Lightning card persists A -> B | PROVEN | one `transfer-persistent` creation and immediate exact-ID/kind post-transfer assertions | none for this fixture |
+| A activation Interaction settles before B activation | PROVEN | transfer response asserts `causalEnvelope === null` before Bob's later draw | no historical origin link |
+| B activates the same transferred physical card | PROVEN | later timeline activation references the persistent card ID | none |
+| B activation gets fresh interactionId/frameId | PROVEN | later root IDs differ from A's captured IDs | none |
+| B activation has no parent frame from A | PROVEN | B root asserts `parentFrameId === null` | none |
+| repeated read preserves B activation identity | PROVEN | repeated Bob read matches interaction and active-frame IDs | no browser reconnect harness |
+| second activation settles without duplicating the card | PROVEN | real decline settles the envelope and the DB zone audit counts the card once | no broader card-family matrix |
+| historical delayed originRef | PARTIAL | fresh B origin is proven without reusing A's parent | no typed historical `originRef` persistence |
+| synchronous Judgement-Negation parent restore runtime evidence | UNPROVEN | only root construction exists in production | requires a real production parent entry |
+
+### Remaining C2 work
+
+FIX13 is now execution-verified. C2 remains partial for historical delayed `originRef` persistence, runtime synchronous Judgement-Negation parent construction, broader automatic-transition envelope coverage, Group-nested/independent Damage child wiring, and the Dying/presentation barrier. C3, React, CSS, and unrelated causal changes remain out of scope.
