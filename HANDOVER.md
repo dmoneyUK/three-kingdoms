@@ -179,3 +179,17 @@ Then STOP.
 ## Acceptance
 
 FIX1 passes only if a mismatched active frame/checkpoint can never produce a PROVEN public Interaction Scene, valid real C2 snapshots remain PROVEN, Group semantics remain unchanged, malformed authority fails closed, and all regressions are green.
+
+## C3-02-FIX1 execution result
+
+- Full implementation SHA: `cfe36dcae322e8a5c0b1968265492b31630e9303` (`fix: enforce interaction scene checkpoint coherence`).
+- Files changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`, `tests/presentation-causality.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, and `README.md`.
+- Exact invariant enforced: `interactionScene.semantics === "PROVEN"` now requires an existing active frame, an existing checkpoint frame, `checkpoint.frameId === activeFrameId`, `checkpoint.stage === activeFrame.stage`, and—when Group semantics are present—the authoritative Group parent frame. Any mismatch is `UNPROVEN` with null causal identity fields.
+- Parser change: **NONE**. The parser continues to accept a structurally valid cross-frame checkpoint; this is preserved as a parser characterization, while the projector adds the required defense-in-depth semantic coherence gate. This keeps the fix narrow and avoids redesigning C2 identity validation.
+- Negative projector evidence: **PROVEN**. Pure tests bypassing the parser cover active frame A/checkpoint frame B and active frame/checkpoint stage mismatch; both produce `UNPROVEN` with null interaction/frame/checkpoint identity.
+- Persisted/API malformed evidence: **PROVEN**. A real room with a persisted cross-frame checkpoint remains parseable but projects an `UNPROVEN` scene; the existing malformed JSON path also remains non-authoritative and does not fabricate identity.
+- Real-flow regression evidence: **PROVEN**. Raining Arrows and Barbarian Invasion Group root, SAME_FRAME Negation, Damage child, lethal Dying/Peach, and parent resume snapshots remain coherent and PROVEN. Accepted Group participant/decision/resolver semantics are unchanged.
+- Validation: focused projector/causality `node --test tests/presentation-v2.test.mjs tests/presentation-causality.test.mjs` 28/28; focused engine/API `GAME_TEST_FILES=tests/api/presentation-v2-engine.test.mjs,tests/api/presentation-causality.test.mjs ... node tests/run-tests.mjs` 27/27; `npm run test:fast` 112/112; `npm run test:api` 238/238; `npm run build` PASS; `npm run lint` PASS; `git diff --check` PASS.
+- Remaining C3 gaps: transition direction remains intentionally unavailable from a single snapshot; the Dying presentation barrier and C3-03 remain unimplemented. React/CSS migration and C4/C5 remain out of scope.
+
+Implementation and this tracked HANDOVER result must be pushed to `origin/ux-v2`. Stop here; do not start C3-03/C4/C5.
