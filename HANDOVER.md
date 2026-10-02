@@ -1,5 +1,27 @@
 # Three Kingdoms — current handover
 
+## Latest UX2.0B update — Presentation Projector foundation — 2026-10-02
+
+On branch `ux-v2`, added `game/presentation-v2.ts` and exposed its additive
+`presentationV2` result from the room projection. The projector is pure,
+timer-free, React-free, and legality-free. It projects conservative root,
+active, immediate parent, participant, group, settlement-reference, and
+transition-reference data from existing Pending/Continuation,
+CurrentAction, and public timeline state.
+
+Deterministic characterization tests cover Attack/Dodge, Attack/Damage,
+Dying/rescue, AOE progression and nested damage, Duel, Negation,
+Borrowed Sword, Judgement, nested damage triggers, viewer privacy,
+actionRevision separation, reconnect, presentation barriers, timeout data,
+and reduced-motion boundaries. Group ordering remains explicitly
+`UNPROVEN`; no final `interactionId`, `frameId`, `checkpointId`, or
+`presentationRevision` was introduced.
+
+Full validation passed: build, 96 fast tests, 202 API tests, lint, and
+`git diff --check`. Recommended next work is review of the UX2.0B audit and
+projector before UX2.0C identity design; React migration and visual UX remain
+deferred.
+
 ## Latest delivery update — Cloudflare deployment from `ux-v2` — 2026-10-02
 
 The existing GitHub Actions Cloudflare workflow now validates and deploys pushes

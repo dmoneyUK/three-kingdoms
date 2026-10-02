@@ -24,6 +24,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
+import { projectPresentationV2 } from "../../../game/presentation-v2";
 
 export const runtime = "edge";
 
@@ -3178,6 +3179,8 @@ async function roomState(code: string, token?: string) {
     ...(deckReorderPending && me?.id === deckReorderPending.actorId ? { deckReorder: { cards: deckReorderPending.cards, minTop: deckReorderPending.minTop, maxTop: deckReorderPending.maxTop } } : {}),
     ...(presentation ? { presentation } : {}),
   };
+  const projectedTimeline = gameTimeline(rawLog, me?.id);
+  const presentationV2 = projectPresentationV2({ pending, currentAction, actionRevision, timeline: projectedTimeline });
   return {
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
@@ -3185,7 +3188,7 @@ async function roomState(code: string, token?: string) {
     myHeroOptions: room.status === "heroes" && me && !me.hero && (me.role === "Lord" || Boolean(players.find((player) => player.role === "Lord")?.hero)) ? currentHeroOptions(me.hero_options_json) : [],
     turnSeat: room.turn_seat, phase: room.phase, deckCount: parse<Card[]>(room.deck_json, []).length, discardTop: parse<Card[]>(room.discard_json, []).at(-1) ?? null,
     log: rawLog.flatMap((entry, index) => { if (entry.startsWith("@card:") || entry.startsWith("@cards:")) return []; if (entry.startsWith("@history:")) { try { return [(JSON.parse(entry.slice(9)) as { message: string }).message]; } catch { return []; } } const event = messageEvent(entry, index); return event ? [event.message] : []; }),
-    timeline: gameTimeline(rawLog, me?.id), myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && me?.id === actualActionPlayerId,
+    timeline: projectedTimeline, presentationV2, myHand: me ? parse<Card[]>(me.hand_json, []) : [], isMyTurn: room.status === "playing" && me?.seat === room.turn_seat, actionPlayerId, actionReason, isMyAction: room.status === "heroes" ? me?.id === projectedActionPlayerId : room.status === "playing" && me?.id === actualActionPlayerId,
     pendingAttack,
     // Compatibility projection for old clients/tests; canonical damage
     // reactions are persisted as TriggerPending and submitted via trigger or

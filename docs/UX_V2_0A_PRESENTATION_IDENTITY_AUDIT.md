@@ -180,3 +180,150 @@ following must be resolved before UX2.0C identity finalisation:
 
 No source/gameplay files were changed for UX2.0A. Per the task gate, UX2.0B
 should wait for review of this audit.
+
+## UX2.0B Characterization Results
+
+UX2.0B adds a pure projector foundation in
+[`game/presentation-v2.ts`](../game/presentation-v2.ts), server-side room
+projection beside the existing fields in
+[`app/api/rooms/route.ts`](../app/api/rooms/route.ts), and deterministic
+fixtures in [`tests/presentation-v2.test.mjs`](../tests/presentation-v2.test.mjs).
+The existing React presentation queue and all gameplay actions remain in
+place. The new result is exposed as `presentationV2`; no client consumer has
+been migrated.
+
+### Proven characterization
+
+The focused suite covers stable fixture points for all nine required flows:
+
+```text
+A Attack -> Dodge -> settlement
+B Attack -> no Dodge -> Damage
+C Damage -> Dying -> Peach -> survive/defeat
+D AOE/Group -> response -> damage -> resume -> next participant
+E Duel alternating Attack responses
+F Negation -> counter-Negation -> resume/cancel
+G Borrowed Sword -> forced Attack -> response/damage -> resume
+H Judgement -> modifier/replacement -> result -> resume
+I Damage trigger -> secondary effect -> nested damage -> resume
+```
+
+At each fixture point the tests preserve the existing authoritative
+`Pending`/continuation shape and assert the projected `CurrentAction` actor,
+kind, action revision, resolution reference, ready-after event, deadline,
+source, current target, resolving actor, and public event references. The
+fixtures also retain the existing reason and decline action on
+`CurrentAction`; `presentationV2` intentionally does not copy legal actions,
+response options, trigger options, card eligibility, or target eligibility.
+
+The tests prove the following without changing gameplay semantics:
+
+- `actionRevision` changes are command-context data and do not change the
+  projected root or active scene for the same authoritative pending/events.
+- `resolutionId` is reusable as legacy causal metadata through Attack, damage,
+  Group, Negation, Borrowed Sword, Judgement, and nested damage fixture
+  points, but it still does not acquire a new universal lifetime.
+- Nested `resumeTrigger`, `resumeGroup`, `resumeDamageSuffered`, Judgement
+  resume, and Borrowed Sword continuation data can be surfaced as an
+  immediate parent context without React timeline reconstruction.
+- Group participant IDs can be preserved, but the engine does not currently
+  expose enough authoritative information to prove `SEQUENTIAL`, `ORDERED`,
+  or `GROUP`; `presentationV2.groupResolution.semantics` is therefore
+  explicitly `UNPROVEN` and has no legality field.
+- Settlement and transition output references existing public event IDs; the
+  projector does not manufacture a second occurrence or parse log text into
+  an outcome.
+- Different viewer decision projections keep root, active context, parent,
+  participants, group data, and transition references equivalent. Private
+  option data is absent from `presentationV2`.
+
+### Proven barrier/timer behavior
+
+The focused characterization tests prove the current data-level behavior:
+
+- a decision with an essential `readyAfterEventId` remains closed until that
+  event is marked presented;
+- an unarmed response/rescue-style deadline is represented as `0`;
+- if a non-zero deadline is already persisted while the barrier is closed,
+  the deadline is considered started and may expire before the barrier opens;
+- reconnecting with no locally presented-event set does not claim that the
+  barrier was presented;
+- informational message barriers open immediately, while a missing barrier
+  reference stays closed;
+- timeout is determined from the authoritative deadline, not a projector
+  timer;
+- reduced-motion and fast-forward are not projector fields. Existing static
+  transition references remain renderable without animation state.
+
+The route/client trace explains why normal response timing currently avoids
+starting an unarmed response clock until the client reports the decision as
+ready, while Dying rescue uses its separate five-second arm path. The tests
+do not redesign either behavior. The persisted-deadline-before-open case is a
+fairness guard and remains a UX2.0C/D prerequisite to test end-to-end across
+poll delay, reconnect, delayed presentation, and timeout submission.
+
+### Initial PresentationV2 shape
+
+The first internal shape is intentionally smaller than the eventual design
+contract:
+
+```text
+presentationV2
+  rootContext
+    eventId?
+    kind?
+    sourceId?
+    originalTargetIds[]
+    resolutionId?             legacy/reference only
+  activeContext
+    kind?
+    stage?
+    sourceId?
+    currentTargetIds[]
+    eventIds[]
+    resolutionId?             legacy/reference only
+  parentContext?
+    kind?
+    sourceId?
+    targetIds[]
+    resumeKind?
+  participants[]              semantic roles only
+  groupResolution?
+    cardKind
+    sourceId?
+    semantics: UNPROVEN
+    participantIds[]
+    activeParticipantId?
+  decision
+    kind, actorId, actionRevision, resolutionId?, readyAfterEventId?, deadline
+  settlement?                 existing public event reference only
+  transitionEvents[]          existing public event references only
+```
+
+No `interactionId`, `frameId`, `checkpointId`, or `presentationRevision` was
+added. `actionRevision` is not used as one. `CurrentAction` remains the only
+source of legality and private capability data.
+
+### Semantic information still missing from the engine
+
+- A universal causal root/child lifetime rule for nested damage, Judgement
+  modifiers, and Borrowed Sword forced Attacks.
+- An authoritative group resolution semantic and current participant status;
+  the projector cannot safely infer ordering or simultaneity.
+- Explicit public settlement outcomes independent of formatted log text or
+  HP-difference inference.
+- A separate idempotent Transition Event identity when a persisted timeline
+  event and an animation delta need different lifetimes.
+- A stable public parent/frame identity across all continuation variants.
+- End-to-end proof that every real blocking decision changes
+  `actionRevision` without forcing a scene identity change.
+
+### Effect on the planned Interaction -> Frame -> Stage -> Checkpoint model
+
+The model remains deferred, not finalised. UX2.0B establishes only a
+descriptive root/active/parent projection and confirms that `resolutionId` is
+legacy metadata. It does not define the boundaries of Interaction, Frame,
+Stage, or Checkpoint, and it does not add a rendering identity. The next
+identity decision still requires the characterization gaps above plus
+server/projector architecture tests; React migration and visual UX remain
+out of scope.
