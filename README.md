@@ -9,6 +9,12 @@ parent-frame resume. Real Raining Arrows and Barbarian Invasion paths retain
 the same Interaction/Frame identity through Damage and Dying/rescue, while
 NULL/malformed envelopes remain non-authoritative.
 
+C3-01-FIX1 corrects the role boundary: `currentParticipantId` remains the
+Group target being processed across Damage and Dying child frames, while
+`decisionActorId` and `activeResolverId` identify the live decision/resolver.
+Real three-participant progression, nested Damage, Peach rescue, same-frame
+Negation, viewer equivalence, and malformed-envelope behavior are covered.
+
 This is a projector/model/test change only. No React/CSS migration, gameplay
 rule change, Dying presentation barrier, historical `originRef`, or C4/C5 work
 is included. The next milestone is reviewer validation of C3-01; visual UX

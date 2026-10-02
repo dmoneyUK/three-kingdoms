@@ -138,7 +138,8 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(nestedView.presentationV2.groupResolution?.activeFrameId, nestedView.causalEnvelope.activeFrameId);
   assert.equal(nestedView.presentationV2.groupResolution?.parentFrameId, nestedGroupFrame?.frameId);
   assert.equal(nestedView.presentationV2.groupResolution?.stage, "DAMAGE");
-  assert.equal(nestedView.presentationV2.groupResolution?.currentParticipantId, nestedView.causalEnvelope.frames.find((frame) => frame.frameId === nestedView.causalEnvelope.activeFrameId)?.current.resolvingPlayerId);
+  assert.equal(nestedView.presentationV2.groupResolution?.currentParticipantId, nestedPending.continuation.resumeGroup.actorId);
+  assert.equal(nestedView.presentationV2.groupResolution?.activeResolverId, nestedView.causalEnvelope.frames.find((frame) => frame.frameId === nestedView.causalEnvelope.activeFrameId)?.current.resolvingPlayerId);
   assert.deepEqual(nestedView.presentationV2.groupResolution?.targetIds, nestedGroupFrame?.origin.originalTargetIds);
   const otherViewer = await state(opened.code, opened.bobMember.token);
   assert.deepEqual(otherViewer.data.presentationV2.groupResolution, nestedView.presentationV2.groupResolution);
@@ -155,9 +156,17 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(next.data.presentationV2.groupResolution?.groupFrameId, next.data.causalEnvelope.activeFrameId);
   assert.equal(next.data.presentationV2.groupResolution?.activeFrameId, next.data.causalEnvelope.activeFrameId);
   assert.equal(next.data.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
+  assert.equal(next.data.presentationV2.groupResolution?.currentParticipantId, opened.bob.id);
   assert.deepEqual(next.data.presentationV2.groupResolution?.participantIds, nextPending.continuation.remainingIds);
   assert.equal(next.data.presentationV2.groupResolution?.groupFrameId, next.data.causalEnvelope.activeFrameId);
   assert.deepEqual(next.data.presentationV2.groupResolution?.targetIds, next.data.causalEnvelope.frames[0].origin.originalTargetIds);
+  const final = await requestAndSettle("decline_response", { code: opened.code, token: opened.bobMember.token, preserveResponse: true });
+  assert.equal(final.status, 200, JSON.stringify(final.data));
+  const finalView = await state(opened.code, opened.carolMember.token);
+  assert.equal(finalView.data.currentAction.actorId, opened.carol.id);
+  assert.equal(finalView.data.presentationV2.groupResolution?.currentParticipantId, opened.carol.id);
+  assert.equal(finalView.data.presentationV2.groupResolution?.interactionId, next.data.presentationV2.groupResolution?.interactionId);
+  assert.equal(finalView.data.presentationV2.groupResolution?.groupFrameId, next.data.presentationV2.groupResolution?.groupFrameId);
 });
 
 test("FIX14 Group failure Damage uses one child frame and resumes the next participant", { timeout: 30_000 }, async () => {
@@ -315,6 +324,9 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   assert.equal(dyingSourceView.presentationV2.groupResolution?.groupFrameId, groupRoot.activeFrameId);
   assert.equal(dyingSourceView.presentationV2.groupResolution?.activeFrameId, dyingPending.causal.frameId);
   assert.equal(dyingSourceView.presentationV2.groupResolution?.stage, "DYING");
+  assert.equal(dyingSourceView.presentationV2.groupResolution?.currentParticipantId, damageTarget.id);
+  assert.equal(dyingSourceView.presentationV2.groupResolution?.decisionActorId, source.id);
+  assert.notEqual(dyingSourceView.presentationV2.groupResolution?.currentParticipantId, dyingSourceView.presentationV2.groupResolution?.decisionActorId);
 
   const rescued = await requestAndSettle("give_peach", { code: game.code, token: sourceMember.token, cardId: peach.id, preserveResponse: true });
   assert.equal(rescued.status, 200, JSON.stringify(rescued.data));

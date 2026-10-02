@@ -133,10 +133,10 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
     parentFrameId: "group-frame",
     stage: "DAMAGE",
     origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B"] },
-    current: { currentSourceId: "A", currentEffect: "damage", currentTargetIds: ["B"], resolvingPlayerId: "B" },
+    current: { currentSourceId: "A", currentEffect: "damage", currentTargetIds: ["B"], resolvingPlayerId: "C" },
   };
   const childEnvelope = { version: 1, interactionId: "group-interaction", frames: [groupFrame, damageFrame], activeFrameId: "damage-frame", checkpoint: { checkpointId: "checkpoint-damage", frameId: "damage-frame", stage: "DAMAGE" }, presentationRevision: 4 };
-  const child = projectPresentationV2({ pending: { kind: "trigger", actorId: "B", continuation: { kind: "damage_suffered_event", sourceId: "A", targetId: "B", resumeGroup: groupPending } }, currentAction: action({ actorId: "B", kind: "trigger" }), actionRevision: "action-child", timeline: [], causalEnvelope: childEnvelope });
+  const child = projectPresentationV2({ pending: { kind: "trigger", actorId: "B", continuation: { kind: "damage_suffered_event", sourceId: "A", targetId: "B", resumeGroup: groupPending } }, currentAction: action({ actorId: "C", kind: "trigger" }), actionRevision: "action-child", timeline: [], causalEnvelope: childEnvelope });
   assert.equal(child.groupResolution?.semantics, "PROVEN");
   assert.equal(child.groupResolution?.interactionId, "group-interaction");
   assert.equal(child.groupResolution?.groupFrameId, "group-frame");
@@ -145,7 +145,8 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   assert.equal(child.groupResolution?.stage, "DAMAGE");
   assert.deepEqual(child.groupResolution?.targetIds, ["B", "C", "D"]);
   assert.equal(child.groupResolution?.currentParticipantId, "B");
-  assert.equal(child.groupResolution?.decisionActorId, "B");
+  assert.equal(child.groupResolution?.decisionActorId, "C");
+  assert.equal(child.groupResolution?.activeResolverId, "C");
   assert.deepEqual(child.groupResolution?.activeTargetIds, ["B"]);
 
   const resumedEnvelope = { ...childEnvelope, activeFrameId: "group-frame", checkpoint: { checkpointId: "checkpoint-group", frameId: "group-frame", stage: "GROUP_RESOLUTION" }, presentationRevision: 5 };
@@ -157,6 +158,7 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   assert.equal(resumed.groupResolution?.checkpointId, "checkpoint-group");
   assert.equal(resumed.groupResolution?.currentParticipantId, "B");
   assert.equal(resumed.groupResolution?.decisionActorId, "C");
+  assert.equal(resumed.groupResolution?.activeResolverId, "B");
 });
 
 test("C3 Group public semantics stay viewer-equivalent while decision ownership changes", () => {
