@@ -4070,3 +4070,23 @@ reads, stale/concurrent submissions, and malformed Pending/frame/resolver
 authority. Dying-triggered child effects remain unsupported because no such
 production path exists. React/CSS, animation timing, historical `originRef`,
 and C4-02 remain outside this slice.
+
+### 0.97.2 UX2.0C4-01-FIX2 atomic rescue handoffs — 2026-10-02
+
+C4-01-FIX2 closes the remaining rescue-handoff persistence race. Initial
+entry, `skip_rescue`, timeout expiry, continued rescue after Peach, and the
+automatic Dying resume path all use one reusable semantic transition helper
+before committing a stable `phase='dying'` checkpoint. The helper scans the
+authoritative live response context and returns either a real eligible blocker
+with its causal envelope or the no-blocker outcome for defeat/continuation.
+There is no raw candidate write followed by a second scan in these paths.
+
+The persistence proof now checks the stored `pending_json` and
+`causal_envelope_json` together: Pending is `dying`, the active and checkpoint
+frames are the same DYING frame, the Pending causal handle matches that frame,
+and the active resolver is the Pending actor. The public Dying projector keeps
+the existing fail-closed behavior, and Peach/provider choices remain private
+to the acting viewer. Full gameplay, privacy, stale-submission, reconnect,
+and parent-continuation regressions remain green. C4-02, C5, React/CSS,
+animation timing, and unsupported Dying-triggered child effects remain out of
+scope.

@@ -194,3 +194,55 @@ Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin.
 ## Acceptance
 
 FIX2 passes only if every production rescue transition publishes only a semantically eligible blocker with coherent Pending/resolver/checkpoint state, no raw candidate phase='dying' write remains in skip/timeout/continued-rescue paths, shared projector fail-closed behavior remains intact, full gameplay/privacy regressions are green, and the required full validation passes.
+
+## C4-01-FIX2 execution result
+
+Implementation commit: `7fdb68e647ffb5d0b1ee87040e47b5015a67eb6d`
+
+Files changed:
+
+- `app/api/rooms/route.ts`
+- `tests/api/presentation-v2-engine.test.mjs`
+- `README.md`
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `HANDOVER.md`
+
+FIX2 is complete on `ux-v2`. `nextDyingTransition` is the reusable semantic
+transition helper. It scans authoritative live response context, including
+the real turn seat, and returns one eligible Dying blocker plus its causal
+envelope, or the no-blocker outcome for defeat/continuation. Initial entry,
+timeout, continued rescue, and automatic Dying resume now use this helper.
+
+The exact `skip_rescue` fix is that, after claiming the pending state, the
+remaining rescue order is scanned before any stable Dying write. A real
+blocker is written with coherent Pending and causal envelope in one CAS
+transition; with no blocker the existing defeat settlement runs directly.
+The continued-rescue-after-Peach path applies the same pre-write scan and
+never publishes a raw candidate checkpoint.
+
+Persistence-boundary evidence is covered by the C4 fixture assertions: stored
+Pending is `dying`, the causal envelope exists, active and checkpoint frames
+are the same DYING frame, the Pending causal handle matches that frame, and
+the active resolver equals the Pending actor. A source audit found no raw
+`UPDATE rooms SET phase='dying', pending_json=?` candidate write in the fixed
+handoff paths.
+
+Gameplay/privacy evidence: full real Dying/Peach, First Aid, multi-Peach,
+partial rescue, defeat, timeout, Group/non-Group parent continuation,
+viewer-equality, private-option, reconnect, stale-submission, and malformed
+authority regressions remain green. The shared `dyingBarrier` and
+`interactionScene` projector proof remains fail-closed.
+
+Validation:
+
+- `npm run build` — PASS
+- `npm run test:fast` — 114/114 PASS
+- focused Presentation/privacy/Dying API suites — 69/69 PASS
+- `npm run test:api` — 239/239 PASS across 23 files and 4 shards
+- `npm run lint` — PASS
+- `git diff --check` — PASS
+
+Remaining C4 gaps: Dying-triggered child effects have no production path and
+remain unsupported; C4-02, C5, React/CSS migration, animation timing, client
+rescue legality, private-option exposure changes, and historical `originRef`
+fabrication remain out of scope.

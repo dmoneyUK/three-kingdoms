@@ -2,13 +2,13 @@ A web implementation of the **WTK Standard** ruleset, built around authoritative
 
 ## Current stage — UX2.0C4-01 — 2026-10-02
 
-C4-01-FIX1 closes the stable Dying/Peach barrier boundary. The engine now
-scans semantic rescue providers before publishing any `phase='dying'`
-checkpoint, and persists Pending actor, active resolver, causal frame, and
-checkpoint together. `dyingBarrier` and `interactionScene` share the same
-fail-closed proof; skipped candidates cannot become public decisions and Peach
-options remain private to the acting viewer. React/CSS migration, animation
-timing, and C4-02 are not started.
+C4-01-FIX2 completes the atomic Dying/Peach rescue handoff boundary. Initial
+entry, skip, timeout, continued rescue, and automatic resume all select the
+next semantic rescue blocker before committing a stable `phase='dying'`
+checkpoint; no raw candidate is published. Pending actor, active resolver,
+causal frame, and checkpoint remain coherent, while `dyingBarrier` and
+`interactionScene` retain their shared fail-closed proof. React/CSS migration,
+animation timing, and C4-02 are not started.
 
 C2 is closed and accepted. C3-01 now projects Group/AOE public semantics from
 the authoritative causal envelope: source, ordered affected targets, current
