@@ -35,6 +35,17 @@ export type InteractionSceneContinuity = {
   parentFrameId: string | null;
 };
 
+export type PresentationParticipantRoles = {
+  sourceId: string | null;
+  originalTargetIds: readonly string[];
+  activeTargetIds: readonly string[];
+  currentParticipantId: string | null;
+  decisionActorId: string | null;
+  activeResolverId: string | null;
+  parentParticipantId: string | null;
+  participantIds: readonly string[];
+};
+
 /** Public, server-owned semantic snapshot for a future Interaction Stage client. */
 export type PresentationInteractionScene = {
   semantics: "PROVEN" | "UNPROVEN";
@@ -54,6 +65,7 @@ export type PresentationInteractionScene = {
   activeSourceId: string | null;
   activeTargetIds: readonly string[];
   participantIds: readonly string[];
+  participantRoles: PresentationParticipantRoles;
   continuity: InteractionSceneContinuity;
 };
 
@@ -262,6 +274,7 @@ type GroupProjectionValues = {
   sourceId: string | null;
   targetIds: readonly string[];
   currentParticipantId: string | null;
+  parentParticipantId: string | null;
   participantIds: readonly string[];
   activeParticipantId: string | null;
 };
@@ -288,6 +301,7 @@ function groupProjectionValues(envelope: CausalEnvelope | null, pending: unknown
     sourceId: firstString(origin?.originSourceId, group.sourceId),
     targetIds,
     currentParticipantId: firstString(childParticipantId, parentParticipantId, participantOwnerId),
+    parentParticipantId,
     participantIds,
     activeParticipantId: firstString(group.activeParticipantId, group.currentParticipantId),
   };
@@ -307,6 +321,9 @@ function interactionSceneFor(
   const activeCurrent = activeFrame?.current;
   const sourceId = groupValues?.sourceId ?? firstString(activeFrame?.origin.originSourceId, activeCurrent?.currentSourceId);
   const targetIds = groupValues?.targetIds ?? activeFrame?.origin.originalTargetIds ?? [];
+  const participantRoleTargetIds = groupValues
+    ? [...new Set([...(activeFrame?.origin.originalTargetIds ?? []), ...groupValues.targetIds])]
+    : targetIds;
   const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
   const pendingRecord = record(pending);
   const dyingProof = dyingDecisionProof(envelope, pending);
@@ -317,7 +334,33 @@ function interactionSceneFor(
       ? "CHILD_FRAME"
       : groupValues && activeFrame?.stage === "NEGATION"
         ? "SAME_FRAME"
-        : "ROOT_FRAME";
+      : "ROOT_FRAME";
+  const parentFrame = activeFrame?.parentFrameId
+    ? envelope?.frames.find((frame) => frame.frameId === activeFrame.parentFrameId) ?? null
+    : null;
+  const participantRoles: PresentationParticipantRoles = proven
+    ? {
+      sourceId,
+      originalTargetIds: participantRoleTargetIds,
+      activeTargetIds: activeCurrent?.currentTargetIds ?? [],
+      currentParticipantId,
+      decisionActorId: dyingProof ? dyingProof.pending.actorId as string : dyingPending ? null : currentAction?.actorId ?? null,
+      activeResolverId: activeCurrent?.resolvingPlayerId ?? null,
+      parentParticipantId: groupValues && activeFrame?.frameId !== groupValues.groupFrame?.frameId
+        ? firstString(parentFrame?.current.currentTargetIds.length === 1 ? parentFrame.current.currentTargetIds[0] : null, groupValues?.parentParticipantId, currentParticipantId)
+        : null,
+      participantIds: groupValues?.participantIds ?? [],
+    }
+    : {
+      sourceId: null,
+      originalTargetIds: [],
+      activeTargetIds: [],
+      currentParticipantId: null,
+      decisionActorId: null,
+      activeResolverId: null,
+      parentParticipantId: null,
+      participantIds: [],
+    };
   return {
     semantics: proven ? "PROVEN" : "UNPROVEN",
     interactionId: proven ? envelope?.interactionId ?? null : null,
@@ -336,6 +379,7 @@ function interactionSceneFor(
     activeSourceId: activeCurrent?.currentSourceId ?? null,
     activeTargetIds: activeCurrent?.currentTargetIds ?? [],
     participantIds: groupValues?.participantIds ?? [],
+    participantRoles,
     continuity: { relation, parentFrameId: proven ? activeFrame?.parentFrameId ?? null : null },
   };
 }
@@ -408,6 +452,20 @@ function participants(active: Context | null, group: RecordLike | null): Present
   return [...map].map(([playerId, roles]) => ({ playerId, roles: [...roles] }));
 }
 
+function participantsFromScene(scene: PresentationInteractionScene): PresentationParticipant[] {
+  const map = new Map<string, Set<PresentationParticipant["roles"][number]>>();
+  const add = (id: string | null, role: PresentationParticipant["roles"][number]) => {
+    if (!id) return;
+    const roles = map.get(id) ?? new Set<PresentationParticipant["roles"][number]>();
+    roles.add(role);
+    map.set(id, roles);
+  };
+  add(scene.participantRoles.sourceId, "source");
+  scene.participantRoles.originalTargetIds.forEach((id) => add(id, id === scene.participantRoles.currentParticipantId ? "current_target" : "target"));
+  scene.participantRoles.participantIds.forEach((id) => add(id, "group_participant"));
+  return [...map].map(([playerId, roles]) => ({ playerId, roles: [...roles] }));
+}
+
 /** Pure, deterministic projection. CurrentAction remains the legality authority. */
 export function projectPresentationV2(input: PresentationV2Input): PresentationV2 {
   const { active, parent, group: directGroup, root } = pendingContexts(input.pending);
@@ -453,7 +511,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     rootContext,
     activeContext,
     parentContext,
-    participants: participants(active, group),
+    participants: interactionScene?.semantics === "PROVEN" ? participantsFromScene(interactionScene) : participants(active, group),
     interactionScene,
     dyingBarrier,
     groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues) : null,

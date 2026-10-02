@@ -60,6 +60,7 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.equal(attackScene?.currentParticipantId, target.id);
   assert.equal(attackScene?.activeResolverId, target.id);
   assert.equal(attackScene?.decisionActorId, target.id);
+  assert.deepEqual(attackScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: target.id, activeResolverId: target.id, parentParticipantId: null, participantIds: [] });
   const otherView = (await state(game.code, game.members[2].token)).data;
   assert.deepEqual(otherView.presentationV2.rootContext, targetView.presentationV2.rootContext);
   assert.deepEqual(otherView.presentationV2.activeContext, targetView.presentationV2.activeContext);
@@ -224,6 +225,16 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(nestedView.presentationV2.interactionScene?.continuity.relation, "CHILD_FRAME");
   assert.equal(nestedView.presentationV2.interactionScene?.currentParticipantId, nestedView.presentationV2.groupResolution?.currentParticipantId);
   assert.equal(nestedView.presentationV2.interactionScene?.decisionActorId, nestedView.presentationV2.groupResolution?.decisionActorId);
+  assert.deepEqual(nestedView.presentationV2.interactionScene?.participantRoles, {
+    sourceId: opened.source.id,
+    originalTargetIds: [opened.target.id, opened.bob.id, opened.carol.id],
+    activeTargetIds: [opened.target.id],
+    currentParticipantId: opened.target.id,
+    decisionActorId: nestedView.presentationV2.groupResolution?.decisionActorId,
+    activeResolverId: nestedView.presentationV2.groupResolution?.activeResolverId,
+    parentParticipantId: opened.target.id,
+    participantIds: nestedPending.continuation.resumeGroup.continuation.remainingIds
+  });
   assert.deepEqual(nestedView.presentationV2.groupResolution?.targetIds, nestedGroupFrame?.origin.originalTargetIds);
   const repeated = await state(opened.code, opened.targetMember.token);
   assert.deepEqual(repeated.data.presentationV2.interactionScene, nestedView.presentationV2.interactionScene);

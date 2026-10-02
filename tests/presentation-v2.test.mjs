@@ -169,6 +169,7 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
     activeSourceId: "A",
     activeTargetIds: ["B"],
     participantIds: ["C", "D"],
+    participantRoles: { sourceId: "A", originalTargetIds: ["B", "C", "D"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "C", activeResolverId: "C", parentParticipantId: "B", participantIds: ["C", "D"] },
     continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" },
   });
 
@@ -208,6 +209,7 @@ test("C5 does not infer Group authority from arbitrary nested data or frame stag
   const projected = projectPresentationV2({ pending, currentAction: action(), actionRevision: "strict", timeline: [], causalEnvelope: envelope });
   assert.equal(projected.groupResolution?.semantics, "UNPROVEN");
   assert.equal(projected.interactionScene?.semantics, "UNPROVEN");
+  assert.deepEqual(projected.interactionScene?.participantRoles, { sourceId: null, originalTargetIds: [], activeTargetIds: [], currentParticipantId: null, decisionActorId: null, activeResolverId: null, parentParticipantId: null, participantIds: [] });
 });
 
 test("C5 keeps legacy context precedence separate from the causal semantic core", () => {
@@ -280,6 +282,7 @@ test("C3-03 generic scene projects non-Group causal frame semantics", () => {
     semantics: "PROVEN", interactionId: "attack-interaction", rootFrameId: "attack-frame", activeFrameId: "attack-frame", parentFrameId: null,
     checkpointId: "attack-checkpoint", presentationRevision: 3, stage: "ATTACK_RESPONSE", sourceId: "A", effect: "Attack", targetIds: ["B"],
     currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", activeSourceId: "A", activeTargetIds: ["B"], participantIds: [],
+    participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: [] },
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },
   });
 });

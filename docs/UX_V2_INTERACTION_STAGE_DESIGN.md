@@ -4128,10 +4128,10 @@ objects below must not reconstruct causal identity when the typed core is
 | `rootContext` | Mixed: timeline event; Pending kind/resolution; causal envelope source/original targets when present | Public, viewer-stable; descriptive compatibility object | `interactionScene` root frame and identity | DEPRECATE-LATER | All consumers read proven typed root identity and no longer need legacy event/kind fields |
 | `activeContext` | Mixed: Pending-first kind/source/current targets; causal frame supplies stage; timeline supplies event IDs | Public, viewer-stable; explicitly non-authoritative | `interactionScene` active frame/current boundary | DEPRECATE-LATER | Consumers migrate to typed active frame and causal stage |
 | `parentContext` | Typed continuation direction plus Pending-first parent kind/source/targets; causal parent frame is fallback | Public, viewer-stable; explicitly non-authoritative | `interactionScene.continuity` and `parentFrameId` | DEPRECATE-LATER | Consumers use typed parent linkage and continuation semantics |
-| `participants` | Derived from typed Pending context and Group remaining IDs | Public, viewer-stable; no private cards/options | `interactionScene` source/target/participant fields | DERIVE | Core exposes all required participant roles for each supported family |
+| `participants` | Derived from `interactionScene.participantRoles` when proven; Pending fallback for legacy/unproven rooms | Public, viewer-stable; no private cards/options | `interactionScene.participantRoles` | DERIVE | Consumers use typed roles; fallback remains only for legacy/unproven compatibility |
 | `interactionScene` | Parsed causal envelope, shared coherence proof, typed continuation direction, public Pending decision actor for Dying proof | Public semantic core; viewer-independent; `UNPROVEN` fails closed | N/A; current typed core | KEEP | None for C5; future C7 may wrap it in a stable snapshot |
 | `dyingBarrier` | Parsed causal envelope plus shared `dyingDecisionProof` and public Dying Pending actor | Public semantic core; viewer-independent; no Peach/provider data | N/A; Dying typed core | KEEP | None; retain fail-closed proof and private CurrentAction options |
-| `groupResolution` | Typed Group continuation plus explicit causal Group frame; presentation values from envelope and public continuation | Public compatibility view; no private options; `UNPROVEN` without linkage | `interactionScene` Group frame semantics | DERIVE | Consumers switch to typed scene fields and no longer require duplicate Group object |
+| `groupResolution` | Typed Group continuation plus explicit causal Group frame; presentation values from envelope and public continuation | Public compatibility view; no private options; `UNPROVEN` without linkage | `interactionScene` Group frame and `participantRoles` | RETAIN-COMPAT | Consumers switch to typed scene fields and no longer require duplicate Group object |
 | `decision` | CurrentAction and public action revision/presentation barrier | Viewer-dependent control metadata; private options are excluded here and remain in CurrentAction | CurrentAction for control; `interactionScene.decisionActorId` for semantic identity | KEEP | None; legality must remain CurrentAction-owned |
 | `settlement` | Timeline events selected by bounded legacy event references and `finalResult` | Public descriptive compatibility data; viewer-stable when history is equal | Future typed settlement checkpoint/snapshot | DEPRECATE-LATER | Durable settlement occurrence vocabulary and C7 snapshot exist |
 | `transitionEvents` | Bounded timeline event references selected from current typed/legacy context | Public descriptive compatibility data; not a transition protocol | Future semantic Transition Events/C7 snapshot | DEPRECATE-LATER | Durable occurrence identity and C7 protocol are implemented |
@@ -4142,3 +4142,34 @@ causal semantic core does not rely on those fields; it remains envelope-owned
 and proves source, targets, stage, frame linkage, checkpoint, revision, and
 decision actor independently. This preserves compatibility without claiming
 that legacy context objects are authoritative causal state.
+
+### 0.100 UX2.0C5-02 typed participant roles — 2026-10-02
+
+`interactionScene.participantRoles` is the smallest public, viewer-independent
+role surface needed by future presentation consumers. It contains
+`sourceId`, `originalTargetIds`, `activeTargetIds`, `currentParticipantId`,
+`decisionActorId`, `activeResolverId`, `parentParticipantId`, and
+`participantIds` for proven Group participants. IDs come from the proven
+causal envelope frame/current state, the accepted Dying proof, or typed
+continuation data; no private CurrentAction options, viewer state, synthetic
+IDs, or delayed historical `originRef` values are introduced.
+
+The supported inventory is: Attack and Attack-response scenes use source,
+effect/active target, and decision actor; Attack -> Judgement resumes retain
+the same roles with the typed parent participant; Duel uses both original
+duel participants and the active responder; Group/AOE uses ordered original
+targets, current participant, decision actor, resolver, parent participant,
+and remaining Group participant IDs; Group -> Negation, Group -> Damage, and
+Group -> Damage -> Dying retain those roles through typed child frames;
+independent/inherited Damage, Judgement, root/nested Negation, and Dying expose
+only roles proven by their active frame and continuation; Borrowed Sword uses
+the existing typed source/target frame data without inventing an extra role.
+
+If the frame/checkpoint proof or typed continuation linkage is absent or
+contradictory, every participant role is cleared and the scene is
+`UNPROVEN`. Legacy `participants` is derived from the typed role surface for
+proven scenes, preserving source/target/current-target/group-participant
+labels; legacy contexts and `groupResolution` remain compatibility fields and
+are not causal authority. The migration table therefore marks participant
+roles as the replacement for `participants`, while `groupResolution` remains
+retained until consumers no longer need its compatibility shape.

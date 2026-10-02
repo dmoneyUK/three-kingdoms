@@ -1,20 +1,19 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C5-01-FIX1 — 2026-10-02
+## Current stage — UX2.0C5-02 — 2026-10-02
 
-C5 updates the server-side `PresentationV2` projector to prefer persisted
-causal root/active/parent frame metadata for public scene facts. Group
-discovery now follows only typed continuation edges and requires an explicit
-causal frame reference; arbitrary pending-object scans and stage-based Group
-frame guesses no longer create proven presentation state. Legacy context
-shapes and private `CurrentAction` projection remain compatible. React/CSS,
-animation timing, and gameplay changes are not started.
+C5-02 extends the proven `interactionScene` with a viewer-independent
+`participantRoles` contract: source, original and active targets, current
+participant, decision actor, active resolver, parent participant, and proven
+Group participants. Group/AOE, Attack, Duel, Judgement, Damage, Negation,
+Borrowed Sword, and Dying scenes use only causal-envelope or typed-continuation
+evidence; malformed or missing authority fails closed. Legacy participants are
+derived from the typed role surface only where behavior-preserving, while
+Pending-first compatibility contexts remain available. React/CSS, animation
+timing, and gameplay changes are not started.
 
-FIX1 completes the exported-field authority inventory and migration map. The
-legacy context objects remain Pending-first compatibility data; the proven
-`interactionScene`/`dyingBarrier` typed core remains the only causal source
-for future presentation consumers. The next milestone is reviewer acceptance
-of C5-01, before C5-02, C6, or React/CSS migration.
+The next milestone is C5-02 reviewer acceptance and any remaining migration
+cleanup; do not start C6/C7 or React/CSS migration.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 
