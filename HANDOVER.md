@@ -312,3 +312,67 @@ Then STOP.
 ## Acceptance
 
 C4-01 passes only if Dying/rescue is represented as a stable authoritative presentation barrier, automatic/non-eligible rescue scans do not become fake public decisions, the dying player and causal interaction remain continuous across real rescuer handoffs, public semantics are viewer-stable while private Peach/options remain private, successful/failing rescue settles without stale presentation, malformed authority fails closed, and all regressions are green.
+
+## C4-01 execution result
+
+Implementation commit: `489276eb09dc3e8a6cc42f57cd6ea164495ce289`
+
+Files changed:
+- `app/api/rooms/route.ts`
+- `game/presentation-v2.ts`
+- `tests/presentation-v2.test.mjs`
+- `tests/api/presentation-v2-engine.test.mjs`
+- `tests/api/privacy-response.test.mjs`
+- `tests/api/huang-gai.test.mjs`
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `README.md`
+
+Production flow inventory:
+- `startDyingRescue` creates ordered `DyingPending`, preserves the inherited causal handle, and persists the `DYING` envelope with the first resolver candidate.
+- `advanceDyingRescue` evaluates real semantic Peach/First Aid options, scans dead or ineligible seats without publishing a decision checkpoint, persists the causal barrier for the first real blocker, and invokes defeat settlement when no blocker remains.
+- `give_peach` and `skip_rescue` claim the pending decision; skip awaits the next scanner before returning a room snapshot, so no intermediate fake actor is exposed.
+- `expireDyingRescue` follows the same ordered continuation and scanner.
+- `continueDyingResolution`, `continueAfterDefeat`, and existing Group/Damage resume helpers remain the parent continuation boundaries.
+- `causalEnvelopeAtStage` and `advanceCausalSemanticCheckpoint` remain server-only causal checkpoint writers; no React or provider-specific route was added.
+
+PresentationV2 changes:
+- Added typed `PresentationDyingBarrier` with `semantics`, causal Interaction/root/active/parent/checkpoint/revision fields, `DYING` stage, dying player, rescuer/decision actor, and `RESCUE_CHOICE`/`UNPROVEN` state.
+- `dyingBarrier` is nullable on `PresentationV2`.
+- Public Dying `interactionScene.decisionActorId` uses the persisted pending actor only after causal proof, keeping public actor identity viewer-stable; private `CurrentAction` options remain viewer-scoped.
+
+Barrier rule: the barrier is `PROVEN` only when the persisted causal envelope is valid, its active frame and checkpoint are the same `DYING` frame/stage, and the pending causal handle points to that active frame and Interaction. Otherwise the typed barrier is `UNPROVEN` and causal IDs/rescuer/decision actor are null. This is engine-authoritative because the server's live semantic response resolver determines whether a seat genuinely blocks; the projector never derives legality from HP, order, logs, timers, or private card data.
+
+Real fixtures used:
+- engine-backed Attack -> Damage -> Dying timer arm, reconnect, repeated-read, viewer-private Peach options, and timeout settlement;
+- four-seat Dying flow with target/empty-seat scan, Bob skip, Carol real Peach decision, same Interaction/Frame, advanced checkpoint/revision, and viewer equality;
+- existing Group -> Damage -> Dying Peach rescue and parent resume fixtures, including FIX15 lethal Group Damage;
+- existing non-Group Damage/Dying, multiple-Peach, partial-Peach, First Aid, failed rescue, concurrency, and hero continuation fixtures;
+- pure malformed/missing/cross-frame authority projection fixtures.
+
+Evidence matrix:
+
+| Evidence | Result |
+| --- | --- |
+| Stable Dying focus and first real rescue decision | PROVEN |
+| Automatic dead/ineligible scan without fake checkpoint | PROVEN |
+| Rescuer decline -> next real rescuer | PROVEN |
+| Same Interaction/root/active Frame across handoff | PROVEN |
+| Meaningful checkpoint/revision progression | PROVEN |
+| Viewer equality and private Peach/options isolation | PROVEN |
+| Successful Peach and multi-Peach/partial rescue | PROVEN by existing fixtures |
+| No-rescue/death settlement | PROVEN |
+| Parent Damage/Group continuity | PROVEN |
+| Reconnect/repeated-read stability | PROVEN |
+| Malformed causal authority fail-closed | PROVEN |
+| Dying-triggered child effect | NOT IMPLEMENTED IN GAME |
+
+Validation:
+- focused engine API: `24/24`;
+- focused Huang Gai API: `6/6`;
+- `npm run test:fast`: `114/114`;
+- `npm run test:api`: `239/239` across 23 files and 4 shards;
+- `npm run build`: PASS;
+- `npm run lint`: PASS;
+- `git diff --check`: PASS.
+
+Remaining C4 gaps: C4-02 and later presentation consumer work, animation/transition direction, historical delayed `originRef`, and a Dying-triggered child-effect path if one is added to production. React/CSS migration and C5 remain unstarted.
