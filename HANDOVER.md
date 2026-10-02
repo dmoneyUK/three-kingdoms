@@ -6,291 +6,197 @@ HANDOVER.md is a tracked remote coordination file. It MUST be committed and push
 
 ## Reviewer status
 
-UX2.0C4-01-FIX2 implementation 7fdb68e647ffb5d0b1ee87040e47b5015a67eb6d is **ACCEPTED**.
+UX2.0C5-01 implementation e8dfa43ec14173cb8dc208dfa5afc09ce3fc64fa is **PARTIAL — C5-01-FIX1 REQUIRED**.
 
-UX2.0C4 is **CLOSED / ACCEPTED**. There is no source-defined C4-02 requirement that needs to be invented: the documented C4 boundary was the Dying/Peach stable presentation barrier, and C4-01 + FIX1 + FIX2 now satisfies that boundary.
+Accepted:
+- recursive arbitrary-Pending Group discovery was removed;
+- Group authority now requires typed continuation linkage and an explicit causal frame reference;
+- stage-only Group-frame guessing was removed;
+- malformed nested Group data no longer fabricates PROVEN Group semantics;
+- C1-C4 regressions are reported green: fast 115/115, focused PresentationV2 24/24, API 239/239, build/lint/diff-check PASS;
+- no React/CSS/gameplay scope creep.
 
-Reviewer verified:
-- startDyingRescue uses nextDyingTransition before publishing the first stable blocker;
-- skip_rescue now scans pending.remainingIds before any new phase=dying write and persists final Pending + causal envelope together;
-- timeout uses the same semantic transition;
-- continued rescue after recovery and advanceHpRecoveredEvents use the same pre-publication transition;
-- no raw next-candidate write remains in the reviewed handoff paths;
-- shared projector fail-closed proof from FIX1 remains intact;
-- stored stable-state assertions verify Pending causal handle, active/checkpoint DYING frame, and resolver==actor;
-- full required validation is reported green: fast 114/114, focused 69/69, API 239/239, build/lint/diff-check PASS.
+Blocking issue 1 — required PresentationV2 inventory/migration map is incomplete.
 
-Known bounded C4 limitation:
-- Dying-triggered child effect is NOT IMPLEMENTED IN GAME; no gameplay was invented for evidence.
+The task explicitly required an inventory for every exported field and a migration table with:
+field / current authority-source / replacement-core field / KEEP-DERIVE-DEPRECATE-LATER / reason / removal prerequisite.
 
-Do not modify React/CSS yet. Start C5 only.
+The implementation documentation adds only a short prose section. It does not provide the required table, and does not classify all exported fields. In particular the current PresentationV2 type still exports:
+rootContext, activeContext, parentContext, participants, interactionScene, dyingBarrier, groupResolution, decision, settlement, transitionEvents.
+
+The execution result discusses only a subset in enough detail. C5 cannot be considered consolidated until every field has an explicit authority and migration status.
+
+Blocking issue 2 — authority wording and implementation disagree for legacy active/parent contexts.
+
+The implementation comment says that once causal metadata exists, Pending-derived values “cannot override authoritative causal state”, and the execution result says legacy causal source/target values use envelope metadata when present.
+
+But current code constructs:
+- activeContext.sourceId as active?.sourceId ?? causalActiveFrame.current.currentSourceId;
+- activeContext.currentTargetIds as active?.targetIds ?? causalActiveFrame.current.currentTargetIds;
+- parentContext.sourceId as parent?.sourceId ?? causalParentFrame.origin.originSourceId;
+- parentContext.targetIds as parent?.targetIds ?? causalParentFrame.origin.originalTargetIds.
+
+Therefore Pending-derived values DO override envelope values when both exist. This may be intentional for legacy compatibility shape, but then it must be explicitly classified as non-authoritative compatibility data and must not be described as envelope-authoritative. If the field is intended to be authoritative, precedence must be reversed only after real compatibility tests prove that is safe.
+
+Do not silently change legacy semantics merely to match the comment.
+
+C5-01 is not accepted yet. Do not start C5-02/C6/C7/React.
 
 ---
 
-# NEXT TASK — UX2.0C5-01: PresentationV2 Contract Consolidation and Legacy Compatibility Audit
+# NEXT TASK — UX2.0C5-01-FIX1: Complete Field Authority Map and Resolve Legacy Precedence Contract
 
 ## Objective
 
-Begin C5 by consolidating the accepted C1-C4 semantic work into one clear server PresentationV2 contract that can later become the stable PresentationSnapshot input for React.
+Finish C5-01 by making the PresentationV2 contract classification complete and internally truthful.
 
-This is NOT the final C7 snapshot and NOT a UI migration.
+Do not redesign gameplay or remove compatibility fields. The goal is to make it mechanically clear which fields are authoritative public semantics and which are descriptive/legacy compatibility projections.
 
-The goal is to reduce duplicated/ad-hoc semantic derivation inside PresentationV2 and establish which fields are authoritative typed semantics versus temporary legacy compatibility fields.
+## Step 1 — complete the exported-field inventory
 
-Do not change gameplay behavior.
-
-## Step 1 — inventory the current PresentationV2 surface
-
-Inspect game/presentation-v2.ts and every production consumer/serializer of PresentationV2.
-
-Produce a field inventory for:
-- interactionScene;
-- dyingBarrier;
-- groupResolution;
+Audit every field in the actual PresentationV2 type:
 - rootContext;
 - activeContext;
 - parentContext;
 - participants;
+- interactionScene;
+- dyingBarrier;
+- groupResolution;
 - decision;
 - settlement;
-- transitionEvents;
-- any other exported PresentationV2 field.
+- transitionEvents.
 
-For each field record:
-- source of truth;
-- public vs viewer-private;
-- causal-envelope-owned vs Pending-derived vs CurrentAction-derived vs timeline-derived;
-- whether C3/C4 typed semantics already supersede it;
-- current production consumers;
-- whether removal now would break compatibility.
+For EACH field document:
+1. exact source(s): causal envelope / typed Pending / CurrentAction / timeline;
+2. public vs viewer-dependent/private-control;
+3. authoritative semantic vs compatibility/descriptive;
+4. current production consumers, if any;
+5. replacement/core field where one exists;
+6. migration status: KEEP / DERIVE / DEPRECATE-LATER;
+7. removal prerequisite.
 
-Do not assume a field is unused without searching production and tests.
+Search production code and tests before claiming a field has no consumer.
 
-## Step 2 — define the C5 authoritative semantic core
+## Step 2 — resolve activeContext/parentContext precedence explicitly
 
-Document and encode, with types/helpers where useful, the authoritative public core established by C1-C4:
+Inspect real fixtures where both Pending-derived context and causal frame metadata exist.
 
-- interactionScene: general current public interaction semantics;
-- dyingBarrier: Dying-specific stable rescue semantics;
-- causal identity/checkpoint/revision from the parsed authoritative envelope only;
-- public decision actor from the accepted semantic proof for that family;
-- viewer-private legal actions/options remain outside this public core.
+For activeContext and parentContext:
+- compare Pending source/targets with envelope source/targets across Group, Attack, Duel, Damage, Judgement, Negation and Dying;
+- identify whether any real state differs;
+- determine whether these fields are intended to preserve legacy Pending shape or become envelope-authoritative.
 
-Do not create new IDs or a second causal model.
-Do not duplicate engine legality.
+Choose based on compatibility evidence, not naming preference.
 
-## Step 3 — centralize shared authority/proof helpers
+If they remain legacy compatibility fields:
+- preserve existing Pending-first behavior where required;
+- correct comments/docs/execution wording;
+- explicitly mark them NON-AUTHORITATIVE for future React semantic consumption.
 
-Audit duplicated checks for:
-- active frame lookup;
-- checkpoint/active-frame coherence;
-- PROVEN vs UNPROVEN authority;
-- frame relationship;
-- decision actor authority.
+If they can safely derive causal source/targets without changing compatibility:
+- add real regression evidence before changing precedence;
+- make the derivation explicit and consistent.
 
-Refactor only where it clearly reduces divergent semantics.
+The authoritative typed interactionScene/dyingBarrier must remain envelope-proof-owned regardless.
 
-Requirements:
-- generic causal proof remains fail-closed;
-- Dying keeps its stronger Pending/resolver proof;
-- Group-specific semantic ownership remains correct;
-- malformed envelopes cannot regain identity through legacy fields;
-- projector remains pure and generates no IDs/revisions.
+## Step 3 — audit rootContext consistency
 
-Do not over-generalize different family rules into one unsafe boolean.
+rootContext currently uses causal source/targets first but legacy kind first.
 
-## Step 4 — legacy compatibility divergence tests
+Classify each subfield separately if necessary:
+- eventId;
+- kind;
+- sourceId;
+- originalTargetIds;
+- resolutionId.
 
-For each legacy compatibility field, compare it with the typed semantic core across real fixtures:
-- Group/AOE;
-- Attack;
-- Attack -> Judgement;
-- Duel;
-- independent Damage;
-- inherited Lightning Damage;
-- Judgement;
-- root and nested Negation;
-- Damage -> Dying;
-- Group -> Damage -> Dying;
-- rescue handoff.
+Do not call the whole object authoritative if some members remain timeline/Pending/legacy resolution compatibility data.
 
-Identify concrete semantic contradictions, not naming differences.
+Add tests only for concrete precedence or fail-closed behavior that is not already covered.
 
-If a legacy field can safely derive from the typed core without changing behavior, make that derivation.
-If it cannot, leave it and mark the exact migration gap for a later C5 slice.
+## Step 4 — classify participants, decision, settlement, transitionEvents
 
-Do not delete compatibility fields merely because tests can be updated.
+Explicitly establish:
+- participants: derivation source and whether it is safe semantic core or compatibility-only;
+- decision: CurrentAction control metadata; which pieces are public/viewer-dependent and why it is not the public causal identity source;
+- settlement: timeline/event-derived compatibility semantics and limitations;
+- transitionEvents: timeline-derived compatibility data, not a new transition protocol.
 
-## Step 5 — public/private boundary audit
+Check whether any of these can contradict interactionScene under malformed authority. If yes, document them as non-authoritative and ensure future semantic consumers cannot mistake them for causal proof.
 
-For at least Attack, Duel, Group, and Dying:
-- compare two viewers at the same authoritative state;
-- authoritative public semantic core must be deep-equal;
-- private cards/providers/legal options remain outside it;
-- legacy compatibility fields must not leak private data.
+Do not fabricate IDs or suppress useful compatibility data solely to make objects equal.
 
-Explicitly classify any viewer-dependent PresentationV2 field.
+## Step 5 — add the required migration table
 
-## Step 6 — reconnect and unchanged-read stability
+In docs/UX_V2_INTERACTION_STAGE_DESIGN.md add one concrete table with columns:
 
-For representative Group, Duel, Judgement, and Dying checkpoints:
-- repeated projection is deep-equal;
-- reconnect/view from another authorized viewer does not create new causal IDs or revisions;
-- projector does not mutate engine state;
-- checkpoint/revision changes only when server causal authority changes.
+| Field | Current source/authority | Public/viewer boundary | Core replacement | Status | Removal prerequisite |
 
-## Step 7 — fail-closed compatibility boundary
+Use only:
+- KEEP
+- DERIVE
+- DEPRECATE-LATER
 
-Create/retain tests for:
-- null envelope;
-- malformed envelope;
-- active/checkpoint mismatch;
-- missing active frame;
-- Dying Pending causal mismatch;
-- Dying actor/resolver mismatch.
+Every exported PresentationV2 field must have a row.
 
-Typed authoritative fields must be UNPROVEN/null as established.
+Where a field contains mixed-authority members, state that explicitly in the source/authority cell.
 
-Audit legacy fields in these states. If they still display descriptive Pending/timeline content, document that they are non-authoritative compatibility data and must not be used by the future React semantic consumer.
+## Step 6 — authoritative-core statement
 
-Do not fabricate causal identity to make legacy fields look consistent.
+Write one short normative contract:
 
-## Step 8 — C5 migration map
+Authoritative public causal semantics for future React consumption come from the proven typed core:
+- interactionScene;
+- dyingBarrier where applicable;
+- envelope-owned interaction/frame/checkpoint/revision;
+- family-specific proven decision actor.
 
-Add a concise migration table to docs with columns:
-- field;
-- current authority/source;
-- replacement/core field;
-- status: KEEP / DERIVE / DEPRECATE-LATER;
-- reason;
-- removal prerequisite.
+Legacy compatibility objects must not be used to reconstruct causal identity when typed authority is UNPROVEN.
 
-The map must make the later C5/C7 work mechanical rather than requiring another architecture rediscovery.
+CurrentAction remains legality/control authority and private options stay outside the public causal core.
 
-Do not assign a removal stage without evidence.
+## Step 7 — tests
 
-## Step 9 — tests
+Add only targeted tests needed to prove the chosen precedence/classification.
 
-Prefer extending existing PresentationV2 engine/API fixtures.
+At minimum preserve:
+- strict Group typed-link proof;
+- malformed/cross-frame fail-closed;
+- Dying actor/resolver fail-closed;
+- representative real Group/Attack/Duel/Judgement/Dying compatibility behavior;
+- viewer privacy/equality.
 
-Add only tests needed to prove:
-- shared authority helper behavior;
-- legacy/core consistency;
-- viewer boundary;
-- malformed fail-closed;
-- repeated/reconnect stability.
+If docs classify a legacy field as capable of remaining populated when interactionScene is UNPROVEN, add/retain a characterization proving that this is intentional compatibility data rather than causal proof.
 
-Do not add synthetic-only evidence where a real C2-C4 fixture exists.
+## Step 8 — validation
 
-## Step 10 — docs
-
-Update docs/UX_V2_INTERACTION_STAGE_DESIGN.md with:
-- C5 authoritative semantic core;
-- legacy compatibility migration map;
-- public/private boundary;
-- remaining concrete C5 gaps.
-
-README: concise C5-01 status.
-
-Do not rewrite C0-C4 history.
-
-## Step 11 — validation
-
-Run focused PresentationV2/causality plus representative Group/Attack/Duel/Damage/Judgement/Negation/Dying tests, then:
+Run focused PresentationV2/causality and representative engine fixtures, then:
 - npm run test:fast
 - npm run test:api
 - npm run build
 - npm run lint
 - git diff --check
 
-Report exact commands/counts.
+Report exact counts.
 
 ## Scope exclusions
 
-Do not:
-- modify React/CSS;
-- create final C7 PresentationSnapshot;
-- remove legacy fields wholesale;
-- change gameplay rules;
-- redesign C2 causal identity;
-- add animation timing/direction;
-- fabricate historical delayed originRef;
-- expose private legal actions/options in public semantic core;
-- start C6/C7.
+No C5-02, C6, C7, React/CSS, gameplay changes, final PresentationSnapshot, animation protocol, historical originRef fabrication, or wholesale removal of compatibility fields.
 
 ## Execution result
 
-Append only C5-01 execution result with:
+Append only C5-01-FIX1 execution result with:
 - full implementation SHA;
 - files changed;
-- PresentationV2 field inventory;
-- shared authority/proof refactors;
-- compatibility divergences found/fixed;
-- migration map summary;
-- viewer/privacy evidence;
-- fail-closed evidence;
-- exact validation commands/counts;
+- complete exported-field authority inventory;
+- active/parent precedence decision with real evidence;
+- migration table summary;
+- authoritative-core statement;
+- tests/validation counts;
 - remaining C5 gaps.
 
 Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin. Verify origin/ux-v2:HANDOVER.md contains the result. Then STOP.
 
 ## Acceptance
 
-C5-01 passes only if the accepted C1-C4 semantic contract is consolidated without changing gameplay, authoritative public fields have clear source/proof ownership, legacy compatibility fields are explicitly classified and cannot be mistaken for authoritative causal semantics, public/private boundaries remain correct, malformed authority remains fail-closed, regressions are green, and the migration map is concrete enough to drive the next C5 slice.
-
-## C5-01 execution result
-
-Implementation commit: `e8dfa43`.
-
-Files changed:
-
-- `game/presentation-v2.ts`
-- `tests/presentation-v2.test.mjs`
-- `README.md`
-- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
-- `HANDOVER.md`
-
-PresentationV2 field inventory and authority result:
-
-- `interactionScene` public causal facts prefer persisted root/active/parent
-  frames, checkpoint, stage, and presentation revision.
-- `rootContext`, `activeContext`, and `parentContext` retain their existing
-  descriptive kind/continuation shapes for compatibility; their causal
-  source/target values use envelope metadata when present.
-- `groupResolution` follows only typed continuation edges and requires the
-  continuation causal frame reference. Missing linkage is `UNPROVEN`.
-- `decision` remains a CurrentAction-derived compatibility/control object;
-  private legal options are unchanged and are not copied into the public
-  semantic core.
-
-Shared projector refactors removed recursive arbitrary-pending scans,
-stage-only Group-frame selection, and object-identity participant discovery.
-Typed edges cover direct Group, Group Negation, nested Group Damage, and Dying
-resume paths. A focused regression proves nested data and a Group stage alone
-cannot fabricate proven Group semantics.
-
-Compatibility divergences found and fixed: causal frame stages were initially
-allowed to overwrite legacy context kinds and frame-wide target arrays were
-allowed to replace legacy current-target shapes; both were corrected so the
-causal scene gains authoritative metadata without changing existing context
-contracts. The migration map remains mechanical: keep compatibility fields,
-derive semantic scene fields from the envelope, and deprecate only after a
-later React/C7 consumer proves it no longer depends on legacy shapes.
-
-Viewer/privacy and fail-closed evidence: 115/115 fast tests pass; 24/24
-focused engine-backed PresentationV2 tests pass; the final API suite passes
-239/239 across 23 files and 4 shards. Existing viewer equality, private
-CurrentAction isolation, malformed/null envelope, cross-frame checkpoint, and
-Dying actor/resolver fail-closed proofs remain green.
-
-Validation:
-
-- `npm run build` — PASS
-- `npm run test:fast` — 115/115 PASS
-- `npm run test:api` — 239/239 PASS across 23 files and 4 shards
-- `npm run lint` — PASS
-- `git diff --check` — PASS
-
-Remaining C5 gaps: compatibility fields are retained; Transition Events are
-not a new protocol; React/CSS migration, final C7 snapshot, animation timing,
-gameplay changes, and historical delayed `originRef` remain out of scope.
+FIX1 passes only if every exported PresentationV2 field is explicitly classified, the active/parent Pending-vs-envelope precedence is intentionally resolved and accurately documented, the migration table is complete, authoritative typed semantics remain fail-closed and viewer-safe, compatibility behavior is preserved or changed only with real evidence, and all required regressions are green.
