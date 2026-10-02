@@ -100,7 +100,7 @@ legacy compatibility/unit code and is not a normal supported-flow authority.
 | Attack settlement clears envelope | PROVEN | lethal Attack → Damage → Dying → Peach rescue test | none |
 | next independent root gets fresh IDs | PROVEN | lethal rescue test's subsequent ordinary Attack | none |
 | Attack-derived Damage reuses root | PROVEN | lethal Damage/Dying test | none |
-| independent Damage exact root persistence | UNPROVEN | no isolated authoritative scenario | requires a real source-less Damage root fixture |
+| independent Damage exact root persistence | PROVEN | source-less Lightning/Legacy engine-backed API evidence | no gap for the covered Lightning root; other source-less damage variants remain unseparated |
 | malformed mid-continuation does not fabricate authority | PROVEN | `malformed room envelope remains non-authoritative` | none for ordinary Dodge continuation |
 | legacy NULL continuation remains null | PROVEN | `legacy room without causal envelope remains null through production room state` | none |
 | no production normal-path recoverCausalEnvelope | PROVEN | route search audit | helper remains only for isolated compatibility code |
@@ -248,3 +248,23 @@ window. Timeout is therefore the same semantic decline/handoff transition.
 
 C3 Group semantics, C4 Dying barrier work, C5 projector migration, and React
 presentation changes remain explicitly out of scope.
+
+## C2 independent Damage root evidence — 2026-10-02
+
+Source-less Lightning is an independent Damage root, not a sourced Attack
+continuation. When its real `damage_suffered` reaction opens, the server now
+creates one `DAMAGE` Interaction/Frame with `originSourceId = null`, the
+Lightning target as the original/current target, and the actual target actor as
+the resolver. The typed Pending and continuation carry the same causal handle,
+and the room write persists them with the envelope.
+
+The same envelope is retained through the private Legacy card-distribution
+boundary and each repeated damage-point reaction window. Re-entry does not
+invent a new checkpoint for the same Damage frame. Final settlement clears the
+envelope atomically with the resumed Draw/Play transition. The real
+`source-less Lightning damage can open three independent Legacy opportunities`
+API test proves the initial root, D1 Pending handle, second-viewer identity,
+repeated-window retention, and final clearing. This evidence is intentionally
+limited to the Lightning fixture; it does not claim universal automatic
+transition coverage or close the remaining Judgement, delayed activation,
+nested Damage, or Dying boundaries.

@@ -404,13 +404,37 @@ test("source-less Lightning damage can open three independent Legacy opportuniti
     assert.equal(declinedJudgement.status, 200, JSON.stringify(declinedJudgement.data));
     view = (await state(game.code, guoMember.token)).data;
   }
+  const damageRoot = view.causalEnvelope;
+  assert.ok(damageRoot, "source-less Lightning post-damage reactions create an independent causal root");
+  assert.equal(damageRoot.frames.length, 1);
+  assert.equal(damageRoot.activeFrameId, damageRoot.frames[0].frameId);
+  assert.equal(damageRoot.frames[0].stage, "DAMAGE");
+  assert.equal(damageRoot.frames[0].origin.originSourceId, null, "Lightning keeps its source-less origin");
+  assert.deepEqual(damageRoot.frames[0].origin.originalTargetIds, [guo.id]);
+  assert.equal(damageRoot.frames[0].current.currentSourceId, null);
+  assert.equal(damageRoot.frames[0].current.resolvingPlayerId, guo.id);
+  assert.equal(view.currentAction.actorId, guo.id);
+  const otherViewer = (await state(game.code, game.members[0].token)).data;
+  assert.equal(otherViewer.causalEnvelope.interactionId, damageRoot.interactionId, "the independent Damage root is public and viewer-stable");
+  assert.equal(otherViewer.causalEnvelope.checkpoint.checkpointId, damageRoot.checkpoint.checkpointId);
+  assert.equal(otherViewer.causalEnvelope.presentationRevision, damageRoot.presentationRevision);
+  const persistedDamage = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  assert.equal(persistedDamage.actorId, guo.id);
+  assert.equal(persistedDamage.causal.interactionId, damageRoot.interactionId);
+  assert.equal(persistedDamage.continuation.causal.frameId, damageRoot.activeFrameId);
   for (let index = 0; index < 3; index++) {
     assert.equal(view.currentAction.kind, "trigger", JSON.stringify(view));
     assert.equal(view.currentAction.triggerEvent, "damage_suffered");
     await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_legacy" });
     await distributeLegacy({ game: { code: game.code }, guoMember }, guo.id);
     view = (await state(game.code, guoMember.token)).data;
+    if (index < 2) {
+      assert.equal(view.causalEnvelope.interactionId, damageRoot.interactionId, "reopened damage reactions retain the same Interaction");
+      assert.equal(view.causalEnvelope.activeFrameId, damageRoot.activeFrameId);
+      assert.equal(view.causalEnvelope.presentationRevision, damageRoot.presentationRevision, "same Damage frame does not invent a checkpoint for Legacy re-entry");
+    }
   }
+  assert.equal(view.causalEnvelope, null, "the independent Damage root clears at final settlement");
   assert.equal(view.players.find((player) => player.id === guo.id).hp, 1);
   const lightningHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(guo.id)}`));
   assert.ok(legacyCards.every((card) => lightningHand.some((held) => held.id === card.id)), "all three Legacy resolutions transfer their own next two cards");

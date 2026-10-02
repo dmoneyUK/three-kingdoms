@@ -253,7 +253,7 @@ function damageTriggerPending(source: PlayerRow, target: PlayerRow, resumePhase:
 }
 function damageSufferedTriggerPending(source: PlayerRow | null, target: PlayerRow, amount: number, resumePhase: string, sequenceStartCardId: string, readyAfterEventId: string | undefined, origin?: AttackOrigin, resumePlayerId?: string, resumeGroup?: GroupResponsePending, resumeDamageSuffered?: DamageSufferedTriggerContinuation, damageCards: Card[] = [], resumeTurnEnd?: TurnEndTriggerContinuation, damageCause: DamageCause = "other", physicalSuit?: Card["suit"], actorId?: string, causalContext?: CausalContext): CausalCreation<TriggerPending> {
   const inheritedCausal = causalContext ?? resumeGroup?.causal ?? resumeDamageSuffered?.causal;
-  const root = inheritedCausal || !source ? null : createCausalRoot({ stage: "DAMAGE", origin: { originSourceId: source.id, originEffect: damageCause, originalTargetIds: [target.id] }, current: { currentSourceId: source.id, currentEffect: damageCause, currentTargetIds: [target.id], resolvingPlayerId: actorId ?? target.id } });
+  const root = inheritedCausal ? null : createCausalRoot({ stage: "DAMAGE", origin: { originSourceId: source?.id ?? null, originEffect: damageCause, originalTargetIds: [target.id] }, current: { currentSourceId: source?.id ?? null, currentEffect: damageCause, currentTargetIds: [target.id], resolvingPlayerId: actorId ?? target.id } });
   const causal = inheritedCausal ?? root?.context;
   const pending: TriggerPending = {
     kind: "trigger",
@@ -843,10 +843,7 @@ async function beginLegacyDistribution(room: RoomRow, continuation: DamageSuffer
     deadline: nextResponseDeadline(actor),
     resolutionId: continuation.resolutionId,
   };
-  await db().batch([
-    db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(serializePending(pending), JSON.stringify(draw.deck), JSON.stringify(draw.discard), JSON.stringify(presentation.log), room.id),
-  ]);
+  await causalRoomStateWrite(room.id, { phase: "response", pending, deck: draw.deck, discard: draw.discard, log: presentation.log, causalEnvelope: parseCausalEnvelope(room.causal_envelope_json) }).run();
 }
 
 /** Reopens the same damage event for unresolved providers, or resumes it once. */
@@ -880,11 +877,10 @@ async function finishDamageSufferedEvent(room: RoomRow, continuation: DamageSuff
   }
   const target = players.find((player) => player.id === continuation.targetId);
   if (target && continuation.resumePhase.startsWith("draw")) {
-    await beginDrawPhaseDecision({ ...room, phase: "resolving", pending_json: null }, target, continuation.resumePhase, deck, discard, log, 0, [], players);
+    await beginDrawPhaseDecision({ ...room, phase: "resolving", pending_json: null }, target, continuation.resumePhase, deck, discard, log, 0, [db().prepare("UPDATE rooms SET causal_envelope_json = NULL WHERE id = ?").bind(room.id)], players);
     return;
   }
-  await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-    .bind(continuation.resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(addLog(log, `${target?.name ?? "The damaged character"}'s post-damage reaction ends. Normal processing resumes.`)), room.id).run();
+  await causalRoomStateWrite(room.id, { phase: continuation.resumePhase, pending: null, deck, discard, log: addLog(log, `${target?.name ?? "The damaged character"}'s post-damage reaction ends. Normal processing resumes.`), causalEnvelope: null }).run();
   await continueAfterDying(room.id, continuation.resumePlayerId ?? continuation.sourceId ?? target?.id ?? room.host_player_id);
 }
 
@@ -972,11 +968,11 @@ async function continueDamageSufferedEvent(room: RoomRow, continuation: DamageSu
       reason: `${actor.name} may use an optional post-damage reaction, or skip`,
       deadline: nextResponseDeadline(actor),
       resolutionId: continuation.resolutionId,
-    resolvedEffectIds: continuation.resolvedEffectIds,
+      ...(baseContinuation.causal ? { causal: baseContinuation.causal } : {}),
+      resolvedEffectIds: continuation.resolvedEffectIds,
       continuation: baseContinuation,
     }, presentation.log, presentation.eventId);
-    await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(serializePending(pending), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(presentation.log), room.id).run();
+    await causalRoomStateWrite(room.id, { phase: "response", pending, deck, discard, log: presentation.log, causalEnvelope: parseCausalEnvelope(room.causal_envelope_json) }).run();
     return;
   }
   await finishDamageSufferedEvent(room, continuation, players, deck, discard, log);
