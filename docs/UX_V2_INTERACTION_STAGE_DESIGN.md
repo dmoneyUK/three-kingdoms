@@ -17,39 +17,243 @@ The Local Player Dock should remain stable regardless of whose turn it is.
 
 ## 1. Seat thumbnails
 
-Opponent thumbnails remain visible in fixed relative-seat positions in the upper battlefield.
+Seat topology is designed **mobile portrait first**. Its purpose is to preserve relative seating, distance context, targetability, and player status without consuming the central Interaction Stage.
 
-- Do not move a seat thumbnail when that player is enlarged in the Interaction Stage.
-- Layout must support the full Standard 4–10 player range.
-- Position seats relative to the viewer:
-  - clockwise neighbours on the right,
-  - counter-clockwise neighbours on the left,
-  - an exact opposite seat may use top-centre.
-- Keep seats reasonably compact and close enough to make relative position obvious.
-- Where practical, show projected effective distance from the viewer.
-- Defeated players must no longer occupy the active distance topology. They may remain visible separately as defeated history/status, but must not visually imply that they still sit between living players.
+The viewer is represented by the persistent Local Player Dock at the bottom and therefore does not receive a duplicate seat thumbnail.
 
-Suggested thumbnail information:
+### 1.1 Two layout modes only
 
-- hero portrait,
-- player / hero name,
+Do not use a mixed top + side arrangement and do not use diagonal / horseshoe placement.
+
+Choose the layout solely from total player count:
+
+- **2–4 total players: Top Row Mode.**
+- **5–10 total players: Side Column Mode.**
+
+This gives the Interaction Stage only two predictable geometry classes instead of a different shape for every player count.
+
+### 1.2 Top Row Mode — 2–4 total players
+
+All opponents appear across the top of the battlefield. No opponent seat thumbnails appear on the left or right sides.
+
+Examples:
+
+```text
+3 players
+
+┌─────────────────────────────┐
+│       [P3]    [P2]          │
+│                             │
+│       INTERACTION           │
+│          STAGE              │
+│                             │
+├─────────────────────────────┤
+│      LOCAL PLAYER / YOU     │
+└─────────────────────────────┘
+```
+
+```text
+4 players
+
+┌─────────────────────────────┐
+│ [P4]      [P3]      [P2]    │
+│                             │
+│       INTERACTION           │
+│          STAGE              │
+│                             │
+├─────────────────────────────┤
+│      LOCAL PLAYER / YOU     │
+└─────────────────────────────┘
+```
+
+Top Row Mode deliberately prioritises full-width central interaction space. Do not move opponents to side positions merely to imitate a physical round table.
+
+### 1.3 Side Column Mode — 5–10 total players
+
+All opponent seats appear in left or right vertical columns. **There is no top seat row in this mode.**
+
+- Clockwise seats from the viewer occupy the **right column**.
+- Counter-clockwise seats from the viewer occupy the **left column**.
+- The nearest neighbour on each side is placed nearest to the Local Player Dock.
+- Seats grow upward as their relative seat distance from the viewer increases.
+- If the opponent count is odd, use one deterministic side for the extra seat rather than changing sides for visual balance.
+- Initial design choice: assign the extra / exact-opposite seat to the clockwise **right column**. Validate this during visual prototyping, but keep whichever rule is chosen deterministic.
+
+Examples:
+
+```text
+5 players
+
+┌─────────────────────────────┐
+│[P5]                     [P3]│
+│[P4]   INTERACTION       [P2]│
+│          STAGE              │
+├─────────────────────────────┤
+│            YOU              │
+└─────────────────────────────┘
+```
+
+```text
+7 players
+
+┌─────────────────────────────┐
+│[P7]                     [P4]│
+│[P6]   INTERACTION       [P3]│
+│[P5]      STAGE          [P2]│
+├─────────────────────────────┤
+│            YOU              │
+└─────────────────────────────┘
+```
+
+```text
+10 players
+
+┌─────────────────────────────┐
+│[P10]                    [P6]│
+│[P9]                     [P5]│
+│[P8]   INTERACTION       [P4]│
+│[P7]      STAGE          [P3]│
+│                         [P2]│
+├─────────────────────────────┤
+│            YOU              │
+└─────────────────────────────┘
+```
+
+Side columns must remain entirely above the Local Player Dock. They must never intrude into the local hero, hand, skills, or bottom guidance/action bar.
+
+### 1.4 Central Interaction Safe Zone
+
+The remaining centre of the battlefield is a protected **Interaction Safe Zone**.
+
+Seat thumbnails must not diagonally drift into this area as player count increases.
+
+The safe zone is reserved for:
+
+- selected-target preview,
+- enlarged public hero focus,
+- Current Effect,
+- Reaction Chain,
+- Duel,
+- Judgement,
+- Dying / rescue,
+- AOE resolution,
+- card / skill presentation and resolution animation.
+
+For 5–10 players, prefer reducing seat-thumbnail density before sacrificing the usability of the central current interaction or the Local Player Dock.
+
+### 1.5 Responsive thumbnail presentation
+
+Seat thumbnails may use different presentation shapes while preserving the same information model.
+
+**Top Row Mode** may use a wider compact thumbnail because horizontal width is available and vertical height is valuable.
+
+**Side Column Mode** should use a narrow portrait thumbnail to minimise loss of central width.
+
+Suggested information, subject to real-device validation:
+
+- hero portrait / face,
+- hero or player identity,
 - HP,
-- hand count,
-- distance,
-- lightweight status markers.
+- concealed hand count,
+- projected effective distance,
+- lightweight important status markers.
 
-### Visual-state language
+Do not attempt to place full skills, full equipment names, full Judgement cards, role details, or long status text in seat thumbnails. Those belong in public inspect / Interaction Stage presentation.
 
-Use distinct meanings rather than one generic highlight:
+Equipment and Judgement presence may use small status icons where useful.
 
-- **Gold:** current turn owner.
+### 1.6 Seat position versus gameplay distance
+
+Seat position communicates **relative seating topology**.
+
+Displayed distance communicates **authoritative current gameplay distance**.
+
+These are not interchangeable. Equipment, skills, defeated-player handling, and other effects may cause effective gameplay distance to differ from the apparent number of seat steps.
+
+Where distance is useful, display the server-projected effective value. Do not infer target legality in React merely from visual seat position or from a client-side `distance <= range` calculation.
+
+Final target legality remains authoritative server state.
+
+### 1.7 Target-selection behaviour
+
+During target selection:
+
+- legal seat thumbnails receive a clear selectable affordance,
+- illegal targets are visually de-emphasised,
+- clicking a legal thumbnail selects / deselects it according to the current selection mode,
+- a selected local target receives the amber selected-target treatment,
+- single-target selection may replace the previous selected target directly,
+- multi-target selection follows projected min/max rules,
+- seat thumbnails stay in their fixed positions while the selected player's enlarged preview appears in the Interaction Stage.
+
+Public inspection must remain distinct from targeting.
+
+Recommended interaction:
+
+- in target-selection mode, thumbnail body = target selection,
+- a dedicated info affordance = public inspect,
+- outside target-selection mode, thumbnail body may open public inspect.
+
+Inspect must not mutate target selection.
+
+### 1.8 Layered visual states
+
+Do not model a seat thumbnail with one mutually exclusive colour/state.
+
+A player may simultaneously be:
+
+- turn owner,
+- current effect target,
+- current decision actor,
+- locally selected target,
+- legal / illegal for the current local selection.
+
+Use composable visual channels, for example:
+
+- **Gold:** current turn owner marker.
 - **Cyan / teal:** current decision actor.
-- **Red:** current affected / targeted player.
-- **Amber / selected border:** target currently selected by the local player.
+- **Red:** current affected / effect-target treatment.
+- **Amber:** locally selected target.
 - **Dim / grey:** defeated or currently illegal.
-- **Legal-target affordance:** selectable but not yet selected.
+- **Subtle legal affordance:** legal selectable target.
 
-Red must not mean merely "your decision".
+A decision treatment must not erase target state, and a local selection treatment must not erase public event state.
+
+### 1.9 Defeated players and authoritative topology
+
+The UI must not independently decide how defeat changes gameplay distance.
+
+Instead:
+
+- render active seating / distance according to authoritative game state,
+- if the rules engine removes defeated players from active distance topology, reflect that projection,
+- if the rules engine applies different semantics, follow those semantics,
+- never recalculate gameplay distance solely from DOM / visual positions.
+
+If defeated players no longer belong to active topology, they may move to a compact defeated/history treatment outside the active seat columns. This should not consume significant battlefield space.
+
+### 1.10 Responsive Interaction Stage consequence
+
+The two seat modes intentionally create two Interaction Stage geometry classes:
+
+- **Top Row Mode (2–4 players):** wide central interaction area.
+- **Side Column Mode (5–10 players):** narrower but taller central interaction area.
+
+Future Full Hero Focus, Reaction Chain, AOE, Judgement, and special-event presentation should adapt to these two geometry classes rather than simply scaling one fixed desktop card.
+
+### 1.11 Seat topology invariants
+
+1. Mobile portrait is the primary design target.
+2. Never mix top-row seats and side-column seats in the same layout.
+3. Never use diagonal / horseshoe seat placement if it narrows the central Interaction Stage.
+4. Viewer remains anchored at the bottom through the Local Player Dock.
+5. Seat thumbnails remain fixed while players are enlarged or involved in interactions.
+6. Seat position communicates relative seating; authoritative projected distance communicates gameplay distance.
+7. Seat topology never intrudes into the Local Player Dock.
+8. Increasing player count compresses opponent-seat presentation before it damages local hand / hero / controls.
+9. Target legality and distance remain server-authoritative.
+10. Quick Test perspective changes must rebuild the same topology from the selected viewer's perspective.
+
 
 ## 2. Local Player Dock
 
@@ -784,7 +988,7 @@ React should primarily render projected legality and public interaction state ra
 
 When implementation is approved, split it into reviewable steps:
 
-1. **UX2.1 — Seat topology:** fixed 4–10 player thumbnail layout and distance presentation.
+1. **UX2.1 — Mobile-first seat topology:** implement Top Row Mode for 2–4 total players and Side Column Mode for 5–10, including responsive thumbnail variants, protected central safe zone, projected distance, layered seat states, and Quick Test perspective remapping.
 2. **UX2.2 — Local Dock + single-target Interaction Stage:** establish the large-hand / large-hero dock hierarchy, fixed bottom guidance bar, then one selected opponent with public detail and target replacement.
 3. **UX2.3 — Selection controls:** unified Cancel / Confirm state and reset semantics.
 4. **UX2.4 — Multi-target:** projected min/max, deselection, max feedback, ordered-target markers.
@@ -801,9 +1005,11 @@ Do not implement all slices in one change. Review the real screen after UX2.1–
 
 The next design discussion should settle **UX2.1 + UX2.2** before coding:
 
-- exact 4–10 player seat-thumbnail geometry,
-- portrait / label / distance density,
-- upper battlefield height,
+- validate Top Row Mode (2–4) and Side Column Mode (5–10) on real portrait-phone widths,
+- validate deterministic odd-seat assignment / exact-opposite placement in Side Column Mode,
+- validate top-row versus side-column thumbnail dimensions, labels, HP, hand count, distance, and status density,
+- validate the minimum protected Interaction Safe Zone width / height without hard-coding desktop assumptions,
+- validate battlefield height above the persistent Local Player Dock,
 - exact single-target Focus dimensions,
 - how Current Effect, Reaction Chain, and Current Decision are arranged inside the Interaction Stage,
 - where the Reaction Chain sits relative to enlarged hero panels,
