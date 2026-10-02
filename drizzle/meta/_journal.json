@@ -71,6 +71,13 @@
       "when": 1789988416840,
       "tag": "0009_parallel_loa",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790927003580,
+      "tag": "0010_salty_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

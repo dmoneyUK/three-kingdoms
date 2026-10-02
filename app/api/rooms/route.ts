@@ -25,13 +25,14 @@ import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { projectPresentationV2 } from "../../../game/presentation-v2";
+import { parseCausalEnvelope } from "../../../game/presentation-causality";
 
 export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
 type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean };
-type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null };
+type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
 
@@ -3099,6 +3100,7 @@ async function roomState(code: string, token?: string) {
   const result = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
   const players = result.results ?? [];
   const rawLog = parse<string[]>(room.log_json, []);
+  const causalEnvelope = parseCausalEnvelope(room.causal_envelope_json);
   const persistedPending = parsePersistedPending(room.pending_json);
   const triggerPending = persistedPending?.kind === "trigger" ? persistedPending : null;
   const distributionPending = persistedPending?.kind === "card_distribution" ? persistedPending : null;
@@ -3182,7 +3184,7 @@ async function roomState(code: string, token?: string) {
   const projectedTimeline = gameTimeline(rawLog, me?.id);
   const presentationV2 = projectPresentationV2({ pending, currentAction, actionRevision, timeline: projectedTimeline });
   return {
-    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction,
+    code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction,
     isHost: me?.id === room.host_player_id, meId: me?.id ?? null,
     myRole: room.status !== "lobby" ? publicRoleName(me?.role) : null,
     myHeroOptions: room.status === "heroes" && me && !me.hero && (me.role === "Lord" || Boolean(players.find((player) => player.role === "Lord")?.hero)) ? currentHeroOptions(me.hero_options_json) : [],
