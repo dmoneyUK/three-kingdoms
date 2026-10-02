@@ -16,6 +16,7 @@ const fastTests = [
   "tests/active-skill-interactions.test.mjs",
   "tests/presentation-v2.test.mjs",
   "tests/presentation-causality.test.mjs",
+  "tests/causal-context.test.mjs",
 ];
 
 // rendered-html exercises the built SSR bundle, so test:fast includes it when

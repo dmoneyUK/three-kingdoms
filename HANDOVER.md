@@ -441,3 +441,39 @@ C2 passes only if:
 - legacy NULL/malformed envelope remains safe;
 - no C3/C4/C5/React work has started;
 - requested validation passes or failures are explicitly reported.
+
+## C2 execution result — 2026-10-02
+
+Implementation commit (rebased onto the reviewer handoff):
+`feat: propagate causal context through gameplay continuations`.
+
+Implemented in the current branch:
+
+- Added `game/causal-context.ts` with server-owned root, child, and parent-resume helpers.
+- Added optional causal references to persisted Pending and Continuation records.
+- Propagated Interaction/Frame references through Attack, Attack-targeted,
+  Group, Duel, Negation, Damage, Judgement, and Borrowed Sword paths.
+- Preserved the Borrowed Sword causal reference through target selection and
+  forced Attack creation.
+- Added runtime proofs for root identity, nested child identity, typed parent
+  resume, immutable origin, and redirected current targets.
+- Kept `resolutionId`, timeline `event.id`, and `actionRevision` unchanged.
+- Made no React/CSS, Group-classification, Dying-barrier, or PresentationV2
+  migration changes.
+
+Validation completed:
+
+- C2 causal-context tests: 2/2
+- Focused causal tests: 8/8
+- Full fast suite: 107/107
+- Full API/D1 suite: 212/212
+- `npm run build`: passed
+- `npm run lint`: passed
+- `git diff --check`: passed
+
+Known boundary for review: causal handles are propagated through the listed
+decision records, but a single shared room-envelope CAS write is not yet used
+by every automatic transition. Attack-targeted initialization repairs a
+missing room envelope; remaining automatic transition writes and complete
+runtime child-Frame wiring remain open C2 work. This result does not claim the
+C2 acceptance gate is fully closed and does not start C3.

@@ -1,5 +1,21 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
+## UX2.0C2 — causal propagation pass — 2026-10-02
+
+C2 propagation is implemented as a backward-compatible causal handle carried by
+real Pending and Continuation records. Root Attack, Group, Duel, Negation, and
+Damage decisions now receive explicit Interaction/Frame references; Judgement,
+Attack-targeted, Damage, and Borrowed Sword continuations preserve those
+references through response and trigger boundaries. Borrowed Sword forced
+Attack records retain the parent reference, while Attack-targeted persistence
+initializes the room-level causal envelope when an older room has none.
+
+Added runtime proofs for root identity, nested child identity, typed parent
+resume, immutable origin, and redirected current targets. The full C2 migration
+is not yet a release gate: generic room-envelope CAS updates for every
+automatic transition and the authoritative Dying barrier remain follow-up
+work, covered by the C2 boundary in `HANDOVER.md` and the planned C4 work.
+
 ## UX2.0B-FINAL verification — 2026-10-02
 
 On `ux-v2`, real engine-backed PresentationV2 checks now cover Dying/rescue

@@ -3,25 +3,28 @@ import type { ActionRequirement } from "./responses";
 import type { JudgementPurpose } from "./decisions/judgement";
 import type { DamageCause } from "./capabilities/damage-modifiers";
 import type { TriggerEvent } from "./capabilities/triggers";
+import type { CausalContext } from "./causal-context";
+
+export type CausalFields = { causal?: CausalContext };
 
 /** The one persisted decision in a room, independent of HTTP and D1. */
 export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered" | "borrowed_sword";
-export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; requiredDodgeCount?: number; dodgeSuppressed?: boolean; sequenceStartCardId: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string };
+export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; requiredDodgeCount?: number; dodgeSuppressed?: boolean; sequenceStartCardId: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string } & CausalFields;
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
 export type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 export type TargetCardPending = { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
-export type BorrowedSwordPending = { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; stage: "choose_target" | "force_attack" };
-export type BorrowedSwordAttackContinuation = { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; resumePlayerId: string; weaponId: string; origin: "borrowed_sword" };
+export type BorrowedSwordPending = CausalFields & { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; stage: "choose_target" | "force_attack" };
+export type BorrowedSwordAttackContinuation = CausalFields & { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; resumePlayerId: string; weaponId: string; origin: "borrowed_sword" };
 export type DeferredStratagem =
   | { kind: "draw_two"; cardId: string } | { kind: "oath" } | { kind: "harvest"; chooserIds: string[] } | { kind: "harvest_target"; pending: HarvestPending } | { kind: "borrowed_sword"; targetId: string }
   | { kind: "dismantle"; targetId: string } | { kind: "steal"; targetId: string } | { kind: "duel"; pending: ResponsePending } | { kind: "group"; pending: GroupResponsePending }
   | { kind: "overindulgence"; targetId: string; cardId: string } | { kind: "lightning"; targetId: string; cardId: string } | { kind: "rations_depleted"; targetId: string; cardId: string } | { kind: "judgement"; targetId: string; cardId: string };
 /** Only effect-resumption data belongs in a canonical response continuation. */
-export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string };
-export type InfluencingAttackContinuation = { kind: "influencing_attack"; sourceId: string; targetId: string; resumePhase: string; sequenceStartCardId: string; origin: "triggered" };
-export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; damageCards?: Card[]; physicalSuit?: Card["suit"]; sequenceStartCardId?: string; resolutionId?: string };
-export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string };
-export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string };
+export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string } & CausalFields;
+export type InfluencingAttackContinuation = { kind: "influencing_attack"; sourceId: string; targetId: string; resumePhase: string; sequenceStartCardId: string; origin: "triggered" } & CausalFields;
+export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; damageCards?: Card[]; physicalSuit?: Card["suit"]; sequenceStartCardId?: string; resolutionId?: string } & CausalFields;
+export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string } & CausalFields;
+export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string } & CausalFields;
 export type ResponseContinuation = AttackContinuation | InfluencingAttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;
 
 /**
@@ -29,7 +32,7 @@ export type ResponseContinuation = AttackContinuation | InfluencingAttackContinu
  * requirement. Its continuation deliberately remains small and domain-shaped:
  * it contains only what Attack, Duel, Group, or Negation needs to resume.
  */
-export type ResponsePending = {
+export type ResponsePending = CausalFields & {
   kind: "response";
   actorId: string;
   requirement: ActionRequirement;
@@ -43,7 +46,7 @@ export type ResponsePending = {
 };
 export type GroupResponsePending = Omit<ResponsePending, "continuation"> & { continuation: GroupContinuation };
 /** Effect-resumption data for new canonical trigger decisions. */
-export type AttackDodgedTriggerContinuation = {
+export type AttackDodgedTriggerContinuation = CausalFields & {
   kind: "attack_dodged_event";
   sourceId: string;
   targetId: string;
@@ -53,13 +56,13 @@ export type AttackDodgedTriggerContinuation = {
   origin?: AttackOrigin;
   resolutionId?: string;
 };
-export type AttackTargetedTriggerContinuation = {
+export type AttackTargetedTriggerContinuation = CausalFields & {
   kind: "attack_targeted_event";
   declaration: AttackDeclaration;
   group?: GroupResponsePending;
   resolvedEffectIds?: string[];
 };
-export type DamageAboutToApplyTriggerContinuation = {
+export type DamageAboutToApplyTriggerContinuation = CausalFields & {
   kind: "damage_about_to_apply_event";
   sourceId: string;
   targetId: string;
@@ -69,7 +72,7 @@ export type DamageAboutToApplyTriggerContinuation = {
   origin?: AttackOrigin;
   physicalSuit?: Card["suit"];
 };
-export type DamageSufferedTriggerContinuation = {
+export type DamageSufferedTriggerContinuation = CausalFields & {
   kind: "damage_suffered_event";
   sourceId?: string;
   targetId: string;
@@ -99,7 +102,7 @@ export type DamageSufferedTriggerContinuation = {
   judgementCard?: Card;
   resolutionId?: string;
 };
-export type CardDistributionPending = {
+export type CardDistributionPending = CausalFields & {
   kind: "card_distribution";
   actorId: string;
   cards: Card[];
@@ -157,7 +160,7 @@ export type JudgementResponseResume = {
   continuation: ResponseContinuation;
 };
 export type DamageSufferedJudgementResume = { kind: "damage_suffered"; continuation: DamageSufferedTriggerContinuation };
-export type JudgementContinuation = {
+export type JudgementContinuation = CausalFields & {
   targetId: string;
   purpose: JudgementPurpose;
   revealedCard: Card;
@@ -235,7 +238,7 @@ export type HpRecoveredTriggerContinuation = {
 export type TriggerContinuation = AttackTargetedTriggerContinuation | AttackDodgedTriggerContinuation | DamageAboutToApplyTriggerContinuation | DamageSufferedTriggerContinuation | TurnStartTriggerContinuation | DrawPhaseTriggerContinuation | DiscardPhaseTriggerContinuation | TurnEndTriggerContinuation | JudgementRevealedTriggerContinuation | JudgementEffectiveTriggerContinuation | HeroChoiceTriggerContinuation | HandLossTriggerContinuation | EquipmentLostTriggerContinuation | StratagemUsedTriggerContinuation | HpRecoveredTriggerContinuation;
 
 /** A capability reaction to an already-established domain event. */
-export type TriggerPending = {
+export type TriggerPending = CausalFields & {
   kind: "trigger";
   actorId: string;
   event: TriggerEvent;
@@ -249,7 +252,7 @@ export type TriggerPending = {
   continuation: TriggerContinuation;
 };
 export type DyingResumeEffect = { kind: "draw_cards"; playerId: string; amount: number; label: string };
-export type DyingPending = { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; resumeEffect?: DyingResumeEffect; origin?: AttackOrigin; reason: string };
+export type DyingPending = CausalFields & { kind: "dying"; sourceId: string | null; targetId: string; actorId: string; remainingIds: string[]; deadline: number; resumePlayerId: string; resumePhase?: string; resumePending?: GroupResponsePending; resumeTrigger?: DamageSufferedTriggerContinuation; resumeEffect?: DyingResumeEffect; origin?: AttackOrigin; reason: string };
 export type Pending = HarvestPending | TargetCardPending | BorrowedSwordPending | CardDistributionPending | DeckReorderPending | ResponsePending | TriggerPending | DyingPending;
 
 export function asTriggerPending(pending: Pending | null | undefined): TriggerPending | null {
