@@ -2,46 +2,51 @@
 
 ## Reviewer status
 
-UX2.0C2-FIX3 is **PARTIAL / NOT ACCEPTED**. Do not start C3.
+UX2.0C2-FIX4 is **PARTIAL / NOT ACCEPTED**. Do not start C3.
 
-The Agent did improve the lethal Attack → Damage → Dying path, but the submitted slice explicitly leaves most FIX3 acceptance gates open.
+Reviewed implementation commit:
+`04abf5bb28b12656ff66b1598921a3f650e09413`
 
-### Accepted from this slice
+### Accepted
 
-- A real lethal Attack API path now observes one persisted causal Interaction through Attack response into Dying.
-- Damage/Dying stage updates operate on an already persisted matching envelope through `causalEnvelopeAtStage()`; absent/mismatched envelopes are not replaced there.
-- Dying entry atomically persists phase/Pending/deck/discard/log/envelope through `causalRoomStateWrite()`.
-- Successful Peach rescue has an explicit assertion that the settled causal envelope clears.
-- `startJudgementNegation()` now demonstrates the desired root pattern: create `causalRoot`, put its context in Pending, and persist `causalRoot.envelope` directly.
+- All production routing imports/calls to `recoverCausalEnvelope()` were removed from `app/api/rooms/route.ts`.
+- Attack root creation now retains the exact created envelope separately from the serializable Pending causal context.
+- Attack-targeted uses the existing room envelope or the exact runtime root envelope; it no longer reconstructs a normal root from a context handle.
+- Damage root helpers now retain a newly created envelope instead of immediately discarding it.
+- Attack-derived Damage continues to reuse Attack causal identity.
+- Borrowed Sword no longer reconstructs a missing parent envelope from Pending context.
+- The lethal Attack→Damage→Dying regression remains intact.
+- The Agent supplied a real pushed implementation SHA.
 
-### Why FIX3 is still not accepted
+### Remaining blockers
 
-1. The requested root-authority refactor is incomplete. Production Attack paths still contain normal-path `recoverCausalEnvelope()` reconstruction, including Attack-targeted entry.
-2. `damageTriggerPending()` and `damageSufferedTriggerPending()` can still create a root and retain only `.context`, discarding the newly created envelope. That repeats the ownership problem FIX3 was intended to remove.
-3. The lethal test proves Attack→Dying identity and rescue clear, but it does not yet prove the complete requested checkpoint/revision/reconnect/second-viewer/stale invariants.
-4. The evidence document still labels Attack→Damage and Attack→Damage→Dying PARTIAL; it has not been updated to the exact FIX3 matrix or exact new boundary claims.
-5. Group child/resume remains UNPROVEN.
-6. independent nested-damage semantics remain UNPROVEN.
-7. Judgement causal-envelope lifetime remains PARTIAL.
-8. Duel and counter-Negation causal-envelope lifetime remain PARTIAL.
-9. delayed activation/originRef remains UNPROVEN.
-10. global settlement/clear remains PARTIAL.
-11. malformed real-gameplay row behavior and complete stale/double identity safety remain incomplete.
-12. The execution result says implementation commit is “pending commit and push”, so it does not provide a reviewable implementation SHA. The remote code does contain the reported changes, but future results must report the actual pushed commit SHA.
+FIX4 cannot pass its own acceptance criteria yet because the Agent explicitly left these required FIX4 proofs PARTIAL:
 
-The next task is deliberately smaller than FIX3. Do not attempt all remaining C2 scenarios at once.
+1. root checkpointId/presentationRevision stability across repeated reads/reconnect;
+2. second-viewer identity proof for the refactored real Attack root rather than generic manually stored C1 evidence;
+3. stale/double response cannot duplicate root/checkpoint/revision;
+4. settlement followed by unrelated supported root produces a fresh interactionId;
+5. independent Damage root exact-envelope persistence lacks real API evidence;
+6. malformed envelope during a real continuation lacks API evidence;
+7. the requested FIX4 evidence matrix was not actually replaced with the narrower FIX4 rows; the document still carries the older broad flow matrix and labels several ownership claims indirectly.
+
+### Additional code-review concern
+
+The implementation uses non-enumerable runtime properties such as `declaration.causalEnvelope` and `pending.causalEnvelope` to transport the created envelope without serializing it into Pending JSON. This is acceptable as a temporary server-runtime carrier, but it is fragile across object copying/serialization boundaries. FIX5 must prove every relevant persistence caller receives the exact envelope before serialization and must not assume the hidden field survives a persisted/reloaded Pending.
+
+Group and Duel are still explicitly documented as `CONTEXT_ONLY_BUG`; that is outside FIX4 scope but must be fixed before C2 can be accepted.
 
 ---
 
-# NEXT TASK — UX2.0C2-FIX4: Close Envelope Ownership Before More Scenario Work
+# NEXT TASK — UX2.0C2-FIX5: Prove Root Ownership and Remove Hidden-Carrier Ambiguity
 
 ## Objective
 
-Finish one architectural invariant:
+Do not expand to Group/Judgement/Duel yet.
 
-> A supported causal root must create one authoritative `CausalEnvelope`, and that exact envelope must be carried to persistence. A `CausalContext` is only a reference into an existing envelope and must never be sufficient for normal-path root reconstruction.
+Finish the proof for the Attack/Damage ownership architecture introduced by FIX4 and make the runtime envelope carrier explicit and safe.
 
-Do not add Group/Judgement/Duel feature coverage in this slice. First eliminate normal-path envelope reconstruction and context-only root creation.
+This slice should either PASS the Attack/Damage ownership gate or expose a concrete architectural defect. Do not add more scenario breadth.
 
 ## Workflow
 
@@ -56,159 +61,169 @@ git pull --ff-only origin ux-v2
 
 Do not modify/merge `main`. Do not self-merge.
 
-Append the execution result to this HANDOVER; do not clean/replace it.
+Append execution result only. Reviewer will clean HANDOVER after review.
 
-## Step 1 — inventory every root creator and recovery call
+## Step 1 — replace hidden ad-hoc envelope properties with an explicit orchestration result
 
-In `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`, add two exact inventories:
+Do not attach `causalEnvelope` as a non-enumerable property to objects whose domain type is a serializable Pending/AttackDeclaration.
 
-### Root creators
+Introduce an explicit server-only result type, for example:
 
-Find every production `createCausalRoot(...)` call and record:
-- function;
-- flow;
-- whether both envelope + context are retained;
-- where the exact envelope is persisted;
-- status: `AUTHORITATIVE | CONTEXT_ONLY_BUG | LEGACY_ONLY`.
+```
+type CausalPendingResult<T> = {
+  value: T;
+  createdEnvelope: CausalEnvelope | null;
+};
+```
 
-### Recovery calls
+and an equivalent Attack declaration result if needed.
 
-Find every production `recoverCausalEnvelope(...)` call and record:
-- function;
-- flow;
-- why recovery exists;
-- whether it is reachable in a newly created supported flow;
-- status: `LEGACY_ONLY | REMOVE_FROM_NORMAL_PATH | UNSAFE`.
+Requirements:
+- serializable gameplay object remains pure;
+- server-only envelope carrier is a separate wrapper;
+- existing inherited causal context => `createdEnvelope: null`;
+- newly created root => exact root envelope returned separately;
+- persistence caller consumes wrapper before serializing gameplay value;
+- no envelope is placed in Pending JSON;
+- no normal-path recovery.
 
-Do this before implementation.
+Names may differ; architecture must be explicit.
 
-## Step 2 — introduce an explicit root result through orchestration
+## Step 2 — Attack root exact-envelope proof
 
-Where a helper can create a new root, it must not return/store only `CausalContext`.
+For a normal real Attack API flow, prove:
+- one root is created;
+- persisted envelope has one Frame;
+- interactionId/frameId/checkpointId/presentationRevision are captured at first authoritative response boundary;
+- repeated `state` reads do not change any of those four values;
+- reconnect/reload does not change them;
+- another viewer sees exactly the same public envelope;
+- Pending causal context points to the same interactionId/frameId.
 
-Use one explicit pattern, for example a typed structure containing:
-- `context`;
-- `envelope` when this call created the root.
+Use the real persisted Attack root, not manual SQL envelope injection.
 
-The exact type/name is up to the implementation, but ownership must be obvious at compile time.
+## Step 3 — stale/double response proof
 
-Rules:
-- existing causal context passed in => no new root envelope;
-- no context passed => create root once and return both context + envelope;
-- caller that crosses persistence boundary must persist the returned envelope atomically;
-- do not regenerate it later.
+Use a real Attack response.
 
-Do not put the full envelope into Pending JSON. Pending keeps only causal reference/context.
+Submit the same response command twice or otherwise exercise the existing stale-action guard.
 
-## Step 3 — fix Attack root ownership completely
+Assert after the stale attempt:
+- no new interactionId;
+- no new frameId;
+- no duplicate checkpoint;
+- presentationRevision did not advance a second time;
+- gameplay effect did not execute twice;
+- stale request returns the established stale/conflict behavior.
 
-Refactor the ordinary Attack path and Attack-targeted path so:
-- `attackDeclaration()` does not discard a newly created root envelope;
-- the exact root envelope is persisted with the first authoritative Attack Pending/phase transition;
-- `causalEnvelopeForAttack()` is removed from the supported normal path, preferably deleted if no legacy-only use remains;
-- Attack-targeted entry does not call `recoverCausalEnvelope()` for a newly created Attack;
-- checkpointId and presentationRevision from root creation survive unchanged into the persisted envelope.
+Do not weaken CAS/stale protection to make the test pass.
 
-Add a real API assertion comparing the root object before persistence if accessible through a test seam, or otherwise prove no recovery call is used and that the persisted checkpoint remains stable across first response read/reconnect.
+## Step 4 — settlement then fresh root
 
-## Step 4 — fix Damage root ownership
+Complete one Attack Interaction to settlement.
 
-Refactor:
-- `damageTriggerPending()`;
-- `damageSufferedTriggerPending()`;
-- any directly related helper that creates a DAMAGE root.
+Assert:
+- old envelope is cleared at the authoritative completion boundary;
+- then play/start another unrelated supported causal root;
+- new interactionId differs from old;
+- new frameId differs from old;
+- no parentFrameId or originRef incorrectly links the two independent Interactions.
 
-They must not do:
-`createCausalRoot(...).context`
-without retaining/persisting the envelope.
+This is lifetime identity, not presentation retention.
 
-For Attack-derived damage:
-- reuse the existing Attack envelope/context;
-- do not create a Damage root.
+## Step 5 — independent Damage root real API proof
 
-For genuinely independent root damage:
-- create one DAMAGE root envelope;
-- persist that exact envelope at its first Pending/phase boundary.
+Find one existing gameplay route that starts Damage without inheriting an Attack/Group/Duel causal context.
 
-If a helper cannot persist itself, return the root envelope to the authoritative caller.
+If a real route exists:
+- execute it through API/engine;
+- prove exact created DAMAGE root envelope is persisted;
+- Pending context matches it;
+- repeated reads preserve IDs/checkpoint/revision;
+- settlement clears it.
 
-## Step 5 — restrict recoverCausalEnvelope to legacy-only compatibility
+If no practical route exists in current game:
+- mark `NOT IMPLEMENTED IN GAME` or `UNPROVEN` with exact code evidence;
+- do not invent gameplay or synthetic SQL to claim PROVEN.
 
-After Steps 2–4:
-- no newly created supported Attack/Damage root may depend on `recoverCausalEnvelope()`;
-- no nested child path may reconstruct a parent from only a child/context handle;
-- recovery may remain only for a clearly documented legacy/migration case where the complete authoritative identity is known safe.
+## Step 6 — malformed envelope mid-continuation
 
-If there is no safe legacy use, remove the helper from production routing.
+Create/drive a real supported continuation, then corrupt only the stored envelope to a structurally malformed value using the test DB seam.
 
-Add a regression test proving a supported new root works with recovery unavailable/not invoked by architecture. Do not use brittle source-text assertions if a behavioral test can prove it.
+Continue gameplay.
 
-## Step 6 — preserve current lethal Attack → Dying behavior
+Assert:
+- API does not crash;
+- gameplay follows legacy-safe behavior;
+- malformed envelope is projected as null;
+- continuation does not reconstruct/fabricate an envelope from Pending context;
+- no guessed interaction/frame/checkpoint appears.
 
-The new ownership refactor must retain the accepted behavior from the previous slice:
-- same interactionId/frameId through Attack→Damage→Dying;
-- stage reaches DYING;
-- immutable original target remains;
-- successful rescue clears envelope;
-- gameplay/log counts remain exactly once.
+This SQL mutation is allowed only to test corruption handling; it is not evidence of normal causal creation.
 
-Do not broaden Dying behavior.
+## Step 7 — verify wrapper survives all Attack entry variants
 
-## Step 7 — root identity stability tests
+Audit real callers for:
+- normal Attack;
+- Attack-targeted trigger entry;
+- Serpent Spear Attack;
+- Influencing Attack;
+- any other path calling `attackDeclaration()`.
 
-Add real API tests for the refactored Attack root:
-- first persisted envelope has one frame;
-- repeated room reads do not change interactionId/frameId/checkpointId/presentationRevision;
-- second viewer sees identical public envelope;
-- stale/double response does not create a second root or advance causal revision twice;
-- after settlement, a later unrelated supported root gets a fresh interactionId.
+For each:
+- newly created root envelope reaches the first authoritative persistence boundary;
+- inherited causal Attack does not create another root;
+- no wrapper is accidentally dropped by spread/copy/barrier helpers.
 
-For independent root Damage, add equivalent root-persistence assertions if the engine has a straightforward real API path. Otherwise document the missing route and do not fake it.
+Add focused tests where current API coverage is missing and practical.
 
-## Step 8 — legacy/corrupt behavior
+## Step 8 — exact FIX5 evidence matrix
 
-Test:
-- legacy NULL room can continue its existing continuation without fabricated envelope;
-- malformed envelope does not crash;
-- malformed envelope is not replaced with a reconstructed one mid-continuation;
-- a later genuinely new supported root may create a fresh authoritative envelope.
+Replace the stale ownership evidence section with exactly these rows:
 
-Do not infer causal identity from gameplay prose/state.
+- normal Attack exact root persistence
+- Attack-targeted exact root persistence
+- Attack Pending context matches envelope
+- repeated reads preserve IDs/checkpoint/revision
+- reconnect preserves IDs/checkpoint/revision
+- second viewer sees same envelope
+- stale/double response does not duplicate causal transition
+- Attack settlement clears envelope
+- next independent root gets fresh IDs
+- Attack-derived Damage reuses root
+- independent Damage exact root persistence
+- malformed mid-continuation does not fabricate authority
+- legacy NULL continuation remains null
+- no production normal-path recoverCausalEnvelope
 
-## Step 9 — update evidence documentation accurately
-
-Replace the stale FIX2 matrix heading with FIX4 ownership evidence.
-
-For this slice, the required rows are only:
-- Attack root exact-envelope persistence;
-- Attack-targeted exact-envelope persistence;
-- Attack→Damage reuse;
-- independent Damage root exact-envelope persistence;
-- no normal-path recovery for supported roots;
-- read/reconnect identity stability;
-- second-viewer identity stability;
-- stale/double identity safety;
-- settlement then fresh root;
-- legacy NULL;
-- malformed envelope.
-
-Use:
+Statuses:
 `PROVEN | PARTIAL | UNPROVEN | NOT IMPLEMENTED IN GAME`.
 
-PROVEN requires a named real API/engine test.
+Every PROVEN row must name the exact real API/engine test.
 
-Do not upgrade Group/Judgement/Duel/delayed activation in this slice.
+## Step 9 — do not hide remaining C2 bugs
+
+Keep a separate short “Remaining after FIX5” section naming:
+- Group context-only root ownership;
+- Duel context-only root ownership;
+- Judgement lifetime;
+- Group/nested child;
+- independent nested damage semantics;
+- delayed activation provenance;
+- global settlement coverage.
+
+Do not work on those in this slice.
 
 ## Step 10 — validation
 
-Run after the final code change:
+Run after final change:
 - causal primitive tests;
 - causal-context tests;
 - causal persistence tests;
-- lethal concurrency test;
-- all new FIX4 API tests;
-- PresentationV2 unit tests;
-- PresentationV2 engine tests;
+- lethal Attack/Dying test;
+- all new FIX5 API tests;
+- PresentationV2 unit;
+- PresentationV2 engine;
 - full fast suite;
 - full API suite;
 - build;
@@ -221,10 +236,10 @@ Report exact counts.
 
 Do NOT:
 - start C3;
-- add Group child work;
-- add Judgement/Duel/Negation scenario expansion;
+- fix Group/Duel ownership in this slice;
+- expand Judgement/Negation scenarios;
 - add delayed activation provenance;
-- implement Dying presentation barrier;
+- change Dying presentation barrier;
 - migrate PresentationV2;
 - modify React/CSS;
 - change gameplay rules;
@@ -237,28 +252,34 @@ Append only:
 ```
 ---
 
-## C2-FIX4 execution result — <date>
+## C2-FIX5 execution result — <date>
 
 Branch:
 Implementation commit:
 Files changed:
 
-### Root creator inventory
+### Explicit orchestration carrier
 ...
 
-### Recovery inventory
+### Attack identity proof
 ...
 
-### Attack ownership changes
+### Stale/double proof
 ...
 
-### Damage ownership changes
+### Settlement/fresh-root proof
 ...
 
-### Evidence matrix
+### Independent Damage proof
 ...
 
-### Identity/legacy/corruption tests
+### Corruption/legacy proof
+...
+
+### Entry-variant audit
+...
+
+### FIX5 evidence matrix
 ...
 
 ### Validation
@@ -268,104 +289,20 @@ Files changed:
 ...
 ```
 
-**Implementation commit must be the actual pushed full SHA, not “pending”.**
+Report the actual pushed full implementation SHA.
 
 Push implementation + appended result to `origin/ux-v2` and STOP.
 
----
-
-## C2-FIX4 execution result — 2026-10-02
-
-Branch: `ux-v2`
-
-Implementation commit: `04abf5bb28b12656ff66b1598921a3f650e09413` (pushed to `origin/ux-v2`).
-
-Files changed:
-
-- `app/api/rooms/route.ts`
-- `docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`
-- `README.md`
-- `HANDOVER.md` (this append-only result)
-
-### Root creator inventory
-
-Added to the causal propagation document. Attack and Damage creators now retain
-the exact created envelope outside Pending JSON; `startNegation()` and
-`startJudgementNegation()` already followed this pattern. Group and Duel
-context-only creators remain explicitly marked `CONTEXT_ONLY_BUG` and were not
-expanded in this FIX4 slice.
-
-### Recovery inventory
-
-Removed all production route calls to `recoverCausalEnvelope()`. Normal
-Attack, Attack-targeted, Borrowed Sword, and Damage paths now keep a missing or
-malformed envelope as `null`; no frame tree is reconstructed from a context
-handle. `rg` confirms no remaining use in `app/api/rooms/route.ts`.
-
-### Attack ownership changes
-
-- `attackDeclaration()` retains the exact newly-created root envelope through
-  a non-enumerable runtime field, so Pending JSON remains reference-only.
-- Ordinary Attack, Serpent Spear, Influencing Attack, and Attack-targeted
-  persistence use that exact envelope through `causalRoomStateWrite()`.
-- The former normal-path `causalEnvelopeForAttack()` recovery behavior now
-  returns only an existing room envelope or the exact root envelope; it never
-  calls recovery.
-
-### Damage ownership changes
-
-- `damageTriggerPending()` and `damageSufferedTriggerPending()` retain a newly
-  created independent root envelope outside Pending JSON.
-- Attack-derived Damage reuses the Attack causal context and does not create a
-  second Damage root.
-- Independent Damage Pending writes persist the exact envelope created by the
-  helper.
-- Borrowed Sword child creation requires an existing persisted parent
-  envelope; it no longer reconstructs one from the child context.
-
-### Evidence matrix
-
-The FIX4 ownership matrix is in
-`docs/UX_V2_0C2_CAUSAL_PROPAGATION.md`. Attack → Damage reuse is proven by the
-lethal API path; root persistence, checkpoint/revision stability, stale/double
-safety, fresh-root settlement, and independent Damage API evidence remain
-PARTIAL as explicitly marked there.
-
-### Identity/legacy/corruption tests
-
-Existing Borrowed Sword CAS, lethal Attack/Dying, public viewer, legacy NULL,
-and malformed parser tests remain green. No heuristic identity source was
-added. Full FIX4 checkpoint/revision stability and malformed
-mid-continuation API coverage remain open.
-
-### Validation
-
-- `npm run build`: passed
-- focused FIX4 API tests: 18/18 passed
-- `npm run test:fast`: 107/107 passed
-- `node tests/run-api-suite.mjs`: 212/212 passed
-- `npm run lint`: passed
-- `git diff --check`: passed
-
-### Remaining C2 work
-
-Group/Duel context-only root ownership, complete checkpoint/revision and
-stale/reconnect assertions, independent Damage root API evidence, Judgement
-causal-envelope lifetime, delayed activation provenance, and global settlement
-clearing remain PARTIAL/UNPROVEN. Do not start C3.
-
 ## Acceptance criteria
 
-FIX4 passes only if:
-- newly created supported Attack roots persist the exact created envelope;
-- Attack-targeted does not reconstruct a normal root from context;
-- Damage root creators do not discard a newly created envelope;
-- Attack-derived Damage reuses Attack authority;
-- normal supported roots do not rely on `recoverCausalEnvelope()`;
-- Pending remains reference-only;
-- root checkpoint/revision are stable across reads/reconnect/viewers;
-- stale/double submission cannot duplicate root/revision;
-- legacy/corrupt continuation does not fabricate authority;
-- lethal Attack→Dying regression remains green;
-- actual pushed implementation SHA is reported;
-- no out-of-scope C3/UI work occurs.
+FIX5 passes only if:
+- no non-enumerable/ad-hoc envelope property is used as the orchestration carrier;
+- exact root envelope transport is explicit and separate from serializable gameplay objects;
+- normal real Attack proves stable interaction/frame/checkpoint/revision across reads/reconnect/viewer;
+- stale/double response cannot duplicate causal transition;
+- settlement then fresh root proves lifetime separation;
+- independent Damage is honestly PROVEN or explicitly UNPROVEN/NOT IMPLEMENTED;
+- malformed continuation cannot fabricate authority;
+- Attack entry variants do not drop or recreate root authority;
+- evidence matrix exactly reflects real tests;
+- no out-of-scope C3/UI work begins.
