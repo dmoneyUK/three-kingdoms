@@ -8,13 +8,17 @@ C5-03 adds the smallest typed `stableBoundary` contract alongside the proven
 `CHOICE` requires a proven semantic Pending actor and matching resolver;
 `CurrentAction` remains control-only. Proven Judgement, Borrowed Sword, and
 nested child contexts can remain `SPECIAL` when no blocking actor is proven.
-Settlement and transitionEvents remain descriptive compatibility projections;
-cleared or unsupported causal identity falls back to identity-free `REST`.
+`SETTLEMENT` remains a reserved contract value in this slice because current
+production state has no viewer-independent durable settlement link;
+`settlement` and `transitionEvents` remain descriptive compatibility
+projections. Borrowed Sword `SPECIAL` also requires Pending causal linkage to
+the proven scene. Cleared or unsupported causal identity falls back to
+identity-free `REST`.
 The C5-02 participant-role contract remains viewer-independent, and malformed
 or missing authority fails closed. React/CSS, animation timing, and gameplay
 changes are not started.
 
-The next milestone is C5-03 reviewer acceptance and the remaining C5
+The next milestone is C5-03-FIX1 reviewer acceptance and the remaining C5
 compatibility audit; do not start C6/C7 or React/CSS migration.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02

@@ -250,9 +250,28 @@ test("C5-03 does not upgrade a cleared timeline settlement into causal SETTLEMEN
   assert.deepEqual(projected.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
 });
 
-test("C5-03 emits causal SETTLEMENT only while the proven scene remains attached", () => {
-  const projected = projectPresentationV2({ pending: null, currentAction: action({ kind: "none", actorId: null, readyAfterEventId: "settlement-event", declineAction: undefined }), actionRevision: "settled", timeline: [event("settlement-event", "r1", { finalResult: true })], causalEnvelope: provenBoundaryEnvelope() });
-  assert.deepEqual(projected.stableBoundary, { kind: "SETTLEMENT", interactionId: "stable-interaction", checkpointId: "stable-checkpoint", presentationRevision: 9, decisionActorId: null });
+test("C5-03 keeps settlement descriptive when viewer control selects a final-result event", () => {
+  const timeline = [event("settlement-event", "r1", { finalResult: true })];
+  const envelope = provenBoundaryEnvelope();
+  const withBarrier = projectPresentationV2({ pending: null, currentAction: action({ kind: "none", actorId: null, readyAfterEventId: "settlement-event", declineAction: undefined }), actionRevision: "settled-a", timeline, causalEnvelope: envelope });
+  const withoutBarrier = projectPresentationV2({ pending: null, currentAction: action({ kind: "none", actorId: null, readyAfterEventId: null, declineAction: undefined }), actionRevision: "settled-b", timeline, causalEnvelope: envelope });
+  assert.deepEqual(withBarrier.settlement, { eventId: "settlement-event", resolutionId: "r1" });
+  assert.equal(withoutBarrier.settlement, null);
+  assert.deepEqual(withBarrier.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
+  assert.deepEqual(withBarrier.stableBoundary, withoutBarrier.stableBoundary);
+});
+
+test("C5-03 rejects an unlinked Borrowed Sword Pending as SPECIAL", () => {
+  const projected = projectPresentationV2({
+    pending: { kind: "response", actorId: "B", causal: { interactionId: "other-interaction", frameId: "other-frame" }, continuation: { kind: "borrowed_sword_attack", sourceId: "A", targetId: "C" } },
+    currentAction: action({ actorId: "C" }),
+    actionRevision: "borrowed-unlinked",
+    timeline: [],
+    causalEnvelope: provenBoundaryEnvelope(),
+  });
+  assert.equal(projected.interactionScene?.semantics, "PROVEN");
+  assert.equal(projected.interactionScene?.decisionActorId, null);
+  assert.deepEqual(projected.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
 });
 
 test("C5-03 fails closed to identity-free REST for an incoherent Dying authority", () => {

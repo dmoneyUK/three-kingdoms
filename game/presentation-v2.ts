@@ -469,7 +469,15 @@ function groupPresentation(scene: PresentationInteractionScene | null, groupValu
   };
 }
 
-function stableBoundaryFor(scene: PresentationInteractionScene | null, pending: unknown, settlementEvent: PresentationV2Event | null): PresentationStableBoundary {
+function pendingCausalMatchesScene(scene: PresentationInteractionScene | null, pending: unknown): boolean {
+  const item = record(pending);
+  const causal = record(item?.causal);
+  return scene?.semantics === "PROVEN"
+    && causal?.interactionId === scene.interactionId
+    && causal?.frameId === scene.activeFrameId;
+}
+
+function stableBoundaryFor(scene: PresentationInteractionScene | null, pending: unknown): PresentationStableBoundary {
   const proven = scene?.semantics === "PROVEN";
   const identity = {
     interactionId: proven ? scene?.interactionId ?? null : null,
@@ -479,17 +487,12 @@ function stableBoundaryFor(scene: PresentationInteractionScene | null, pending: 
   const decisionActorId = proven ? scene?.decisionActorId ?? null : null;
   if (decisionActorId) return { kind: "CHOICE", ...identity, decisionActorId };
 
-  // A settlement event is descriptive compatibility data unless it is still
-  // attached to a proven live scene. Never resurrect a cleared frame from
-  // timeline/finalResult alone.
-  if (proven && settlementEvent) return { kind: "SETTLEMENT", ...identity, decisionActorId: null };
-
   const item = record(pending);
   const continuation = record(item?.continuation);
   const continuationKind = stringValue(continuation?.kind);
   const persistentSpecial = proven && (
     scene?.stage === "JUDGEMENT"
-    || continuationKind === "borrowed_sword_attack"
+    || (continuationKind === "borrowed_sword_attack" && pendingCausalMatchesScene(scene, pending))
     || (scene?.continuity.relation === "CHILD_FRAME" && scene.stage === "DAMAGE")
   );
   if (persistentSpecial) return { kind: "SPECIAL", ...identity, decisionActorId: null };
@@ -583,7 +586,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),
-    stableBoundary: stableBoundaryFor(interactionScene, input.pending, settlementEvent),
+    stableBoundary: stableBoundaryFor(interactionScene, input.pending),
   };
 }
 

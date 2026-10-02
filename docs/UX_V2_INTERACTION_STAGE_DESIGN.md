@@ -4135,7 +4135,7 @@ objects below must not reconstruct causal identity when the typed core is
 | `decision` | CurrentAction and public action revision/presentation barrier | Viewer-dependent control metadata; private options are excluded here and remain in CurrentAction | CurrentAction for control; `interactionScene.decisionActorId` for semantic identity | KEEP | None; legality must remain CurrentAction-owned |
 | `settlement` | Timeline events selected by bounded legacy event references and `finalResult` | Public descriptive compatibility data; viewer-stable when history is equal | Future typed settlement checkpoint/snapshot | DEPRECATE-LATER | Durable settlement occurrence vocabulary and C7 snapshot exist |
 | `transitionEvents` | Bounded timeline event references selected from current typed/legacy context | Public descriptive compatibility data; not a transition protocol | Future semantic Transition Events/C7 snapshot | DEPRECATE-LATER | Durable occurrence identity and C7 protocol are implemented |
-| `stableBoundary` | Shared causal scene plus semantic decision proof; settlement only while still attached to a proven scene | Public, viewer-stable classification; no private controls | Future C7 stable boundary inside PresentationSnapshot | KEEP | C7 may wrap this field without duplicating its authority |
+| `stableBoundary` | Shared causal scene plus semantic decision proof; `SETTLEMENT` is reserved until a durable public settlement link exists | Public, viewer-stable classification; no private controls | Future C7 stable boundary inside PresentationSnapshot | KEEP | C7 may wrap this field without duplicating its authority |
 
 The active/parent precedence is intentional: real engine fixtures and current
 API consumers rely on Pending-first legacy kind/current-target shapes. The
@@ -4216,14 +4216,18 @@ the active frame and whose active resolver is that actor. `CurrentAction` and
 its private options never upgrade a scene to `CHOICE`. A PROVEN scene with no
 such actor is therefore not automatically a choice.
 
-`SPECIAL` is limited to an attached proven Judgement scene, a typed Borrowed
-Sword forced-Attack continuation, or a proven nested Damage child when no
-blocking actor is proven. Dying is `CHOICE` when its rescue proof is valid;
-malformed Dying authority is not `SPECIAL`. `SETTLEMENT` is emitted only when
-the existing bounded `finalResult` event is still attached to a proven live
-scene. A cleared envelope or a timeline event alone cannot resurrect an
-interaction, frame, checkpoint, or revision. All other states are identity-free
-`REST`, including normal play/rest and unsupported blocking-looking state.
+`SPECIAL` is limited to an attached proven Judgement scene, a causally linked
+typed Borrowed Sword forced-Attack continuation, or a proven nested Damage
+child when no blocking actor is proven. Dying is `CHOICE` when its rescue proof
+is valid; malformed Dying authority is not `SPECIAL`. `SETTLEMENT` is reserved
+in this slice: the current production model has no durable public link from a
+proven scene/checkpoint to a final-result occurrence that is independent of
+viewer control metadata. The projector therefore does not emit semantic
+`SETTLEMENT`; legacy `settlement` may still be populated as descriptive
+compatibility data. A cleared envelope or a timeline event alone cannot
+resurrect an interaction, frame, checkpoint, or revision. All other states are
+identity-free `REST`, including normal play/rest and unsupported
+blocking-looking state.
 
 The compatibility audit preserves `settlement` as a bounded descriptive
 timeline/finalResult projection. It is viewer-stable when the supplied public
@@ -4232,7 +4236,10 @@ reconstruct causal identity. `transitionEvents` remain bounded, ordered
 references to the current typed/legacy context's public timeline events; they
 are reconnect-stable for equal history but are not a C7 transition or animation
 protocol. Event IDs, resolution IDs, and action revisions do not become causal
-identity, and the projector generates no IDs or revisions.
+identity, and the projector generates no IDs or revisions. Pending-derived
+special evidence first requires `pending.causal.interactionId` and
+`pending.causal.frameId` to match the proven scene interaction and active frame;
+Borrowed Sword continuation kind alone is not authority.
 
 Real checks cover Attack, Duel, Group/AOE and nested Group child/resume,
 Group/Root Negation, Judgement, Dying rescue handoff, Borrowed Sword, delayed
