@@ -2,15 +2,13 @@ A web implementation of the **WTK Standard** ruleset, built around authoritative
 
 ## Current stage — UX2.0C4-01 — 2026-10-02
 
-C4-01 implements the server-authoritative Dying/Peach presentation barrier.
-`PresentationV2.dyingBarrier` is proven only from the persisted causal
-envelope and the current legal rescue decision; automatic or ineligible rescue
-scans remain invisible checkpoints. Real rescuer handoffs preserve the
-Interaction/Frame and advance the checkpoint/revision, while Peach options
-remain private to the acting viewer. Successful rescue, no-rescue settlement,
-viewer equality, reconnect/repeated reads, and malformed fail-closed behavior
-are covered. This remains model/projector/test scope: React/CSS migration,
-animation timing, and C4-02 are not started.
+C4-01-FIX1 closes the stable Dying/Peach barrier boundary. The engine now
+scans semantic rescue providers before publishing any `phase='dying'`
+checkpoint, and persists Pending actor, active resolver, causal frame, and
+checkpoint together. `dyingBarrier` and `interactionScene` share the same
+fail-closed proof; skipped candidates cannot become public decisions and Peach
+options remain private to the acting viewer. React/CSS migration, animation
+timing, and C4-02 are not started.
 
 C2 is closed and accepted. C3-01 now projects Group/AOE public semantics from
 the authoritative causal envelope: source, ordered affected targets, current

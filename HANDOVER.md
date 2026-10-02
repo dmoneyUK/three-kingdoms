@@ -148,3 +148,68 @@ Push implementation AND appended HANDOVER to origin/ux-v2. Run git fetch origin.
 ## Acceptance
 
 FIX1 passes only if the persisted authoritative boundary prevents fake rescue candidates becoming stable public Dying decisions, Pending actor/resolver/checkpoint move coherently, both dyingBarrier and interactionScene fail closed from the same Dying proof, viewer privacy remains intact, normal rescue/settlement/parent-continuation behavior remains correct, and all regressions are green.
+
+## C4-01-FIX1 execution result
+
+Implementation SHA: `8f55dba4fdf12566ea7adea58502391285541e99`.
+
+Files changed:
+- `app/api/rooms/route.ts`
+- `game/presentation-v2.ts`
+- `tests/presentation-v2.test.mjs`
+- `README.md`
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+
+Root cause fixed: `startDyingRescue`, skip, and timeout paths could persist a raw
+ordered candidate before semantic Peach/First Aid eligibility was established.
+That made a concurrent GET able to observe a fake `PROVEN` rescue checkpoint,
+and the projector did not require Pending actor and active resolver coherence.
+
+Persistence-boundary change: one shared `nextDyingResponder` scans living
+candidates with `responseDecisionFor` and the live `responseContext`, including
+the room turn seat, before publishing the first or next stable Dying Pending.
+The chosen actor, remaining order, causal DYING checkpoint, active resolver,
+and presentation revision are written through one causal room-state update.
+No blocker proceeds directly to existing defeat/continuation after rereading
+the committed room/player state, preserving physical discard cards.
+
+Shared Dying proof: both `PresentationV2.dyingBarrier` and the Dying-specific
+`interactionScene.decisionActorId` require a parsed envelope, active/checkpoint
+DYING frame coherence, Pending kind and causal interaction/frame match, a
+non-empty Pending actor, and `activeFrame.current.resolvingPlayerId` equal to
+that actor. Failure yields `UNPROVEN` and clears public causal IDs and decision
+actor; legality remains engine-owned.
+
+Real fixtures: four-seat skipped-candidate and rescuer-handoff flow; engine
+Attack -> Damage -> Dying timer/reconnect; First Aid, Huang Gai Self Sacrifice,
+Dauntless, Group Damage -> Dying, non-Group Damage -> Dying, multiple/partial
+Peach, defeat, timeout, stale/concurrent submissions, viewer privacy/equality,
+and pure mismatch/fail-closed projector cases.
+
+Evidence matrix:
+
+| Evidence | Result |
+| --- | --- |
+| No ineligible candidate as a PROVEN API checkpoint | PROVEN |
+| Initial blocker and post-decline blocker are semantically eligible | PROVEN |
+| Pending actor/resolver/checkpoint move coherently | PROVEN |
+| Same Interaction/Frame across rescuer handoff | PROVEN |
+| Viewer equality and private Peach/provider isolation | PROVEN |
+| Successful Peach, First Aid, multi/partial rescue | PROVEN |
+| No-rescue/death and physical-card conservation | PROVEN |
+| Damage/Group parent continuation | PROVEN |
+| Reconnect/repeated-read stability | PROVEN |
+| Malformed, cross-frame, causal, actor/resolver mismatch fail-closed | PROVEN |
+| Dying-triggered child effect | NOT IMPLEMENTED IN GAME |
+
+Validation: focused projector regression passed; final rebuilt Worker bundle;
+the focused Dauntless API file passed `4/4`; the C4 Dying/Peach API fixtures
+passed in the full run. `npm run test:fast` passed `114/114`. The full
+`npm run test:api` run reached `239` tests but had two unrelated failures in
+`heroes-wu-shu.test.mjs` (Xu Zhu, 1) and the earlier parallel run's downstream
+Dauntless assertion; the final isolated Dauntless rerun passed `4/4`. `npm run
+build` and `npm run lint` passed; `git diff --check` is required before commit.
+
+Remaining C4 gaps: C4-02 and later presentation consumer work, animation and
+transition direction, historical delayed `originRef`, and a Dying-triggered
+child-effect path if production gains one. React/CSS and C5 remain unstarted.

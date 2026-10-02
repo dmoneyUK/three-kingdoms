@@ -4038,3 +4038,35 @@ Evidence matrix:
 This is still a server model/projector/test boundary. React/CSS consumers,
 animation timing, transition direction, historical `originRef`, and C4-02
 remain outside this slice; C5 is not started.
+
+### 0.97.1 UX2.0C4-01-FIX1 atomic Dying rescue barrier — 2026-10-02
+
+The first C4 implementation exposed a persistence race: a raw rescue candidate
+could be committed in `DyingPending` and the causal envelope before the engine
+had established that the candidate had a legal Peach provider. FIX1 moves the
+semantic scan before the first stable `phase='dying'` write and before every
+rescuer handoff. If no real blocker exists, the room proceeds directly to the
+existing defeat/continuation boundary without publishing `RESCUE_CHOICE`.
+
+The authoritative invariant is:
+
+**Only a semantically eligible rescue blocker is committed as a stable DYING
+rescue checkpoint; Pending actor, active resolver, causal frame, and checkpoint
+are coherent before the state is publicly projectable.**
+
+The engine reuses `responseDecisionFor` and the live `responseContext`,
+including the authoritative turn seat, to find the next real blocker. It does
+not duplicate Peach legality in the projector. `PresentationV2` uses one shared
+Dying proof for both `dyingBarrier` and the Dying-specific
+`interactionScene.decisionActorId`: parsed envelope, active/checkpoint DYING
+frame coherence, Pending kind and causal handle, non-empty actor, and matching
+active-frame resolver are all required. Any mismatch is `UNPROVEN` and clears
+causal IDs and the public decision actor.
+
+Real API fixtures cover initial and post-decline skipped candidates, successful
+Peach/First Aid, multi-Peach and partial rescue, defeat, timeout, Group and
+non-Group parent continuation, viewer equality/privacy, reconnect/repeated
+reads, stale/concurrent submissions, and malformed Pending/frame/resolver
+authority. Dying-triggered child effects remain unsupported because no such
+production path exists. React/CSS, animation timing, historical `originRef`,
+and C4-02 remain outside this slice.
