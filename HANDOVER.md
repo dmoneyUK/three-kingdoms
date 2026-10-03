@@ -205,3 +205,42 @@ Push and verify remote HANDOVER, then STOP.
 VIS-02-FIX1 passes only if the unchanged existing Interaction Stage is fully visible and fully contained inside the central safe zone for Interaction, Negation, and Dying at 1440/650/480 widths, with VIS-01 seats and LocalPlayerDock unchanged and no clipping/scrolling/scaling workaround.
 
 If 480px cannot satisfy that invariant, an honest measured GAP is the required result; do not redesign the stage in this task.
+
+## VIS-02-FIX1 Execution Result
+
+- Implementation SHA: `b1f0e0d367594beca803414deb0356633526adff`
+- Files changed:
+  - `app/globals.css`
+  - `tests/browser/ui19.spec.mjs`
+- Safe-zone geometry change:
+  - Previous strategy: `top:clamp(300px,62%,390px)`, plus an unrelated desktop `+32px`, with 4–8px unused bottom inset.
+  - New strategy: the top-row play-table owns `--interaction-safe-top`, derived from the accepted VIS-01 seat geometry: `385px` desktop, `319px` at <=650px, and `326px` at <=480px. The safe zone ends 1px above the play-table bottom.
+  - This is the smallest proven CSS boundary that preserves at least 6px below the rendered opponent row at each required width. No player-board, opponent seat, LocalPlayerDock, Stage internals, overflow, scrolling, scaling, font, content, or semantic behavior changed.
+- Browser regression:
+  - Expanded from one short Interaction fixture to Interaction, Negation, and Dying at 1440x900, 650x900, and 480x900 (9 geometry cases).
+  - Every case asserts the one-row opponent invariant, 6px clearance, safe-zone containment, play-table bottom containment, zero Local Dock overlap, visible hand/console, no horizontal overflow, and visible overflow on both safe zone and Stage.
+  - Negation additionally proves the visible Reaction Chain remains inside the Stage; Dying additionally proves the visible Dying handoff remains inside the Stage.
+- Measured 480x900 geometry (all PASS):
+  - opponent bottom `319.25px`; safe zone top/bottom/height `326px / 667px / 341px`; play-table bottom `668px`.
+  - Interaction Stage top/bottom/height `326px / 534.5px / 208.5px` — PASS.
+  - Negation Stage top/bottom/height `326px / 654.6875px / 328.6875px` — PASS.
+  - Dying Stage top/bottom/height `326px / 628.6875px / 302.6875px` — PASS.
+- Measured 650x900 geometry (all PASS):
+  - opponent bottom `312.90625px`; safe zone top/bottom/height `319px / 582px / 263px`; play-table bottom `583px`.
+  - Interaction Stage height `176px`; Negation `251.09375px`; Dying `248.59375px` — all fully contained.
+- Proven 1440x900 structural GAP after using maximum legitimate space:
+  - opponent bottom `378.25px`; minimum legal Stage top is `384.25px`; implemented safe-zone top/bottom/height is `385px / 571px / 186px`; play-table bottom is `572px`.
+  - Interaction Stage top/bottom/height `385px / 573.5px / 188.5px`: **GAP**, exceeds required play-table bottom limit by `2.5px`.
+  - Negation Stage top/bottom/height `385px / 648.59375px / 263.59375px`: **GAP**, exceeds required play-table bottom limit by `77.59375px`.
+  - Dying Stage top/bottom/height `385px / 646.09375px / 261.09375px`: **GAP**, exceeds required play-table bottom limit by `75.09375px`.
+  - A temporary container-only desktop width expansion to 1200px did not reduce any Stage height and was not retained. With seats, Local Dock, and Stage internals frozen, no legal CSS safe-zone top can satisfy both the 6px opponent clearance and play-table containment at 1440x900.
+- Focused validation actually run:
+  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-02-FIX1' --config tests/browser/playwright.config.mjs` — **6 passed, 3 failed** (9 tests). The three intentional strict failures are Interaction, Negation, and Dying at 1440x900 and constitute the measured GAP above.
+- Full validation not run locally, per the user-authorized remote-CI workflow:
+  - `npm run test:browser` — not run; GitHub Actions responsibility.
+  - `npm run test:fast` — not run; GitHub Actions responsibility.
+  - `npm run build` — not run; GitHub Actions responsibility.
+  - `npm run lint` — not run; GitHub Actions responsibility.
+  - `git diff --check` — not run; GitHub Actions responsibility.
+- Remaining blocker: VIS-02 cannot satisfy its all-width acceptance contract while keeping the accepted desktop opponent row, LocalPlayerDock, and unchanged Interaction Stage internals simultaneously. Planner decomposition is required before any Interaction Stage redesign.
+- Recommended next bounded task: reviewer decides which desktop geometry constraint may change; do not start VIS-03.
