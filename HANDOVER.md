@@ -5,111 +5,99 @@ HANDOVER.md is tracked remote coordination state. Commit and push it to origin/u
 
 **CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-# NEXT TASK — UX2.0UI-14: Judgement / Replacement Semantic Flow Regression
+# NEXT TASK — UX2.0UI-15: Reaction Chain Public Causality & Private Response Boundary
 
 ## Objective
-UI-13 is accepted and closed. Harden the existing Judgement UX, including replacement-card decisions, so public focus and local controls follow existing server-owned Judgement causal state without client inference.
+UI-14 is accepted and closed. Harden the Reaction Chain UX for Negation/counter-Negation and nested reactions so the public chain shows causal structure without pass-node spam, while each viewer's response options remain private and CurrentAction-authoritative.
 
-Do not change Judgement rules, card outcomes, replacement legality, action names/payloads, or visibility.
+Do not change Negation rules, response order, actions/payloads, causal identity rules, or card visibility.
 
-## Authority rules
-1. Pending/continuation and causal envelope own Judgement execution and resume.
-2. CurrentAction/capabilities own replacement/control legality and private eligible-card options.
-3. PresentationSnapshot owns only proven public source/target/current participant/decision actor/resolver.
-4. The revealed judgement card is public only when the existing server contract reveals it; replacement candidates remain private to entitled viewer.
-5. Timeline/log/card animation is descriptive, not decision authority.
-6. Hero Focus must use semantic IDs only.
-7. Cancel is local-only; Skip/Decline is authoritative only where the existing contract provides it.
-8. No convenience fallback from pending card owner, turn owner, actionPlayerId, timeline, or last revealed card.
+## Locked UX rules
+1. Preserve the causal root/effect being reacted to; do not flatten the chain into timeline chronology.
+2. A declined/pass response must not become a fake public chain node unless the existing server model already defines a semantic event for it.
+3. Public chain content must be viewer-equal.
+4. Private legal response cards/providers come only from CurrentAction/capabilities.
+5. PresentationSnapshot/causal envelope may describe proven public frame relationships; they never grant local control.
+6. No client calculation of next responder or chain winner.
+7. Cancel is local-only; Skip/Decline is authoritative.
+8. Unsupported chain semantics fail closed rather than using timeline/resolutionId/actionPlayerId correlation.
 
-## Step 1 — inventory real Judgement families
-Trace production paths for at least:
-- delayed Lightning Judgement;
-- Overindulgence;
-- Rations Depleted;
-- standalone/skill-triggered Judgement if implemented;
-- Sima Yi replacement;
-- any other replacement provider.
+## Step 1 — inventory real reaction families
+Trace production paths for:
+- root Negation on a stratagem;
+- counter-Negation;
+- Group/AOE -> Negation -> resume;
+- Duel -> Negation -> resume;
+- any Judgement/other effect that can enter the same response-chain machinery;
+- decline/pass progression and terminal resolution.
 
-For each record trigger, source/subject, revealed-card visibility, replacement actor/options, action/payload, causal frame/stage, resume path, and terminal outcome.
+For each, record Pending/continuation type, causal frame relation, CurrentAction actor/options, public events, resume target, and exact action/payload.
 
-## Step 2 — prove public semantic checkpoints
-Using real engine/API fixtures where available, prove:
-- Judgement source/subject roles;
-- current participant and active resolver;
-- replacement decision actor only when CurrentAction proves it;
-- interaction/frame continuity through replacement;
-- checkpoint/revision progression;
-- resume to parent interaction where nested;
-- terminal clear where root;
-- viewer-equal public scene.
+## Step 2 — define/read a bounded Reaction Chain display model
+Prefer a pure read-only projection from already-proven public causal/presentation data. It may expose:
+- causal root/effect label;
+- ordered proven reaction frames/nodes;
+- active frame/node;
+- current public decision actor if proven;
+- parent/child relation;
+- terminal/resumed state when proven.
 
-Unsupported semantic roles must remain null rather than inferred.
+Do not reconstruct nodes from timeline order alone. Do not include private card candidates. Do not emit pass nodes merely because a viewer declined.
 
-## Step 3 — private replacement controls
-For entitled viewer:
-- existing eligible replacement cards/providers come only from CurrentAction;
-- selecting replacement is local until the existing submit boundary;
-- one coherent primary submit and authoritative decline/skip only if contract permits;
-- actionRevision/current actor change clears stale local selection.
+If existing PresentationSnapshot lacks enough proven public data for a truthful chain, expose only the proven subset and document the GAP; do not expand projector authority in this task.
 
-For non-entitled viewers:
-- no private candidate identity or control leaks through public DOM, data attributes, Interaction Stage, Hero Focus, logs before authoritative reveal.
+## Step 3 — UI integration
+Add/upgrade a read-only Reaction Chain region within the existing Interaction Stage when a proven reaction chain exists:
+- same public content for all viewers;
+- visually distinguish causal root, nested reaction, and active node;
+- keep local response controls in the local console, never inside the public chain;
+- no seat movement/replacement;
+- no duplicate submit/Skip surfaces.
 
-## Step 4 — Hero Focus and revealed-card presentation
-Keep Judgement subject/focus tied to proven semantic participant. Publicly revealed judgement card may be displayed only from the existing public field/event that authorizes reveal.
+Keep it compact; this is semantic hierarchy, not a full event log.
 
-Do not let replacement selection change public focus or semantic seat roles before submission.
+## Step 4 — private response boundary
+For the CurrentAction actor:
+- eligible Negation/provider choices remain private;
+- selection remains local until existing Confirm;
+- exact existing response action/payload remains unchanged;
+- authoritative Skip/Decline remains separate;
+- actionRevision/actor handoff clears stale local selection.
+
+For non-actors:
+- no private candidate identity/control leaks into chain DOM/data attributes.
 
 ## Step 5 — tests
 At minimum cover:
-1. Lightning Judgement initial semantic checkpoint;
-2. Overindulgence Judgement;
-3. Rations Depleted Judgement;
-4. Sima Yi replacement actor receives private options;
-5. another viewer sees same public scene but no private options;
-6. replacement selection sends zero action until existing Confirm/submit boundary;
-7. submit preserves exact existing action/payload;
-8. decline/skip preserves exact existing semantics;
-9. stale actionRevision/actor clears local replacement selection;
-10. replacement checkpoint keeps correct interaction/frame continuity;
-11. nested Judgement resumes parent interaction correctly where applicable;
-12. root Judgement clears correctly;
-13. revealed judgement identity is public only at the existing reveal boundary;
-14. private replacement identity never leaks before submission;
-15. timeline/actionPlayerId/turn mutations cannot grant controls or change focus;
-16. seat anchors/topology remain stable;
-17. UI-07..13 regressions remain green.
+1. root Negation chain preserves original effect/root;
+2. counter-Negation adds a proven nested/child reaction without replacing root;
+3. Group/AOE -> Negation -> resume retains group causal context;
+4. Duel -> Negation -> resume retains Duel causal context;
+5. decline/pass advances server response order but does not create fake public pass node;
+6. public chain is viewer-equal;
+7. only CurrentAction actor sees private response options/Confirm/Skip;
+8. selection sends zero action until Confirm;
+9. Confirm/Skip use exact existing action/payload;
+10. stale actionRevision/actor clears local selection;
+11. timeline/actionPlayerId/resolutionId-only mutation cannot add chain nodes or grant controls;
+12. unsupported/malformed causal linkage fails closed;
+13. Interaction Stage/Hero Focus and seat anchors remain stable;
+14. local amber selection does not overwrite public semantic roles;
+15. UI-07..14 regressions remain green.
 
-Prefer engine/API proof for lifecycle/causality and mounted GameRoom proof for controls/privacy/focus.
+Use real engine/API fixtures for causal/resume proof and mounted GameRoom tests for chain rendering/privacy/control ownership.
 
 ## Step 6 — docs
-Update README, ROADMAP, and docs/UX_V2_INTERACTION_STAGE_DESIGN.md with exact Judgement authority, reveal, replacement, and resume boundaries. List truthful GAPs.
+Update README, ROADMAP, and docs/UX_V2_INTERACTION_STAGE_DESIGN.md with the Reaction Chain authority model, pass-node rule, privacy boundary, and truthful GAPs.
 
 ## Validation
-Run focused Judgement API/presentation/mounted tests plus retained UI-01..13 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, git diff --check. Report exact counts.
+Run focused Negation/reaction API/presentation/mounted tests plus retained UI-01..14 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, git diff --check. Report exact counts.
 
 ## Scope exclusions
-No Judgement/gameplay rule changes; no new action/payload; no visibility expansion; no projector authority expansion; no topology redesign; no animation/settlement work; no UI-11 pixel-gap claim.
+No Negation/gameplay rule changes; no new response action/payload; no projector authority expansion; no timeline-as-authority; no topology redesign; no animation/settlement work; no UI-11 pixel-gap claim.
 
 ## Execution result
-Append only UI-14 result: SHA, files, complete Judgement family inventory, authority/reveal mapping, real causal/resume evidence, private-control/privacy evidence, stale-state tests, exact validation counts, remaining GAPs, next bounded recommendation. Push and verify remote HANDOVER, then STOP.
-
-### UI-14 result — Judgement / Replacement Semantic Flow Regression — 2026-10-03
-
-- Implementation commit: `57e1eeea3290f563afbfa1dda5fbeb202a67186e` (`test: harden Judgement UX semantic regressions`). No production rules, routes, action names, payload contracts, card visibility, projector authority, or animation code changed.
-- Files: `tests/active-skill-interactions.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `README.md`, `ROADMAP.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
-- Judgement family inventory and real paths:
-  - delayed Lightning: turn-start `draw` enters the existing delayed-Judgement continuation, opens the public `judgement_revealed_event`, gives Sima Yi `sima_yi_guicai` only when a private eligible card exists, then resumes the existing Lightning damage/transfer path; the retained Legacy chain proves nested post-damage continuation.
-  - Overindulgence: the same delayed reveal boundary projects the Guo Jia subject as source/current participant and the proven Sima Yi replacement actor; final resolution resumes the existing phase outcome. Existing API coverage also proves no-responder settlement and Negation/counter-Negation reuse.
-  - Rations Depleted: the same `rations_depleted` continuation purpose, public reveal, and replacement checkpoint are proven by a direct engine fixture. This is regression-only coverage; the active new-game deck remains WTK Standard and no Endless Legends card was added to production setup/deal.
-  - standalone/skill-triggered Judgements retained: Luoshen, Eight Trigrams, Stauchness, and Cavalry continue to use the existing shared Judgement replacement/result boundary in the retained API suites; no provider-specific UI path was added.
-  - replacement provider: Sima Yi Necromancy uses the existing generic `trigger` action and exact `{ providerId, cardIds }` browser payload; decline remains the existing `decline_trigger` action.
-- Authority/reveal mapping: Pending/continuation and the persisted causal envelope own execution, frame, checkpoint, resume, and root clear. `CurrentAction`/capabilities own the private Sima Yi option and eligible physical-card IDs. `PresentationSnapshot`/`presentationV2` expose only proven Judgement source/subject, current participant, decision actor, active resolver, and viewer-equal public scene. The revealed card is asserted from the existing public `judgement_revealed` timeline event; replacement identity is absent from the other viewer's hand, timeline, and mounted DOM. Legacy `actionPlayerId`, turn fields, log, timeline fallback, and last-card inference cannot grant controls or move Hero Focus.
-- Causal/resume evidence: Lightning, Overindulgence, and Rations Depleted all project `stage=JUDGEMENT`, source/subject=current participant = Guo Jia, decision actor/active resolver = Sima Yi, `CHOICE` stable boundary, viewer-equal `interactionScene`, and the exact delayed purpose. The existing Sima Yi replacement test proves one interaction/frame, checkpoint and `presentationRevision` advancement, `judgement_effective_event`, resume, and root `REST` clear. Malformed Judgement envelope coverage remains fail-closed.
-- Private-control/stale evidence: mounted GameRoom coverage proves Necromancy activation is local, card selection sends zero action until Confirm, Confirm sends exactly `cardIds`, non-entitled viewers receive no private option/card identity, local selection clears when actor/action revision changes, the stale provider becomes disabled, Skip/Decline remain separate, and legacy owner/turn mutations do not change focus/control ownership. Seat anchors and the existing UI-07..13 suites remain green.
-- Validation: mounted active-skill suite `32/32`; focused engine presentation file `26/26`; full `npm test` build passed, fast `182/182`, API `241/241` across four shards; `npm run lint` passed; `git diff --check` passed.
-- GAPs/boundary: the UI-11 desktop/650px/480px pixel-level browser/manual visual check remains open; UI-14 does not claim animation or settlement redesign. No unsupported Judgement semantics were inferred or added. Next bounded work must be authorized by a new remote handover after reviewer verification; preserve the current server-owned Judgement and Standard-deck boundaries.
+Append only UI-15 result: SHA, files, reaction-family inventory, display-model source/limits, causal root/nested/resume evidence, pass-node evidence, privacy/control evidence, malformed/stale negative tests, exact validation counts, remaining GAPs, next bounded recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if Judgement/replacement focus and controls are demonstrably server-owned, private replacement choices remain private until authoritative submission/reveal, causal continuity/resume is proven without client inference, existing actions/payloads/rules remain unchanged, and unsupported semantics fail closed.
+Pass only if the displayed reaction hierarchy is backed by proven causal/public authority, preserves the original causal root across nested Negation and resume, does not manufacture pass nodes, is viewer-equal, keeps response options private and CurrentAction-owned, and leaves gameplay actions/payloads unchanged.
