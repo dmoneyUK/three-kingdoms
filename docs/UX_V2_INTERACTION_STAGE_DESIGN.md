@@ -193,6 +193,24 @@ and snapshot semantics rather than rediscovering authority from compatibility
 fields. Settlement and transition animation remain legacy compatibility until
 separately designed and accepted.
 
+### 0.6.2 UI-02 semantic decision status consumer
+
+The existing action/status strip is the first React consumer of
+`PresentationClientView`. For an active proven interaction, its public
+ownership fields are read from the adapter: `decisionActorId` remains distinct
+from `activeResolverId`, while source, current participant, stage, and stable
+boundary remain available for status decoration. Player names are resolved
+only after those authoritative IDs are selected.
+
+The local `YOU` marker is viewer-private and comes only from adapter local
+entitlement. If the snapshot is identity-free `REST`, the strip retains its
+existing turn/phase compatibility behavior because ordinary turn status is not
+yet owned by the snapshot. Pending, timeline, `presentationV2`,
+`actionReason`, and CurrentAction remain outside active-interaction ownership;
+they continue to support legacy controls and animation paths. The strip's
+existing DOM/classes and CSS are unchanged, and no Interaction Stage visual
+redesign has begun.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

@@ -26,6 +26,19 @@ export type PresentationClientView = {
   localActionRevision: string | null;
 };
 
+export type PresentationDecisionStatus = {
+  hasInteraction: boolean;
+  stableKind: PresentationStableBoundaryKind;
+  stage: PresentationInteractionScene["stage"];
+  sourceId: string | null;
+  currentParticipantId: string | null;
+  decisionActorId: string | null;
+  activeResolverId: string | null;
+  isDecision: boolean;
+  isLocalDecisionActor: boolean;
+  hasLocalControl: boolean;
+};
+
 const REST_CONTINUITY: InteractionSceneContinuity = {
   relation: "UNPROVEN",
   parentFrameId: null,
@@ -147,5 +160,26 @@ export function buildPresentationClientView(
     isLocalDecisionActor: hasLocalControl,
     hasLocalControl,
     localActionRevision: snapshot.localControl.actionRevision,
+  };
+}
+
+/**
+ * Pure semantic slice for the existing status strip. Display code may resolve
+ * these IDs to names, but it must not replace decisionActorId with the active
+ * resolver or rediscover ownership from compatibility room fields.
+ */
+export function buildPresentationDecisionStatus(view: PresentationClientView): PresentationDecisionStatus {
+  const isDecision = view.hasInteraction && view.stableKind === "CHOICE" && Boolean(view.decisionActorId);
+  return {
+    hasInteraction: view.hasInteraction,
+    stableKind: view.stableKind,
+    stage: view.stage,
+    sourceId: view.sourceId,
+    currentParticipantId: view.currentParticipantId,
+    decisionActorId: view.decisionActorId,
+    activeResolverId: view.activeResolverId,
+    isDecision,
+    isLocalDecisionActor: isDecision && view.isLocalDecisionActor,
+    hasLocalControl: view.hasLocalControl,
   };
 }

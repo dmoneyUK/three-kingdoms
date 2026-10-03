@@ -12,7 +12,7 @@ import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
-import { buildPresentationClientView, type PresentationClientView } from "../game/presentation-client";
+import { buildPresentationClientView, buildPresentationDecisionStatus, type PresentationClientView } from "../game/presentation-client";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -465,6 +465,16 @@ export type DecisionPresentation = {
   isWaiting: boolean;
   isResolving: boolean;
   isDecision: boolean;
+  interaction?: {
+    stage: PresentationClientView["stage"];
+    sourceId: string | null;
+    currentParticipantId: string | null;
+    decisionActorId: string | null;
+    activeResolverId: string | null;
+    stableKind: PresentationClientView["stableKind"];
+    isLocalDecisionActor: boolean;
+    hasLocalControl: boolean;
+  };
 };
 
 function projectedPlayerName(room: Pick<Room, "players">, playerId: string | null | undefined, fallback: string) {
@@ -496,12 +506,53 @@ function decisionInstruction(action: CurrentAction, reason: string) {
   return reason || "Make the required choice.";
 }
 
+function presentationStageLabel(stage: PresentationClientView["stage"]) {
+  if (!stage) return "Active interaction";
+  return stage.split("_").map((part) => part.charAt(0) + part.slice(1).toLowerCase()).join(" ");
+}
+
+function buildPresentationDecisionPresentation(
+  room: Pick<Room, "players" | "turnSeat" | "phase" | "status">,
+  view: PresentationClientView,
+): DecisionPresentation {
+  const semantic = buildPresentationDecisionStatus(view);
+  const turnOwner = projectedPlayerName(room, room.players.find((player) => player.seat === room.turnSeat)?.id, "The current player");
+  const phaseLabel = phaseName(room.phase) || "Game state";
+  const actionOwner = semantic.decisionActorId
+    ? projectedPlayerName(room, semantic.decisionActorId, "the decision actor")
+    : "the active interaction";
+  const stageLabel = presentationStageLabel(semantic.stage);
+  const currentParticipant = projectedPlayerName(room, semantic.currentParticipantId, "the current participant");
+  const isWaiting = semantic.isDecision && !semantic.isLocalDecisionActor;
+  const interaction = {
+    stage: semantic.stage,
+    sourceId: semantic.sourceId,
+    currentParticipantId: semantic.currentParticipantId,
+    decisionActorId: semantic.decisionActorId,
+    activeResolverId: semantic.activeResolverId,
+    stableKind: semantic.stableKind,
+    isLocalDecisionActor: semantic.isLocalDecisionActor,
+    hasLocalControl: semantic.hasLocalControl,
+  };
+  if (room.status === "finished") {
+    return { phaseLabel, turnOwner, actionOwner, primaryStatus: "The match has ended", supportingInstruction: "", isViewerRequiredActor: false, isWaiting: false, isResolving: false, isDecision: false, interaction };
+  }
+  if (semantic.isDecision && semantic.isLocalDecisionActor) {
+    return { phaseLabel, turnOwner, actionOwner, primaryStatus: stageLabel, supportingInstruction: `${stageLabel} · ${currentParticipant}`, isViewerRequiredActor: true, isWaiting: false, isResolving: false, isDecision: true, interaction };
+  }
+  if (isWaiting) {
+    return { phaseLabel, turnOwner, actionOwner, primaryStatus: `WAITING FOR ${actionOwner.toUpperCase()}`, supportingInstruction: `${stageLabel} · ${currentParticipant}`, isViewerRequiredActor: false, isWaiting: true, isResolving: false, isDecision: true, interaction };
+  }
+  return { phaseLabel, turnOwner, actionOwner, primaryStatus: stageLabel, supportingInstruction: stageLabel, isViewerRequiredActor: false, isWaiting: false, isResolving: false, isDecision: false, interaction };
+}
+
 /**
  * Translate the authoritative room projection into presentation copy only.
  * This deliberately does not inspect cards, heroes, or client selections to
  * decide legality; controls continue to use the projected capabilities below.
  */
-export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | "turnSeat" | "phase" | "status" | "actionPlayerId" | "actionReason" | "isMyAction" | "currentAction">): DecisionPresentation {
+export function buildDecisionPresentation(room: Pick<Room, "players" | "meId" | "turnSeat" | "phase" | "status" | "actionPlayerId" | "actionReason" | "isMyAction" | "currentAction">, presentationView?: PresentationClientView): DecisionPresentation {
+  if (presentationView?.hasInteraction) return buildPresentationDecisionPresentation(room, presentationView);
   const turnOwner = projectedPlayerName(room, room.players.find((player) => player.seat === room.turnSeat)?.id, "The current player");
   const action = room.currentAction;
   const actionOwner = projectedPlayerName(room, room.actionPlayerId ?? action?.actorId, "the acting player");
@@ -1205,7 +1256,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   };
   const chooseBorrowedSwordTarget = (playerId: string) => { if (!canChooseBorrowedSword || presentationBusy || !room.pendingBorrowedSword?.eligibleTargetIds.includes(playerId)) return; void onAction("choose_borrowed_sword_target", { targetId: playerId }); };
   const play = async () => { if (!card || !me || (selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid))) return; const playedCard = card; const definition = cardDefinition(card.kind); const needsTarget = selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "Overindulgence" || card.kind === "RationsDepleted" || card.kind === "BorrowedSword"; const displayTarget = halberdAttack ? targetIds.map((id) => room.players.find((player) => player.id === id)?.name).filter(Boolean).join(", ") : targetPlayer?.name ?? (card.kind === "BumperHarvest" || card.kind === "Oath" ? "All living players" : card.kind === "BarbarianInvasion" || card.kind === "RainingArrows" ? "All other players" : me.name); const optimisticEvent: CardEvent & { type: "card" } = { id: `optimistic-${card.id}`, type: "card", player: me.name, target: displayTarget, card, action: definition.equipmentSlot && !selectedCanPlayAsAttack ? "equip" : "play", ...(selectedCanPlayAsAttack && !isAttackCard(card) ? { playedAs: "attack" } : {}) }; resolutionRevision.current += 1; optimisticallyPresentedCards.current.add(playedCard.id); setResolutionClosing(false); setResolutionEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []); setOptimisticPlay(optimisticEvent); setSelected(""); setTargetIds([]); const accepted = await onAction("play_card", { cardId: playedCard.id, ...(selectedCanPlayAsAttack ? { playAs: "attack" } : {}), ...(needsTarget ? { targetId: target, ...(halberdAttack ? { targetIds } : {}) } : {}) }); if (!accepted) { optimisticallyPresentedCards.current.delete(playedCard.id); setOptimisticPlay(null); setResolutionEvents([]); } };
-  const decisionPresentation = buildDecisionPresentation(room);
+  const decisionPresentation = buildDecisionPresentation(room, clientPresentation);
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button className="text-button" onClick={onLeave}>Exit</button></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${sequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`}>

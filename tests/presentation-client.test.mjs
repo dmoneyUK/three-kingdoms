@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildPresentationClientView } from "../game/presentation-client.ts";
+import { buildPresentationClientView, buildPresentationDecisionStatus } from "../game/presentation-client.ts";
+import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
   return {
@@ -172,4 +173,92 @@ test("adapter fails closed for partial authority instead of reconstructing it fr
   assert.equal(view.interactionId, null);
   assert.deepEqual(view.originalTargetIds, []);
   assert.equal(view.isLocalDecisionActor, true, "private entitlement remains local without recreating public authority");
+});
+
+function decisionRoom(overrides = {}) {
+  return {
+    players: [{ id: "source", name: "SOURCE", seat: 0 }, { id: "target", name: "TARGET", seat: 1 }],
+    meId: "source",
+    turnSeat: 0,
+    phase: "response",
+    status: "playing",
+    actionPlayerId: "legacy-player",
+    actionReason: "legacy reason",
+    isMyAction: false,
+    currentAction: { version: 3, kind: "response", actorId: "legacy-player", deadline: 0, reason: "legacy action", legalActions: ["respond"] },
+    ...overrides,
+  };
+}
+
+test("decision status preserves target-owned and source-owned public roles", () => {
+  const targetOwned = buildPresentationClientView(snapshot({
+    interaction: scene({ decisionActorId: "target", activeResolverId: "target", participantRoles: { ...scene().participantRoles, decisionActorId: "target", activeResolverId: "target" } }),
+    stable: { ...snapshot().stable, decisionActorId: "target" },
+    decision: { actorId: "target", stage: "ATTACK_RESPONSE" },
+    localControl: { source: "CurrentAction", actionRevision: "target-action", kind: "response", actorId: "target", entitled: false },
+  }), "source");
+  const sourceOwned = buildPresentationClientView(snapshot({
+    interaction: scene({ decisionActorId: "source", activeResolverId: "target", participantRoles: { ...scene().participantRoles, decisionActorId: "source", activeResolverId: "target" } }),
+    stable: { ...snapshot().stable, decisionActorId: "source" },
+    decision: { actorId: "source", stage: "ATTACK_RESPONSE" },
+    localControl: { source: "CurrentAction", actionRevision: "source-action", kind: "trigger", actorId: "source", entitled: true },
+  }), "source");
+
+  const targetStatus = buildPresentationDecisionStatus(targetOwned);
+  const sourceStatus = buildPresentationDecisionStatus(sourceOwned);
+  assert.equal(targetStatus.decisionActorId, "target");
+  assert.equal(targetStatus.activeResolverId, "target");
+  assert.equal(targetStatus.isLocalDecisionActor, false);
+  assert.equal(sourceStatus.decisionActorId, "source");
+  assert.equal(sourceStatus.activeResolverId, "target");
+  assert.equal(sourceStatus.isLocalDecisionActor, true);
+
+  const sourcePresentation = buildDecisionPresentation(decisionRoom({ meId: "source" }), sourceOwned);
+  const waitingPresentation = buildDecisionPresentation(decisionRoom({ meId: "target" }), buildPresentationClientView(snapshot({
+    interaction: scene({ decisionActorId: "source", activeResolverId: "target", participantRoles: { ...scene().participantRoles, decisionActorId: "source", activeResolverId: "target" } }),
+    stable: { ...snapshot().stable, decisionActorId: "source" },
+    decision: { actorId: "source", stage: "ATTACK_RESPONSE" },
+    localControl: { source: "CurrentAction", actionRevision: "source-action", kind: "trigger", actorId: "source", entitled: false },
+  }), "target"));
+  assert.equal(sourcePresentation.actionOwner, "SOURCE");
+  assert.equal(waitingPresentation.actionOwner, "SOURCE");
+  assert.equal(sourcePresentation.interaction?.decisionActorId, "source");
+  assert.equal(sourcePresentation.interaction?.activeResolverId, "target");
+  assert.equal(sourcePresentation.isViewerRequiredActor, true);
+  assert.equal(waitingPresentation.isViewerRequiredActor, false);
+});
+
+test("active decision status ignores legacy ownership and reason fields", () => {
+  const view = buildPresentationClientView(snapshot({
+    interaction: scene({ decisionActorId: "B", activeResolverId: "A", participantRoles: { ...scene().participantRoles, decisionActorId: "B", activeResolverId: "A" } }),
+    stable: { ...snapshot().stable, decisionActorId: "B" },
+    localControl: { source: "CurrentAction", actionRevision: "fixed", kind: "response", actorId: "B", entitled: true },
+  }), "B");
+  const first = buildDecisionPresentation(decisionRoom({ actionPlayerId: "A", actionReason: "old one", currentAction: { version: 3, kind: "none", actorId: "A", deadline: 0, reason: "old action", legalActions: [] }, pending: { kind: "response" }, timeline: [{ id: "old" }], presentationV2: { stableBoundary: { kind: "REST" } } }), view);
+  const second = buildDecisionPresentation(decisionRoom({ actionPlayerId: "B", actionReason: "different", currentAction: { version: 3, kind: "dying", actorId: "B", deadline: 0, reason: "different action", legalActions: [] }, pending: { kind: "dying" }, timeline: [{ id: "different" }], presentationV2: { stableBoundary: { kind: "SETTLEMENT" } } }), view);
+  assert.deepEqual({
+    actionOwner: first.actionOwner,
+    primaryStatus: first.primaryStatus,
+    isDecision: first.isDecision,
+    isViewerRequiredActor: first.isViewerRequiredActor,
+    interaction: first.interaction,
+  }, {
+    actionOwner: second.actionOwner,
+    primaryStatus: second.primaryStatus,
+    isDecision: second.isDecision,
+    isViewerRequiredActor: second.isViewerRequiredActor,
+    interaction: second.interaction,
+  });
+});
+
+test("REST keeps legacy turn/status compatibility and missing player lookup is safe", () => {
+  const rest = buildDecisionPresentation(decisionRoom({ actionPlayerId: "missing", actionReason: "Play cards", isMyAction: true, currentAction: { version: 3, kind: "turn", actorId: "missing", deadline: 0, reason: "Play cards", legalActions: ["play_card"] } }), buildPresentationClientView(snapshot({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }, localControl: { source: "CurrentAction", actionRevision: "rest", kind: "turn", actorId: "missing", entitled: false } }), "source"));
+  assert.equal(rest.actionOwner, "the acting player");
+  assert.equal(rest.primaryStatus, "SOURCE's turn");
+  const active = buildDecisionPresentation(decisionRoom(), buildPresentationClientView(snapshot({
+    interaction: scene({ decisionActorId: "unknown", participantRoles: { ...scene().participantRoles, decisionActorId: "unknown" } }),
+    stable: { ...snapshot().stable, decisionActorId: "unknown" },
+    localControl: { source: "CurrentAction", actionRevision: "unknown", kind: "response", actorId: "unknown", entitled: false },
+  }), "source"));
+  assert.equal(active.actionOwner, "the decision actor");
 });
