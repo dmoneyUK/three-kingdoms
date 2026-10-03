@@ -622,6 +622,10 @@
 .local-player-dock .turn-controls > span { min-width: 0; overflow: hidden; white-space: normal; }
 .local-player-dock .turn-controls > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
 .local-player-dock .turn-controls button { min-width: 78px; min-height: 32px; padding: 5px 8px; font-size: 8px; }
+.local-target-selection { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 7px; margin-top: 3px; color: #efc979; font: 8px/1.2 Arial, sans-serif; letter-spacing: .02em; text-transform: none; }
+.local-target-selection b { color: #ffc85d; font-size: 7px; letter-spacing: .11em; }
+.local-target-selection span { color: #e4d7b5; }
+.local-target-cancel { border-color: #c08d58; color: #f1d6a2; }
 
 @media (max-width: 700px) {
   /* Keep the table proportionate above the dock on phone heights. The board
@@ -648,6 +652,8 @@
   .local-judgement-panel { padding: 3px; }
   .local-player-dock .turn-controls { min-height: 48px; height: 48px; padding: 5px; gap: 4px; }
   .local-player-dock .turn-controls button { min-width: 78px; min-height: 28px; padding: 4px 5px; font-size: 7px; }
+  .local-target-selection { gap: 2px 5px; font-size: 7px; }
+  .local-target-selection b { font-size: 6px; }
 }
 
 @media (max-width: 360px) {

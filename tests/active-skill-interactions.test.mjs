@@ -34,6 +34,19 @@ function activeSkillRoom(skill) {
   });
 }
 
+function normalHalberdTargetRoom() {
+  return normalizeRoomData({
+    code: "HALBERD-TARGET-UI", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "ATTACKER", seat: 0, hero: "zhang-fei", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [{ id: "halberd", kind: "SkyPiercingHalberd", suit: "♠", rank: "Q" }], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "FIRST TARGET", seat: 1, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+      { id: "p3", name: "SECOND TARGET", seat: 2, hero: "sun-quan", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
+    ],
+    myHand: [card("halberd-attack", "Attack")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
+    actionRevision: "halberd-target-revision", phase: "play", currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"], canDeclareAttack: true, playPhaseActions: [{ cardId: "halberd-attack", canPlayAs: "attack" }] },
+  });
+}
+
 function triggerRoom({ meId = "p1", hero = "huang-yueying", playerName = "HUANG YUEYING", code = "CULTIVATION-UI", triggerOptions = [{ effectId: "huang_yueying_cultivation", label: "Cultivation", description: "Draw 1 card after using a Stratagem.", selection: null }], pendingNegation = null, currentAction = {} } = {}) {
   const players = [
     { id: "p1", name: playerName, seat: 0, hero, hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
@@ -106,6 +119,29 @@ function recoveryRendered(renderer) { return text(renderer, "GAME SCREEN ERROR")
 
 installRenderEnvironment();
 
+test("normal deferred multi-target selection is local until ordered Confirm", async () => {
+  const room = normalHalberdTargetRoom();
+  const actionCalls = [];
+  const { renderer } = await (async () => {
+    let mounted;
+    await act(async () => { mounted = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    return { renderer: mounted };
+  })();
+  await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
+  assert.equal(actionCalls.length, 0, "normal seat selection remains local");
+  await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "deselecting before Confirm is local");
+  assert.equal(actionCalls.length, 0);
+  await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select SECOND TARGET" }).props.onClick(); });
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["play_card", { cardId: "halberd-attack", playAs: "attack", targetId: "p2", targetIds: ["p2", "p3"] }]);
+  await act(async () => { renderer.unmount(); });
+});
+
 const activeSkills = [
   { hero: "liu-bei", effectId: "liu_bei_rende", label: "Benevolence", skill: "Benevolence", cardIds: ["rende-card"], targetIds: ["p2"], min: 1, max: 2, targetMin: 1, targetMax: 1 },
   { hero: "gan-ning", effectId: "gan_ning_qixi", label: "Ambushment", skill: "Ambushment", cardIds: ["qixi-black"], targetIds: ["p2"], min: 1, max: 1, targetMin: 1, targetMax: 1 },
@@ -162,6 +198,13 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true);
   assert.equal(useButton().props.disabled, false, "one Assault target enables submission");
+  const actionCountAfterSelection = actionCalls.length;
+  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "Cancel clears the local amber target");
+  assert.equal(useButton().props.disabled, true, "Cancel returns Confirm to its proven minimum state");
+  assert.equal(actionCalls.length, actionCountAfterSelection, "local Cancel does not submit a gameplay action");
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
+  assert.equal(useButton().props.disabled, false, "the target can be reselected after local Cancel");
   await act(async () => { button(renderer, { "aria-label": "Select TARGET TWO" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
   assert.equal(button(renderer, { "aria-label": "Select INVALID TARGET" }).props.disabled, true);
@@ -308,6 +351,11 @@ test("Da Qiao Deflection is one mounted hero control with shared card/target sel
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
   assertOnlyDeflectionProfile(renderer);
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  const actionCountBeforeTargetCancel = actionCalls.length;
+  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false, "trigger Cancel clears only local target state");
+  assert.equal(actionCalls.length, actionCountBeforeTargetCancel, "trigger Cancel does not decline the trigger");
+  await act(async () => { button(renderer, { "aria-label": "Select LEGAL TARGET" }).props.onClick(); });
   await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "daqiao_deflection", cardIds: ["deflection-hand"], targetId: "p3" }]);
   assert.equal(recoveryRendered(renderer), false);

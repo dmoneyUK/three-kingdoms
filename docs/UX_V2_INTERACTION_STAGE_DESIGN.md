@@ -294,6 +294,35 @@ Interaction Stage authority. REST hides the surface, and viewer projections
 remain equal apart from existing local decision markers. The larger INSPECT /
 PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus redesign remains future work.
 
+### 0.6.7 UI-07 local target selection confirmation boundary
+
+UI-07 treats target IDs chosen in the local seat controls as private,
+unsubmitted state. The pure `buildLocalTargetSelectionView` helper consumes
+only already-computed local selection facts: whether the mode is active, the
+selected IDs in click order, proven minimum/maximum counts, the caller's
+existing `canConfirm` constraint, and whether local target input exists. It
+does not read or reinterpret `PresentationSnapshot`, `InteractionStageView`,
+or public target roles.
+
+For deferred normal card targeting (including Sky-Piercing Halberd's ordered
+multi-target Attack), active hero-skill targets, trigger/response targets, and
+Serpent Spear targets, eligible seat clicks update only the local amber
+selection. The existing action and payload remain the Confirm boundary. A
+local Cancel clears only the unsubmitted target IDs; it does not call
+`decline_trigger`, `decline_response`, `skip_rescue`, or any other gameplay
+action. Skip/Decline remains the separate authoritative decision. The existing
+payload order is preserved where the path already carries ordered target IDs;
+no effect order is inferred from public arrays.
+
+Public red/cyan/source/defeated presentation roles and Hero Focus remain
+projection-owned and are unchanged by local selection. The command area shows
+one concise local instruction/count plus the applicable Confirm/Cancel surface,
+with bounded styling at desktop, 650px, and 480px widths. Borrowed Sword's
+forced-Attack target picker remains its existing immediate
+`choose_borrowed_sword_target` server action and is a deliberate later GAP;
+opaque private target-card pickers remain a separate card-zone flow rather than
+being generalized into player target selection.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

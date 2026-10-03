@@ -42,6 +42,11 @@ Improve functional feedback for card selection, target selection, confirm,
 decline/skip, disabled controls and in-flight submissions. Keep the server
 projection as the source of legal IDs.
 
+UI-07 is the current bounded slice: deferred player-target selections stay
+local amber until the existing Confirm boundary, while Cancel clears only
+local target IDs. Borrowed Sword's immediate forced-Attack target action and
+opaque private target-card pickers remain explicit later gaps.
+
 ### UX 3 — mobile/touch and information readability
 
 Review the live responsive layout for crowded hands, opponent public zones,
