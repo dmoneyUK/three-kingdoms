@@ -195,3 +195,18 @@ Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
 Pass only if top-row Interaction Stage no longer renders as one opaque bordered/shadowed dashboard shell at desktop and mobile widths, while the semantic Stage container, compact header, enlarged primary Hero Focus, Reaction/Dying panels, meta content, safe-zone containment, seats, LocalPlayerDock and gameplay remain unchanged.
+
+## Agent execution result — UX2.0VIS-03C
+
+- Implementation SHA: `44f5838902d48618697dc7eacc28f5b01643a43e`.
+- Files changed:
+  - `app/globals.css`
+  - `tests/browser/ui19.spec.mjs`
+- Exact top-row shell overrides: `.play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .interaction-stage` now has `padding: 0`, `background: transparent`, `border: 0`, and `box-shadow: none !important`. The important shadow override prevents the existing Stage transition keyframes from restoring the old dashboard shadow while retaining the semantic Stage element, data attributes, transition marker, width, position, containment and inherited `pointer-events: none`.
+- Header treatment: the unchanged direct Stage header is `inline-flex` with `width: fit-content`, `max-width: 100%`, zero bottom padding and zero bottom border. Narrow top-row mode retains a 6px content separation; desktop uses the existing body grid's 7px top padding and therefore removes the extra header margin. Header text and conditions are unchanged.
+- Side-column/global proof: no global `.interaction-stage` declaration was changed. Every production override added by this task requires the exact top-row play-table plus direct safe-zone/Stage selector, so 5–10 player side-column mode continues to use the existing opaque bordered/shadowed global shell. Hero/Event/Meta DOM, Hero Focus sizes, Reaction/Dying panel styles, meta copy, safe-zone variables, seats and Dock geometry were not changed.
+- Focused validation:
+  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-03C' --config tests/browser/playwright.config.mjs` — **9/9 PASS**. Computed-style assertions prove the transparent/zero-border/no-shadow/zero-padding shell, fitted visible header with no divider, all three mounted content-region hooks, retained VIS-03B portrait minimums, safe-zone/Dock containment, no overflow, and retained non-transparent Reaction/Dying inner panels.
+  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-(02-FIX1|03B|03C)' --config tests/browser/playwright.config.mjs` — **27/27 PASS**: 9 retained VIS-02-FIX1/VIS-03A geometry cases, 9 retained VIS-03B Hero Focus cases, and 9 new VIS-03C shell cases.
+- Full validation not run under the project remote-validation workflow: `npm run test:browser`, `npm run test:fast`, `npm run build`, `npm run lint`, and `git diff --check`. GitHub Actions owns those gates; CI status was not inspected or polled.
+- Remaining GAP: none observed within the bounded VIS-03C shell scope. Full-suite and CI results remain unverified pending GitHub Actions/user notification.
