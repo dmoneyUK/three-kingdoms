@@ -13,6 +13,7 @@ import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
+import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, type HeroFocusPlayerDisplay, type HeroFocusView } from "../game/hero-focus";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
@@ -479,14 +480,14 @@ function HeroFocus({ view }: { view: HeroFocusView }) {
   </div>;
 }
 
-export function InteractionStage({ view, resolvePlayerName, resolvePlayerDisplay }: { view: PresentationClientView; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined }) {
+export function InteractionStage({ view, transitionKind = "NONE", resolvePlayerName, resolvePlayerDisplay }: { view: PresentationClientView; transitionKind?: PresentationTransitionKind; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const display = buildInteractionStageDisplayModel(stage);
   const dyingHandoff = buildDyingHandoffView(stage);
   const reactionChain = buildReactionChainView(stage);
   const heroFocus = buildHeroFocusView(stage, resolvePlayerDisplay);
   if (!display.visible) return null;
-  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined}>
+  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined} data-presentation-transition={transitionKind}>
     <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
     <HeroFocus view={heroFocus} />
     {dyingHandoff.visible && <section className="dying-handoff" aria-label="Dying Rescue Handoff" data-dying-handoff="proven" data-dying-player-id={dyingHandoff.dyingPlayer.id ?? undefined} data-dying-decision-actor-id={dyingHandoff.decisionActor.id ?? undefined} data-dying-resolver-id={dyingHandoff.activeResolver.id ?? undefined} data-dying-continuity={dyingHandoff.continuity.relation} data-dying-parent-frame-id={dyingHandoff.parentFrameId ?? undefined}>
@@ -870,6 +871,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
   const clientPresentation = presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId);
+  const previousPresentationView = useRef<PresentationClientView | null>(null);
+  const presentationTransition = buildPresentationTransition(previousPresentationView.current, clientPresentation);
+  useEffect(() => {
+    previousPresentationView.current = clientPresentation;
+  }, [clientPresentation]);
   const [selected, setSelected] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const target = targetIds[0] ?? "";
   const handRailRef = useRef<HTMLDivElement | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
@@ -1531,10 +1537,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     secondaryControls: consoleSecondaryControls,
   });
   const consolePrimaryId = consoleDecision.primary?.id ?? null;
-  return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button className="text-button" onClick={onLeave}>Exit</button></div></header>
+  return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button className="text-button" onClick={onLeave}>Exit</button></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${sequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`}>
-      <InteractionStage view={clientPresentation} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} resolvePlayerDisplay={(playerId) => {
+      <InteractionStage view={clientPresentation} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} resolvePlayerDisplay={(playerId) => {
         const player = room.players.find((candidate) => candidate.id === playerId);
         if (!player) return null;
         const hero = heroDefinition(player.hero);

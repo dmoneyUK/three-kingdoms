@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
+import { buildPresentationTransition } from "../game/presentation-transition.ts";
 import { buildHeroFocusView } from "../game/hero-focus.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
@@ -51,6 +52,42 @@ function snapshot(overrides = {}) {
   };
 }
 
+function semanticView(sceneOverrides = {}, { stableKind = "CHOICE", localControl = {}, meId = "B" } = {}) {
+  const interaction = scene(sceneOverrides);
+  interaction.participantRoles = {
+    ...interaction.participantRoles,
+    sourceId: interaction.sourceId,
+    originalTargetIds: interaction.targetIds,
+    activeTargetIds: interaction.activeTargetIds,
+    currentParticipantId: interaction.currentParticipantId,
+    decisionActorId: interaction.decisionActorId,
+    activeResolverId: interaction.activeResolverId,
+    participantIds: interaction.participantIds,
+    ...sceneOverrides.participantRoles,
+  };
+  const identity = {
+    interactionId: interaction.interactionId,
+    checkpointId: interaction.checkpointId,
+    presentationRevision: interaction.presentationRevision,
+  };
+  return buildPresentationClientView(snapshot({
+    identity,
+    interaction,
+    stable: { kind: stableKind, ...identity, decisionActorId: stableKind === "CHOICE" ? interaction.decisionActorId : null },
+    decision: stableKind === "CHOICE" ? { actorId: interaction.decisionActorId, stage: interaction.stage } : null,
+    localControl: { ...snapshot().localControl, ...localControl },
+  }), meId);
+}
+
+function restView() {
+  return buildPresentationClientView(snapshot({
+    identity: null,
+    interaction: null,
+    decision: null,
+    stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+  }), "B");
+}
+
 test("adapter maps coherent public CHOICE and source-owned roles without legal controls", () => {
   const view = buildPresentationClientView(snapshot(), "B");
   assert.deepEqual(view, {
@@ -58,6 +95,8 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     interactionId: "interaction-1",
     checkpointId: "checkpoint-1",
     presentationRevision: 3,
+    rootFrameId: "root-frame",
+    activeFrameId: "active-frame",
     stage: "ATTACK_RESPONSE",
     effect: "Attack",
     sourceId: "A",
@@ -101,6 +140,71 @@ test("adapter keeps the public scene viewer-equal while local entitlement change
   });
   assert.equal(uninvolved.isLocalDecisionActor, false);
   assert.equal(uninvolved.hasLocalControl, false);
+});
+
+test("semantic transition classifier follows interaction, frame, focus, content hierarchy", () => {
+  const base = semanticView();
+  assert.equal(buildPresentationTransition(base, base).kind, "NONE");
+  assert.equal(buildPresentationTransition(null, base).kind, "INTERACTION_TRANSITION");
+  assert.equal(buildPresentationTransition(restView(), base).reason, "INTERACTION_STARTED");
+  assert.equal(buildPresentationTransition(base, restView()).reason, "INTERACTION_ENDED");
+
+  const content = semanticView({ checkpointId: "checkpoint-2", presentationRevision: 4 });
+  const contentTransition = buildPresentationTransition(base, content);
+  assert.equal(contentTransition.kind, "CONTENT_UPDATE");
+  assert.equal(contentTransition.reason, "CHECKPOINT_CHANGED");
+  const revisionOnly = semanticView({ presentationRevision: 4 });
+  assert.equal(buildPresentationTransition(base, revisionOnly).reason, "PRESENTATION_REVISION_CHANGED");
+
+  const duelResponder = semanticView({ stage: "DUEL_EXCHANGE", currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C" });
+  assert.equal(buildPresentationTransition(semanticView({ stage: "DUEL_EXCHANGE" }), duelResponder).kind, "FOCUS_UPDATE");
+  assert.equal(buildPresentationTransition(semanticView({ stage: "DUEL_EXCHANGE" }), duelResponder).reason, "CURRENT_PARTICIPANT_CHANGED");
+
+  const groupStart = semanticView({ stage: "GROUP_RESOLUTION", activeFrameId: "group-frame", rootFrameId: "group-frame", activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantIds: ["A", "B", "C"] });
+  const groupNext = semanticView({ stage: "GROUP_RESOLUTION", activeFrameId: "group-frame", rootFrameId: "group-frame", activeTargetIds: ["C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"] });
+  assert.equal(buildPresentationTransition(groupStart, groupNext).kind, "FOCUS_UPDATE");
+  assert.equal(buildPresentationTransition(groupStart, groupNext).reason, "CURRENT_PARTICIPANT_CHANGED");
+
+  const negation = semanticView({ stage: "NEGATION", effect: "Dismantle", activeFrameId: "negation-frame", rootFrameId: "negation-frame", currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C" });
+  const counterNegation = semanticView({ stage: "NEGATION", effect: "Dismantle", activeFrameId: "negation-frame", rootFrameId: "negation-frame", currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B" });
+  assert.equal(buildPresentationTransition(negation, counterNegation).kind, "FOCUS_UPDATE");
+
+  const damage = semanticView({ stage: "DAMAGE", rootFrameId: "group-frame", activeFrameId: "damage-frame", parentFrameId: "group-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" } });
+  const dying = semanticView({ stage: "DYING", rootFrameId: "group-frame", activeFrameId: "dying-frame", parentFrameId: "damage-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "damage-frame" } });
+  const resumed = semanticView({ stage: "GROUP_RESOLUTION", rootFrameId: "group-frame", activeFrameId: "group-frame", parentFrameId: null, continuity: { relation: "ROOT_FRAME", parentFrameId: null } });
+  assert.equal(buildPresentationTransition(damage, dying).kind, "FRAME_TRANSITION");
+  assert.equal(buildPresentationTransition(dying, resumed).kind, "FRAME_TRANSITION");
+
+  const newInteraction = semanticView({ interactionId: "interaction-2", rootFrameId: "new-root", activeFrameId: "new-frame" });
+  assert.equal(buildPresentationTransition(base, newInteraction).kind, "INTERACTION_TRANSITION");
+  assert.equal(buildPresentationTransition(base, newInteraction).reason, "INTERACTION_CHANGED");
+});
+
+test("semantic transition classifier ignores private and legacy changes and fails closed", () => {
+  const base = semanticView();
+  const privateOnly = semanticView({}, { localControl: { actorId: "A", actionRevision: "private-2", entitled: false }, meId: "A" });
+  assert.equal(buildPresentationTransition(base, privateOnly).kind, "NONE");
+
+  const legacyOnly = buildPresentationClientView({
+    ...snapshot(),
+    pending: { kind: "dying", targetId: "C" },
+    timeline: [{ id: "legacy" }],
+    actionPlayerId: "C",
+    turnSeat: 2,
+    isMyTurn: true,
+    currentAction: { actorId: "C", kind: "dying" },
+    players: [{ id: "B", hp: 0 }],
+    hand: [{ id: "private-card" }],
+    localControl: { ...snapshot().localControl, actionRevision: "private-3", entitled: false, options: [{ providerId: "private-option" }] },
+  }, "A");
+  assert.equal(buildPresentationTransition(base, legacyOnly).kind, "NONE");
+
+  const malformed = { ...base, activeFrameId: null };
+  const failedClosed = buildPresentationTransition(base, malformed);
+  assert.equal(failedClosed.kind, "NONE");
+  assert.equal(failedClosed.previousInteractionId, null);
+  assert.equal(failedClosed.nextInteractionId, null);
+  assert.equal(buildPresentationTransition({ ...base, continuity: { relation: "UNPROVEN", parentFrameId: null } }, base).kind, "NONE");
 });
 
 test("adapter keeps local action revision but does not infer public interaction from identity-free REST", () => {

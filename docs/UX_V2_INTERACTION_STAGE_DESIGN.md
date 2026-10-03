@@ -554,6 +554,48 @@ with mounted coverage limited to focus, privacy, exact existing submissions,
 handoff cleanup, and topology. Browser-level responsive appearance remains a
 later manual GAP.
 
+### 0.6.16 UI-17 Semantic Scene Transition Contract
+
+UI-17 introduces a pure client-side comparison layer for two consecutive
+accepted `PresentationClientView` snapshots. It is a bounded presentation
+signal, not a second history model and not an animation engine. The classifier
+is `buildPresentationTransition(previous, next)` in
+`game/presentation-transition.ts`; it returns the transition kind, a narrow
+semantic reason, and only the previous/next public interaction, frame,
+continuity, stage, checkpoint, and presentation-revision identities needed to
+explain that result.
+
+The strongest applicable class wins in this order:
+
+1. `INTERACTION_TRANSITION` — REST to an interaction, an interaction to REST,
+   or a changed `interactionId`.
+2. `FRAME_TRANSITION` — changed active/root/parent frame identity, changed
+   parent/child continuity, or changed semantic stage.
+3. `FOCUS_UPDATE` — changed proven current participant, active target scope,
+   decision actor, active resolver, public source/scope, or stable boundary
+   kind within the same frame.
+4. `CONTENT_UPDATE` — changed checkpoint, presentation revision, or public
+   effect while interaction/frame/stage/focus identity remains stable.
+5. `NONE` — repeated semantic identity or a change with no meaningful public
+   transition.
+
+The classifier treats `interactionId` as interaction continuity, the exposed
+`rootFrameId`/`activeFrameId`/`parentFrameId` and continuity relation as frame
+authority, proven public role IDs as focus authority, and checkpoint/revision
+as content progress only. `actionRevision`, timeline, `actionPlayerId`, turn
+ownership, compatibility Pending fields, card selection, HP-only changes,
+local controls, and private options are never transition authority. A
+malformed, incomplete, REST-incoherent, or `UNPROVEN` pair fails closed to
+`NONE` with no exposed identity. A first proven interaction after REST is an
+`INTERACTION_TRANSITION`; repeated snapshots and reconnect/private-only changes
+remain non-promoting.
+
+`GameRoom` and the existing Interaction Stage expose the current bounded kind
+through `data-presentation-transition` only. No CSS animation, timer, layout
+mutation, gameplay side effect, server history, settlement animation, or new
+API/projector path is part of UI-17. Later animation work may consume this hook
+only after a separately authorized task defines its visual contract.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

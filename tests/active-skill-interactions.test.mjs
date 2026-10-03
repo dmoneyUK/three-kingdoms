@@ -1040,6 +1040,26 @@ test("mounted Dying handoff keeps the dying player focused while Peach stays loc
   await act(async () => { renderer.unmount(); });
 });
 
+test("mounted GameRoom exposes semantic transition hooks without animation or private promotion", async () => {
+  const initial = dyingRescueRoom();
+  const rest = { ...initial, presentationSnapshot: null };
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: rest, onRecover: () => {} }, React.createElement(GameRoom, { room: rest, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: initial, onRecover: () => {} }, React.createElement(GameRoom, { room: initial, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  assert.equal(renderer.root.findByType("main").props["data-presentation-transition"], "INTERACTION_TRANSITION");
+  assert.equal(renderer.root.findByProps({ "data-stage": "DYING" }).props["data-presentation-transition"], "INTERACTION_TRANSITION");
+
+  const privateOnly = { ...initial, presentationSnapshot: { ...initial.presentationSnapshot, localControl: { ...initial.presentationSnapshot.localControl, actorId: "p1", actionRevision: "private-only", entitled: false } } };
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: privateOnly, onRecover: () => {} }, React.createElement(GameRoom, { room: privateOnly, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  assert.equal(renderer.root.findByType("main").props["data-presentation-transition"], "NONE");
+
+  const content = dyingRescueRoom({ actionRevision: "dying-rescue-2" });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: content, onRecover: () => {} }, React.createElement(GameRoom, { room: content, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  assert.equal(renderer.root.findByType("main").props["data-presentation-transition"], "CONTENT_UPDATE");
+  await act(async () => { renderer.unmount(); });
+});
+
 test("mounted Dying scene is viewer-equal, preserves child context, and hides rescue privacy from non-actors", async () => {
   const actorRoom = dyingRescueRoom({ continuity: "CHILD_FRAME", parentFrameId: "duel-frame" });
   const observerRoom = dyingRescueRoom({ meId: "p1", actorId: "p3", continuity: "CHILD_FRAME", parentFrameId: "duel-frame" });

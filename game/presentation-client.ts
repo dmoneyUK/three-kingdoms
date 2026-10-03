@@ -10,6 +10,8 @@ export type PresentationClientView = {
   interactionId: string | null;
   checkpointId: string | null;
   presentationRevision: number | null;
+  rootFrameId: string | null;
+  activeFrameId: string | null;
   stage: PresentationInteractionScene["stage"];
   effect: string | null;
   sourceId: string | null;
@@ -134,6 +136,8 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     interactionId: null,
     checkpointId: null,
     presentationRevision: null,
+    rootFrameId: null,
+    activeFrameId: null,
     stage: null,
     effect: null,
     sourceId: null,
@@ -243,6 +247,8 @@ export function buildPresentationClientView(
     interactionId: snapshot.identity?.interactionId ?? null,
     checkpointId: snapshot.identity?.checkpointId ?? null,
     presentationRevision: snapshot.identity?.presentationRevision ?? null,
+    rootFrameId: scene.rootFrameId,
+    activeFrameId: scene.activeFrameId,
     stage: scene.stage,
     effect: scene.effect,
     sourceId: roles.sourceId,

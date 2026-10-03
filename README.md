@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-16 Dying / Peach rescue player-facing handoff — 2026-10-03
+## Current stage — UX2.0UI-17 Semantic Scene Transition Contract — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -170,6 +170,18 @@ fixtures already cover root and Duel child rescue, handoff, recovery/resume,
 terminal settlement, and viewer privacy; mounted coverage covers the player-
 facing boundary. Pixel-level responsive appearance remains the existing
 browser/manual GAP.
+
+UI-17 adds a pure `buildPresentationTransition(previous, next)` classifier
+over consecutive accepted `PresentationClientView` snapshots. It is strictly
+semantic: `INTERACTION_TRANSITION` outranks `FRAME_TRANSITION`, which outranks
+`FOCUS_UPDATE`, `CONTENT_UPDATE`, and `NONE`; interaction, frame/parent
+continuity, public focus, and checkpoint identities are the only authorities.
+The existing `GameRoom` and Interaction Stage expose the bounded result through
+`data-presentation-transition` without adding CSS animation, timers, gameplay
+side effects, server history, or client legality. REST boundaries and malformed
+or unproven pairs fail closed, while private CurrentAction/options, timeline,
+turn/action-player, HP, and compatibility fields cannot promote a transition.
+Animation is explicitly not implemented in UI-17.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

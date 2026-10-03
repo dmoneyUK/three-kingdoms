@@ -128,6 +128,16 @@ mutations; engine/API Dying coverage remains the authority for rescue order,
 recovery/resume, and terminal death. The remaining responsive pixel check is a
 browser/manual GAP.
 
+UI-17 adds the first bounded semantic scene-transition layer. A pure classifier
+compares only consecutive accepted `PresentationClientView` identities and
+returns `INTERACTION_TRANSITION`, `FRAME_TRANSITION`, `FOCUS_UPDATE`,
+`CONTENT_UPDATE`, or `NONE`, in that strength order. `GameRoom` and the
+existing Interaction Stage expose the result through a non-visual
+`data-presentation-transition` hook. Private controls, timeline/turn fields,
+HP, compatibility Pending data, and malformed or unproven pairs cannot promote
+a public class. UI-17 does not add animation, timers, gameplay effects, server
+history, or a new projector/API path.
+
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel
 clearing only local state. Existing `choose_target_card` and semantic
