@@ -1728,3 +1728,120 @@
     align-self: center;
   }
 }
+
+/* VIS-04A: top-row opponents are landscape seat thumbnails. Keep the source
+   portrait and public identity in the card, but reserve their full card faces
+   for the existing inspection panel. The side-column layout is untouched. */
+.game-shell .player-board[data-seat-topology="top-row"] > .opponent-player-card {
+  height: 108px;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-card {
+  flex: 0 0 70px;
+  height: 70px;
+  aspect-ratio: auto;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay {
+  inset: 0;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  min-height: 0;
+  padding: 6px 30px 6px 8px;
+  background: linear-gradient(90deg, #080a08f2 0%, #080a08ce 58%, #080a0870 78%, transparent 100%);
+  text-align: left;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-player-name {
+  max-width: 100%;
+  font-size: 8px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-name {
+  font-size: 15px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay .player-hp {
+  margin-top: 0;
+  font-size: 9px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay .player-hearts,
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-equipment-zone,
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-judgement-zone {
+  display: none;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-hand-footer {
+  flex: 0 0 36px;
+}
+
+@media (max-width: 700px) {
+  .game-shell .player-board[data-seat-topology="top-row"] > .opponent-player-card {
+    height: 88px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-card {
+    flex-basis: 54px;
+    height: 54px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay {
+    gap: 2px;
+    padding: 4px 25px 4px 6px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-player-name {
+    font-size: 7px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-name {
+    font-size: 13px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay .player-hp {
+    font-size: 8px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hand-footer {
+    flex-basis: 32px;
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .game-shell .player-board[data-seat-topology="top-row"] > .opponent-player-card {
+    height: 78px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-card {
+    flex-basis: 46px;
+    height: 46px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay {
+    gap: 1px;
+    padding: 3px 22px 3px 5px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-name {
+    font-size: 12px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hand-footer {
+    flex-basis: 30px;
+    padding-inline: 5px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .player-hand-label {
+    font-size: 6px;
+    letter-spacing: .04em;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hand-footer .player-hand-count {
+    font-size: 20px;
+  }
+}
