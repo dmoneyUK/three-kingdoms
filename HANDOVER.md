@@ -226,3 +226,27 @@ VIS-01 passes only if:
 - browser bounding-box tests prove the real geometry, not just DOM labels;
 - exactly one local dock remains;
 - no Interaction Stage/Hero Focus/gameplay/5–10-player scope is changed.
+
+## VIS-01 Execution Result
+
+- Implementation SHA: `b263174771d812105c35eb4e97b46dce99342393`
+- Files changed:
+  - `app/globals.css`
+  - `tests/browser/ui19.spec.mjs`
+- CSS mapping:
+  - 2 players: `.player-square-1` uses grid row 1 / column 2.
+  - 3 players: `.player-square-1` uses grid row 1 / column 1; `.player-square-2` uses grid row 1 / column 3.
+  - 4 players: `.player-square-1`, `.player-square-2`, `.player-square-3` use grid row 1 / columns 1, 2, 3 respectively.
+  - The topology-specific selectors reset the legacy absolute horseshoe positioning under `[data-seat-topology="top-row"]`, preserve the existing responsive board dimensions, and do not apply to `side-column` rooms.
+- Browser geometry assertions added for 2, 3, and 4 total players at 1440x900, 650x900, and 480x900. They assert opponent count, exactly one local dock anchor, relative-index order, same top/Y within 4 CSS pixels, strictly increasing horizontal centres, no severe opponent overlap, and no horizontal overflow.
+- Old-horseshoe regression proof: before the topology-specific absolute-position reset, the new focused run reported 3 passed and 6 failed; 3/4-player cases had opponent Y spreads of approximately 148.7–163.3 CSS pixels. The final assertions therefore fail against the previous horseshoe/arc geometry rather than only checking the topology label.
+- Focused validation actually run:
+  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-01' --config tests/browser/playwright.config.mjs` — **9 passed** (9 tests).
+- Full validation not run locally, per the user-authorized remote-CI workflow:
+  - `npm run test:browser` — not run; GitHub Actions responsibility.
+  - `npm run test:fast` — not run; GitHub Actions responsibility.
+  - `npm run build` — not run; GitHub Actions responsibility.
+  - `npm run lint` — not run; GitHub Actions responsibility.
+  - `git diff --check` — not run; GitHub Actions responsibility.
+- Remaining VIS-01 issue observed locally: none within the assigned scope. CI status was not checked.
+- Recommended next bounded task: reviewer review of VIS-01; do not start VIS-02 before review acceptance.
