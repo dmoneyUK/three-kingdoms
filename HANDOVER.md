@@ -73,13 +73,16 @@ Do not modify presentation/gameplay helpers unless a compile-only type change is
 ## Required implementation
 
 ### 1. Add one explicit central safe-zone layout container
-Inside `.play-table`, add one structural wrapper for the existing `InteractionStage`, for example:
+Inside `.play-table`, replace only the current direct `InteractionStage` placement with one structural wrapper:
 
 `<div className="interaction-safe-zone"> ...existing InteractionStage... </div>`
 
-Equivalent naming is acceptable, but there must be a stable class/test hook representing the protected central zone.
+The wrapper should be an immediate `.play-table` child and should contain the existing InteractionStage only. Do not move the other existing play-table overlays/notices/dialogs into it.
 
-The wrapper is layout-only:
+Use `interaction-safe-zone` as the stable class/test hook unless there is a compile-level reason not to.
+
+The wrapper is invisible layout geometry, not another panel:
+- no background, border, heading, placeholder, or decorative dashboard of its own;
 - no gameplay controls;
 - no click handlers;
 - no CurrentAction inspection;
@@ -89,10 +92,13 @@ The wrapper is layout-only:
 ### 2. Give play-table the existing topology context
 The safe-zone CSS must know whether the room is in top-row mode without inferring it from child geometry.
 
-Add stable layout data to `.play-table` from the same already-known player count used by `.player-board`:
-- `data-seat-topology="top-row"` for 2–4 total players;
-- existing/unchanged value for 5+ if needed only to keep the hook truthful;
-- `data-player-count` may also be mirrored if useful.
+Mirror the exact existing topology expression onto `.play-table`:
+
+`data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}`
+
+You may also mirror `data-player-count={room.players.length}` if useful, but do not invent another player-count calculation.
+
+Important existing-test consequence: `tests/browser/ui19.spec.mjs` currently uses a broad selector such as `[data-seat-topology="top-row"]` and expects one match. After mirroring the attribute onto `.play-table`, that selector will truthfully match both the table and the player board. Update the retained topology assertion to target the original owner explicitly, e.g. `.player-board[data-seat-topology="top-row"]`, rather than deleting the new layout hook or weakening the assertion.
 
 This is a layout hook only. Do not change the authoritative player ordering or seat calculation.
 
@@ -106,6 +112,10 @@ For `data-seat-topology="top-row"`:
 - the stage must not overlap any opponent seat or the local dock.
 
 Use CSS/layout geometry, not JavaScript measurements, timers, or post-render repositioning.
+
+Do not hard-code a one-off position that only passes 1440px. The same CSS structure must satisfy all three required viewport assertions. Preserve the VIS-01 seat positions; the safe zone adapts around those accepted seats rather than moving them.
+
+Do not clip the existing Interaction Stage merely to satisfy containment. If the unchanged stage cannot fit the required 480px geometry without clipping or overlapping the local dock, STOP and report that as a concrete blocker for Reviewer decomposition instead of shrinking/removing stage internals in this task.
 
 ### 4. Keep the current stage internals unchanged
 Do not change:
@@ -127,7 +137,7 @@ When `InteractionStage` returns null:
 - opponent top-row seats and Local Dock remain unchanged.
 
 ## Required browser regression
-Extend browser geometry coverage using the existing 4-player interaction fixture.
+Extend browser geometry coverage using the existing fixture `state="interaction", count=4`.
 
 Run at:
 - 1440x900
@@ -146,9 +156,10 @@ For each viewport assert real bounding boxes:
 8. no horizontal page overflow is introduced.
 9. local console and hand remain present.
 
-Add one REST assertion:
-- the safe-zone hook remains available;
-- no visible `.interaction-stage` exists.
+Add one REST assertion using `state="rest", count=4`:
+- the safe-zone hook remains available exactly once;
+- no visible `.interaction-stage` exists;
+- the empty safe-zone wrapper itself has no visible panel/background/placeholder content.
 
 The new interaction-geometry regression must fail against the old top:7/8/14px dashboard placement.
 
