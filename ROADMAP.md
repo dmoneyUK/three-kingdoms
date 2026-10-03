@@ -100,6 +100,20 @@ local until Confirm and rejects legacy owner/turn fields as presentation
 authority. The active new-game deck remains WTK Standard; the UI-11
 desktop/650px/480px visual check remains a browser/manual GAP.
 
+UI-15 adds a bounded read-only Reaction Chain to the existing Interaction
+Stage for proven Negation scenes. The model consumes only the typed public
+snapshot scene: root effect/source/original targets, current response window,
+and proven frame relation. It is viewer-equal and deliberately excludes
+CurrentAction, response providers/cards, timeline chronology, compatibility
+Negation fields, action owner, resolution IDs, and revisions. The local console
+remains the only response-control surface: selection remains local until the
+existing Confirm, while Skip/Decline remains authoritative. Counter-Negation
+continues the same causal frame and preserves the root; Group and Duel resumes
+retain their established continuations; declines produce no pass node. The
+snapshot currently lacks durable independently proven counter-contributor
+history, so the UI truthfully renders root plus active response only rather
+than a fabricated nested history. This is the remaining Reaction Chain GAP.
+
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel
 clearing only local state. Existing `choose_target_card` and semantic

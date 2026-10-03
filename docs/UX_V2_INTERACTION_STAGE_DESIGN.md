@@ -492,6 +492,34 @@ coverage proves selection remains local until Confirm, while legacy
 Judgement rule, action, payload, visibility path, or animation authority is
 introduced; the active new-game deck remains WTK Standard.
 
+### 0.6.14 UI-15 Reaction Chain public causality and private response boundary
+
+UI-15 adds a compact read-only Reaction Chain inside the existing Interaction
+Stage only when the typed snapshot exposes a coherent proven `NEGATION` scene.
+Its model reads the root effect, root source, original targets, active response
+window, and proven continuity relation from `InteractionStageView`; it never
+reads `CurrentAction`, timeline order, compatibility `pendingNegation`,
+`actionPlayerId`, `resolutionId`, or `actionRevision` to construct public
+nodes. Therefore every viewer receives the same root and active-node content,
+while only the CurrentAction actor receives private eligible providers/cards
+and local console controls.
+
+An accepted Negation/counter-Negation advances one existing `NEGATION` causal
+frame and checkpoint sequence rather than creating a separately typed public
+counter-contributor record. The chain consequently preserves the original
+root and marks the active response relation, while Group/AOE and Duel retain
+their existing same-frame/resume evidence. A decline/pass changes server-owned
+response progression only; it produces no fabricated public node. The model
+fails closed if the root effect/source or typed scene is absent.
+
+The snapshot does not retain durable independently proven historical
+counter-provider identities, ordering, or terminal outcome. UI-15 therefore
+truthfully renders a bounded root plus active response instead of inventing
+nested history from timeline/revision correlations. That durable historical
+chain is a documented GAP for any later, separately authorized server-model
+work; this UI slice does not expand projector authority, rules, actions,
+payloads, card visibility, topology, or animation.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

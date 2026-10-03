@@ -1050,6 +1050,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(first.causalEnvelope.frames[0].stage, "NEGATION");
   assert.equal(first.presentationV2.interactionScene?.semantics, "PROVEN");
   assert.equal(first.presentationV2.interactionScene?.stage, "NEGATION");
+  assert.equal(first.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
   assert.equal(first.presentationV2.interactionScene?.sourceId, source.id);
   assert.deepEqual(first.presentationV2.interactionScene?.targetIds, [target.id]);
   assert.equal(first.presentationV2.interactionScene?.decisionActorId, target.id);
@@ -1088,6 +1089,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(counter.presentationV2.interactionScene?.stage, "NEGATION");
   assert.equal(counter.presentationV2.interactionScene?.interactionId, first.presentationV2.interactionScene?.interactionId);
   assert.equal(counter.presentationV2.interactionScene?.rootFrameId, first.presentationV2.interactionScene?.rootFrameId);
+  assert.equal(counter.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
   assert.equal(counter.presentationV2.interactionScene?.decisionActorId, source.id);
   assert.deepEqual(counter.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: source.id, activeResolverId: source.id, parentParticipantId: null, participantIds: [] });
   const counterPending = authoritativePending(game.code);
@@ -1097,6 +1099,7 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(counter.causalEnvelope.frames[0].current.resolvingPlayerId, source.id);
   assert.equal(counter.causalEnvelope.frames.length, 1);
   assert.equal(counter.causalEnvelope.frames[0].stage, "NEGATION");
+  assert.equal(counter.causalEnvelope.frames[0].frameId, first.causalEnvelope.frames[0].frameId, "counter-Negation has no independently proven child frame");
   assert.equal(authoritativePending(game.code).causal.frameId, counter.causalEnvelope.activeFrameId);
   assert.equal(authoritativePending(game.code).continuation.causal.frameId, counter.causalEnvelope.activeFrameId);
   assert.equal(counter.presentationV2.parentContext, null, "engine exposes the negation effect descriptor but not a typed pending parent");

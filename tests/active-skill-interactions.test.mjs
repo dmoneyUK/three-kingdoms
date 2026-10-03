@@ -254,6 +254,34 @@ function judgementReplacementRoom({ meId = "p2", actorId = "p2", actionRevision 
   });
 }
 
+function negationReactionRoom({ meId = "p2", actorId = "p2", actionRevision = "negation-response-1", presentationSnapshot } = {}) {
+  const negation = card("negation-private", "Negation", "♣");
+  const interaction = {
+    semantics: "PROVEN", interactionId: "negation-interaction", rootFrameId: "negation-frame", activeFrameId: "negation-frame", parentFrameId: null,
+    checkpointId: `negation-checkpoint-${actionRevision}`, presentationRevision: actorId === "p2" ? 1 : 2, stage: "NEGATION", sourceId: "p1", effect: "Dismantle",
+    targetIds: ["p3"], currentParticipantId: "p3", decisionActorId: actorId, activeResolverId: actorId, activeSourceId: "p1", activeTargetIds: ["p3"], participantIds: [],
+    participantRoles: { sourceId: "p1", originalTargetIds: ["p3"], activeTargetIds: ["p3"], currentParticipantId: "p3", decisionActorId: actorId, activeResolverId: actorId, parentParticipantId: null, participantIds: [] },
+    continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+  };
+  const snapshot = presentationSnapshot ?? {
+    identity: { interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision },
+    stable: { kind: "CHOICE", interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision, decisionActorId: actorId },
+    interaction, decision: { actorId, stage: "NEGATION" },
+    localControl: { source: "CurrentAction", actionRevision, kind: "response", actorId, entitled: meId === actorId }, settlement: null, transitionEvents: [],
+  };
+  return normalizeRoomData({
+    code: `NEGATION-${meId}-${actorId}-${actionRevision}`, status: "playing", maxPlayers: 3, isHost: meId === "p1", isTestController: true, meId, myRole: meId === "p1" ? "Lord" : "Rebel", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "SOURCE", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "RESPONDER", seat: 1, hero: "simayi", hp: 3, maxHp: 3, alive: true, connected: true, handCount: meId === "p2" ? 1 : 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+      { id: "p3", name: "TARGET", seat: 2, hero: "liu-bei", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
+    ],
+    myHand: meId === actorId ? [negation] : [], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: actorId, actionReason: "legacy Negation owner", isMyAction: meId === actorId,
+    actionRevision, phase: "response", presentationSnapshot: snapshot, pendingNegation: { sourceId: "p1", actorId, effectTargetId: "p3", cardName: "Dismantle", latestNegationPlayerId: "forged-provider", latestNegationCardId: "forged-card", chainDepth: 99, negated: false },
+    currentAction: { version: 3, kind: "response", actorId, deadline: 0, reason: "Play Negation", legalActions: meId === actorId ? ["respond", "decline_response"] : [], declineAction: "decline_response", requirement: "negate", ...(meId === actorId ? { options: [{ providerId: "negation_card", satisfies: "negate", label: "Negation", description: "Play Negation", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [negation.id] } }] } : {}) },
+  });
+}
+
 installRenderEnvironment();
 
 test("normal deferred multi-target selection is local until ordered Confirm", async () => {
@@ -914,6 +942,49 @@ test("mounted Duel semantics ignore legacy action owner and turn fields", async 
 test("GameRoom does not calculate a Duel next responder on the client", () => {
   const source = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /nextDuel(?:Response|Responder)|pendingDuel\.opponentId\s*[?:].*actorId/, "Duel alternation remains a server Pending/continuation concern");
+});
+
+test("mounted Negation chain is public-only while response selection remains local until Confirm", async () => {
+  const room = negationReactionRoom();
+  const actionCalls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const chain = renderer.root.findByProps({ "data-reaction-chain": "proven" });
+  assert.equal(chain.props["data-reaction-interaction-id"], "negation-interaction");
+  assert.equal(renderer.root.findAllByProps({ "data-reaction-node": "root" }).length, 1);
+  assert.equal(renderer.root.findAllByProps({ "data-reaction-node": "active" }).length, 1);
+  assert.equal(renderer.root.findByProps({ "data-reaction-node": "active" }).props["data-reaction-relation"], "ROOT_FRAME");
+  assert.equal(JSON.stringify(renderer.toJSON()).includes("forged-provider"), false, "compatibility counter fields cannot create a public node");
+  await act(async () => { handCardButton(renderer, "negation-private").props.onClick(); });
+  assert.equal(actionCalls.some(([actionName]) => actionName === "respond"), false, "selecting Negation is local");
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["respond", { providerId: "negation_card", cardId: "negation-private" }]);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("mounted Negation keeps chain viewer-equal, private controls hidden, and stale selection cleared", async () => {
+  const actorRoom = negationReactionRoom();
+  const observerRoom = negationReactionRoom({ meId: "p1", actorId: "p2" });
+  let actor;
+  let observer;
+  await act(async () => { actor = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: actorRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { observer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: observerRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: observerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(actor.root.findAllByProps({ "data-reaction-chain": "proven" }).length, 1);
+  assert.equal(observer.root.findAllByProps({ "data-reaction-chain": "proven" }).length, 1);
+  assert.equal(JSON.stringify(actor.toJSON()).match(/REACTION CHAIN[\s\S]*?ACTIVE RESPONSE/)?.[0], JSON.stringify(observer.toJSON()).match(/REACTION CHAIN[\s\S]*?ACTIVE RESPONSE/)?.[0], "the chain itself is viewer-equal");
+  assert.equal(observer.root.findAllByProps({ "data-hand-card-id": "negation-private" }).length, 0);
+  assert.equal(buttonsContaining(observer, "Confirm").length, 0);
+  assert.equal(buttonsContaining(observer, "Skip").length, 0);
+  await act(async () => { handCardButton(actor, "negation-private").props.onClick(); });
+  assert.equal(button(actor, { children: "Confirm" }).props.disabled, false);
+  const nextRoom = negationReactionRoom({ actorId: "p1", actionRevision: "negation-response-2" });
+  await act(async () => { actor.update(React.createElement(GameRoomErrorBoundary, { room: nextRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: nextRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(actor.root.findAllByProps({ "data-hand-card-id": "negation-private" }).length, 0, "revision/actor change clears the private card selection");
+  assert.equal(buttonsContaining(actor, "Confirm").length, 0);
+  await act(async () => { actor.unmount(); observer.unmount(); });
 });
 
 test("mounted Judgement replacement keeps subject focus public and replacement controls local", async () => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, projectInteractionSeatRoles } from "../game/presentation-client.ts";
+import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
 import { buildHeroFocusView } from "../game/hero-focus.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
@@ -593,6 +593,45 @@ test("Interaction Stage display model is viewer-equal apart from the local marke
 test("Interaction Stage display model remains hidden for REST", () => {
   const model = buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null } }), "B"), resolveDisplayName));
   assert.equal(model.visible, false);
+});
+
+test("Reaction Chain projects only a proven Negation root and active response", () => {
+  const negationSnapshot = snapshot({
+    interaction: scene({ stage: "NEGATION", effect: "Dismantle", activeResolverId: "B" }),
+    decision: { actorId: "B", stage: "NEGATION" },
+  });
+  const chain = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(negationSnapshot, "B"), resolveDisplayName));
+  assert.deepEqual(chain, {
+    visible: true,
+    interactionId: "interaction-1",
+    root: {
+      effect: "Dismantle",
+      source: { id: "A", name: "Ma Chao", known: true },
+      targets: [{ id: "B", name: "Zhao Yun", known: true }],
+    },
+    active: {
+      label: "Negation response",
+      decisionActor: { id: "B", name: "Zhao Yun", known: true },
+      activeResolver: { id: "A", name: "Ma Chao", known: true },
+      relation: "ROOT_FRAME",
+    },
+  });
+});
+
+test("Reaction Chain stays viewer-equal and cannot derive counter history from local control", () => {
+  const negation = snapshot({ interaction: scene({ stage: "NEGATION", effect: "Dismantle", activeResolverId: "B" }), decision: { actorId: "B", stage: "NEGATION" } });
+  const acting = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(negation, "B"), resolveDisplayName));
+  const waiting = buildReactionChainView(buildInteractionStageView(buildPresentationClientView({ ...negation, localControl: { ...negation.localControl, actorId: null, entitled: false } }, "C"), resolveDisplayName));
+  assert.deepEqual(waiting, acting);
+  assert.equal("history" in acting, false);
+  assert.equal(JSON.stringify(acting).includes("CurrentAction"), false);
+});
+
+test("Reaction Chain fails closed outside a proven Negation scene", () => {
+  const attack = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName));
+  const malformed = buildReactionChainView(buildInteractionStageView(buildPresentationClientView(snapshot({ interaction: scene({ stage: "NEGATION", effect: null }) }), "B"), resolveDisplayName));
+  assert.deepEqual(attack, { visible: false, interactionId: null, root: null, active: null });
+  assert.deepEqual(malformed, { visible: false, interactionId: null, root: null, active: null });
 });
 
 test("Hero Focus selects only accepted current-participant or sole-active-target semantics", () => {

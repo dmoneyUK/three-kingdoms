@@ -12,7 +12,7 @@ import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
-import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
+import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildHeroFocusView, type HeroFocusPlayerDisplay, type HeroFocusView } from "../game/hero-focus";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
@@ -482,11 +482,19 @@ function HeroFocus({ view }: { view: HeroFocusView }) {
 export function InteractionStage({ view, resolvePlayerName, resolvePlayerDisplay }: { view: PresentationClientView; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const display = buildInteractionStageDisplayModel(stage);
+  const reactionChain = buildReactionChainView(stage);
   const heroFocus = buildHeroFocusView(stage, resolvePlayerDisplay);
   if (!display.visible) return null;
   return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined}>
     <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
     <HeroFocus view={heroFocus} />
+    {reactionChain.visible && reactionChain.root && reactionChain.active && <section className="reaction-chain" aria-label="Reaction Chain" data-reaction-chain="proven" data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
+      <header><span>REACTION CHAIN</span><small>PUBLIC CAUSAL CONTEXT</small></header>
+      <ol>
+        <li data-reaction-node="root"><small>ROOT EFFECT</small><b>{reactionChain.root.effect}</b><span>{reactionChain.root.source.name} → {reactionChain.root.targets.length ? reactionChain.root.targets.map((target) => target.name).join(", ") : "No proven target"}</span></li>
+        <li data-reaction-node="active" data-reaction-relation={reactionChain.active.relation}><small>ACTIVE RESPONSE</small><b>{reactionChain.active.label}</b>{reactionChain.active.decisionActor.id && <span>DECISION · {reactionChain.active.decisionActor.name}</span>}</li>
+      </ol>
+    </section>}
     <div className="interaction-stage-focus">
       <div><small>SOURCE</small><b>{display.source.name}</b></div>
       <div><small>FOCUS</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>

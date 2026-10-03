@@ -82,6 +82,22 @@ export type InteractionStageDisplayModel = {
   nestedContext: string | null;
 };
 
+export type ReactionChainView = {
+  visible: boolean;
+  interactionId: string | null;
+  root: {
+    effect: string;
+    source: PresentationDisplayIdentity;
+    targets: readonly PresentationDisplayIdentity[];
+  } | null;
+  active: {
+    label: string;
+    decisionActor: PresentationDisplayIdentity;
+    activeResolver: PresentationDisplayIdentity;
+    relation: InteractionSceneContinuity["relation"];
+  } | null;
+};
+
 export type InteractionSeatSemanticRoles = {
   isInteractionSource: boolean;
   isOriginalTarget: boolean;
@@ -313,6 +329,34 @@ export function buildInteractionStageView(
       && view.stableKind === "CHOICE"
       && Boolean(view.decisionActorId)
       && view.isLocalDecisionActor,
+  };
+}
+
+/**
+ * The reaction chain is deliberately bounded to facts in the public typed
+ * scene: a Negation root and its active response window. The snapshot does
+ * not preserve an independently proven history for counter providers or
+ * declines, so this model must not manufacture intermediate nodes from
+ * timelines, compatibility fields, revisions, or CurrentAction.
+ */
+export function buildReactionChainView(stage: InteractionStageView): ReactionChainView {
+  if (!stage.visible || stage.stage !== "NEGATION" || !stage.effect || !stage.source.id) {
+    return { visible: false, interactionId: null, root: null, active: null };
+  }
+  return {
+    visible: true,
+    interactionId: stage.interactionId,
+    root: {
+      effect: stage.effect,
+      source: stage.source,
+      targets: stage.originalTargets,
+    },
+    active: {
+      label: "Negation response",
+      decisionActor: stage.stableKind === "CHOICE" ? stage.decisionActor : { id: null, name: "No proven responder", known: false },
+      activeResolver: stage.activeResolver,
+      relation: stage.continuity.relation,
+    },
   };
 }
 

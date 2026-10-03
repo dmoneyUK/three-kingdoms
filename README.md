@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-14 Judgement/replacement semantic-flow regression — 2026-10-03
+## Current stage — UX2.0UI-15 Reaction Chain public causality and private response boundary — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -140,6 +140,20 @@ closed behavior. Mounted GameRoom coverage confirms replacement selection stays
 local until Confirm and that legacy owner/turn fields cannot grant controls or
 move Hero Focus. Rations Depleted is exercised only as a direct test fixture;
 the active new-game deck remains WTK Standard.
+
+UI-15 adds a compact, read-only Reaction Chain within the existing Interaction
+Stage for a proven `NEGATION` scene. It renders only the causally proven root
+effect/source/original targets and one current response window, so its public
+content is viewer-equal and no provider, card candidate, `CurrentAction`,
+timeline, `actionPlayerId`, resolution ID, or revision becomes chain authority.
+Counter-Negation advances the existing same causal frame and preserves the
+original root; Group and Duel resume through their existing continuations.
+Declines create no public pass node. Private response selection and the exact
+existing `respond` payload remain in the local console until Confirm, while
+Skip remains authoritative. The snapshot has no durable, independently proven
+per-counter contributor history, so UI-15 intentionally shows a bounded root
+plus active node rather than inventing nested history; that is the remaining
+Reaction Chain GAP.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 
