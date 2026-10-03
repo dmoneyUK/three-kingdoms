@@ -5,139 +5,96 @@ HANDOVER.md is tracked remote coordination state. Commit and push it to origin/u
 
 **CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-# NEXT TASK — UX2.0UI-12: AOE / Group Automatic Scope Preview
+# NEXT TASK — UX2.0UI-13: Duel Response Focus & Handoff Regression
 
 ## Objective
-UI-11 is accepted for deterministic topology/containment contracts; pixel-level desktop/650/480 appearance remains a truthful manual/browser GAP.
+UI-12 is accepted and closed. Harden the existing Duel UX as a special-flow semantic regression: the visible Interaction Stage/Hero Focus and local response console must follow the server-owned Duel responder handoff across alternating responses, without creating client-owned participant sequencing.
 
-Implement the locked UX V2 rule for Group/AOE cards: when the local viewer selects an AOE/group card whose affected scope is already determined by authoritative play legality, show a read-only automatic target-scope preview. The player must not click individual seats and must not Confirm a fabricated target list.
-
-This is preview only. Preserve the existing play action/payload and server-owned participant progression.
+This is not a Duel rules rewrite. Preserve all gameplay actions, payloads, damage resolution, response legality, and causal identities.
 
 ## Authority rules
-1. CurrentAction play-phase capability/card legality is the only authority that the card may be played.
-2. AOE/group affected scope must come from an existing authoritative/public rule source already used by gameplay. Do not infer scope from PresentationSnapshot participantIds, current participant, seat highlights, timeline, or pending continuation.
-3. Preview != event/resolution. Selecting a card sends zero action.
-4. Do not add targetIds to an action whose existing payload does not use them.
-5. Server participant order/progression remains authoritative after submission.
-6. If a group card has conditional/excluded recipients that cannot be proven before submission, preview only the provable scope or document the GAP; never guess.
-7. Public red semantic target/current-participant roles remain server presentation facts. Local pre-submit preview must use a distinct local preview decoration and must not mutate public semantic roles.
+1. CurrentAction/capabilities own whether the local viewer may respond and which cards/providers are legal.
+2. PresentationSnapshot owns public Duel source/targets/current participant/decision actor/active resolver only where already proven.
+3. Pending/continuation owns authoritative Duel execution/handoff; UI must not calculate “next responder”.
+4. Timeline/actionPlayerId/turn owner/card selection are not responder authority.
+5. Hero Focus follows accepted semantic IDs only; never infer responder from Duel alternation.
+6. Cancel remains local-only; Skip/Decline remains authoritative.
+7. No new Duel-specific server state, action, payload, projector authority, or gameplay rule.
 
-## Step 1 — inventory all group/AOE play paths
-Trace at least Bumper Harvest, Oath, Barbarian Invasion, Raining Arrows, and any other standard card implemented as group/AOE.
+## Step 1 — trace the real Duel lifecycle
+Inventory exact production functions/files for:
+- Duel play submission and initial target;
+- initial responder CurrentAction;
+- accepted Attack response;
+- responder handoff;
+- response provider/conversion support;
+- decline/no-Attack path and damage;
+- nested damage/dying child frame if applicable;
+- resume/terminal clear.
 
-For each record:
-- existing card legality source;
-- existing payload;
-- whether target IDs are submitted;
-- server participant construction/filtering/order;
-- exclusions (self, dead, immune/skill-based, etc.);
-- whether recipient scope is fully knowable before submission;
-- current client selection/highlight behavior.
+Record which layer owns each transition: gameplay Pending/continuation, CurrentAction, causal envelope, PresentationSnapshot.
 
-Name exact files/functions.
+## Step 2 — verify semantic projection at each checkpoint
+Using real engine/API-backed fixtures where available, prove:
+- source and original Duel target remain stable;
+- current participant/decision actor changes only when server state hands off;
+- active resolver follows the proven contract;
+- interactionId remains continuous across responder handoff;
+- checkpoint/revision advances as appropriate;
+- nested Damage/Dying uses existing child-frame semantics and returns/resumes correctly;
+- terminal Duel clears/rests correctly.
 
-## Step 2 — pure local preview projection
-Add a bounded pure helper/model for pre-submit group scope. Inputs must be already-proven local play/card facts and public player facts required by the existing rule. Output should contain only:
-- preview active;
-- effect/card kind;
-- provable affected player IDs;
-- optional neutral scope label.
+Do not manufacture missing semantic fields from turn order or previous responder.
 
-Do not consume PresentationSnapshot/Pending/timeline to manufacture pre-submit scope.
+## Step 3 — local console integration
+For a viewer who currently owns the Duel response:
+- existing response card/provider controls remain available from CurrentAction;
+- one response primary surface;
+- authoritative Skip/Decline remains distinct;
+- stale local card/provider selection clears when actionRevision/responder changes.
 
-## Step 3 — UI behavior
-When an eligible AOE/group card is locally selected:
-- automatically decorate the provable affected seats as LOCAL PREVIEW;
-- do not make those seats clickable solely for AOE selection;
-- do not require target Confirm;
-- existing Play remains the only authoritative submission;
-- deselect/change card clears preview;
-- busy/stale CurrentAction/legality change clears or suppresses preview.
+For every other viewer:
+- no Duel response control may appear merely because public Hero Focus points at the responder.
 
-Use a visual class/data attribute distinct from public semantic red target/current-participant and amber explicit local target selection.
-
-## Step 4 — Interaction Stage / Hero Focus separation
-Before Play:
-- local AOE preview must not create/change InteractionStageView, HeroFocusView, public seat semantic roles, interactionId, checkpoint, or public decision owner.
-
-After server accepts and emits Group/AOE PresentationSnapshot:
-- existing public Interaction Stage/current participant behavior continues unchanged;
-- local preview must not remain as a second authoritative-looking state.
+## Step 4 — Hero Focus / seat behavior
+At each authoritative responder checkpoint:
+- Hero Focus primary is the proven current participant;
+- public seat roles update on stable seat anchors;
+- source context remains separate;
+- no enlarged/replaced opponent seat;
+- responder handoff must not move seat topology;
+- local amber selection must not overwrite public red/cyan semantic roles.
 
 ## Step 5 — tests
-At minimum prove:
-1. selecting each supported AOE/group card sends zero action;
-2. correct provable scope IDs are previewed;
-3. seats are not individually target-clickable solely because of AOE;
-4. Play sends exactly the existing action/payload with no invented targetIds;
-5. self-including vs self-excluding cards follow existing server rule;
-6. defeated/nonparticipant handling matches existing server participant construction where knowable;
-7. deselect/change card clears preview;
-8. stale CurrentAction/actionRevision suppresses preview;
-9. local preview does not change PresentationClientView/InteractionStage/HeroFocus/public semantic roles;
-10. public semantic red + local preview overlap remains distinguishable if a server interaction is already visible;
-11. after authoritative Group/AOE snapshot, existing current-participant focus remains unchanged;
-12. ordinary single/multi target UI-07, Borrowed Sword UI-08, private picker UI-09, console UI-10 remain green;
-13. topology anchor count/order from UI-11 remains unchanged;
-14. <=650/<=480 preview decoration introduces no duplicate controls.
+At minimum cover:
+1. initial Duel target/responder;
+2. target responds with Attack and server hands response to source;
+3. source responds and server hands back where rules require;
+4. source-owned and target-owned viewer perspectives expose controls only to CurrentAction actor;
+5. public snapshot is viewer-equal while private controls differ;
+6. stale actionRevision clears local response/provider selection;
+7. decline/no-Attack follows existing action/payload and enters existing damage path;
+8. nested Duel damage/Dying preserves causal parent/child semantics;
+9. Hero Focus changes only from authoritative semantic checkpoint;
+10. mutating timeline/actionPlayerId/turn owner cannot change Duel responder controls/focus;
+11. no client “next responder” calculation exists;
+12. seat anchor count/order remains unchanged through handoffs;
+13. console has one coherent response primary + authoritative Skip;
+14. UI-07..12 retained regressions stay green.
 
-Use mounted GameRoom assertions, not helper-only tests.
+Prefer real API/engine fixtures for handoff authority; mounted GameRoom tests for actual controls/focus.
 
 ## Step 6 — docs
-Update README, ROADMAP, and docs/UX_V2_INTERACTION_STAGE_DESIGN.md. Explicitly document Preview != Event and list any AOE whose pre-submit scope cannot be fully proven.
+Update README, ROADMAP, and docs/UX_V2_INTERACTION_STAGE_DESIGN.md with the Duel authority/handoff contract and any truthful remaining GAP.
 
 ## Validation
-Run focused AOE/group + retained UI-01..11 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, git diff --check. Report exact counts.
+Run focused Duel API/presentation/mounted UI tests plus retained UI-01..12 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, git diff --check. Report exact counts.
 
 ## Scope exclusions
-No server/game-rule/action payload changes; no participant-order changes; no projector/snapshot authority changes; no per-target AOE confirmation; no Hero Focus controls; no topology redesign; no animation/settlement work; no attempt to close UI-11 pixel-level visual GAP by assertion.
+No Duel rule changes; no new action/payload; no Pending/continuation rewrite; no projector/snapshot authority expansion; no topology redesign; no animation/settlement work; no attempt to close UI-11 pixel visual GAP.
 
 ## Execution result
-Append only UI-12 result: SHA, files, complete group/AOE inventory, exact authority source per card, preview helper API, mounted preview/action evidence, public-semantic separation, unsupported/conditional GAPs, exact validation counts, next bounded recommendation. Push and verify remote HANDOVER, then STOP.
+Append only UI-13 result: SHA, files, complete Duel lifecycle trace, authority mapping, real handoff evidence, console/focus evidence, nested damage/dying evidence, negative stale/inference tests, exact validation counts, remaining GAPs, next bounded recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if AOE/group selection is an automatic local preview with zero target clicking and zero pre-submit action, existing Play payload remains unchanged, preview scope is backed by existing gameplay authority rather than presentation inference, and public semantic interaction state remains independent.
-
----
-
-## UI-12 execution result — 2026-10-03
-
-- **Implementation:** `a20548b feat(ux): preview automatic group scope`.
-- **Files:** `game/group-scope-preview.ts`, `app/page.tsx`, `app/globals.css`,
-  `tests/active-skill-interactions.test.mjs`, `README.md`, `ROADMAP.md`, and
-  `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
-- **Inventory and authority:** `game/cards.ts` defines the supported automatic
-  scope cards. In `app/api/rooms/route.ts` the `play_card` route constructs
-  Oath recipients from wounded living rows in `resumeNormalStratagemUse`,
-  Bumper Harvest choosers with `playersInTurnOrder(players, me.seat)`, and
-  Barbarian Invasion/Raining Arrows targets with that same order excluding the
-  source. Every path submits only `play_card { cardId }`; the server constructs
-  order/progression after acceptance. No current path has a pre-submit
-  conditional/immunity recipient exclusion. Sky Piercing Halberd is a separate
-  explicit target-selection Attack, not an automatic-scope preview.
-- **Local model:** `buildGroupScopePreview` accepts a selected card kind,
-  source ID, turn seat, public player HP/alive facts, and a
-  CurrentAction-authorized Play boolean. It returns only active/kind/affected
-  IDs/neutral label, reuses `playersInTurnOrder`, and reads no
-  PresentationSnapshot, Pending, timeline, event, or causal identity.
-- **Mounted evidence:** selecting any supported group card sends zero action;
-  Oath includes only wounded living characters, Bumper Harvest all living
-  characters, and the two group attacks all other living characters. Decorated
-  opponents retain `Inspect`, no Confirm is added, and Play keeps exactly
-  `play_card { cardId }` with no invented target IDs. Deselect, busy state, and
-  a changed unauthorized action clear/suppress preview. A public current-
-  participant role and the distinct local preview class can coexist without
-  changing `PresentationClientView`, Interaction Stage, Hero Focus, IDs, or
-  public semantic roles.
-- **Boundaries/GAPs:** no server, game-rule, payload, participant-order,
-  projector/snapshot, Hero Focus, topology, or settlement changes. UI-11's
-  desktop/<=650px/<=480px pixel-level browser/manual visual check remains a
-  truthful GAP; UI-12 adds no duplicate controls at those widths in rendered
-  topology/console contracts.
-- **Validation:** focused mounted interaction suite **24/24**; fast suite
-  **174/174** across 17 files; API suite **239/239** across 23 files and four
-  shards; `npm run build`, `npm run lint`, and `git diff --check` pass.
-- **Recommended next work:** planner/reviewer should select one new bounded UX
-  slice; do not treat the remaining UI-11 pixel-level browser/manual check as
-  closed without real visual evidence.
+Pass only if Duel responder/focus/control handoff is demonstrably server-owned end to end, UI exposes controls only from CurrentAction authority, public semantic focus follows PresentationSnapshot without client alternation inference, causal continuity survives nested damage/dying, and gameplay actions/payloads remain unchanged.
