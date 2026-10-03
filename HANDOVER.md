@@ -116,3 +116,17 @@ Append only UI-04 result: SHA, files, display-model API, hierarchy rules, Ma Cha
 
 ## Acceptance
 Pass only if InteractionStage becomes a concise semantic focus summary derived solely from the accepted view; redundant diagnostic detail is demoted without losing underlying semantics; source-owned/group/child-frame cases remain truthful; responsive containment is bounded; public content remains viewer-equal; and gameplay/layout/control behavior is unchanged.
+
+## Execution result — UX2.0UI-04
+
+- Implementation SHA: `08ae73b71703768ab6e8c321c13d435a49877e40` (`feat(ux-v2): refine interaction stage focus summary`).
+- Files changed: `game/presentation-client.ts`, `app/page.tsx`, `app/globals.css`, `tests/presentation-client.test.mjs`, `tests/room-safety-render.test.mjs`, `README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Display-model API: `buildInteractionStageDisplayModel(stage)` derives a pure player-facing hierarchy from `InteractionStageView`; the full underlying semantic view remains intact, including effect, IDs, targets, continuity, and resolver identity.
+- Hierarchy rules: stage/effect, source, and current participant/active target are primary; CHOICE decision owner remains explicit; ordinary target-owned resolver detail is hidden; source-owned or child-frame resolver context is shown when it clarifies resolution; original targets appear only when ordered IDs differ from active targets; interaction/checkpoint/revision remain data attributes and diagnostics.
+- Ma Chao/Group/child-frame behavior: source-owned Ma Chao keeps decision owner distinct from resolver; Group/AOE shows current participant and truthful active-target progress/original scope; CHILD_FRAME shows compact nested-effect and proven parent-frame context.
+- Responsive containment: replaced the six-cell matrix markup with a compact focus/context layout and narrowly scoped desktop, `<=650px`, and `<=480px` wrapping rules. Long names and target lists wrap inside the existing panel; the panel remains pointer-free inside `play-table` and does not change seats, dock, controls, or table geometry.
+- Tests: focused adapter/display/render tests `37/37`, including ordinary target-owned CHOICE, source-owned Ma Chao, Group/AOE, child Damage/Dying, equal/changed target scopes, long/missing names, viewer equality, REST hidden, data-attribute diagnostics, and legacy independence. Existing UI-01..03 coverage remains green.
+- Legacy independence: the display model accepts only `InteractionStageView`; no Pending, timeline, presentationV2, CurrentAction, phase, actionPlayerId, or actionReason path was added.
+- Scope confirmation: no gameplay/server/projector/snapshot authority, hero/card assets, seat topology, local dock, target/control migration, animation, settlement/transition protocol, compatibility-field removal, or unrelated refactor was added. Effect is exposed from the already accepted public scene through the client adapter; no new server semantic authority was introduced.
+- Validation: `npm run build` passed; `npm run test:fast` `154/154`; `npm run test:api` `239/239`; `npm run lint` passed; `git diff --check` passed. Final focused rerun `37/37` passed.
+- Next bounded UI recommendation: review a separately authorized Hero Focus or target-highlighting slice, keeping semantic authority, controls, animation, seats, and dock boundaries unchanged.
