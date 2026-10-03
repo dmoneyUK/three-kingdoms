@@ -112,3 +112,92 @@ Pass only if real browser execution validates the required responsive/motion con
 - Next bounded recommendation: wait for the pushed CI result; once the CI
   blocker is green, continue the UI-19 browser harness under a new reviewer
   handover.
+
+## UI-19 execution result — browser responsive and accessibility validation harness — 2026-10-03
+
+- Implementation SHA: `8978eef3e190d135244c8df03a41056a3621d6bd`
+  (`feat: add UI-19 browser validation harness`). The implementation and this
+  handover update are intended to be pushed together to `ux-v2`.
+- Changed files: `.github/workflows/deploy.yml`, `.gitignore`,
+  `package.json`, `package-lock.json`, `tests/browser/fixture.html`,
+  `tests/browser/fixture.jsx`, `tests/browser/playwright.config.mjs`,
+  `tests/browser/ui19.spec.mjs`, `tests/browser/vite.config.mjs`, `README.md`,
+  `ROADMAP.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Browser tooling: `@playwright/test` 1.63.0 with Playwright Chromium
+  153.0.8010.12 (Playwright Chromium v1243), launched by `npm run test:browser`.
+  CI now installs the browser with `npx playwright install --with-deps
+  chromium` before running the suite. Reports and test-results are ignored.
+- The fixture mounts the existing `GameRoom` and passes normalized deterministic
+  rooms through the existing `PresentationSnapshot` and `CurrentAction`
+  contracts. It adds no production route/backdoor, gameplay/API action,
+  projector, causal authority, private-control ownership, or CSS/layout fix.
+
+### Executed browser matrix and evidence
+
+- Final browser result: **17/17 passed**.
+- Ten layout cases:
+  - 1440x900: REST/2-player, normal turn/4-player, normal turn/6-player,
+    normal turn/10-player.
+  - 650x900: normal turn/4-player, normal turn/6-player, normal turn/10-player.
+  - 480x900: normal turn/4-player, normal turn/6-player, normal turn/10-player.
+- Seven semantic/accessibility cases:
+  - 1440x900: Interaction Stage + Hero Focus with a non-NONE
+    `INTERACTION_TRANSITION` marker.
+  - 650x900: Raining Arrows multi-target/AOE preview at six players; Duel
+    responder at four players.
+  - 480x900: Negation/Reaction Chain at four players; Dying/Peach handoff at
+    four players; retained target-card picker at four players; reduced-motion
+    Interaction Stage at four players.
+- Assertions cover one local dock plus N-1 opponent anchors, top-row versus
+  side-column topology, anchor visibility, local hand and console presence,
+  no horizontal overflow, no severe anchor overlap, stage/control separation,
+  semantic seat roles, five public AOE preview recipients, Reaction Chain and
+  Dying labels, picker dialog bounds and scroll-safe card row, reduced-motion
+  animation removal, pointer access, and native keyboard focus. No full WCAG,
+  screenshot/pixel, touch-device, or art-direction claim is made.
+
+### Harness defects found and corrected
+
+- The first launch could not start because Playwright resolved the Vite config
+  relative to `tests/browser` (`0` tests executed). Explicit web-server cwd and
+  absolute Vite root fixed startup.
+- The first running matrix was **13/16**: two selectors matched both the
+  `main` shell and Interaction Stage, and one Duel assertion used a nonexistent
+  Hero Focus role label. Scoping the marker to `.interaction-stage` and using
+  the existing `CURRENT PARTICIPANT` label fixed these harness assertions.
+- The next run was **15/16**: the interaction fixture used a turn action with a
+  response phase, so its console had no native button. The fixture phase was
+  corrected to `play`.
+- The next run was **15/16**: the reduced-motion test focused the disabled
+  primary button. It now focuses the first enabled native console button.
+- The retained target-card picker was then added to cover the required dialog
+  invariant; its focused run passed **1/1**, and the final full matrix passed
+  **17/17**. No production defect or CSS change was required.
+
+### Retained validation
+
+- Focused UI/presentation tests: **101/101 passed**.
+- `npm run test:fast`: **196/196 passed** across 17 files.
+- `npm run test:api`: **241/241 passed** across 23 files and four shards.
+- `npm run build`: completed successfully.
+- `npm run lint`: completed with no diagnostics.
+- `git diff --check`: passed with no output.
+- The component validation commands above were run separately; the aggregate
+  `npm test` command was not separately rerun locally. GitHub Actions remains
+  responsible for the CI gate, including the new browser job and the existing
+  aggregate test/build/API path. CI status and production deployment were not
+  inspected or claimed here.
+
+### Boundaries and next recommendation
+
+- The browser harness closes the repeatable DOM/geometry/reduced-motion gap for
+  the listed matrix only. Subjective pixel comparison, screenshots, touch and
+  device certification, full WCAG auditing, live multiplayer timing, and
+  production health remain outside this task.
+- No gameplay, server authority, projector, causal identity, semantic
+  transition classification, private-card knowledge, or settlement behavior
+  changed.
+- Next bounded recommendation: wait for the user/reviewer GitHub notification;
+  if a CI browser failure is reported, inspect only that failed assertion and
+  make the smallest scoped correction. Otherwise await a new reviewer
+  handover before beginning another task.
