@@ -224,3 +224,16 @@ Push implementation + appended HANDOVER to `origin/ux-v2`, fetch, verify remote 
 ## Acceptance
 
 C7-02 passes only if all 13 accepted interaction families are truthfully characterized at the PresentationSnapshot boundary; public/private separation remains correct; no real PROVEN interaction is silently converted to REST; SPECIAL is honestly exercised or reserved; settlement/transitions remain unpromoted; compatibility is preserved; the matrix contains no hidden/unclassified cells; and no UI/gameplay scope creep occurs.
+
+## Execution result — UX2.0C7-02 PresentationSnapshot closure audit — 2026-10-03
+
+- Implementation SHA: `0ccf0a948b80c79af58cf572c8e4ff03ba0eff04` (`docs(ux-v2): audit presentation snapshot closure`).
+- Files changed: `README.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, `tests/api/ma-chao.test.mjs`, and `tests/presentation-snapshot.test.mjs`.
+- Added the future client-needs inventory and the 13-family × 8-column C7 matrix: **100 P / 2 N/A / 2 GAP / 0 unclassified = 104 cells**. The two N/A cells are checkpoint-continuity N/A for single-checkpoint Attack/Dodge and independent/root Damage. The two GAP cells are identity and stable-boundary coherence for the real Ma Chao source-owned trigger path.
+- REST contradiction: real Ma Chao Cavalry state has `presentationV2.interactionScene.semantics === "PROVEN"` while `presentationV2.stableBoundary.kind === "REST"`; the route snapshot is verified to fail closed to null identity/interaction/decision. This is the C7-02 stop condition. Snapshot semantics and gameplay were not changed.
+- SPECIAL audit: production paths are limited to proven Judgement-without-decision, causally linked Borrowed Sword child without decision, and proven child Damage without decision. No accepted real API fixture exposes stable SPECIAL; it remains RESERVED/unexercised. The synthetic SPECIAL projector test is not positive real evidence.
+- localControl conclusion: sufficient only as a thin viewer-private reference/entitlement signal (`source`, `actionRevision`, `kind`, `actorId`, `entitled`); it contains no legal options, cards, providers, or payloads. CurrentAction remains authoritative for actual controls.
+- `settlement = null` and `transitionEvents = []` remain RESERVED. Durable public occurrence linkage, reconnect-safe occurrence identity, viewer-independent settlement proof, and replay-free stable reconstruction are still required before promotion.
+- Protocol compatibility: `presentationSnapshot` remains additive; `presentationV2` is unchanged; no React consumer switched; no additional private data is projected; null/empty reserved serialization remains stable. No gameplay, React, CSS, animation, or visual UX change.
+- Validation: focused snapshot tests `5/5`; real Ma Chao audit fixture `10/10`; `npm run test:fast` `129/129`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
+- Recommendation: C7 is **not closed** and the server snapshot contract is **not ready for React migration**. Another bounded C7 fix is required to decide the source-owned trigger boundary without weakening the atomic fail-closed invariant.
