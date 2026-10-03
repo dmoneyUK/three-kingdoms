@@ -1,17 +1,20 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C6-03 documentation closure — 2026-10-03
+## Current stage — UX2.0C7-01 PresentationSnapshot contract — 2026-10-03
 
-C6 engine-backed architecture verification is complete and ready for reviewer
-closure. The final 13-family × 10-invariant matrix is **128 P / 2 N/A / 0
-GAP**: Attack/Dodge and independent/root Damage each contain exactly one
-meaningful semantic checkpoint, so checkpoint progression between checkpoints
-is not applicable in those scenarios. Their repeated-read stability and
-terminal clearing remain explicitly proven; the checkpoint invariant was not
-weakened and no semantic checkpoint was fabricated.
+C6 engine-backed architecture verification is complete: the final 13-family ×
+10-invariant matrix is **128 P / 2 N/A / 0 GAP**. Attack/Dodge and
+independent/root Damage are genuine single-checkpoint flows; their repeated-read
+stability and terminal clearing remain proven, so no semantic checkpoint was
+fabricated.
 
-No production gameplay, authority, test semantics, React/CSS, animation, or
-PresentationSnapshot code was added. C7 and UI migration remain out of scope.
+C7-01 now implements the first additive server-side `PresentationSnapshot`
+contract and exposes it alongside `presentationV2`. It composes only proven
+typed causal identity/scene/boundary data, keeps CurrentAction as a thin
+viewer-private control reference, and leaves settlement and transition events
+reserved. Real engine/API characterization covers Attack/Dodge, Judgement,
+Duel, Group/Damage/Dying, Negation, delayed Lightning, and Borrowed Sword.
+No gameplay, React, CSS, animation, or visual UX migration has started.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

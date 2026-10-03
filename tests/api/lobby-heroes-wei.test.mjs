@@ -451,10 +451,18 @@ test("delayed Lightning damage keeps one Judgement Interaction across three Lega
   assert.equal(otherViewer.causalEnvelope.presentationRevision, damageRoot.presentationRevision);
   assert.deepEqual(otherViewer.presentationV2.interactionScene, view.presentationV2.interactionScene);
   assert.deepEqual(otherViewer.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
+  const publicSnapshot = { ...view.presentationSnapshot };
+  const otherPublicSnapshot = { ...otherViewer.presentationSnapshot };
+  delete publicSnapshot.localControl;
+  delete otherPublicSnapshot.localControl;
+  assert.deepEqual(otherPublicSnapshot, publicSnapshot, "delayed Lightning public snapshot is viewer-stable");
+  assert.equal(view.presentationSnapshot.localControl.entitled, true);
+  assert.equal(otherViewer.presentationSnapshot.localControl.entitled, false);
   assert.equal(otherViewer.currentAction.triggerOptions?.length, 0, "delayed Lightning controls remain private to the acting viewer");
   const repeated = (await state(game.code, guoMember.token)).data;
   assert.deepEqual(repeated.presentationV2.interactionScene, view.presentationV2.interactionScene);
   assert.deepEqual(repeated.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
+  assert.deepEqual(repeated.presentationSnapshot, view.presentationSnapshot, "delayed Lightning repeated read preserves the snapshot");
   const persistedDamage = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   assert.equal(persistedDamage.actorId, guo.id);
   assert.equal(persistedDamage.causal.interactionId, damageRoot.interactionId);

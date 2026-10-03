@@ -4416,3 +4416,72 @@ C6-03 therefore completes the matrix with **128 P, 2 N/A, 0 GAP** and leaves
 C6 verification **ready for reviewer closure**. No gameplay or authority
 shortcut was used. C7, `PresentationSnapshot`, React/CSS migration, animation
 semantics, and durable transition occurrence IDs remain out of scope.
+
+### 0.104 UX2.0C7-01 minimal authoritative PresentationSnapshot — 2026-10-03
+
+C7-01 implements the first additive server-side snapshot contract. It is a
+pure composition boundary for the already accepted C1-C6 authority; it is not
+a second rules engine, a timeline scanner, an ID generator, or a React/CSS
+migration.
+
+The production shape is the named TypeScript `PresentationSnapshot` in
+`game/presentation-snapshot.ts`:
+
+~~~text
+PresentationSnapshot
+  identity: { interactionId, checkpointId, presentationRevision } | null
+  stable: REST | CHOICE | SPECIAL | reserved SETTLEMENT
+  interaction: proven PresentationInteractionScene | null
+  decision: { actorId, stage } | null
+  localControl: { source, actionRevision, kind, actorId, entitled }
+  settlement: null (reserved)
+  transitionEvents: [] (reserved)
+~~~
+
+The room projection path in `app/api/rooms/route.ts` composes the snapshot
+after `projectPresentationV2` and returns it as `presentationSnapshot`, without
+removing or renaming `presentationV2`.
+
+#### C7 evidence ledger
+
+| Snapshot field/group | Authoritative source | Exact composer | Real fixture/assertion | Visibility | Result |
+| --- | --- | --- | --- | --- | --- |
+| `identity` | proven `presentationV2.interactionScene` typed causal identity | `composePresentationSnapshot` | `presentation-v2-engine.test.mjs` projection helper across Attack, Borrowed Sword, Dying, Group/Damage, Duel, Negation, Judgement | PUBLIC | PASS |
+| `stable` | accepted `presentationV2.stableBoundary`, with strict identity coherence | `stableFor` | same engine-backed helper plus terminal REST assertions | PUBLIC | PASS |
+| `interaction` | proven `interactionScene` only; UNPROVEN/null fails closed | direct composition after `isProvenScene` | Attack, Group child/resume, Dying, Duel, Negation, Judgement and malformed envelope tests | PUBLIC | PASS |
+| `decision` | typed scene stage and semantic decision actor | direct composition from `interactionScene` | acting/uninvolved viewer assertions and real response/trigger checkpoints | PUBLIC | PASS |
+| `localControl` | viewer-specific `CurrentAction` kind/actor plus `actionRevision` and room viewer ID | direct thin reference composition | Attack/Dodge, Dying, delayed Lightning, Borrowed Sword privacy assertions | PRIVATE | PASS |
+| `settlement` | no accepted durable public occurrence authority yet | constant `null` | legacy finalResult/barrier negative tests and terminal clear checks | RESERVED | PASS |
+| `transitionEvents` | no accepted durable public occurrence identity yet | constant empty array | legacy timeline/transition negative tests | RESERVED | PASS |
+
+`identity`, `stable`, `interaction`, and semantic `decision` are viewer-equal
+because they are composed only from the public typed scene/boundary. The
+`localControl` object is the only viewer-specific area: it identifies the
+CurrentAction source, action revision, local kind/actor reference, and whether
+the supplied viewer is entitled. It does not copy legal options, private
+cards, providers, or legality logic.
+
+The production composer never promotes `presentationV2.settlement`,
+`transitionEvents`, timeline IDs, `resolutionId`, `actionRevision`,
+`finalResult`, or `readyAfterEventId` into authoritative snapshot identity or
+settlement. A malformed scene, incoherent identity, absent envelope, or legacy
+settlement input produces identity-free `REST`; `SETTLEMENT` remains reserved.
+The composer performs no DB access, mutation, timeline search, revision advance,
+or ID generation. Repeated reads therefore preserve the same identity,
+interaction, and stable classification.
+
+Real API evidence is extended through the existing engine-backed projection
+path for Attack/Dodge; Attack/Judgement and resume; Duel; Group/AOE; Group
+Damage child/resume; Group Damage/Dying/rescue; root Negation/counter-Negation;
+standalone Judgement replacement; delayed Lightning Judgement/Damage; and
+Borrowed Sword. Acting and uninvolved views compare equal after removing only
+`localControl`, while private CurrentAction options remain absent from the
+uninvolved view. Repeated Attack, Group child/resume, Judgement, and Dying
+reads preserve the snapshot identity and public scene; terminal settlement
+clears identity back to REST.
+
+No production gameplay, causal semantics, `presentationV2` compatibility
+fields, React, CSS, animation, or client consumer changed. The remaining C7
+boundary is reviewer confirmation of this server-side contract and a later
+decision about any additional bounded snapshot evidence before UI-01. React
+migration and visual UX remain explicitly out of scope.

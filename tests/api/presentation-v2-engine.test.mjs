@@ -1,5 +1,6 @@
 import test from "node:test";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
+import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
 import {
   assert, card, createHumanGame, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
 } from "./test-support.mjs";
@@ -28,8 +29,21 @@ function assertProjectionMatchesEngine(code, token) {
   return state(code, token).then(({ data: view }) => {
     const expected = projectPresentationV2({ pending: authoritativePending(code), currentAction: view.currentAction, actionRevision: view.actionRevision, timeline: view.timeline, causalEnvelope: view.causalEnvelope });
     assert.deepEqual(view.presentationV2, expected, "route presentationV2 is projected from the persisted engine state");
+    const expectedSnapshot = composePresentationSnapshot({ presentationV2: view.presentationV2, currentAction: view.currentAction, actionRevision: view.actionRevision, viewerId: view.meId });
+    assert.deepEqual(view.presentationSnapshot, expectedSnapshot, "route PresentationSnapshot is composed from the persisted engine projection");
+    assert.deepEqual(view.presentationSnapshot.identity, view.presentationV2.interactionScene?.semantics === "PROVEN"
+      ? { interactionId: view.presentationV2.interactionScene.interactionId, checkpointId: view.presentationV2.interactionScene.checkpointId, presentationRevision: view.presentationV2.interactionScene.presentationRevision }
+      : null, "snapshot identity follows proven typed scene only");
+    assert.equal(view.presentationSnapshot.settlement, null, "settlement remains reserved");
+    assert.deepEqual(view.presentationSnapshot.transitionEvents, [], "transition occurrences remain reserved");
     return view;
   });
+}
+
+function publicSnapshot(snapshot) {
+  const publicPart = { ...snapshot };
+  delete publicPart.localControl;
+  return publicPart;
 }
 
 test("engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference", { timeout: 30_000 }, async () => {
@@ -75,6 +89,9 @@ test("engine-backed Attack/Dodge exposes authoritative decision and legacy resol
   assert.equal(otherView.currentAction.options, undefined, "private response options remain viewer-private");
   assert.deepEqual(otherView.presentationV2.interactionScene, attackScene);
   assert.deepEqual(otherView.presentationV2.stableBoundary, targetView.presentationV2.stableBoundary);
+  assert.deepEqual(publicSnapshot(otherView.presentationSnapshot), publicSnapshot(targetView.presentationSnapshot), "Attack public snapshot is viewer-equal");
+  assert.equal(targetView.presentationSnapshot.localControl.entitled, true);
+  assert.equal(otherView.presentationSnapshot.localControl.entitled, false);
   const targetRepeat = await state(game.code, targetMember.token);
   assert.deepEqual(targetRepeat.data.presentationV2.interactionScene, attackScene);
   assert.deepEqual(targetRepeat.data.presentationV2.interactionScene?.participantRoles, attackScene?.participantRoles);
@@ -120,6 +137,7 @@ test("engine-backed Borrowed Sword preserves forced Attack continuation and time
   assert.deepEqual(reconnect.presentationV2.rootContext, armedView.presentationV2.rootContext);
   assert.deepEqual(reconnect.presentationV2.interactionScene, view.presentationV2.interactionScene);
   assert.deepEqual(reconnect.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
+  assert.deepEqual(publicSnapshot(reconnect.presentationSnapshot), publicSnapshot(view.presentationSnapshot), "Borrowed Sword reconnect preserves public snapshot");
   assert.equal(reconnect.currentAction.options, undefined);
   const forcedAttackEnvelope = view.causalEnvelope;
   const declined = await requestAndSettle("decline_response", { code: scenario.game.code, token: scenario.alice.token });
@@ -189,6 +207,9 @@ test("engine-backed Dying/rescue proves the separate timer arm and reconnect beh
   assert.deepEqual(uninvolvedDyingViewer.presentationV2.dyingBarrier, view.presentationV2.dyingBarrier);
   assert.deepEqual(uninvolvedDyingViewer.presentationV2.interactionScene, view.presentationV2.interactionScene);
   assert.deepEqual(uninvolvedDyingViewer.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
+  assert.deepEqual(publicSnapshot(uninvolvedDyingViewer.presentationSnapshot), publicSnapshot(view.presentationSnapshot), "Dying public snapshot is viewer-equal");
+  assert.equal(view.presentationSnapshot.localControl.entitled, true);
+  assert.equal(uninvolvedDyingViewer.presentationSnapshot.localControl.entitled, false);
   assert.equal(uninvolvedDyingViewer.currentAction.options, undefined, "rescue options remain private to the acting viewer");
   assert.equal(beforeReconnect.currentAction.deadline, 0);
   const armed = await requestAndSettle("start_rescue_timer", { code: game.code, token: bob.token });
