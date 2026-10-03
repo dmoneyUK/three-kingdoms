@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-13 server-owned Duel response focus and handoff — 2026-10-03
+## Current stage — UX2.0UI-14 Judgement/replacement semantic-flow regression — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -129,6 +129,17 @@ revision cleanup on handoff, legacy-field resistance, and no client-derived
 next responder. Duel failure enters the existing DAMAGE child frame, preserves
 the parent Duel context through Dying, and clears the child after Peach rescue.
 No new protocol, rule, projector authority, or client sequencing was added.
+
+UI-14 hardens the existing Judgement/replacement presentation contract without
+changing rules, actions, payloads, or visibility. Engine-backed regressions cover
+Lightning, Overindulgence, and Rations Depleted initial checkpoints, Sima Yi
+replacement options, viewer-equal public source/subject/focus roles, public
+revealed-card identity, exact `cardIds` submission, stale actor/revision cleanup,
+causal checkpoint/frame continuity, root clear, and malformed-authority fail
+closed behavior. Mounted GameRoom coverage confirms replacement selection stays
+local until Confirm and that legacy owner/turn fields cannot grant controls or
+move Hero Focus. Rations Depleted is exercised only as a direct test fixture;
+the active new-game deck remains WTK Standard.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

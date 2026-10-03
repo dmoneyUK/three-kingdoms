@@ -222,6 +222,38 @@ function duelResponseRoom({ meId = "p2", actorId = "p2", actionRevision = "duel-
   });
 }
 
+function judgementReplacementRoom({ meId = "p2", actorId = "p2", actionRevision = "judgement-reveal-1", triggerEvent = "judgement_revealed", includeReveal = true } = {}) {
+  const revealed = card("judgement-revealed", "Dodge", "♠");
+  const replacement = card("judgement-replacement", "Peach", "♥");
+  const interaction = {
+    semantics: "PROVEN", interactionId: "judgement-interaction", rootFrameId: "judgement-frame", activeFrameId: "judgement-frame", parentFrameId: null,
+    checkpointId: `judgement-checkpoint-${actionRevision}`, presentationRevision: actorId === "p2" ? 1 : 2, stage: "JUDGEMENT", sourceId: "p1", effect: "Overindulgence",
+    targetIds: ["p1"], currentParticipantId: "p1", decisionActorId: actorId, activeResolverId: actorId, activeSourceId: "p1", activeTargetIds: ["p1"], participantIds: [],
+    participantRoles: { sourceId: "p1", originalTargetIds: ["p1"], activeTargetIds: ["p1"], currentParticipantId: "p1", decisionActorId: actorId, activeResolverId: actorId, parentParticipantId: null, participantIds: [] },
+    continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+  };
+  const snapshot = {
+    identity: { interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision },
+    stable: { kind: "CHOICE", interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision, decisionActorId: actorId },
+    interaction,
+    decision: { actorId, stage: "JUDGEMENT" },
+    localControl: { source: "CurrentAction", actionRevision, kind: "trigger", actorId, entitled: meId === actorId },
+    settlement: null, transitionEvents: [],
+  };
+  return normalizeRoomData({
+    code: `JUDGEMENT-${meId}-${actorId}-${actionRevision}`, status: "playing", maxPlayers: 2, isHost: meId === "p1", isTestController: true, meId, myRole: meId === "p1" ? "Lord" : "Rebel", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "SUBJECT", seat: 0, hero: "guo-jia", hp: 3, maxHp: 4, alive: true, connected: true, handCount: meId === "p1" ? 1 : 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "SIMA YI", seat: 1, hero: "simayi", hp: 3, maxHp: 3, alive: true, connected: true, handCount: meId === "p2" ? 1 : 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: meId === "p2" ? [replacement] : [], turnSeat: 0, deckCount: 20, discardTop: null,
+    log: [], timeline: includeReveal ? [{ id: "judgement-reveal-event", type: "card", player: "SUBJECT", target: "SUBJECT", card: revealed, action: "reveal", judgement: true, resolutionId: "judgement-resolution" }] : [],
+    isMyTurn: false, actionPlayerId: actorId, actionReason: `${actorId === "p2" ? "Sima Yi may replace the Judgement" : "Subject resolves the Judgement"}`, isMyAction: meId === actorId,
+    actionRevision, phase: "response", presentationSnapshot: snapshot, pending: { kind: "trigger" },
+    currentAction: { version: 3, kind: "trigger", actorId, deadline: 0, reason: `${actorId === "p2" ? "Sima Yi may replace the Judgement, or decline" : "Resolve the Judgement"}`, legalActions: actorId === meId ? ["trigger", "decline_trigger"] : [], triggerEvent, ...(actorId === "p2" && meId === actorId ? { triggerOptions: [{ effectId: "sima_yi_guicai", label: "Necromancy", description: "Replace the revealed Judgement card.", allowDecline: true, selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [replacement.id] } }] } : {}), presentation: { readyAfterEventId: includeReveal ? "judgement-reveal-event" : null, resolutionId: "judgement-resolution" } },
+  });
+}
+
 installRenderEnvironment();
 
 test("normal deferred multi-target selection is local until ordered Confirm", async () => {
@@ -882,4 +914,65 @@ test("mounted Duel semantics ignore legacy action owner and turn fields", async 
 test("GameRoom does not calculate a Duel next responder on the client", () => {
   const source = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /nextDuel(?:Response|Responder)|pendingDuel\.opponentId\s*[?:].*actorId/, "Duel alternation remains a server Pending/continuation concern");
+});
+
+test("mounted Judgement replacement keeps subject focus public and replacement controls local", async () => {
+  let room = judgementReplacementRoom();
+  const actionCalls = [];
+  let renderer;
+  const action = async (...args) => { actionCalls.push(args); return true; };
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(renderer.root.findByProps({ "data-stage": "JUDGEMENT" }).props["data-continuity"], "ROOT_FRAME");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT", "Hero Focus follows the Judgement subject, not the replacement actor");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("interaction-seat-decision-actor"), true);
+  assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, false);
+  assert.equal(buttonsContaining(renderer, "Skip").length, 1);
+  assert.equal(buttonsContaining(renderer, "Confirm").length, 0, "replacement selection is not submitted on skill activation");
+  await act(async () => { button(renderer, { "aria-label": "Necromancy" }).props.onClick(); });
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
+  assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "activating replacement remains local");
+  await act(async () => { handCardButton(renderer, "judgement-replacement").props.onClick(); });
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "sima_yi_guicai", cardIds: ["judgement-replacement"] }]);
+
+  room = judgementReplacementRoom({ actorId: "p1", actionRevision: "judgement-effective-2", triggerEvent: "judgement_effective" });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, true, "the old replacement provider is disabled after the authoritative actor changes");
+  assert.equal(buttonsContaining(renderer, "Confirm").length, 0);
+  assert.equal(buttonsContaining(renderer, "Skip").length, 0);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("mounted Judgement keeps public focus viewer-equal without leaking replacement identity", async () => {
+  const room = judgementReplacementRoom({ meId: "p1", actorId: "p2" });
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "judgement-replacement" }).length, 0, "replacement candidates remain private to Sima Yi");
+  assert.equal(buttonsContaining(renderer, "Necromancy").length, 0);
+  assert.equal(buttonsContaining(renderer, "Confirm").length, 0);
+  assert.equal(buttonsContaining(renderer, "Skip").length, 0);
+  const rendered = JSON.stringify(renderer.toJSON());
+  assert.equal(rendered.includes("judgement-replacement"), false);
+  assert.equal(room.timeline.some((event) => event.type === "card" && event.action === "reveal" && event.card.id === "judgement-revealed"), true, "the server-authorized public reveal remains in the viewer projection");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("mounted Judgement focus and controls ignore legacy owners and require an authorized reveal event", async () => {
+  const legacy = { ...judgementReplacementRoom(), actionPlayerId: "p1", actionReason: "legacy owner", turnSeat: 1, isMyTurn: true };
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: legacy, onRecover: () => {} }, React.createElement(GameRoom, { room: legacy, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(button(renderer, { "aria-label": "Necromancy" }).props.disabled, false);
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: judgementReplacementRoom({ includeReveal: false }), onRecover: () => {} }, React.createElement(GameRoom, { room: judgementReplacementRoom({ includeReveal: false }), busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(renderer.root.findAllByProps({ "data-stage": "JUDGEMENT" }).length, 1, "semantic stage may remain public from the proven snapshot");
+  assert.equal(JSON.stringify(renderer.toJSON()).includes("Dodge"), false, "no revealed card is rendered without the server reveal event");
+  await act(async () => { renderer.unmount(); });
 });

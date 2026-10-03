@@ -89,6 +89,17 @@ protocol, gameplay rule, projector authority, or client sequencing is added.
 The remaining UI-11 desktop/650px/480px visual check is still a browser/manual
 GAP.
 
+UI-14 hardens the existing Judgement/replacement semantic flow without changing
+rules, action names, payloads, or visibility. Engine-backed coverage now spans
+Lightning, Overindulgence, and the fixture-only Rations Depleted delayed
+checkpoints, plus Sima Yi replacement privacy, public revealed-card identity,
+viewer-equal subject/focus roles, exact `cardIds` submission, stale actor/
+revision cleanup, causal checkpoint/frame continuity, root clear, and malformed
+authority fail-closed behavior. Mounted coverage keeps replacement selection
+local until Confirm and rejects legacy owner/turn fields as presentation
+authority. The active new-game deck remains WTK Standard; the UI-11
+desktop/650px/480px visual check remains a browser/manual GAP.
+
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel
 clearing only local state. Existing `choose_target_card` and semantic

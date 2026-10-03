@@ -475,6 +475,23 @@ client-derived next responder. No protocol, rule, projector-topology, or
 animation change is part of UI-13; the UI-11 pixel-level desktop/650px/480px
 browser/manual check remains a GAP.
 
+### 0.6.13 UI-14 Judgement and replacement semantic-flow regression
+
+UI-14 keeps the existing Judgement engine and protocol unchanged while proving
+that the UI consumes its authoritative boundaries. Delayed Lightning,
+Overindulgence, and fixture-only Rations Depleted all open a proven `JUDGEMENT`
+scene whose source, subject/current participant, decision actor, and active
+resolver come from the persisted causal envelope and Pending/CurrentAction
+linkage. Sima Yi replacement candidates are projected only to the entitled
+viewer; the public revealed card comes only from the existing reveal event.
+Viewer-equal public scenes, stable checkpoint/frame continuity, exact existing
+`cardIds` submission, root clear, stale actor/revision cleanup, and malformed
+envelope fail-closed behavior are covered by engine/API tests. Mounted GameRoom
+coverage proves selection remains local until Confirm, while legacy
+`actionPlayerId`/turn fields cannot grant controls or move Hero Focus. No new
+Judgement rule, action, payload, visibility path, or animation authority is
+introduced; the active new-game deck remains WTK Standard.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

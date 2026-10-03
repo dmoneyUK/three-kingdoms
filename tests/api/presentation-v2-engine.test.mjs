@@ -1264,6 +1264,41 @@ test("engine-backed Judgement replacement exposes reveal and resume evidence", {
   assert.deepEqual(resumed.data.room.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
 });
 
+test("engine-backed delayed Judgement families share the same initial public checkpoint", { timeout: 30_000 }, async () => {
+  const families = [
+    ["Lightning", "lightning", "lightning", "♠"],
+    ["Overindulgence", "overindulgence", "overindulgence", "♠"],
+    ["RationsDepleted", "rations", "rations_depleted", "♠"],
+  ];
+  for (const [kind, purposeKey, purpose, delayedSuit] of families) {
+    const original = { ...card("Dodge", `family-${purposeKey}-original`), suit: "♥", rank: "Q" };
+    const replacement = card("Peach", `family-${purposeKey}-replacement`, "♥");
+    const setup = await prepareGuoJudgement({ original, replacement, purposeCard: card(kind, `family-${purposeKey}-delayed`, delayedSuit) });
+    const opened = await request("draw", { code: setup.game.code, token: setup.guoMember.token });
+    assert.equal(opened.status, 200, `${kind}: ${JSON.stringify(opened.data)}`);
+    await waitForState(setup.game.code, setup.simaMember.token, (view) => view.currentAction?.triggerEvent === "judgement_revealed");
+    const revealView = await assertProjectionMatchesEngine(setup.game.code, setup.simaMember.token);
+    const otherView = (await state(setup.game.code, setup.guoMember.token)).data;
+    const pending = authoritativePending(setup.game.code);
+    const scene = revealView.presentationV2.interactionScene;
+    assert.equal(pending?.continuation?.judgement?.purpose, purpose, `${kind}: continuation keeps the delayed purpose`);
+    assert.equal(scene?.stage, "JUDGEMENT", `${kind}: stage`);
+    assert.equal(scene?.sourceId, setup.guo.id, `${kind}: semantic source`);
+    assert.equal(scene?.currentParticipantId, setup.guo.id, `${kind}: current participant`);
+    assert.equal(scene?.decisionActorId, setup.sima.id, `${kind}: replacement actor`);
+    assert.equal(scene?.activeResolverId, setup.sima.id, `${kind}: active resolver`);
+    assert.equal(revealView.presentationV2.stableBoundary.kind, "CHOICE", `${kind}: choice boundary`);
+    assert.ok(revealView.timeline.some((event) => event.type === "card" && event.action === "reveal" && event.card.id === original.id), `${kind}: public reveal identity`);
+    assert.ok(otherView.timeline.some((event) => event.type === "card" && event.action === "reveal" && event.card.id === original.id), `${kind}: public reveal identity is viewer-equal`);
+    assert.deepEqual(otherView.presentationV2.interactionScene, scene, `${kind}: public scene is viewer-equal`);
+    assert.deepEqual(otherView.presentationV2.stableBoundary, revealView.presentationV2.stableBoundary, `${kind}: stable boundary is viewer-equal`);
+    assert.deepEqual(revealView.currentAction.triggerOptions?.map((option) => option.effectId) ?? [], ["sima_yi_guicai"], `${kind}: eligible replacement is projected to Sima Yi`);
+    assert.deepEqual(revealView.currentAction.triggerOptions?.[0]?.selection?.eligibleCardIds, [replacement.id], `${kind}: replacement card key stays exact for the acting viewer`);
+    assert.deepEqual(otherView.currentAction.triggerOptions ?? [], [], `${kind}: other viewers receive no private trigger option`);
+    assert.equal(otherView.timeline.some((event) => event.card?.id === replacement.id), false, `${kind}: replacement identity does not enter the public timeline`);
+  }
+});
+
 test("malformed Judgement envelope stays non-authoritative through legacy resume", { timeout: 30_000 }, async () => {
   const setup = await prepareGuoJudgement({ original: { ...card("Dodge", "malformed-judgement-original"), suit: "♠", rank: "7" } });
   const opened = await request("draw", { code: setup.game.code, token: setup.guoMember.token });
