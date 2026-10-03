@@ -17,236 +17,225 @@ Agent sequence:
 
 Read `docs/PLANNER_DEVELOPMENT_WORKFLOW.md` before implementation.
 
-# NEXT TASK — UX2.0VIS-01: Correct 2–4 Player Opponent Seats to a Real Top Row
+## Reviewer status — Zhang Liao Assault is fixed in source but not deployed
+
+The user reports that Zhang Liao's Assault still behaves incorrectly in the live game.
+
+Repository review shows that the prior Assault UI fix is present on `ux-v2` in commit
+`fe5ab574a0f896e7807c8cb221236dc3cbc12642` and remains in the current branch history.
+That fix already covers the reported local interaction failure:
+- selecting 1 or 2 legal Assault targets;
+- an enabled Confirm surface;
+- repeated Assault button clicks not clearing the selection;
+- explicit Cancel and reactivation;
+- exact multi-target payload `{ providerId: "zhang_liao_assault", targetIds }`;
+- a real Worker/D1 Draw Phase fixture and Playwright browser regression.
+
+The current live symptom is explained by deployment failure, not by evidence that the
+server Assault rule regressed.
+
+### Verified deployment blocker
+
+Two consecutive `ux-v2` workflow runs that contain the Assault fix failed before deploy:
+
+- run 583, head `e34708dc615fbfd80001f27fd74dd4b8c0f03b95`;
+- run 584, head `6d14864de7cff3a48c40404627a71619867021de`.
+
+Both fail in `npm run test:browser` before `npm test`/build and before the deploy job.
+The browser Worker server tries to open:
+
+`dist/server/wrangler.json`
+
+but a clean GitHub Actions checkout has not run `npm run build` yet, so the file does not
+exist. The observed CI error is:
+
+`ENOENT: no such file or directory ... dist/server/wrangler.json`
+
+The last successful `ux-v2` deployment was run 582 at
+`474e2f15c1dd6f44a2a11bcc58d3c33083582a99`, which predates the Assault fix.
+Therefore the production screenshot can still show the old broken Assault UI even though
+the corrected source exists on `ux-v2`.
+
+# NEXT TASK — BUG-ZHANG-LIAO-ASSAULT-02: Unblock CI and deploy the existing Assault fix
 
 ## Objective
-Fix exactly one visual-layout defect:
 
-**For games with 2–4 total players, every opponent seat must render in one stable top row above the battlefield instead of using the current legacy horseshoe positions.**
+Make the already-reviewed Zhang Liao Assault fix actually reach production.
 
-This task changes opponent-seat position only. Do not redesign Interaction Stage, Hero Focus, the central battlefield, opponent-card content, or the local dock.
+This is primarily a CI/deployment-order bug. Do **not** redesign Assault gameplay or its
+selection UX unless the current `ux-v2` code still fails the existing real browser/API
+regressions after the build-order problem is corrected.
 
 ## Existing accepted truth
-The UX V2 design already defines:
-- 2–4 total players = top-row opponent topology;
-- the local player remains in the persistent bottom `LocalPlayerDock`;
-- opponent anchors remain persistent public seat thumbnails;
-- an interaction must not move/reorder opponent seat identity;
-- gameplay targeting/click behavior must remain unchanged.
 
-Current production already emits:
-- `data-seat-topology="top-row"` when `room.players.length < 5`;
-- `data-player-count={room.players.length}` on `.player-board`;
-- opponent seats only inside `.player-board`;
-- the local player only inside `LocalPlayerDock`.
+Preserve these accepted Assault contracts:
 
-The current defect is layout CSS. Generic rules still map:
-- `.player-square-1` -> left-middle;
-- `.player-square-2` -> top-middle;
-- `.player-square-3` -> right-middle.
+- Zhang Liao Assault is a Draw Phase optional trigger.
+- It replaces the normal deck draw.
+- It may select 1 or 2 eligible other characters.
+- Each selected character contributes one server-random hidden Hand card.
+- Empty-hand characters are not legal targets.
+- The client uses projected target legality only; it must not inspect private opponent Hand cards.
+- The semantic action remains generic `trigger` with provider
+  `zhang_liao_assault`.
+- One target and two targets are both valid.
+- Repeated clicking of the already-active Assault skill is not a second Cancel surface.
+- Explicit Cancel is local-only and emits no gameplay action.
+- Server action revision / stale-action checks remain authoritative.
 
-That recreates the legacy horseshoe even while the DOM says `top-row`.
+Do not change `game/capabilities/heroes/zhang-liao-assault.ts` unless a failing
+current regression proves an actual gameplay defect.
 
-## Production files in scope
-Expected production change:
-- `app/globals.css`
+## Root-cause contract
 
-Expected regression change:
-- `tests/browser/ui19.spec.mjs` or a smaller existing browser layout spec if one already fits better.
+The clean-checkout CI sequence currently runs:
 
-Do not change `app/page.tsx` unless a missing stable test hook is proven necessary. If you believe JSX must change for another reason, STOP and report the blocker instead of broadening this task.
+1. `npm ci`
+2. `npm run lint`
+3. install Chromium
+4. `npm run test:browser`
+5. `npm test`
+
+But `tests/browser/worker-server.mjs` starts Wrangler with
+`dist/server/wrangler.json`, which is created by `npm run build`.
+Therefore step 4 cannot succeed from a clean checkout.
+
+The fix must ensure the build artifact exists **before** Playwright starts its Worker
+webServer.
 
 ## Required implementation
 
-### 1. Add topology-specific top-row CSS
-Add explicit selectors scoped to:
+### 1. Repair the workflow order with the smallest change
 
-`[data-seat-topology="top-row"]`
+Preferred implementation:
 
-Use `data-player-count` to make the mapping deterministic.
+- edit `.github/workflows/deploy.yml`;
+- add an explicit `npm run build` step after Chromium installation and before
+  `npm run test:browser`.
 
-Required visual mapping:
+Keep the existing browser harness unchanged unless this build step still fails to produce
+the expected `dist/server/wrangler.json`.
 
-#### 2 total players
-Only opponent `relativeIndex=1` exists.
+Do not weaken or skip `npm run test:browser`.
 
-Expected geometry:
-- row: top row
-- horizontal position: centre
+Do not mark the browser test as continue-on-error.
 
-Equivalent grid mapping with the existing 3-column board:
-- `.player-square-1` -> `grid-row: 1; grid-column: 2`
+Do not remove the deploy dependency on `build-and-test`.
 
-#### 3 total players
-Opponents `relativeIndex=1,2`.
+A second build later via `npm test` is acceptable for this bounded fix. Do not broaden
+the task into CI optimization unless required for correctness.
 
-Expected left-to-right order:
-- index 1 = left
-- index 2 = right
+### 2. Re-run the actual Zhang Liao browser regression after build
 
-Equivalent mapping:
-- `.player-square-1` -> `grid-row: 1; grid-column: 1`
-- `.player-square-2` -> `grid-row: 1; grid-column: 3`
+From a clean-enough working tree, run:
 
-#### 4 total players
-Opponents `relativeIndex=1,2,3`.
+`npm run build`
 
-Expected left-to-right order:
-- index 1 = left
-- index 2 = centre
-- index 3 = right
+then:
 
-Equivalent mapping:
-- `.player-square-1` -> `grid-row: 1; grid-column: 1`
-- `.player-square-2` -> `grid-row: 1; grid-column: 2`
-- `.player-square-3` -> `grid-row: 1; grid-column: 3`
+`npx playwright test tests/browser/zhang-liao-assault.spec.mjs --config tests/browser/playwright.config.mjs`
 
-You may use equivalent CSS only if the browser geometry proves exactly the same result.
+The test must pass the real Worker/D1 Draw Phase path and prove at minimum:
+- Assault control visible/enabled;
+- target 1 selectable;
+- target 2 selectable;
+- Confirm visible/enabled after selecting two targets;
+- repeated Assault click preserves selection;
+- explicit Cancel sends no `trigger` / `decline_trigger`;
+- reactivation works;
+- submitted payload uses `providerId: "zhang_liao_assault"` and the expected target IDs.
 
-Do not reuse the generic horseshoe row assignments when `data-seat-topology="top-row"`.
+If this existing test fails after build, diagnose the actual current branch behavior and
+make only the smallest Assault-specific correction needed. Add/adjust regression coverage
+for the exact failure. Do not guess from the screenshot alone.
 
-### 2. Preserve seat identity and behavior
-Do not modify:
-- `room.players` ordering;
-- `relativeIndex` calculation;
-- `OpponentPlayerCard` target legality;
-- target click handlers;
-- Inspect behavior;
-- semantic role classes/data attributes;
-- turn/action/defeated/local-selection highlights;
-- local dock rendering;
-- CurrentAction / PresentationSnapshot semantics.
+### 3. Preserve the current VIS-01 implementation
 
-This task is layout only.
-
-### 3. Do not touch Interaction Stage or Hero Focus
-The top-wide Interaction Stage is a separate known defect and will be assigned only after VIS-01 is reviewed.
+The current branch also contains the completed VIS-01 top-row CSS work. This task must not
+revert or redesign it.
 
 Do not change:
-- `InteractionStage` JSX;
-- `.interaction-stage` position/size;
-- Hero Focus JSX/CSS;
-- central safe-zone geometry;
-- Reaction Chain/Dying/Duel presentation;
-- opponent card dimensions/content.
+- opponent seat topology/layout;
+- Interaction Stage;
+- Hero Focus;
+- local dock composition;
+- unrelated CSS.
 
-### 4. Responsive contract
-The same top-row topology must remain true at:
-- 1440x900
-- 650x900
-- 480x900
+### 4. Push and require a successful deploy of the exact fixed head
 
-At every required width:
-- all opponents for 2–4 total players occupy the same top row;
-- no opponent occupies a left-middle or right-middle horseshoe position;
-- seat order remains 1 -> 2 -> 3 from left to right;
-- there is no horizontal page overflow introduced by this change;
-- exactly one local dock remains present;
-- no mobile-only alternate topology is introduced.
+After local validation:
+1. append the execution result to HANDOVER;
+2. commit implementation + HANDOVER;
+3. push to `origin/ux-v2`;
+4. identify the GitHub Actions `Deploy to Cloudflare` run whose `head_sha` equals the
+   pushed implementation/HANDOVER head;
+5. wait for that run to finish;
+6. verify both `build-and-test` and `deploy` conclude `success`.
 
-## Required browser regression
-Extend the existing Playwright layout coverage. Do not rely only on the `data-seat-topology` string.
+Do not report production fixed if the workflow is still running, failed, cancelled, or
+the deploy job was skipped.
 
-Add geometry assertions for **2, 3 and 4 total players**.
-
-At minimum execute the new assertions at:
-- 1440x900
-- 480x900
-
-Retain the existing 650px matrix and make sure the new CSS does not break it.
-
-For each case assert:
-1. opponent anchor count = totalPlayers - 1;
-2. local dock anchor count = 1;
-3. all opponent seat bounding boxes have the same top/Y position within a tolerance of **4 CSS pixels**;
-4. horizontal centres are strictly increasing in relativeIndex order;
-5. no two opponent bounding boxes have severe overlap;
-6. document/page width does not exceed viewport width because of this change.
-
-For 4 total players additionally assert:
-- `.player-square-1`, `.player-square-2`, `.player-square-3` are all in the same top row;
-- centreX(index1) < centreX(index2) < centreX(index3);
-- the regression would fail against the old horseshoe CSS because indices 1 and 3 previously occupied middle-row positions.
-
-Use the existing `player-square-N` classes as the relative-index test hook. Do not add a new production data attribute merely for this test unless absolutely necessary.
-
-## Negative regression / forbidden shortcut
-The following implementation is NOT acceptable:
-- only changing `data-seat-topology` while leaving geometry unchanged;
-- hiding one of the opponent seats;
-- changing seat DOM order to make the X-order assertion pass;
-- moving the local player into `.player-board`;
-- shrinking/repositioning Interaction Stage to make the screenshot look better;
-- adding viewport-specific JSX branches.
-
-The browser geometry test must prove the actual seat positions changed.
+If the workflow fails, append the exact failing step/error to HANDOVER and STOP. Do not
+silently work around CI with a manual Cloudflare deploy.
 
 ## Validation
-Run and report actual results for:
-- focused Playwright topology test(s);
-- `npm run test:browser`;
-- `npm run test:fast`;
-- `npm run build`;
-- `npm run lint`;
-- `git diff --check`.
 
-Report exact counts where the runner provides them. Do not claim unrun commands passed.
+Run and report actual results for:
+
+- `npm run build`
+- `npx playwright test tests/browser/zhang-liao-assault.spec.mjs --config tests/browser/playwright.config.mjs`
+- `npm run test:browser`
+- `npm run test:fast`
+- `npm run test:api`
+- `npm run lint`
+- `git diff --check`
+
+Then report the GitHub Actions run:
+- run ID;
+- head SHA;
+- `build-and-test` result;
+- `deploy` result;
+- production smoke-test result from the workflow.
+
+Report exact test counts where the runner provides them. Do not claim unrun checks passed.
 
 ## Scope exclusions
+
 Do not:
-- change Interaction Stage layout;
-- change Hero Focus;
-- implement the central enlarged combat presentation;
-- change 5–10 player side-column layout;
-- change local dock layout;
-- change opponent-card visual content/size;
-- change gameplay/server/projector/presentation semantics;
-- perform unrelated CSS cleanup;
-- start VIS-02 or any later layout task.
+- rewrite Assault server logic without a reproduced failure on current `ux-v2`;
+- change Assault to inspect/choose specific opponent Hand cards;
+- add hero-specific HTTP endpoints;
+- bypass `currentAction` / generic `trigger`;
+- weaken stale/replay rejection;
+- skip browser tests to force deployment;
+- manually deploy outside GitHub Actions;
+- start a new visual/layout task;
+- modify `main`.
 
 ## Execution result
-Append only the VIS-01 execution result:
+
+Append only the BUG-ZHANG-LIAO-ASSAULT-02 execution result:
 - full implementation SHA;
 - files changed;
-- exact CSS mapping used for 2/3/4 players;
-- browser geometry assertions added;
-- proof that old horseshoe geometry would fail the new regression;
-- validation commands with exact results/counts;
-- any remaining issue discovered inside VIS-01 scope.
+- exact CI ordering change;
+- Zhang Liao focused browser result;
+- full validation commands/results;
+- workflow run ID/head SHA;
+- `build-and-test` conclusion;
+- `deploy` conclusion;
+- whether production smoke passed;
+- any remaining Assault symptom after the successful deploy.
 
-Do not declare VIS-01 accepted/closed. The Planner/Reviewer does that after review.
-
-Push and verify remote HANDOVER, then STOP.
+Do not declare the bug accepted/closed. The Planner/Reviewer will review the pushed result.
 
 ## Acceptance
-VIS-01 passes only if:
-- 2–4 player games visually use a genuine single opponent top row at desktop and mobile widths;
-- relative seat order 1 -> 2 -> 3 is preserved;
-- the generic horseshoe geometry cannot apply under `top-row`;
-- browser bounding-box tests prove the real geometry, not just DOM labels;
-- exactly one local dock remains;
-- no Interaction Stage/Hero Focus/gameplay/5–10-player scope is changed.
 
-## VIS-01 Execution Result
-
-- Implementation SHA: `b263174771d812105c35eb4e97b46dce99342393`
-- Files changed:
-  - `app/globals.css`
-  - `tests/browser/ui19.spec.mjs`
-- CSS mapping:
-  - 2 players: `.player-square-1` uses grid row 1 / column 2.
-  - 3 players: `.player-square-1` uses grid row 1 / column 1; `.player-square-2` uses grid row 1 / column 3.
-  - 4 players: `.player-square-1`, `.player-square-2`, `.player-square-3` use grid row 1 / columns 1, 2, 3 respectively.
-  - The topology-specific selectors reset the legacy absolute horseshoe positioning under `[data-seat-topology="top-row"]`, preserve the existing responsive board dimensions, and do not apply to `side-column` rooms.
-- Browser geometry assertions added for 2, 3, and 4 total players at 1440x900, 650x900, and 480x900. They assert opponent count, exactly one local dock anchor, relative-index order, same top/Y within 4 CSS pixels, strictly increasing horizontal centres, no severe opponent overlap, and no horizontal overflow.
-- Old-horseshoe regression proof: before the topology-specific absolute-position reset, the new focused run reported 3 passed and 6 failed; 3/4-player cases had opponent Y spreads of approximately 148.7–163.3 CSS pixels. The final assertions therefore fail against the previous horseshoe/arc geometry rather than only checking the topology label.
-- Focused validation actually run:
-  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-01' --config tests/browser/playwright.config.mjs` — **9 passed** (9 tests).
-- Full validation not run locally, per the user-authorized remote-CI workflow:
-  - `npm run test:browser` — not run; GitHub Actions responsibility.
-  - `npm run test:fast` — not run; GitHub Actions responsibility.
-  - `npm run build` — not run; GitHub Actions responsibility.
-  - `npm run lint` — not run; GitHub Actions responsibility.
-  - `git diff --check` — not run; GitHub Actions responsibility.
-- Remaining VIS-01 issue observed locally: none within the assigned scope. CI status was not checked.
-- Recommended next bounded task: reviewer review of VIS-01; do not start VIS-02 before review acceptance.
+This task passes only if:
+- a clean GitHub Actions checkout builds before Playwright needs
+  `dist/server/wrangler.json`;
+- the real Zhang Liao Assault browser regression passes;
+- the exact pushed `ux-v2` head containing `fe5ab...` and the CI fix completes
+  `build-and-test` successfully;
+- the Cloudflare deploy job for that same head succeeds;
+- no Assault gameplay/server semantics are changed without a reproduced failing regression;
+- no unrelated visual/gameplay scope is modified.
