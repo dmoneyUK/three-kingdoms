@@ -179,6 +179,85 @@ test("Legacy distribution keeps private cards static and labels recipients by he
   assert.doesNotMatch(gameRoomSource, /<option value=\{player\.id\} key=\{player\.id\}>\{player\.name\}<\/option>/, "Legacy does not expose player names in recipient choices");
 });
 
+test("Hero Focus renders the accepted public participant without becoming a control surface", () => {
+  const createSnapshot = (sceneOverrides = {}, stableOverrides = {}, decisionActorId = "B") => {
+    const interaction = {
+      semantics: "PROVEN", interactionId: "focus-interaction", rootFrameId: "focus-root", activeFrameId: "focus-frame", parentFrameId: null,
+      checkpointId: "focus-checkpoint", presentationRevision: 2, stage: "ATTACK_RESPONSE", effect: "Attack", sourceId: "A", targetIds: ["B"],
+      currentParticipantId: "B", decisionActorId, activeResolverId: "A", activeSourceId: "A", activeTargetIds: ["B"], participantIds: ["A", "B"],
+      participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId, activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B"] },
+      continuity: { relation: "ROOT_FRAME", parentFrameId: null }, ...sceneOverrides,
+    };
+    return {
+      identity: { interactionId: "focus-interaction", checkpointId: "focus-checkpoint", presentationRevision: 2 },
+      stable: { kind: "CHOICE", interactionId: "focus-interaction", checkpointId: "focus-checkpoint", presentationRevision: 2, decisionActorId, ...stableOverrides },
+      interaction,
+      decision: decisionActorId ? { actorId: decisionActorId, stage: interaction.stage } : null,
+      localControl: { source: "CurrentAction", actionRevision: "focus-action", kind: "response", actorId: decisionActorId, entitled: true },
+      settlement: null, transitionEvents: [],
+    };
+  };
+  const players = {
+    A: { name: "Ma Chao", heroId: "ma-chao", heroName: "Ma Chao", hp: 4, maxHp: 4 },
+    B: { name: "Zhao Yun", heroId: "zhao-yun", heroName: "Zhao Yun", hp: 3, maxHp: 4 },
+    C: { name: "Cao Cao", heroId: "cao-cao", heroName: "Cao Cao", hp: 4, maxHp: 4 },
+  };
+  const resolveName = (id) => players[id]?.name ?? null;
+  const resolveDisplay = (id) => players[id] ?? null;
+  const renderStage = (snapshot, viewerId = "B", displayResolver = resolveDisplay) => renderToStaticMarkup(React.createElement(InteractionStage, {
+    view: buildPresentationClientView(snapshot, viewerId),
+    resolvePlayerName: resolveName,
+    resolvePlayerDisplay: displayResolver,
+  }));
+
+  const ordinaryHtml = renderStage(createSnapshot());
+  assert.match(ordinaryHtml, /class="hero-focus"[^>]*data-hero-focus-player-id="B"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
+  assert.match(ordinaryHtml, /class="hero-focus-identity"[^>]*><b>Zhao Yun<\/b><span>Zhao Yun<\/span><small>HP 3\/4<\/small>/);
+  assert.match(ordinaryHtml, /class="hero-focus-portrait"[^>]*data-hero-id="zhao-yun"/);
+  assert.doesNotMatch(ordinaryHtml, /button|data-hand|data-card|legalActions|providers/i, "Hero Focus renders no controls or private card data");
+
+  const sourceOwnedHtml = renderStage(createSnapshot({ currentParticipantId: "B", decisionActorId: "A", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "A", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, { decisionActorId: "A" }, "A"), "A");
+  assert.match(sourceOwnedHtml, /data-hero-focus-player-id="B"/);
+  assert.match(sourceOwnedHtml, /data-hero-focus-source-id="A"/);
+  assert.match(sourceOwnedHtml, /<small>DECISION<\/small><b>Ma Chao<\/b>/);
+  assert.doesNotMatch(sourceOwnedHtml, /class="hero-focus"[^>]*data-hero-focus-player-id="A"/, "source-owned decision does not move Hero Focus to the decision source");
+
+  const groupHtml = renderStage(createSnapshot({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "C" }, "C"));
+  assert.match(groupHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
+
+  const ambiguousHtml = renderStage(createSnapshot({ targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "A" }, "A"));
+  assert.doesNotMatch(ambiguousHtml, /data-hero-focus="true"/, "ambiguous multi-target state has no guessed Hero Focus");
+
+  const soleTargetHtml = renderStage(createSnapshot({ targetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "C"] } }, { decisionActorId: "A" }, "A"));
+  assert.match(soleTargetHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="CURRENT TARGET"/);
+
+  const childHtml = renderStage(createSnapshot({ stage: "DAMAGE", parentFrameId: "group-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" }, decisionActorId: "B", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, {}, "B"));
+  assert.match(childHtml, /data-hero-focus-player-id="B"/);
+  assert.match(childHtml, /class="hero-focus-context">Nested effect · parent frame group-frame<\/small>/);
+
+  const dyingHtml = renderStage(createSnapshot({ stage: "DYING", currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, {}, "B"));
+  assert.match(dyingHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
+
+  const uninvolvedHtml = renderStage(createSnapshot(), "C");
+  assert.match(uninvolvedHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
+  assert.match(ordinaryHtml, /YOUR DECISION/);
+  assert.doesNotMatch(uninvolvedHtml, /YOUR DECISION/);
+
+  const missingHtml = renderStage(createSnapshot({ currentParticipantId: "missing", targetIds: ["missing"], activeTargetIds: ["missing"], decisionActorId: "missing", participantRoles: { sourceId: "A", originalTargetIds: ["missing"], activeTargetIds: ["missing"], currentParticipantId: "missing", decisionActorId: "missing", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "missing"] } }, { decisionActorId: "missing" }, "missing"), "missing", () => null);
+  assert.match(missingHtml, /data-hero-focus-player-id="missing"/);
+  assert.match(missingHtml, /<div class="hero-focus-identity"><b>Unknown participant<\/b>/);
+  assert.doesNotMatch(missingHtml, /data-hero-id="undefined"/);
+  const longNameHtml = renderStage(createSnapshot(), "B", (id) => id === "B" ? { ...players.B, name: "A deliberately long public player name for containment" } : resolveDisplay(id));
+  assert.match(longNameHtml, /A deliberately long public player name for containment/);
+
+  const restHtml = renderStage({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }, localControl: null, settlement: null, transitionEvents: [] });
+  assert.equal(restHtml, "", "REST hides Interaction Stage and Hero Focus");
+  assert.match(globalStyleSource, /\.hero-focus\{/);
+  assert.match(globalStyleSource, /@media\(max-width:650px\)[^\n]*\.hero-focus/);
+  assert.match(globalStyleSource, /@media\(max-width:480px\)[^\n]*\.hero-focus/);
+  assert.doesNotMatch(globalStyleSource, /\.hero-focus[^\n]*animation/);
+});
+
 test("waiting room starts without lobby readiness controls", () => {
   const room = normalizeRoomData({
     code: "WAIT1", status: "lobby", maxPlayers: 4, isHost: true, meId: "p1", players: [

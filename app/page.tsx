@@ -13,6 +13,7 @@ import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
 import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
+import { buildHeroFocusView, type HeroFocusPlayerDisplay, type HeroFocusView } from "../game/hero-focus";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -457,12 +458,30 @@ function OpponentInspectionOverlay({ player, playerHero, judgementInFlight, onCl
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
-export function InteractionStage({ view, resolvePlayerName }: { view: PresentationClientView; resolvePlayerName: (playerId: string) => string | null | undefined }) {
+function HeroFocus({ view }: { view: HeroFocusView }) {
+  if (!view.visible || !view.primary) return null;
+  const hero = heroDefinition(view.primary.heroId);
+  const heroName = view.primary.heroName ?? hero?.name ?? null;
+  const hp = view.primary.hp !== null || view.primary.maxHp !== null ? `HP ${view.primary.hp ?? "?"}/${view.primary.maxHp ?? "?"}` : null;
+  return <div className="hero-focus" aria-label="Hero Focus" data-hero-focus="true" data-hero-focus-player-id={view.primary.id} data-hero-focus-role={view.roleLabel ?? undefined} data-hero-focus-source-id={view.source.id ?? undefined} data-hero-focus-known={view.primary.known ? "true" : "false"}>
+    <div className="hero-focus-heading"><span>HERO FOCUS</span><strong>{view.roleLabel}</strong></div>
+    <div className="hero-focus-body">
+      <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={view.primary.heroId ?? undefined}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
+      <div className="hero-focus-identity"><b>{view.primary.name}</b>{heroName && <span>{heroName}</span>}{hp && <small>{hp}</small>}</div>
+      {view.source.id && view.source.id !== view.primary.id && <small className="hero-focus-source">SOURCE · {view.source.name}</small>}
+    </div>
+    {view.nestedContext && <small className="hero-focus-context">{view.nestedContext}</small>}
+  </div>;
+}
+
+export function InteractionStage({ view, resolvePlayerName, resolvePlayerDisplay }: { view: PresentationClientView; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const display = buildInteractionStageDisplayModel(stage);
+  const heroFocus = buildHeroFocusView(stage, resolvePlayerDisplay);
   if (!display.visible) return null;
   return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined}>
     <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
+    <HeroFocus view={heroFocus} />
     <div className="interaction-stage-focus">
       <div><small>SOURCE</small><b>{display.source.name}</b></div>
       <div><small>FOCUS</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
@@ -1292,7 +1311,12 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button className="text-button" onClick={onLeave}>Exit</button></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${sequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`}>
-      <InteractionStage view={clientPresentation} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} />
+      <InteractionStage view={clientPresentation} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} resolvePlayerDisplay={(playerId) => {
+        const player = room.players.find((candidate) => candidate.id === playerId);
+        if (!player) return null;
+        const hero = heroDefinition(player.hero);
+        return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
+      }} />
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       <button type="button" className="game-exit" onClick={onLeave}>Exit</button>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}

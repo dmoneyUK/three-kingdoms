@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-05 semantic seat highlight projection — 2026-10-03
+## Current stage — UX2.0UI-06 semantic Hero Focus projection — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -31,6 +31,16 @@ and the local viewer marker. Dedicated seat/dock classes and data attributes do
 not change target legality, click behavior, local amber selection, turn/
 defeated state, dock composition, seat topology, or dimensions. Hero Focus,
 final seat topology, and control migration remain future work.
+
+UI-06 adds a compact, read-only Hero Focus inside the existing Interaction
+Stage. Its pure `HeroFocusView` selects the current participant first, or the
+sole active target when no current participant is proven; ambiguous multi-target
+states remain unfocused. Source and decision ownership stay separate, CHILD_FRAME
+context remains proven context, and public hero/name/HP decoration is resolved
+only after semantic ID selection. REST, private cards, controls, target
+selection, seat/dock topology, animation, and the full Hero Focus redesign
+remain unchanged. The next milestone is a separately bounded presentation
+slice, not a gameplay or topology migration.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

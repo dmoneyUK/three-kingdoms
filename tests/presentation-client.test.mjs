@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, projectInteractionSeatRoles } from "../game/presentation-client.ts";
+import { buildHeroFocusView } from "../game/hero-focus.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
@@ -592,4 +593,80 @@ test("Interaction Stage display model is viewer-equal apart from the local marke
 test("Interaction Stage display model remains hidden for REST", () => {
   const model = buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null } }), "B"), resolveDisplayName));
   assert.equal(model.visible, false);
+});
+
+test("Hero Focus selects only accepted current-participant or sole-active-target semantics", () => {
+  const display = (id) => ({ name: displayNames[id] ?? null, heroId: id === "A" ? "ma-chao" : id === "B" ? "zhao-yun" : id === "C" ? "cao-cao" : null, heroName: id === "A" ? "Ma Chao" : id === "B" ? "Zhao Yun" : id === "C" ? "Cao Cao" : null, hp: 4, maxHp: 4 });
+  const focusFrom = (view) => buildHeroFocusView(buildInteractionStageView(view, resolveDisplayName), display);
+
+  const ordinary = focusFrom(buildPresentationClientView(snapshot(), "B"));
+  assert.deepEqual(ordinary.primary, { id: "B", name: "Zhao Yun", known: true, heroId: "zhao-yun", heroName: "Zhao Yun", hp: 4, maxHp: 4 });
+  assert.equal(ordinary.roleLabel, "CURRENT PARTICIPANT");
+  assert.equal(ordinary.source.id, "A");
+
+  const sourceOwned = focusFrom(buildPresentationClientView(snapshot({
+    interaction: scene({ decisionActorId: "A", activeResolverId: "B", participantRoles: { ...scene().participantRoles, decisionActorId: "A", activeResolverId: "B" } }),
+    stable: { ...snapshot().stable, decisionActorId: "A" },
+    decision: { actorId: "A", stage: "ATTACK_RESPONSE" },
+  }), "A"));
+  assert.equal(sourceOwned.primary?.id, "B", "source-owned decision still focuses the current target participant");
+  assert.equal(sourceOwned.roleLabel, "CURRENT PARTICIPANT");
+  assert.equal(sourceOwned.source.id, "A");
+
+  const group = focusFrom(buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"] } }),
+    stable: { ...snapshot().stable, decisionActorId: "C" },
+    decision: { actorId: "C", stage: "GROUP_RESOLUTION" },
+  }), "A"));
+  assert.equal(group.primary?.id, "C", "Group focus follows the proven current participant");
+
+  const ambiguous = focusFrom(buildPresentationClientView(snapshot({
+    interaction: scene({ targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "B", "C"], participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "B", "C"] } }),
+    stable: { ...snapshot().stable, decisionActorId: "A" },
+    decision: { actorId: "A", stage: "GROUP_RESOLUTION" },
+  }), "A"));
+  assert.equal(ambiguous.primary, null, "multiple active targets without a current participant do not guess");
+  assert.equal(ambiguous.roleLabel, null);
+
+  const soleTarget = focusFrom(buildPresentationClientView(snapshot({
+    interaction: scene({ targetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "C"], participantRoles: { ...scene().participantRoles, originalTargetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "C"] } }),
+    stable: { ...snapshot().stable, decisionActorId: "A" },
+    decision: { actorId: "A", stage: "ATTACK_RESPONSE" },
+  }), "A"));
+  assert.equal(soleTarget.primary?.id, "C");
+  assert.equal(soleTarget.roleLabel, "CURRENT TARGET");
+
+  const child = focusFrom(buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "DAMAGE", parentFrameId: "group-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" }, decisionActorId: "B", activeResolverId: "B", participantRoles: { ...scene().participantRoles, decisionActorId: "B", activeResolverId: "B" } }),
+    stable: { ...snapshot().stable, decisionActorId: "B" },
+    decision: { actorId: "B", stage: "DAMAGE" },
+  }), "A"));
+  assert.equal(child.primary?.id, "B");
+  assert.equal(child.nestedContext, "Nested effect · parent frame group-frame");
+
+  const dying = focusFrom(buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "DYING", currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantRoles: { ...scene().participantRoles, currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B" } }),
+    stable: { ...snapshot().stable, decisionActorId: "B" },
+    decision: { actorId: "B", stage: "DYING" },
+  }), "A"));
+  assert.equal(dying.primary?.id, "B");
+  assert.equal(dying.roleLabel, "CURRENT PARTICIPANT");
+
+  const acting = focusFrom(buildPresentationClientView(snapshot(), "B"));
+  const uninvolved = focusFrom(buildPresentationClientView(snapshot({ localControl: { ...snapshot().localControl, actorId: null, entitled: false } }), "C"));
+  assert.deepEqual(acting, uninvolved, "Hero Focus public content is viewer-equal");
+  const legacyChanged = focusFrom(buildPresentationClientView(snapshot({ pending: { kind: "dying", targetId: "C" }, timeline: [{ id: "legacy-event" }], presentationV2: { stableBoundary: { kind: "REST" } }, currentAction: { actorId: "C" }, phase: "dying", actionPlayerId: "C", actionReason: "legacy" }), "B"));
+  assert.deepEqual(legacyChanged, acting, "legacy Pending/timeline/presentationV2/CurrentAction fields cannot change fixed semantic focus");
+
+  const missing = buildHeroFocusView(buildInteractionStageView(buildPresentationClientView(snapshot({
+    interaction: scene({ currentParticipantId: "missing", targetIds: ["missing"], activeTargetIds: ["missing"], decisionActorId: "missing", participantRoles: { ...scene().participantRoles, originalTargetIds: ["missing"], activeTargetIds: ["missing"], currentParticipantId: "missing", decisionActorId: "missing" } }),
+    stable: { ...snapshot().stable, decisionActorId: "missing" },
+    decision: { actorId: "missing", stage: "ATTACK_RESPONSE" },
+  }), "viewer"), () => null), () => null);
+  assert.deepEqual(missing.primary, { id: "missing", name: "Unknown participant", known: false, heroId: null, heroName: null, hp: null, maxHp: null });
+
+  const rest = buildHeroFocusView(buildInteractionStageView(buildPresentationClientView(snapshot({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null } }), "B"), resolveDisplayName));
+  assert.equal(rest.visible, false);
+  assert.equal(rest.primary, null);
+  assert.equal("hand" in ordinary, false, "Hero Focus has no private hand or card projection");
 });

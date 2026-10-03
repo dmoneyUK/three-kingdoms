@@ -268,6 +268,32 @@ and dock dimensions and topology at desktop, 650px, and 480px widths. No local
 dock composition or player-board topology changes. Final seat topology, Hero
 Focus, and control migration remain separate future slices.
 
+### 0.6.6 UI-06 semantic Hero Focus projection
+
+UI-06 adds a compact, read-only Hero Focus consumer inside the existing
+Interaction Stage. `HeroFocusView` selects semantic identity before display
+decoration: a proven `currentParticipantId` is primary; when it is absent, a
+single proven `activeTargetId` is the fallback; multiple active targets without
+a current participant produce no single Hero Focus. The helper never infers
+focus from decision actor, resolver, source, turn, actionPlayerId, Pending,
+timeline, card names, hero names, or array order.
+
+Public hero/name/HP decoration is resolved only for the already-selected player
+ID. Source context remains separate from focus, so a Ma Chao/source-owned
+decision still focuses the current target participant while Interaction Stage
+continues to show decision ownership and resolver identity. Proven CHILD_FRAME
+context remains compact, Group/AOE does not cycle targets, and Dying follows
+the current participant. Missing display data degrades to a neutral identity
+without changing the selected ID.
+
+The Hero Focus surface has no buttons, legal-action hints, timers, private cards,
+hand contents, target selection, or gameplay controls. Its responsive styling
+is scoped to the compact panel at desktop, 650px, and 480px widths; it does not
+change player-board coordinates, seat dimensions, local dock composition, or
+Interaction Stage authority. REST hides the surface, and viewer projections
+remain equal apart from existing local decision markers. The larger INSPECT /
+PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus redesign remains future work.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*
