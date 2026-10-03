@@ -17,225 +17,204 @@ Agent sequence:
 
 Read `docs/PLANNER_DEVELOPMENT_WORKFLOW.md` before implementation.
 
-## Reviewer status — Zhang Liao Assault is fixed in source but not deployed
+## Reviewer status — UX2.0VIS-01 ACCEPTED
 
-The user reports that Zhang Liao's Assault still behaves incorrectly in the live game.
+Accepted implementation: `b263174771d812105c35eb4e97b46dce99342393`.
 
-Repository review shows that the prior Assault UI fix is present on `ux-v2` in commit
-`fe5ab574a0f896e7807c8cb221236dc3cbc12642` and remains in the current branch history.
-That fix already covers the reported local interaction failure:
-- selecting 1 or 2 legal Assault targets;
-- an enabled Confirm surface;
-- repeated Assault button clicks not clearing the selection;
-- explicit Cancel and reactivation;
-- exact multi-target payload `{ providerId: "zhang_liao_assault", targetIds }`;
-- a real Worker/D1 Draw Phase fixture and Playwright browser regression.
+Verified facts:
+- 2-player rooms: relative seat 1 is top-centre.
+- 3-player rooms: relative seats 1/2 are top-left/top-right.
+- 4-player rooms: relative seats 1/2/3 are top-left/top-centre/top-right.
+- the mapping is scoped to `data-seat-topology="top-row"`;
+- no Interaction Stage, Hero Focus, Local Dock, gameplay, or 5–10-player semantics were changed;
+- the new Playwright geometry test uses real bounding boxes and would fail the previous horseshoe geometry;
+- the focused VIS-01 browser suite reported 9/9 passed;
+- later branch CI run 37149913858, which contains VIS-01 in its ancestry, completed successfully with lint, build, full browser suite, and `npm test` (build + fast + API).
 
-The current live symptom is explained by deployment failure, not by evidence that the
-server Assault rule regressed.
+Do not reopen VIS-01.
 
-### Verified deployment blocker
-
-Two consecutive `ux-v2` workflow runs that contain the Assault fix failed before deploy:
-
-- run 583, head `e34708dc615fbfd80001f27fd74dd4b8c0f03b95`;
-- run 584, head `6d14864de7cff3a48c40404627a71619867021de`.
-
-Both fail in `npm run test:browser` before `npm test`/build and before the deploy job.
-The browser Worker server tries to open:
-
-`dist/server/wrangler.json`
-
-but a clean GitHub Actions checkout has not run `npm run build` yet, so the file does not
-exist. The observed CI error is:
-
-`ENOENT: no such file or directory ... dist/server/wrangler.json`
-
-The last successful `ux-v2` deployment was run 582 at
-`474e2f15c1dd6f44a2a11bcc58d3c33083582a99`, which predates the Assault fix.
-Therefore the production screenshot can still show the old broken Assault UI even though
-the corrected source exists on `ux-v2`.
-
-# NEXT TASK — BUG-ZHANG-LIAO-ASSAULT-02: Unblock CI and deploy the existing Assault fix
+# NEXT TASK — UX2.0VIS-02: Reserve a Real Central Interaction Safe Zone in 2–4 Player Mode
 
 ## Objective
+Fix exactly one remaining visual-layout defect for **2–4 total-player games**:
 
-Make the already-reviewed Zhang Liao Assault fix actually reach production.
+**The public Interaction Stage must occupy a dedicated central battlefield safe zone below the fixed top-row opponent seats instead of rendering as a top-wide absolute dashboard over the upper battlefield.**
 
-This is primarily a CI/deployment-order bug. Do **not** redesign Assault gameplay or its
-selection UX unless the current `ux-v2` code still fails the existing real browser/API
-regressions after the build-order problem is corrected.
+This task changes the stage container/placement only.
+
+Do **not** redesign the internal Interaction Stage content and do **not** enlarge Hero Focus yet. Those are later tasks after this geometry is reviewed.
 
 ## Existing accepted truth
+Preserve:
+- VIS-01 top-row seat geometry;
+- opponent seat anchors stay fixed when an interaction starts;
+- LocalPlayerDock remains the persistent bottom player/control surface;
+- Interaction Stage is public/read-only;
+- local gameplay controls stay in the Local Operation Console;
+- InteractionStage/HeroFocus semantic identity continues to come from the accepted PresentationClientView path;
+- no gameplay/server/projector authority is changed.
 
-Preserve these accepted Assault contracts:
+Current defect:
+- `.interaction-stage` is directly under `.play-table`;
+- it is absolutely positioned with `left:50%`, `top:14px` (7/8px at narrow widths), and width near the full viewport;
+- in a 4-player interaction this places the information panel over the same upper area that now contains the fixed top-row opponent seats;
+- the centre of the battlefield is not represented by a dedicated layout container.
 
-- Zhang Liao Assault is a Draw Phase optional trigger.
-- It replaces the normal deck draw.
-- It may select 1 or 2 eligible other characters.
-- Each selected character contributes one server-random hidden Hand card.
-- Empty-hand characters are not legal targets.
-- The client uses projected target legality only; it must not inspect private opponent Hand cards.
-- The semantic action remains generic `trigger` with provider
-  `zhang_liao_assault`.
-- One target and two targets are both valid.
-- Repeated clicking of the already-active Assault skill is not a second Cancel surface.
-- Explicit Cancel is local-only and emits no gameplay action.
-- Server action revision / stale-action checks remain authoritative.
+## Files expected in scope
+Expected production files:
+- `app/page.tsx`
+- `app/globals.css`
 
-Do not change `game/capabilities/heroes/zhang-liao-assault.ts` unless a failing
-current regression proves an actual gameplay defect.
+Expected regression file:
+- `tests/browser/ui19.spec.mjs` or one smaller existing browser layout spec if clearly more appropriate.
 
-## Root-cause contract
-
-The clean-checkout CI sequence currently runs:
-
-1. `npm ci`
-2. `npm run lint`
-3. install Chromium
-4. `npm run test:browser`
-5. `npm test`
-
-But `tests/browser/worker-server.mjs` starts Wrangler with
-`dist/server/wrangler.json`, which is created by `npm run build`.
-Therefore step 4 cannot succeed from a clean checkout.
-
-The fix must ensure the build artifact exists **before** Playwright starts its Worker
-webServer.
+Do not modify presentation/gameplay helpers unless a compile-only type change is unavoidable. If semantic logic appears necessary, STOP and report the blocker instead of expanding scope.
 
 ## Required implementation
 
-### 1. Repair the workflow order with the smallest change
+### 1. Add one explicit central safe-zone layout container
+Inside `.play-table`, add one structural wrapper for the existing `InteractionStage`, for example:
 
-Preferred implementation:
+`<div className="interaction-safe-zone"> ...existing InteractionStage... </div>`
 
-- edit `.github/workflows/deploy.yml`;
-- add an explicit `npm run build` step after Chromium installation and before
-  `npm run test:browser`.
+Equivalent naming is acceptable, but there must be a stable class/test hook representing the protected central zone.
 
-Keep the existing browser harness unchanged unless this build step still fails to produce
-the expected `dist/server/wrangler.json`.
+The wrapper is layout-only:
+- no gameplay controls;
+- no click handlers;
+- no CurrentAction inspection;
+- no duplicated player state;
+- no semantic fallback logic.
 
-Do not weaken or skip `npm run test:browser`.
+### 2. Give play-table the existing topology context
+The safe-zone CSS must know whether the room is in top-row mode without inferring it from child geometry.
 
-Do not mark the browser test as continue-on-error.
+Add stable layout data to `.play-table` from the same already-known player count used by `.player-board`:
+- `data-seat-topology="top-row"` for 2–4 total players;
+- existing/unchanged value for 5+ if needed only to keep the hook truthful;
+- `data-player-count` may also be mirrored if useful.
 
-Do not remove the deploy dependency on `build-and-test`.
+This is a layout hook only. Do not change the authoritative player ordering or seat calculation.
 
-A second build later via `npm test` is acceptable for this bounded fix. Do not broaden
-the task into CI optimization unless required for correctness.
+### 3. Move the existing Interaction Stage into the safe zone for top-row rooms
+For `data-seat-topology="top-row"`:
+- the safe zone must begin **below the rendered bottom edge of every opponent top-row seat**;
+- the safe zone must remain **above the bottom edge of the battlefield / LocalPlayerDock boundary**;
+- the Interaction Stage must be fully contained inside this safe zone;
+- the Interaction Stage must no longer use the old top-of-table `top:7/8/14px` placement in top-row mode;
+- the stage must remain horizontally centred in the safe zone;
+- the stage must not overlap any opponent seat or the local dock.
 
-### 2. Re-run the actual Zhang Liao browser regression after build
+Use CSS/layout geometry, not JavaScript measurements, timers, or post-render repositioning.
 
-From a clean-enough working tree, run:
-
-`npm run build`
-
-then:
-
-`npx playwright test tests/browser/zhang-liao-assault.spec.mjs --config tests/browser/playwright.config.mjs`
-
-The test must pass the real Worker/D1 Draw Phase path and prove at minimum:
-- Assault control visible/enabled;
-- target 1 selectable;
-- target 2 selectable;
-- Confirm visible/enabled after selecting two targets;
-- repeated Assault click preserves selection;
-- explicit Cancel sends no `trigger` / `decline_trigger`;
-- reactivation works;
-- submitted payload uses `providerId: "zhang_liao_assault"` and the expected target IDs.
-
-If this existing test fails after build, diagnose the actual current branch behavior and
-make only the smallest Assault-specific correction needed. Add/adjust regression coverage
-for the exact failure. Do not guess from the screenshot alone.
-
-### 3. Preserve the current VIS-01 implementation
-
-The current branch also contains the completed VIS-01 top-row CSS work. This task must not
-revert or redesign it.
-
+### 4. Keep the current stage internals unchanged
 Do not change:
-- opponent seat topology/layout;
-- Interaction Stage;
-- Hero Focus;
-- local dock composition;
-- unrelated CSS.
+- the InteractionStage header text;
+- HeroFocus JSX or portrait size;
+- Dying handoff;
+- Reaction Chain;
+- SOURCE / FOCUS / DECISION / RESOLVER content;
+- transition classes;
+- semantic data attributes;
+- viewer/private control behavior.
 
-### 4. Push and require a successful deploy of the exact fixed head
+VIS-02 only creates and uses the correct central physical region.
 
-After local validation:
-1. append the execution result to HANDOVER;
-2. commit implementation + HANDOVER;
-3. push to `origin/ux-v2`;
-4. identify the GitHub Actions `Deploy to Cloudflare` run whose `head_sha` equals the
-   pushed implementation/HANDOVER head;
-5. wait for that run to finish;
-6. verify both `build-and-test` and `deploy` conclude `success`.
+### 5. Keep REST behavior empty
+When `InteractionStage` returns null:
+- the safe-zone wrapper may remain as empty geometry;
+- it must not render placeholder text, controls, fake hero cards, or a visible dashboard;
+- opponent top-row seats and Local Dock remain unchanged.
 
-Do not report production fixed if the workflow is still running, failed, cancelled, or
-the deploy job was skipped.
+## Required browser regression
+Extend browser geometry coverage using the existing 4-player interaction fixture.
 
-If the workflow fails, append the exact failing step/error to HANDOVER and STOP. Do not
-silently work around CI with a manual Cloudflare deploy.
+Run at:
+- 1440x900
+- 650x900
+- 480x900
+
+For each viewport assert real bounding boxes:
+
+1. `.interaction-safe-zone` exists exactly once.
+2. `.interaction-stage` is visible for the interaction fixture.
+3. every top-row opponent seat bottom is **at least 6 CSS pixels above** the visible Interaction Stage top.
+4. the Interaction Stage bounding box is fully inside the safe-zone bounding box (4px tolerance acceptable for borders).
+5. the Interaction Stage does not overlap `.local-player-dock`.
+6. the safe zone does not overlap `.local-player-dock`.
+7. opponent anchor Y positions from VIS-01 remain one row within the accepted tolerance.
+8. no horizontal page overflow is introduced.
+9. local console and hand remain present.
+
+Add one REST assertion:
+- the safe-zone hook remains available;
+- no visible `.interaction-stage` exists.
+
+The new interaction-geometry regression must fail against the old top:7/8/14px dashboard placement.
+
+## Negative regression / forbidden shortcut
+Do not satisfy this task by:
+- reducing opacity or z-index while leaving the stage geometrically over the seats;
+- hiding opponent seats during interactions;
+- moving/reordering opponent anchors;
+- moving the local dock;
+- shrinking the stage to zero/near-zero size;
+- moving controls into the safe zone;
+- conditionally rendering a different mobile React tree;
+- using JS DOM measurements to reposition the stage;
+- starting the enlarged Hero Focus redesign.
+
+## Responsive contract
+The same structural rule applies at 1440, 650 and 480 widths:
+- top row above;
+- dedicated central safe zone below it;
+- local dock below the battlefield;
+- one Interaction Stage inside the safe zone when active.
+
+Exact safe-zone height may respond to viewport width, but the three-region hierarchy must not change.
 
 ## Validation
-
 Run and report actual results for:
+- focused Playwright VIS-02 geometry test(s);
+- `npm run test:browser`;
+- `npm run test:fast`;
+- `npm run build`;
+- `npm run lint`;
+- `git diff --check`.
 
-- `npm run build`
-- `npx playwright test tests/browser/zhang-liao-assault.spec.mjs --config tests/browser/playwright.config.mjs`
-- `npm run test:browser`
-- `npm run test:fast`
-- `npm run test:api`
-- `npm run lint`
-- `git diff --check`
-
-Then report the GitHub Actions run:
-- run ID;
-- head SHA;
-- `build-and-test` result;
-- `deploy` result;
-- production smoke-test result from the workflow.
-
-Report exact test counts where the runner provides them. Do not claim unrun checks passed.
+Report exact counts where available. Do not claim unrun commands passed.
 
 ## Scope exclusions
-
 Do not:
-- rewrite Assault server logic without a reproduced failure on current `ux-v2`;
-- change Assault to inspect/choose specific opponent Hand cards;
-- add hero-specific HTTP endpoints;
-- bypass `currentAction` / generic `trigger`;
-- weaken stale/replay rejection;
-- skip browser tests to force deployment;
-- manually deploy outside GitHub Actions;
-- start a new visual/layout task;
-- modify `main`.
+- enlarge or redesign Hero Focus;
+- change Interaction Stage internal information hierarchy;
+- change Reaction Chain/Dying/Duel/Judgement semantics;
+- change 5–10 player side-column geometry;
+- resize/restructure opponent seat cards;
+- change LocalPlayerDock;
+- change gameplay, CurrentAction, server, projector, causal, or payload behavior;
+- start any later VIS task;
+- perform unrelated CSS cleanup.
 
 ## Execution result
-
-Append only the BUG-ZHANG-LIAO-ASSAULT-02 execution result:
+Append only the VIS-02 execution result:
 - full implementation SHA;
 - files changed;
-- exact CI ordering change;
-- Zhang Liao focused browser result;
-- full validation commands/results;
-- workflow run ID/head SHA;
-- `build-and-test` conclusion;
-- `deploy` conclusion;
-- whether production smoke passed;
-- any remaining Assault symptom after the successful deploy.
+- safe-zone DOM structure/hook;
+- exact top-row safe-zone CSS strategy;
+- browser bounding-box assertions and before/after failure evidence;
+- validation commands with exact results/counts;
+- any remaining issue inside VIS-02 scope.
 
-Do not declare the bug accepted/closed. The Planner/Reviewer will review the pushed result.
+Do not declare VIS-02 accepted/closed. The Planner/Reviewer decides that after review.
+
+Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-
-This task passes only if:
-- a clean GitHub Actions checkout builds before Playwright needs
-  `dist/server/wrangler.json`;
-- the real Zhang Liao Assault browser regression passes;
-- the exact pushed `ux-v2` head containing `fe5ab...` and the CI fix completes
-  `build-and-test` successfully;
-- the Cloudflare deploy job for that same head succeeds;
-- no Assault gameplay/server semantics are changed without a reproduced failing regression;
-- no unrelated visual/gameplay scope is modified.
+VIS-02 passes only if, for 2–4-player top-row mode:
+- opponent anchors remain fixed above the centre;
+- an explicit central Interaction Safe Zone exists;
+- the active Interaction Stage is fully contained in that zone and cannot overlap the opponent row or local dock;
+- the old top-of-table dashboard geometry no longer applies;
+- browser geometry proves the change at desktop and mobile widths;
+- Interaction Stage internals, Hero Focus size, controls, gameplay, and 5–10-player layout remain unchanged.
