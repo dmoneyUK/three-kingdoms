@@ -136,7 +136,7 @@ C6-03 passes only if the two non-transition cases are represented honestly as N/
 
 ## Execution result — UX2.0C6-03 documentation closure — 2026-10-03
 
-Implementation SHA: pending first documentation commit.
+Implementation SHA: `5c5d785773126edfebbfa7f0131da768ad72584e`.
 
 Files changed:
 
