@@ -224,3 +224,23 @@ Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
 Pass only if the 2–4 player Safe Zone begins 6–24px below the compact opponent row across 1440/650/480, all accepted active states remain contained, the known 650 Dying overflow is closed without shrinking content, and seats/Side Column/LocalPlayerDock/gameplay remain unchanged.
+
+## Execution result — UX2.0VIS-04B (2026-10-04)
+
+- Implementation SHA: `43b69730365281f26179759c22811a8841621125` (`Reclaim top-row interaction safe-zone space`).
+- Files changed: `app/globals.css`, `tests/browser/ui19.spec.mjs`, and this `HANDOVER.md` execution record.
+- Safe-zone top strategy: the previous fixed offsets were 385px at the default breakpoint, 319px at `max-width:650px`, and 326px at `max-width:480px`. They are now 253px, 245px, and 260px respectively. Only the top-row `--interaction-safe-top` values changed; safe-zone left/right/bottom and Stage geometry/content sizing are unchanged.
+- REST geometry (2, 3, and 4 players measured; each viewport has the same row geometry):
+
+  | Viewport | Maximum opponent bottom | Safe-zone top | Clearance |
+  | --- | ---: | ---: | ---: |
+  | 1440×900 | 239.5px | 253px | 13.5px |
+  | 650×900 | 229.25px | 245px | 15.75px |
+  | 480×900 | 243.5px | 260px | 16.5px |
+
+- Dying@650×900 regression: with the old 319px top offset, Stage bounds were `{left:45, top:319, right:605, bottom:591.9375, width:560, height:272.9375}` and Safe Zone bounds were `{left:5, top:319, right:645, bottom:582, width:640, height:263}`. Stage exceeded the allowed Safe Zone bottom+4px (586px) by 5.9375px. With the new 245px offset, Stage is `{left:45, top:245, right:605, bottom:517.9375, width:560, height:272.9375}` and Safe Zone is `{left:5, top:245, right:645, bottom:582, width:640, height:337}`. Dying handoff remains `{left:45, top:388.34375, right:605, bottom:453.9375, width:560, height:65.59375}`. Stage and handoff dimensions are unchanged; bottom boundary remains 582px.
+- Authority/boundaries: this is a top-row layout-only change. Opponent seats, anchors, LocalPlayerDock, Side Column, gameplay semantics, projections, and Stage internal geometry/content sizing were not changed. Browser regression simulates the former top offset only in the test to prove the prior overflow.
+- Focused validation: `npx playwright test --config tests/browser/playwright.config.mjs tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-04B'` — 22 passed.
+- Retained validation: `npx playwright test --config tests/browser/playwright.config.mjs tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-01|UX2.0VIS-04A|UX2.0VIS-02-FIX1|UX2.0VIS-03B|UX2.0VIS-03C|UX2.0VIS-03D|UX2.0VIS-03E'` — 64 passed.
+- Full browser suite, `npm run test:fast`, build, lint, and `git diff --check` were not run under the remote-validation workflow. CI was not inspected; GitHub Actions owns the remaining gate validation.
+- GAP: no known gap in the scoped VIS-04B behavior. Full-suite and CI results remain unverified. Reviewer to inspect these results and decide acceptance; no next implementation is authorized here.
