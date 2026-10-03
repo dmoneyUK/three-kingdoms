@@ -277,3 +277,26 @@ Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
 Pass only if the viewer's own hero can no longer be duplicated as central Hero Focus, exactly one uniquely-proven external source/target counterpart is shown when available, ambiguous external sets fail closed, Dying fixture semantics match existing real API evidence, and all existing layout/containment/gameplay/public-authority contracts remain unchanged.
+
+## Agent execution result — UX2.0VIS-03D
+
+- Implementation SHA: `b389949bc0751520e11b79ee5cd36f14b09b7805`.
+- Files changed:
+  - `game/hero-focus.ts`
+  - `app/page.tsx`
+  - `tests/presentation-client.test.mjs`
+  - `tests/browser/fixture.jsx`
+  - `tests/browser/ui19.spec.mjs`
+  - `tests/active-skill-interactions.test.mjs`
+- Exact viewer-projection rules: `projectHeroFocusForViewer(stage, publicFocus, viewerId, resolvePlayerDisplay)` returns the public focus unchanged when there is no public primary or the primary is external. When the public primary is the viewer, it collects only external `stage.source` and `stage.activeTargets` identities, de-duplicates by player ID, and renders only one unique candidate. Zero or multiple unique candidates fail closed to `primary:null`/`roleLabel:null`. A candidate proven as an active target is labelled `CURRENT TARGET`; otherwise the unique source is labelled `SOURCE`. Decision actor, resolver, CurrentAction, Pending, timeline and array position are never candidate authority.
+- Public helper boundary: `buildHeroFocusView` still has no `viewerId` parameter and retains the existing current-participant / sole-active-target / Dying-no-fallback rules. Its decoration body was only extracted into a shared fail-closed function. The unchanged viewer-equality regression passes. `InteractionStage` now accepts `viewerId`, builds the public focus first, then applies viewer projection only at the React render boundary; `GameRoom` passes `room.meId`. LocalPlayerDock role projection was not changed.
+- Dying fixture correction: only the synthetic browser snapshot now sets source=`p1`, current participant/active target=`p2`, decision actor/active resolver=`p3`. This matches the existing engine-backed evidence in `tests/api/presentation-v2-engine.test.mjs`, which proves the Dying player owns original/active target and current-participant identity while the rescuer separately owns decision/resolver identity. No production projector/gameplay code changed.
+- Focused unit validation:
+  - `node --import tsx --test --test-name-pattern='viewer Hero Focus projection' tests/presentation-client.test.mjs` — final **1/1 PASS**, covering all seven required external/unique/de-dup/ambiguous/local-only/unknown-decoration cases. The first run failed only because the test expected `Unknown participant`; the implementation correctly preserved the existing proven active-target placeholder `Unknown target`, and the assertion was corrected without changing production behavior.
+  - `node --import tsx --test --test-name-pattern='Hero Focus selects only accepted|viewer Hero Focus projection' tests/presentation-client.test.mjs` — **2/2 PASS**, including the unchanged public viewer-equality test.
+  - `node --import tsx --test --test-name-pattern='mounted Duel response|mounted Dying handoff|mounted Negation chain' tests/active-skill-interactions.test.mjs` — final **6/6 PASS**. The initial 5/6 run exposed the old local-Duel central `p2` expectation; it now asserts external `p1 / CURRENT TARGET` while retaining local `p2` control assertions.
+- Focused browser validation:
+  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-03D' --config tests/browser/playwright.config.mjs` — **9/9 PASS**. Interaction projects `p2` with viewer/Dock `p1`; Negation projects `p1` with viewer/Dock `p2`; corrected Dying keeps central/dying `p2` with viewer/Dock/decision actor `p3`, across 1440/650/480.
+  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-(02-FIX1|03B|03C|03D)' --config tests/browser/playwright.config.mjs` — **36/36 PASS** across retained containment, Hero Focus sizing, open shell and viewer self-projection suites.
+- Full validation not run under the project remote-validation workflow: `npm run test:fast`, `npm run test:browser`, `npm run build`, `npm run lint`, and `git diff --check`. GitHub Actions owns those gates; CI status was not inspected or polled.
+- Remaining GAP: none observed within the bounded VIS-03D scope. Full-suite and CI results remain unverified pending GitHub Actions/user notification.
