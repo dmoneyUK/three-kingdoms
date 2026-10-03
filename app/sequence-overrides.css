@@ -1713,7 +1713,18 @@
     overflow: visible;
   }
 
+  /* The decision copy is a sibling of the action buttons. Keep its long
+     instruction from expanding the fixed mobile grid row and pushing the
+     actual controls below the viewport. */
+  .game-shell .local-player-dock .turn-controls > .decision-status {
+    display: block;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+  }
+
   .game-shell .local-player-dock .turn-controls > div {
     gap: 3px;
+    align-self: center;
   }
 }

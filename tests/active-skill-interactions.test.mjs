@@ -167,6 +167,8 @@ function text(renderer, value) { return renderer.root.findAll((node) => typeof n
 function buttonsContaining(renderer, value) { return renderer.root.findAllByType("button").filter((node) => String(node.props.children).includes(value)); }
 function consoleButtons(renderer) { return nodeWith(renderer, "data-console-surface", "local-operation").findAllByType("button"); }
 function consoleButtonsByClass(renderer, className) { return consoleButtons(renderer).filter((node) => node.props.className === className); }
+function renderedNodeText(node) { return typeof node === "string" || typeof node === "number" ? String(node) : (node?.children ?? []).map(renderedNodeText).join(""); }
+function statusText(renderer) { return renderer.root.findAll((node) => node.props?.role === "status").map(renderedNodeText).join(" "); }
 function assertOnlyDeflectionProfile(renderer) {
   const matches = buttonsContaining(renderer, "Deflection");
   assert.equal(matches.length, 1, `expected only the profile Deflection control, got ${matches.map((node) => String(node.props.children)).join(" | ")}`);
@@ -545,6 +547,10 @@ for (const skill of activeSkills) {
     for (const cardId of skill.cardIds) await act(async () => { handCardButton(renderer, cardId).props.onClick(); });
     for (const targetId of skill.targetIds) await act(async () => { targetButton(renderer, targetId).props.onClick(); });
     assert.equal(useButton().props.disabled, false, `${skill.label} enables only after required selection`);
+    if (skill.effectId === "diao_chan_lust") {
+      assert.match(statusText(renderer), /Lust order: TARGET ONE plays Attack first, then TARGET TWO\./, "Diao Chan Lust keeps its target-order guidance");
+      assert.equal(buttonsContaining(renderer, "Cancel").length, 1, "Diao Chan Lust keeps local Cancel with its guidance");
+    }
     const actionCountBeforeCancel = actionCalls.length;
     await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
     assert.equal(actionCalls.length, actionCountBeforeCancel, `${skill.label} Cancel sends no action`);
@@ -596,6 +602,8 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   await act(async () => { button(renderer, { "aria-label": "Select TARGET TWO" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
   assert.equal(button(renderer, { "aria-label": "Select INVALID TARGET" }).props.disabled, true);
+  assert.doesNotMatch(statusText(renderer), /Lust order/, "Zhang Liao Assault never renders Diao Chan Lust guidance");
+  assert.equal(useButton().props.disabled, false, "two Assault targets keep Confirm enabled");
   await act(async () => { useButton().props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "zhang_liao_assault", targetIds: ["p2", "p3"] }]);
 
@@ -604,6 +612,30 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(useButton().props.disabled, true, "reactivation resets target selection");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("Quick Test projected Zhang Liao seat keeps Assault Confirm available", async () => {
+  const skill = { hero: "zhang-liao", effectId: "zhang_liao_assault", label: "Assault", skill: "Assault", cardIds: [], targetIds: ["p2", "p3"], targetMin: 1, targetMax: 2, selectionType: "target", phase: "draw", triggerEvent: "draw_phase" };
+  const room = activeSkillRoom(skill);
+  assert.equal(room.isTestController, true, "the mounted regression uses the shared Quick Test controller");
+  assert.equal(room.meId, "p1", "the projected controller seat is Zhang Liao");
+  assert.equal(room.isMyAction, true, "the projected Zhang Liao seat owns the current decision");
+  const actionCalls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const assault = button(renderer, { "aria-label": "Assault" });
+  assert.equal(assault.props.disabled, false);
+  await act(async () => { assault.props.onClick(); });
+  await act(async () => { targetButton(renderer, "p2").props.onClick(); });
+  await act(async () => { targetButton(renderer, "p3").props.onClick(); });
+  nodeWith(renderer, "data-console-surface", "local-operation");
+  const consoleDecision = nodeWith(renderer, "data-console-primary", "Confirm");
+  assert.equal(consoleDecision.props["data-console-primary-enabled"], "true");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "zhang_liao_assault", targetIds: ["p2", "p3"] }]);
   await act(async () => { renderer.unmount(); });
 });
 
