@@ -100,3 +100,18 @@ Append only UI-05 result: SHA, files, seat-render inventory, helper API, role co
 
 ## Acceptance
 Pass only if existing seats gain truthful semantic interaction-role highlighting solely from the accepted client presentation view; overlapping roles remain representable; public roles are viewer-equal; local selection and gameplay legality remain independent; REST adds no semantic roles; and topology/controls/gameplay remain unchanged.
+
+## Execution result — UX2.0UI-05
+
+- Implementation SHA: `6c4f216f5615118b1ad9acb81bfed7cb829549b5` (`feat(ux-v2): project interaction roles onto seats`).
+- Files: `game/presentation-client.ts`, `app/page.tsx`, `app/globals.css`, `tests/presentation-client.test.mjs`, `tests/room-safety-render.test.mjs`, `README.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Seat-render inventory: existing `player-square` seats retain `turn-square`, `action-square`, `selected-target`, and `defeated-square`; local target selection remains controlled by `isSelectedTarget` and its existing state. New semantic classes are separate and do not overload gameplay-selection classes.
+- Helper API: `projectInteractionSeatRoles(view: PresentationClientView, playerId)` returns independent `isInteractionSource`, `isOriginalTarget`, `isActiveTarget`, `isCurrentParticipant`, `isDecisionActor`, `isActiveResolver`, and `isViewerDecisionActor` booleans. REST returns all false; local entitlement affects only the viewer-decision marker.
+- Role composition: overlapping roles are preserved as simultaneous classes and data attributes; decision actor uses cyan emphasis, active/current target uses red inset emphasis, source uses restrained gold, original-only target uses a dashed outline, active resolver uses a distinct purple border, and the local viewer marker uses a separate gold outline. Existing turn/defeated classes remain present.
+- CSS mapping: only scoped `player-square.interaction-seat-*` outlines, borders, and inset shadows were added. No seat width, height, grid coordinates, DOM order, pointer behavior, animation, or responsive topology rules changed at desktop, <=650px, or <=480px.
+- Viewer equality: focused helper tests compare acting and uninvolved viewers with identical public role booleans; only `isViewerDecisionActor` changes with local entitlement. Legacy Pending/timeline/presentationV2/CurrentAction/phase/actionReason changes do not alter roles.
+- Local-selection independence: render regression proves semantic active-target highlighting does not add `selected-target`; source assertions retain the separate `isSelectedTarget` and `interaction-seat-active-target` branches. No target legality or click handler changed.
+- Evidence: focused display/render tests `41/41` cover ordinary Attack, Ma Chao source-owned ownership, Group/AOE, CHILD_FRAME, Dying, overlapping roles, viewer equality, REST, legacy independence, role classes, and local-selection separation.
+- Validation: `npm run build` passed; `npm run test:fast` `158/158`; `npm run test:api` final rerun `239/239` after one unrelated transient first-run failure; full `npm test` passed with build/fast/API counts; `npm run lint` passed; `git diff --check` passed.
+- Scope confirmation: presentation-only; no gameplay/server/projector/snapshot, target legality, controls, seat topology, local dock, Hero Focus, animation, settlement, transition, compatibility, or unrelated refactor changes.
+- Closure recommendation: this UI-05 implementation is ready for reviewer verification. Keep Hero Focus or final seat-topology work as a separately authorized next slice.
