@@ -89,3 +89,76 @@ Append only UI-17 result: SHA, files, semantic-surface inventory, classifier con
 
 ## Acceptance
 Pass only if every emitted transition class is derived solely from proven public semantic identity/continuity, viewer-private changes cannot alter it, repeated/reconnect state is stable, stronger transitions dominate weaker ones, no animation/gameplay behavior is introduced, and unsupported pairs fail closed.
+
+## UI2.0UI-17 Execution Result — 2026-10-03
+
+Implementation SHA: `3f6fbf4` (`feat: add semantic presentation transitions`).
+
+### Changed files
+
+- `game/presentation-transition.ts` — added the pure bounded
+  `buildPresentationTransition(previous, next)` classifier and runtime
+  fail-closed semantic-pair validation.
+- `game/presentation-client.ts` — exposed the already-proven snapshot
+  `rootFrameId` and `activeFrameId` through `PresentationClientView`; REST
+  remains identity-free.
+- `app/page.tsx` — tracks only the immediately previous client semantic view
+  and exposes `data-presentation-transition` on `GameRoom` and the existing
+  Interaction Stage. No visual or gameplay behavior was added.
+- `tests/presentation-client.test.mjs` — covers the pure hierarchy, semantic
+  scenario mapping, private/legacy negative mutations, and malformed/
+  `UNPROVEN` fail-closed pairs.
+- `tests/active-skill-interactions.test.mjs` — adds mounted REST-to-interaction,
+  private-only, and content-update DOM-hook coverage.
+- `README.md`, `ROADMAP.md`,
+  `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` — document the UI-17 contract and
+  explicitly leave animation unimplemented.
+
+### Semantic-surface inventory and authority
+
+Interaction Stage consumes the public stage/effect, interaction/checkpoint/
+revision, frame and continuity identities, source/target scope, current
+participant, decision actor, and active resolver. Hero Focus consumes the
+proven current participant or active-target focus without creating authority.
+Reaction Chain consumes only the proven Negation root/active facts in the same
+public frame. Dying handoff consumes the proven dying participant, decision/
+resolver identities, and parent/child continuity. Seat role projection uses
+the same public source/target/participant identities; its viewer marker is
+local-only. The local console remains CurrentAction/private capability UI and
+is not transition authority.
+
+The classifier hierarchy is `INTERACTION_TRANSITION` > `FRAME_TRANSITION` >
+`FOCUS_UPDATE` > `CONTENT_UPDATE` > `NONE`. Interaction continuity uses
+`interactionId`; frame changes use active/root/parent frame IDs plus continuity
+and stage; focus changes use proven public participant/scope/decision/resolver/
+source identities; checkpoint, presentation revision, and effect are content
+progress only. The result is bounded to public previous/next identities and a
+semantic reason; it stores no server history and reads no timeline or
+gameplay compatibility fields.
+
+### Scenario and negative proof
+
+- Repeated same checkpoint/reconnect -> `NONE`.
+- Checkpoint/revision/effect progress -> `CONTENT_UPDATE`.
+- Duel responder, Group participant, and same-frame Negation counter changes
+  -> `FOCUS_UPDATE`.
+- Damage -> Dying child and Dying -> parent resume -> `FRAME_TRANSITION`.
+- REST start/end and unrelated interaction IDs -> `INTERACTION_TRANSITION`.
+- Timeline, action player, turn/isMyTurn, action revision/local control,
+  private hand/options, HP, and Pending compatibility mutations do not promote
+  a public class; malformed or `UNPROVEN` pairs return `NONE` with no exposed
+  identity.
+
+### Validation and remaining boundaries
+
+Focused tests were updated but not run locally, and no local full tests,
+build, lint, or diff check was run, per the project workflow. GitHub Actions
+is the validation gate; CI status and workflow logs were not inspected, so no
+remote pass is claimed. No animation, timer, settlement animation, gameplay
+or API change, projector-authority expansion, server history, Reaction Chain
+history, topology redesign, or UI-11 pixel-gap claim was introduced. The
+existing browser/manual responsive GAP remains open.
+
+Recommended next bounded task: reviewer-authorize a separate visual consumer
+of `data-presentation-transition` (including motion/accessibility boundaries);
+do not begin that work as part of UI-17.
