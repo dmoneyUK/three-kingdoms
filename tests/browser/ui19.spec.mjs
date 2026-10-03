@@ -13,9 +13,15 @@ const TOPOLOGY_MATRIX = [
 ];
 
 const INTERACTION_STATES = [
-  { state: "interaction", label: "Interaction" },
-  { state: "negation", label: "Negation" },
-  { state: "dying", label: "Dying" },
+  { state: "interaction", label: "Interaction", primaryPlayerId: "p1" },
+  { state: "negation", label: "Negation", primaryPlayerId: "p2" },
+  { state: "dying", label: "Dying", primaryPlayerId: "p3" },
+];
+
+const HERO_FOCUS_VIEWPORTS = [
+  { width: 1440, height: 900, minimumPortrait: { width: 88, height: 112 } },
+  { width: 650, height: 900, minimumPortrait: { width: 72, height: 90 } },
+  { width: 480, height: 900, minimumPortrait: { width: 64, height: 80 } },
 ];
 
 async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false }) {
@@ -234,6 +240,88 @@ for (const { width, height } of TOPOLOGY_MATRIX) {
       if (state === "dying") {
         expect(result.dyingHandoff, "Dying handoff bounds").not.toBeNull();
         expect(result.dyingHandoff.bottom, "Dying handoff remains inside the visible stage").toBeLessThanOrEqual(result.stage.bottom + 4);
+      }
+    });
+  }
+}
+
+for (const { width, height, minimumPortrait } of HERO_FOCUS_VIEWPORTS) {
+  for (const { state, label, primaryPlayerId } of INTERACTION_STATES) {
+    test(`UX2.0VIS-03B ${label} ${width}x${height} enlarges only the proven primary Hero Focus`, async ({ page }) => {
+      await loadFixture(page, { state, count: 4, width, height });
+      const heroFocus = page.locator('[data-hero-focus="true"]');
+      await expect(heroFocus, "exactly one semantic Hero Focus is rendered").toHaveCount(1);
+      await expect(heroFocus).toBeVisible();
+      await expect(heroFocus, "the existing fixture-proven primary remains selected").toHaveAttribute("data-hero-focus-player-id", primaryPlayerId);
+      await assertVisible(page.locator(".local-player-dock"), "local dock");
+
+      const result = await page.evaluate(() => {
+        const rect = (element) => {
+          const value = element.getBoundingClientRect();
+          return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+        };
+        const overlap = (left, right) => Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left)) * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+        const focus = document.querySelector('[data-hero-focus="true"]');
+        const portrait = document.querySelector(".hero-focus-portrait");
+        const heroRegion = document.querySelector(".interaction-stage-hero-region");
+        const eventRegion = document.querySelector(".interaction-stage-event-region");
+        const metaRegion = document.querySelector(".interaction-stage-meta-region");
+        const stage = document.querySelector(".interaction-stage");
+        const safeZone = document.querySelector(".interaction-safe-zone");
+        const localDock = document.querySelector(".local-player-dock");
+        const focusRect = focus ? rect(focus) : null;
+        const portraitRect = portrait ? rect(portrait) : null;
+        const heroRect = heroRegion ? rect(heroRegion) : null;
+        const eventRect = eventRegion ? rect(eventRegion) : null;
+        const metaRect = metaRegion ? rect(metaRegion) : null;
+        const stageRect = stage ? rect(stage) : null;
+        const safeZoneRect = safeZone ? rect(safeZone) : null;
+        const dockRect = localDock ? rect(localDock) : null;
+        return {
+          heroFocusCount: document.querySelectorAll('[data-hero-focus="true"]').length,
+          focus: focusRect,
+          portrait: portraitRect,
+          heroRegion: heroRect,
+          eventRegion: eventRect,
+          eventRegionVisible: Boolean(eventRegion && eventRect && eventRect.width > 0 && eventRect.height > 0 && getComputedStyle(eventRegion).display !== "none"),
+          metaRegion: metaRect,
+          stage: stageRect,
+          safeZone: safeZoneRect,
+          heroEventOverlap: heroRect && eventRect ? overlap(heroRect, eventRect) : null,
+          heroMetaOverlap: heroRect && metaRect ? overlap(heroRect, metaRect) : null,
+          stageDockOverlap: stageRect && dockRect ? overlap(stageRect, dockRect) : null,
+          focusDockOverlap: focusRect && dockRect ? overlap(focusRect, dockRect) : null,
+          scrollWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+        };
+      });
+
+      expect(result.heroFocusCount, "negative regression: no duplicate Hero Focus is rendered").toBe(1);
+      expect(result.portrait, "Hero Focus portrait geometry").not.toBeNull();
+      expect(result.portrait.width, "portrait meets the viewport width minimum").toBeGreaterThanOrEqual(minimumPortrait.width);
+      expect(result.portrait.height, "portrait meets the viewport height minimum").toBeGreaterThanOrEqual(minimumPortrait.height);
+      expect(result.portrait.width / result.portrait.height, "portrait preserves the established 4:5 aspect ratio").toBeCloseTo(0.8, 1);
+      expect(result.heroRegion, "Hero region geometry").not.toBeNull();
+      expect(result.stage, "Interaction Stage geometry").not.toBeNull();
+      expect(result.safeZone, "safe-zone geometry").not.toBeNull();
+      expect(result.portrait.left, "portrait stays inside the Hero region").toBeGreaterThanOrEqual(result.heroRegion.left - 1);
+      expect(result.portrait.top, "portrait stays inside the Hero region").toBeGreaterThanOrEqual(result.heroRegion.top - 1);
+      expect(result.portrait.right, "portrait stays inside the Hero region").toBeLessThanOrEqual(result.heroRegion.right + 1);
+      expect(result.portrait.bottom, "portrait stays inside the Hero region").toBeLessThanOrEqual(result.heroRegion.bottom + 1);
+      expect(result.heroRegion.left, "Hero region stays inside the Stage").toBeGreaterThanOrEqual(result.stage.left - 1);
+      expect(result.heroRegion.top, "Hero region stays inside the Stage").toBeGreaterThanOrEqual(result.stage.top - 1);
+      expect(result.heroRegion.right, "Hero region stays inside the Stage").toBeLessThanOrEqual(result.stage.right + 1);
+      expect(result.heroRegion.bottom, "Hero region stays inside the Stage").toBeLessThanOrEqual(result.stage.bottom + 1);
+      expect(result.stage.left, "Stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.left - 4);
+      expect(result.stage.top, "Stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.top - 4);
+      expect(result.stage.right, "Stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.right + 4);
+      expect(result.stage.bottom, "Stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.bottom + 4);
+      expect(result.stageDockOverlap, "Stage remains unobstructed by the LocalPlayerDock").toBe(0);
+      expect(result.focusDockOverlap, "Hero Focus remains unobstructed by the LocalPlayerDock").toBe(0);
+      expect(result.scrollWidth, "enlarged Hero Focus introduces no page overflow").toBeLessThanOrEqual(result.viewportWidth);
+      if (width > 650) {
+        if (result.eventRegionVisible) expect(result.heroEventOverlap, "Hero and visible Event regions do not overlap").toBe(0);
+        expect(result.heroMetaOverlap, "Hero and Meta regions do not overlap").toBe(0);
       }
     });
   }
