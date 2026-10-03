@@ -36,18 +36,23 @@ function scene(overrides = {}) {
   };
 }
 
-function presentation(interactionScene, stableBoundary = {
-  kind: "CHOICE",
-  interactionId: "interaction-1",
-  checkpointId: "checkpoint-1",
-  presentationRevision: 3,
-  decisionActorId: "B",
-}) {
+function presentation(interactionScene, stableBoundary = coherentBoundary()) {
   return {
     interactionScene,
     stableBoundary,
     settlement: { eventId: "legacy-final", resolutionId: "legacy-resolution" },
     transitionEvents: [{ eventId: "legacy-transition", type: "card", resolutionId: "legacy-resolution" }],
+  };
+}
+
+function coherentBoundary(overrides = {}) {
+  return {
+    kind: "CHOICE",
+    interactionId: "interaction-1",
+    checkpointId: "checkpoint-1",
+    presentationRevision: 3,
+    decisionActorId: "B",
+    ...overrides,
   };
 }
 
@@ -91,6 +96,33 @@ test("snapshot fails closed for malformed or absent public causal proof", () => 
     assert.deepEqual(snapshot.stable, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
     assert.equal(snapshot.settlement, null, "legacy settlement cannot become authoritative");
     assert.deepEqual(snapshot.transitionEvents, [], "legacy transition events remain reserved");
+  }
+});
+
+test("snapshot fails closed atomically for every scene-boundary coherence mismatch", () => {
+  const cases = [
+    ["interaction", { interactionId: "other-interaction" }],
+    ["checkpoint", { checkpointId: "other-checkpoint" }],
+    ["revision", { presentationRevision: 4 }],
+    ["choice actor", { decisionActorId: "C" }],
+    ["REST", { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }],
+    ["SETTLEMENT", { kind: "SETTLEMENT", interactionId: "interaction-1", checkpointId: "checkpoint-1", presentationRevision: 3, decisionActorId: "B" }],
+  ];
+  for (const [label, boundary] of cases) {
+    const snapshot = composePresentationSnapshot({
+      presentationV2: presentation(scene(), boundary),
+      currentAction: { kind: "response", actorId: "B" },
+      actionRevision: `local-${label}`,
+      viewerId: "B",
+    });
+    assert.equal(snapshot.identity, null, `${label}: identity`);
+    assert.equal(snapshot.interaction, null, `${label}: interaction`);
+    assert.equal(snapshot.decision, null, `${label}: decision`);
+    assert.deepEqual(snapshot.stable, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }, `${label}: stable`);
+    assert.equal(snapshot.settlement, null, `${label}: settlement`);
+    assert.deepEqual(snapshot.transitionEvents, [], `${label}: transition events`);
+    assert.equal(snapshot.localControl.entitled, true, `${label}: local control remains local only`);
+    assert.equal(snapshot.localControl.actionRevision, `local-${label}`, `${label}: local control cannot recreate public identity`);
   }
 });
 

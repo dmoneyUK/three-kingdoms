@@ -98,24 +98,39 @@ function stableFor(
   };
 }
 
+type PublicAuthority = {
+  scene: PresentationInteractionScene;
+  identity: PresentationSnapshotIdentity;
+  stable: PresentationStableBoundary;
+};
+
+/** Admit public authority as one coherent unit; never repair a mismatch. */
+function coherentPublicAuthority(presentationV2: PresentationV2): PublicAuthority | null {
+  const scene = isProvenScene(presentationV2.interactionScene) ? presentationV2.interactionScene : null;
+  if (!scene) return null;
+  const identity = identityFor(scene);
+  const boundary = presentationV2.stableBoundary;
+  if (boundary.kind === "REST" || boundary.kind === "SETTLEMENT"
+    || boundary.interactionId !== identity.interactionId
+    || boundary.checkpointId !== identity.checkpointId
+    || boundary.presentationRevision !== identity.presentationRevision
+    || boundary.kind === "CHOICE" && boundary.decisionActorId !== scene.decisionActorId) return null;
+  return { scene, identity, stable: stableFor(boundary, identity, scene.decisionActorId) };
+}
+
 /**
  * Pure composition of accepted public presentation authority and the local
  * CurrentAction reference. It performs no gameplay, DB, timeline, or ID work.
  */
 export function composePresentationSnapshot(input: PresentationSnapshotInput): PresentationSnapshot {
-  const scene = isProvenScene(input.presentationV2.interactionScene)
-    ? input.presentationV2.interactionScene
-    : null;
-  const identity = scene ? identityFor(scene) : null;
-  const interaction = scene;
-  const stable = scene && identity
-    ? stableFor(input.presentationV2.stableBoundary, identity, scene.decisionActorId)
-    : REST_BOUNDARY;
+  const authority = coherentPublicAuthority(input.presentationV2);
   return {
-    identity,
-    stable,
-    interaction,
-    decision: scene ? { actorId: scene.decisionActorId, stage: scene.stage } : null,
+    identity: authority?.identity ?? null,
+    stable: authority?.stable ?? REST_BOUNDARY,
+    interaction: authority?.scene ?? null,
+    decision: authority && authority.stable.kind === "CHOICE"
+      ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }
+      : null,
     localControl: {
       source: "CurrentAction",
       actionRevision: input.actionRevision,

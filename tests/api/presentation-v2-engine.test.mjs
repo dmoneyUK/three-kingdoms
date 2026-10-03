@@ -31,9 +31,11 @@ function assertProjectionMatchesEngine(code, token) {
     assert.deepEqual(view.presentationV2, expected, "route presentationV2 is projected from the persisted engine state");
     const expectedSnapshot = composePresentationSnapshot({ presentationV2: view.presentationV2, currentAction: view.currentAction, actionRevision: view.actionRevision, viewerId: view.meId });
     assert.deepEqual(view.presentationSnapshot, expectedSnapshot, "route PresentationSnapshot is composed from the persisted engine projection");
-    assert.deepEqual(view.presentationSnapshot.identity, view.presentationV2.interactionScene?.semantics === "PROVEN"
-      ? { interactionId: view.presentationV2.interactionScene.interactionId, checkpointId: view.presentationV2.interactionScene.checkpointId, presentationRevision: view.presentationV2.interactionScene.presentationRevision }
-      : null, "snapshot identity follows proven typed scene only");
+    assert.deepEqual(view.presentationSnapshot.identity, expectedSnapshot.identity, "snapshot identity follows the atomic public authority gate");
+    if (view.presentationV2.stableBoundary.kind === "CHOICE") {
+      assert.ok(view.presentationSnapshot.identity, "a real CHOICE boundary exposes an active snapshot identity");
+      assert.deepEqual(view.presentationSnapshot.stable, view.presentationV2.stableBoundary, "a real CHOICE boundary is preserved exactly");
+    }
     assert.equal(view.presentationSnapshot.settlement, null, "settlement remains reserved");
     assert.deepEqual(view.presentationSnapshot.transitionEvents, [], "transition occurrences remain reserved");
     return view;
