@@ -4600,3 +4600,64 @@ Because the matrix contains the real REST GAP, C7 is **not closed** and the
 server snapshot contract is **not ready for React migration**. Another bounded
 C7 fix is required to decide the source-owned trigger boundary without
 changing gameplay or weakening the atomic fail-closed invariant.
+
+### 0.106 UX2.0C7-03 source-owned trigger stable boundary — 2026-10-03
+
+C7-03 resolves the C7-02 REST contradiction without changing
+`PresentationSnapshot`. The accepted source-owned trigger rule is narrow: a
+persisted `trigger` Pending with event `attack_targeted`, a typed
+`attack_targeted_event` continuation, and a declaration whose source/target
+and causal interaction/frame links match the persisted envelope may establish
+the Pending actor as the public decision actor. The active frame resolver is
+not replaced; the source decision actor and target resolver are intentionally
+distinct.
+
+#### Real persisted proof
+
+The real Ma Chao fixture (`ma-chao.test.mjs` — `Cavalry is an optional
+source-owned attack_targeted trigger and Skip preserves Dodge`) now asserts the
+full proof before accepting CHOICE:
+
+- `pending.kind === "trigger"`, `pending.event === "attack_targeted"`, and
+  `pending.actorId` is the Ma Chao source;
+- Pending causal interaction/frame, continuation causal interaction/frame, and
+  declaration causal interaction/frame all equal the persisted envelope
+  interaction and active frame;
+- the typed continuation is `attack_targeted_event`, and its declaration
+  source/target equal the active frame origin/current target;
+- the active frame is `ATTACK_RESPONSE`, its source/current source is the Ma
+  Chao source, its original/current target is the Attack target, and its
+  `resolvingPlayerId` remains the target;
+- the envelope checkpoint frame and stage equal the active frame.
+
+Only this proof path admits the source actor. The existing resolver-coherence
+rule remains for ordinary target-owned triggers and all response continuations.
+No hero name, card name, CurrentAction, timeline, finalResult, resolutionId,
+or actionRevision is used as semantic proof.
+
+#### Guardrails and closure update
+
+`sourceOwnedTriggerDecisionActorId` is a pure typed helper in
+`game/presentation-v2.ts`. Its negative coverage fails closed for missing
+causal link, wrong interaction ID, wrong frame ID, unsupported event or
+continuation discriminator, arbitrary substituted actor, and malformed
+checkpoint/frame coherence. The real fixture proves a coherent CHOICE
+`PresentationSnapshot` before Judgement, then target-owned CHOICE after skip;
+the shared Judgement continuation and Dodge resume remain unchanged. Ordinary
+Attack/Dodge, target-owned triggers, Dying, Negation, Group child, and Borrowed
+Sword paths remain covered by their existing real fixtures.
+
+The C7 closure matrix from section 0.105 is therefore updated by real
+evidence: Attack -> Judgement -> Attack resume changes from `I=GAP, B=GAP` to
+`I=P, B=P`; all other cells remain unchanged. Final totals are **102 P, 2 N/A,
+0 GAP, 0 unclassified = 104 cells**. The two `C=N/A` cells remain the honest
+single-checkpoint cases for Attack/Dodge and independent/root Damage.
+
+SPECIAL remains RESERVED/unexercised because no accepted real API fixture
+exposes a stable SPECIAL boundary. `settlement` remains `null` and
+`transitionEvents` remains `[]`. The atomic `PresentationSnapshot` gate is
+unchanged, `presentationV2` remains compatible and additive, and no gameplay,
+React, CSS, animation, settlement, or transition protocol was added.
+
+C7-03 is **ready for reviewer closure**. React migration remains a separate
+authorized milestone and has not started.

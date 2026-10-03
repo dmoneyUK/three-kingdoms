@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C7-02 PresentationSnapshot closure audit — 2026-10-03
+## Current stage — UX2.0C7-03 source-owned trigger stable boundary — 2026-10-03
 
 C6 engine-backed architecture verification is complete: the final 13-family ×
 10-invariant matrix is **128 P / 2 N/A / 0 GAP**. Attack/Dodge and
@@ -11,16 +11,17 @@ fabricated.
 C7-01 implements the first additive server-side `PresentationSnapshot`
 contract and exposes it alongside `presentationV2`; FIX1 admits public
 identity, interaction, decision, and stable boundary as one atomic coherent
-unit, with mismatches failing closed to identity-free REST. C7-02 audits the
-13 accepted interaction families and records the client-needs inventory and
-closure matrix: **100 P / 2 N/A / 2 GAP / 0 unclassified**. The real Ma Chao
-source-owned trigger proves a `PROVEN` interaction scene paired with `REST`,
-so the atomic snapshot correctly fails closed but C7 cannot yet be declared
-closed or ready for React migration. SPECIAL remains reserved/unexercised;
-settlement and transition events remain reserved.
+unit, with mismatches failing closed to identity-free REST. C7-02 identified
+and C7-03 resolved the real Ma Chao source-owned trigger boundary using only
+persisted Pending and causal-envelope proof: the source owns the optional
+trigger decision while the Attack target remains the active frame resolver.
+The C7 matrix is now **102 P / 2 N/A / 0 GAP / 0 unclassified**. SPECIAL
+remains reserved/unexercised; settlement and transition events remain
+reserved. C7 is ready for reviewer closure, but no React migration has
+started.
 No gameplay, React, CSS, animation, or visual UX migration has started. The
-next milestone is a separately bounded C7 decision for the source-owned
-trigger boundary; do not weaken the fail-closed snapshot contract.
+next milestone is reviewer closure followed by a separately authorized React
+migration; the atomic snapshot gate remains unchanged.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

@@ -239,11 +239,53 @@ const TRIGGER_DECISION_CONTINUATIONS = new Set([
   "judgement_effective_event", "hero_choice_event", "hand_loss_event", "equipment_lost_event",
   "stratagem_used_event", "hp_recovered_event",
 ]);
+const SOURCE_OWNED_TRIGGER_EVENTS = new Set(["attack_targeted"]);
+const SOURCE_OWNED_TRIGGER_CONTINUATIONS = new Set(["attack_targeted_event"]);
 
 /**
- * A public decision actor is established only by the persisted semantic
- * pending record and its matching causal resolver. CurrentAction remains a
- * viewer-specific control projection and is deliberately not evidence here.
+ * A source-owned Attack-targeted trigger is a semantic decision even while
+ * the active Attack frame resolver remains the target. Every link is read
+ * from persisted Pending/declaration/envelope state; CurrentAction is not a
+ * proof source.
+ */
+function sourceOwnedTriggerDecisionActorId(envelope: CausalEnvelope | null, pending: unknown, activeFrame: CausalFrame | null): string | null {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const declaration = record(continuation?.declaration);
+  const causal = record(item?.causal);
+  const continuationCausal = record(continuation?.causal);
+  const declarationCausal = record(declaration?.causal);
+  const actorId = stringValue(item?.actorId);
+  const sourceId = stringValue(declaration?.sourceId);
+  const targetId = stringValue(declaration?.targetId);
+  const checkpointFrame = envelope?.frames.find((frame) => frame.frameId === envelope.checkpoint.frameId) ?? null;
+  if (item?.kind !== "trigger"
+    || !SOURCE_OWNED_TRIGGER_EVENTS.has(stringValue(item.event) ?? "")
+    || !SOURCE_OWNED_TRIGGER_CONTINUATIONS.has(stringValue(continuation?.kind) ?? "")
+    || !envelope || !activeFrame || !checkpointFrame
+    || !actorId || !sourceId || !targetId
+    || actorId !== sourceId
+    || causal?.interactionId !== envelope.interactionId
+    || causal.frameId !== activeFrame.frameId
+    || continuationCausal?.interactionId !== envelope.interactionId
+    || continuationCausal.frameId !== activeFrame.frameId
+    || declarationCausal?.interactionId !== envelope.interactionId
+    || declarationCausal.frameId !== activeFrame.frameId
+    || checkpointFrame.frameId !== activeFrame.frameId
+    || checkpointFrame.stage !== activeFrame.stage
+    || envelope.checkpoint.stage !== activeFrame.stage
+    || activeFrame.origin.originSourceId !== sourceId
+    || activeFrame.current.currentSourceId !== sourceId
+    || !activeFrame.origin.originalTargetIds.includes(targetId)
+    || !activeFrame.current.currentTargetIds.includes(targetId)) return null;
+  return actorId;
+}
+
+/**
+ * A public decision actor is established only by persisted semantic Pending
+ * proof and its matching causal resolver, with the exact source-owned
+ * Attack-targeted exception above. CurrentAction remains a viewer-specific
+ * control projection and is deliberately not evidence here.
  */
 function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unknown, activeFrame: CausalFrame | null, dyingProof: DyingDecisionProof | null): string | null {
   if (dyingProof) return stringValue(dyingProof.pending.actorId);
@@ -253,9 +295,11 @@ function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unkno
   const continuation = record(item?.continuation);
   const continuationKind = stringValue(continuation?.kind);
   if (!envelope || !activeFrame || !item || !actorId || !causal || causal.interactionId !== envelope.interactionId
-    || causal.frameId !== activeFrame.frameId || activeFrame.current.resolvingPlayerId !== actorId) return null;
-  if (item.kind === "response" && RESPONSE_DECISION_CONTINUATIONS.has(continuationKind ?? "")) return actorId;
-  if (item.kind === "trigger" && TRIGGER_DECISION_CONTINUATIONS.has(continuationKind ?? "")) return actorId;
+    || causal.frameId !== activeFrame.frameId) return null;
+  if (item.kind === "response" && RESPONSE_DECISION_CONTINUATIONS.has(continuationKind ?? "")) return activeFrame.current.resolvingPlayerId === actorId ? actorId : null;
+  const sourceOwnedActorId = sourceOwnedTriggerDecisionActorId(envelope, pending, activeFrame);
+  if (sourceOwnedActorId) return sourceOwnedActorId;
+  if (activeFrame.current.resolvingPlayerId === actorId && item.kind === "trigger" && TRIGGER_DECISION_CONTINUATIONS.has(continuationKind ?? "")) return actorId;
   return null;
 }
 

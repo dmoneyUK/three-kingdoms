@@ -24,8 +24,27 @@ test("Cavalry is an optional source-owned attack_targeted trigger and Skip prese
   const trigger = (await state(opened.game.code, opened.sourceMember.token)).data;
   assert.ok(trigger.causalEnvelope, "Attack-targeted entry retains the real Attack root envelope");
   const persisted = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(opened.game.code)}`));
+  const activeFrame = trigger.causalEnvelope.frames.find((frame) => frame.frameId === trigger.causalEnvelope.activeFrameId);
+  assert.equal(persisted.kind, "trigger");
+  assert.equal(persisted.event, "attack_targeted");
+  assert.equal(persisted.actorId, opened.source.id);
   assert.equal(persisted.causal.interactionId, trigger.causalEnvelope.interactionId);
   assert.equal(persisted.causal.frameId, trigger.causalEnvelope.activeFrameId);
+  assert.equal(persisted.continuation.kind, "attack_targeted_event");
+  assert.equal(persisted.continuation.causal.interactionId, trigger.causalEnvelope.interactionId);
+  assert.equal(persisted.continuation.causal.frameId, trigger.causalEnvelope.activeFrameId);
+  assert.equal(persisted.continuation.declaration.causal.interactionId, trigger.causalEnvelope.interactionId);
+  assert.equal(persisted.continuation.declaration.causal.frameId, trigger.causalEnvelope.activeFrameId);
+  assert.equal(persisted.continuation.declaration.sourceId, opened.source.id);
+  assert.equal(persisted.continuation.declaration.targetId, opened.target.id);
+  assert.equal(activeFrame?.stage, "ATTACK_RESPONSE");
+  assert.equal(activeFrame?.origin.originSourceId, opened.source.id);
+  assert.deepEqual(activeFrame?.origin.originalTargetIds, [opened.target.id]);
+  assert.equal(activeFrame?.current.currentSourceId, opened.source.id);
+  assert.deepEqual(activeFrame?.current.currentTargetIds, [opened.target.id]);
+  assert.equal(activeFrame?.current.resolvingPlayerId, opened.target.id);
+  assert.equal(trigger.causalEnvelope.checkpoint.frameId, activeFrame?.frameId);
+  assert.equal(trigger.causalEnvelope.checkpoint.stage, activeFrame?.stage);
   const repeated = (await state(opened.game.code, opened.sourceMember.token)).data;
   assert.equal(repeated.causalEnvelope.interactionId, trigger.causalEnvelope.interactionId);
   assert.equal(repeated.causalEnvelope.checkpoint.checkpointId, trigger.causalEnvelope.checkpoint.checkpointId);
@@ -34,15 +53,22 @@ test("Cavalry is an optional source-owned attack_targeted trigger and Skip prese
   assert.equal(trigger.currentAction.actorId, opened.source.id);
   assert.deepEqual(trigger.currentAction.triggerOptions.map((option) => option.effectId), ["ma_chao_cavalry"]);
   assert.equal(trigger.presentationV2.interactionScene?.semantics, "PROVEN", "the source-owned trigger still has a proven public Attack scene");
-  assert.deepEqual(trigger.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }, "the source-owned trigger has no accepted stable boundary");
-  assert.equal(trigger.presentationSnapshot.identity, null, "C7-01 fails the mismatched PROVEN-plus-REST state closed");
-  assert.equal(trigger.presentationSnapshot.interaction, null, "C7-01 does not expose a scene alongside the REST boundary");
-  assert.equal(trigger.presentationSnapshot.decision, null, "C7-01 does not infer a decision actor from CurrentAction");
+  assert.equal(trigger.presentationV2.interactionScene?.decisionActorId, opened.source.id);
+  assert.equal(trigger.presentationV2.interactionScene?.activeResolverId, opened.target.id);
+  assert.deepEqual(trigger.presentationV2.stableBoundary, { kind: "CHOICE", interactionId: trigger.presentationV2.interactionScene?.interactionId, checkpointId: trigger.presentationV2.interactionScene?.checkpointId, presentationRevision: trigger.presentationV2.interactionScene?.presentationRevision, decisionActorId: opened.source.id });
+  assert.deepEqual(trigger.presentationSnapshot.identity, { interactionId: trigger.presentationV2.interactionScene?.interactionId, checkpointId: trigger.presentationV2.interactionScene?.checkpointId, presentationRevision: trigger.presentationV2.interactionScene?.presentationRevision });
+  assert.deepEqual(trigger.presentationSnapshot.stable, trigger.presentationV2.stableBoundary);
+  assert.deepEqual(trigger.presentationSnapshot.interaction, trigger.presentationV2.interactionScene);
+  assert.deepEqual(trigger.presentationSnapshot.decision, { actorId: opened.source.id, stage: trigger.presentationV2.interactionScene?.stage });
   const skipped = await request("decline_trigger", { code: opened.game.code, token: opened.sourceMember.token });
   assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
   const dodge = (await state(opened.game.code, opened.targetMember.token)).data;
   assert.equal(dodge.currentAction.kind, "response", JSON.stringify(dodge));
   assert.equal(dodge.currentAction.requirement, "dodge");
+  assert.equal(dodge.presentationV2.interactionScene?.decisionActorId, opened.target.id);
+  assert.equal(dodge.presentationV2.interactionScene?.activeResolverId, opened.target.id);
+  assert.equal(dodge.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(dodge.presentationSnapshot.decision?.actorId, opened.target.id);
 });
 
 test("Cavalry rejects a stale trigger submission after the window resolves", async () => {
@@ -97,14 +123,16 @@ test("Cavalry uses the shared Judgement replacement continuation", async () => {
     originalTargetIds: [target.id],
     activeTargetIds: [target.id],
     currentParticipantId: target.id,
-    // Cavalry is source-owned, but this ATTACK_RESPONSE frame is resolved by
-    // the target. C5 therefore keeps semantic decision authority fail-closed;
-    // CurrentAction ownership must not be promoted into public identity.
-    decisionActorId: null,
+    // Cavalry is source-owned, while this ATTACK_RESPONSE frame remains
+    // resolved by the target. Both persisted roles are public and distinct.
+    decisionActorId: source.id,
     activeResolverId: target.id,
     parentParticipantId: null,
     participantIds: [],
   });
+  assert.equal(attackView.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(attackView.presentationV2.stableBoundary.decisionActorId, source.id);
+  assert.equal(attackView.presentationSnapshot.decision?.actorId, source.id);
   assert.equal((await request("trigger", { code: game.code, token: sourceMember.token, providerId: "ma_chao_cavalry" })).status, 200);
   const revealed = (await state(game.code, simaMember.token)).data;
   assert.equal(revealed.currentAction.triggerEvent, "judgement_revealed", JSON.stringify(revealed));
