@@ -213,7 +213,7 @@ C6-02 passes only if each claimed closure is backed by explicit real engine/API 
 
 ## Execution result — UX2.0C6-02 evidence closure — 2026-10-03
 
-Implementation SHA: pending first implementation commit.
+Implementation SHA: `7a3a5ac3a9ef74c37bac3e484e89d7c46d32f697`.
 
 Files changed:
 
