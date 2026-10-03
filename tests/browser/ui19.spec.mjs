@@ -81,6 +81,33 @@ async function geometry(page) {
   });
 }
 
+async function interactionGeometry(page) {
+  return page.evaluate(() => {
+    const rect = (element) => {
+      const value = element.getBoundingClientRect();
+      return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+    };
+    const overlap = (left, right) => Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left)) * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+    const safeZone = document.querySelector(".interaction-safe-zone");
+    const stage = document.querySelector(".interaction-stage");
+    const localDock = document.querySelector(".local-player-dock");
+    const opponents = [...document.querySelectorAll('.player-board [data-player-anchor]')].map(rect);
+    const safeZoneRect = safeZone ? rect(safeZone) : null;
+    const stageRect = stage ? rect(stage) : null;
+    const localDockRect = localDock ? rect(localDock) : null;
+    return {
+      safeZone: safeZoneRect,
+      stage: stageRect,
+      localDock: localDockRect,
+      opponents,
+      stageDockOverlap: stageRect && localDockRect ? overlap(stageRect, localDockRect) : null,
+      safeZoneDockOverlap: safeZoneRect && localDockRect ? overlap(safeZoneRect, localDockRect) : null,
+      scrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    };
+  });
+}
+
 for (const { width, height } of TOPOLOGY_MATRIX) {
   for (const totalPlayers of [2, 3, 4]) {
     test(`UX2.0VIS-01 ${width}x${height} places ${totalPlayers}-player opponents in one top row`, async ({ page }) => {
@@ -110,11 +137,53 @@ for (const { width, height, counts } of MATRIX) {
       expect(result.scrollWidth, "no horizontal overflow").toBeLessThanOrEqual(result.viewportWidth);
       expect(result.severeAnchorOverlaps, "no severe seat overlap").toEqual([]);
       expect(result.controls.length, "local dock, hand, and console remain visible").toBe(3);
-      if (count >= 5) await expect(page.locator('[data-seat-topology="side-column"]')).toHaveCount(1);
-      else await expect(page.locator('[data-seat-topology="top-row"]')).toHaveCount(1);
+      if (count >= 5) await expect(page.locator('.player-board[data-seat-topology="side-column"]')).toHaveCount(1);
+      else await expect(page.locator('.player-board[data-seat-topology="top-row"]')).toHaveCount(1);
     });
   }
 }
+
+for (const { width, height } of TOPOLOGY_MATRIX) {
+  test(`UX2.0VIS-02 ${width}x${height} reserves the interaction safe zone below the 4-player top row`, async ({ page }) => {
+    await loadFixture(page, { state: "interaction", count: 4, width, height });
+    await expect(page.locator(".interaction-safe-zone")).toHaveCount(1);
+    await expect(page.locator(".interaction-stage")).toBeVisible();
+    await assertVisible(page.locator(".local-player-dock"), "local dock");
+    await assertVisible(page.locator(".local-hand"), "local hand");
+    await assertVisible(page.locator('[data-console-surface="local-operation"]'), "local console");
+    const result = await interactionGeometry(page);
+
+    expect(result.safeZone, "safe-zone bounds").not.toBeNull();
+    expect(result.stage, "Interaction Stage bounds").not.toBeNull();
+    expect(result.localDock, "local dock bounds").not.toBeNull();
+    expect(result.opponents).toHaveLength(3);
+    expect(Math.max(...result.opponents.map(({ top }) => top)) - Math.min(...result.opponents.map(({ top }) => top)), "VIS-01 opponent anchors remain in one row").toBeLessThanOrEqual(4);
+    expect(Math.max(...result.opponents.map(({ bottom }) => bottom)), "opponents clear the Interaction Stage by six pixels").toBeLessThanOrEqual(result.stage.top - 6);
+    expect(result.stage.left, "stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.left - 4);
+    expect(result.stage.top, "stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.top - 4);
+    expect(result.stage.right, "stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.right + 4);
+    expect(result.stage.bottom, "stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.bottom + 4);
+    expect(result.stageDockOverlap, "Interaction Stage does not overlap the local dock").toBe(0);
+    expect(result.safeZoneDockOverlap, "safe zone does not overlap the local dock").toBe(0);
+    expect(result.scrollWidth, "safe zone does not introduce horizontal overflow").toBeLessThanOrEqual(result.viewportWidth);
+  });
+}
+
+test("UX2.0VIS-02 keeps an empty safe-zone hook in REST", async ({ page }) => {
+  await loadFixture(page, { state: "rest", count: 4, width: 480, height: 900 });
+  const safeZone = page.locator(".interaction-safe-zone");
+  await expect(safeZone).toHaveCount(1);
+  await expect(page.locator(".interaction-stage")).toHaveCount(0);
+  const emptyGeometry = await safeZone.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      hasBackground: style.backgroundColor !== "rgba(0, 0, 0, 0)" && style.backgroundColor !== "transparent",
+      hasBorder: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => width !== "0px"),
+      text: element.textContent?.trim() ?? "",
+    };
+  });
+  expect(emptyGeometry, "empty safe zone has no visible panel or placeholder").toEqual({ hasBackground: false, hasBorder: false, text: "" });
+});
 
 test("UI-19 semantic Interaction Stage and Hero Focus remain viewer-visible", async ({ page }) => {
   await loadFixture(page, { state: "interaction", count: 4, width: 1440, height: 900 });
