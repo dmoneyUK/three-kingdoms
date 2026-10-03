@@ -295,3 +295,15 @@ Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
 Pass only if 2–4 player Top Row opponents are genuine compact, wider-than-tall thumbnails with visible identity/HP/Hand count, full Equipment/Judgement card faces no longer consume top-row seat space, fixed seat anchors/targeting/Inspect remain intact, the Large central Hero remains visually larger, Side Column mode is untouched, and Safe Zone geometry is not moved in this task.
+
+## Execution result — UX2.0VIS-04A (2026-10-04)
+
+- Implementation commit: `b2c903214d62e992575e9dcb153b25d19ca6f400`.
+- Files changed: `app/sequence-overrides.css`, `tests/browser/fixture.jsx`, `tests/browser/ui19.spec.mjs`, and this `HANDOVER.md` entry.
+- Seat sizing remains within the existing top-row widths: above 700px, up to 180px wide by 108px high (measured at 1440×900: 180×108); 481–700px, 92–112px wide by 88px high (650×900: 112×88); at or below 480px, 82–100px wide by 78px high (480×900: 100×78). Hero image areas are 70/54/46px and hand footers 36/32/30px at those breakpoints.
+- Measured 4-player seat bounds (relativeIndex, x, y, width×height): 1440×900 — 1 (10, 131.5, 180×108), 2 (630, 131.5, 180×108), 3 (1250, 131.5, 180×108); 650×900 — 1 (21.5, 141.25, 112×88), 2 (269, 141.25, 112×88), 3 (516.5, 141.25, 112×88); 480×900 — 1 (15.5, 165.5, 100×78), 2 (190, 165.5, 100×78), 3 (364.5, 165.5, 100×78).
+- Player name, hero name, HP text, hand count, and hero artwork remain visible. Hearts, Equipment grid, and Judgement card faces are hidden only inside `data-seat-topology="top-row"`; the underlying public equipment/judgement data remains mounted. The existing Inspect overlay still reveals the Zhuge Crossbow and Lightning fixture cards, and opening/closing it preserves opponent anchor bounds.
+- Authority/scope: CSS-only presentation treatment plus static browser-fixture and regression-test updates. No anchor placement selectors, target/Inspect behavior, Side Column rules, Safe Zone geometry, Hero Focus/Medium Source sizing, game state, server/projector, or interaction semantics were changed. Relative seat order remains 1<2<3 on one row; tests retain exactly one local player in LocalPlayerDock.
+- VIS-04A focused browser tests: 13/13 PASS; compact-seat geometry rerun: 3/3 PASS. Retained VIS-01 and VIS-02/03B/C/D/E browser tests: 47/51 PASS. Four existing Dying@650×900 assertions still fail because Interaction Stage bottom is 591.9375px while the accepted Safe Zone limit is 586px (VIS-02-FIX1, VIS-03B, VIS-03C, VIS-03D). This task forbids moving the Safe Zone and the handover says not to reopen VIS-03E, so the gap is left for a separately authorized reviewer task.
+- Full browser/fast suites, build, lint, and `git diff --check` were not run under the project remote-validation workflow. GitHub Actions remains responsible for complete validation; CI status was not checked.
+- Reviewer handoff: inspect and decide VIS-04A acceptance. If further work is needed, issue a new bounded task for the existing Dying@650×900 stage overflow; no follow-up implementation is authorized by this result.
