@@ -12,7 +12,7 @@ import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
-import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
+import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildHeroFocusView, type HeroFocusPlayerDisplay, type HeroFocusView } from "../game/hero-focus";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
@@ -482,12 +482,22 @@ function HeroFocus({ view }: { view: HeroFocusView }) {
 export function InteractionStage({ view, resolvePlayerName, resolvePlayerDisplay }: { view: PresentationClientView; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const display = buildInteractionStageDisplayModel(stage);
+  const dyingHandoff = buildDyingHandoffView(stage);
   const reactionChain = buildReactionChainView(stage);
   const heroFocus = buildHeroFocusView(stage, resolvePlayerDisplay);
   if (!display.visible) return null;
   return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined}>
     <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
     <HeroFocus view={heroFocus} />
+    {dyingHandoff.visible && <section className="dying-handoff" aria-label="Dying Rescue Handoff" data-dying-handoff="proven" data-dying-player-id={dyingHandoff.dyingPlayer.id ?? undefined} data-dying-decision-actor-id={dyingHandoff.decisionActor.id ?? undefined} data-dying-resolver-id={dyingHandoff.activeResolver.id ?? undefined} data-dying-continuity={dyingHandoff.continuity.relation} data-dying-parent-frame-id={dyingHandoff.parentFrameId ?? undefined}>
+      <header><span>DYING / RESCUE</span><strong>{dyingHandoff.statusLabel}</strong><small>SERVER-AUTHORIZED HANDOFF</small></header>
+      <div className="dying-handoff-grid">
+        <span><small>DYING PLAYER</small><b>{dyingHandoff.dyingPlayer.name}</b></span>
+        {dyingHandoff.decisionActor.id && <span><small>DECISION</small><b>{dyingHandoff.decisionActor.name}</b></span>}
+        {dyingHandoff.activeResolver.id && <span><small>RESOLVER</small><b>{dyingHandoff.activeResolver.name}</b></span>}
+      </div>
+      <small className="dying-handoff-guidance">{dyingHandoff.guidance}</small>
+    </section>}
     {reactionChain.visible && reactionChain.root && reactionChain.active && <section className="reaction-chain" aria-label="Reaction Chain" data-reaction-chain="proven" data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
       <header><span>REACTION CHAIN</span><small>PUBLIC CAUSAL CONTEXT</small></header>
       <ol>
@@ -931,7 +941,10 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   // Canonical rooms project `response`; retain the legacy discriminators while
   // old saved rooms and compatibility tests are still supported. A trigger is
   // deliberately separate: it is not a semantic Attack/Dodge/Negation reply.
-  const canRespond = responseType !== null && responseType !== "trigger";
+  // Basic Dying actions use give_peach/skip_rescue, not the ordinary respond
+  // capability. Keep them on the rescue console so the exact server actions
+  // remain visible and local Peach selection cannot become a fake response.
+  const canRespond = responseType !== null && responseType !== "trigger" && responseType !== "dying";
   // Canonical trigger decisions render exclusively from currentAction. Legacy
   // pending projections are retained only so an old saved room can be read.
   // Canonical damage reactions are ordinary trigger decisions. The retained

@@ -520,6 +520,40 @@ chain is a documented GAP for any later, separately authorized server-model
 work; this UI slice does not expand projector authority, rules, actions,
 payloads, card visibility, topology, or animation.
 
+### 0.6.15 UI-16 Dying / Peach rescue player-facing handoff
+
+UI-16 consumes the accepted C4 Dying barrier and the existing typed
+`InteractionStageView`; it does not redesign or re-prove the engine. When the
+public scene is a coherent `DYING` checkpoint with a proven
+`currentParticipantId`, that participant is the sole Hero Focus and is labelled
+`DYING PLAYER`. The focus never falls back to an active-target array, lowest HP,
+timeline, turn owner, `actionPlayerId`, or local controls. The existing
+`currentParticipantId`, `decisionActorId`, and `activeResolverId` remain
+distinct public facts: the dying player is the subject, while the latter two
+identify the current server-owned rescue handoff when the stable boundary is a
+`CHOICE`.
+
+The read-only Dying handoff stays inside the existing Interaction Stage. It may
+show the dying player, current decision actor, active resolver, neutral rescue
+guidance, and proven `ROOT_FRAME`/`CHILD_FRAME` context. It must not expose
+private hand/provider IDs, rescue order or future rescuer count, deadlines,
+`CurrentAction`, terminal predictions, or a duplicate Peach/Skip control. The
+local operation console is the only control surface. It uses the existing
+`give_peach`, `trigger`, and `skip_rescue` capabilities and payloads; selecting
+Peach/provider input is local preview until submit, Cancel remains local, and
+Skip/Decline remains authoritative.
+
+For a non-actor viewer, the public Dying scene and seat anchors are
+viewer-equal while private rescue options are absent. A server checkpoint or
+action-revision handoff changes the public decision actor and clears stale local
+selection. Successful Peach recovery, continued rescue, parent-frame resume,
+and terminal death remain server-owned Pending/continuation outcomes; the UI
+does not calculate next rescuers or predict settlement. Root Damage and Duel
+child-Damage evidence are covered by the engine/API characterization tests,
+with mounted coverage limited to focus, privacy, exact existing submissions,
+handoff cleanup, and topology. Browser-level responsive appearance remains a
+later manual GAP.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

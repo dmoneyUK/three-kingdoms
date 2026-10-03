@@ -314,7 +314,10 @@ test("Hero Focus renders the accepted public participant without becoming a cont
   assert.match(childHtml, /class="hero-focus-context">Nested effect · parent frame group-frame<\/small>/);
 
   const dyingHtml = renderStage(createSnapshot({ stage: "DYING", currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, {}, "B"));
-  assert.match(dyingHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
+  assert.match(dyingHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="DYING PLAYER"/);
+  assert.match(dyingHtml, /data-dying-handoff="proven"[^>]*data-dying-player-id="B"[^>]*data-dying-decision-actor-id="B"/);
+  assert.match(dyingHtml, /DYING \/ RESCUE/);
+  assert.match(dyingHtml, /Dying · Rescue/);
 
   const uninvolvedHtml = renderStage(createSnapshot(), "C");
   assert.match(uninvolvedHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
@@ -333,6 +336,7 @@ test("Hero Focus renders the accepted public participant without becoming a cont
   assert.match(globalStyleSource, /\.hero-focus\{/);
   assert.match(globalStyleSource, /@media\(max-width:650px\)[^\n]*\.hero-focus/);
   assert.match(globalStyleSource, /@media\(max-width:480px\)[^\n]*\.hero-focus/);
+  assert.match(globalStyleSource, /\.dying-handoff\{/);
   assert.doesNotMatch(globalStyleSource, /\.hero-focus[^\n]*animation/);
 });
 

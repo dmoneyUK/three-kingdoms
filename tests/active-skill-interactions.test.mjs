@@ -282,6 +282,34 @@ function negationReactionRoom({ meId = "p2", actorId = "p2", actionRevision = "n
   });
 }
 
+function dyingRescueRoom({ meId = "p3", actorId = "p3", actionRevision = "dying-rescue-1", continuity = "ROOT_FRAME", parentFrameId = null } = {}) {
+  const peach = card("dying-peach", "Peach", "♥");
+  const interaction = {
+    semantics: "PROVEN", interactionId: "dying-interaction", rootFrameId: "attack-frame", activeFrameId: "dying-frame", parentFrameId,
+    checkpointId: `dying-checkpoint-${actionRevision}`, presentationRevision: actorId === "p3" ? 1 : 2, stage: "DYING", sourceId: "p1", effect: "Attack",
+    targetIds: ["p2"], currentParticipantId: "p2", decisionActorId: actorId, activeResolverId: actorId, activeSourceId: "p1", activeTargetIds: ["p2"], participantIds: ["p1", "p2", "p3"],
+    participantRoles: { sourceId: "p1", originalTargetIds: ["p2"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId: actorId, activeResolverId: actorId, parentParticipantId: null, participantIds: ["p1", "p2", "p3"] },
+    continuity: { relation: continuity, parentFrameId },
+  };
+  const snapshot = {
+    identity: { interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision },
+    stable: { kind: "CHOICE", interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision, decisionActorId: actorId },
+    interaction, decision: { actorId, stage: "DYING" },
+    localControl: { source: "CurrentAction", actionRevision, kind: "dying", actorId, entitled: meId === actorId }, settlement: null, transitionEvents: [],
+  };
+  return normalizeRoomData({
+    code: `DYING-${meId}-${actorId}-${actionRevision}`, status: "playing", maxPlayers: 3, isHost: meId === "p1", isTestController: true, meId, myRole: meId === "p1" ? "Lord" : "Rebel", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "SOURCE", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "DYING TARGET", seat: 1, hero: "liu-bei", hp: 0, maxHp: 4, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+      { id: "p3", name: "RESCUER", seat: 2, hero: "sun-quan", hp: 4, maxHp: 4, alive: true, connected: true, handCount: meId === actorId ? 1 : 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
+    ],
+    myHand: meId === actorId ? [peach] : [], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: actorId, actionReason: "Choose Peach or skip rescue", isMyAction: meId === actorId,
+    actionRevision, phase: "dying", presentationSnapshot: snapshot, pendingDying: { sourceId: "p1", targetId: "p2", origin: "Attack", recoveryNeeded: 1, deadline: Date.now() + 60_000 },
+    currentAction: { version: 3, kind: "dying", actorId, deadline: 0, reason: "Choose Peach or skip rescue", legalActions: meId === actorId ? ["give_peach", "skip_rescue"] : [], declineAction: "skip_rescue", requirement: "peach", ...(meId === actorId ? { options: [{ providerId: "card", satisfies: "peach", label: "Peach", description: "Give Peach to the dying player.", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [peach.id] } }] } : {}) },
+  });
+}
+
 installRenderEnvironment();
 
 test("normal deferred multi-target selection is local until ordered Confirm", async () => {
@@ -985,6 +1013,70 @@ test("mounted Negation keeps chain viewer-equal, private controls hidden, and st
   assert.equal(actor.root.findAllByProps({ "data-hand-card-id": "negation-private" }).length, 0, "revision/actor change clears the private card selection");
   assert.equal(buttonsContaining(actor, "Confirm").length, 0);
   await act(async () => { actor.unmount(); observer.unmount(); });
+});
+
+test("mounted Dying handoff keeps the dying player focused while Peach stays local until submit", async () => {
+  const actionCalls = [];
+  const actorRoom = dyingRescueRoom();
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: actorRoom, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  const handoff = renderer.root.findByProps({ "data-dying-handoff": "proven" });
+  assert.equal(handoff.props["data-dying-player-id"], "p2");
+  assert.equal(handoff.props["data-dying-decision-actor-id"], "p3");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "DYING PLAYER");
+  assert.equal(renderer.root.findByProps({ "data-stage": "DYING" }).findAllByType("button").length, 0, "public Dying stage has no rescue controls");
+  assert.equal(button(renderer, { children: "Peach" }).props.disabled, true, "Peach requires a local card selection");
+  assert.equal(buttonsContaining(renderer, "Skip").length, 1);
+
+  await act(async () => { handCardButton(renderer, "dying-peach").props.onClick(); });
+  assert.equal(actionCalls.length, 0, "selecting Peach is local preview only");
+  assert.equal(button(renderer, { children: "Peach" }).props.disabled, false);
+  await act(async () => { button(renderer, { children: "Peach" }).props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["give_peach", { cardId: "dying-peach" }]);
+  await act(async () => { button(renderer, { children: "Skip" }).props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["skip_rescue"]);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("mounted Dying scene is viewer-equal, preserves child context, and hides rescue privacy from non-actors", async () => {
+  const actorRoom = dyingRescueRoom({ continuity: "CHILD_FRAME", parentFrameId: "duel-frame" });
+  const observerRoom = dyingRescueRoom({ meId: "p1", actorId: "p3", continuity: "CHILD_FRAME", parentFrameId: "duel-frame" });
+  let actor;
+  let observer;
+  await act(async () => { actor = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: actorRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: actorRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { observer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: observerRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: observerRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(actor.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-continuity"], "CHILD_FRAME");
+  assert.equal(actor.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-parent-frame-id"], "duel-frame");
+  assert.equal(actor.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "DYING PLAYER");
+  assert.equal(observer.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-decision-actor-id"], "p3");
+  assert.equal(observer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "DYING PLAYER");
+  assert.equal(observer.root.findAllByProps({ "data-hand-card-id": "dying-peach" }).length, 0);
+  assert.equal(buttonsContaining(observer, "Peach").length, 0);
+  assert.equal(buttonsContaining(observer, "Skip").length, 0);
+  assert.deepEqual(seatAnchorIds(actor), seatAnchorIds(observer));
+  await act(async () => { actor.unmount(); observer.unmount(); });
+});
+
+test("mounted Dying handoff follows the server actor revision and ignores legacy focus fields", async () => {
+  const initial = dyingRescueRoom();
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room: initial, onRecover: () => {} }, React.createElement(GameRoom, { room: initial, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await act(async () => { handCardButton(renderer, "dying-peach").props.onClick(); });
+  const handedOff = dyingRescueRoom({ actorId: "p1", actionRevision: "dying-rescue-2", meId: "p3" });
+  const legacyMutated = { ...handedOff, actionPlayerId: "p3", actionReason: "legacy owner", turnSeat: 2, isMyTurn: true, players: handedOff.players.map((player) => player.id === "p2" ? { ...player, hp: 4 } : player), timeline: [{ id: "legacy-dying", type: "message", player: "legacy", target: "legacy", message: "legacy" }] };
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: legacyMutated, onRecover: () => {} }, React.createElement(GameRoom, { room: legacyMutated, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(renderer.root.findByProps({ "data-dying-handoff": "proven" }).props["data-dying-decision-actor-id"], "p1");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "DYING PLAYER");
+  assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "dying-peach" }).length, 0, "actor handoff removes the stale private card");
+  assert.equal(buttonsContaining(renderer, "Peach").length, 0);
+  assert.equal(buttonsContaining(renderer, "Skip").length, 0);
+  assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2", "p3"]);
+  await act(async () => { renderer.unmount(); });
 });
 
 test("mounted Judgement replacement keeps subject focus public and replacement controls local", async () => {

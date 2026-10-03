@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-15 Reaction Chain public causality and private response boundary — 2026-10-03
+## Current stage — UX2.0UI-16 Dying / Peach rescue player-facing handoff — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -154,6 +154,22 @@ Skip remains authoritative. The snapshot has no durable, independently proven
 per-counter contributor history, so UI-15 intentionally shows a bounded root
 plus active node rather than inventing nested history; that is the remaining
 Reaction Chain GAP.
+
+UI-16 hardens the existing Dying/Peach handoff inside the Interaction Stage.
+The proven public `currentParticipantId` is presented as the DYING PLAYER and
+the proven `CHOICE` actor/resolver is shown as the current rescue decision;
+child Damage/Duel context remains a compact `CHILD_FRAME` relation. The new
+handoff is viewer-equal and read-only: it contains no hand card, provider,
+CurrentAction, rescue-order, timer, or terminal prediction. The local console
+alone consumes the existing `give_peach`, `skip_rescue`, and trigger/provider
+capabilities. Peach selection remains local until the existing submit boundary,
+while actor/revision changes clear stale controls and public focus continues to
+follow the server snapshot. No Dying rule, rescue order, action, payload,
+projector authority, seat topology, or animation contract changed. Engine/API
+fixtures already cover root and Duel child rescue, handoff, recovery/resume,
+terminal settlement, and viewer privacy; mounted coverage covers the player-
+facing boundary. Pixel-level responsive appearance remains the existing
+browser/manual GAP.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

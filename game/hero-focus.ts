@@ -23,7 +23,7 @@ export type HeroFocusPlayerView = {
 export type HeroFocusView = {
   visible: boolean;
   primary: HeroFocusPlayerView | null;
-  roleLabel: "CURRENT PARTICIPANT" | "CURRENT TARGET" | null;
+  roleLabel: "CURRENT PARTICIPANT" | "CURRENT TARGET" | "DYING PLAYER" | null;
   source: PresentationDisplayIdentity;
   nestedContext: string | null;
 };
@@ -57,7 +57,8 @@ export function buildHeroFocusView(
   if (!stage.visible) return HIDDEN_FOCUS;
 
   const currentParticipant = stage.currentParticipant.id ? stage.currentParticipant : null;
-  const soleActiveTarget = !currentParticipant && stage.activeTargets.length === 1 && stage.activeTargets[0]?.id
+  const soleActiveTarget = stage.stage !== "DYING"
+    && !currentParticipant && stage.activeTargets.length === 1 && stage.activeTargets[0]?.id
     ? stage.activeTargets[0]
     : null;
   const selected = currentParticipant ?? soleActiveTarget;
@@ -86,7 +87,7 @@ export function buildHeroFocusView(
       hp: publicNumber(display.hp),
       maxHp: publicNumber(display.maxHp),
     },
-    roleLabel: currentParticipant ? "CURRENT PARTICIPANT" : "CURRENT TARGET",
+    roleLabel: stage.stage === "DYING" ? "DYING PLAYER" : currentParticipant ? "CURRENT PARTICIPANT" : "CURRENT TARGET",
     source: stage.source,
     nestedContext: stage.continuity.relation === "CHILD_FRAME"
       ? `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`

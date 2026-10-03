@@ -98,6 +98,17 @@ export type ReactionChainView = {
   } | null;
 };
 
+export type DyingHandoffView = {
+  visible: boolean;
+  dyingPlayer: PresentationDisplayIdentity;
+  decisionActor: PresentationDisplayIdentity;
+  activeResolver: PresentationDisplayIdentity;
+  statusLabel: string;
+  guidance: string;
+  continuity: InteractionSceneContinuity;
+  parentFrameId: string | null;
+};
+
 export type InteractionSeatSemanticRoles = {
   isInteractionSource: boolean;
   isOriginalTarget: boolean;
@@ -360,6 +371,37 @@ export function buildReactionChainView(stage: InteractionStageView): ReactionCha
   };
 }
 
+/**
+ * Keep the public Dying handoff bounded to the proven Interaction Stage. The
+ * local console still owns Peach/provider controls; this model intentionally
+ * has no card, provider, action, or rescue-order fields.
+ */
+export function buildDyingHandoffView(stage: InteractionStageView): DyingHandoffView {
+  const hiddenIdentity = { id: null, name: "No proven decision actor", known: false };
+  if (!stage.visible || stage.stage !== "DYING" || !stage.currentParticipant.id) {
+    return {
+      visible: false,
+      dyingPlayer: stage.currentParticipant,
+      decisionActor: hiddenIdentity,
+      activeResolver: stage.activeResolver,
+      statusLabel: "Dying rescue",
+      guidance: "Rescue controls stay in the local console.",
+      continuity: { ...stage.continuity },
+      parentFrameId: stage.parentFrameId,
+    };
+  }
+  return {
+    visible: true,
+    dyingPlayer: stage.currentParticipant,
+    decisionActor: stage.stableKind === "CHOICE" ? stage.decisionActor : hiddenIdentity,
+    activeResolver: stage.activeResolver,
+    statusLabel: "Rescue decision",
+    guidance: "Rescue controls stay in the local console.",
+    continuity: { ...stage.continuity },
+    parentFrameId: stage.parentFrameId,
+  };
+}
+
 function sameIds(left: readonly PresentationDisplayIdentity[], right: readonly PresentationDisplayIdentity[]) {
   return left.length === right.length && left.every((identity, index) => identity.id === right[index]?.id);
 }
@@ -391,7 +433,9 @@ export function buildInteractionStageDisplayModel(stage: InteractionStageView): 
     : null;
   return {
     visible: stage.visible,
-    focusLabel: stage.effect ? `${stage.effect} · ${stage.stageLabel}` : stage.stageLabel,
+    focusLabel: stage.stage === "DYING"
+      ? "Dying · Rescue"
+      : stage.effect ? `${stage.effect} · ${stage.stageLabel}` : stage.stageLabel,
     source: stage.source,
     focusTarget: activeTarget,
     targetSummary,

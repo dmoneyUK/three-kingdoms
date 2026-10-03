@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
+import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
 import { buildHeroFocusView } from "../game/hero-focus.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
@@ -634,6 +634,54 @@ test("Reaction Chain fails closed outside a proven Negation scene", () => {
   assert.deepEqual(malformed, { visible: false, interactionId: null, root: null, active: null });
 });
 
+test("Dying handoff keeps the dying participant public and the rescue actor bounded", () => {
+  const dying = snapshot({
+    interaction: scene({ stage: "DYING", effect: "Attack", currentParticipantId: "B", decisionActorId: "C", activeResolverId: "C", targetIds: ["B"], activeTargetIds: ["B"], participantIds: ["A", "B", "C"], participantRoles: { ...scene().participantRoles, originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"] } }),
+    stable: { ...snapshot().stable, decisionActorId: "C" },
+    decision: { actorId: "C", stage: "DYING" },
+  });
+  const stage = buildInteractionStageView(buildPresentationClientView(dying, "C"), (id) => displayNames[id] ?? null);
+  const handoff = buildDyingHandoffView(stage);
+  assert.equal(handoff.visible, true);
+  assert.equal(handoff.dyingPlayer.id, "B");
+  assert.equal(handoff.decisionActor.id, "C");
+  assert.equal(handoff.activeResolver.id, "C");
+  assert.equal(handoff.statusLabel, "Rescue decision");
+  assert.equal(handoff.continuity.relation, "ROOT_FRAME");
+  assert.equal("cardId" in handoff, false);
+  assert.equal("providerId" in handoff, false);
+
+  const child = snapshot({
+    interaction: scene({ stage: "DYING", parentFrameId: "duel-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "duel-frame" }, currentParticipantId: "B", decisionActorId: "C", activeResolverId: "C", participantRoles: { ...scene().participantRoles, currentParticipantId: "B", decisionActorId: "C", activeResolverId: "C" } }),
+    stable: { ...snapshot().stable, decisionActorId: "C" },
+    decision: { actorId: "C", stage: "DYING" },
+  });
+  const childHandoff = buildDyingHandoffView(buildInteractionStageView(buildPresentationClientView(child, "A"), (id) => displayNames[id] ?? null));
+  assert.equal(childHandoff.visible, true);
+  assert.equal(childHandoff.dyingPlayer.id, "B");
+  assert.deepEqual(childHandoff.continuity, { relation: "CHILD_FRAME", parentFrameId: "duel-frame" });
+  assert.equal(childHandoff.parentFrameId, "duel-frame");
+});
+
+test("Dying handoff is viewer-equal, neutral without a proven choice, and fails closed without a subject", () => {
+  const base = snapshot({
+    interaction: scene({ stage: "DYING", currentParticipantId: "B", decisionActorId: "C", activeResolverId: "C", participantRoles: { ...scene().participantRoles, currentParticipantId: "B", decisionActorId: "C", activeResolverId: "C" } }),
+    stable: { ...snapshot().stable, decisionActorId: "C" },
+    decision: { actorId: "C", stage: "DYING" },
+  });
+  const acting = buildDyingHandoffView(buildInteractionStageView(buildPresentationClientView(base, "C"), resolveDisplayName));
+  const observer = buildDyingHandoffView(buildInteractionStageView(buildPresentationClientView({ ...base, localControl: { ...base.localControl, actorId: null, entitled: false } }, "A"), resolveDisplayName));
+  assert.deepEqual(observer, acting);
+
+  const resolving = buildDyingHandoffView(buildInteractionStageView(buildPresentationClientView({ ...base, stable: { ...base.stable, kind: "SETTLEMENT", decisionActorId: null }, decision: null, interaction: { ...base.interaction, decisionActorId: null, participantRoles: { ...base.interaction.participantRoles, decisionActorId: null } } }, "A"), resolveDisplayName));
+  assert.equal(resolving.visible, true);
+  assert.equal(resolving.decisionActor.id, null);
+  assert.equal(resolving.dyingPlayer.id, "B");
+
+  const missingSubject = buildDyingHandoffView(buildInteractionStageView(buildPresentationClientView({ ...base, interaction: { ...base.interaction, currentParticipantId: null, participantRoles: { ...base.interaction.participantRoles, currentParticipantId: null } } }, "A"), resolveDisplayName));
+  assert.equal(missingSubject.visible, false);
+});
+
 test("Hero Focus selects only accepted current-participant or sole-active-target semantics", () => {
   const display = (id) => ({ name: displayNames[id] ?? null, heroId: id === "A" ? "ma-chao" : id === "B" ? "zhao-yun" : id === "C" ? "cao-cao" : null, heroName: id === "A" ? "Ma Chao" : id === "B" ? "Zhao Yun" : id === "C" ? "Cao Cao" : null, hp: 4, maxHp: 4 });
   const focusFrom = (view) => buildHeroFocusView(buildInteractionStageView(view, resolveDisplayName), display);
@@ -689,7 +737,14 @@ test("Hero Focus selects only accepted current-participant or sole-active-target
     decision: { actorId: "B", stage: "DYING" },
   }), "A"));
   assert.equal(dying.primary?.id, "B");
-  assert.equal(dying.roleLabel, "CURRENT PARTICIPANT");
+  assert.equal(dying.roleLabel, "DYING PLAYER");
+  const dyingWithoutParticipant = focusFrom(buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "DYING", currentParticipantId: null, activeTargetIds: ["B"], decisionActorId: "C", activeResolverId: "C", participantRoles: { ...scene().participantRoles, currentParticipantId: null, activeTargetIds: ["B"], decisionActorId: "C", activeResolverId: "C" } }),
+    stable: { ...snapshot().stable, decisionActorId: "C" },
+    decision: { actorId: "C", stage: "DYING" },
+  }), "A"));
+  assert.equal(dyingWithoutParticipant.primary, null, "Dying never guesses a subject from the active-target list");
+  assert.equal(dyingWithoutParticipant.visible, true);
 
   const acting = focusFrom(buildPresentationClientView(snapshot(), "B"));
   const uninvolved = focusFrom(buildPresentationClientView(snapshot({ localControl: { ...snapshot().localControl, actorId: null, entitled: false } }), "C"));

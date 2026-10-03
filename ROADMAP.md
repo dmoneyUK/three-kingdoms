@@ -114,6 +114,20 @@ snapshot currently lacks durable independently proven counter-contributor
 history, so the UI truthfully renders root plus active response only rather
 than a fabricated nested history. This is the remaining Reaction Chain GAP.
 
+UI-16 hardens the player-facing Dying/Peach rescue handoff without changing
+gameplay. The proven Interaction Stage current participant is explicitly
+labelled DYING PLAYER; the current rescue decision actor and active resolver
+come only from the public `PresentationSnapshot`, with root/child frame context
+preserved. Only the CurrentAction actor receives the existing local Peach,
+provider, and Skip/Decline controls. Card/provider selection remains local
+until the existing submission boundary, and an action-revision/actor handoff
+clears stale local controls. Mounted coverage proves viewer-equal public
+handoff, root and Duel-child context, stable anchors, exact existing
+`give_peach` payload, privacy, and resistance to legacy timeline/turn/HP
+mutations; engine/API Dying coverage remains the authority for rescue order,
+recovery/resume, and terminal death. The remaining responsive pixel check is a
+browser/manual GAP.
+
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel
 clearing only local state. Existing `choose_target_card` and semantic
