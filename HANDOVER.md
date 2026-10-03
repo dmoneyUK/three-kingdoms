@@ -91,3 +91,16 @@ Append only FIX1 result: SHA, files, per-flow Cancel state inventory, flow-aware
 
 ## Acceptance
 Pass only if every migrated deferred flow’s displayed Cancel returns that flow to a clean pre-selection local state, sends no gameplay/decline action, leaves public presentation unchanged, preserves authoritative Skip/Decline, and avoids conflicting duplicate Cancel affordances.
+
+## EXECUTION RESULT — UX2.0UI-07-FIX1
+
+- Implementation SHA: `b5e3fe0` (`fix: fully reset deferred target cancellation`)
+- Files changed: `app/page.tsx`, `tests/active-skill-interactions.test.mjs`, `README.md`, `ROADMAP.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Cancel-state inventory and reset: normal card targeting clears `selected`, Wusheng/Longdan conversion mode, and `targetIds`; Halberd therefore clears its card plus every ordered target. Serpent Spear clears `serpentMode`, both `serpentSelected` cost cards, the local card selection, and targets. Active-skill target/card+target clears `kingSkillId`, the revision/effect/cardIds/targetIds selection object, the local card selection, and targets. Trigger target/card+target clears `responseProviderId`, provider card/target keys, `triggerChoice`, Serpent/Wusheng/Longdan local modes, selected cards, and targets. No server-owned state is changed.
+- One-Cancel surface: provider-owned trigger Cancel remains the only Cancel for provider-toggle paths; the generic Cancel is hidden there. Wusheng/Longdan retain their complete hero-control Cancel surface, while active-skill, Serpent Spear, normal Halberd, and mapped trigger flows expose one generic local Cancel. Skip/Decline remains separate and authoritative.
+- Zero-authoritative-action proof: mounted regressions cover normal, converted Attack, Halberd, Serpent Spear, active-skill, and trigger Cancel; each records zero `onAction` calls and trigger Cancel never invokes decline. Focused suite passed `20/20`.
+- Restart proof: active-skill, trigger, Halberd, and converted flows reselect after Cancel and submit the same existing payload; target-only flows also restart after reactivation without stale local card/provider state.
+- Semantic independence: the change is confined to React-local selection state and rendering. It does not mutate `PresentationSnapshot`, `InteractionStageView`, `HeroFocusView`, legality, action payloads, or server routing. Existing ordered target payloads remain unchanged.
+- Retained GAPs: Borrowed Sword still uses its immediate authoritative `choose_borrowed_sword_target` action, and private target-card pickers retain their opaque-card flow. These remain outside UI-07-FIX1.
+- Validation: focused mounted/UI-07 tests `20/20`; `npm run test:fast` `164/164`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
+- Closure recommendation: UI-07-FIX1 is complete for reviewer closure. No server, projector, legality, payload, or public semantic follow-up is required for this fix; proceed only with the next separately bounded UX slice after review.
