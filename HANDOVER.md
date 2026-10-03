@@ -292,3 +292,20 @@ Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
 Pass only if a top-row observer of a Group/AOE interaction sees one smaller external SOURCE card followed by the existing Large current active-target Hero Focus, the viewer/local hero is never duplicated, the fixed source seat does not move, mobile 480 remains contained with no overflow, and public/gameplay authority remains unchanged.
+
+## CI follow-up — accepted VIS-03D gate correction
+
+User-reported GitHub Actions run #592 (`3d5c0e3`) failed only in `npm test`:
+197 tests passed and two mounted presentation assertions retained the pre-VIS-03D
+Hero Focus expectation. The Duel legacy-field regression now expects the unique
+external active target (`p1`, `CURRENT TARGET`); the Judgement viewer regression
+now asserts no central Hero Focus when the viewer is the subject/source and no
+unique external candidate exists. No production behavior or VIS-03E scope was
+changed.
+
+- Implementation commit: `cf1107c24861e7e2f6457a2502c8bb1f0c235acf`
+- Changed file: `tests/active-skill-interactions.test.mjs`
+- Focused validation: 2/2 PASS for the two previously failing mounted tests.
+- Full test/build/lint checks were not run locally; GitHub Actions owns the
+  post-push gate. The CI result has not yet been checked.
+- VIS-03E remains the current reviewer task and has not been started or accepted.
