@@ -122,3 +122,23 @@ Append only UI-07 result: SHA, files, complete target-path inventory, which defe
 
 ## Acceptance
 Pass only if migrated deferred target selections remain local until explicit Confirm; Cancel sends no authoritative action; existing legality/payload semantics are unchanged; ordered payloads preserve proven selection order; public semantic presentation remains independent; and any unsafe immediate-submit path is left unchanged and reported rather than guessed.
+
+## EXECUTION RESULT — UX2.0UI-07
+
+- Implementation SHA: `e062f5f` (`feat: add local target selection confirmation`).
+- Files: `app/page.tsx`, `app/sequence-overrides.css`, `game/local-target-selection.ts`, `tests/active-skill-interactions.test.mjs`, `tests/local-target-selection.test.mjs`, `README.md`, `ROADMAP.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Complete target-path inventory:
+  - Normal card targeting: Attack and converted Attack (Wusheng/Longdan), Dismantle, Steal, Duel, Borrowed Sword card play, Overindulgence, and Rations Depleted use the shared `targetIds` seat-selection path. Existing legality comes from projected legal card/target checks; normal submission was already deferred to `play_card`.
+  - Multi-target: Sky-Piercing Halberd uses the same path with the existing up-to-three target rule and `targetIds` click order; Confirm preserves that payload order.
+  - Active hero skills: target-only and card-plus-target options use existing projected `targetIds`, `targetMin`, and `targetMax`; existing generic `trigger` submission remains deferred.
+  - Trigger/response: target and card-plus-target options, including Da Qiao Deflection, use the existing provider selection plus local target state; existing generic `trigger` Confirm and authoritative `decline_trigger` remain separate.
+  - Serpent Spear: existing two-card cost plus deferred Attack target remains local until the existing `serpent_spear_attack` submit path.
+  - Special/private paths: Borrowed Sword forced-Attack target selection uses immediate server-authoritative `choose_borrowed_sword_target`; opaque target-card pickers use private card-zone selection. Both are intentionally unchanged GAPs rather than guessed migrations.
+- Deferred paths migrated: normal card/multi-target, active hero-skill, trigger/response, and Serpent Spear paths now expose one shared local instruction/count and the existing Confirm boundary; eligible seat clicks remain local amber only.
+- Local model API: `buildLocalTargetSelectionView({ selectionActive, selectedTargetIds, minTargetCount, maxTargetCount, canConfirm, hasLocalInput, instruction? })` returns `selectionActive`, ordered `selectedTargetIds`, proven count bounds, `canConfirm`, `canCancel`, and concise `instruction`. It consumes caller-computed local facts only and never derives authority from PresentationSnapshot or public roles.
+- Confirm/Cancel: Confirm calls the pre-existing `play_card`, `trigger`, or `serpent_spear_attack` action and preserves its payload. Cancel clears only local `targetIds` (and active-skill target IDs), sends no gameplay/decline/skip action, and leaves Skip/Decline authoritative. The existing active provider control remains distinct from local target Cancel.
+- Selection order: the mounted Halberd regression selects `p2`, then `p3`, and proves one `play_card` call with `targetId: "p2"` and `targetIds: ["p2", "p3"]`; deselection before Confirm sends no action. Generic trigger payloads retain their existing target order semantics.
+- Semantic separation: existing amber `selected-target` state is driven by local `targetIds`; public red/cyan/source/defeated classes still come only from `PresentationClientView` interaction roles. Local selection does not modify `PresentationSnapshot`, InteractionStage, HeroFocus, or public seat-role inputs. Trigger and active-skill mounted tests prove Cancel does not invoke decline.
+- Responsive evidence: guidance and controls stay in the existing local command area. Added styling is scoped to `.local-target-selection`/`.local-target-cancel`, with existing desktop, max-700 (covering 650), max-480, and max-360 dock rules retained; no board topology or dock composition changed.
+- Validation: focused UI-07 tests `17/17`; `npm run test:fast` `161/161`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
+- Next recommendation: reviewer should inspect the mounted normal-card and trigger surfaces at desktop and phone widths; keep Borrowed Sword immediate target selection and opaque target-card picker as separate bounded follow-up tasks.
