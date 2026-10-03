@@ -15,260 +15,191 @@ Agent sequence:
 
 Do not wait for or poll CI.
 
-## Reviewer status — UX2.0VIS-03E ACCEPTED
+## Reviewer status — UX2.0VIS-04A ACCEPTED
 
-Reviewed implementation: `74a39c3d68ed9510281d3340186b2dc3f5af23e3`.
+Reviewed implementation: `b2c903214d62e992575e9dcb153b25d19ca6f400`.
 
-Accepted facts that the next task must preserve:
-- Medium Source projection is isolated in `projectMediumSourceForViewer`;
-- it renders only when the viewer-projected Large primary is a proven active target and the source is a different external player;
-- viewer-owned source, source==primary, non-active-target primary and missing source all fail closed;
-- `buildHeroFocusView` and `projectHeroFocusForViewer` semantics were not changed;
-- the central Medium Source is a separate read-only presentation copy; the fixed source seat remains mounted in `.player-board`;
-- the Group/AOE observer fixture uses viewer p3, source p4, active scope p1/p2/p3 and current participant p1 without using CurrentAction as public presentation authority;
-- Medium Source portrait sizes are 56x70 desktop, 48x60 at 481–650 and 42x53 at <=480; Large Hero Focus sizes remain unchanged;
-- focused Medium Source unit coverage reported 1/1 PASS and focused browser coverage reported 6/6 PASS;
-- no server/projector/gameplay/layout-authority changes were found in the reviewed diff.
+Accepted facts to preserve:
+- 2–4 player top-row opponents are now real landscape thumbnails rather than tall full public-zone cards;
+- measured 4-player seats are 180x108 at 1440, 112x88 at 650, and 100x78 at 480;
+- player name, hero name, HP, Hand count and hero artwork remain visible;
+- full Equipment and Judgement card faces are visually hidden only in top-row thumbnails while underlying public data remains mounted and available through the existing Inspect overlay;
+- target/Inspect behavior, relative seat anchors/order, semantic seat roles and LocalPlayerDock were not changed;
+- Side Column mode was not changed;
+- focused VIS-04A browser coverage reported 13/13 PASS plus 3/3 compact-geometry rerun;
+- the retained 47/51 result exposes one pre-existing geometry GAP rather than a VIS-04A regression: Dying at 650x900 extends to ~591.94px while the current safe-zone bottom is ~586px.
 
-Do not reopen VIS-03E.
+Do not reopen VIS-04A.
 
-# NEXT TASK — UX2.0VIS-04A: Convert 2–4 Player Top-Row Opponents into True Compact Seat Thumbnails
+# NEXT TASK — UX2.0VIS-04B: Reclaim the Vertical Gap Below Compact Top-Row Seats
 
 ## Objective
-Fix exactly one remaining visual-hierarchy defect:
+Use the space freed by VIS-04A.
 
-**In 2–4 player Top Row Mode, opponent seats must read as compact fixed seat thumbnails rather than full portrait cards with full public zones.**
+**Move only the 2–4 player top-row Interaction Safe Zone upward so it starts shortly below the new compact opponent row instead of retaining the old large-seat top offsets.**
 
-Current top-row seats are still visually too large:
-- the opponent hero area uses a tall `2 / 3` portrait card;
-- the seat also renders the full Equipment grid and optional Judgement card faces;
-- the resulting seat can be taller/more visually dominant than the enlarged central Hero Focus.
+This must:
+- remove the large dead gap between thumbnails and Interaction Stage;
+- increase usable central height;
+- close the known Dying@650 containment failure;
+- preserve all accepted seat, Stage-content, Hero, Medium Source and LocalPlayerDock geometry.
 
-UX V2 explicitly requires:
-- fixed **Seat Thumbnails** for topology/distance context;
-- Top Row Mode may use a **wider compact thumbnail** because vertical height is valuable;
-- full skills/equipment names/full Judgement cards/long status text do not belong in seat thumbnails;
-- detailed public Equipment/Judgement information belongs in public Inspect / Interaction presentation.
+This is a safe-zone-top geometry task only.
 
-This task changes only **Top Row opponent-seat density and appearance**.
+## Current measured facts
+VIS-04A measured 4-player opponent bounds:
+- 1440x900: y=131.5, h=108, bottom≈239.5
+- 650x900: y=141.25, h=88, bottom≈229.25
+- 480x900: y=165.5, h=78, bottom≈243.5
 
-Do not move the top-row anchors.
-Do not reclaim/move the Interaction Safe Zone yet.
-Do not change Side Column seats yet.
+Current old safe-zone CSS still uses:
+- desktop: `--interaction-safe-top:385px`
+- <=650: `319px`
+- <=480: `326px`
 
-## Current production facts
-The current top-row geometry is already accepted:
-- 2 players: relative seat 1 top-centre;
-- 3 players: relative seats 1/2 top-left/top-right;
-- 4 players: relative seats 1/2/3 top-left/top-centre/top-right.
+Those values were chosen before compact thumbnails and now leave unnecessary vertical dead space.
 
-Current opponent visual CSS is split:
-- top-row placement/width overrides in `app/globals.css`;
-- opponent card/portrait/public-zone styling in `app/sequence-overrides.css`.
-
-Current full opponent surface includes:
-- hero portrait;
-- player/hero identity;
-- HP/hearts;
-- Equipment grid;
-- optional Judgement card faces;
-- Hand count footer.
-
-Preserve the same player anchor and target/inspect behavior.
+Known retained failure:
+- Dying at 650x900: Stage bottom≈591.94 while safe-zone bottom≈586.
 
 ## Files expected in scope
 Production:
 - `app/globals.css`
-- `app/sequence-overrides.css`
-
-Optional production change only if needed for compact public-presence badges:
-- `app/page.tsx`
 
 Regression:
 - `tests/browser/ui19.spec.mjs`
 
-Do not change presentation/game/server helpers.
+Do not modify `app/page.tsx`, `app/sequence-overrides.css`, game helpers, server/projector, gameplay or fixtures unless a test fixture is strictly required to expose an existing state.
 
 ## Required implementation
 
-### 1. Top-row seats become wider-than-tall thumbnails
-Scope all compact rules under:
-
-`.player-board[data-seat-topology="top-row"]`
-
-Do not globally change `.opponent-player-card`.
-
-For top-row opponents:
-- remove the tall portrait-card `2 / 3` visual proportion;
-- use a compact wider-than-tall seat shell;
-- retain rounded frame, existing turn/action/selection/semantic-role treatments;
-- hero artwork remains visible;
-- player name, hero name, HP and Hand count remain visible.
-
-Target maximum total seat heights:
-- >700px viewport: **<=110 CSS px**
-- 481–700px: **<=92 CSS px**
-- <=480px: **<=82 CSS px**
-
-The final seat bounding box must satisfy:
-
-`seat width > seat height`
-
-at 1440x900, 650x900 and 480x900.
-
-Do not use transform scaling. Implement real layout dimensions.
-
-### 2. Keep the hero face useful in compact geometry
-For top-row mode only:
-- change `.opponent-hero-card` from a tall 2:3 portrait region to a compact landscape/wide hero region;
-- continue using the existing public HeroPortrait artwork and `object-fit:cover`;
-- keep the identity overlay readable;
-- keep HP visible;
-- hearts may be compacted or hidden if HP text remains visible;
-- the hero info affordance must remain reachable.
-
-Do not change the HeroPortrait asset or hero identity.
-
-### 3. Remove full Equipment/Judgement card faces from the thumbnail
-For Top Row Mode only:
-- do not visually render the full `.opponent-equipment-zone` card grid inside the seat;
-- do not visually render full `.opponent-judgement-zone` card faces beside the seat;
-- do not delete the underlying public player data;
-- do not change the existing `OpponentInspectionOverlay`.
-
-Detailed public Equipment/Judgement remains available through Inspect.
-
-If you add compact presence indicators, keep them limited to counts:
-- Equipment count;
-- Judgement count.
-
-Do not render equipment names, card faces or role details inside the compact top-row thumbnail.
-
-If count indicators are added:
-- use stable hooks such as `data-thumbnail-equipment-count` and `data-thumbnail-judgement-count`;
-- do not change Side Column visual output.
-
-### 4. Preserve Hand count as a compact status
-The Hand count remains public and must stay directly visible in the thumbnail.
-
-You may compact:
-- "Hand cards 5"
-
-to a smaller treatment such as:
-- "HAND 5"
-or equivalent existing-language copy.
-
-Do not expose card identities.
-
-### 5. Preserve targeting and Inspect behavior
-Do not change:
-- `data-player-anchor`;
-- relative seat classes;
-- target legality;
-- target selection click path;
-- selected-target treatment;
-- interaction semantic role classes/data;
-- turn/action/defeated states;
-- public Hero info behavior;
-- public OpponentInspectionOverlay;
-- LocalPlayerDock.
-
-Outside target-selection mode, clicking the opponent hero body must still open public Inspect exactly as before.
-
-Do not move the actual seat DOM into Interaction Stage.
-
-### 6. Do not move the Safe Zone in this task
-Keep the accepted values unchanged:
-- desktop `--interaction-safe-top:385px`
-- <=650 `319px`
-- <=480 `326px`
-
-The next reviewer task will reclaim the vertical space only after the compact seat bounds are proven.
-
-Also do not change:
-- InteractionStage width/position;
-- Hero Focus dimensions;
-- Medium Source dimensions;
-- Reaction/Dying/Meta composition;
+### 1. Change only top-row safe-zone TOP geometry
+Keep:
+- safe-zone left/right;
+- safe-zone bottom;
+- Stage width;
+- Stage internal layout;
+- play-table height;
 - LocalPlayerDock geometry.
+
+Change only the top-row `--interaction-safe-top` values / equivalent CSS needed to place the Safe Zone immediately after the compact row.
+
+No JavaScript measurements, ResizeObserver, timers or runtime DOM repositioning.
+
+### 2. Clearance contract
+At 1440x900, 650x900 and 480x900, for 2-, 3- and 4-player top-row layouts:
+
+`safeZone.top - maxOpponentBottom`
+
+must be:
+- at least **6 CSS px**;
+- no more than **24 CSS px**.
+
+This is the real contract. Do not hard-code tests to one exact top value.
+
+The Stage must begin inside that Safe Zone and must not overlap opponents.
+
+### 3. Preserve compact seats exactly
+Do not change:
+- VIS-04A seat width/height;
+- hero-region height;
+- Hand footer height;
+- anchor X/Y placement;
+- hidden top-row Equipment/Judgement treatment;
+- Inspect behavior;
+- target behavior.
+
+If moving the safe zone reveals a seat-overlap problem, fix the safe-zone top only; do not move seats.
+
+### 4. Close the known 650 Dying gap
+For `state="dying", count=4, 650x900`:
+- Stage must be fully inside Safe Zone;
+- Stage bottom <= safeZone.bottom + 4px;
+- Stage bottom <= playTable.bottom - 1px;
+- no clipping/scrolling/scaling;
+- Dying handoff remains fully visible;
+- LocalPlayerDock remains unobstructed.
+
+Do not shrink Dying content to make this pass.
+
+### 5. Preserve all accepted Interaction states
+At 1440/650/480, count=4, retain containment for:
+- interaction;
+- negation;
+- dying;
+- group-observer.
+
+For each:
+- max opponent bottom <= Stage top - 6px;
+- Stage fully inside Safe Zone;
+- Safe Zone and Stage do not overlap LocalPlayerDock;
+- no horizontal page overflow;
+- Hero Focus dimensions unchanged;
+- Medium Source dimensions unchanged where present;
+- Reaction Chain / Dying panel remains visible where applicable.
+
+### 6. REST still has invisible geometry only
+At REST:
+- `.interaction-safe-zone` remains exactly once;
+- no Interaction Stage is rendered;
+- safe zone has no background/border/placeholder/control.
+
+Moving the safe-zone top must not create visible empty chrome.
+
+### 7. Side Column is untouched
+For count=6 at 1440 and 480:
+- `data-seat-topology="side-column"` remains;
+- side-column seat geometry remains unchanged;
+- no new safe-zone top rule should accidentally alter side-column placement.
 
 ## Required browser regression
 
-Use 4-player top-row fixtures at:
-- 1440x900
-- 650x900
-- 480x900
+Extend `tests/browser/ui19.spec.mjs`.
 
-### A. Compact-seat geometry
-For `state="rest", count=4` assert:
+### A. Safe-zone reclaimed-gap matrix
+For REST at counts 2, 3, 4 and widths 1440, 650, 480:
+- measure every opponent bottom;
+- measure Safe Zone top;
+- assert clearance is 6–24px;
+- assert VIS-04A seat dimensions/order remain unchanged;
+- assert one LocalPlayerDock;
+- no horizontal overflow.
 
-1. exactly 3 opponent anchors;
-2. all three remain on one top row within the existing <=4px Y tolerance;
-3. horizontal centre order remains relativeIndex 1 < 2 < 3;
-4. each opponent seat has `width > height`;
-5. each seat height is within the viewport-specific maximum:
-   - 1440: <=110px
-   - 650: <=92px
-   - 480: <=82px
-6. no opponent seat overlaps another;
-7. no horizontal page overflow;
-8. LocalPlayerDock still exists exactly once.
+### B. Active-state containment matrix
+For count=4 at 1440/650/480, run:
+- interaction;
+- negation;
+- dying;
+- group-observer.
 
-### B. Compact content contract
-For the same cases assert:
-- player name visible;
-- hero name visible;
-- HP text visible;
-- Hand count visible;
-- the full top-row Equipment grid is not visibly occupying seat height;
-- the full top-row Judgement card-face panel is not visibly occupying space when present.
+Assert the containment rules in sections 4–5.
 
-Do not test by deleting DOM nodes; this is a visual-density contract.
+### C. Explicit previous failure proof
+Add a named regression for Dying 650x900 proving:
+- current pre-VIS-04B geometry would fail;
+- new geometry contains the full Stage and Dying handoff.
 
-### C. Inspect remains available
-At least at 480x900 and 1440x900:
-- load a non-target-selection top-row fixture;
-- click one opponent hero body;
-- assert the existing `.opponent-inspection-panel` opens;
-- close it and prove the same seat anchor remains.
-
-Do not redesign Inspect.
-
-### D. Interaction hierarchy regression
-At `state="interaction", count=4` for 1440/650/480:
-- Large Hero Focus remains at the accepted VIS-03B size;
-- every top-row seat total height is less than the Large Hero Focus portrait height;
-- opponent row stays above the Interaction Stage;
-- existing Safe Zone containment remains true;
-- viewer/local hero remains only in LocalPlayerDock.
-
-### E. Side-column negative regression
-At `state="rest", count=6` at 480x900 and 1440x900:
-- `data-seat-topology="side-column"` remains;
-- the top-row compact width/height rules do not apply;
-- existing Side Column Equipment/Judgement presentation is not hidden by the new top-row selectors.
-
-Do not attempt to improve Side Column layout in this task.
+Do not weaken/remove the existing VIS-02/VIS-03 assertions. The goal is to make the previously failing 650 Dying assertions green.
 
 ## Forbidden shortcuts
 Do not:
-- move/reorder opponent anchors;
-- change player identity or relativeIndex;
-- shrink the entire board using CSS transform;
-- hide player/hero name, HP or Hand count;
-- delete public Equipment/Judgement state from room data;
-- remove public Inspect;
-- change target click behavior;
-- move Safe Zone upward yet;
-- resize Large Hero Focus or Medium Source;
-- change 5–10 player layout;
-- change gameplay/server/projector/presentation semantics.
+- move/shrink opponent thumbnails;
+- change safe-zone bottom;
+- increase play-table height;
+- move/shrink LocalPlayerDock;
+- shrink Hero Focus or Medium Source;
+- hide/collapse Reaction Chain, Dying or Meta;
+- add scrolling/clipping/scale transforms;
+- use JS geometry;
+- change Side Column mode;
+- change gameplay/presentation semantics;
+- redesign Stage content.
 
 ## Validation
 Run and report:
-- focused VIS-04A browser tests;
-- retained VIS-01 top-row geometry tests;
-- retained VIS-02 / VIS-03B/C/D/E geometry/presentation tests;
+- focused VIS-04B reclaimed-gap tests;
+- retained VIS-04A compact-seat tests;
+- retained VIS-02 / VIS-03B/C/D/E tests;
 - `npm run test:browser` if allowed locally;
 - `npm run test:fast` if allowed locally;
 - `npm run build` if allowed locally;
@@ -281,29 +212,15 @@ Do not claim unrun commands passed. Do not inspect or wait for CI.
 Append only:
 - implementation SHA;
 - files changed;
-- final seat width/height strategy for >700, 481–700 and <=480;
-- what top-row content remains directly visible;
-- how Equipment/Judgement detail remains accessible;
-- measured 4-player seat bounds at 1440/650/480;
-- proof seat order/anchors did not move;
+- old vs new safe-zone-top strategy;
+- measured opponent-bottom / safe-zone-top / clearance at 1440, 650, 480;
+- Dying@650 before/after Stage and Safe Zone bounds;
 - focused/retained validation results;
 - any remaining GAP.
 
-Do not declare VIS-04A accepted. Reviewer decides after inspection.
+Do not declare VIS-04B accepted. Reviewer decides after inspection.
 
 Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if 2–4 player Top Row opponents are genuine compact, wider-than-tall thumbnails with visible identity/HP/Hand count, full Equipment/Judgement card faces no longer consume top-row seat space, fixed seat anchors/targeting/Inspect remain intact, the Large central Hero remains visually larger, Side Column mode is untouched, and Safe Zone geometry is not moved in this task.
-
-## Execution result — UX2.0VIS-04A (2026-10-04)
-
-- Implementation commit: `b2c903214d62e992575e9dcb153b25d19ca6f400`.
-- Files changed: `app/sequence-overrides.css`, `tests/browser/fixture.jsx`, `tests/browser/ui19.spec.mjs`, and this `HANDOVER.md` entry.
-- Seat sizing remains within the existing top-row widths: above 700px, up to 180px wide by 108px high (measured at 1440×900: 180×108); 481–700px, 92–112px wide by 88px high (650×900: 112×88); at or below 480px, 82–100px wide by 78px high (480×900: 100×78). Hero image areas are 70/54/46px and hand footers 36/32/30px at those breakpoints.
-- Measured 4-player seat bounds (relativeIndex, x, y, width×height): 1440×900 — 1 (10, 131.5, 180×108), 2 (630, 131.5, 180×108), 3 (1250, 131.5, 180×108); 650×900 — 1 (21.5, 141.25, 112×88), 2 (269, 141.25, 112×88), 3 (516.5, 141.25, 112×88); 480×900 — 1 (15.5, 165.5, 100×78), 2 (190, 165.5, 100×78), 3 (364.5, 165.5, 100×78).
-- Player name, hero name, HP text, hand count, and hero artwork remain visible. Hearts, Equipment grid, and Judgement card faces are hidden only inside `data-seat-topology="top-row"`; the underlying public equipment/judgement data remains mounted. The existing Inspect overlay still reveals the Zhuge Crossbow and Lightning fixture cards, and opening/closing it preserves opponent anchor bounds.
-- Authority/scope: CSS-only presentation treatment plus static browser-fixture and regression-test updates. No anchor placement selectors, target/Inspect behavior, Side Column rules, Safe Zone geometry, Hero Focus/Medium Source sizing, game state, server/projector, or interaction semantics were changed. Relative seat order remains 1<2<3 on one row; tests retain exactly one local player in LocalPlayerDock.
-- VIS-04A focused browser tests: 13/13 PASS; compact-seat geometry rerun: 3/3 PASS. Retained VIS-01 and VIS-02/03B/C/D/E browser tests: 47/51 PASS. Four existing Dying@650×900 assertions still fail because Interaction Stage bottom is 591.9375px while the accepted Safe Zone limit is 586px (VIS-02-FIX1, VIS-03B, VIS-03C, VIS-03D). This task forbids moving the Safe Zone and the handover says not to reopen VIS-03E, so the gap is left for a separately authorized reviewer task.
-- Full browser/fast suites, build, lint, and `git diff --check` were not run under the project remote-validation workflow. GitHub Actions remains responsible for complete validation; CI status was not checked.
-- Reviewer handoff: inspect and decide VIS-04A acceptance. If further work is needed, issue a new bounded task for the existing Dying@650×900 stage overflow; no follow-up implementation is authorized by this result.
+Pass only if the 2–4 player Safe Zone begins 6–24px below the compact opponent row across 1440/650/480, all accepted active states remain contained, the known 650 Dying overflow is closed without shrinking content, and seats/Side Column/LocalPlayerDock/gameplay remain unchanged.
