@@ -188,3 +188,14 @@ Push implementation + appended HANDOVER to `origin/ux-v2`, fetch, verify remote 
 ## Acceptance
 
 FIX1 passes only if no snapshot can expose non-null public semantic identity/interaction/decision while its stable boundary has failed closed to REST; CHOICE actor mismatch also fails closed; valid real snapshots remain unchanged; localControl cannot recreate public authority; reserved settlement/transition semantics remain unpopulated; and there is no gameplay/UI scope creep.
+
+## Execution result — UX2.0C7-01-FIX1 atomic PresentationSnapshot authority — 2026-10-03
+
+- Implementation SHA: `1f0721cb8d3ff1eef762404e894641583e2b22d8` (`fix(ux-v2): make presentation snapshot authority atomic`).
+- Files changed: `game/presentation-snapshot.ts`, `tests/presentation-snapshot.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Exact gate: `coherentPublicAuthority` admits public identity, interaction, decision, and stable boundary only when the scene is proven, the boundary is neither `REST` nor reserved `SETTLEMENT`, all interaction/checkpoint/revision IDs match, and a `CHOICE` boundary actor matches the scene actor. Any failure returns one identity-free `REST` result. `localControl` remains an isolated CurrentAction reference.
+- Negative coverage: mismatched `interactionId`, `checkpointId`, `presentationRevision`, and `CHOICE decisionActorId`, plus `REST` and `SETTLEMENT` boundaries. Every case asserts null identity/interaction/decision, exact identity-free REST, null settlement, empty `transitionEvents`, and localControl without public identity.
+- Positive regression: focused typed CHOICE behavior remains covered; the real engine/API suite passed `24/24`, including active Attack/Dodge CHOICE projection and terminal REST behavior, with existing Borrowed Sword, Dying, Group/Damage, Duel, Negation, and Judgement projection checks preserved. No real SPECIAL fixture is currently exposed by the accepted API fixtures, so SPECIAL was not exercised and no synthetic positive claim was added.
+- `settlement` and `transitionEvents` remain reserved (`null` and `[]`); no gameplay, React, or CSS changed.
+- Validation: focused snapshot test `4/4`; `npm run test:fast` `128/128`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
+- C7-01-FIX1 is ready for reviewer acceptance.
