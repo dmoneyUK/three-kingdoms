@@ -98,3 +98,46 @@ Append only UI-12 result: SHA, files, complete group/AOE inventory, exact author
 
 ## Acceptance
 Pass only if AOE/group selection is an automatic local preview with zero target clicking and zero pre-submit action, existing Play payload remains unchanged, preview scope is backed by existing gameplay authority rather than presentation inference, and public semantic interaction state remains independent.
+
+---
+
+## UI-12 execution result — 2026-10-03
+
+- **Implementation:** `a20548b feat(ux): preview automatic group scope`.
+- **Files:** `game/group-scope-preview.ts`, `app/page.tsx`, `app/globals.css`,
+  `tests/active-skill-interactions.test.mjs`, `README.md`, `ROADMAP.md`, and
+  `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- **Inventory and authority:** `game/cards.ts` defines the supported automatic
+  scope cards. In `app/api/rooms/route.ts` the `play_card` route constructs
+  Oath recipients from wounded living rows in `resumeNormalStratagemUse`,
+  Bumper Harvest choosers with `playersInTurnOrder(players, me.seat)`, and
+  Barbarian Invasion/Raining Arrows targets with that same order excluding the
+  source. Every path submits only `play_card { cardId }`; the server constructs
+  order/progression after acceptance. No current path has a pre-submit
+  conditional/immunity recipient exclusion. Sky Piercing Halberd is a separate
+  explicit target-selection Attack, not an automatic-scope preview.
+- **Local model:** `buildGroupScopePreview` accepts a selected card kind,
+  source ID, turn seat, public player HP/alive facts, and a
+  CurrentAction-authorized Play boolean. It returns only active/kind/affected
+  IDs/neutral label, reuses `playersInTurnOrder`, and reads no
+  PresentationSnapshot, Pending, timeline, event, or causal identity.
+- **Mounted evidence:** selecting any supported group card sends zero action;
+  Oath includes only wounded living characters, Bumper Harvest all living
+  characters, and the two group attacks all other living characters. Decorated
+  opponents retain `Inspect`, no Confirm is added, and Play keeps exactly
+  `play_card { cardId }` with no invented target IDs. Deselect, busy state, and
+  a changed unauthorized action clear/suppress preview. A public current-
+  participant role and the distinct local preview class can coexist without
+  changing `PresentationClientView`, Interaction Stage, Hero Focus, IDs, or
+  public semantic roles.
+- **Boundaries/GAPs:** no server, game-rule, payload, participant-order,
+  projector/snapshot, Hero Focus, topology, or settlement changes. UI-11's
+  desktop/<=650px/<=480px pixel-level browser/manual visual check remains a
+  truthful GAP; UI-12 adds no duplicate controls at those widths in rendered
+  topology/console contracts.
+- **Validation:** focused mounted interaction suite **24/24**; fast suite
+  **174/174** across 17 files; API suite **239/239** across 23 files and four
+  shards; `npm run build`, `npm run lint`, and `git diff --check` pass.
+- **Recommended next work:** planner/reviewer should select one new bounded UX
+  slice; do not treat the remaining UI-11 pixel-level browser/manual check as
+  closed without real visual evidence.
