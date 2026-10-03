@@ -15,244 +15,258 @@ Agent sequence:
 
 Do not wait for or poll CI.
 
-## Reviewer status — UX2.0VIS-03C ACCEPTED
+## Reviewer status — UX2.0VIS-03D ACCEPTED
 
-Reviewed implementation: `44f5838902d48618697dc7eacc28f5b01643a43e`.
+Reviewed implementation: `b389949bc0751520e11b79ee5cd36f14b09b7805`.
 
 Accepted facts that the next task must preserve:
-- top-row Interaction Stage outer shell is open: transparent background, zero border, zero shadow and zero shell padding;
-- the semantic Stage element/data attributes remain mounted;
-- the header remains a compact fitted label;
-- inner Reaction Chain / Dying panels retain their own chrome;
-- VIS-03B Hero Focus sizes are unchanged;
-- Hero/Event/Meta regions, safe-zone geometry, seats, LocalPlayerDock, side-column/global shell and gameplay authority are unchanged;
-- focused VIS-03C tests reported 9/9 PASS; retained VIS-02-FIX1/VIS-03B/VIS-03C tests reported 27/27 PASS.
+- `buildHeroFocusView` remains the viewer-equal public semantic selector and its current-participant / sole-active-target / Dying fail-closed rules were not changed;
+- viewer-specific self-projection is isolated in `projectHeroFocusForViewer`;
+- a local public primary is replaced only by one unique external candidate derived from proven source/active-target identities; ambiguity fails closed;
+- viewer hero is not duplicated centrally in the reviewed Interaction / Negation / Dying paths;
+- LocalPlayerDock role projection remains unchanged;
+- the synthetic Dying browser fixture now matches existing engine/API evidence: dying/current participant p2, rescuer/decision actor p3;
+- the extra mounted Duel regression change is accepted because the viewer-centric projection intentionally changed only the expected central visual participant while preserving controls/protocol;
+- focused public/viewer-projection unit tests reported 2/2 PASS, mounted interaction regressions 6/6 PASS, focused browser VIS-03D 9/9 PASS, and retained layout/viewer suites 36/36 PASS.
 
-Remaining design mismatch:
-- UX V2 requires the viewer's own hero to remain only in LocalPlayerDock and never be duplicated into Interaction Stage;
-- current `buildHeroFocusView` is intentionally public/viewer-equal and can select the viewer as current participant;
-- the fix must therefore be a separate viewer-specific visual projection, not a change to public semantic authority.
+Remaining visual gap relevant to the real mobile Group/AOE screenshot:
+- when the viewer is not the interaction source and the current large primary is an external active target, the proven external source is still only shown as small text;
+- UX V2 calls for the important second external participant to remain visible as a **Medium Participant Card** while the current participant remains the **Large Hero Focus**;
+- fixed seat thumbnails must remain in place; the medium card is a central presentation copy, not a moved seat.
 
-# NEXT TASK — UX2.0VIS-03D: Enforce Viewer Self-Projection in Hero Focus Without Changing Public Semantics
+# NEXT TASK — UX2.0VIS-03E: Add a Medium External Source Beside a Large Active-Target Hero
 
 ## Objective
-Fix exactly one viewer-centric presentation defect:
+Fix exactly one participant-hierarchy defect:
 
-**The viewer's own hero must never appear as a duplicate central Hero Focus. Keep public Hero Focus semantics viewer-equal, then apply a separate viewer-specific visual projection that keeps an external proven primary or, when the public primary is the viewer, substitutes exactly one uniquely-proven external source/target counterpart.**
+**In 2–4 player top-row Interaction Stage, when the viewer-projected Large Hero Focus is a proven active target and the proven source is a different external player, show that source as one smaller Medium Participant Card beside the Large Hero Focus.**
 
-Do not implement full two-hero source/target composition yet. Do not redesign Reaction Chain, meta content, seats, safe-zone geometry, LocalPlayerDock, or gameplay.
+This task implements only the **external source -> large active target** relationship.
+
+Do not implement the reverse "large source -> medium target" case yet.
+Do not add multiple medium participants.
+Do not redesign Current Effect, Reaction Chain, Meta, seats, Safe Zone, LocalPlayerDock, or gameplay.
 
 ## Design authority
-`docs/UX_V2_INTERACTION_STAGE_DESIGN.md` requires:
-- the viewer's own hero is never duplicated into Interaction Stage;
-- if the viewer is the source, show the external target centrally and keep YOU in LocalPlayerDock;
-- if the viewer is the target, show the external source centrally and keep YOU in LocalPlayerDock;
-- if the viewer is the current decision actor, decision emphasis belongs in LocalPlayerDock;
-- public event facts remain viewer-equal while spatial presentation is viewer-centric.
+`docs/UX_V2_INTERACTION_STAGE_DESIGN.md` defines:
+- Large Hero Focus = current primary focus/resolving participant;
+- Medium Participant Card = important source/target whose relationship must remain visible;
+- fixed Seat Thumbnails stay in place while presentation copies appear centrally;
+- wide source/target presentation preserves semantic direction source -> target;
+- viewer's own hero is never duplicated centrally;
+- third-party Negation reactors should remain primarily represented by Reaction Chain rather than extra full hero panels.
 
-Preserve this boundary:
-- **public semantic model = viewer-equal**
-- **visual projection = viewer-specific**
-
-## Existing authority to preserve
-
-### Public Hero Focus helper
-`game/hero-focus.ts::buildHeroFocusView` currently selects only:
-1. proven `currentParticipant`;
-2. otherwise one sole proven active target;
-3. Dying never guesses from active-target fallback.
-
-Its existing semantic tests prove viewer-equal public output.
-
-**Do not change those selection rules.**
-**Do not make `buildHeroFocusView` accept viewerId.**
-**Do not delete or weaken the existing viewer-equality test.**
-
-### Allowed counterpart facts
-A viewer fallback may use only identities already present in `InteractionStageView`:
-- `stage.source`
-- `stage.activeTargets`
-
-Do not use decisionActor, resolver, turn owner, CurrentAction, Pending, timeline, actionPlayerId, card/hero names, or array position as participant authority.
+The real layout defect this task targets is the Group/AOE observer case:
+- source is another player;
+- current participant/active target is another player;
+- viewer is neither the source nor the current large focus;
+- current UI enlarges the target but reduces the source to text.
 
 ## Files expected in scope
 Production:
 - `game/hero-focus.ts`
 - `app/page.tsx`
+- `app/globals.css`
 
 Tests:
 - `tests/presentation-client.test.mjs`
 - `tests/browser/fixture.jsx`
 - `tests/browser/ui19.spec.mjs`
 
-Touch `app/globals.css` only if a tiny role-label style adjustment is required. Do not change layout geometry.
+Do not change server, projector, protocol, PresentationSnapshot, PresentationClientView, gameplay, target legality or local controls.
 
 ## Required implementation
 
-### 1. Add a separate pure viewer projection helper
-In `game/hero-focus.ts`, add a pure helper such as:
+### 1. Add a separate pure Medium Source projection
+In `game/hero-focus.ts`, add a small pure helper, for example:
 
-`projectHeroFocusForViewer(stage, publicFocus, viewerId, resolvePlayerDisplay)`
+`projectMediumSourceForViewer(stage, projectedFocus, viewerId, resolvePlayerDisplay)`
 
 Equivalent naming is acceptable.
 
-The existing `buildHeroFocusView` remains the public/viewer-equal semantic helper.
+Define a small return type containing:
+- decorated public player data using the existing Hero Focus public decoration rules;
+- role label exactly `SOURCE`.
 
-### 2. Exact projection algorithm
+Do not change `buildHeroFocusView` or `projectHeroFocusForViewer` semantics.
 
-#### Case A — no public primary
-If `publicFocus.primary` is null:
-- return the public focus unchanged;
-- do not invent a participant.
+### 2. Exact eligibility rules
+Return a Medium Source only when **all** of these are true:
 
-#### Case B — public primary is external
-If `publicFocus.primary.id !== viewerId`:
-- return the public focus unchanged.
+1. `stage.visible` is true;
+2. `projectedFocus.primary` exists;
+3. `projectedFocus.primary.id` appears in `stage.activeTargets`;
+4. `stage.source.id` exists;
+5. source ID is different from `projectedFocus.primary.id`;
+6. source ID is different from `viewerId`.
 
-#### Case C — public primary is the viewer
-If `publicFocus.primary.id === viewerId`:
-- suppress that local hero from central presentation;
-- collect external candidates only from:
-  1. `stage.source` when it has an ID different from viewerId;
-  2. every `stage.activeTargets` identity with an ID different from viewerId;
-- de-duplicate by player ID.
+Otherwise return null.
 
-Then:
-- exactly 1 unique external candidate -> render that candidate;
-- 0 candidates -> visible focus with `primary:null`;
-- >1 candidates -> visible focus with `primary:null`.
+Important consequences:
+- viewer is the source -> no central Medium Source; viewer stays only in LocalPlayerDock;
+- primary is the source -> no Medium Source in this task;
+- primary is a Negation responder/current participant but is not an active target -> no Medium Source;
+- source == target/self-effect -> no duplicate Medium Source;
+- missing source authority -> no guess.
 
-Never choose the first candidate from an ambiguous set.
+Do not use decisionActor, resolver, CurrentAction, Pending, timeline, participant array order, turn owner or local controls as fallback authority.
 
-### 3. Counterpart role label
-For the unique projected external candidate:
-- if its ID is in `stage.activeTargets`, role label = `CURRENT TARGET`;
-- otherwise, if its ID equals `stage.source.id`, role label = `SOURCE`.
+### 3. Reuse the same public decoration rules
+The Medium Source may expose only:
+- player name;
+- hero portrait / hero name when publicly resolvable;
+- HP/maxHP when publicly resolvable;
+- role label `SOURCE`.
 
-Extend the Hero Focus role-label type to allow `SOURCE` if required.
+Use the same `resolvePlayerDisplay` and fail-closed decoration behavior already used by Hero Focus.
 
-Do not relabel decisionActor or resolver as source/target.
+Do not expose hand identities, private role, private providers, hidden cards or local-only information.
 
-### 4. Public decoration only
-Resolve projected counterpart name/hero/HP through the existing `resolvePlayerDisplay` callback.
+### 4. Add one presentational MediumParticipantCard
+In `app/page.tsx`, add a small read-only component for this source.
 
-Use the same public/unknown decoration behavior as current Hero Focus:
-- missing decoration stays unknown;
-- never substitute another player;
-- no private hand identities, providers or action options.
+Required DOM hooks:
+- `data-medium-participant="source"`
+- `data-medium-participant-player-id={source.id}`
 
-Small internal refactoring is allowed only to reuse the same decoration code.
+The card must show:
+- `SOURCE`;
+- existing public hero artwork if known;
+- player name;
+- hero name when known;
+- HP when known.
 
-### 5. Apply projection only at React render boundary
-Update `InteractionStage` to receive:
+No buttons, click handlers or controls.
 
-`viewerId: string | null`
+Use the existing `HeroPortrait` asset rendering path; do not introduce new art.
 
-In `GameRoom`, pass:
+### 5. Compose it with the existing Large Hero Focus
+Inside `.interaction-stage-hero-region`:
+- keep the existing Large `HeroFocus`;
+- when Medium Source exists, render it **before/left of** the Large active-target focus;
+- include a small non-interactive directional marker `→` between them;
+- source/target visual direction must read left-to-right on top-row mode;
+- if Medium Source is null, do not render an empty card or arrow.
 
-`viewerId={room.meId}`
+The fixed source seat in `.player-board` must remain mounted in its VIS-01 position. This is a presentation copy only.
 
-Inside InteractionStage:
-1. build `stage` exactly as today;
-2. build public `heroFocus = buildHeroFocusView(...)`;
-3. call the new viewer projection helper;
-4. render `HeroFocus` from the projected result.
+### 6. Size hierarchy
+For top-row mode use these source portrait sizes:
 
-Do not change `PresentationClientView`, `PresentationSnapshot`, projector/server output, participant-role arrays or gameplay.
+- >650px: Medium Source portrait **56x70px**
+- 481–650px: **48x60px**
+- <=480px: **42x53px**
 
-### 6. Preserve LocalPlayerDock role projection
-When local Hero Focus is suppressed:
-- keep existing local dock semantic role classes/data unchanged;
-- current-participant / active-target / decision treatments remain on LocalPlayerDock;
-- do not add a second local hero image anywhere else.
+The existing Large Hero Focus portrait sizes remain unchanged:
+- 90x113 desktop;
+- 72x90 at 481–650;
+- 64x80 at <=480.
 
-## Correct one known synthetic Dying-fixture contradiction
-Current `tests/browser/fixture.jsx` Dying data has:
-- dying target `p2`;
-- viewer/decision actor `p3`;
-- but generic fixture construction incorrectly sets `currentParticipantId=p3`.
+The Medium Source must remain visibly smaller than the Large primary at every tested width.
 
-Real engine/API evidence in `tests/api/presentation-v2-engine.test.mjs` proves Dying uses:
-- originalTargetIds = dying player;
-- activeTargetIds = dying player;
-- currentParticipantId = dying player;
-- decisionActorId = rescuer.
+Do not shrink the Large Hero Focus.
 
-Correct only the synthetic Dying browser fixture:
-- source = `p1`;
-- currentParticipantId = `p2`;
-- activeTargets = [`p2`];
-- decisionActorId = `p3`;
-- activeResolverId = `p3`.
+### 7. Mobile composition must remain horizontal inside Hero region
+For this bounded source->target pair in 2–4 player top-row mode:
+- keep Medium Source + arrow + Large Hero Focus on one horizontal relationship row even at 650/480;
+- allow text inside each participant block to wrap/compact;
+- do not stack the Medium Source above the Large target;
+- do not introduce horizontal scrolling.
 
-Do not change production projector/gameplay for this fixture.
+Reaction/Dying/Meta regions keep their existing responsive behavior.
 
-Update browser expectations that currently expect Dying Hero Focus `p3`; the corrected public primary is `p2`.
+## Add one browser fixture that reproduces the missing Group/AOE observer case
+Extend `tests/browser/fixture.jsx` with a dedicated state:
+
+`group-observer`
+
+For `count=4`, construct:
+- viewer/meId = `p3`
+- stage = `GROUP_RESOLUTION`
+- effect = `Raining Arrows`
+- source = `p4`
+- original/active targets = [`p1`, `p2`, `p3`]
+- currentParticipant = `p1`
+- decisionActor = `p1`
+- activeResolver = `p1`
+
+Local viewer p3 is in group scope but is not the current participant.
+
+Give CurrentAction only the minimum coherent non-local fixture state needed by the harness. Do not use CurrentAction as presentation authority.
+
+Do not alter the existing `group` fixture; add `group-observer` separately.
 
 ## Required unit regressions
-Extend `tests/presentation-client.test.mjs`.
+Extend `tests/presentation-client.test.mjs` for Medium Source projection:
 
-Keep the existing `buildHeroFocusView` viewer-equality regression unchanged.
+1. external source A + projected active-target B + viewer C -> Medium Source A.
+2. viewer is source A -> null.
+3. projected primary C not in activeTargets [B] -> null.
+4. projected primary is source A -> null.
+5. source equals projected primary B -> null.
+6. source id null -> null.
+7. unknown proven source keeps the same source ID with unknown/null artwork/HP; no substitute participant.
 
-Add tests for the new viewer projection helper:
-
-1. external primary unchanged: public primary B, viewer A -> B.
-2. viewer is source/current primary; source A, activeTargets [B] -> B, role CURRENT TARGET.
-3. viewer is target/current primary; source A, activeTargets [B], viewer B -> A, role SOURCE.
-4. same external ID appears as source and active target -> de-duplicate and render it once.
-5. source B + active target C while viewer A is public primary -> ambiguous -> primary null.
-6. source/targets all viewer -> primary null.
-7. unknown display decoration stays attached to the same proven candidate and never substitutes another ID.
+Retain all VIS-03D viewer-projection tests unchanged.
 
 ## Required browser regression
-Use 4-player top-row fixtures at 1440x900, 650x900 and 480x900.
 
-### Interaction
-Existing `state="interaction"` has viewer/public primary `p1`, source `p1`, active target `p2`.
+### A. Group observer — primary acceptance case
+For `state="group-observer", count=4` at 1440x900, 650x900 and 480x900 assert:
 
-Assert:
-- no central Hero Focus player ID `p1`;
-- exactly one central Hero Focus;
-- projected central Hero Focus = `p2`;
-- LocalPlayerDock anchor remains `p1`.
+1. exactly one Large Hero Focus;
+2. Large Hero Focus player ID = `p1`;
+3. exactly one `[data-medium-participant="source"]`;
+4. Medium Source player ID = `p4`;
+5. no central Hero Focus / Medium Source uses viewer ID `p3`;
+6. LocalPlayerDock anchor remains `p3`;
+7. fixed opponent seat anchor `p4` still exists in `.player-board`;
+8. Medium Source is a distinct central presentation copy, not the seat node;
+9. Medium Source bounding box is left of the Large Hero Focus;
+10. arrow is between Medium Source and Large Hero Focus;
+11. Medium portrait is smaller than Large portrait;
+12. both participant blocks are fully inside `.interaction-stage-hero-region`;
+13. Interaction Stage remains inside Safe Zone;
+14. Stage/Safe Zone do not overlap LocalPlayerDock;
+15. no horizontal page overflow.
 
-### Negation
-Existing `state="negation"` has viewer/public primary `p2` and one unique external proven `p1`.
+### B. Self-projection negative case
+For existing `state="interaction", count=4` where viewer p1 is source:
+- no Medium Source renders;
+- Large Hero Focus remains external p2;
+- local p1 stays only in LocalPlayerDock.
 
-Assert:
-- no central Hero Focus `p2`;
-- projected central Hero Focus = `p1`;
-- LocalPlayerDock remains `p2`.
+Run at least at 480x900 and 1440x900.
 
-### Dying
-After fixture correction:
-- viewer = `p3`;
-- dying/current participant = `p2`;
-- central Hero Focus remains `p2`;
-- LocalPlayerDock remains `p3`;
-- Dying handoff identifies `p2` as dying player and `p3` as decision actor.
+### C. Negation negative case
+For existing `state="negation", count=4`:
+- no Medium Source is added merely because Reaction Chain exists;
+- existing Reaction Chain remains visible.
 
-For all states/widths retain existing VIS-02/VIS-03A/B/C containment and no-overflow checks.
+Run at least at 480x900.
+
+Retain existing VIS-02/VIS-03B/C/D geometry/self-projection assertions; do not weaken them.
 
 ## Forbidden shortcuts
 Do not:
-- make public PresentationSnapshot/PresentationClientView viewer-specific;
-- change `buildHeroFocusView` candidate rules;
-- remove its viewer-equality regression;
-- use decision actor/resolver/CurrentAction/Pending/timeline as fallback participant;
-- choose from an ambiguous multi-external set;
-- duplicate local hero centrally;
-- change Hero Focus dimensions;
-- move seats/safe zone/dock;
-- implement two-external-hero composition;
-- change Reaction Chain/meta layout;
-- modify gameplay/server/projector semantics.
+- move or clone the actual opponent seat DOM node;
+- render the viewer's hero centrally;
+- add more than one Medium Participant Card;
+- add Medium Source when primary is not a proven active target;
+- infer source from decision actor/resolver/CurrentAction/Pending/timeline;
+- implement medium target/reverse direction yet;
+- change Hero Focus primary-selection rules;
+- shrink Large Hero Focus;
+- change safe-zone/seat/dock geometry;
+- redesign Reaction Chain, Dying handoff or Meta;
+- change gameplay/server/projector semantics.
 
 ## Validation
 Run and report:
-- focused unit tests for viewer Hero projection;
-- focused VIS-03D browser tests;
-- retained VIS-02-FIX1 / VIS-03B / VIS-03C browser tests;
+- focused unit tests for Medium Source projection;
+- focused `group-observer` browser tests;
+- self-source and Negation negative browser tests;
+- retained VIS-02-FIX1 / VIS-03B / VIS-03C / VIS-03D browser tests;
 - `npm run test:fast` if allowed locally;
 - `npm run test:browser` if allowed locally;
 - `npm run build` if allowed locally;
@@ -265,10 +279,11 @@ Do not claim unrun commands passed. Do not inspect or wait for CI.
 Append only:
 - full implementation SHA;
 - files changed;
-- exact viewer-projection rules;
-- confirmation `buildHeroFocusView` stayed viewer-equal;
-- Dying fixture correction and evidence source;
-- unit/browser validation results;
+- exact Medium Source eligibility rules;
+- final portrait dimensions by viewport;
+- `group-observer` fixture facts;
+- proof source seat remains fixed while central source is a presentation copy;
+- focused/retained validation results;
 - any remaining GAP.
 
 Do not declare the task accepted. Reviewer decides after inspection.
@@ -276,27 +291,4 @@ Do not declare the task accepted. Reviewer decides after inspection.
 Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if the viewer's own hero can no longer be duplicated as central Hero Focus, exactly one uniquely-proven external source/target counterpart is shown when available, ambiguous external sets fail closed, Dying fixture semantics match existing real API evidence, and all existing layout/containment/gameplay/public-authority contracts remain unchanged.
-
-## Agent execution result — UX2.0VIS-03D
-
-- Implementation SHA: `b389949bc0751520e11b79ee5cd36f14b09b7805`.
-- Files changed:
-  - `game/hero-focus.ts`
-  - `app/page.tsx`
-  - `tests/presentation-client.test.mjs`
-  - `tests/browser/fixture.jsx`
-  - `tests/browser/ui19.spec.mjs`
-  - `tests/active-skill-interactions.test.mjs`
-- Exact viewer-projection rules: `projectHeroFocusForViewer(stage, publicFocus, viewerId, resolvePlayerDisplay)` returns the public focus unchanged when there is no public primary or the primary is external. When the public primary is the viewer, it collects only external `stage.source` and `stage.activeTargets` identities, de-duplicates by player ID, and renders only one unique candidate. Zero or multiple unique candidates fail closed to `primary:null`/`roleLabel:null`. A candidate proven as an active target is labelled `CURRENT TARGET`; otherwise the unique source is labelled `SOURCE`. Decision actor, resolver, CurrentAction, Pending, timeline and array position are never candidate authority.
-- Public helper boundary: `buildHeroFocusView` still has no `viewerId` parameter and retains the existing current-participant / sole-active-target / Dying-no-fallback rules. Its decoration body was only extracted into a shared fail-closed function. The unchanged viewer-equality regression passes. `InteractionStage` now accepts `viewerId`, builds the public focus first, then applies viewer projection only at the React render boundary; `GameRoom` passes `room.meId`. LocalPlayerDock role projection was not changed.
-- Dying fixture correction: only the synthetic browser snapshot now sets source=`p1`, current participant/active target=`p2`, decision actor/active resolver=`p3`. This matches the existing engine-backed evidence in `tests/api/presentation-v2-engine.test.mjs`, which proves the Dying player owns original/active target and current-participant identity while the rescuer separately owns decision/resolver identity. No production projector/gameplay code changed.
-- Focused unit validation:
-  - `node --import tsx --test --test-name-pattern='viewer Hero Focus projection' tests/presentation-client.test.mjs` — final **1/1 PASS**, covering all seven required external/unique/de-dup/ambiguous/local-only/unknown-decoration cases. The first run failed only because the test expected `Unknown participant`; the implementation correctly preserved the existing proven active-target placeholder `Unknown target`, and the assertion was corrected without changing production behavior.
-  - `node --import tsx --test --test-name-pattern='Hero Focus selects only accepted|viewer Hero Focus projection' tests/presentation-client.test.mjs` — **2/2 PASS**, including the unchanged public viewer-equality test.
-  - `node --import tsx --test --test-name-pattern='mounted Duel response|mounted Dying handoff|mounted Negation chain' tests/active-skill-interactions.test.mjs` — final **6/6 PASS**. The initial 5/6 run exposed the old local-Duel central `p2` expectation; it now asserts external `p1 / CURRENT TARGET` while retaining local `p2` control assertions.
-- Focused browser validation:
-  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-03D' --config tests/browser/playwright.config.mjs` — **9/9 PASS**. Interaction projects `p2` with viewer/Dock `p1`; Negation projects `p1` with viewer/Dock `p2`; corrected Dying keeps central/dying `p2` with viewer/Dock/decision actor `p3`, across 1440/650/480.
-  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-(02-FIX1|03B|03C|03D)' --config tests/browser/playwright.config.mjs` — **36/36 PASS** across retained containment, Hero Focus sizing, open shell and viewer self-projection suites.
-- Full validation not run under the project remote-validation workflow: `npm run test:fast`, `npm run test:browser`, `npm run build`, `npm run lint`, and `git diff --check`. GitHub Actions owns those gates; CI status was not inspected or polled.
-- Remaining GAP: none observed within the bounded VIS-03D scope. Full-suite and CI results remain unverified pending GitHub Actions/user notification.
+Pass only if a top-row observer of a Group/AOE interaction sees one smaller external SOURCE card followed by the existing Large current active-target Hero Focus, the viewer/local hero is never duplicated, the fixed source seat does not move, mobile 480 remains contained with no overflow, and public/gameplay authority remains unchanged.
