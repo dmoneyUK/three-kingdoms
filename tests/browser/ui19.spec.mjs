@@ -327,6 +327,89 @@ for (const { width, height, minimumPortrait } of HERO_FOCUS_VIEWPORTS) {
   }
 }
 
+for (const { width, height, minimumPortrait } of HERO_FOCUS_VIEWPORTS) {
+  for (const { state, label } of INTERACTION_STATES) {
+    test(`UX2.0VIS-03C ${label} ${width}x${height} keeps an open top-row Stage shell`, async ({ page }) => {
+      await loadFixture(page, { state, count: 4, width, height });
+      const stage = page.locator(".interaction-stage");
+      await expect(stage, "exactly one semantic Interaction Stage remains mounted").toHaveCount(1);
+      await expect(stage).toBeVisible();
+      await expect(stage.locator(":scope > header"), "the existing Stage header remains visible").toBeVisible();
+      await expect(page.locator(".interaction-stage-hero-region"), "Hero region hook remains mounted once").toHaveCount(1);
+      await expect(page.locator(".interaction-stage-event-region"), "Event region hook remains mounted once").toHaveCount(1);
+      await expect(page.locator(".interaction-stage-meta-region"), "Meta region hook remains mounted once").toHaveCount(1);
+      await assertVisible(page.locator(".local-player-dock"), "local dock");
+      if (state === "negation") await expect(page.locator('[data-reaction-chain="proven"]')).toBeVisible();
+      if (state === "dying") await expect(page.locator('[data-dying-handoff="proven"]')).toBeVisible();
+
+      const result = await page.evaluate(() => {
+        const rect = (element) => {
+          const value = element.getBoundingClientRect();
+          return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+        };
+        const overlap = (left, right) => Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left)) * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+        const stage = document.querySelector(".interaction-stage");
+        const header = stage?.querySelector(":scope > header") ?? null;
+        const portrait = document.querySelector(".hero-focus-portrait");
+        const safeZone = document.querySelector(".interaction-safe-zone");
+        const localDock = document.querySelector(".local-player-dock");
+        const innerPanel = document.querySelector('[data-reaction-chain="proven"], [data-dying-handoff="proven"]');
+        const stageRect = stage ? rect(stage) : null;
+        const headerRect = header ? rect(header) : null;
+        const portraitRect = portrait ? rect(portrait) : null;
+        const safeZoneRect = safeZone ? rect(safeZone) : null;
+        const dockRect = localDock ? rect(localDock) : null;
+        const stageStyle = stage ? getComputedStyle(stage) : null;
+        const headerStyle = header ? getComputedStyle(header) : null;
+        const innerPanelStyle = innerPanel ? getComputedStyle(innerPanel) : null;
+        return {
+          stage: stageRect,
+          header: headerRect,
+          portrait: portraitRect,
+          safeZone: safeZoneRect,
+          stageStyle: stageStyle ? {
+            backgroundColor: stageStyle.backgroundColor,
+            borderWidths: [stageStyle.borderTopWidth, stageStyle.borderRightWidth, stageStyle.borderBottomWidth, stageStyle.borderLeftWidth],
+            boxShadow: stageStyle.boxShadow,
+            paddingWidths: [stageStyle.paddingTop, stageStyle.paddingRight, stageStyle.paddingBottom, stageStyle.paddingLeft],
+            pointerEvents: stageStyle.pointerEvents,
+          } : null,
+          headerStyle: headerStyle ? { borderBottomWidth: headerStyle.borderBottomWidth, display: headerStyle.display } : null,
+          innerPanelBackground: innerPanelStyle?.backgroundColor ?? null,
+          stageDockOverlap: stageRect && dockRect ? overlap(stageRect, dockRect) : null,
+          safeZoneDockOverlap: safeZoneRect && dockRect ? overlap(safeZoneRect, dockRect) : null,
+          scrollWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+        };
+      });
+
+      expect(result.stageStyle, "computed Stage shell style").not.toBeNull();
+      expect(result.stageStyle.backgroundColor, "outer Stage background is transparent").toBe("rgba(0, 0, 0, 0)");
+      expect(result.stageStyle.borderWidths, "outer Stage border is removed").toEqual(["0px", "0px", "0px", "0px"]);
+      expect(result.stageStyle.boxShadow, "outer Stage shadow is removed").toBe("none");
+      expect(result.stageStyle.paddingWidths, "old dashboard shell padding is removed").toEqual(["0px", "0px", "0px", "0px"]);
+      expect(result.stageStyle.pointerEvents, "open shell remains non-interactive").toBe("none");
+      expect(result.headerStyle, "computed Stage header style").not.toBeNull();
+      expect(result.headerStyle.borderBottomWidth, "full-width header divider is removed").toBe("0px");
+      expect(result.headerStyle.display, "header uses a fitted inline label treatment").toBe("inline-flex");
+      expect(result.header.width, "header does not reserve a full-width blank row").toBeLessThan(result.stage.width);
+      expect(result.portrait.width, "VIS-03B portrait width remains at or above its minimum").toBeGreaterThanOrEqual(minimumPortrait.width);
+      expect(result.portrait.height, "VIS-03B portrait height remains at or above its minimum").toBeGreaterThanOrEqual(minimumPortrait.height);
+      expect(result.stage.left, "Stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.left - 4);
+      expect(result.stage.top, "Stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.top - 4);
+      expect(result.stage.right, "Stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.right + 4);
+      expect(result.stage.bottom, "Stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.bottom + 4);
+      expect(result.stageDockOverlap, "open Stage does not overlap LocalPlayerDock").toBe(0);
+      expect(result.safeZoneDockOverlap, "safe zone does not overlap LocalPlayerDock").toBe(0);
+      expect(result.scrollWidth, "open shell introduces no horizontal page overflow").toBeLessThanOrEqual(result.viewportWidth);
+      if (state === "negation" || state === "dying") {
+        expect(result.innerPanelBackground, "Event panel keeps its own non-transparent chrome").not.toBe("rgba(0, 0, 0, 0)");
+        expect(result.innerPanelBackground, "Event panel keeps its own background").not.toBe("transparent");
+      }
+    });
+  }
+}
+
 test("UX2.0VIS-02 keeps an empty safe-zone hook in REST", async ({ page }) => {
   await loadFixture(page, { state: "rest", count: 4, width: 480, height: 900 });
   const safeZone = page.locator(".interaction-safe-zone");

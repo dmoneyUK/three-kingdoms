@@ -1064,6 +1064,11 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 @media(max-width:650px){.play-table[data-seat-topology="top-row"] .interaction-stage-event-region>.dying-handoff,.play-table[data-seat-topology="top-row"] .interaction-stage-event-region>.reaction-chain{margin-top:3px}}
 @media(max-width:480px){.play-table[data-seat-topology="top-row"] .hero-focus{grid-template-columns:64px minmax(0,1fr);column-gap:10px}.play-table[data-seat-topology="top-row"] .hero-focus-portrait{width:64px;height:80px}}
 
+/* UX2.0VIS-03C: the protected top-row centre is an open composition, not a
+   single dashboard card. Inner Event panels retain their own chrome. */
+.play-table[data-seat-topology="top-row"]>.interaction-safe-zone>.interaction-stage{padding:0;background:transparent;border:0;box-shadow:none!important}.play-table[data-seat-topology="top-row"]>.interaction-safe-zone>.interaction-stage>header{display:inline-flex;width:fit-content;max-width:100%;margin-bottom:6px;padding-bottom:0;border-bottom:0}
+@media(min-width:651px){.play-table[data-seat-topology="top-row"]>.interaction-safe-zone>.interaction-stage>header{margin-bottom:0}}
+
 /* UI-18: accepted semantic transition kinds provide restrained, non-blocking
    feedback inside the existing Interaction Stage. No layout or seat geometry
    moves, and the keyframe endpoints settle on the existing visual styles. */
