@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-09 private target-card picker boundary — 2026-10-03
+## Current stage — UX2.0UI-10 local operation console decision-state unification — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -61,7 +61,7 @@ local target and sends no action. Confirm preserves the existing
 `choose_borrowed_sword_target` action and `{ targetId }` payload exactly once;
 server-projected `eligibleTargetIds` remain the only target authority, and an
 authoritative action revision or eligibility change clears stale local choice.
-UI-09 closes the private target-card picker boundary without changing server
+UI-09 closed the private target-card picker boundary without changing server
 rules or payloads. Dismantle/Steal target-card continuations now keep the
 opaque hand/equipment/Judgement selection local until Confirm; Cancel clears
 only local picker state. Semantic `target_cards` trigger pickers retain their
@@ -70,8 +70,22 @@ provider-owned cancel already exists, and keep Skip/Decline separate. Hidden
 hand choices remain `?`/opaque keys; public PresentationSnapshot,
 InteractionStage, Hero Focus, seat roles and timeline text do not receive the
 local selection. Action-revision and live eligibility changes clear stale
-choices. The next milestone is reviewer closure of UI-09 and a separately
-bounded UX slice.
+choices.
+
+UI-10 unifies the existing local operation console around a pure
+`buildConsoleDecisionDisplay` model. The model consumes only CurrentAction-
+authorized control facts and viewer-local selection summaries; it exposes one
+explicit primary guidance/submit state, local Cancel, authoritative Skip/
+Decline, busy state, and secondary provider controls. Explicit priority
+resolves legacy boolean overlap and equal-priority contradictions fail closed.
+The existing turn, response, rescue, trigger, active-skill, target,
+Borrowed Sword, target-card, discard, Duel, Judgement, and Serpent Spear
+surfaces retain their action names, payloads, server legality, hand/equipment
+composition, and board topology. PresentationSnapshot, Interaction Stage, and
+Hero Focus remain descriptive only; the console does not move controls into
+those surfaces. Touch-width wrapping is limited to the existing console.
+The next milestone is reviewer closure of UI-10 and a separately bounded UX
+slice.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

@@ -1,6 +1,6 @@
 # War of Three Kingdoms — roadmap
 
-## Current baseline — 2026-10-01
+## Current baseline — 2026-10-03
 
 WTK Standard content and the confirmed gameplay-correction phase are complete.
 
@@ -42,13 +42,24 @@ Improve functional feedback for card selection, target selection, confirm,
 decline/skip, disabled controls and in-flight submissions. Keep the server
 projection as the source of legal IDs.
 
-UI-09 is the current bounded slice: private target-card pickers keep opaque
-hand/equipment/Judgement selections local until Confirm, with Cancel clearing
-only local state. Existing `choose_target_card` and semantic `trigger`
-payloads, server legality, `eligibleKeys`, hidden-card rules and separate
-Skip/Decline actions remain unchanged. Revision/live-eligibility changes clear
-stale choices, and public presentation never receives the local private key.
-Any private picker without a safe deferred contract remains an explicit gap.
+UI-10 is the current bounded slice: the existing local operation console now
+uses a pure `buildConsoleDecisionDisplay` adapter composed from
+CurrentAction-authorized control facts and viewer-local selection status. One
+explicit primary guidance/submit state is selected by authority-first
+precedence; local Cancel remains separate from authoritative Skip/Decline;
+equal-priority contradictions fail closed. Existing action names, payloads,
+server legality, private selection, public PresentationSnapshot semantics,
+Hero Focus, seat topology and board layout remain unchanged. Turn, response,
+rescue, trigger, active-skill, target, Borrowed Sword, target-card, discard,
+Duel/Judgement and Serpent Spear surfaces are inventoried and retain their
+existing control implementations. The console wraps at touch widths; Hero
+Focus and Interaction Stage intentionally remain control-free.
+
+UI-09 remains a retained regression boundary: private target-card pickers keep
+opaque hand/equipment/Judgement selections local until Confirm, with Cancel
+clearing only local state. Existing `choose_target_card` and semantic
+`trigger` payloads, server legality, `eligibleKeys`, hidden-card rules and
+separate Skip/Decline actions remain unchanged.
 
 ### UX 3 — mobile/touch and information readability
 

@@ -1059,3 +1059,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .player-square.interaction-seat-active-target.turn-square{box-shadow:inset 0 0 0 2px #cf5146,0 0 0 2px #d9b65f66,0 8px 20px #0009}
 .player-square.interaction-seat-current-participant.turn-square{box-shadow:inset 0 0 0 3px #d75d53,0 0 0 2px #d9b65f66,0 8px 20px #0009}
 @media(max-width:650px){.player-square.interaction-seat-decision-actor{outline-offset:-3px}.player-square.interaction-seat-viewer-decision{outline-offset:1px}}
+
+/* UI-10: keep the local decision console contained as controls wrap on touch widths. */
+[data-console-surface="local-operation"]{min-width:0}[data-console-surface="local-operation"]>div{min-width:0;display:flex;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:520px){[data-console-surface="local-operation"]{height:auto;min-height:40px;align-items:flex-start;gap:6px}[data-console-surface="local-operation"]>div{max-width:100%;gap:5px}}

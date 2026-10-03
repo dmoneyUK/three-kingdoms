@@ -4,6 +4,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, InteractionStage, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { buildConsoleDecisionDisplay } from "../game/console-decision.ts";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
 import { buildPresentationClientView } from "../game/presentation-client.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
@@ -170,6 +171,38 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.doesNotMatch(restHtml, /data-interaction-(?:roles|source|original-target|active-target|current-participant|decision-actor|active-resolver|viewer-decision)=/, "REST local surface has no semantic role data");
   const localDock = (markup) => markup.match(/<section class="local-player-dock[^>]*data-player-anchor="p1"[^>]*>/)?.[0] ?? "";
   assert.equal(localDock(legacyMismatchHtml), localDock(html), "legacy room fields cannot change local semantic roles");
+});
+
+test("local operation console composes one authority-first decision display", () => {
+  const display = (facts) => buildConsoleDecisionDisplay({ instruction: "Make the current choice", viewerIsDecisionActor: true, authoritativeDecision: true, busy: false, ...facts });
+  assert.equal(display({ kind: "turn", primaryCandidates: [{ id: "play", label: "Play", enabled: true, priority: 40 }] }).primary.label, "Play");
+  assert.equal(display({ kind: "response", primaryCandidates: [{ id: "confirm", label: "Confirm", enabled: true, priority: 60 }], authoritativeDecline: { label: "Skip", enabled: true } }).authoritativeDecline.label, "Skip");
+  assert.equal(display({ kind: "rescue", primaryCandidates: [{ id: "peach", label: "Peach", enabled: false, priority: 60 }], authoritativeDecline: { label: "Skip", enabled: true } }).primary.enabled, false);
+  assert.equal(display({ kind: "trigger", primaryCandidates: [{ id: "provider-confirm", label: "Confirm", enabled: true, priority: 70 }], localCancel: { visible: true, enabled: true }, authoritativeDecline: { label: "Skip", enabled: true } }).localCancel.visible, true);
+  assert.equal(display({ kind: "active-skill", primaryCandidates: [{ id: "skill-confirm", label: "Confirm", enabled: true, priority: 70 }] }).primary.id, "skill-confirm");
+  assert.equal(display({ kind: "target", selection: { active: true, hasInput: true, count: 1, min: 1, max: 1, summary: "1 target selected" }, primaryCandidates: [{ id: "target-confirm", label: "Confirm", enabled: true, priority: 70 }] }).selectionCount, 1);
+  assert.equal(display({ kind: "borrowed-sword", primaryCandidates: [{ id: "borrowed-confirm", label: "Confirm", enabled: true, priority: 80 }] }).primary.label, "Confirm");
+  assert.equal(display({ kind: "target-card", primaryCandidates: [{ id: "card-confirm", label: "Discard selected", enabled: true, priority: 80 }] }).primary.label, "Discard selected");
+  assert.equal(display({ kind: "discard", primaryCandidates: [{ id: "discard", label: "Discard 2 selected", enabled: true, priority: 60 }] }).primary.label, "Discard 2 selected");
+  assert.equal(display({ kind: "duel", primaryCandidates: [{ id: "duel-response", label: "Confirm", enabled: true, priority: 60 }] }).primary.label, "Confirm");
+  assert.equal(display({ kind: "judgement", primaryCandidates: [{ id: "negate", label: "Confirm", enabled: true, priority: 60 }] }).primary.label, "Confirm");
+
+  const waiting = buildConsoleDecisionDisplay({ kind: "response", instruction: "Waiting for the other seat", viewerIsDecisionActor: false, authoritativeDecision: true, busy: false, primaryCandidates: [{ id: "stale", label: "Confirm", enabled: true, priority: 100 }], authoritativeDecline: { label: "Skip", enabled: true } });
+  assert.equal(waiting.primary, null, "a public or stale role cannot grant a local primary");
+  assert.equal(waiting.authoritativeDecline, null, "a public or stale role cannot grant Skip");
+
+  const contradiction = display({ kind: "special", primaryCandidates: [{ id: "play", label: "Play", enabled: true, priority: 50 }, { id: "confirm", label: "Confirm", enabled: true, priority: 50 }] });
+  assert.equal(contradiction.coherent, false, "unresolved equal-priority legacy primaries fail closed");
+  assert.equal(contradiction.primary, null);
+  assert.equal(display({ kind: "trigger", busy: true, primaryCandidates: [{ id: "confirm", label: "Confirm", enabled: true, priority: 70 }] }).primary.enabled, false);
+  const sourceOwned = display({ kind: "special", primaryCandidates: [{ id: "source-trigger", label: "Confirm", enabled: true, priority: 70 }], secondaryControls: ["Provider"] });
+  assert.deepEqual(sourceOwned.secondaryControls, ["Provider"], "decision actor and active resolver remain composition facts, not legality inputs");
+  const localSelection = display({ kind: "target", selection: { active: true, hasInput: false, count: 0, min: 1, max: 1, summary: "Select 1 target" }, primaryCandidates: [{ id: "confirm", label: "Confirm", enabled: false, priority: 70 }] });
+  assert.equal(localSelection.selectionSummary, "Select 1 target");
+  assert.equal(localSelection.localCancel.visible, false, "unsubmitted local selection has no Cancel");
+  const rest = buildConsoleDecisionDisplay({ kind: "rest", instruction: "No interaction", viewerIsDecisionActor: false, authoritativeDecision: false, busy: false });
+  assert.equal(rest.controlsVisible, false);
+  assert.equal(rest.primary, null);
 });
 
 test("Legacy distribution keeps private cards static and labels recipients by hero", () => {
