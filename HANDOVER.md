@@ -92,3 +92,50 @@ Append only UI-09 result: SHA, files, complete picker inventory, authority/priva
 
 ## Acceptance
 Pass only if each migrated private picker keeps selection local until Confirm, Cancel sends no authoritative action, server payload/legality/visibility semantics remain unchanged, private identity does not leak into public presentation, and unsupported picker semantics are left unchanged with precise evidence.
+
+## UX2.0UI-09 execution result — 2026-10-03
+
+### Implementation
+
+- Implementation commit: `07472db` (`UX2.0UI-09 add private target card picker boundary`).
+- Changed files: `app/page.tsx`, `tests/active-skill-interactions.test.mjs`, `README.md`, `ROADMAP.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- No server route, gameplay rule, action name, payload shape, projector, snapshot, or visibility-rule change.
+
+### Complete private target-card inventory
+
+| Path | Acting viewer / target | Information and authority | Existing action and constraint | Result |
+|---|---|---|---|---|
+| `pendingTargetCard` Dismantle / Steal | source/actor viewer → `pendingTargetCard.targetId` | target Hand is opaque position-only; target Equipment and Judgement are already public projected cards | `choose_target_card`; exactly one current Hand index, Equipment ID, or Judgement ID; server revalidates the live zone | migrated |
+| Zhou Yu Fanjian card stage | current server decision actor → Zhou Yu source Hand | Hand uses opaque `hand:<index>` keys; no card face or identity is rendered | `trigger` with unchanged `providerId` and `cardKeys`; exact one | migrated through generic picker |
+| Sima Yi Retaliation | Sima Yi actor → damage source | source Hand uses opaque `hand` sentinel; source Equipment/Judgement remain public projected cards | `trigger` with unchanged `providerId` and `cardKeys`; exact one; existing profile-owned cancel remains the only provider activation cancel | migrated; provider-owned cancel intentionally unchanged |
+| Frost Sword damage trigger | Frost Sword owner → damaged target | target Hand keys are opaque; target Equipment is public projected state | `trigger` with unchanged `cardKeys`; min 1 / max 2; optional `decline_trigger` | migrated through generic picker |
+| Kirin Bow damage trigger | Kirin Bow owner → damaged target | only already-projected eligible Mount Equipment faces are shown | `trigger` with unchanged `cardKeys`; exact one; optional `decline_trigger` | migrated through generic picker |
+| Yue Jin Dauntless equipment continuation | target-owned current decision → ending character | only already-projected eligible Equipment IDs are shown | `trigger` with unchanged `cardKeys`; exact one; mandatory server continuation | migrated through generic picker |
+
+Inventory boundary: deck reorder, private card distribution, choice dialogs, ordinary response costs, and other private-card flows are not target-card pickers and were not generalized by UI-09. No target-card path with an immediate-only authoritative submission blocker was found; no unsupported target-card semantics were changed.
+
+### Confirm / Cancel and stale-state evidence
+
+- `pendingTargetCard` clicks now change only local zone/index/card-ID state. Confirm sends exactly one unchanged `choose_target_card` payload; Cancel clears the full local picker and sends zero gameplay or decline actions.
+- Semantic `target_cards` clicks already remained local; the generic picker now has one local Cancel surface where no provider-owned cancel exists. Confirm sends exactly one unchanged `trigger` payload with the existing `providerId` and `cardKeys`. Sima Yi keeps its existing profile-owned cancel surface to avoid duplicate provider cancellation paths.
+- Confirm remains disabled until the existing min/max constraint is satisfied. Ineligible keys/cards are not rendered or selectable. Skip/Decline remains a separate authoritative action.
+- `actionRevision` resets all target-card state and submission guards. Live `pendingTargetCard` Hand count / Equipment / Judgement availability invalidates stale local selection. Live semantic `eligibleKeys` invalidation filters stale selected keys and resets the submission guard.
+- Hidden Hand choices remain `?`, `hand`, or `hand:<index>` opaque keys. Public Equipment/Judgement faces are shown only from the existing authorized viewer projection; no hidden card face or client-selected physical hidden-card identity was added.
+
+### Privacy and responsive evidence
+
+- New mounted negative tests keep `data-presentation-*` values unchanged after private selection, keep public seat interaction roles unchanged, and assert that an opaque `hand:0` key is absent from rendered public text. Selection state remains local React state and is not passed to `PresentationSnapshot`, `InteractionStage`, `HeroFocus`, seat roles, timeline, or logs.
+- The existing responsive picker CSS keeps the overlay within `calc(100vw - 32px)` / `calc(100vw - 36px)`, uses horizontal overflow only for the private card row, and switches action buttons to a contained full-width stack below 520px. The fixed table picker is capped at `85dvh`; the existing 700px/480px responsive rules remain untouched. Focused SSR/mounted rendering confirms one picker surface and no public topology or dock change.
+
+### Validation
+
+- Focused mounted/privacy/render tests: **37/37 passed**.
+- `npm run test:fast`: **169/169 passed**.
+- `npm run test:api`: **239/239 passed** across 23 files / 4 shards.
+- `npm run build`: passed.
+- `npm run lint`: passed with no errors or warnings.
+- `git diff --check`: passed.
+
+### Remaining gaps and recommendation
+
+UI-09 private target-card picker scope is implemented and locally proven. Remaining private-card surfaces outside this task are deck reorder, card distribution, mandatory choice, and ordinary response-cost presentation; they retain their existing contracts and are not target-card picker gaps. Recommended next step: reviewer inspect commit `07472db` and either accept UI-09 or open one separately bounded responsive/readability slice; do not expand this task into server or projector changes.
