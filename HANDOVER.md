@@ -162,3 +162,21 @@ existing browser/manual responsive GAP remains open.
 Recommended next bounded task: reviewer-authorize a separate visual consumer
 of `data-presentation-transition` (including motion/accessibility boundaries);
 do not begin that work as part of UI-17.
+
+## UI2.0UI-17 CI correction — 2026-10-03
+
+CI run #577 reported `react-hooks/refs` at `app/page.tsx:875` because the
+initial integration read `previousPresentationView.current` during render.
+The first attempted state/effect correction then exposed the companion
+`react-hooks/set-state-in-effect` rule. Commit `0080b33` replaces both with a
+component-scoped `useSyncExternalStore` transition store: render reads only
+the cached semantic transition snapshot, while the effect accepts the newest
+client view. The store keeps only the immediately previous view, ignores the
+same object during Strict Mode effect replay, and continues to classify
+private-control changes through the public classifier.
+
+The failed CI lint command was reproduced locally with the same original
+`react-hooks/refs` error. After the correction, `npm run lint` completed
+successfully. No tests, build, API suite, or other full checks were run.
+The correction is pushed for GitHub Actions to revalidate; no post-push CI
+result is claimed here.
