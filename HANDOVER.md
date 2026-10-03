@@ -93,3 +93,49 @@ Append only UI-11 result: SHA, files, breakpoint/topology inventory, concrete de
 
 ## Acceptance
 Pass only if existing topology and control ownership are preserved across representative 2–10-player renders, responsive containment is improved only where evidence requires it, hand/console remain usable together, semantic/local highlights do not move seats, and claims clearly distinguish deterministic contract proof from pixel-perfect visual proof.
+
+## Execution result — UX2.0UI-11 — 2026-10-03
+
+- Implementation SHA: `23698fb` (`feat(ux): harden responsive table topology`).
+- Files changed: `app/page.tsx`, `app/sequence-overrides.css`,
+  `tests/room-safety-render.test.mjs`, `README.md`, `ROADMAP.md`, and
+  `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Responsive inventory recorded: existing desktop/global table and seat rules;
+  existing compact table/dock rules at <=700px, compact board variables at
+  <=520px, Interaction Stage/Hero Focus rules at <=650px and <=480px, and
+  local dock rules at <=700px, <=480px, and <=360px. UI-11 adds only the
+  requested side-column and containment rules at <=650px and <=480px.
+- Concrete defect found: the mobile absolute-position rules only declared
+  relative opponent seats `player-square-1`, `-2`, and `-3`; 5–10-player
+  renders had no declared placement for relative seats 4–9. The minimal fix
+  adds `data-player-count`/`data-seat-topology` and a two-column side-column
+  grid in stable DOM order with row budgets 2/3/4/5 for 5/6–7/8–9/10.
+- Topology evidence: real `GameRoom` SSR fixtures cover 2, 3, 4, 5, 6, 8,
+  and 10 players. Each renders exactly N−1 opponent anchors plus one local
+  dock anchor, has no local anchor inside `player-board`, keeps one local dock,
+  one `data-console-surface="local-operation"`, and never renders
+  `player-square-0`.
+- Hand/console evidence: real SSR fixtures for 1, 5, and 10 physical hand
+  cards retain one `local-hand-rail` with one `data-hand-card-id` per card and
+  one footer console. Existing fan/selection markup and ordering remain
+  unchanged; the console wraps in place.
+- Semantic evidence: existing rendered Interaction Stage, Hero Focus,
+  ordinary target, source-owned trigger, Group/AOE, child Damage, Dying,
+  overlapping local amber-selection, and REST regressions remain green. Stage
+  insertion and REST hiding were additionally checked for unchanged anchor
+  counts and one dock/console.
+- Dialog/containment fix: stage/focus copy wraps at arbitrary long tokens;
+  target-card, hidden-card, and deck-reorder surfaces receive <=650px bounded
+  viewport scroll; no information or gameplay control was hidden or moved.
+- Browser/screenshot evidence: unavailable; this checkout has no browser or
+  screenshot harness. Remaining desktop/650px/480px pixel appearance, touch
+  ergonomics, and device-specific wrapping are recorded as visual-only GAPs,
+  not claimed as pixel-proven.
+- Validation: focused rendered UI `18/18`; `npm run build` passed; fast suite
+  `172/172`; API suite `239/239`; `npm run lint` passed; `git diff --check`
+  passed.
+- Boundaries preserved: no gameplay, legality, payload, projector, snapshot,
+  visibility, animation, or provider-specific control changes; CurrentAction
+  remains authoritative and the local console/dialog ownership is unchanged.
+- Next recommendation: reviewer closure of UI-11, followed by manual/browser
+  checks at desktop, 650px, and 480px before authorizing the next UX slice.
