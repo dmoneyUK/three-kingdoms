@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-07 local target selection confirmation — 2026-10-03
+## Current stage — UX2.0UI-07-FIX1 complete local target cancellation — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -46,15 +46,19 @@ UI-07 makes the existing deferred target-selection boundary explicit in the
 client. Normal card targeting (including Sky-Piercing Halberd multi-target
 Attack), active hero-skill targets, trigger/response targets, and Serpent Spear
 targets remain local amber selections until the existing Confirm submission is
-pressed. Cancel clears only those local target IDs and sends no gameplay,
-Skip, or Decline action; existing click order is preserved in the Halberd and
-generic trigger payloads. Public Interaction Stage/Hero Focus roles remain
-derived only from the server presentation projection, so local selection does
-not create public roles. The Borrowed Sword forced-Attack target picker still
-uses its existing immediate server-authoritative `choose_borrowed_sword_target`
-action and is intentionally recorded as a later GAP; private target-card
-pickers remain their separate opaque-card flow. The next milestone is a
-separately bounded UX slice after UI-07 review.
+pressed. Cancel now clears the complete active local selection for the flow:
+normal card/conversion choice, Halberd targets, Serpent Spear cost cards and
+mode, active-skill card/target state, or trigger provider/input state. It sends
+no gameplay, Skip, or Decline action; existing click order is preserved in the
+Halberd and generic trigger payloads. Existing provider-owned Cancel controls
+remain the single surface where they already own complete cancellation. Public
+Interaction Stage/Hero Focus roles remain derived only from the server
+presentation projection, so local selection does not create public roles. The
+Borrowed Sword forced-Attack target picker still uses its existing immediate
+server-authoritative `choose_borrowed_sword_target` action and is intentionally
+recorded as a later GAP; private target-card pickers remain their separate
+opaque-card flow. The next milestone is reviewer closure of UI-07-FIX1, then a
+separately bounded UX slice.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

@@ -18,6 +18,7 @@ import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
+type LocalTargetFlow = "normal" | "serpent" | "active-skill" | "trigger";
 type PresentationImportance = "essential" | "informational";
 type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
@@ -1047,11 +1048,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     }
     setTargetIds((ids) => activeSkillTargetIds.length ? [playerId] : halberdAttack ? ids.includes(playerId) ? ids.filter((id) => id !== playerId) : ids.length < 3 ? [...ids, playerId] : ids : [playerId]);
   };
-  const cancelLocalTargetSelection = () => {
-    if (!localTargetSelection.selectionActive || busy || presentationBusy) return;
-    setTargetIds([]);
-    if (activeSkillStateIsCurrent) setActiveSkillSelectionState((state) => state ? { ...state, targetIds: [] } : state);
-  };
   const attackTargetsValid = targetIds.length > 0 && targetIds.every((id) => room.players.some((player) => player.id === id && player.alive && player.id !== room.meId && (player.distance ?? 99) <= (me?.attackRange ?? 1)));
   const canFormSerpentAttack = hasSerpentSpear && room.myHand.length >= 2 && room.isMyTurn && canPlay && canDeclareAttack;
   const responseDeadline = room.currentAction?.deadline ?? room.pendingNegation?.deadline ?? room.pendingGreenDragon?.deadline ?? room.pendingRockCleaving?.deadline ?? room.pendingDuel?.deadline ?? room.pendingAttack?.deadline ?? 0;
@@ -1091,19 +1087,52 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const targetSelectionActive = Boolean(triggerTargetMode || activeSkillTargetMode || room.isMyTurn && canPlay && (serpentMode || selectedCanPlayAsAttack || card && ["Dismantle", "Steal", "Duel", "BorrowedSword", "Overindulgence", "RationsDepleted"].includes(card.kind)));
   const triggerTargetComplete = Boolean(triggerTargetMode && targetIds.length >= triggerTargetMin && targetIds.length <= triggerTargetMax);
   const triggerSubmissionComplete = triggerSelectionComplete && (!triggerTargetSelection || triggerTargetComplete);
+  const normalTargetSelectionActive = targetSelectionActive && !triggerTargetMode && !activeSkillTargetMode;
+  const localTargetFlow: LocalTargetFlow | null = triggerTargetMode ? "trigger" : activeSkillTargetMode ? "active-skill" : serpentMode ? "serpent" : normalTargetSelectionActive ? "normal" : null;
   const localTargetIds = triggerTargetMode ? targetIds : activeSkillTargetMode ? activeSkillSelectedTargetIds : targetIds;
   const localTargetMin = triggerTargetMode ? triggerTargetMin : activeSkillTargetMode ? activeSkillTargetMin : 1;
   const localTargetMax = triggerTargetMode ? triggerTargetMax : activeSkillTargetMode ? activeSkillTargetMax : halberdAttack ? 3 : 1;
   const localTargetCanConfirm = triggerTargetMode ? triggerTargetComplete : activeSkillTargetMode ? activeSkillComplete : serpentMode ? serpentSelected.length === 2 && attackTargetsValid : selectedCanPlayAsAttack ? attackTargetsValid : Boolean(target);
+  const localSelectionHasInput = localTargetFlow === "trigger"
+    ? Boolean(responseProviderId) || localTargetIds.length > 0 || triggerSelectedCardIds.length > 0 || triggerSelectionKeys.length > 0 || Boolean(triggerChoice)
+    : localTargetFlow === "active-skill"
+      ? activeSkillStateIsCurrent
+      : localTargetFlow === "serpent"
+        ? true
+        : localTargetFlow === "normal"
+          ? Boolean(selected) || localTargetIds.length > 0 || Boolean(wushengMode) || Boolean(longdanMode)
+          : false;
   const localTargetSelection = buildLocalTargetSelectionView({
     selectionActive: targetSelectionActive,
     selectedTargetIds: localTargetIds,
     minTargetCount: localTargetMin,
     maxTargetCount: localTargetMax,
     canConfirm: localTargetCanConfirm,
-    hasLocalInput: localTargetIds.length > 0,
+    hasLocalInput: localSelectionHasInput,
   });
-  const normalTargetSelectionActive = localTargetSelection.selectionActive && !triggerTargetMode && !activeSkillTargetMode;
+  const triggerHasProviderCancelSurface = Boolean(triggerTargetMode && selectedTriggerOption && !heroTriggerEffectIds.has(selectedTriggerOption.effectId));
+  const normalHasProviderCancelSurface = wushengMode === "play" || longdanMode === "play";
+  const resetLocalTargetFlow = (flow: LocalTargetFlow) => {
+    setTargetIds([]);
+    if (flow === "normal") {
+      setSelected(""); setWushengMode(null); setLongdanMode(null);
+      return;
+    }
+    if (flow === "serpent") {
+      setSerpentMode(false); setSerpentSelected([]); setSelected("");
+      return;
+    }
+    if (flow === "active-skill") {
+      setKingSkillId(""); setActiveSkillSelectionState(null); setSelected("");
+      return;
+    }
+    setResponseProviderId(""); setSelected(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice("");
+    setWushengMode(null); setLongdanMode(null); setSerpentMode(false);
+  };
+  const cancelLocalTargetSelection = () => {
+    if (!localTargetSelection.selectionActive || !localTargetFlow || busy || presentationBusy) return;
+    resetLocalTargetFlow(localTargetFlow);
+  };
   const canUseLongdanInResponse = Boolean(me?.hero === "zhao-yun" && responseDecisionReady && longdanResponseOptions.length > 0);
   const wushengButtonDisabled = busy || wushengMode === null && (!canUseWushengInPlay && !(responseDecisionReady && canUseWushengInResponse) || canUseWushengInPlay && presentationBusy);
   const longdanButtonDisabled = busy || longdanMode === null && (!canUseLongdanInPlay && !(responseDecisionReady && canUseLongdanInResponse) || canUseLongdanInPlay && presentationBusy);
@@ -1164,8 +1193,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       onClick: option ? () => {
         if (option.selection?.type === "cards" || option.selection?.type === "target" || option.selection?.type === "target_cards") {
           const activating = kingSkillId !== option.effectId;
-          setKingSkillId(activating ? option.effectId : "");
-          setActiveSkillSelectionState(activating ? { revision: activeActionRevision, effectId: option.effectId, cardIds: [], targetIds: [] } : null);
+          if (!activating && (option.selection?.type === "cards" || option.selection?.type === "target")) resetLocalTargetFlow("active-skill");
+          else {
+            setKingSkillId(activating ? option.effectId : "");
+            setActiveSkillSelectionState(activating ? { revision: activeActionRevision, effectId: option.effectId, cardIds: [], targetIds: [] } : null);
+          }
           setSerpentSelected([]); setSelected(""); setTargetIds([]); setTriggerSelectedKeys([]);
         } else void onAction("trigger", { providerId: option.effectId });
       } : undefined,
@@ -1372,11 +1404,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
 
           {rescueDecisionReady && !canRespond && <><button className="primary" disabled={busy || card?.kind !== "Peach"} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button><button className="end" disabled={busy} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button></>}
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
-          {triggerResponse && <>{triggerOptions.filter((option) => !heroTriggerEffectIds.has(option.effectId) || option.selection?.type === "choice").map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; setResponseProviderId(active ? "" : option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="primary" disabled={responseControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}{selectedTriggerOption?.selection?.type === "cards" && <button className="primary" disabled={responseControlsDisabled || !triggerSubmissionComplete} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, ...(triggerSelectedCardIds.length === 1 ? { cardId: triggerSelectedCardIds[0] } : { cardIds: triggerSelectedCardIds }), ...(triggerTargetSelection ? { targetId: targetIds[0] } : {}) })}>Confirm</button>}{selectedTriggerOption?.selection?.type === "target" && triggerTargetSelection && <button className="primary" disabled={responseControlsDisabled || !localTargetSelection.canConfirm} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, targetIds })}>Confirm</button>}{triggerTargetMode && localTargetSelection.canCancel && <button className="end local-target-cancel" disabled={responseControlsDisabled} onClick={cancelLocalTargetSelection}>Cancel</button>}{triggerDeclineAction && !targetCardPickerOption && <button className="end" disabled={responseControlsDisabled} onClick={() => onAction("decline_trigger")}>Skip</button>}</>}
+          {triggerResponse && <>{triggerOptions.filter((option) => !heroTriggerEffectIds.has(option.effectId) || option.selection?.type === "choice").map((option) => option.selection?.type === "target_cards" || option.selection?.type === "choice" && option.allowDecline === false ? null : option.selection ? <button key={option.effectId} className={`serpent-control ${responseProviderId === option.effectId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.effectId; if (active) resetLocalTargetFlow("trigger"); else { setResponseProviderId(option.effectId); setSelected(""); setTargetIds([]); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); } }}>{responseProviderId === option.effectId ? `Cancel ${option.label}` : option.selection.type === "target" ? `Use ${option.label}` : option.label}</button> : <button key={option.effectId} className="primary" disabled={responseControlsDisabled} onClick={() => onAction("trigger", { providerId: option.effectId })}>{`Use ${option.label}`}</button>)}{selectedTriggerOption?.selection?.type === "cards" && <button className="primary" disabled={responseControlsDisabled || !triggerSubmissionComplete} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, ...(triggerSelectedCardIds.length === 1 ? { cardId: triggerSelectedCardIds[0] } : { cardIds: triggerSelectedCardIds }), ...(triggerTargetSelection ? { targetId: targetIds[0] } : {}) })}>Confirm</button>}{selectedTriggerOption?.selection?.type === "target" && triggerTargetSelection && <button className="primary" disabled={responseControlsDisabled || !localTargetSelection.canConfirm} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, targetIds })}>Confirm</button>}{triggerTargetMode && localTargetSelection.canCancel && !triggerHasProviderCancelSurface && <button className="end local-target-cancel" disabled={responseControlsDisabled} onClick={cancelLocalTargetSelection}>Cancel</button>}{triggerDeclineAction && !targetCardPickerOption && <button className="end" disabled={responseControlsDisabled} onClick={() => onAction("decline_trigger")}>Skip</button>}</>}
           {(activeSkillSelection || activeSkillTargetSelection) && <>{activeSkillSelectedTargetIds.length > 1 && <small role="status">Lust order: {room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name} plays Attack first, then {room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name}.</small>}<button className="primary" disabled={busy || presentationBusy || !localTargetSelection.canConfirm && Boolean(activeSkillTargetSelection || activeSkillSelection?.targetIds.length) || !activeSkillComplete || !activeSkillSubmission} onClick={() => activeSkillSubmission && onAction("trigger", activeSkillSubmission)}>Confirm</button>{activeSkillTargetMode && localTargetSelection.canCancel && <button className="end local-target-cancel" disabled={busy || presentationBusy} onClick={cancelLocalTargetSelection}>Cancel</button>}</>}
           {canRespond && <>{genericResponse && semanticResponseOptions.length > 0 && <>{genericResponseOptions.map((option) => option.selection ? <button key={option.providerId} className={`serpent-control ${responseProviderId === option.providerId ? "active" : ""}`} disabled={responseControlsDisabled} onClick={() => { const active = responseProviderId === option.providerId; setResponseProviderId(active ? "" : option.providerId); setSelected(""); setSerpentSelected([]); }}>{responseProviderId === option.providerId ? `Cancel ${option.label}` : option.label}</button> : <button key={option.providerId} className="primary" disabled={responseControlsDisabled} onClick={() => submitResponseProvider(option)}>{busy ? "Resolving…" : option.label}</button>)}{selectedResponseProvider && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}</>}<button className="end" disabled={responseControlsDisabled || !responseDamageAction} onClick={() => responseDamageAction && onAction(responseDamageAction)}>Skip</button></>}
           {room.isMyTurn && room.phase === "discard" && <button className="end" disabled={busy || discardSelected.length !== excessCards} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
-          {room.isMyTurn && canPlay && <>{canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Normal" : "Spear"}</button>}<button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid : busy || presentationBusy || !card || selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid) || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted"].includes(card.kind) && !target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation")} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>{normalTargetSelectionActive && localTargetSelection.canCancel && <button className="end local-target-cancel" disabled={busy || presentationBusy} onClick={cancelLocalTargetSelection}>Cancel</button>}<button className="end" disabled={busy || presentationBusy} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "End"}</button></>}
+          {room.isMyTurn && canPlay && <>{canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Normal" : "Spear"}</button>}<button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid : busy || presentationBusy || !card || selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid) || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted"].includes(card.kind) && !target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation")} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>{normalTargetSelectionActive && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy} onClick={cancelLocalTargetSelection}>Cancel</button>}<button className="end" disabled={busy || presentationBusy} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "End"}</button></>}
         </div>
       </div>
       </LocalPlayerDock>

@@ -308,9 +308,12 @@ For deferred normal card targeting (including Sky-Piercing Halberd's ordered
 multi-target Attack), active hero-skill targets, trigger/response targets, and
 Serpent Spear targets, eligible seat clicks update only the local amber
 selection. The existing action and payload remain the Confirm boundary. A
-local Cancel clears only the unsubmitted target IDs; it does not call
+local Cancel clears the complete unsubmitted local selection for the active
+flow, including its card/provider/mode input where applicable; it does not call
 `decline_trigger`, `decline_response`, `skip_rescue`, or any other gameplay
-action. Skip/Decline remains the separate authoritative decision. The existing
+action. Existing provider-owned Cancel controls remain the sole Cancel surface
+when they already own complete flow cancellation. Skip/Decline remains the separate
+authoritative decision. The existing
 payload order is preserved where the path already carries ordered target IDs;
 no effect order is inferred from public arrays.
 
