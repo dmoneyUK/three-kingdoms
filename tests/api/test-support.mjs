@@ -23,6 +23,7 @@ export {
   request,
   requestAndSettle,
   roomCardCount,
+  seedPlayingGame,
   setDeck,
   setEquipment,
   setHand,

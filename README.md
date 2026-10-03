@@ -14,6 +14,23 @@ confirmation**. This status is not a claim that the whole game, all content,
 touch-device certification, full WCAG auditing, subjective art direction, or
 production deployment is complete.
 
+### BUG-ZHANG-LIAO-ASSAULT-01 — Draw Phase Assault UI fix — 2026-10-03
+
+The real API-backed Draw Phase fixture now keeps the authoritative Assault
+`CurrentAction` (including its action revision and one/two legal target
+projection) unchanged until the player confirms. The defect was in the shared
+operation console: a late card presentation could keep `presentationBusy`
+true after local targets were selected, which hid or disabled Confirm; clicking
+the active hero skill again also cleared that local target selection. Active
+target selection now retains its Confirm/Cancel surface while the same server
+action is current, repeated skill clicks do not ambiguously cancel it, and
+multi-target Assault submits `{ providerId: "zhang_liao_assault", targetIds }`.
+Explicit Cancel remains local and sends no gameplay action. Server-side target,
+revision, and replacement authority is unchanged. Coverage includes the real
+Worker/D1 API fixture, mounted late-presentation regression, and Playwright
+browser flow for one target, two targets, Cancel/reactivation, and exact
+submission payload.
+
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
 `attack_targeted` proof requiring the exact `ATTACK_RESPONSE` source/target/

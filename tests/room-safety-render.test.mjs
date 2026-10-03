@@ -795,7 +795,7 @@ test("Zhou Yu renders Sowing Distrust from its projected semantic capability", (
   assert.match(gameRoomSource, /activeSkillTargetMode && activeSkillTargetIds\.includes\(player\.id\)/, "activated semantic target skills make projected opponents selectable across phases");
   assert.match(gameRoomSource, /setActiveSkillSelectionState\(\(state\) => \{[\s\S]*targetIds: next/, "target selection stores the chosen opponent in the active skill state");
   assert.match(gameRoomSource, /onAction\("trigger", activeSkillSubmission\)/, "active skills use the generic trigger action");
-  assert.match(gameRoomSource, /activeSkillSubmission = .*providerId: activeSkillOption\.effectId[\s\S]*targetId: activeSkillTargetId/, "the generic trigger payload carries providerId and targetId");
+  assert.match(gameRoomSource, /activeSkillSubmission =[\s\S]*?providerId: activeSkillOption\.effectId[\s\S]*(?:targetIds: activeSkillSelectedTargetIds|targetId: activeSkillTargetId)/, "the generic trigger payload carries providerId and the selected target field");
 
   const unavailableRoom = normalizeRoomData({ ...payload, code: "FANJIAN-UI-OFF", currentAction: { ...payload.currentAction, triggerOptions: [] } });
   assert.ok(unavailableRoom);

@@ -17,11 +17,20 @@ export default defineConfig({
     headless: true,
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: "vite --config tests/browser/vite.config.mjs --host 127.0.0.1 --port 4177",
-    cwd: fileURLToPath(new URL("../../", import.meta.url)),
-    url: "http://127.0.0.1:4177/tests/browser/fixture.html",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: "vite --config tests/browser/vite.config.mjs --host 127.0.0.1 --port 4177",
+      cwd: fileURLToPath(new URL("../../", import.meta.url)),
+      url: "http://127.0.0.1:4177/tests/browser/fixture.html",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: "node tests/browser/worker-server.mjs",
+      cwd: fileURLToPath(new URL("../../", import.meta.url)),
+      url: "http://127.0.0.1:3137/",
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });

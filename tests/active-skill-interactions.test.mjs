@@ -583,6 +583,9 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true);
   assert.equal(useButton().props.disabled, false, "one Assault target enables submission");
+  await act(async () => { skillButton().props.onClick(); });
+  assert.equal(skillButton().props["aria-pressed"], true, "the skill button is not a second local Cancel surface");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), true, "the second skill click preserves the local target");
   const actionCountAfterSelection = actionCalls.length;
   await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "Cancel clears the local amber target");
@@ -596,11 +599,35 @@ test("Zhang Liao Assault uses generic target controls during the Draw Phase", as
   await act(async () => { useButton().props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "zhang_liao_assault", targetIds: ["p2", "p3"] }]);
 
+  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
+  assert.equal(button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.disabled, false, "explicit Cancel exits target mode");
   await act(async () => { skillButton().props.onClick(); });
-  assert.equal(button(renderer, { "aria-label": "Inspect TARGET ONE" }).props.disabled, false, "cancel exits target mode");
-  await act(async () => { skillButton().props.onClick(); });
-  assert.equal(useButton().props.disabled, true, "re-entering Assault resets target selection");
+  assert.equal(useButton().props.disabled, true, "reactivation resets target selection");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("Zhang Liao Assault keeps Confirm visible when a late presentation is still settling", async () => {
+  const skill = { hero: "zhang-liao", effectId: "zhang_liao_assault", label: "Assault", skill: "Assault", cardIds: [], targetIds: ["p2", "p3"], targetMin: 1, targetMax: 2, selectionType: "target", phase: "draw", triggerEvent: "draw_phase" };
+  const room = activeSkillRoom(skill);
+  const actionCalls = [];
+  const useButton = (tree) => button(tree, { children: "Confirm" });
+  const action = async (...args) => { actionCalls.push(args); return true; };
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await act(async () => { button(renderer, { "aria-label": "Assault" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET ONE" }).props.onClick(); });
+  await act(async () => { button(renderer, { "aria-label": "Select TARGET TWO" }).props.onClick(); });
+  const actionCountBeforeLatePresentation = actionCalls.length;
+
+  const lateCard = { type: "card", id: "late-assault-presentation", player: "ACTIVE HERO", target: "TARGET ONE", action: "play", card: card("late-assault-card", "Attack") };
+  const lateRoom = normalizeRoomData({ ...room, timeline: [lateCard] });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: lateRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: lateRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  assert.equal(useButton(renderer).props.disabled, false, "a late presentation cannot hide or disable Assault Confirm");
+  assert.equal(actionCalls.length, actionCountBeforeLatePresentation, "a late presentation has not emitted a gameplay action");
   await act(async () => { renderer.unmount(); });
 });
 
