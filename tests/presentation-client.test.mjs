@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus } from "../game/presentation-client.ts";
+import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus } from "../game/presentation-client.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
@@ -13,8 +13,8 @@ function scene(overrides = {}) {
     checkpointId: "checkpoint-1",
     presentationRevision: 3,
     stage: "ATTACK_RESPONSE",
-    sourceId: "A",
     effect: "Attack",
+    sourceId: "A",
     targetIds: ["B"],
     currentParticipantId: "B",
     decisionActorId: "B",
@@ -58,6 +58,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     checkpointId: "checkpoint-1",
     presentationRevision: 3,
     stage: "ATTACK_RESPONSE",
+    effect: "Attack",
     sourceId: "A",
     originalTargetIds: ["B"],
     activeTargetIds: ["B"],
@@ -357,4 +358,91 @@ test("Interaction Stage is hidden for REST and independent of legacy room fields
   const roomB = { ...roomA, pending: { kind: "dying" }, timeline: [{ id: "new" }], presentationV2: { stableBoundary: { kind: "SETTLEMENT" } }, currentAction: { kind: "dying" }, phase: "dying", actionPlayerId: "B", actionReason: "new" };
   const renderWithLegacyRoom = (room) => buildInteractionStageView(fixedView, (id) => room.players.find((player) => player.id === id)?.name ?? null);
   assert.deepEqual(renderWithLegacyRoom(roomA), renderWithLegacyRoom(roomB));
+});
+
+test("Interaction Stage display hierarchy keeps ordinary target-owned CHOICE concise", () => {
+  const model = buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName));
+  assert.equal(model.focusLabel, "Attack · Attack Response");
+  assert.equal(model.focusTarget.name, "Zhao Yun");
+  assert.equal(model.targetSummary, "Current participant: Zhao Yun");
+  assert.equal(model.showDecision, true);
+  assert.equal(model.decisionActor.name, "Zhao Yun");
+  assert.equal(model.showResolver, false, "ordinary target-owned CHOICE hides redundant resolver detail");
+  assert.equal(model.showOriginalTargets, false);
+});
+
+test("Interaction Stage display hierarchy preserves the source-owned resolver distinction", () => {
+  const view = buildPresentationClientView(snapshot({
+    interaction: scene({ decisionActorId: "A", activeResolverId: "B", participantRoles: { ...scene().participantRoles, decisionActorId: "A", activeResolverId: "B" } }),
+    stable: { ...snapshot().stable, decisionActorId: "A" },
+    decision: { actorId: "A", stage: "ATTACK_RESPONSE" },
+    localControl: { ...snapshot().localControl, actorId: "A", entitled: true },
+  }), "A");
+  const model = buildInteractionStageDisplayModel(buildInteractionStageView(view, resolveDisplayName));
+  assert.equal(model.showDecision, true);
+  assert.equal(model.decisionActor.name, "Ma Chao");
+  assert.equal(model.showResolver, true);
+  assert.equal(model.activeResolver.name, "Zhao Yun");
+  assert.equal(model.isViewerDecisionActor, true);
+});
+
+test("Interaction Stage display hierarchy gives Group/AOE current-participant progress", () => {
+  const view = buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C", "A"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C", "A"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"] } }),
+    stable: { ...snapshot().stable, decisionActorId: "C" },
+    decision: { actorId: "C", stage: "GROUP_RESOLUTION" },
+  }), "A");
+  const model = buildInteractionStageDisplayModel(buildInteractionStageView(view, resolveDisplayName));
+  assert.equal(model.focusTarget.name, "Cao Cao");
+  assert.equal(model.targetProgress, "Target 2 of 2");
+  assert.match(model.targetSummary, /Current participant: Cao Cao/);
+  assert.equal(model.showOriginalTargets, true);
+  assert.match(model.originalTargetSummary, /Zhao Yun, Cao Cao, Ma Chao/);
+});
+
+test("Interaction Stage display hierarchy preserves compact child-frame context", () => {
+  const view = buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "DAMAGE", parentFrameId: "group-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" }, decisionActorId: "B", activeResolverId: "A", participantRoles: { ...scene().participantRoles, decisionActorId: "B", activeResolverId: "A" } }),
+    stable: { ...snapshot().stable, decisionActorId: "B" },
+    decision: { actorId: "B", stage: "DAMAGE" },
+  }), "A");
+  const model = buildInteractionStageDisplayModel(buildInteractionStageView(view, resolveDisplayName));
+  assert.equal(model.nestedContext, "Nested effect · parent frame group-frame");
+  assert.equal(model.showResolver, true, "child frame can clarify a distinct nested resolver");
+});
+
+test("Interaction Stage display model demotes only redundant original targets", () => {
+  const same = buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName));
+  assert.equal(same.showOriginalTargets, false);
+  const changedView = buildPresentationClientView(snapshot({
+    interaction: scene({ targetIds: ["B", "C"], activeTargetIds: ["C"], currentParticipantId: "C", participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C"], activeTargetIds: ["C"], currentParticipantId: "C" } }),
+  }), "B");
+  const changed = buildInteractionStageDisplayModel(buildInteractionStageView(changedView, resolveDisplayName));
+  assert.equal(changed.showOriginalTargets, true);
+  assert.match(changed.originalTargetSummary, /Zhao Yun, Cao Cao/);
+  assert.equal(changed.focusTarget.name, "Cao Cao");
+});
+
+test("Interaction Stage display model remains safe for long and missing names", () => {
+  const view = buildPresentationClientView(snapshot({
+    interaction: scene({ sourceId: "long", targetIds: ["missing"], activeTargetIds: ["missing"], currentParticipantId: "missing", participantRoles: { ...scene().participantRoles, sourceId: "long", originalTargetIds: ["missing"], activeTargetIds: ["missing"], currentParticipantId: "missing" } }),
+  }), "viewer");
+  const model = buildInteractionStageDisplayModel(buildInteractionStageView(view, (id) => id === "long" ? "A player with an intentionally very long display name" : null));
+  assert.equal(model.source.known, true);
+  assert.match(model.source.name, /intentionally very long/);
+  assert.equal(model.focusTarget.name, "Unknown participant");
+  assert.match(model.targetSummary, /Unknown participant/);
+});
+
+test("Interaction Stage display model is viewer-equal apart from the local marker", () => {
+  const acting = buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName));
+  const uninvolved = buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot({ localControl: { ...snapshot().localControl, actorId: null, entitled: false } }), "C"), resolveDisplayName));
+  assert.deepEqual({ ...acting, isViewerDecisionActor: undefined }, { ...uninvolved, isViewerDecisionActor: undefined });
+  assert.equal(acting.isViewerDecisionActor, true);
+  assert.equal(uninvolved.isViewerDecisionActor, false);
+});
+
+test("Interaction Stage display model remains hidden for REST", () => {
+  const model = buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null } }), "B"), resolveDisplayName));
+  assert.equal(model.visible, false);
 });

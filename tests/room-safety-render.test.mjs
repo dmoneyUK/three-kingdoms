@@ -79,8 +79,10 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
   assert.equal((html.match(/class="interaction-stage"/g) ?? []).length, 1, "one read-only Interaction Stage is rendered");
   assert.match(html, /INTERACTION STAGE/);
+  assert.match(html, /Attack · Attack Response/);
   assert.match(html, /data-continuity="ROOT_FRAME"/);
-  assert.match(html, /<small>DECISION OWNER<\/small><b>Lü Bu<\/b>/);
+  assert.match(html, /<small>DECISION<\/small><b>Lü Bu<\/b>/);
+  assert.doesNotMatch(html, />interaction-ui</, "causal IDs remain diagnostics in data attributes");
   assert.match(html, /data-presentation-kind="CHOICE"/);
   assert.match(html, /data-presentation-has-interaction="true"/);
   assert.match(html, /data-presentation-local-control="true"/);
@@ -97,8 +99,8 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
     localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p2", entitled: false },
   };
   const sourceOwnedStageHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(sourceOwnedSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
-  assert.match(sourceOwnedStageHtml, /<small>DECISION OWNER<\/small><b>Zhao Yun<\/b>/, "source-owned decision stays on the source");
-  assert.match(sourceOwnedStageHtml, /<small>ACTIVE RESOLVER<\/small><b>Lü Bu<\/b>/, "resolver remains distinct from decision owner");
+  assert.match(sourceOwnedStageHtml, /<small>DECISION<\/small><b>Zhao Yun<\/b>/, "source-owned decision stays on the source");
+  assert.match(sourceOwnedStageHtml, /<small>RESOLVER<\/small><b>Lü Bu<\/b>/, "resolver remains distinct from decision owner");
   const childSnapshot = {
     ...uxRoom.presentationSnapshot,
     stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p1" },
@@ -107,7 +109,7 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   };
   const childStageHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(childSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
   assert.match(childStageHtml, /data-continuity="CHILD_FRAME"/);
-  assert.match(childStageHtml, /Parent frame parent-frame/);
+  assert.match(childStageHtml, /parent frame parent-frame/);
   const restHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: null }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((restHtml.match(/class="interaction-stage"/g) ?? []).length, 0, "REST renders no Interaction Stage");
 });

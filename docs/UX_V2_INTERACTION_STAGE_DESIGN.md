@@ -229,6 +229,24 @@ events. Identity-free REST renders no panel. The existing action strip,
 controls, table/seat layout, local dock, animation, settlement/transition
 paths, and final visual redesign remain separate future slices.
 
+### 0.6.4 UI-04 Interaction Stage focus summary
+
+UI-04 keeps the complete `InteractionStageView` as the semantic source while
+adding a pure `InteractionStageDisplayModel` for player-facing hierarchy. The
+normal focus is stage/effect, source, and the current participant or active
+target context. A proven CHOICE shows its decision owner; a resolver is shown
+only when it explains a source-owned or nested-child relationship. Original
+targets are shown only when their ordered IDs differ from the active target
+set, so equal target lists do not create redundant copy.
+
+The panel keeps interaction/checkpoint/revision identifiers as data attributes
+and test diagnostics, not prominent visible labels. Child-frame context is
+compact and names its parent frame when proven. The display model compares
+only adapter-derived IDs and continuity; it does not infer hierarchy from
+legacy room fields. Responsive containment is limited to the panel, with no
+seat, dock, control, animation, settlement/transition, or final visual
+redesign migration.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

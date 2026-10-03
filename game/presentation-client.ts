@@ -11,6 +11,7 @@ export type PresentationClientView = {
   checkpointId: string | null;
   presentationRevision: number | null;
   stage: PresentationInteractionScene["stage"];
+  effect: string | null;
   sourceId: string | null;
   originalTargetIds: readonly string[];
   activeTargetIds: readonly string[];
@@ -52,6 +53,7 @@ export type InteractionStageView = {
   presentationRevision: number | null;
   stage: PresentationInteractionScene["stage"];
   stageLabel: string;
+  effect: string | null;
   source: PresentationDisplayIdentity;
   originalTargets: readonly PresentationDisplayIdentity[];
   activeTargets: readonly PresentationDisplayIdentity[];
@@ -62,6 +64,23 @@ export type InteractionStageView = {
   parentFrameId: string | null;
   stableKind: PresentationStableBoundaryKind;
   isViewerDecisionActor: boolean;
+};
+
+export type InteractionStageDisplayModel = {
+  visible: boolean;
+  focusLabel: string;
+  source: PresentationDisplayIdentity;
+  focusTarget: PresentationDisplayIdentity;
+  targetSummary: string;
+  targetProgress: string | null;
+  showDecision: boolean;
+  decisionActor: PresentationDisplayIdentity;
+  isViewerDecisionActor: boolean;
+  showResolver: boolean;
+  activeResolver: PresentationDisplayIdentity;
+  showOriginalTargets: boolean;
+  originalTargetSummary: string;
+  nestedContext: string | null;
 };
 
 export type PresentationPlayerNameResolver = (playerId: string) => string | null | undefined;
@@ -80,6 +99,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     checkpointId: null,
     presentationRevision: null,
     stage: null,
+    effect: null,
     sourceId: null,
     originalTargetIds: [],
     activeTargetIds: [],
@@ -188,6 +208,7 @@ export function buildPresentationClientView(
     checkpointId: snapshot.identity?.checkpointId ?? null,
     presentationRevision: snapshot.identity?.presentationRevision ?? null,
     stage: scene.stage,
+    effect: scene.effect,
     sourceId: roles.sourceId,
     originalTargetIds: [...roles.originalTargetIds],
     activeTargetIds: [...roles.activeTargetIds],
@@ -247,6 +268,7 @@ export function buildInteractionStageView(
     presentationRevision: view.presentationRevision,
     stage: view.stage,
     stageLabel: presentationStageLabel(view.stage),
+    effect: view.effect,
     source,
     originalTargets,
     activeTargets,
@@ -260,5 +282,54 @@ export function buildInteractionStageView(
       && view.stableKind === "CHOICE"
       && Boolean(view.decisionActorId)
       && view.isLocalDecisionActor,
+  };
+}
+
+function sameIds(left: readonly PresentationDisplayIdentity[], right: readonly PresentationDisplayIdentity[]) {
+  return left.length === right.length && left.every((identity, index) => identity.id === right[index]?.id);
+}
+
+function displayNames(identities: readonly PresentationDisplayIdentity[], emptyLabel: string) {
+  return identities.length ? identities.map((identity) => identity.name).join(", ") : emptyLabel;
+}
+
+/**
+ * Establish the player-facing hierarchy without changing the underlying
+ * semantic fields retained by InteractionStageView.
+ */
+export function buildInteractionStageDisplayModel(stage: InteractionStageView): InteractionStageDisplayModel {
+  const activeTarget = stage.currentParticipant.id
+    ? stage.currentParticipant
+    : stage.activeTargets[0] ?? { id: null, name: "No active target", known: false };
+  const sourceOwned = Boolean(stage.source.id && stage.source.id === stage.decisionActor.id);
+  const showResolver = Boolean(stage.activeResolver.id
+    && stage.activeResolver.id !== stage.decisionActor.id
+    && (sourceOwned || stage.continuity.relation === "CHILD_FRAME"));
+  const activeIndex = stage.activeTargets.findIndex((identity) => identity.id === activeTarget.id);
+  const targetProgress = stage.activeTargets.length > 1 && activeIndex >= 0
+    ? `Target ${activeIndex + 1} of ${stage.activeTargets.length}`
+    : null;
+  const targetSummary = stage.currentParticipant.id
+    ? `Current participant: ${stage.currentParticipant.name}`
+    : `Active target: ${displayNames(stage.activeTargets, "No active target")}`;
+  const showOriginalTargets = !sameIds(stage.originalTargets, stage.activeTargets);
+  const nestedContext = stage.continuity.relation === "CHILD_FRAME"
+    ? `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`
+    : null;
+  return {
+    visible: stage.visible,
+    focusLabel: stage.effect ? `${stage.effect} · ${stage.stageLabel}` : stage.stageLabel,
+    source: stage.source,
+    focusTarget: activeTarget,
+    targetSummary,
+    targetProgress,
+    showDecision: stage.stableKind === "CHOICE" && Boolean(stage.decisionActor.id),
+    decisionActor: stage.decisionActor,
+    isViewerDecisionActor: stage.isViewerDecisionActor,
+    showResolver,
+    activeResolver: stage.activeResolver,
+    showOriginalTargets,
+    originalTargetSummary: `Original targets: ${displayNames(stage.originalTargets, "None")}`,
+    nestedContext,
   };
 }

@@ -12,7 +12,7 @@ import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
-import { buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, type InteractionStageView, type PresentationClientView } from "../game/presentation-client";
+import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, type PresentationClientView } from "../game/presentation-client";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -455,24 +455,23 @@ function OpponentInspectionOverlay({ player, playerHero, judgementInFlight, onCl
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
-function interactionIdentityListLabel(identities: readonly InteractionStageView["source"][], emptyLabel: string) {
-  return identities.length ? identities.map((identity) => identity.name).join(", ") : emptyLabel;
-}
-
 export function InteractionStage({ view, resolvePlayerName }: { view: PresentationClientView; resolvePlayerName: (playerId: string) => string | null | undefined }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
-  if (!stage.visible) return null;
+  const display = buildInteractionStageDisplayModel(stage);
+  if (!display.visible) return null;
   return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined}>
-    <header><span>INTERACTION STAGE</span><strong>{stage.stageLabel}</strong>{stage.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
-    <div className="interaction-stage-grid">
-      <div><small>SOURCE</small><b>{stage.source.name}</b></div>
-      <div><small>ORIGINAL TARGET</small><b>{interactionIdentityListLabel(stage.originalTargets, "No target")}</b></div>
-      <div><small>ACTIVE TARGET</small><b>{interactionIdentityListLabel(stage.activeTargets, "No active target")}</b></div>
-      <div><small>CURRENT PARTICIPANT</small><b>{stage.currentParticipant.name}</b></div>
-      <div><small>DECISION OWNER</small><b>{stage.decisionActor.name}</b></div>
-      <div><small>ACTIVE RESOLVER</small><b>{stage.activeResolver.name}</b></div>
+    <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
+    <div className="interaction-stage-focus">
+      <div><small>SOURCE</small><b>{display.source.name}</b></div>
+      <div><small>FOCUS</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
     </div>
-    <footer><span>{stage.continuity.relation.replace("_", " ")}</span>{stage.parentFrameId && <small>Parent frame {stage.parentFrameId}</small>}</footer>
+    <div className="interaction-stage-context">
+      {display.showDecision && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
+      {display.showResolver && <span><small>RESOLVER</small><b>{display.activeResolver.name}</b></span>}
+      {display.targetProgress && <span><small>PROGRESS</small><b>{display.targetProgress}</b></span>}
+      {display.showOriginalTargets && <span><small>ORIGINAL SCOPE</small><b>{display.originalTargetSummary}</b></span>}
+      {display.nestedContext && <span><small>CONTEXT</small><b>{display.nestedContext}</b></span>}
+    </div>
   </section>;
 }
 

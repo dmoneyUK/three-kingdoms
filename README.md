@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-03 read-only Interaction Stage consumer — 2026-10-03
+## Current stage — UX2.0UI-04 Interaction Stage focus summary — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -9,15 +9,15 @@ resolver relationship. `SPECIAL`, settlement, and transition occurrences
 remain reserved; `presentationV2` and Pending compatibility projections remain
 available to the existing UI.
 
-UI-03 adds the first dedicated, read-only Interaction Stage consumer. A pure
-`InteractionStageView` selects public IDs from `PresentationClientView` before
-resolving player display names, and the small table context panel exposes
-source, original/active targets, current participant, decision owner, active
-resolver, stable boundary, and child-frame continuity. REST renders no stage;
-the private viewer marker comes only from adapter entitlement. Controls, target
-selection, dialogs, timers, animation, seats, dock, gameplay, and the final
-visual Interaction Stage redesign remain unchanged. The next milestone is a
-separately bounded semantic or responsive readability slice, not a board
+UI-04 refines that consumer into a concise semantic focus summary. The
+underlying `InteractionStageView` retains the full public identity and
+continuity model, while a pure display model prioritises stage/effect, source,
+and current participant/active target context. Decision ownership remains
+explicit for CHOICE; source-owned resolver and child-frame context appear only
+when useful; redundant original-target and resolver detail is demoted. REST,
+controls, target selection, dialogs, timers, animation, seats, dock, gameplay,
+and the final visual Interaction Stage redesign remain unchanged. The next
+milestone is a separately bounded readability or focus slice, not a board
 redesign.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
