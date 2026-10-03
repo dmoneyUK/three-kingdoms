@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
 import { buildPresentationTransition } from "../game/presentation-transition.ts";
-import { buildHeroFocusView } from "../game/hero-focus.ts";
+import { buildHeroFocusView, projectHeroFocusForViewer } from "../game/hero-focus.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
@@ -867,4 +867,42 @@ test("Hero Focus selects only accepted current-participant or sole-active-target
   assert.equal(rest.visible, false);
   assert.equal(rest.primary, null);
   assert.equal("hand" in ordinary, false, "Hero Focus has no private hand or card projection");
+});
+
+test("viewer Hero Focus projection uses only one uniquely-proven external source or active target", () => {
+  const display = (id) => ({ name: displayNames[id] ?? null, heroId: id === "A" ? "ma-chao" : id === "B" ? "zhao-yun" : id === "C" ? "cao-cao" : null, heroName: id === "A" ? "Ma Chao" : id === "B" ? "Zhao Yun" : id === "C" ? "Cao Cao" : null, hp: 4, maxHp: 4 });
+  const projectionFrom = (sceneOverrides, viewerId, displayResolver = display) => {
+    const stage = buildInteractionStageView(semanticView(sceneOverrides, { meId: viewerId }), resolveDisplayName);
+    const publicFocus = buildHeroFocusView(stage, display);
+    return { stage, publicFocus, projected: projectHeroFocusForViewer(stage, publicFocus, viewerId, displayResolver) };
+  };
+
+  const external = projectionFrom({}, "A");
+  assert.equal(external.publicFocus.primary?.id, "B");
+  assert.strictEqual(external.projected, external.publicFocus, "an external public primary is returned unchanged");
+
+  const viewerSource = projectionFrom({ currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A" }, "A");
+  assert.equal(viewerSource.publicFocus.primary?.id, "A");
+  assert.equal(viewerSource.projected.primary?.id, "B");
+  assert.equal(viewerSource.projected.roleLabel, "CURRENT TARGET");
+
+  const viewerTarget = projectionFrom({}, "B");
+  assert.equal(viewerTarget.publicFocus.primary?.id, "B");
+  assert.equal(viewerTarget.projected.primary?.id, "A");
+  assert.equal(viewerTarget.projected.roleLabel, "SOURCE");
+
+  const duplicateIdentity = projectionFrom({ sourceId: "B", targetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A" }, "A");
+  assert.equal(duplicateIdentity.projected.primary?.id, "B", "the same source/target ID is rendered only once");
+  assert.equal(duplicateIdentity.projected.roleLabel, "CURRENT TARGET", "active-target role wins when the unique ID has both proven roles");
+
+  const ambiguous = projectionFrom({ sourceId: "B", targetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "B", "C"] }, "A");
+  assert.equal(ambiguous.projected.primary, null, "multiple unique external candidates fail closed");
+  assert.equal(ambiguous.projected.roleLabel, null);
+
+  const localOnly = projectionFrom({ sourceId: "A", targetIds: ["A"], activeTargetIds: ["A"], currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A", participantIds: ["A"] }, "A");
+  assert.equal(localOnly.projected.primary, null, "no external candidate fails closed");
+
+  const unknown = projectionFrom({ sourceId: "A", targetIds: ["missing"], activeTargetIds: ["missing"], currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "missing"] }, "A", (id) => id === "C" ? display("C") : null);
+  assert.deepEqual(unknown.projected.primary, { id: "missing", name: "Unknown target", known: false, heroId: null, heroName: null, hp: null, maxHp: null });
+  assert.equal(unknown.projected.roleLabel, "CURRENT TARGET");
 });

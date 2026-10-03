@@ -971,7 +971,7 @@ test("mounted Duel response follows the semantic actor for controls and Hero Foc
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2"], "Duel focus uses the existing stable seat anchors");
   assert.equal(renderer.root.findByProps({ "data-stage": "DUEL_EXCHANGE" }).props["data-continuity"], "ROOT_FRAME");
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT TARGET", "the local Duel actor stays in the dock while the unique external counterpart is focused");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("interaction-seat-decision-actor"), true);
   assert.equal(buttonsContaining(renderer, "Skip").length, 1, "the acting Duel seat receives one authoritative Skip");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Confirm waits for the local Attack selection");

@@ -12,12 +12,12 @@ const HERO_IDS = [
 
 const card = (id, kind, suit = "♠", rank = "A") => ({ id, kind, suit, rank });
 
-function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisionActorId }) {
+function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisionActorId, currentParticipantId = decisionActorId, activeResolverId = decisionActorId }) {
   const interactionId = `browser-${state}-interaction`;
   const rootFrameId = `browser-${state}-root`;
   const activeFrameId = `browser-${state}-active`;
   const checkpointId = `browser-${state}-checkpoint`;
-  const participantIds = [...new Set([sourceId, ...targetIds, decisionActorId].filter(Boolean))];
+  const participantIds = [...new Set([sourceId, ...targetIds, currentParticipantId, decisionActorId, activeResolverId].filter(Boolean))];
   const scene = {
     semantics: "PROVEN",
     interactionId,
@@ -30,9 +30,9 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
     sourceId,
     effect: stage === "NEGATION" ? "Dismantle" : stage === "DUEL_EXCHANGE" ? "Duel" : stage === "DYING" ? "Attack" : stage === "GROUP_RESOLUTION" ? "Raining Arrows" : "Attack",
     targetIds,
-    currentParticipantId: decisionActorId,
+    currentParticipantId,
     decisionActorId,
-    activeResolverId: decisionActorId,
+    activeResolverId,
     activeSourceId: sourceId,
     activeTargetIds: targetIds,
     participantIds,
@@ -40,9 +40,9 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
       sourceId,
       originalTargetIds: targetIds,
       activeTargetIds: targetIds,
-      currentParticipantId: decisionActorId,
+      currentParticipantId,
       decisionActorId,
-      activeResolverId: decisionActorId,
+      activeResolverId,
       parentParticipantId: null,
       participantIds,
     },
@@ -135,7 +135,7 @@ function browserRoom({ state, count }) {
   const targets = state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" ? "p1" : "p2"];
   const stage = state === "duel" ? "DUEL_EXCHANGE" : state === "negation" ? "NEGATION" : state === "dying" ? "DYING" : state === "group" ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
   const currentAction = state === "rest" ? null : currentActionFor(state, actorId, hand[0].id);
-  const presentationSnapshot = state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: "p1", targetIds: targets, decisionActorId: actorId });
+  const presentationSnapshot = state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: "p1", targetIds: targets, currentParticipantId: state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId });
   const players = playerIds.map((id, index) => ({
     id,
     name: `Player ${index + 1}`,

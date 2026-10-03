@@ -20,10 +20,12 @@ export type HeroFocusPlayerView = {
   maxHp: number | null;
 };
 
+export type HeroFocusRoleLabel = "CURRENT PARTICIPANT" | "CURRENT TARGET" | "DYING PLAYER" | "SOURCE";
+
 export type HeroFocusView = {
   visible: boolean;
   primary: HeroFocusPlayerView | null;
-  roleLabel: "CURRENT PARTICIPANT" | "CURRENT TARGET" | "DYING PLAYER" | null;
+  roleLabel: HeroFocusRoleLabel | null;
   source: PresentationDisplayIdentity;
   nestedContext: string | null;
 };
@@ -43,6 +45,24 @@ function publicNumber(value: number | null | undefined) {
 function publicText(value: string | null | undefined) {
   const text = value?.trim();
   return text || null;
+}
+
+function decoratePlayer(
+  selected: PresentationDisplayIdentity,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver,
+): HeroFocusPlayerView | null {
+  if (!selected.id) return null;
+  const display = resolvePlayerDisplay(selected.id) ?? {};
+  const name = publicText(display.name) ?? selected.name;
+  return {
+    id: selected.id,
+    name,
+    known: Boolean(publicText(display.name)) || selected.known,
+    heroId: publicText(display.heroId),
+    heroName: publicText(display.heroName),
+    hp: publicNumber(display.hp),
+    maxHp: publicNumber(display.maxHp),
+  };
 }
 
 /**
@@ -74,23 +94,43 @@ export function buildHeroFocusView(
     };
   }
 
-  const display = resolvePlayerDisplay(selected.id) ?? {};
-  const name = publicText(display.name) ?? selected.name;
   return {
     visible: true,
-    primary: {
-      id: selected.id,
-      name,
-      known: Boolean(publicText(display.name)) || selected.known,
-      heroId: publicText(display.heroId),
-      heroName: publicText(display.heroName),
-      hp: publicNumber(display.hp),
-      maxHp: publicNumber(display.maxHp),
-    },
+    primary: decoratePlayer(selected, resolvePlayerDisplay),
     roleLabel: stage.stage === "DYING" ? "DYING PLAYER" : currentParticipant ? "CURRENT PARTICIPANT" : "CURRENT TARGET",
     source: stage.source,
     nestedContext: stage.continuity.relation === "CHILD_FRAME"
       ? `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`
       : null,
+  };
+}
+
+/**
+ * Apply viewer-specific spatial presentation without changing the public,
+ * viewer-equal Hero Focus selection above. Only proven source/active-target
+ * identities can replace a local primary, and ambiguity fails closed.
+ */
+export function projectHeroFocusForViewer(
+  stage: InteractionStageView,
+  publicFocus: HeroFocusView,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): HeroFocusView {
+  if (!publicFocus.primary || publicFocus.primary.id !== viewerId) return publicFocus;
+
+  const candidates = new Map<string, PresentationDisplayIdentity>();
+  if (stage.source.id && stage.source.id !== viewerId) candidates.set(stage.source.id, stage.source);
+  for (const target of stage.activeTargets) {
+    if (target.id && target.id !== viewerId && !candidates.has(target.id)) candidates.set(target.id, target);
+  }
+  if (candidates.size !== 1) return { ...publicFocus, primary: null, roleLabel: null };
+
+  const candidate = candidates.values().next().value;
+  if (!candidate) return { ...publicFocus, primary: null, roleLabel: null };
+  const isActiveTarget = stage.activeTargets.some((target) => target.id === candidate.id);
+  return {
+    ...publicFocus,
+    primary: decoratePlayer(candidate, resolvePlayerDisplay),
+    roleLabel: isActiveTarget ? "CURRENT TARGET" : "SOURCE",
   };
 }

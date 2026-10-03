@@ -13,9 +13,9 @@ const TOPOLOGY_MATRIX = [
 ];
 
 const INTERACTION_STATES = [
-  { state: "interaction", label: "Interaction", primaryPlayerId: "p1" },
-  { state: "negation", label: "Negation", primaryPlayerId: "p2" },
-  { state: "dying", label: "Dying", primaryPlayerId: "p3" },
+  { state: "interaction", label: "Interaction", viewerId: "p1", publicPrimaryPlayerId: "p1", projectedPlayerId: "p2" },
+  { state: "negation", label: "Negation", viewerId: "p2", publicPrimaryPlayerId: "p2", projectedPlayerId: "p1" },
+  { state: "dying", label: "Dying", viewerId: "p3", publicPrimaryPlayerId: "p2", projectedPlayerId: "p2" },
 ];
 
 const HERO_FOCUS_VIEWPORTS = [
@@ -246,13 +246,13 @@ for (const { width, height } of TOPOLOGY_MATRIX) {
 }
 
 for (const { width, height, minimumPortrait } of HERO_FOCUS_VIEWPORTS) {
-  for (const { state, label, primaryPlayerId } of INTERACTION_STATES) {
+  for (const { state, label, projectedPlayerId } of INTERACTION_STATES) {
     test(`UX2.0VIS-03B ${label} ${width}x${height} enlarges only the proven primary Hero Focus`, async ({ page }) => {
       await loadFixture(page, { state, count: 4, width, height });
       const heroFocus = page.locator('[data-hero-focus="true"]');
       await expect(heroFocus, "exactly one semantic Hero Focus is rendered").toHaveCount(1);
       await expect(heroFocus).toBeVisible();
-      await expect(heroFocus, "the existing fixture-proven primary remains selected").toHaveAttribute("data-hero-focus-player-id", primaryPlayerId);
+      await expect(heroFocus, "the viewer projection keeps the expected proven external identity").toHaveAttribute("data-hero-focus-player-id", projectedPlayerId);
       await assertVisible(page.locator(".local-player-dock"), "local dock");
 
       const result = await page.evaluate(() => {
@@ -323,6 +323,36 @@ for (const { width, height, minimumPortrait } of HERO_FOCUS_VIEWPORTS) {
         if (result.eventRegionVisible) expect(result.heroEventOverlap, "Hero and visible Event regions do not overlap").toBe(0);
         expect(result.heroMetaOverlap, "Hero and Meta regions do not overlap").toBe(0);
       }
+    });
+  }
+}
+
+for (const { width, height } of HERO_FOCUS_VIEWPORTS) {
+  for (const { state, label, viewerId, publicPrimaryPlayerId, projectedPlayerId } of INTERACTION_STATES) {
+    test(`UX2.0VIS-03D ${label} ${width}x${height} keeps the viewer hero only in LocalPlayerDock`, async ({ page }) => {
+      await loadFixture(page, { state, count: 4, width, height });
+      const heroFocus = page.locator('[data-hero-focus="true"]');
+      await expect(heroFocus, "exactly one central Hero Focus remains").toHaveCount(1);
+      await expect(heroFocus).toBeVisible();
+      await expect(heroFocus).toHaveAttribute("data-hero-focus-player-id", projectedPlayerId);
+      await expect(page.locator(`[data-hero-focus-player-id="${viewerId}"]`), `viewer ${viewerId} is not duplicated centrally`).toHaveCount(0);
+      await expect(page.locator(`.local-player-dock[data-player-anchor="${viewerId}"]`), `viewer ${viewerId} remains in LocalPlayerDock`).toBeVisible();
+      if (publicPrimaryPlayerId === viewerId) expect(projectedPlayerId, "local public primary is replaced by an external proven counterpart").not.toBe(viewerId);
+      if (state === "dying") {
+        await expect(page.locator('[data-dying-handoff="proven"]')).toHaveAttribute("data-dying-player-id", "p2");
+        await expect(page.locator('[data-dying-handoff="proven"]')).toHaveAttribute("data-dying-decision-actor-id", "p3");
+      }
+
+      const result = await interactionGeometry(page);
+      expect(result.stage, "Interaction Stage bounds").not.toBeNull();
+      expect(result.safeZone, "safe-zone bounds").not.toBeNull();
+      expect(result.stage.left, "Stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.left - 4);
+      expect(result.stage.top, "Stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.top - 4);
+      expect(result.stage.right, "Stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.right + 4);
+      expect(result.stage.bottom, "Stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.bottom + 4);
+      expect(result.stageDockOverlap, "viewer projection does not overlap LocalPlayerDock").toBe(0);
+      expect(result.safeZoneDockOverlap, "safe zone remains clear of LocalPlayerDock").toBe(0);
+      expect(result.scrollWidth, "viewer projection introduces no horizontal overflow").toBeLessThanOrEqual(result.viewportWidth);
     });
   }
 }
@@ -448,7 +478,7 @@ test("UI-19 Duel responder remains bounded at the 650px breakpoint", async ({ pa
   await expect(page.locator('[data-stage="DUEL_EXCHANGE"]')).toBeVisible();
   await assertVisible(page.locator('[data-console-surface="local-operation"]'), "Duel console");
   await expect(page.locator('[data-console-surface="local-operation"] button')).toHaveCount(2);
-  await expect(page.locator('[data-hero-focus-role="CURRENT PARTICIPANT"]')).toBeVisible();
+  await expect(page.locator('[data-hero-focus-role="CURRENT TARGET"]')).toBeVisible();
 });
 
 test("UI-19 Negation reaction chain keeps semantic labels at 480px", async ({ page }) => {
