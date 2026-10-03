@@ -5,128 +5,49 @@ HANDOVER.md is tracked remote coordination state. Commit and push it to origin/u
 
 **CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-# NEXT TASK — UX2.0UI-04: Make Interaction Stage a Semantic Focus Summary, Not a Debug Matrix
+# NEXT TASK — UX2.0UI-04-FIX1: Remove Unproven Target Progress Semantics
 
 ## Objective
-UI-03 is accepted as the first dedicated read-only Interaction Stage consumer. Refine that new panel into a bounded, readable semantic focus summary while preserving the existing table topology, seats, local dock, controls, target selection, and animation.
+UI-04 direction is accepted, but one display claim is stronger than the accepted semantics prove. Fix only that authority issue and preserve the focus-summary hierarchy.
 
-This is still not the full UX redesign. Do not expand authority or gameplay.
+Use implementation commit 08ae73b71703768ab6e8c321c13d435a49877e40.
 
-## Baseline
-Use commit c078952bd604131087dc0e186342bcc09b52dfb0 as accepted:
-- InteractionStage is driven only by PresentationClientView;
-- REST renders no stage;
-- source/targets/current participant/decision actor/resolver/continuity are preserved;
-- public content is viewer-equal except local decision marker;
-- no legacy fallback exists.
+## Reviewer finding
+buildInteractionStageDisplayModel currently derives an ordinal "Target N of M" from currentParticipant position inside activeTargets.
 
-Do not reopen C1-C7 or UI-01..03.
+The accepted contract proves original target IDs, active target IDs, and current participant ID. It does NOT prove that array position is an ordinal progress counter or that activeTargets length is the total number of resolution steps. A filtered/resumed Group state can therefore display misleading progress.
 
-## Reviewer observation
-UI-03 intentionally rendered nearly every semantic field in a compact grid. That is useful proof but is too close to a diagnostic matrix for the eventual game surface. The next slice should establish information hierarchy without changing board geometry.
+## Required fix
+1. Remove targetProgress as an ordinal/progress claim unless an already accepted authoritative field explicitly proves it. Do not add server authority here.
+2. Do not derive N-of-M, completed count, remaining count, or sequence position from array index/length.
+3. Keep directly proven current participant, active target scope, original target scope when different, source, decision owner, distinct resolver when useful, and child-frame context.
+4. Group/AOE may show compact active/original scope using the accepted arrays, but do not label it progress.
+5. Preserve the full underlying InteractionStageView.
 
-Do not remove semantic data from the underlying InteractionStageView merely because it is not always displayed.
+## Tests
+Replace the test expecting "Target 2 of 2" with authority-safe assertions.
 
-## Step 1 — define display hierarchy from existing semantics
-Create a pure display model derived only from InteractionStageView.
+Add negative evidence:
+- original [B,C,A], active [B,C], current C must not produce "2 of 2", "2 of 3", or another ordinal progress claim;
+- reordering activeTargets while keeping currentParticipant must not create a different progress position;
+- one active target from a larger original scope must not imply a completion count.
 
-Primary public focus:
-- stage/effect label;
-- source;
-- current affected participant/active target context.
+Retain ordinary target-owned, Ma Chao decision-vs-resolver, changed scope, CHILD_FRAME, viewer equality, REST, missing names, and legacy-independence tests.
 
-Decision context:
-- decision owner when a CHOICE exists;
-- viewer-local YOUR DECISION marker only from existing local entitlement.
+## Render regression
+Assert InteractionStage contains no PROGRESS label or Target N of M text derived from target arrays. Scope context may remain.
 
-Secondary/debug semantics:
-- original target list when it materially differs from active/current target context;
-- active resolver only when it differs from decision actor or clarifies nested resolution;
-- child-frame/parent relationship as compact context;
-- interaction/checkpoint/revision remain data attributes/test diagnostics, not prominent player-facing copy.
-
-Do not infer whether something is “materially different” from legacy room state. Compare only fields already in InteractionStageView.
-
-## Step 2 — refine the component
-Refactor InteractionStage markup so the normal case reads as a concise game-state sentence/summary rather than six equal diagnostic cells.
-
-Requirements:
-- source and current affected target/participant are visually primary;
-- decision owner is explicit for CHOICE;
-- Ma Chao source-owned case visibly preserves decision owner != resolver without making resolver look like the decision owner;
-- Group/AOE can show current participant plus compact target progress/context using existing target arrays only;
-- CHILD_FRAME shows compact nested-effect context;
-- missing names remain neutral and retain IDs internally;
-- no interaction -> render nothing.
-
-Do not add card art, hero portraits, arrows, new controls, buttons, timers, or animations yet.
-
-## Step 3 — responsive containment
-Keep the panel inside the existing play-table and ensure it does not cover or block controls.
-
-Add only narrowly scoped InteractionStage CSS needed for:
-- desktop;
-- <=650px;
-- <=480px;
-- long player names;
-- 4–10 player target lists without horizontal overflow.
-
-No global CSS rewrite and no seat/dock geometry changes.
-
-## Step 4 — semantic tests
-Add pure tests for the display hierarchy:
-1. ordinary target-owned CHOICE hides redundant resolver detail;
-2. Ma Chao source-owned CHOICE exposes distinct decision owner/resolver correctly;
-3. Group/AOE current participant and multi-target context;
-4. CHILD_FRAME compact parent/nested context;
-5. original targets equal active targets do not create redundant copy;
-6. changed/filtered active targets preserve truthful original-vs-active context;
-7. long/missing names remain safe;
-8. viewer change alters only local marker, not public display model;
-9. REST hidden.
-
-Add render assertions that interaction/checkpoint/revision remain data attributes and are not rendered as prominent visible labels.
-
-## Step 5 — legacy independence and regression
-Keep the UI-03 legacy-independence proof. Confirm the refined component still cannot accept Pending, timeline, presentationV2, CurrentAction, phase, actionPlayerId, or actionReason.
-
-Verify no behavior change to action strip, buttons, legal actions, target selection, dialogs, timers, sequence/resolution animation, seats, local dock, or submissions.
-
-## Step 6 — documentation
-Update docs/UX_V2_INTERACTION_STAGE_DESIGN.md and README:
-- UI-04 establishes Interaction Stage information hierarchy;
-- semantic IDs remain in the underlying view even when not prominently rendered;
-- public focus vs viewer-local marker separation;
-- final Hero Focus, target highlighting, controls, animation, and topology migration remain future slices.
+## Documentation
+Correct README and docs/UX_V2_INTERACTION_STAGE_DESIGN.md if they describe target progress. State that current participant and target scopes are facts; ordinal progress is intentionally not inferred because no accepted authoritative progress field exists.
 
 ## Validation
-Run focused Interaction Stage/helper/render tests and retained UI-01..03 tests, then:
-- npm run test:fast
-- npm run test:api
-- npm run build
-- npm run lint
-- git diff --check
-Report exact counts.
+Run focused display/render tests and retained UI-01..04 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, and git diff --check. Report exact counts.
 
 ## Scope exclusions
-No gameplay/server/projector/snapshot changes; no new semantic authority; no hero/card assets; no seat topology or local dock redesign; no target-selection/control migration; no animation rewrite; no settlement/transition protocol; no compatibility-field removal; no unrelated refactor.
+No gameplay/server/projector/snapshot changes; no new progress field; no causal redesign; no hero/card assets; no seat/dock/control/target-selection changes; no animation/settlement/transition changes; no unrelated visual redesign.
 
 ## Execution result
-Append only UI-04 result: SHA, files, display-model API, hierarchy rules, Ma Chao/Group/child-frame behavior, responsive containment changes, tests, legacy-independence proof, scope confirmation, validation counts, and next bounded UI recommendation. Push and verify remote HANDOVER, then STOP.
+Append only FIX1 result: SHA, files, removed inference, replacement Group/AOE context, negative tests, retained hierarchy evidence, scope confirmation, validation counts, and closure recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if InteractionStage becomes a concise semantic focus summary derived solely from the accepted view; redundant diagnostic detail is demoted without losing underlying semantics; source-owned/group/child-frame cases remain truthful; responsive containment is bounded; public content remains viewer-equal; and gameplay/layout/control behavior is unchanged.
-
-## Execution result — UX2.0UI-04
-
-- Implementation SHA: `08ae73b71703768ab6e8c321c13d435a49877e40` (`feat(ux-v2): refine interaction stage focus summary`).
-- Files changed: `game/presentation-client.ts`, `app/page.tsx`, `app/globals.css`, `tests/presentation-client.test.mjs`, `tests/room-safety-render.test.mjs`, `README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
-- Display-model API: `buildInteractionStageDisplayModel(stage)` derives a pure player-facing hierarchy from `InteractionStageView`; the full underlying semantic view remains intact, including effect, IDs, targets, continuity, and resolver identity.
-- Hierarchy rules: stage/effect, source, and current participant/active target are primary; CHOICE decision owner remains explicit; ordinary target-owned resolver detail is hidden; source-owned or child-frame resolver context is shown when it clarifies resolution; original targets appear only when ordered IDs differ from active targets; interaction/checkpoint/revision remain data attributes and diagnostics.
-- Ma Chao/Group/child-frame behavior: source-owned Ma Chao keeps decision owner distinct from resolver; Group/AOE shows current participant and truthful active-target progress/original scope; CHILD_FRAME shows compact nested-effect and proven parent-frame context.
-- Responsive containment: replaced the six-cell matrix markup with a compact focus/context layout and narrowly scoped desktop, `<=650px`, and `<=480px` wrapping rules. Long names and target lists wrap inside the existing panel; the panel remains pointer-free inside `play-table` and does not change seats, dock, controls, or table geometry.
-- Tests: focused adapter/display/render tests `37/37`, including ordinary target-owned CHOICE, source-owned Ma Chao, Group/AOE, child Damage/Dying, equal/changed target scopes, long/missing names, viewer equality, REST hidden, data-attribute diagnostics, and legacy independence. Existing UI-01..03 coverage remains green.
-- Legacy independence: the display model accepts only `InteractionStageView`; no Pending, timeline, presentationV2, CurrentAction, phase, actionPlayerId, or actionReason path was added.
-- Scope confirmation: no gameplay/server/projector/snapshot authority, hero/card assets, seat topology, local dock, target/control migration, animation, settlement/transition protocol, compatibility-field removal, or unrelated refactor was added. Effect is exposed from the already accepted public scene through the client adapter; no new server semantic authority was introduced.
-- Validation: `npm run build` passed; `npm run test:fast` `154/154`; `npm run test:api` `239/239`; `npm run lint` passed; `git diff --check` passed. Final focused rerun `37/37` passed.
-- Next bounded UI recommendation: review a separately authorized Hero Focus or target-highlighting slice, keeping semantic authority, controls, animation, seats, and dock boundaries unchanged.
+Pass only if no player-facing ordinal target progress is inferred from activeTargets/currentParticipant array position or length; Group/AOE shows only directly proven participant/scope facts; UI-04 hierarchy otherwise remains intact; and validations pass.
