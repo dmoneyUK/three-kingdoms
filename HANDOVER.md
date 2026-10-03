@@ -5,140 +5,89 @@ HANDOVER.md is tracked remote coordination state. Commit and push it to origin/u
 
 **CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-# NEXT TASK — UX2.0UI-07: Local Target Selection Confirm / Cancel Semantics
+# NEXT TASK — UX2.0UI-07-FIX1: Cancel Must Clear the Complete Deferred Local Selection
 
 ## Objective
-UI-06 is accepted and closed. Migrate the existing local, unsubmitted target-selection experience toward the UX V2 rule: selection is explicitly local and amber, and submission occurs only through clear Confirm / Cancel semantics where the existing gameplay flow already supports deferred target selection.
+UI-07 is partially accepted. The new local target-selection view and explicit Confirm boundary are directionally correct, but Cancel currently clears only target IDs for several composite deferred flows. That can leave selected cost cards/provider/mode active, so Cancel does not yet mean “cancel the unsubmitted local selection”.
 
-This is a client interaction/presentation migration over existing legal actions. Do not change server legality, card rules, target counts, or action payload semantics.
+Fix the Cancel semantics without changing server actions, legality, payloads, or public presentation.
 
-## Accepted baseline
-Use commit 197bccef17de6ac68f965eef6c86589154c20720:
-- Interaction Stage + Hero Focus are read-only semantic consumers;
-- public semantic target/current focus is red/cyan/source context;
-- local unsubmitted target selection is separate from public semantic roles;
-- Hero Focus does not become a control surface.
+Use implementation commit e062f5f9802b8ed33a526bb67dc4a99d86ba7eab.
 
-Do not reopen C1-C7 or UI-01..06.
+## Reviewer finding
+Current cancelLocalTargetSelection:
+- clears targetIds;
+- clears activeSkillSelectionState.targetIds when current;
+- does NOT generally clear other local state participating in the same deferred selection.
 
-## Step 1 — inventory every local target-selection path
-Before editing, enumerate actual production paths that set targetIds/setTarget or equivalent, including:
-- normal card targeting;
-- multi-target cards/effects;
-- active hero skill target selection;
-- trigger/response target selection;
-- Serpent/equipment-related selection if applicable;
-- Borrowed Sword or other special target flows if applicable.
+Examples that must be audited:
+- Serpent Spear can retain serpentSelected cost cards and serpentMode;
+- active skill card-plus-target can retain selected cardIds/provider state;
+- trigger card-plus-target can retain triggerSelectedKeys/selected provider state;
+- normal selected card/mode may remain active after target Cancel.
 
-For each path record:
-- authority that determines eligible targets;
-- min/max/exact target count;
-- whether selection is currently submitted immediately or deferred;
-- existing submit action/payload;
-- existing cancel/reset path.
+A UX “Cancel” control must have a truthful bounded meaning. It must either clear the complete unsubmitted selection for that flow, or be explicitly named/defined as target-only. The accepted UX V2 intent is complete local selection cancellation where this shared Cancel is shown.
 
-Do not generalize across paths unless code proves they share semantics.
+## Step 1 — inventory Cancel state per migrated path
+For every UI-07 migrated deferred path, enumerate all local state that forms the pending selection:
+- selected hand/card ID or conversion mode;
+- targetIds / activeSkill targetIds;
+- activeSkill cardIds/effect revision;
+- responseProviderId;
+- triggerSelectedKeys / Serpent selected cards;
+- serpentMode;
+- any other local-only selection state.
 
-## Step 2 — define a pure local selection display model
-Create a pure helper for presentation of local selection state. It may consume only already-computed local selection facts/constraints from existing client gameplay logic; it must not recompute legality from public PresentationSnapshot.
+Identify which state is flow identity versus selected input. Do not clear server-owned state.
 
-Required display facts:
-- selectionActive;
-- selected target IDs in user selection order;
-- minimum/maximum or exact count only when existing gameplay logic already proves it;
-- canConfirm based on existing proven local constraints;
-- canCancel when unsubmitted local state exists;
-- concise instruction text.
+## Step 2 — implement flow-aware local Cancel
+Replace the target-only shared cancel behavior with flow-aware cancellation.
 
-This helper is local/private UI state, NOT public Interaction Stage authority.
+Required semantics:
+- normal card target flow: clear the selected card/conversion selection and target IDs as appropriate so no stale pending selection remains;
+- Serpent Spear: clear target IDs, selected two-card cost, and exit/cancel the local Serpent selection mode;
+- active skill target/card+target: clear the active local skill selection state for that unsubmitted attempt, including selected card/target IDs, without sending a trigger action;
+- trigger/response target/card+target: clear the local provider/input selection needed to return to the pre-selection state; do not call decline_trigger/decline_response;
+- preserve any state proven to be unrelated to the active selection.
 
-## Step 3 — explicit Confirm / Cancel for deferred selections
-For selection paths that already defer submission:
-- clicking eligible seats toggles/updates amber local selection only;
-- do not submit the action from seat click;
-- render clear Confirm and Cancel controls in the existing local command/guidance area;
-- Confirm invokes the existing submit action with the existing payload and selected target order;
-- Cancel clears only local unsubmitted selection and must not send decline/skip/gameplay actions.
+If an existing provider-toggle Cancel already owns complete cancellation for a path, avoid creating conflicting duplicate Cancel semantics.
 
-Do not convert a server-authoritative decline into Cancel. Skip/Decline remains a distinct authoritative action.
+## Step 3 — one clear Cancel surface
+For an active deferred selection, render one clear local Cancel action for that flow. Avoid simultaneous provider “Cancel X” plus generic “Cancel” controls that perform materially different partial resets.
 
-If any existing path intentionally submits immediately and cannot safely be migrated without gameplay-semantic changes, leave it unchanged and document it as a GAP for a later bounded task rather than inventing behavior.
+Skip/Decline remains separate and authoritative.
 
-## Step 4 — preserve semantic separation
-- amber = local unsubmitted selection;
-- red = public active/current affected target;
-- cyan = public decision actor;
-- gray = defeated;
-- public Interaction Stage/Hero Focus must not change merely because the user locally selects/deselects an unsubmitted target;
-- local selection must not create public semantic seat roles.
+## Step 4 — semantic separation
+Cancel must not mutate PresentationSnapshot, InteractionStageView, HeroFocusView, or semantic seat-role inputs. It only clears local unsubmitted state.
 
-## Step 5 — selection order
-Where existing gameplay payload semantics preserve target order, keep selected target IDs in click order and Confirm must submit that exact order.
+## Step 5 — tests
+Add mounted regressions proving:
+1. normal card target Cancel returns to no selected card/no selected target and sends zero actions;
+2. converted Attack mode Cancel clears conversion selection plus targets where applicable;
+3. Halberd multi-target Cancel clears card + all ordered targets and sends zero actions;
+4. Serpent Spear Cancel clears mode, both selected cost cards, and target, sends zero actions;
+5. active skill card+target Cancel clears the complete local active-skill attempt and sends zero actions;
+6. active skill target-only Cancel clears the complete attempt;
+7. trigger card+target Cancel clears provider/card/target local state and sends no decline;
+8. trigger target-only Cancel clears provider/target local state and sends no decline;
+9. after Cancel, the user can start the same flow again cleanly;
+10. Skip/Decline remains visible/functional where authoritative and is not invoked by Cancel;
+11. public semantic rendering is unchanged before/after local Cancel;
+12. only one local Cancel affordance exists for each active deferred flow.
 
-Where order is not semantically meaningful, do not claim an effect order.
+Retain the ordered Confirm regression and all UI-01..07 tests.
 
-Do not infer effect resolution order from public target arrays.
-
-## Step 6 — tests
-Add focused tests for each migrated deferred path and at minimum:
-1. selecting an eligible target adds amber local state but sends no action;
-2. deselecting before Confirm sends no action;
-3. Cancel clears local selection and sends no gameplay/decline action;
-4. Confirm disabled until existing minimum/exact constraint is satisfied;
-5. Confirm submits exactly once with existing action name/payload;
-6. ordered multi-target path preserves selected order if payload semantics require it;
-7. public semantic active-target/current-target classes remain independent from amber selection;
-8. local selection changes do not change InteractionStageView/HeroFocusView/public seat roles;
-9. defeated/ineligible target remains unselectable under existing legality;
-10. response/trigger decline remains separate from local Cancel;
-11. REST/public presentation absence does not break local turn target selection;
-12. mobile/desktop render contains one clear Confirm and Cancel surface for the active deferred selection, not duplicate controls.
-
-Retain UI-01..06 semantic tests.
-
-## Step 7 — bounded UX/CSS
-Use the existing local guidance/action area. Do not create a floating modal over the board unless an existing flow already uses one.
-
-Make selected count/instruction readable and keep amber selection visually distinct from red public target state.
-
-Verify <=650px and <=480px without changing seat topology or local dock composition.
-
-## Step 8 — documentation
-Update README and docs/UX_V2_INTERACTION_STAGE_DESIGN.md with:
-- local unsubmitted selection is private amber state;
-- Confirm is the submission boundary;
-- Cancel clears local state only;
-- Skip/Decline is authoritative and distinct;
-- list any immediate-submit path intentionally left for later.
+## Step 6 — docs
+Correct README/docs wording so “Cancel clears local selection” means the complete active unsubmitted selection, not merely targetIds. Keep the explicit Borrowed Sword immediate-action and opaque picker GAPs truthful.
 
 ## Validation
-Run focused target-selection tests plus retained UI-01..06 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, and git diff --check. Report exact counts.
+Run focused UI-07/FIX1 mounted tests plus retained semantic tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, and git diff --check. Report exact counts.
 
 ## Scope exclusions
-No server/projector/snapshot/game-rule changes; no legality rewrite; no target-count changes; no new action payloads; no public authority derived from local selection; no Hero Focus controls; no seat topology/local dock redesign; no animation/settlement/transition work; no unrelated refactor.
+No server/projector/snapshot/game-rule/legality changes; no new action payloads; no conversion of Skip/Decline; no Borrowed Sword immediate-flow migration; no opaque target-card picker migration; no board/dock/Hero Focus redesign; no animation/settlement work; no unrelated refactor.
 
 ## Execution result
-Append only UI-07 result: SHA, files, complete target-path inventory, which deferred paths were migrated, any truthful GAPs, local selection model API, Confirm/Cancel behavior, selection-order evidence, semantic-separation evidence, responsive evidence, tests and validation counts, and next bounded recommendation. Push and verify remote HANDOVER, then STOP.
+Append only FIX1 result: SHA, files, per-flow Cancel state inventory, flow-aware reset behavior, one-Cancel proof, zero-authoritative-action proof, restart-after-cancel evidence, semantic independence, retained GAPs, validation counts, and closure recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if migrated deferred target selections remain local until explicit Confirm; Cancel sends no authoritative action; existing legality/payload semantics are unchanged; ordered payloads preserve proven selection order; public semantic presentation remains independent; and any unsafe immediate-submit path is left unchanged and reported rather than guessed.
-
-## EXECUTION RESULT — UX2.0UI-07
-
-- Implementation SHA: `e062f5f` (`feat: add local target selection confirmation`).
-- Files: `app/page.tsx`, `app/sequence-overrides.css`, `game/local-target-selection.ts`, `tests/active-skill-interactions.test.mjs`, `tests/local-target-selection.test.mjs`, `README.md`, `ROADMAP.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
-- Complete target-path inventory:
-  - Normal card targeting: Attack and converted Attack (Wusheng/Longdan), Dismantle, Steal, Duel, Borrowed Sword card play, Overindulgence, and Rations Depleted use the shared `targetIds` seat-selection path. Existing legality comes from projected legal card/target checks; normal submission was already deferred to `play_card`.
-  - Multi-target: Sky-Piercing Halberd uses the same path with the existing up-to-three target rule and `targetIds` click order; Confirm preserves that payload order.
-  - Active hero skills: target-only and card-plus-target options use existing projected `targetIds`, `targetMin`, and `targetMax`; existing generic `trigger` submission remains deferred.
-  - Trigger/response: target and card-plus-target options, including Da Qiao Deflection, use the existing provider selection plus local target state; existing generic `trigger` Confirm and authoritative `decline_trigger` remain separate.
-  - Serpent Spear: existing two-card cost plus deferred Attack target remains local until the existing `serpent_spear_attack` submit path.
-  - Special/private paths: Borrowed Sword forced-Attack target selection uses immediate server-authoritative `choose_borrowed_sword_target`; opaque target-card pickers use private card-zone selection. Both are intentionally unchanged GAPs rather than guessed migrations.
-- Deferred paths migrated: normal card/multi-target, active hero-skill, trigger/response, and Serpent Spear paths now expose one shared local instruction/count and the existing Confirm boundary; eligible seat clicks remain local amber only.
-- Local model API: `buildLocalTargetSelectionView({ selectionActive, selectedTargetIds, minTargetCount, maxTargetCount, canConfirm, hasLocalInput, instruction? })` returns `selectionActive`, ordered `selectedTargetIds`, proven count bounds, `canConfirm`, `canCancel`, and concise `instruction`. It consumes caller-computed local facts only and never derives authority from PresentationSnapshot or public roles.
-- Confirm/Cancel: Confirm calls the pre-existing `play_card`, `trigger`, or `serpent_spear_attack` action and preserves its payload. Cancel clears only local `targetIds` (and active-skill target IDs), sends no gameplay/decline/skip action, and leaves Skip/Decline authoritative. The existing active provider control remains distinct from local target Cancel.
-- Selection order: the mounted Halberd regression selects `p2`, then `p3`, and proves one `play_card` call with `targetId: "p2"` and `targetIds: ["p2", "p3"]`; deselection before Confirm sends no action. Generic trigger payloads retain their existing target order semantics.
-- Semantic separation: existing amber `selected-target` state is driven by local `targetIds`; public red/cyan/source/defeated classes still come only from `PresentationClientView` interaction roles. Local selection does not modify `PresentationSnapshot`, InteractionStage, HeroFocus, or public seat-role inputs. Trigger and active-skill mounted tests prove Cancel does not invoke decline.
-- Responsive evidence: guidance and controls stay in the existing local command area. Added styling is scoped to `.local-target-selection`/`.local-target-cancel`, with existing desktop, max-700 (covering 650), max-480, and max-360 dock rules retained; no board topology or dock composition changed.
-- Validation: focused UI-07 tests `17/17`; `npm run test:fast` `161/161`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
-- Next recommendation: reviewer should inspect the mounted normal-card and trigger surfaces at desktop and phone widths; keep Borrowed Sword immediate target selection and opaque target-card picker as separate bounded follow-up tasks.
+Pass only if every migrated deferred flow’s displayed Cancel returns that flow to a clean pre-selection local state, sends no gameplay/decline action, leaves public presentation unchanged, preserves authoritative Skip/Decline, and avoids conflicting duplicate Cancel affordances.
