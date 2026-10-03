@@ -31,3 +31,56 @@ Append only this bug-fix result: root cause, reproduction evidence, SHA/files, b
 
 ## Acceptance
 Pass only if the real Draw Phase flow proves Confirm visible/enabled after legal target selection, exact Assault submission resolves, Cancel/reactivation cannot strand the skill, stale authority fails closed, and regression coverage goes beyond the old synthetic fixture.
+
+## Execution result — BUG-ZHANG-LIAO-ASSAULT-01 — 2026-10-03
+
+- Implementation SHA: `fe5ab574a0f896e7807c8cb221236dc3cbc12642`.
+- Root cause: the shared operation console used `presentationBusy` to suppress
+  the primary control even after local Assault targets had been selected. A
+  late card presentation therefore hid or disabled Confirm while the same
+  server-owned trigger remained current. The active hero-skill button also
+  treated a second click as local cancellation, so the player could clear the
+  selection without an explicit Cancel surface.
+- Reproduction evidence: the new Worker/D1 fixture advances through a real
+  Draw Phase and captures the unchanged `CurrentAction` kind, actor,
+  `actionRevision`, and Assault `triggerOptions` before and after local
+  selection. The direct no-judgement flow settled its presentation before the
+  trigger, so it did not show the report by itself. Injecting the observed
+  late card presentation after one/two legal targets reproduced the missing
+  Confirm state; no draw/replacement action had been emitted. The browser
+  fixture then proves the reported sequence against the real API-backed room.
+- Behavior after: active target selection keeps Confirm and Cancel available
+  while the authoritative action/revision remains current; repeated Assault
+  clicks do not ambiguously cancel an active selection; explicit Cancel is
+  local and emits no gameplay action; reactivation starts from the same
+  CurrentAction. Zhang Liao's multi-target submission is exactly
+  `trigger` with `{ providerId: "zhang_liao_assault", targetIds }`.
+- Authority boundaries: no Assault capability, target legality, draw
+  replacement, server revision, privacy, or continuation code changed. The
+  server still validates the target IDs and action revision, and stale or
+  invalid submissions fail closed.
+- Changed files: `README.md`, `app/page.tsx`,
+  `tests/active-skill-interactions.test.mjs`,
+  `tests/api/heroes-wu-shu.test.mjs`, `tests/api/test-support.mjs`,
+  `tests/browser/playwright.config.mjs`,
+  `tests/browser/worker-server.mjs`,
+  `tests/browser/zhang-liao-assault.spec.mjs`, and
+  `tests/room-safety-render.test.mjs`.
+- Regression evidence: focused mounted tests 39/39 passed; focused real API
+  hero file 13/13 passed; browser regression 1/1 passed. The browser path
+  covers one target, two targets, second-click preservation, explicit
+  Cancel/reactivation, zero pre-confirm replacement actions, console
+  visibility/enabled state, and the exact final payload. Existing API coverage
+  covers stale revision and invalid-target rejection.
+- Validation: `npm run test:fast` passed 197/197; `npm run test:api` passed
+  242/242; `npm run build` passed; `npm run lint` passed; `git diff --check`
+  passed. React test-renderer deprecation warnings remain non-failing output.
+- Delivery: GitHub Actions remains responsible for remote gate validation and
+  deployment status; it was not polled or claimed as successful here.
+- Known gaps: the original user report was not reproduced in the plain
+  no-judgement API path because its presentation had already settled; the
+  precise late-presentation state mismatch is now covered directly in mounted
+  and browser regressions. No unrelated UI or gameplay work was included.
+- Recommended next bounded task: reviewer acceptance of this bug fix, then
+  reproduce the next reported game bug under a new handover; no follow-up
+  implementation is authorized by this handover.
