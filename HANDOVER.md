@@ -174,3 +174,21 @@ Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
 Pass only if the already-proven primary Hero Focus becomes materially enlarged in top-row mode at desktop and mobile widths, semantic identity selection is untouched, existing Interaction/Negation/Dying containment stays green, and no seat/dock/gameplay/Reaction/meta scope is changed.
+
+## Agent execution result — UX2.0VIS-03B
+
+- Implementation SHA: `ed9421425c82a54d8d010704390e3b94ad4796fc`.
+- Files changed:
+  - `app/globals.css`
+  - `tests/browser/ui19.spec.mjs`
+- Final top-row Hero Focus portrait dimensions:
+  - desktop >650px: `90px × 113px`;
+  - 481–650px: `72px × 90px`;
+  - <=480px: `64px × 80px`.
+- CSS strategy: top-row-scoped CSS Grid promotes the existing portrait into the dominant left column and places the unchanged heading/role, identity, source and nested context in the right column. The existing `.hero-focus-body` becomes `display: contents` only in this scope so no React or semantic structure changed. The old nested compact-panel background, border, inset shadow and padding are removed in top-row mode; artwork keeps the established approximately 4:5 portrait ratio and existing asset/object-fit behavior. At <=650px the event region's external top spacing is reduced from 7px to 3px so the enlarged minimum portrait fits without changing Reaction/Dying content, text, safe-zone geometry or Dock geometry.
+- Primary-selection proof: `app/page.tsx`, `game/hero-focus.ts`, `game/presentation-client.ts` and all server/gameplay files are unchanged. New browser assertions prove exactly one visible `[data-hero-focus="true"]` and preserve the fixture-proven IDs at every tested viewport: Interaction=`p1`, Negation=`p2`, Dying=`p3`.
+- Focused validation:
+  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-03B' --config tests/browser/playwright.config.mjs` — final **9/9 PASS**. An initial 7/9 run exposed the retained compact-panel top margin at 650px; removing that obsolete margin restored both failing cases without reducing the required portrait size.
+  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-(02-FIX1|03B)' --config tests/browser/playwright.config.mjs` — final **18/18 PASS**: 9 existing VIS-02-FIX1/VIS-03A containment cases plus 9 new VIS-03B Hero Focus cases. Before the final external event-spacing adjustment, the existing suite identified 650px Negation and Dying play-table-bottom overruns of approximately 3.1px and 0.6px; the unchanged strict assertions pass after the adjustment.
+- Full validation not run under the project remote-validation workflow: `npm run test:browser`, `npm run test:fast`, `npm run build`, `npm run lint`, and `git diff --check`. GitHub Actions owns those gates; CI status was not inspected or polled.
+- Remaining GAP: none observed within the bounded VIS-03B focused scope. Full-suite and CI results remain unverified pending GitHub Actions/user notification.
