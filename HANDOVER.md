@@ -5,65 +5,90 @@ HANDOVER.md is tracked remote coordination state. Commit and push it to origin/u
 
 **CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-# NEXT TASK — UX2.0UI-08: Borrowed Sword Forced-Attack Target Selection UX
+# NEXT TASK — UX2.0UI-09: Private Target-Card Picker Confirm / Cancel Boundary
 
 ## Objective
-UI-07 is accepted and closed. Address the explicit remaining player-target GAP: Borrowed Sword forced-Attack target picker currently submits choose_borrowed_sword_target immediately from target click.
+UI-08 is accepted and closed. Address the remaining explicit UI-07/UI-08 GAP: opaque private target-card picker flows.
 
-Migrate only this flow to the UX V2 local selection boundary if the existing server action contract permits deferred client selection without changing gameplay semantics. Do not touch opaque private target-card pickers.
+Migrate only the existing private target-card selection UI to a clear local selection → Confirm / Cancel boundary where the current server contract already supports deferred submission. Preserve hidden-information rules exactly.
 
-## Authority rules
-1. Server CurrentAction/legal IDs remain the only legality authority.
-2. Public PresentationSnapshot/Interaction Stage/Hero Focus never determines selectable targets.
-3. Local Borrowed Sword selection is private/unsubmitted amber state.
-4. Confirm is the only submission boundary if migration is proven safe.
-5. Cancel clears only the unsubmitted local Borrowed Sword choice and sends zero gameplay/decline actions.
-6. Do not change choose_borrowed_sword_target payload or server resolution semantics.
-7. If immediate submission is semantically required, do not force migration: document the exact blocker and leave behavior unchanged.
+## Authority / privacy rules
+1. Server CurrentAction/selection contract remains legality authority.
+2. Private card identities visible to the authorized viewer must never leak into public PresentationSnapshot, Interaction Stage, Hero Focus, seat roles, logs, data attributes, or other viewers.
+3. Selecting a private target card is local/unsubmitted state until Confirm where existing action contract permits it.
+4. Cancel clears local picker state only and sends zero gameplay/decline actions.
+5. Skip/Decline remains a separate authoritative action.
+6. Do not change server action names, payload shape, card visibility, random/hidden-card rules, or gameplay resolution.
+7. If any picker intentionally submits immediately because of authoritative semantics, prove the blocker and leave it unchanged.
 
-## Step 1 — trace the complete production flow
-Inventory the CurrentAction/legal action, eligible target IDs, current client click handler, payload, server handler/validation, Pending/continuation before and after, and any other side effect of target click. Name exact files/functions.
+## Step 1 — inventory every private target-card picker path
+Trace production code for TargetCardPicker and all callers/options. For each path record:
+- actor/viewer;
+- target player;
+- public vs private card-zone information;
+- eligible card/key source;
+- selection min/max/exact count;
+- current local state;
+- current submit action/payload;
+- decline/skip path;
+- server handler/validation;
+- whether identities are allowed to be visible to the acting viewer.
 
-## Step 2 — decide migration safety
-Prove whether delaying the existing action until Confirm changes server-visible state, timeout behavior, or legal revision assumptions.
+Do not generalize different hidden-card semantics.
 
-If safe: introduce local selected Borrowed Sword target ID; seat click updates amber only; Confirm sends the existing action exactly once with unchanged payload; Cancel sends nothing; stale action revision/state change clears or invalidates local choice.
+## Step 2 — define the local picker boundary
+For safely deferred paths:
+- clicking an eligible private card/key changes only local picker selection;
+- Confirm submits the existing action exactly once with unchanged payload;
+- Confirm disabled until the existing proven selection constraint is satisfied;
+- Cancel clears complete local picker selection/provider state for that attempt and sends zero actions;
+- reopening/restarting begins cleanly;
+- actionRevision/current-action/eligibility change invalidates stale local selection.
 
-If unsafe: leave behavior unchanged, add tests/docs proving the blocker, and report a truthful GAP.
+Do not convert Decline/Skip into Cancel.
 
-## Step 3 — visual/semantic separation
-If migrated, reuse local amber selection language. Public red active/current target remains independent. Local selection must not alter InteractionStageView, HeroFocusView, or public semantic roles. Use existing local guidance/action area; no modal or duplicate seat.
+## Step 3 — privacy audit
+Add explicit negative evidence that selected private card identity is not copied into:
+- public presentation adapters;
+- Interaction Stage / Hero Focus;
+- opponent seat public DOM/data attributes;
+- public timeline/log text before authoritative submission;
+- any shared/public room projection beyond existing authorized private fields.
 
-## Step 4 — tests
-If safe, prove: target click sends zero actions; amber local state; Confirm one unchanged payload; Cancel zero actions and clear; restart after Cancel; ineligible/defeated remain unselectable; stale revision/action clears choice; public semantics unchanged; red+amber overlap distinguishable; one Confirm/Cancel surface; other UI-07 flows unchanged; authoritative timeout/decline controls separate.
+Do not expose a hidden hand card face if the existing rules expose only opaque keys/backs.
 
-If unsafe, replace migration assertions with exact contract/blocker assertions.
+## Step 4 — visual UX
+Keep picker visually private and associated with the local operation console. Use clear selected state plus Confirm/Cancel. No board topology changes, no opponent-card enlargement, no public focus takeover. Verify <=650px and <=480px containment.
 
-## Step 5 — docs
-Update README, ROADMAP, and UX design doc. Close the Borrowed Sword GAP only if safely migrated; otherwise state exact blocker. Opaque private target-card picker remains separate GAP.
+## Step 5 — tests
+At minimum prove:
+1. picker selection sends zero action;
+2. Confirm sends exactly one unchanged action/payload;
+3. Cancel sends zero action and clears full local attempt;
+4. restart after Cancel works;
+5. min/max/exact constraint controls Confirm from existing authority;
+6. ineligible key/card cannot be selected;
+7. stale revision/current-action invalidates selection;
+8. Skip/Decline remains distinct and authoritative;
+9. authorized viewer sees only the information already allowed by the contract;
+10. unauthorized/public render cannot observe selected private identity;
+11. InteractionStageView/HeroFocusView/public seat roles do not change from local picker selection;
+12. no private identity appears in public timeline/log before submission;
+13. UI-07 normal target flows and UI-08 Borrowed Sword remain unchanged;
+14. one clear Confirm/Cancel surface per active picker;
+15. responsive render remains contained.
+
+## Step 6 — docs
+Update README, ROADMAP, and docs/UX_V2_INTERACTION_STAGE_DESIGN.md. Close only the private picker GAPs actually proven. List any remaining hidden-information picker separately and truthfully.
 
 ## Validation
-Run focused Borrowed Sword tests plus retained UI-01..07 tests, npm run test:fast, npm run test:api, npm run build, npm run lint, git diff --check. Report exact counts.
+Run focused picker/privacy tests plus retained UI-01..08 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, git diff --check. Report exact counts.
 
 ## Scope exclusions
-No game-rule changes; no new server action/payload; no projector/snapshot authority changes; no opaque target-card picker migration; no Hero Focus controls; no topology/dock redesign; no animation/settlement work; no unrelated refactor.
+No server gameplay/rule changes; no new payloads; no visibility-rule changes; no projector/snapshot authority expansion; no public reveal of private cards; no Hero Focus controls; no topology/dock redesign; no animation/settlement work; no unrelated refactor.
 
 ## Execution result
-Append only UI-08 result: SHA, files, full flow trace, safety decision/proof, implementation or blocker, stale-state handling, semantic separation, tests/validation counts, remaining GAPs, next bounded recommendation. Push and verify remote HANDOVER, then STOP.
+Append only UI-09 result: SHA, files, complete picker inventory, authority/privacy evidence, migrated paths or truthful blockers, Confirm/Cancel semantics, stale-state handling, negative leak tests, responsive evidence, exact validation counts, remaining GAPs, next bounded recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass if either the existing contract safely supports deferred selection and target click becomes local until Confirm with zero-action Cancel and unchanged server semantics, or the agent proves migration unsafe and leaves gameplay unchanged with precise evidence. Never change authoritative gameplay semantics just to obtain the UX.
-
-## EXECUTION RESULT — UX2.0UI-08
-
-- Implementation SHA: `b823748` (`feat: defer borrowed sword target confirmation`).
-- Files changed: `app/page.tsx`, `tests/active-skill-interactions.test.mjs`, `README.md`, `ROADMAP.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`. No server, pending, projector, snapshot, or gameplay files changed.
-- Full flow trace: `app/page.tsx` reads `room.pendingBorrowedSword` and `currentAction` in `canChooseBorrowedSword`, receives server-projected `eligibleTargetIds`, routes eligible opponent-seat clicks through `chooseBorrowedSwordTarget`, stores only `borrowedSwordTargetId`, and submits through `confirmBorrowedSwordTarget`. The existing server path remains `app/api/rooms/route.ts` action options for `borrowed_sword/choose_target` (around line 3381), the `pendingBorrowedSword` compatibility projection (around line 3515), and the unchanged `choose_borrowed_sword_target` handler (around lines 5167–5206). `game/pending.ts` still defines the same `BorrowedSwordPending` stage and continuation contract.
-- Safety decision: migration is safe. During `stage='choose_target'`, the room remains in `response`, the source actor remains the only action owner, no server deadline is armed for this selection, and the existing handler performs all live holder/weapon/target legality checks plus the CAS claim only after the action arrives. Delaying the same action until Confirm therefore creates no server-visible reservation, timeout, or resolution change. Confirm sends exactly the unchanged `choose_borrowed_sword_target` action with `{ targetId }` once.
-- Local behavior: the old duplicate target dialog was removed. Eligible board seats become local amber selection; Confirm is the only submission boundary; Cancel clears `borrowedSwordTargetId` and sends zero gameplay/decline actions. Ineligible holder/defeated seats remain disabled from the server-projected eligible set.
-- Stale-state handling: the local target is cleared on `actionRevision` changes and whenever the authoritative `eligibleTargetIds` set no longer contains it. A new selection can restart without stale target state.
-- Semantic separation: local Borrowed Sword selection only changes React-local target state and the existing local target-selection guidance. `PresentationSnapshot`, `InteractionStageView`, `HeroFocusView`, public seat roles, legality, action names, payloads, and server routing are unchanged.
-- Regression evidence: mounted tests prove zero-action target click, amber selection, one Confirm/Cancel surface, exact existing payload, Cancel reset, restart after Cancel, defeated/ineligible rejection, public presentation attributes unchanged, and action-revision invalidation. Existing API Borrowed Sword/CAS/continuation coverage remains green.
-- Retained GAP: opaque private target-card pickers remain separate card-zone flows and are not generalized into player target selection.
-- Validation: focused mounted/UI tests `37/37`; `npm run test:fast` `166/166`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed. Fast/API were rerun serially after the final build because parallel build/test execution can remove `dist` manifests during test startup.
-- Closure recommendation: UI-08 is complete for reviewer closure. The Borrowed Sword player-target GAP is closed without changing authoritative gameplay semantics; proceed only with the next separately bounded UX slice after review.
+Pass only if each migrated private picker keeps selection local until Confirm, Cancel sends no authoritative action, server payload/legality/visibility semantics remain unchanged, private identity does not leak into public presentation, and unsupported picker semantics are left unchanged with precise evidence.
