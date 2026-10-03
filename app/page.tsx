@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, FormEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Component, FormEvent, ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cardDefinition, isAttackCard } from "../game/cards";
 import type { Card } from "../game/model";
 import { baselineHand, updatePrivateHand } from "../game/private-hand.js";
@@ -519,6 +519,25 @@ export function InteractionStage({ view, transitionKind = "NONE", resolvePlayerN
   </section>;
 }
 
+function createPresentationTransitionStore(initialView: PresentationClientView) {
+  let previousView: PresentationClientView | null = null;
+  let snapshot = buildPresentationTransition(null, initialView);
+  const listeners = new Set<() => void>();
+  return {
+    accept(nextView: PresentationClientView) {
+      if (nextView === previousView) return;
+      snapshot = buildPresentationTransition(previousView, nextView);
+      previousView = nextView;
+      listeners.forEach((listener) => listener());
+    },
+    getSnapshot: () => snapshot,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  };
+}
+
 export type DecisionPresentation = {
   phaseLabel: string;
   turnOwner: string;
@@ -870,12 +889,12 @@ export function LocalPlayerDock({ player, hero, interactionRoles, children, hero
 export function GameRoom({ room, presentationView, busy, error, onAction, onLeave }: { room: Room; presentationView?: PresentationClientView; busy: boolean; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void }) {
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
-  const clientPresentation = presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId);
-  const previousPresentationView = useRef<PresentationClientView | null>(null);
-  const presentationTransition = buildPresentationTransition(previousPresentationView.current, clientPresentation);
+  const clientPresentation = useMemo(() => presentationView ?? buildPresentationClientView(room.presentationSnapshot ?? null, room.meId), [presentationView, room.presentationSnapshot, room.meId]);
+  const [presentationTransitionStore] = useState(() => createPresentationTransitionStore(clientPresentation));
+  const presentationTransition = useSyncExternalStore(presentationTransitionStore.subscribe, presentationTransitionStore.getSnapshot, presentationTransitionStore.getSnapshot);
   useEffect(() => {
-    previousPresentationView.current = clientPresentation;
-  }, [clientPresentation]);
+    presentationTransitionStore.accept(clientPresentation);
+  }, [clientPresentation, presentationTransitionStore]);
   const [selected, setSelected] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const target = targetIds[0] ?? "";
   const handRailRef = useRef<HTMLDivElement | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
