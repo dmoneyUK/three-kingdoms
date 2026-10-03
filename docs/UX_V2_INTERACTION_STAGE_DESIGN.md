@@ -4246,3 +4246,57 @@ Group/Root Negation, Judgement, Dying rescue handoff, Borrowed Sword, delayed
 Lightning Damage, malformed authority, repeated reads, and acting versus
 uninvolved viewers. The C5 gap is the future C7 PresentationSnapshot wrapper;
 no C7 work is authorized by this classification field.
+
+### 0.103 UX2.0C6-01 engine-backed presentation architecture invariant matrix — 2026-10-03
+
+C6 is the verification boundary before C7. It does not implement a
+`PresentationSnapshot`, move authority into React/CSS, or add a gameplay
+protocol. The matrix below records only facts proven by real Worker/D1/API
+fixtures. `P` means the fixture has an explicit assertion; `N/A` means the
+invariant is not meaningful for that row. No row is promoted from a synthetic
+projector fixture alone.
+
+Legend: `I` interaction identity; `F` root/active/parent frame relation; `C`
+checkpoint/revision; `R` source/target/current participant roles; `A` decision
+actor/active resolver; `B` `stableBoundary`; `V` public viewer equality; `P`
+private control separation; `Q` repeated-read/reconnect stability; `T`
+terminal clear/resume.
+
+| Real interaction family | Engine/API fixture | I | F | C | R | A | B | V | P | Q | T |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Attack / Dodge | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference` | P | P | P | P | P | P | P | P | P | P |
+| Attack -> Judgement -> Attack resume | `tests/api/ma-chao.test.mjs` — `Cavalry keeps Dodge available when Sima Yi replaces the original red Judgement with Black` | P | P | P | P | P | P | P | P | P | P |
+| Duel responder handoff | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Duel alternates response actors without changing the root context` | P | P | P | P | P | P | P | P | P | P |
+| Group/AOE normal participant progression | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant` | P | P | P | P | P | P | P | P | P | P |
+| Group -> Negation -> resume | `tests/api/presentation-v2-engine.test.mjs` — `FIX9 Group counter-Negation stays in one frame and restores Group resolution` | P | P | P | P | P | P | P | P | P | P |
+| Group -> Damage child -> resume | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant`; `FIX14 Group failure Damage uses one child frame and resumes the next participant` | P | P | P | P | P | P | P | P | P | P |
+| Group -> Damage -> Dying -> rescue -> resume | `tests/api/presentation-v2-engine.test.mjs` — `FIX15 lethal Group Damage survives Peach rescue with the parent frame available` | P | P | P | P | P | P | P | P | P | P |
+| independent/root Damage | `tests/api/lobby-heroes-wei.test.mjs` — `Legacy privately distributes top two cards and repeats once per damage point` | P | P | P | P | P | P | P | P | P | P |
+| delayed Lightning Judgement -> Damage | `tests/api/lobby-heroes-wei.test.mjs` — `delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities` | P | P | P | P | P | P | P | P | P | P |
+| root Negation / counter-Negation | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Negation/counter-Negation keeps the original effect recoverable` | P | P | P | P | P | P | P | P | P | P |
+| standalone Judgement replacement | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Judgement replacement exposes reveal and resume evidence` | P | P | P | P | P | P | P | P | P | P |
+| Dying rescue handoff | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Dying/rescue proves the separate timer arm and reconnect behavior`; `C4-01 Dying skips non-rescuers and advances one causal checkpoint between real rescuers` | P | P | P | P | P | P | P | P | P | P |
+| Borrowed Sword | `tests/api/presentation-v2-engine.test.mjs` — `engine-backed Borrowed Sword preserves forced Attack continuation and timer barrier` | P | P | P | P | P | P | P | P | P | P |
+
+The matrix deliberately distinguishes identity from descriptive compatibility
+references. `resolutionId`, timeline `event.id`, and `actionRevision` are
+checked for continuity or non-authority only; none is treated as an Interaction
+or Frame identity. `CurrentAction` remains the control/legality projection,
+and private options/cards are excluded from the public scene, roles, and
+boundary assertions.
+
+The real fixtures above also cover the required invalid states: checkpoint and
+active-frame mismatch, missing/null causal authority, typed Group child-link
+mismatch, malformed Duel/Group/Judgement envelopes, Dying resolver mismatch,
+and unlinked Borrowed Sword Pending. They remain `UNPROVEN`/identity-free and
+do not upgrade public semantics from legacy Pending or final-result metadata.
+`tests/presentation-v2.test.mjs` adds the C6 projector guard that keeps
+reserved `SETTLEMENT` out of current boundaries even when `finalResult` or
+viewer control metadata is present.
+
+All listed rows are real production engine/API paths and are not synthetic
+happy-path substitutes. The only N/A cells are unsupported roles or
+transitions inside individual fixtures; they are not collapsed into a single
+model. C6 is complete as an architecture verification matrix, while C7,
+`PresentationSnapshot`, React/CSS migration, animation semantics, and durable
+transition occurrence IDs remain out of scope.

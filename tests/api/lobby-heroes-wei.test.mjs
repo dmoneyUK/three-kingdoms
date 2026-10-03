@@ -352,6 +352,22 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   const privateView = (await state(one.game.code, one.guoMember.token)).data;
   const otherView = (await state(one.game.code, one.game.members[2].token)).data;
   assert.equal(privateView.currentAction.kind, "trigger");
+  assert.equal(privateView.causalEnvelope.frames.length, 1);
+  assert.equal(privateView.causalEnvelope.activeFrameId, privateView.causalEnvelope.frames[0].frameId);
+  assert.equal(privateView.causalEnvelope.frames[0].stage, "DAMAGE");
+  assert.equal(privateView.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(privateView.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
+  assert.equal(privateView.presentationV2.interactionScene?.sourceId, one.source.id);
+  assert.deepEqual(privateView.presentationV2.interactionScene?.targetIds, [one.guo.id]);
+  assert.deepEqual(privateView.presentationV2.interactionScene?.participantRoles, { sourceId: one.source.id, originalTargetIds: [one.guo.id], activeTargetIds: [one.guo.id], currentParticipantId: one.guo.id, decisionActorId: one.guo.id, activeResolverId: one.guo.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(privateView.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(privateView.presentationV2.stableBoundary.decisionActorId, one.guo.id);
+  const privateRepeat = (await state(one.game.code, one.guoMember.token)).data;
+  assert.deepEqual(privateRepeat.presentationV2.interactionScene, privateView.presentationV2.interactionScene);
+  assert.deepEqual(privateRepeat.presentationV2.stableBoundary, privateView.presentationV2.stableBoundary);
+  assert.deepEqual(otherView.presentationV2.interactionScene, privateView.presentationV2.interactionScene, "root Damage public scene is viewer-stable");
+  assert.deepEqual(otherView.presentationV2.stableBoundary, privateView.presentationV2.stableBoundary);
+  assert.equal(otherView.currentAction.options, undefined, "root Damage controls remain private to the acting viewer");
   const accepted = await requestAndSettle("trigger", { code: one.game.code, token: one.guoMember.token, providerId: "guo_jia_legacy" });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
   const held = (await state(one.game.code, one.guoMember.token)).data;
@@ -363,6 +379,8 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   const settled = await distributeLegacy(one, one.guo.id);
   assert.deepEqual(settled.room.players.find((player) => player.id === one.guo.id).handCount, 2);
   assert.equal(settled.room.players.find((player) => player.id === one.guo.id).hp, 3);
+  assert.equal(settled.room.causalEnvelope, null);
+  assert.deepEqual(settled.room.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
   assert.equal((await requestAndSettle("trigger", { code: one.game.code, token: one.guoMember.token, providerId: "private_card_distribution", assignments: [] })).status, 409, "stale distribution cannot replay cards");
   assert.ok(privateView.currentAction.triggerOptions.every((option) => option.effectId === "guo_jia_legacy"));
   void otherView;
@@ -431,6 +449,10 @@ test("delayed Lightning damage keeps one Judgement Interaction across three Lega
   assert.equal(otherViewer.causalEnvelope.checkpoint.checkpointId, damageRoot.checkpoint.checkpointId);
   assert.equal(otherViewer.causalEnvelope.presentationRevision, damageRoot.presentationRevision);
   assert.deepEqual(otherViewer.presentationV2.interactionScene, view.presentationV2.interactionScene);
+  assert.deepEqual(otherViewer.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
+  const repeated = (await state(game.code, guoMember.token)).data;
+  assert.deepEqual(repeated.presentationV2.interactionScene, view.presentationV2.interactionScene);
+  assert.deepEqual(repeated.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
   const persistedDamage = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   assert.equal(persistedDamage.actorId, guo.id);
   assert.equal(persistedDamage.causal.interactionId, damageRoot.interactionId);
@@ -449,6 +471,7 @@ test("delayed Lightning damage keeps one Judgement Interaction across three Lega
     }
   }
   assert.equal(view.causalEnvelope, null, "the inherited Judgement/Damage root clears at final settlement");
+  assert.deepEqual(view.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
   assert.equal(view.players.find((player) => player.id === guo.id).hp, 1);
   const lightningHand = JSON.parse(query(`SELECT hand_json FROM players WHERE id=${quote(guo.id)}`));
   assert.ok(legacyCards.every((card) => lightningHand.some((held) => held.id === card.id)), "all three Legacy resolutions transfer their own next two cards");

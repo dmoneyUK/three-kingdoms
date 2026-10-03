@@ -101,6 +101,8 @@ test("engine-backed Borrowed Sword preserves forced Attack continuation and time
   const reconnect = (await state(scenario.game.code, scenario.host.token)).data;
   assert.equal(reconnect.currentAction.deadline, armedView.currentAction.deadline);
   assert.deepEqual(reconnect.presentationV2.rootContext, armedView.presentationV2.rootContext);
+  assert.deepEqual(reconnect.presentationV2.interactionScene, view.presentationV2.interactionScene);
+  assert.deepEqual(reconnect.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
   assert.equal(reconnect.currentAction.options, undefined);
 });
 
@@ -162,6 +164,8 @@ test("engine-backed Dying/rescue proves the separate timer arm and reconnect beh
   assert.equal(beforeReconnect.currentAction.options?.some((option) => option.providerId === "card"), true, "the acting rescuer keeps private Peach options after reconnect");
   const uninvolvedDyingViewer = (await state(game.code, game.members[0].token)).data;
   assert.deepEqual(uninvolvedDyingViewer.presentationV2.dyingBarrier, view.presentationV2.dyingBarrier);
+  assert.deepEqual(uninvolvedDyingViewer.presentationV2.interactionScene, view.presentationV2.interactionScene);
+  assert.deepEqual(uninvolvedDyingViewer.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
   assert.equal(uninvolvedDyingViewer.currentAction.options, undefined, "rescue options remain private to the acting viewer");
   assert.equal(beforeReconnect.currentAction.deadline, 0);
   const armed = await requestAndSettle("start_rescue_timer", { code: game.code, token: bob.token });
@@ -676,6 +680,9 @@ test("engine-backed Duel alternates response actors without changing the root co
   const firstOtherViewer = await state(game.code, host.token);
   assert.deepEqual(firstOtherViewer.data.presentationV2.interactionScene, first.presentationV2.interactionScene, "Duel public scene is equal across the first response checkpoint");
   assert.equal(firstOtherViewer.data.presentationV2.interactionScene?.decisionActorId, target.id);
+  const firstRepeat = await state(game.code, alice.token);
+  assert.deepEqual(firstRepeat.data.presentationV2.interactionScene, first.presentationV2.interactionScene, "repeated Duel reads do not create a new public scene");
+  assert.deepEqual(firstRepeat.data.presentationV2.stableBoundary, first.presentationV2.stableBoundary);
   assert.equal(firstOtherViewer.data.currentAction.options, undefined, "Duel response options remain private to the acting viewer");
   const answered = await request("respond", { code: game.code, token: alice.token, providerId: "card", cardId: firstAttack.id });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
@@ -915,6 +922,13 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.deepEqual(first.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id], activeTargetIds: [target.id], currentParticipantId: target.id, decisionActorId: target.id, activeResolverId: target.id, parentParticipantId: null, participantIds: [] });
   assert.equal(first.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(first.presentationV2.stableBoundary.decisionActorId, target.id);
+  const firstRepeat = await state(game.code, alice.token);
+  const firstOtherViewer = await state(game.code, host.token);
+  assert.deepEqual(firstRepeat.data.presentationV2.interactionScene, first.presentationV2.interactionScene);
+  assert.deepEqual(firstRepeat.data.presentationV2.stableBoundary, first.presentationV2.stableBoundary);
+  assert.deepEqual(firstOtherViewer.data.presentationV2.interactionScene, first.presentationV2.interactionScene, "Negation public scene is viewer-stable");
+  assert.deepEqual(firstOtherViewer.data.presentationV2.stableBoundary, first.presentationV2.stableBoundary);
+  assert.equal(firstOtherViewer.data.currentAction.options, undefined, "Negation options remain private to the acting viewer");
   assert.equal(first.causalEnvelope.activeFrameId, authoritativePending(game.code).causal.frameId);
   assert.equal(first.causalEnvelope.frames.length, 1);
   assert.equal(first.causalEnvelope.frames[0].stage, "NEGATION");
@@ -1077,6 +1091,13 @@ test("engine-backed Judgement replacement exposes reveal and resume evidence", {
   assert.deepEqual(revealView.presentationV2.interactionScene?.participantRoles, { sourceId: setup.guo.id, originalTargetIds: [setup.guo.id], activeTargetIds: [setup.guo.id], currentParticipantId: setup.guo.id, decisionActorId: setup.sima.id, activeResolverId: setup.sima.id, parentParticipantId: null, participantIds: [] });
   assert.equal(revealView.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(revealView.presentationV2.stableBoundary.decisionActorId, setup.sima.id);
+  const revealRepeat = await state(setup.game.code, setup.simaMember.token);
+  const revealOtherViewer = await state(setup.game.code, setup.guoMember.token);
+  assert.deepEqual(revealRepeat.data.presentationV2.interactionScene, revealView.presentationV2.interactionScene);
+  assert.deepEqual(revealRepeat.data.presentationV2.stableBoundary, revealView.presentationV2.stableBoundary);
+  assert.deepEqual(revealOtherViewer.data.presentationV2.interactionScene, revealView.presentationV2.interactionScene, "Judgement public scene is viewer-stable");
+  assert.deepEqual(revealOtherViewer.data.presentationV2.stableBoundary, revealView.presentationV2.stableBoundary);
+  assert.equal(revealOtherViewer.data.currentAction.options, undefined, "Judgement replacement options remain private to the acting viewer");
   const replaced = await requestAndSettle("trigger", { code: setup.game.code, token: setup.simaMember.token, providerId: "sima_yi_guicai", cardId: replacement.id });
   assert.equal(replaced.status, 200, JSON.stringify(replaced.data));
   const effective = await assertProjectionMatchesEngine(setup.game.code, setup.guoMember.token);

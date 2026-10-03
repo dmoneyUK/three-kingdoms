@@ -477,3 +477,17 @@ test("reduced motion and fast-forward remain client presentation concerns", () =
   assert.equal("reducedMotion" in projected, false);
   assert.deepEqual(projected.transitionEvents.map((item) => item.eventId), ["attack-event"]);
 });
+
+test("C6 keeps reserved SETTLEMENT out of every current projector boundary", () => {
+  const finalResultTimeline = [event("settlement-event", "r1", { finalResult: true })];
+  const cases = [
+    { pending: null, currentAction: action({ kind: "none", actorId: null, resolutionId: null, readyAfterEventId: null, declineAction: undefined }) },
+    { pending: null, currentAction: action({ kind: "turn", actorId: "A", declineAction: undefined }) },
+    { pending: flows[0].points[0].pending, currentAction: flows[0].points[0].currentAction },
+    { pending: flows[7].points[1].pending, currentAction: flows[7].points[1].currentAction },
+  ];
+  for (const fixture of cases) {
+    const projected = projectPresentationV2({ ...fixture, actionRevision: "c6-guard", timeline: finalResultTimeline });
+    assert.notEqual(projected.stableBoundary.kind, "SETTLEMENT");
+  }
+});

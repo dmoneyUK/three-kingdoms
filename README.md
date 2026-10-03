@@ -1,19 +1,20 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C6-01 verification preflight — 2026-10-02
+## Current stage — UX2.0C6-01 engine-backed invariant matrix — 2026-10-03
 
-C5 is closed for its defined pre-C6 scope. C6 verification is now being
-prepared against real Worker/D1/API paths. This preflight repaired an outdated
-Ma Chao Cavalry assertion: the source-owned trigger does not by itself establish
-public decision authority when the active ATTACK_RESPONSE frame is resolved by
-the target. The test now preserves the accepted fail-closed rule: semantic
-`decisionActorId` remains `null`, while `activeResolverId` remains the target.
-No production gameplay, React/CSS, or PresentationSnapshot code changed.
+C6 closes the verification matrix before C7. Real Worker/D1/API fixtures now
+cover Attack/Dodge, Attack -> Judgement -> Attack resume, Duel handoff,
+Group/AOE progression and child/resume paths, root and delayed Damage,
+Negation/counter-Negation, Judgement replacement, Dying rescue, and Borrowed
+Sword. The matrix explicitly checks causal identity, frame relations,
+checkpoint/revision behavior, typed participant roles, decision authority,
+viewer-stable public semantics, private control separation,
+reconnect/repeated-read stability, terminal clearing, and malformed
+fail-closed behavior. A projector guard keeps reserved `SETTLEMENT` out of
+current boundaries.
 
-The next milestone is the full C6 invariant matrix: real interaction-family
-coverage for causal continuity, viewer equality/privacy, reconnect and stale
-safety, child/resume boundaries, terminal clearing, and malformed-state
-rejection. C6 is not complete yet and C7/React/CSS remain out of scope.
+No production gameplay, React/CSS, animation, or PresentationSnapshot code was
+added. C6 is verification only; C7 remains the next milestone.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

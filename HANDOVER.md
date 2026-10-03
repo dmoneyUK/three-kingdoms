@@ -300,3 +300,50 @@ Validation: focused `tests/api/ma-chao.test.mjs` passed 10/10; `npm test`
 passed build, fast 123/123, and API 239/239 across 23 files and 4 shards;
 `npm run lint` and `git diff --check` passed. C6-01 remains open and is not
 ready for reviewer acceptance.
+
+---
+
+## Execution result — UX2.0C6-01 engine-backed invariant matrix — 2026-10-03
+
+Implementation commit: `PENDING-SHA` (the source/docs commit immediately before
+this result; the final SHA is recorded after commit creation).
+
+Changed files:
+`tests/api/presentation-v2-engine.test.mjs`,
+`tests/api/lobby-heroes-wei.test.mjs`,
+`tests/presentation-v2.test.mjs`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`,
+and `README.md`. No production gameplay, API route, React/CSS, or
+PresentationSnapshot code changed.
+
+The C6 matrix is complete for all required real families: Attack/Dodge;
+Attack -> Judgement -> Attack resume; Duel responder handoff; Group/AOE
+progression; Group -> Negation -> resume; Group -> Damage child -> resume;
+Group -> Damage -> Dying -> rescue -> resume; independent/root Damage; delayed
+Lightning Judgement -> Damage; root Negation/counter-Negation; standalone
+Judgement replacement; Dying rescue handoff; and Borrowed Sword. The design
+doc section `0.103` maps every row to the exact Worker/D1/API test case and
+records the ten required invariant columns.
+
+Evidence now explicitly covers stable Interaction identity, ROOT/SAME/CHILD
+frame relations, parent-frame resume, semantic checkpoint/revision changes,
+typed source/target/current-participant roles, decision actor versus active
+resolver, and CHOICE/SPECIAL/REST boundary classification. Acting and
+uninvolved viewers are compared for Attack, Duel, Group, Negation, Judgement,
+Dying, Borrowed Sword, root Damage, and delayed Lightning. Repeated reads,
+reconnects, timer barriers, private control/options separation, and terminal
+clearing are asserted on real paths. Malformed checkpoint/frame/linkage,
+Dying resolver, Judgement, Duel/Group, and unlinked Borrowed Sword authority
+remain fail-closed; `SETTLEMENT` is guarded as reserved and is never emitted
+from final-result or viewer-control metadata.
+
+N/A boundaries are limited to roles that have no applicable parent or ordered
+participant in a root/standalone flow; those values are asserted null/empty.
+There are no remaining required-family architecture GAPs. C7,
+`PresentationSnapshot`, UI migration, animation semantics, durable transition
+occurrence IDs, and gameplay changes remain explicitly out of scope.
+
+Validation: focused C6 real API shard passed 239/239 across 23 files and 4
+shards; `npm run test:fast` passed 124/124 across 15 files; `npm run build`
+passed; `npm run lint` passed; `git diff --check` passed. C6-01 is ready for
+reviewer acceptance after the final implementation SHA is filled in and both
+commits are pushed to `origin/ux-v2`.
