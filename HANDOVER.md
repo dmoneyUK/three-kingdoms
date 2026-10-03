@@ -10,192 +10,217 @@ Read and follow `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`.
 
 ---
 
-# NEXT TASK — UX2.0C7-01-FIX1: Make PresentationSnapshot Public Authority Fail Closed Atomically
+# NEXT TASK — UX2.0C7-02: Close PresentationSnapshot Contract Before React Migration
 
 ## Objective
 
-Fix one bounded authority/coherence defect in the first `PresentationSnapshot` implementation.
+C7-01 + FIX1 established an additive server-side `PresentationSnapshot` with atomic fail-closed public authority. Before any React/UI migration, perform one bounded closure pass proving that the snapshot is a sufficient and safe client boundary across the accepted interaction families and explicitly classify anything still RESERVED or unsupported.
 
-The C7-01 implementation established the correct overall architecture and is accepted as a strong partial result, but reviewer inspection found that the snapshot can currently expose contradictory public authority when a proven scene and `stableBoundary` disagree.
+Do not add visual UI.
 
-Current production behavior in `game/presentation-snapshot.ts`:
+## Accepted baseline
 
-- `isProvenScene(...)` can accept the scene;
-- `identity`, `interaction`, and `decision` are then populated;
-- `stableFor(...)` independently detects a mismatched/REST/reserved boundary and returns identity-free REST;
-- the resulting snapshot can therefore contain **non-null authoritative identity/interaction/decision together with REST stable state**.
+Treat commit `1f0721cb8d3ff1eef762404e894641583e2b22d8` as the accepted baseline:
+- public identity/interaction/decision/stable are admitted atomically;
+- mismatch/REST/reserved SETTLEMENT fails closed to identity-free REST;
+- CurrentAction-derived localControl is viewer-private;
+- settlement = null RESERVED;
+- transitionEvents = [] RESERVED;
+- no gameplay/React/CSS change.
 
-That is not an atomic fail-closed snapshot.
+Do not reopen C1-C6 semantics.
 
-C7 must not hand future React two conflicting public truths.
+## Step 1 — inventory future client needs against the snapshot
 
-## Required invariant
+Using `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, enumerate the semantic inputs required by the future Interaction Stage/local operation console and map each to:
+- PresentationSnapshot public field;
+- localControl/CurrentAction private source;
+- existing non-snapshot compatibility source that must remain temporarily;
+- RESERVED / future protocol work.
 
-Public snapshot authority is one coherent unit.
+The inventory must cover at least:
+- interaction identity/revision;
+- root/active/parent frame relation;
+- stage;
+- source;
+- original targets;
+- active targets;
+- current participant;
+- decision actor;
+- active resolver;
+- participant set;
+- continuity relation;
+- stable boundary;
+- local legal control ownership;
+- settlement;
+- transition/animation occurrence semantics.
 
-For the first C7 contract:
+Do not solve a missing item by copying legacy heuristic data into the snapshot.
 
-### authoritative active snapshot
+## Step 2 — full accepted-family snapshot characterization
 
-A public active snapshot may expose non-null:
-- `identity`
-- `interaction`
-- `decision` as applicable
-- non-REST stable boundary
+Extend/organize real engine/API assertions so all 13 accepted C6 families have an explicit PresentationSnapshot classification:
 
-only when the proven typed scene and accepted stable boundary are mutually coherent.
+1. Attack / Dodge
+2. Attack -> Judgement -> Attack resume
+3. Duel responder handoff
+4. Group/AOE normal participant progression
+5. Group -> Negation -> resume
+6. Group -> Damage child -> resume
+7. Group -> Damage -> Dying -> rescue -> resume
+8. independent/root Damage
+9. delayed Lightning Judgement -> Damage
+10. root Negation / counter-Negation
+11. standalone Judgement replacement
+12. Dying rescue handoff
+13. Borrowed Sword
 
-At minimum coherence requires:
-- scene semantics = PROVEN;
-- scene has valid interaction/checkpoint/revision/frame/stage proof already accepted by PresentationV2;
-- stable boundary is not reserved SETTLEMENT;
-- stable boundary is not REST;
-- boundary interactionId == scene interactionId;
-- boundary checkpointId == scene checkpointId;
-- boundary presentationRevision == scene presentationRevision;
-- CHOICE decisionActorId is coherent with the scene decision actor.
+For every family classify/apply:
+- active public snapshot correctness;
+- viewer public equality where two viewers are meaningful;
+- private localControl separation where a decision exists;
+- repeated-read/reconnect stability where applicable;
+- checkpoint transition continuity where the scenario has >1 semantic checkpoint;
+- terminal identity-free REST.
 
-### fail-closed snapshot
+Use N/A honestly for non-applicable checks. Do not force semantic transitions.
 
-If public scene/boundary coherence fails, the public snapshot must fail closed **atomically**:
-- `identity = null`
-- `interaction = null`
-- `decision = null`
-- `stable = identity-free REST`
-- `settlement = null`
-- `transitionEvents = []`
+## Step 3 — explicit snapshot closure matrix
 
-Do not preserve scene identity while only downgrading `stable` to REST.
+Add a C7 closure matrix to the design document.
 
-`localControl` may remain a thin viewer-specific CurrentAction reference because it is not public semantic authority, but it must not recreate public identity.
+Suggested columns:
+- I = identity/public scene
+- B = stable boundary coherence
+- V = viewer public equality
+- L = localControl separation
+- Q = repeated-read/reconnect stability
+- C = semantic checkpoint continuity/progression
+- T = terminal clear
+- R = reserved-field discipline
 
-## Step 1 — add a single coherence gate
+Every cell must be P / N/A / GAP with exact fixture/assertion mapping.
 
-Refactor composition so public authority is admitted by one explicit coherence decision before populating identity/interaction/decision/stable.
+A GAP is allowed. Do not fabricate evidence to make the matrix green.
 
-Do not add a second rules engine.
+## Step 4 — audit localControl sufficiency
 
-Prefer a small pure helper such as an accepted/coherent public scene-boundary check.
+Verify the thin localControl shape is enough as a **reference/entitlement signal**, not a replacement for CurrentAction.
 
-Do not infer missing values or repair mismatches.
+Confirm:
+- it never contains legal option/card/provider payloads;
+- actionRevision remains action validity, not presentation identity;
+- entitled is viewer-local only;
+- public snapshot equality comparisons exclude only localControl;
+- future UI must still use authoritative CurrentAction for actual legal actions until a separately reviewed private-control projection exists.
 
-## Step 2 — CHOICE actor coherence
+If the future UI requires richer private controls, document that as a later bounded task. Do not expand localControl in this task unless a concrete current contract bug requires it.
 
-For CHOICE:
-- boundary decisionActorId must match the proven scene semantic decisionActorId;
-- mismatch must fail closed atomically.
+## Step 5 — SPECIAL boundary audit
 
-Do not silently replace a mismatched boundary actor with the scene actor and continue.
+C7-01-FIX1 found no accepted real API fixture exercising SPECIAL.
 
-For SPECIAL, preserve the accepted semantics already supported by PresentationV2; do not invent a decision actor.
+Inventory every production path that can currently return `stableBoundary.kind === "SPECIAL"`.
 
-SETTLEMENT remains reserved and must fail closed to REST.
+Determine one of:
+- A: a real engine/API path exists and can be exercised without gameplay changes -> add direct positive snapshot evidence;
+- B: SPECIAL is currently reserved/unreachable under accepted real fixtures -> document it honestly as RESERVED/unexercised.
 
-## Step 3 — focused negative tests
+Do not manufacture a synthetic positive and do not change gameplay just to make SPECIAL reachable.
 
-Extend `tests/presentation-snapshot.test.mjs` with explicit cases for at least:
+## Step 6 — REST semantics audit
 
-1. proven scene + mismatched boundary interactionId;
-2. proven scene + mismatched boundary checkpointId;
-3. proven scene + mismatched boundary presentationRevision;
-4. proven scene + CHOICE boundary decisionActorId mismatch;
-5. proven scene + REST boundary;
-6. proven scene + reserved SETTLEMENT boundary.
+Confirm active causal authority cannot be silently lost because a valid accepted interaction is paired with REST.
 
-For every case assert the entire public authority fails closed:
-- identity null;
-- interaction null;
-- decision null;
-- identity-free REST;
-- settlement null;
-- transitionEvents empty.
+Search all real C6 families for any state where:
+- interactionScene semantics = PROVEN
+- stableBoundary = REST
 
-Also assert localControl does not populate any public identity.
+If such a real state exists, STOP and report the contradiction instead of changing snapshot semantics.
 
-## Step 4 — preserve valid positive behavior
+If none exists, document the invariant and evidence.
 
-Keep positive tests proving a coherent real/typed CHOICE snapshot still exposes:
-- exact scene identity;
-- exact interaction;
-- correct stable boundary;
-- semantic decision;
-- viewer-local control reference.
+## Step 7 — reserved settlement/transition audit
 
-Do not weaken or delete the C7-01 real engine/API assertions.
+Keep:
+- settlement = null;
+- transitionEvents = [].
 
-## Step 5 — real API regression
+Document exactly what is missing before either can become authoritative:
+- durable public occurrence linkage;
+- reconnect-safe occurrence identity;
+- no dependence on viewer-local finalResult/readyAfterEventId;
+- stable-state reconstruction must not require replaying transitions.
 
-Use at least:
-- Attack/Dodge active CHOICE;
-- one SPECIAL/non-REST scenario if a real accepted fixture currently exposes SPECIAL;
-- terminal clear/REST.
+Do not implement those features in this task.
 
-Prove the route still emits the expected snapshot through the real projection path.
+## Step 8 — protocol compatibility
 
-If no real SPECIAL fixture exists, do not manufacture one as positive evidence; document it as not exercised in this fix.
+Verify:
+- `presentationSnapshot` remains additive;
+- `presentationV2` remains unchanged for existing consumers;
+- no React/client consumer has switched yet;
+- room/API projection does not leak additional private data;
+- serialization shape is stable for null/empty reserved fields.
 
-## Step 6 — documentation correction
+Add focused assertions if needed.
 
-Update `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` C7 section and README so they state the atomic public-authority invariant.
+## Step 9 — documentation and closure decision
 
-Do not claim C7 closed until reviewer acceptance.
+Update design doc and README with:
+- full C7 closure matrix;
+- client-needs inventory;
+- SPECIAL classification;
+- REST audit;
+- reserved-field requirements;
+- explicit statement whether the server snapshot contract is ready for React migration.
+
+Do not say C7 is closed unless matrix has 0 GAP and no contradiction.
+
+## Validation
+
+Run focused snapshot tests and affected real fixtures, then:
+- `npm run test:fast`
+- `npm run test:api`
+- `npm run build`
+- `npm run lint`
+- `git diff --check`
+
+Report exact counts.
 
 ## Scope exclusions
 
 Do not:
-- change gameplay;
-- redesign C1-C6 semantics;
 - modify React/CSS;
-- start UI migration;
-- populate settlement;
-- populate transitionEvents;
-- generate IDs/revisions;
-- reconstruct authority from CurrentAction/timeline/legacy fields;
-- change legacy PresentationV2 semantics merely to satisfy the snapshot;
+- implement Interaction Stage visuals;
+- migrate client consumers;
+- change gameplay;
+- change causal semantics;
+- generate new presentation IDs;
+- populate settlement/transitionEvents;
+- add animation protocol;
+- infer authority from timeline/finalResult/CurrentAction;
 - perform unrelated refactors.
-
-## Validation
-
-Run:
-- focused `tests/presentation-snapshot.test.mjs`;
-- relevant real API snapshot fixture(s);
-- `npm run test:fast`;
-- `npm run test:api`;
-- `npm run build`;
-- `npm run lint`;
-- `git diff --check`.
-
-Report exact counts.
 
 ## Execution result
 
-Append only the C7-01-FIX1 result to this HANDOVER.
+Append only the C7-02 result to this HANDOVER.
 
 Include:
 - full implementation SHA;
 - files changed;
-- exact coherence gate implemented;
-- all negative mismatch cases and assertions;
-- real positive regression evidence;
-- whether a real SPECIAL fixture was exercised;
-- confirmation settlement/transitionEvents remain reserved;
-- confirmation gameplay/React/CSS did not change;
+- 13-family closure matrix totals;
+- exact GAP/N/A cells;
+- SPECIAL result (real exercised or reserved/unreachable);
+- REST contradiction audit result;
+- localControl sufficiency conclusion;
+- settlement/transition RESERVED conclusion;
+- protocol compatibility result;
 - exact validation counts;
-- whether C7-01 is ready for reviewer acceptance.
+- explicit recommendation: C7 CLOSED/ready for React migration OR another bounded C7 fix required.
 
 Push implementation + appended HANDOVER to `origin/ux-v2`, fetch, verify remote HANDOVER contains the result, then STOP.
 
 ## Acceptance
 
-FIX1 passes only if no snapshot can expose non-null public semantic identity/interaction/decision while its stable boundary has failed closed to REST; CHOICE actor mismatch also fails closed; valid real snapshots remain unchanged; localControl cannot recreate public authority; reserved settlement/transition semantics remain unpopulated; and there is no gameplay/UI scope creep.
-
-## Execution result — UX2.0C7-01-FIX1 atomic PresentationSnapshot authority — 2026-10-03
-
-- Implementation SHA: `1f0721cb8d3ff1eef762404e894641583e2b22d8` (`fix(ux-v2): make presentation snapshot authority atomic`).
-- Files changed: `game/presentation-snapshot.ts`, `tests/presentation-snapshot.test.mjs`, `tests/api/presentation-v2-engine.test.mjs`, `README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
-- Exact gate: `coherentPublicAuthority` admits public identity, interaction, decision, and stable boundary only when the scene is proven, the boundary is neither `REST` nor reserved `SETTLEMENT`, all interaction/checkpoint/revision IDs match, and a `CHOICE` boundary actor matches the scene actor. Any failure returns one identity-free `REST` result. `localControl` remains an isolated CurrentAction reference.
-- Negative coverage: mismatched `interactionId`, `checkpointId`, `presentationRevision`, and `CHOICE decisionActorId`, plus `REST` and `SETTLEMENT` boundaries. Every case asserts null identity/interaction/decision, exact identity-free REST, null settlement, empty `transitionEvents`, and localControl without public identity.
-- Positive regression: focused typed CHOICE behavior remains covered; the real engine/API suite passed `24/24`, including active Attack/Dodge CHOICE projection and terminal REST behavior, with existing Borrowed Sword, Dying, Group/Damage, Duel, Negation, and Judgement projection checks preserved. No real SPECIAL fixture is currently exposed by the accepted API fixtures, so SPECIAL was not exercised and no synthetic positive claim was added.
-- `settlement` and `transitionEvents` remain reserved (`null` and `[]`); no gameplay, React, or CSS changed.
-- Validation: focused snapshot test `4/4`; `npm run test:fast` `128/128`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
-- C7-01-FIX1 is ready for reviewer acceptance.
+C7-02 passes only if all 13 accepted interaction families are truthfully characterized at the PresentationSnapshot boundary; public/private separation remains correct; no real PROVEN interaction is silently converted to REST; SPECIAL is honestly exercised or reserved; settlement/transitions remain unpromoted; compatibility is preserved; the matrix contains no hidden/unclassified cells; and no UI/gameplay scope creep occurs.
