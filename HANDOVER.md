@@ -17,246 +17,191 @@ Agent sequence:
 
 Read `docs/PLANNER_DEVELOPMENT_WORKFLOW.md` before implementation.
 
-## Reviewer status — UX2.0VIS-01 ACCEPTED
+## Reviewer status — UX2.0VIS-02 PARTIAL
 
-Accepted implementation: `b263174771d812105c35eb4e97b46dce99342393`.
+Reviewed implementation: `928a4f9eef594bf516a23e791c371bfe2410b85d`.
 
-Verified facts:
-- 2-player rooms: relative seat 1 is top-centre.
-- 3-player rooms: relative seats 1/2 are top-left/top-right.
-- 4-player rooms: relative seats 1/2/3 are top-left/top-centre/top-right.
-- the mapping is scoped to `data-seat-topology="top-row"`;
-- no Interaction Stage, Hero Focus, Local Dock, gameplay, or 5–10-player semantics were changed;
-- the new Playwright geometry test uses real bounding boxes and would fail the previous horseshoe geometry;
-- the focused VIS-01 browser suite reported 9/9 passed;
-- later branch CI run 37149913858, which contains VIS-01 in its ancestry, completed successfully with lint, build, full browser suite, and `npm test` (build + fast + API).
+Accepted parts:
+- `.play-table` now mirrors the existing seat topology hook.
+- one immediate `.interaction-safe-zone` wrapper contains only the existing InteractionStage;
+- side-column mode is preserved with `display: contents`;
+- top-row mode removes the legacy InteractionStage top/left/translate placement and centres the existing stage inside the safe-zone wrapper;
+- VIS-01 seat geometry was not changed;
+- focused VIS-02 regression reported 4/4 passed;
+- GitHub Actions run `37153968265` completed successfully: lint, build, full browser suite, `npm test`, deploy, and production smoke all passed.
 
-Do not reopen VIS-01.
+Blocking review gap:
+- the new containment regression proves only `state="interaction", count=4`, which is a comparatively short Attack-response stage;
+- existing production/fixture states such as `state="negation"` and `state="dying"` have materially taller Interaction Stage content (Hero Focus plus Reaction Chain or Dying handoff plus context);
+- current top-row safe-zone CSS starts at `top:clamp(300px,62%,390px)`, with an additional desktop +32px, leaving only the lower portion of the play-table available;
+- `.play-table` still has `overflow:hidden`;
+- therefore the current tests do not prove the task's required invariant that the unchanged active Interaction Stage is fully contained and not clipped for the existing complex interaction states.
 
-# NEXT TASK — UX2.0VIS-02: Reserve a Real Central Interaction Safe Zone in 2–4 Player Mode
+Do not enlarge/redesign Hero Focus or Reaction Chain yet. First make the VIS-02 geometry contract true for the existing tall states, or report a proven blocker if that is impossible without redesigning stage internals.
+
+# NEXT TASK — UX2.0VIS-02-FIX1: Prove Safe-Zone Containment for Tall Existing Interaction States
 
 ## Objective
-Fix exactly one remaining visual-layout defect for **2–4 total-player games**:
+Complete VIS-02 by making the existing top-row Interaction Safe Zone use the available central battlefield height efficiently enough to contain the **unchanged existing Interaction Stage** for the known complex 4-player states.
 
-**The public Interaction Stage must occupy a dedicated central battlefield safe zone below the fixed top-row opponent seats instead of rendering as a top-wide absolute dashboard over the upper battlefield.**
+This is still a container/geometry task only.
 
-This task changes the stage container/placement only.
+The task passes only if the existing Interaction Stage fits without clipping for:
+- normal interaction / Attack-response;
+- Negation with Reaction Chain;
+- Dying / rescue handoff.
 
-Do **not** redesign the internal Interaction Stage content and do **not** enlarge Hero Focus yet. Those are later tasks after this geometry is reviewed.
+If the unchanged stage cannot satisfy this at 480px after removing unnecessary safe-zone dead space, STOP and report the exact measured blocker. Do not redesign the stage in this FIX task.
 
 ## Existing accepted truth
 Preserve:
-- VIS-01 top-row seat geometry;
-- opponent seat anchors stay fixed when an interaction starts;
-- LocalPlayerDock remains the persistent bottom player/control surface;
-- Interaction Stage is public/read-only;
-- local gameplay controls stay in the Local Operation Console;
-- InteractionStage/HeroFocus semantic identity continues to come from the accepted PresentationClientView path;
-- no gameplay/server/projector authority is changed.
+- VIS-01 top-row seat layout;
+- the VIS-02 `.interaction-safe-zone` wrapper and topology hook;
+- LocalPlayerDock geometry;
+- InteractionStage JSX/internals;
+- HeroFocus size/content;
+- Reaction Chain content;
+- Dying handoff content;
+- semantic PresentationClientView authority;
+- all gameplay/server/projector behavior.
 
-Current defect:
-- `.interaction-stage` is directly under `.play-table`;
-- it is absolutely positioned with `left:50%`, `top:14px` (7/8px at narrow widths), and width near the full viewport;
-- in a 4-player interaction this places the information panel over the same upper area that now contains the fixed top-row opponent seats;
-- the centre of the battlefield is not represented by a dedicated layout container.
+## Exact defect to fix
+Current CSS:
 
-## Files expected in scope
-Expected production files:
-- `app/page.tsx`
-- `app/globals.css`
+`.play-table[data-seat-topology="top-row"]>.interaction-safe-zone{ top:clamp(300px,62%,390px); ... }`
 
-Expected regression file:
-- `tests/browser/ui19.spec.mjs` or one smaller existing browser layout spec if clearly more appropriate.
+and on desktop:
 
-Do not modify presentation/gameplay helpers unless a compile-only type change is unavoidable. If semantic logic appears necessary, STOP and report the blocker instead of expanding scope.
+`top:calc(clamp(300px,62%,390px) + 32px)`
+
+This reserves substantially more blank space above the safe zone than the contract requires. The safe zone should begin as soon as practical after the fixed opponent row, not at an arbitrary percentage of the whole play-table.
+
+The current browser test does not detect this because it uses only the shorter `state="interaction"` fixture.
 
 ## Required implementation
 
-### 1. Add one explicit central safe-zone layout container
-Inside `.play-table`, replace only the current direct `InteractionStage` placement with one structural wrapper:
+### 1. Maximise the real central safe zone without moving accepted seats
+Change only top-row safe-zone geometry so that:
+- opponent seats remain exactly where VIS-01 currently places them;
+- safe-zone top is the smallest CSS-defined boundary that still gives every visible top-row opponent at least **6 CSS px** clearance;
+- safe-zone bottom remains inside the play-table above the LocalPlayerDock boundary;
+- the safe zone uses the remaining vertical battlefield space instead of leaving a large unused gap;
+- no JavaScript measurement, ResizeObserver, timer, or post-render positioning is introduced.
 
-`<div className="interaction-safe-zone"> ...existing InteractionStage... </div>`
+Prefer a shared responsive CSS variable / explicit responsive geometry derived from the existing top-row layout rather than another unrelated percentage magic number.
 
-The wrapper should be an immediate `.play-table` child and should contain the existing InteractionStage only. Do not move the other existing play-table overlays/notices/dialogs into it.
+Do not change `.player-board`, opponent card dimensions, or seat ordering merely to create more room.
 
-Use `interaction-safe-zone` as the stable class/test hook unless there is a compile-level reason not to.
+### 2. Keep Interaction Stage internals untouched
+Do not modify:
+- `InteractionStage` JSX;
+- `HeroFocus`;
+- `.hero-focus*`;
+- `.reaction-chain*`;
+- `.dying-handoff*`;
+- SOURCE / FOCUS / DECISION / RESOLVER blocks;
+- transition semantics or animation definitions.
 
-The wrapper is invisible layout geometry, not another panel:
-- no background, border, heading, placeholder, or decorative dashboard of its own;
-- no gameplay controls;
-- no click handlers;
-- no CurrentAction inspection;
-- no duplicated player state;
-- no semantic fallback logic.
+Do not add:
+- max-height to the stage;
+- internal scrolling;
+- `overflow:hidden` on the stage/safe zone;
+- CSS scale transforms;
+- reduced font/card sizes;
+- conditional hiding/collapsing of stage sections.
 
-### 2. Give play-table the existing topology context
-The safe-zone CSS must know whether the room is in top-row mode without inferring it from child geometry.
+Those would hide the geometry problem rather than solve VIS-02.
 
-Mirror the exact existing topology expression onto `.play-table`:
+### 3. Add tall-state browser geometry coverage
+Extend `tests/browser/ui19.spec.mjs` using existing fixtures:
 
-`data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}`
+- `state="interaction", count=4`
+- `state="negation", count=4`
+- `state="dying", count=4`
 
-You may also mirror `data-player-count={room.players.length}` if useful, but do not invent another player-count calculation.
-
-Important existing-test consequence: `tests/browser/ui19.spec.mjs` currently uses a broad selector such as `[data-seat-topology="top-row"]` and expects one match. After mirroring the attribute onto `.play-table`, that selector will truthfully match both the table and the player board. Update the retained topology assertion to target the original owner explicitly, e.g. `.player-board[data-seat-topology="top-row"]`, rather than deleting the new layout hook or weakening the assertion.
-
-This is a layout hook only. Do not change the authoritative player ordering or seat calculation.
-
-### 3. Move the existing Interaction Stage into the safe zone for top-row rooms
-For `data-seat-topology="top-row"`:
-- the safe zone must begin **below the rendered bottom edge of every opponent top-row seat**;
-- the safe zone must remain **above the bottom edge of the battlefield / LocalPlayerDock boundary**;
-- the Interaction Stage must be fully contained inside this safe zone;
-- the Interaction Stage must no longer use the old top-of-table `top:7/8/14px` placement in top-row mode;
-- the stage must remain horizontally centred in the safe zone;
-- the stage must not overlap any opponent seat or the local dock.
-
-Use CSS/layout geometry, not JavaScript measurements, timers, or post-render repositioning.
-
-Do not hard-code a one-off position that only passes 1440px. The same CSS structure must satisfy all three required viewport assertions. Preserve the VIS-01 seat positions; the safe zone adapts around those accepted seats rather than moving them.
-
-Do not clip the existing Interaction Stage merely to satisfy containment. If the unchanged stage cannot fit the required 480px geometry without clipping or overlapping the local dock, STOP and report that as a concrete blocker for Reviewer decomposition instead of shrinking/removing stage internals in this task.
-
-### 4. Keep the current stage internals unchanged
-Do not change:
-- the InteractionStage header text;
-- HeroFocus JSX or portrait size;
-- Dying handoff;
-- Reaction Chain;
-- SOURCE / FOCUS / DECISION / RESOLVER content;
-- transition classes;
-- semantic data attributes;
-- viewer/private control behavior.
-
-VIS-02 only creates and uses the correct central physical region.
-
-### 5. Keep REST behavior empty
-When `InteractionStage` returns null:
-- the safe-zone wrapper may remain as empty geometry;
-- it must not render placeholder text, controls, fake hero cards, or a visible dashboard;
-- opponent top-row seats and Local Dock remain unchanged.
-
-## Required browser regression
-Extend browser geometry coverage using the existing fixture `state="interaction", count=4`.
-
-Run at:
+Run each at:
 - 1440x900
 - 650x900
 - 480x900
 
-For each viewport assert real bounding boxes:
+For every state/viewport assert:
 
-1. `.interaction-safe-zone` exists exactly once.
-2. `.interaction-stage` is visible for the interaction fixture.
-3. every top-row opponent seat bottom is **at least 6 CSS pixels above** the visible Interaction Stage top.
-4. the Interaction Stage bounding box is fully inside the safe-zone bounding box (4px tolerance acceptable for borders).
-5. the Interaction Stage does not overlap `.local-player-dock`.
-6. the safe zone does not overlap `.local-player-dock`.
-7. opponent anchor Y positions from VIS-01 remain one row within the accepted tolerance.
-8. no horizontal page overflow is introduced.
-9. local console and hand remain present.
+1. one `.interaction-safe-zone`;
+2. one visible `.interaction-stage`;
+3. three opponent anchors still share one row (VIS-01 tolerance <= 4px);
+4. max opponent bottom <= stage top - 6px;
+5. stage left/top/right/bottom are fully inside safe-zone bounds (4px border tolerance);
+6. stage bottom <= `.play-table` bottom - 1px;
+7. safe-zone and stage have zero overlap with `.local-player-dock`;
+8. local hand and Local Operation Console remain visible;
+9. no horizontal page overflow;
+10. computed overflow on `.interaction-safe-zone` and `.interaction-stage` is not being used to clip content.
 
-Add one REST assertion using `state="rest", count=4`:
-- the safe-zone hook remains available exactly once;
-- no visible `.interaction-stage` exists;
-- the empty safe-zone wrapper itself has no visible panel/background/placeholder content.
+For Negation additionally assert:
+- `[data-reaction-chain="proven"]` is visible;
+- the bottom of the Reaction Chain is inside the visible Interaction Stage.
 
-The new interaction-geometry regression must fail against the old top:7/8/14px dashboard placement.
+For Dying additionally assert:
+- `[data-dying-handoff="proven"]` is visible;
+- the bottom of the Dying handoff is inside the visible Interaction Stage.
 
-## Negative regression / forbidden shortcut
-Do not satisfy this task by:
-- reducing opacity or z-index while leaving the stage geometrically over the seats;
-- hiding opponent seats during interactions;
-- moving/reordering opponent anchors;
-- moving the local dock;
-- shrinking the stage to zero/near-zero size;
-- moving controls into the safe zone;
-- conditionally rendering a different mobile React tree;
-- using JS DOM measurements to reposition the stage;
-- starting the enlarged Hero Focus redesign.
+The new tests must fail against the current `928a4f9...` geometry if either complex stage extends beyond the safe zone.
 
-## Responsive contract
-The same structural rule applies at 1440, 650 and 480 widths:
-- top row above;
-- dedicated central safe zone below it;
-- local dock below the battlefield;
-- one Interaction Stage inside the safe zone when active.
+### 4. Contradiction protocol
+If, after using the maximum legitimate space between the accepted opponent row and play-table bottom, either Negation or Dying still cannot fit at 480x900 **without changing Interaction Stage internals**, do not force green.
 
-Exact safe-zone height may respond to viewport width, but the three-region hierarchy must not change.
+Instead:
+- leave the safest geometry improvement you can prove only if it does not regress existing states;
+- mark the 480px state as GAP in the execution result with exact measured:
+  - opponent bottom;
+  - safe-zone top/bottom/height;
+  - stage top/bottom/height;
+  - overflow amount;
+- STOP for Planner review.
+
+Do not start the future central Hero/Reaction layout redesign in this task.
+
+## Negative regression / forbidden shortcuts
+Do not:
+- move opponent seats upward/downward;
+- shrink opponent seats;
+- hide opponents during interaction;
+- move LocalPlayerDock;
+- clip/scroll/scale the Interaction Stage;
+- hide Reaction Chain or Dying content;
+- make viewport-specific React trees;
+- use JS geometry;
+- change gameplay or presentation semantics;
+- change side-column (5–10 player) layout;
+- start VIS-03.
 
 ## Validation
 Run and report actual results for:
-- focused Playwright VIS-02 geometry test(s);
+- focused Playwright VIS-02-FIX1 geometry tests;
 - `npm run test:browser`;
 - `npm run test:fast`;
 - `npm run build`;
 - `npm run lint`;
 - `git diff --check`.
 
-Report exact counts where available. Do not claim unrun commands passed.
-
-## Scope exclusions
-Do not:
-- enlarge or redesign Hero Focus;
-- change Interaction Stage internal information hierarchy;
-- change Reaction Chain/Dying/Duel/Judgement semantics;
-- change 5–10 player side-column geometry;
-- resize/restructure opponent seat cards;
-- change LocalPlayerDock;
-- change gameplay, CurrentAction, server, projector, causal, or payload behavior;
-- start any later VIS task;
-- perform unrelated CSS cleanup.
+Report exact counts where available. Do not claim unrun checks passed.
 
 ## Execution result
-Append only the VIS-02 execution result:
+Append only the VIS-02-FIX1 execution result:
 - full implementation SHA;
 - files changed;
-- safe-zone DOM structure/hook;
-- exact top-row safe-zone CSS strategy;
-- browser bounding-box assertions and before/after failure evidence;
-- validation commands with exact results/counts;
-- any remaining issue inside VIS-02 scope.
+- previous vs new safe-zone geometry strategy;
+- measured geometry for Interaction / Negation / Dying at 480px;
+- browser assertions added;
+- validation commands/results;
+- PASS or exact GAP for each required state;
+- any blocker requiring future Interaction Stage redesign.
 
 Do not declare VIS-02 accepted/closed. The Planner/Reviewer decides that after review.
 
 Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-VIS-02 passes only if, for 2–4-player top-row mode:
-- opponent anchors remain fixed above the centre;
-- an explicit central Interaction Safe Zone exists;
-- the active Interaction Stage is fully contained in that zone and cannot overlap the opponent row or local dock;
-- the old top-of-table dashboard geometry no longer applies;
-- browser geometry proves the change at desktop and mobile widths;
-- Interaction Stage internals, Hero Focus size, controls, gameplay, and 5–10-player layout remain unchanged.
+VIS-02-FIX1 passes only if the unchanged existing Interaction Stage is fully visible and fully contained inside the central safe zone for Interaction, Negation, and Dying at 1440/650/480 widths, with VIS-01 seats and LocalPlayerDock unchanged and no clipping/scrolling/scaling workaround.
 
-## VIS-02 Execution Result
-
-- Implementation SHA: `928a4f9eef594bf516a23e791c371bfe2410b85d`
-- Files changed:
-  - `app/page.tsx`
-  - `app/globals.css`
-  - `tests/browser/ui19.spec.mjs`
-- Safe-zone structure and topology hook:
-  - `.play-table` now mirrors the existing player-board expression as `data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}`.
-  - Its immediate `.interaction-safe-zone` child contains only the unchanged existing `InteractionStage` call.
-  - The wrapper has no UI content, controls, event handlers, semantic inspection, fallback, background, or border. Outside top-row mode it uses `display: contents`, preserving the existing 5–10-player stage containing block.
-- Top-row CSS strategy:
-  - For `[data-seat-topology="top-row"]`, the safe zone is the explicit absolute central region with responsive horizontal insets, a reserved vertical start below the accepted opponent row, and a bottom bounded by the play-table/local-dock boundary.
-  - The desktop breakpoint adds 32px of row clearance; 650px and 480px retain the shared narrow safe-zone structure and insets.
-  - Only inside that safe zone the existing stage becomes a regular centred layout item (`position: relative`, no legacy top/left/translate placement). Its internal content and semantic attributes are unchanged.
-- Browser geometry regression added for `state="interaction", count=4` at 1440x900, 650x900, and 480x900. It asserts one safe zone, visible stage, VIS-01 one-row opponents, six-pixel opponent-to-stage clearance, stage containment, no stage/safe-zone overlap with the Local Dock, no horizontal overflow, and a visible local hand/console. A REST assertion proves the single hook stays empty with no stage, panel background, border, or placeholder.
-- Before/after failure evidence:
-  - Initial focused run: **3 passed, 1 failed**. At 1440px the maximum opponent bottom was `378.25px` while the stage top was `354.625px`, violating the required six-pixel clearance.
-  - The final focused run passed after the desktop clearance adjustment: **4 passed** (4 tests).
-  - The old direct dashboard placement (`top:14px`) cannot satisfy the new regression: with the same `378.25px` opponent bottom, the required `bottom <= stageTop - 6` condition would be false.
-- Focused validation actually run:
-  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-02' --config tests/browser/playwright.config.mjs` — **4 passed** (4 tests).
-- Full validation not run locally, per the user-authorized remote-CI workflow:
-  - `npm run test:browser` — not run; GitHub Actions responsibility.
-  - `npm run test:fast` — not run; GitHub Actions responsibility.
-  - `npm run build` — not run; GitHub Actions responsibility.
-  - `npm run lint` — not run; GitHub Actions responsibility.
-  - `git diff --check` — not run; GitHub Actions responsibility.
-- Remaining VIS-02 issue observed locally: none within assigned scope. CI status was not checked.
-- Recommended next bounded task: reviewer review of VIS-02; do not start a later VIS task before review acceptance.
+If 480px cannot satisfy that invariant, an honest measured GAP is the required result; do not redesign the stage in this task.
