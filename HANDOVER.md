@@ -305,8 +305,8 @@ ready for reviewer acceptance.
 
 ## Execution result — UX2.0C6-01 engine-backed invariant matrix — 2026-10-03
 
-Implementation commit: `PENDING-SHA` (the source/docs commit immediately before
-this result; the final SHA is recorded after commit creation).
+Implementation commit: `d63386e` (the source/docs commit immediately before
+this handover-result correction).
 
 Changed files:
 `tests/api/presentation-v2-engine.test.mjs`,
@@ -345,5 +345,5 @@ occurrence IDs, and gameplay changes remain explicitly out of scope.
 Validation: focused C6 real API shard passed 239/239 across 23 files and 4
 shards; `npm run test:fast` passed 124/124 across 15 files; `npm run build`
 passed; `npm run lint` passed; `git diff --check` passed. C6-01 is ready for
-reviewer acceptance after the final implementation SHA is filled in and both
-commits are pushed to `origin/ux-v2`.
+reviewer acceptance. The final handover-result correction is documentation-only
+and must be pushed together with the implementation commit to `origin/ux-v2`.
