@@ -84,3 +84,40 @@ Append only UI-18 result: SHA, files, surface inventory, exact class-to-visual m
 
 ## Acceptance
 Pass only if the existing semantic transition contract drives restrained non-blocking visual feedback, NONE is stable, private/legacy state cannot promote effects, seat/dock/control topology stays fixed, reduced-motion is respected, no gameplay authority changes, and browser pixel quality is not overclaimed.
+
+## UI-18 execution result — 2026-10-03
+
+- Implementation SHA: `ad2b39a` (`feat: add semantic transition visual feedback`).
+- Changed files: `app/globals.css`, `tests/room-safety-render.test.mjs`,
+  `README.md`, `ROADMAP.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Surface inventory: the existing Interaction Stage shell is the visual
+  consumer for content, frame, and interaction transitions; the existing Hero
+  Focus panel receives the additional focus emphasis. Seats, local dock,
+  hand, console, table, and event/settlement surfaces are unchanged.
+- Exact mapping: `NONE` has no selector/effect; `CONTENT_UPDATE` uses
+  `presentationContentRefresh` on the stage for 180ms; `FOCUS_UPDATE` uses
+  `presentationFocusEmphasis` on the stage and
+  `presentationFocusPanelEmphasis` on Hero Focus for 240ms;
+  `FRAME_TRANSITION` uses `presentationFrameEmphasis` on the stage for 280ms;
+  `INTERACTION_TRANSITION` uses `presentationInteractionEmphasis` on the
+  stage for 320ms. All effects are border/shadow-only and settle to the
+  existing static stage/panel styles.
+- Reduced motion: `@media(prefers-reduced-motion:reduce)` sets every UI-18
+  animation to `none !important`; semantic markup, labels, roles, controls,
+  and decision ownership remain present without motion.
+- DOM/CSS evidence: added deterministic coverage for all five markers, no
+  transition controls, repeated `NONE` stability, viewer-equal public
+  markers, explicit reduced-motion suppression, data-selector-only authority,
+  and absence of seat/dock/hand layout or pointer/opacity/transform changes.
+  Existing mounted UI-17 coverage continues to prove private/legacy changes
+  remain `NONE` and public semantic changes retain their accepted marker;
+  existing topology assertions retain both anchors, one dock, console, and
+  hand.
+- Validation: no local focused tests, retained UI tests, `npm run test:fast`,
+  `npm run test:api`, build, lint, or diff check were run, per the project
+  remote-validation workflow. GitHub Actions owns validation after push; CI
+  status was not inspected and no CI success is claimed.
+- Remaining GAPs: browser pixel quality and assistive-technology smoke testing
+  remain manual/browser validation items; no pixel claim is made.
+- Next bounded recommendation: wait for the reviewer/GitHub Actions result;
+  begin another task only after a new remote reviewer handover authorizes it.
