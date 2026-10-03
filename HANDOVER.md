@@ -87,5 +87,18 @@ No server/game-rule/action payload changes; no projector/snapshot authority expa
 ## Execution result
 Append only FIX1 result: SHA, files, actual-control gating map, authority corrections, mounted contradiction evidence, dialog ownership evidence, unchanged action/payload proof, responsive evidence, exact validation counts, closure recommendation. Push and verify remote HANDOVER, then STOP.
 
+## FIX1 result — feca695
+
+- SHA: `feca695` (`Wire UX console decision model to footer controls`).
+- Files: `app/page.tsx`, `tests/active-skill-interactions.test.mjs`, `README.md`, `ROADMAP.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Actual-control gating: footer primary IDs now map to `borrowed-sword`, `active-skill`, `trigger-cards`, `trigger-target`, `response`, `rescue`, `discard`, and `turn`; each rendered primary requires the matching `consoleDecision.primary.id` and model-enabled state. `target-card`, `target-card-trigger`, `harvest`, private distribution, deck reorder, and mandatory choice remain dialog-owned and are not advertised as footer primaries.
+- Authority corrections: candidates require the relevant `CurrentAction.legalActions` capability; turn/discard candidates also require `currentActionOwnedByViewer`, so stale `isMyTurn`/`canPlay` facts cannot expose Play or End during a response/trigger. Local Cancel is rendered only from `consoleDecision.localCancel.visible`; Skip/Decline is rendered only from `consoleDecision.authoritativeDecline`. PresentationSnapshot remains descriptive and cannot grant controls.
+- Mounted evidence: ordinary turn has one footer primary plus independent End; Borrowed Sword Confirm remains local and its Cancel appears only after local input; trigger with a stale `isMyTurn` flag exposes no footer primary or End; target-card and target-card-trigger dialogs expose no duplicate footer primary; existing UI-07..09 mounted Confirm/Cancel/payload regressions remain green. The pure model contradiction test proves equal-priority candidates fail closed; no natural production state was added solely to manufacture a contradictory pair.
+- Dialog ownership: pending target-card and semantic target-card trigger submissions retain their existing dialog callbacks, opaque keys, local Cancel/Skip behavior, and no footer duplicate. Harvest, private distribution, deck reorder, and mandatory choice remain outside the footer model's primary candidates.
+- Action/payload proof: existing mounted assertions still verify `choose_borrowed_sword_target` with `{ targetId }`, target-card `choose_target_card` with opaque zone/card payload, and semantic `trigger` with `{ providerId, cardKeys }`; no server route, action name, or payload changed.
+- Responsive evidence: existing console wrapper containment remains in `app/globals.css` with wrapping and `max-width:520px` behavior; the retained responsive/style assertions and production build passed.
+- Validation: focused mounted/UI tests `38/38`; `npm run test:fast` `170/170`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
+- Closure recommendation: implementation acceptance is met for actual footer gating, fail-closed viewer authority, dialog singularity, and action compatibility. Reviewer should verify the pushed `ux-v2` commit and the remote handover before closing UI-10-FIX1.
+
 ## Acceptance
 Pass only if the pure console decision model controls actual footer submit/Cancel/Skip exposure: fail-closed/coherence results are reflected in real rendered controls, no stale legacy boolean bypasses the gate, dialog-owned submissions remain singular, and gameplay actions/payloads are unchanged.
