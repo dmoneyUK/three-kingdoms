@@ -4,6 +4,7 @@ import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { GameRoom, GameRoomErrorBoundary } from "../app/page.tsx";
 import { normalizeRoomData } from "../game/room-safety.js";
+import { buildGroupScopePreview } from "../game/group-scope-preview.ts";
 
 const card = (id, kind = "Attack", suit = "♠") => ({ id, kind, suit, rank: "A" });
 
@@ -170,6 +171,24 @@ function assertOnlyDeflectionProfile(renderer) {
   assert.equal(matches[0].props["aria-label"], "Deflection");
 }
 function recoveryRendered(renderer) { return text(renderer, "GAME SCREEN ERROR").length > 0 || text(renderer, "Previous game data is no longer compatible.").length > 0; }
+
+function groupScopeRoom(cardKind, { actionRevision = `${cardKind}-scope-1`, presentationSnapshot = null } = {}) {
+  return normalizeRoomData({
+    code: `GROUP-SCOPE-${cardKind}`, status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "SOURCE", seat: 0, hero: "cao-cao", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "WOUNDED", seat: 1, hero: "liu-bei", hp: 2, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+      { id: "p3", name: "FULL", seat: 2, hero: "sun-quan", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
+      { id: "p4", name: "DEFEATED", seat: 3, hero: "zhang-fei", hp: 0, maxHp: 4, alive: false, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [card(`${cardKind}-card`, cardKind)], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play a card", isMyAction: true,
+    actionRevision, phase: "play", presentationSnapshot, currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play a card", legalActions: ["play_card"] },
+  });
+}
+
+function groupPresentationView() {
+  return { hasInteraction: true, interactionId: "real-group", checkpointId: "real-checkpoint", presentationRevision: 1, stage: "AWAITING_RESPONSE", effect: "GROUP", sourceId: "p1", originalTargetIds: ["p2", "p3"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p2", activeResolverId: null, participantIds: ["p2", "p3"], continuity: { relation: "ROOT_FRAME", parentFrameId: null }, parentFrameId: null, stableKind: "DECISION", isLocalDecisionActor: false, hasLocalControl: false, localActionRevision: null };
+}
 
 installRenderEnvironment();
 
@@ -696,4 +715,71 @@ test("Da Qiao Deflection can select projected Equipment and resets stale selecti
   assertOnlyDeflectionProfile(renderer);
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
   await act(async () => { renderer.unmount(); });
+});
+
+test("group card scope preview is local, rule-derived, and does not become target selection", async () => {
+  const actionCalls = [];
+  const action = async (...args) => { actionCalls.push(args); return false; };
+  let room = groupScopeRoom("Oath");
+  let renderer;
+  const render = async (nextRoom, busy = false, presentationView) => {
+    room = nextRoom;
+    await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, presentationView, busy, error: "", onAction: action, onLeave: () => {} }))); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  };
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+  await act(async () => { handCardButton(renderer, "Oath-card").props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p1").props["data-local-group-preview"], "true", "Oath includes the wounded local player");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props["data-local-group-preview"], "true", "Oath includes wounded opponents");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props["data-local-group-preview"], undefined, "Oath excludes full-health players");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p4").props["data-local-group-preview"], undefined, "Oath excludes defeated players");
+  assert.equal(nodeWith(renderer, "data-group-scope-preview", "Oath").props.children.join(""), "PREVIEW · WOUNDED CHARACTERS");
+  assert.equal(button(renderer, { "aria-label": "Inspect WOUNDED" }).props.disabled, false, "scope decoration does not create a target control");
+  await act(async () => { button(renderer, { "aria-label": "Inspect WOUNDED" }).props.onClick(); });
+  assert.equal(actionCalls.length, 0, "selecting or inspecting preview scope sends no action");
+  await act(async () => { handCardButton(renderer, "Oath-card").props.onClick(); });
+  assert.equal(renderer.root.findAllByProps({ "data-group-scope-preview": "Oath" }).length, 0, "deselect clears local scope preview");
+
+  await render(groupScopeRoom("BumperHarvest"));
+  await act(async () => { handCardButton(renderer, "BumperHarvest-card").props.onClick(); });
+  assert.deepEqual(["p1", "p2", "p3"].map((id) => nodeWith(renderer, "data-player-anchor", id).props["data-local-group-preview"]), ["true", "true", "true"], "Bumper Harvest previews every living player in turn order");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p4").props["data-local-group-preview"], undefined);
+
+  await render(groupScopeRoom("BarbarianInvasion"), false, groupPresentationView());
+  await act(async () => { handCardButton(renderer, "BarbarianInvasion-card").props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p1").props["data-local-group-preview"], undefined, "group attacks exclude their source");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props["data-local-group-preview"], "true");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props["data-local-group-preview"], "true");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("interaction-seat-current-participant"), true, "public interaction semantics remain independently visible");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("local-group-preview"), true, "local preview can overlap without replacing public semantics");
+  assert.equal(button(renderer, { children: "Play" }).props.disabled, false);
+  await act(async () => { button(renderer, { children: "Play" }).props.onClick(); });
+  assert.deepEqual(actionCalls.at(-1), ["play_card", { cardId: "BarbarianInvasion-card" }], "group play payload contains no invented target IDs");
+
+  await render(groupScopeRoom("RainingArrows", { actionRevision: "raining-stale" }));
+  await act(async () => { handCardButton(renderer, "RainingArrows-card").props.onClick(); });
+  assert.equal(renderer.root.findAllByProps({ "data-group-scope-preview": "RainingArrows" }).length, 1);
+  const stale = normalizeRoomData({ ...room, actionRevision: "raining-response", phase: "response", isMyTurn: false, isMyAction: false, currentAction: { version: 3, kind: "response", actorId: "p2", deadline: 0, reason: "Respond", legalActions: ["respond"] }, myHand: [] });
+  await render(stale);
+  assert.equal(renderer.root.findAllByProps({ "data-group-scope-preview": "RainingArrows" }).length, 0, "new authoritative action state clears the local preview");
+
+  await render(groupScopeRoom("RainingArrows"), true);
+  await act(async () => { handCardButton(renderer, "RainingArrows-card").props.onClick(); });
+  assert.equal(renderer.root.findAllByProps({ "data-group-scope-preview": "RainingArrows" }).length, 0, "busy presentation suppresses a stale local preview");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("group scope preview helper uses only public living-state and turn order", () => {
+  const players = [
+    { id: "p1", seat: 2, alive: true, hp: 2, maxHp: 4 },
+    { id: "p2", seat: 3, alive: true, hp: 4, maxHp: 4 },
+    { id: "p3", seat: 0, alive: false, hp: 0, maxHp: 4 },
+    { id: "p4", seat: 1, alive: true, hp: 1, maxHp: 4 },
+  ];
+  assert.deepEqual(buildGroupScopePreview({ cardKind: "BumperHarvest", sourceId: "p1", turnSeat: 2, players, playAuthorized: true }).affectedPlayerIds, ["p1", "p2", "p4"]);
+  assert.deepEqual(buildGroupScopePreview({ cardKind: "RainingArrows", sourceId: "p1", turnSeat: 2, players, playAuthorized: true }).affectedPlayerIds, ["p2", "p4"]);
+  assert.deepEqual(buildGroupScopePreview({ cardKind: "Oath", sourceId: "p1", turnSeat: 2, players, playAuthorized: true }).affectedPlayerIds, ["p1", "p4"]);
+  assert.equal(buildGroupScopePreview({ cardKind: "Oath", sourceId: "p1", turnSeat: 2, players, playAuthorized: false }).active, false);
 });

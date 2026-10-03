@@ -56,7 +56,7 @@ Duel/Judgement and Serpent Spear controls are mapped to the model while
 target-card dialog controls remain dialog-owned. The console wraps at touch
 widths; Hero Focus and Interaction Stage intentionally remain control-free.
 
-UI-11 is the current bounded responsive hardening slice. It keeps the existing
+UI-11 is the accepted responsive hardening slice. It keeps the existing
 2–4 top-row and 5–10 side-column seat topology, adds deterministic
 `data-player-count`/`data-seat-topology` contracts, and proves N−1 opponent
 anchors plus one local dock anchor for 2, 3, 4, 5, 6, 8, and 10 players.
@@ -65,6 +65,16 @@ long names, dialogs, the existing hand rail, and the wrapping footer console.
 Semantic roles remain decoration on stable anchors; the console is still the
 only footer control surface. SSR contracts prove structure and declared CSS,
 but pixel-level responsive appearance remains a later browser/manual GAP.
+
+UI-12 adds only a pre-submit local decoration for the four implemented
+automatic-scope Standard stratagems: Oath, Bumper Harvest, Barbarian Invasion,
+and Raining Arrows. `CurrentAction` authorizes Play; the shared
+`playersInTurnOrder` living-player rule supplies the public preview scope.
+Preview never creates target IDs, Confirm, public Interaction Stage/Hero Focus
+roles, or an event. Existing Play remains `{ cardId }`, and the server remains
+the authority for group participant progression after submission. Sky Piercing
+Halberd remains an explicit local multi-target flow. The remaining UI-11
+desktop/650px/480px visual check is still a browser/manual GAP.
 
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel

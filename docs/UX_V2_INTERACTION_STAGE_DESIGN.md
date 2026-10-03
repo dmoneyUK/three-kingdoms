@@ -432,6 +432,28 @@ checkout has no browser or screenshot harness, so desktop, <=650px, and
 <=480px pixel-level appearance, touch ergonomics, and device-specific line
 wrapping remain a visual-only GAP for later manual/browser validation.
 
+### 0.6.11 UI-12 local automatic Group/AOE scope preview
+
+UI-12 is a local, pre-submit aid, not an Interaction Stage state. When the
+viewer selects a currently playable Oath, Bumper Harvest, Barbarian Invasion,
+or Raining Arrows card, `buildGroupScopePreview` mirrors only the existing
+public participant construction: `playersInTurnOrder` filters living players;
+Oath then filters wounded players, Bumper Harvest keeps every living player,
+and the two group attacks exclude the source. It takes the selected card,
+source ID, turn seat, public player facts, and CurrentAction-authorized Play
+as inputs. It does not read PresentationSnapshot, Pending, timeline, causal
+identity, or a response participant list.
+
+**Preview != Event.** The teal dashed local decoration and neutral label create
+no `interactionId`, `checkpointId`, Hero Focus, public seat role, target
+selection, or Confirm control; choosing the card sends no action. Existing
+Play keeps its `{ cardId }` payload with no invented target IDs, and server
+progression remains authoritative after acceptance. The preview suppresses on
+busy presentation or a changed/unauthorized CurrentAction. Current paths have
+no conditional or immunity recipient exclusion to expose before submission;
+Sky Piercing Halberd remains the separate explicit multi-target flow. The
+UI-11 pixel-level desktop/650px/480px browser/manual check remains a GAP.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

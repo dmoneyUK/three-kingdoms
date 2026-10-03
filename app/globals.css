@@ -1056,6 +1056,8 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
 .player-square.interaction-seat-decision-actor,.local-player-dock.interaction-seat-decision-actor{outline:2px solid #78b7b0;outline-offset:-4px}
 .player-square.interaction-seat-active-resolver:not(.interaction-seat-active-target),.local-player-dock.interaction-seat-active-resolver:not(.interaction-seat-active-target){border-color:#9b7ac0}
 .player-square.interaction-seat-viewer-decision,.local-player-dock.interaction-seat-viewer-decision{outline:2px solid #f0ce7c;outline-offset:2px}
+.player-square.local-group-preview,.local-player-dock.local-group-preview{outline:2px dashed #59c8c1;outline-offset:3px}
+.group-scope-preview-label{margin:0;color:#8ee1db;font-size:11px;font-weight:800;letter-spacing:.12em;text-align:center}
 .player-square.interaction-seat-active-target.turn-square{box-shadow:inset 0 0 0 2px #cf5146,0 0 0 2px #d9b65f66,0 8px 20px #0009}
 .player-square.interaction-seat-current-participant.turn-square{box-shadow:inset 0 0 0 3px #d75d53,0 0 0 2px #d9b65f66,0 8px 20px #0009}
 @media(max-width:650px){.player-square.interaction-seat-decision-actor{outline-offset:-3px}.player-square.interaction-seat-viewer-decision{outline-offset:1px}}

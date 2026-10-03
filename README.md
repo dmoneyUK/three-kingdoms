@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-11 responsive table topology and console regression hardening — 2026-10-03
+## Current stage — UX2.0UI-12 automatic Group/AOE scope preview — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -103,8 +103,21 @@ changed.
 UI-11 is proven by deterministic SSR DOM/style contracts and the full fast/API
 validation suite. This checkout has no browser/screenshot harness, so
 pixel-level desktop/650px/480px appearance remains a visual-only GAP for later
-manual or browser validation. The next milestone is reviewer closure of UI-11
-and a separately bounded UX slice.
+manual or browser validation.
+
+UI-12 adds a strictly local, read-only scope preview for Oath of the Peach
+Garden, Bumper Harvest, Barbarian Invasion, and Raining Arrows. A selected
+legal card decorates only the already-public recipients calculated by the same
+living-player/turn-order rules used by the play route: Oath previews wounded
+living characters, Bumper Harvest every living character, and the two group
+attacks every other living character. Preview is not an event or resolution:
+it creates no target selection, no Confirm, no public semantic role, and no
+action before Play. Play retains its existing `{ cardId }` payload; server
+participant order and subsequent PresentationSnapshot remain authoritative.
+The distinct teal dashed decoration clears on deselection, busy presentation,
+or a changed authoritative action. No conditional/immune recipient exclusion
+exists in the current four supported group play paths; other multi-target
+effects such as Sky Piercing Halberd remain explicit target selection.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 
