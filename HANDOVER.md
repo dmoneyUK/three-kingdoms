@@ -5,123 +5,120 @@ HANDOVER.md is tracked remote coordination state. Commit and push it to origin/u
 
 **CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-# NEXT TASK — UX2.0UI-06: Semantic Hero Focus Projection
+# NEXT TASK — UX2.0UI-07: Local Target Selection Confirm / Cancel Semantics
 
 ## Objective
-UI-05 is accepted and closed. Add a bounded read-only Hero Focus consumer that makes the currently relevant character easier to read from the accepted Interaction Stage semantics, without enlarging/replacing seats or changing gameplay controls.
+UI-06 is accepted and closed. Migrate the existing local, unsubmitted target-selection experience toward the UX V2 rule: selection is explicitly local and amber, and submission occurs only through clear Confirm / Cancel semantics where the existing gameplay flow already supports deferred target selection.
 
-Hero Focus is presentation context, not a new authority and not an opponent-card redesign.
+This is a client interaction/presentation migration over existing legal actions. Do not change server legality, card rules, target counts, or action payload semantics.
 
 ## Accepted baseline
-Use commit c269150b58d6d765bccc1e5281d91e7f9a9a0ea7:
-- semantic roles project to every visible player representation, including local dock;
-- public roles are viewer-equal;
-- local viewer marker is private;
-- target selection and gameplay legality remain separate;
-- Interaction Stage focus summary is accepted.
+Use commit 197bccef17de6ac68f965eef6c86589154c20720:
+- Interaction Stage + Hero Focus are read-only semantic consumers;
+- public semantic target/current focus is red/cyan/source context;
+- local unsubmitted target selection is separate from public semantic roles;
+- Hero Focus does not become a control surface.
 
-Do not reopen C1-C7 or UI-01..05.
+Do not reopen C1-C7 or UI-01..06.
 
-## Step 1 — define pure HeroFocusView
-Create a pure helper outside page.tsx derived only from InteractionStageView/PresentationClientView plus display-name/hero-display lookup.
+## Step 1 — inventory every local target-selection path
+Before editing, enumerate actual production paths that set targetIds/setTarget or equivalent, including:
+- normal card targeting;
+- multi-target cards/effects;
+- active hero skill target selection;
+- trigger/response target selection;
+- Serpent/equipment-related selection if applicable;
+- Borrowed Sword or other special target flows if applicable.
 
-The focus identity must be selected from accepted semantic IDs before display lookup.
+For each path record:
+- authority that determines eligible targets;
+- min/max/exact target count;
+- whether selection is currently submitted immediately or deferred;
+- existing submit action/payload;
+- existing cancel/reset path.
 
-Required focus rules:
-1. if currentParticipantId exists, it is the primary focused character;
-2. otherwise, if exactly one activeTargetId exists, that target is primary;
-3. otherwise no primary character focus — do not guess from decision actor, resolver, source, turn, actionPlayerId, Pending, timeline, card/hero names, or array order;
-4. source may be exposed separately as context, but must never replace an absent primary focus by inference;
-5. CHILD_FRAME may expose parent/nested context already proven by InteractionStageView;
-6. REST/no interaction -> hidden.
+Do not generalize across paths unless code proves they share semantics.
 
-Do not invent target progress or causal meaning.
+## Step 2 — define a pure local selection display model
+Create a pure helper for presentation of local selection state. It may consume only already-computed local selection facts/constraints from existing client gameplay logic; it must not recompute legality from public PresentationSnapshot.
 
-## Step 2 — minimal read-only Hero Focus component
-Add a small Hero Focus surface inside the existing Interaction Stage area or immediately associated with it.
+Required display facts:
+- selectionActive;
+- selected target IDs in user selection order;
+- minimum/maximum or exact count only when existing gameplay logic already proves it;
+- canConfirm based on existing proven local constraints;
+- canCancel when unsubmitted local state exists;
+- concise instruction text.
 
-When a primary focus exists, show only public information already available for that player, for example:
-- hero/player display identity;
-- public hero portrait/art if already available through existing public player data;
-- public HP/max HP if available;
-- concise semantic role label such as CURRENT TARGET / CURRENT PARTICIPANT derived from the rule above.
+This helper is local/private UI state, NOT public Interaction Stage authority.
 
-Requirements:
-- responsive, compact, and clearly subordinate to the stable board topology;
-- do not clone the full opponent card;
-- do not show hand contents/private cards;
-- no buttons, click handlers, target selection, legal-action hints, timers, or controls;
-- missing hero/name/art must degrade safely without changing focus identity.
+## Step 3 — explicit Confirm / Cancel for deferred selections
+For selection paths that already defer submission:
+- clicking eligible seats toggles/updates amber local selection only;
+- do not submit the action from seat click;
+- render clear Confirm and Cancel controls in the existing local command/guidance area;
+- Confirm invokes the existing submit action with the existing payload and selected target order;
+- Cancel clears only local unsubmitted selection and must not send decline/skip/gameplay actions.
 
-If exposing HP/hero display requires passing public room display data into a rendering resolver, keep semantic identity selection pure: the resolver may decorate an already-selected playerId but cannot choose who is focused.
+Do not convert a server-authoritative decline into Cancel. Skip/Decline remains a distinct authoritative action.
 
-## Step 3 — preserve source-owned semantics
-Ma Chao/source-owned decision case must keep:
-- primary Hero Focus = current participant/target;
-- decision owner remains source in Interaction Stage;
-- active resolver may remain target;
-- Hero Focus must not switch to source merely because source owns the decision.
+If any existing path intentionally submits immediately and cannot safely be migrated without gameplay-semantic changes, leave it unchanged and document it as a GAP for a later bounded task rather than inventing behavior.
 
-## Step 4 — Group/AOE and child frames
-For Group/AOE:
-- focus only the proven currentParticipant when present;
-- do not cycle or infer next/previous target;
-- if no currentParticipant and multiple active targets, show no single Hero Focus.
+## Step 4 — preserve semantic separation
+- amber = local unsubmitted selection;
+- red = public active/current affected target;
+- cyan = public decision actor;
+- gray = defeated;
+- public Interaction Stage/Hero Focus must not change merely because the user locally selects/deselects an unsubmitted target;
+- local selection must not create public semantic seat roles.
 
-For CHILD_FRAME:
-- focus the child frame current participant/sole active target only if proven;
-- retain compact nested context; do not replace it with parent target inference.
+## Step 5 — selection order
+Where existing gameplay payload semantics preserve target order, keep selected target IDs in click order and Confirm must submit that exact order.
 
-## Step 5 — tests
-Add focused pure/render tests for:
-1. ordinary Attack/Dodge target focus;
-2. Ma Chao source-owned decision keeps target/current participant as Hero Focus;
-3. Group/AOE current participant focus;
-4. Group/AOE multiple active targets with no current participant -> no guessed Hero Focus;
-5. single active target fallback when current participant absent;
-6. CHILD_FRAME focus and nested context;
-7. Dying rescue current participant;
-8. acting vs uninvolved viewers -> identical Hero Focus public content;
-9. missing player/hero display data -> safe neutral fallback with same selected ID;
-10. REST -> no Hero Focus;
-11. legacy Pending/timeline/presentationV2/CurrentAction/phase/actionPlayerId/actionReason changes cannot change selected focus with fixed PresentationClientView;
-12. no private hand/card/control data is rendered.
+Where order is not semantically meaningful, do not claim an effect order.
 
-Use typed synthetic PresentationClientView for transformation tests; do not claim new server semantics.
+Do not infer effect resolution order from public target arrays.
 
-## Step 6 — bounded styling
-Add only Hero Focus scoped CSS. Verify <=650px and <=480px containment and long names. Do not change player-board coordinates, local dock dimensions/composition, seat dimensions, or Interaction Stage authority.
+## Step 6 — tests
+Add focused tests for each migrated deferred path and at minimum:
+1. selecting an eligible target adds amber local state but sends no action;
+2. deselecting before Confirm sends no action;
+3. Cancel clears local selection and sends no gameplay/decline action;
+4. Confirm disabled until existing minimum/exact constraint is satisfied;
+5. Confirm submits exactly once with existing action name/payload;
+6. ordered multi-target path preserves selected order if payload semantics require it;
+7. public semantic active-target/current-target classes remain independent from amber selection;
+8. local selection changes do not change InteractionStageView/HeroFocusView/public seat roles;
+9. defeated/ineligible target remains unselectable under existing legality;
+10. response/trigger decline remains separate from local Cancel;
+11. REST/public presentation absence does not break local turn target selection;
+12. mobile/desktop render contains one clear Confirm and Cancel surface for the active deferred selection, not duplicate controls.
 
-No animations in this task.
+Retain UI-01..06 semantic tests.
 
-## Step 7 — documentation
-Update README and docs/UX_V2_INTERACTION_STAGE_DESIGN.md:
-- UI-06 adds read-only semantic Hero Focus;
-- primary focus authority is currentParticipant, else sole active target;
-- no focus is guessed for ambiguous multi-target state;
-- source/decision owner remain distinct concepts;
-- full target-selection/control/animation/topology redesign remains future work.
+## Step 7 — bounded UX/CSS
+Use the existing local guidance/action area. Do not create a floating modal over the board unless an existing flow already uses one.
+
+Make selected count/instruction readable and keep amber selection visually distinct from red public target state.
+
+Verify <=650px and <=480px without changing seat topology or local dock composition.
+
+## Step 8 — documentation
+Update README and docs/UX_V2_INTERACTION_STAGE_DESIGN.md with:
+- local unsubmitted selection is private amber state;
+- Confirm is the submission boundary;
+- Cancel clears local state only;
+- Skip/Decline is authoritative and distinct;
+- list any immediate-submit path intentionally left for later.
 
 ## Validation
-Run focused Hero Focus/Interaction Stage/seat render tests plus retained UI-01..05 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, and git diff --check. Report exact counts.
+Run focused target-selection tests plus retained UI-01..06 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, and git diff --check. Report exact counts.
 
 ## Scope exclusions
-No gameplay/server/projector/snapshot changes; no new authority; no seat topology redesign; no opponent-card enlargement; no local dock redesign; no target legality/selection/control migration; no animation; no settlement/transition changes; no compatibility removal; no unrelated refactor.
+No server/projector/snapshot/game-rule changes; no legality rewrite; no target-count changes; no new action payloads; no public authority derived from local selection; no Hero Focus controls; no seat topology/local dock redesign; no animation/settlement/transition work; no unrelated refactor.
 
 ## Execution result
-Append only UI-06 result: SHA, files, HeroFocusView API, focus-selection rules, display resolver boundary, Ma Chao/Group/child/Dying evidence, viewer equality, privacy proof, responsive containment, validation counts, and next bounded UI recommendation. Push and verify remote HANDOVER, then STOP.
+Append only UI-07 result: SHA, files, complete target-path inventory, which deferred paths were migrated, any truthful GAPs, local selection model API, Confirm/Cancel behavior, selection-order evidence, semantic-separation evidence, responsive evidence, tests and validation counts, and next bounded recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if Hero Focus selects a character solely from accepted semantic focus rules; ambiguous multi-target states do not guess; source-owned decisions keep target focus distinct from decision owner; public focus is viewer-equal and privacy-safe; REST hides it; and board/dock/controls/gameplay remain unchanged.
-
-## Execution result — UX2.0UI-06
-
-- **Status:** COMPLETE / reviewer-ready. Implementation commit: `197bccef17de6ac68f965eef6c86589154c20720`.
-- **Files:** `game/hero-focus.ts`, `app/page.tsx`, `app/globals.css`, `tests/presentation-client.test.mjs`, `tests/room-safety-render.test.mjs`, `README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
-- **HeroFocusView API:** `buildHeroFocusView(stage, resolvePlayerDisplay)` returns a typed read-only view with `primary`, `roleLabel`, public `source`, and proven CHILD_FRAME `nestedContext`. It selects IDs from `InteractionStageView` before invoking the optional public display resolver.
-- **Focus rules:** proven `currentParticipantId` wins; otherwise exactly one `activeTargetId` becomes `CURRENT TARGET`; ambiguous multiple active targets produce no primary focus. Decision actor, resolver, source, turn, legacy Pending/timeline/presentationV2/CurrentAction/phase/actionPlayerId/actionReason, card names, hero names, and array order never select focus.
-- **Display boundary:** the selected ID is decorated only with public player name, hero ID/name, and HP/max HP. Missing player/hero data falls back neutrally without changing the selected ID. Ma Chao/source-owned decisions keep the target/current participant focused while Interaction Stage separately shows decision and resolver ownership.
-- **Evidence:** focused tests cover ordinary Attack/Dodge, Ma Chao source-owned, Group/AOE current participant, ambiguous and sole-target fallback, CHILD_FRAME nested context, Dying, viewer equality, missing display data, legacy independence, long names, and REST hiding. Hero Focus renders no buttons, private cards, hand data, legal-action hints, timers, or controls.
-- **Containment:** styling is scoped to the compact Hero Focus panel with desktop/650px/480px rules and no animation; existing seats, player-board coordinates, local dock composition, Interaction Stage authority, target selection, and gameplay remain unchanged.
-- **Validation:** focused presentation/render tests `43/43`; `npm run test:fast` `160/160`; `npm run test:api` `239/239`; full `npm test` passed; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
-- **Next bounded recommendation:** reviewer-check the compact Hero Focus readability on the real screen. Keep INSPECT/PREVIEW/ACTIVE/SELECTABLE DETAIL, participant enlargement, topology, animation, and control migration out of this slice.
+Pass only if migrated deferred target selections remain local until explicit Confirm; Cancel sends no authoritative action; existing legality/payload semantics are unchanged; ordered payloads preserve proven selection order; public semantic presentation remains independent; and any unsafe immediate-submit path is left unchanged and reported rather than guessed.
