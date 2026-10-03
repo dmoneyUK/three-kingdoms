@@ -82,6 +82,7 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.match(html, /Attack · Attack Response/);
   assert.match(html, /data-continuity="ROOT_FRAME"/);
   assert.match(html, /<small>DECISION<\/small><b>Lü Bu<\/b>/);
+  assert.doesNotMatch(html, /<small>PROGRESS<\/small>|Target \d+ of \d+/, "Interaction Stage does not infer ordinal target progress");
   assert.doesNotMatch(html, />interaction-ui</, "causal IDs remain diagnostics in data attributes");
   assert.match(html, /data-presentation-kind="CHOICE"/);
   assert.match(html, /data-presentation-has-interaction="true"/);

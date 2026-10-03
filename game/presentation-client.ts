@@ -72,7 +72,6 @@ export type InteractionStageDisplayModel = {
   source: PresentationDisplayIdentity;
   focusTarget: PresentationDisplayIdentity;
   targetSummary: string;
-  targetProgress: string | null;
   showDecision: boolean;
   decisionActor: PresentationDisplayIdentity;
   isViewerDecisionActor: boolean;
@@ -305,13 +304,11 @@ export function buildInteractionStageDisplayModel(stage: InteractionStageView): 
   const showResolver = Boolean(stage.activeResolver.id
     && stage.activeResolver.id !== stage.decisionActor.id
     && (sourceOwned || stage.continuity.relation === "CHILD_FRAME"));
-  const activeIndex = stage.activeTargets.findIndex((identity) => identity.id === activeTarget.id);
-  const targetProgress = stage.activeTargets.length > 1 && activeIndex >= 0
-    ? `Target ${activeIndex + 1} of ${stage.activeTargets.length}`
-    : null;
   const targetSummary = stage.currentParticipant.id
-    ? `Current participant: ${stage.currentParticipant.name}`
-    : `Active target: ${displayNames(stage.activeTargets, "No active target")}`;
+    ? `Current participant: ${stage.currentParticipant.name}${stage.activeTargets.length > 1
+      ? ` · Active scope: ${displayNames(stage.activeTargets, "No active target")}`
+      : ""}`
+    : `Active scope: ${displayNames(stage.activeTargets, "No active target")}`;
   const showOriginalTargets = !sameIds(stage.originalTargets, stage.activeTargets);
   const nestedContext = stage.continuity.relation === "CHILD_FRAME"
     ? `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`
@@ -322,7 +319,6 @@ export function buildInteractionStageDisplayModel(stage: InteractionStageView): 
     source: stage.source,
     focusTarget: activeTarget,
     targetSummary,
-    targetProgress,
     showDecision: stage.stableKind === "CHOICE" && Boolean(stage.decisionActor.id),
     decisionActor: stage.decisionActor,
     isViewerDecisionActor: stage.isViewerDecisionActor,

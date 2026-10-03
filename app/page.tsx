@@ -468,7 +468,6 @@ export function InteractionStage({ view, resolvePlayerName }: { view: Presentati
     <div className="interaction-stage-context">
       {display.showDecision && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
       {display.showResolver && <span><small>RESOLVER</small><b>{display.activeResolver.name}</b></span>}
-      {display.targetProgress && <span><small>PROGRESS</small><b>{display.targetProgress}</b></span>}
       {display.showOriginalTargets && <span><small>ORIGINAL SCOPE</small><b>{display.originalTargetSummary}</b></span>}
       {display.nestedContext && <span><small>CONTEXT</small><b>{display.nestedContext}</b></span>}
     </div>

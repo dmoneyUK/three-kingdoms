@@ -234,7 +234,10 @@ paths, and final visual redesign remain separate future slices.
 UI-04 keeps the complete `InteractionStageView` as the semantic source while
 adding a pure `InteractionStageDisplayModel` for player-facing hierarchy. The
 normal focus is stage/effect, source, and the current participant or active
-target context. A proven CHOICE shows its decision owner; a resolver is shown
+target context. Current participant and active target scope are direct facts;
+the client does not infer ordinal progress, completed/remaining counts, or
+sequence position from target array order/length because no accepted
+authoritative progress field exists. A proven CHOICE shows its decision owner; a resolver is shown
 only when it explains a source-owned or nested-child relationship. Original
 targets are shown only when their ordered IDs differ from the active target
 set, so equal target lists do not create redundant copy.

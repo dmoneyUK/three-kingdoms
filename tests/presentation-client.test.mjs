@@ -386,7 +386,7 @@ test("Interaction Stage display hierarchy preserves the source-owned resolver di
   assert.equal(model.isViewerDecisionActor, true);
 });
 
-test("Interaction Stage display hierarchy gives Group/AOE current-participant progress", () => {
+test("Interaction Stage display hierarchy keeps Group/AOE scope facts without ordinal progress", () => {
   const view = buildPresentationClientView(snapshot({
     interaction: scene({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C", "A"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C", "A"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"] } }),
     stable: { ...snapshot().stable, decisionActorId: "C" },
@@ -394,10 +394,32 @@ test("Interaction Stage display hierarchy gives Group/AOE current-participant pr
   }), "A");
   const model = buildInteractionStageDisplayModel(buildInteractionStageView(view, resolveDisplayName));
   assert.equal(model.focusTarget.name, "Cao Cao");
-  assert.equal(model.targetProgress, "Target 2 of 2");
   assert.match(model.targetSummary, /Current participant: Cao Cao/);
+  assert.match(model.targetSummary, /Active scope: Zhao Yun, Cao Cao/);
+  assert.doesNotMatch(model.targetSummary, /Target \d+ of \d+/);
   assert.equal(model.showOriginalTargets, true);
   assert.match(model.originalTargetSummary, /Zhao Yun, Cao Cao, Ma Chao/);
+});
+
+test("Interaction Stage never infers ordinal progress from target order or scope length", () => {
+  const makeModel = (activeTargetIds, currentParticipantId = "C") => buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C", "A"], activeTargetIds, currentParticipantId, decisionActorId: currentParticipantId, activeResolverId: currentParticipantId, participantIds: ["A", "B", "C"], participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C", "A"], activeTargetIds, currentParticipantId, decisionActorId: currentParticipantId, activeResolverId: currentParticipantId, participantIds: ["A", "B", "C"] } }),
+    stable: { ...snapshot().stable, decisionActorId: currentParticipantId },
+    decision: { actorId: currentParticipantId, stage: "GROUP_RESOLUTION" },
+  }), "A"), resolveDisplayName));
+
+  const ordered = makeModel(["B", "C"]);
+  const reordered = makeModel(["C", "B"]);
+  const narrowed = makeModel(["C"]);
+  for (const model of [ordered, reordered, narrowed]) {
+    assert.doesNotMatch(model.targetSummary, /Target \d+ of \d+/);
+    assert.doesNotMatch(model.targetSummary, /\b(?:completed|remaining|sequence|progress)\b/i);
+  }
+  assert.match(ordered.targetSummary, /Active scope: Zhao Yun, Cao Cao/);
+  assert.match(reordered.targetSummary, /Active scope: Cao Cao, Zhao Yun/);
+  assert.notEqual(ordered.targetSummary, reordered.targetSummary, "scope facts may preserve accepted array order without claiming ordinal progress");
+  assert.match(narrowed.targetSummary, /Current participant: Cao Cao/);
+  assert.doesNotMatch(narrowed.targetSummary, /\b(?:of|completed|remaining)\b/i);
 });
 
 test("Interaction Stage display hierarchy preserves compact child-frame context", () => {

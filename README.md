@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-04 Interaction Stage focus summary — 2026-10-03
+## Current stage — UX2.0UI-04-FIX1 authority-safe target context — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -12,7 +12,10 @@ available to the existing UI.
 UI-04 refines that consumer into a concise semantic focus summary. The
 underlying `InteractionStageView` retains the full public identity and
 continuity model, while a pure display model prioritises stage/effect, source,
-and current participant/active target context. Decision ownership remains
+and current participant/active target context. Current participant and active
+target scopes are shown only as proven facts; no ordinal progress is inferred
+from array order or length because no accepted authoritative progress field
+exists. Decision ownership remains
 explicit for CHOICE; source-owned resolver and child-frame context appear only
 when useful; redundant original-target and resolver detail is demoted. REST,
 controls, target selection, dialogs, timers, animation, seats, dock, gameplay,
