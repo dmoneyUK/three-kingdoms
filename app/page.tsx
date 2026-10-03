@@ -744,6 +744,7 @@ export const HERO_SKILL_RESPONSE_IDS: Record<string, Record<string, readonly str
 type LocalPlayerDockProps = {
   player: Player | null;
   hero: Hero | null;
+  interactionRoles: InteractionSeatSemanticRoles;
   children: ReactNode;
   heroSkillControl?: ReactNode;
   onHeroInfo: (hero: Hero) => void;
@@ -752,7 +753,7 @@ type LocalPlayerDockProps = {
   hiddenCardIds?: ReadonlySet<string>;
 };
 
-export function LocalPlayerDock({ player, hero, children, heroSkillControl, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set() }: LocalPlayerDockProps) {
+export function LocalPlayerDock({ player, hero, interactionRoles, children, heroSkillControl, onHeroInfo, onInfoCard, equipmentSelection = null, hiddenCardIds = new Set() }: LocalPlayerDockProps) {
   const judgementRailRef = useRef<HTMLDivElement | null>(null);
   const [judgementRailWidth, setJudgementRailWidth] = useState(0);
   const [judgementCardWidth, setJudgementCardWidth] = useState(34);
@@ -788,12 +789,22 @@ export function LocalPlayerDock({ player, hero, children, heroSkillControl, onHe
     return { step: naturalStep >= cardWidth ? naturalStep : Math.max(12, naturalStep), measured: judgementRailWidth > 0 };
   }, [judgementCardWidth, judgementCards.length, judgementRailWidth]);
   const fallbackSkills = hero?.skills?.length ? hero.skills : hero ? [{ name: hero.skill ?? "Hero Skill", description: hero.ability }] : [];
+  const interactionRoleNames = Object.entries(interactionRoles).filter(([, active]) => active).map(([role]) => role.replace(/^is/, "").replace(/([A-Z])/g, "-$1").toLowerCase()).join(" ");
+  const interactionRoleClasses = [
+    interactionRoles.isInteractionSource ? "interaction-seat-source" : "",
+    interactionRoles.isOriginalTarget ? "interaction-seat-original-target" : "",
+    interactionRoles.isActiveTarget ? "interaction-seat-active-target" : "",
+    interactionRoles.isCurrentParticipant ? "interaction-seat-current-participant" : "",
+    interactionRoles.isDecisionActor ? "interaction-seat-decision-actor" : "",
+    interactionRoles.isActiveResolver ? "interaction-seat-active-resolver" : "",
+    interactionRoles.isViewerDecisionActor ? "interaction-seat-viewer-decision" : "",
+  ].filter(Boolean).join(" ");
   const renderZoneCard = (card: Card, selected = false, selectable = false) => <div className={`local-zone-card ${suitColorClass(card.suit)} ${selected ? "selected-cost" : ""}`} key={card.id} data-equipment-id={cardDefinition(card.kind).equipmentSlot ? card.id : undefined} data-judgement-id={!cardDefinition(card.kind).equipmentSlot ? card.id : undefined} style={{ visibility: hiddenCardIds.has(card.id) ? "hidden" : "visible" }}>
     <CardFace card={card} />
     {selectable ? <button type="button" className="local-zone-card-button" aria-label={`Select ${cardDefinition(card.kind).name}`} disabled={!equipmentSelection || equipmentSelection.disabled || !equipmentSelection.eligibleIds.includes(card.id)} onClick={() => equipmentSelection?.onToggle(card.id)} /> : <button type="button" className="local-zone-card-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={() => onInfoCard(card)} />}
     <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(card); }}>i</button>
   </div>;
-  return <section className="local-player-dock" data-player-anchor={player?.id ?? undefined} aria-label="Your player area">
+  return <section className={`local-player-dock${interactionRoleClasses ? ` ${interactionRoleClasses}` : ""}`} data-player-anchor={player?.id ?? undefined} data-interaction-roles={interactionRoleNames || undefined} data-interaction-source={interactionRoles.isInteractionSource ? "true" : undefined} data-interaction-original-target={interactionRoles.isOriginalTarget ? "true" : undefined} data-interaction-active-target={interactionRoles.isActiveTarget ? "true" : undefined} data-interaction-current-participant={interactionRoles.isCurrentParticipant ? "true" : undefined} data-interaction-decision-actor={interactionRoles.isDecisionActor ? "true" : undefined} data-interaction-active-resolver={interactionRoles.isActiveResolver ? "true" : undefined} data-interaction-viewer-decision={interactionRoles.isViewerDecisionActor ? "true" : undefined} aria-label="Your player area">
     <div className="local-dock-identity">
       {hero ? <button type="button" className="local-hero-card" aria-label={`Explain ${hero.name}`} onClick={() => onHeroInfo(hero)}><span className="local-hero-portrait" data-hero-id={hero.id} aria-hidden="true"><HeroPortrait hero={hero} /><span className="local-hero-overlay"><span className="local-hero-label">{hero.name}</span><span className="local-hero-vitals"><strong className="local-hero-role">{player?.role ?? "Role pending"}</strong><span className="local-hero-hp">HP {player?.hp ?? 0}/{player?.maxHp ?? 0}</span><span className="local-hero-hearts">{hpDisplay(player?.hp ?? null)}</span></span></span></span></button> : <div className="local-hero-card local-hero-card-empty" aria-label="Hero not selected"><span className="local-hero-portrait" aria-hidden="true"><span className="local-hero-label">HERO</span></span></div>}
     </div>
@@ -1303,7 +1314,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       {seatCountdown && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
     <footer className="play-command">
-    <LocalPlayerDock player={me} hero={localHero} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight}
+    <LocalPlayerDock player={me} hero={localHero} interactionRoles={projectInteractionSeatRoles(clientPresentation, room.meId)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} equipmentSelection={localEquipmentSelection} hiddenCardIds={judgementInFlight}
       heroSkillControl={
         <section className="hero-skills local-hero-skills" aria-label="Available hero skills">
           {heroSkillButtons.map((skill) => <button type="button" key={skill.name} className={`hero-skill-button ${skill.active ? "active" : ""}`} aria-label={skill.name} aria-pressed={skill.active} title={skill.description} disabled={!skill.enabled || busy || presentationBusy && !skill.active} onClick={() => skill.onClick?.()}>{skill.active && (me?.hero === "guan-yu" || me?.hero === "zhao-yun") ? `Cancel ${skill.name}` : skill.name}</button>)}

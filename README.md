@@ -24,11 +24,12 @@ milestone is a separately bounded readability or focus slice, not a board
 redesign.
 
 UI-05 adds presentation-only interaction-role highlights to the existing
-opponent seats. The pure role projection reads only the accepted
-`PresentationClientView`: source, original/active target, current participant,
-decision actor, active resolver, and the local viewer marker. Dedicated seat
-classes/data attributes do not change target legality, click behavior, local
-amber selection, turn/defeated state, seat topology, or dimensions. Hero Focus,
+opponent seats and the existing local hero/player dock surface. The pure role
+projection reads only the accepted `PresentationClientView`: source,
+original/active target, current participant, decision actor, active resolver,
+and the local viewer marker. Dedicated seat/dock classes and data attributes do
+not change target legality, click behavior, local amber selection, turn/
+defeated state, dock composition, seat topology, or dimensions. Hero Focus,
 final seat topology, and control migration remain future work.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02

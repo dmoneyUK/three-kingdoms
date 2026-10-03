@@ -252,19 +252,21 @@ redesign migration.
 
 ### 0.6.5 UI-05 semantic seat highlight projection
 
-UI-05 projects the accepted public interaction roles onto the existing player
-seats through a pure `PresentationClientView` plus player-ID helper. Source,
-original target, active target, current participant, decision actor, and active
-resolver remain separate booleans so overlapping roles are not collapsed; the
-viewer-decision marker is the only local entitlement-dependent role. REST
-projects no interaction roles.
+UI-05 projects the accepted public interaction roles onto every existing visible
+player surface through a pure `PresentationClientView` plus player-ID helper:
+the opponent seats and the local hero/player dock. Source, original target,
+active target, current participant, decision actor, and active resolver remain
+separate booleans so overlapping roles are not collapsed; the viewer-decision
+marker is the only local entitlement-dependent role. REST projects no
+interaction roles.
 
 The resulting classes and data attributes are presentation-only. They do not
 create target-selection controls, change legality, alter click handlers, or
-replace the existing turn, defeated, action, or local amber selection state.
-Inset shadows and outlines preserve seat dimensions and topology at desktop,
-650px, and 480px widths. Final seat topology, Hero Focus, and control
-migration remain separate future slices.
+replace the existing turn, defeated, action, local amber selection, hand,
+skills, equipment, or dock controls. Inset shadows and outlines preserve seat
+and dock dimensions and topology at desktop, 650px, and 480px widths. No local
+dock composition or player-board topology changes. Final seat topology, Hero
+Focus, and control migration remain separate future slices.
 
 ### 0.7 Four identities have different jobs
 

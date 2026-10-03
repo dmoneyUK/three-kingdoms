@@ -87,6 +87,12 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.match(html, /data-presentation-kind="CHOICE"/);
   assert.match(html, /data-presentation-has-interaction="true"/);
   assert.match(html, /data-presentation-local-control="true"/);
+  assert.match(html, /<section class="local-player-dock[^"]*interaction-seat-original-target[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*interaction-seat-decision-actor[^"]*interaction-seat-active-resolver[^"]*interaction-seat-viewer-decision[^"]*"[^>]*data-player-anchor="p1"/, "local target-owned decision roles project onto the existing local dock");
+  assert.match(html, /data-interaction-original-target="true"[^>]*data-interaction-active-target="true"[^>]*data-interaction-current-participant="true"[^>]*data-interaction-decision-actor="true"[^>]*data-interaction-active-resolver="true"[^>]*data-interaction-viewer-decision="true"/, "local dock exposes the same semantic role data");
+  assert.doesNotMatch(html, /<section class="local-player-dock[^"]*selected-target/, "public active-target semantics do not mutate local gameplay selection");
+  assert.match(html, /class="local-hand"[^>]*data-card-origin-anchor="p1"/);
+  assert.match(html, /class="local-status-panel"[\s\S]*class="hero-skill-button/);
+  assert.match(html, /class="local-equipment-panel"[\s\S]*class="local-equipment-slot/);
   const semanticSeatSnapshot = {
     ...uxRoom.presentationSnapshot,
     stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p2" },
@@ -104,6 +110,35 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.doesNotMatch(semanticSeatHtml, /class="[^"]*player-square[^"]*selected-target[^"]*"[^>]*data-player-anchor="p2"/, "semantic active-target highlighting does not select a gameplay target");
   assert.match(gameRoomSource, /isSelectedTarget \? "selected-target" : ""/);
   assert.match(gameRoomSource, /interactionRoles\.isActiveTarget \? "interaction-seat-active-target" : ""/);
+  const localSourceOwnedSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p1" },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, sourceId: "p1", targetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p1", activeResolverId: "p2", activeTargetIds: ["p2"], participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, sourceId: "p1", originalTargetIds: ["p2"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p1", activeResolverId: "p2" } },
+    decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
+    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p1", entitled: true },
+  };
+  const localSourceOwnedHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: localSourceOwnedSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(localSourceOwnedHtml, /<section class="local-player-dock[^"]*interaction-seat-source[^"]*interaction-seat-decision-actor[^"]*interaction-seat-viewer-decision[^"]*"[^>]*data-player-anchor="p1"/, "local source-owned decision preserves source, decision, and viewer roles");
+  assert.match(localSourceOwnedHtml, /class="[^"]*player-square[^"]*interaction-seat-original-target[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*interaction-seat-active-resolver[^"]*"[^>]*data-player-anchor="p2"/, "remote target keeps active target, participant, and resolver roles");
+  const localSpecialSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, kind: "SPECIAL", decisionActorId: null },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, currentParticipantId: "p1", decisionActorId: null, activeResolverId: "p2", activeTargetIds: ["p1"], participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, currentParticipantId: "p1", decisionActorId: null, activeResolverId: "p2", activeTargetIds: ["p1"] } },
+    decision: null,
+    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: null, entitled: false },
+  };
+  const localSpecialHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: localSpecialSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(localSpecialHtml, /<section class="local-player-dock[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*"[^>]*data-player-anchor="p1"/, "local active target/current roles remain public without a decision actor");
+  assert.doesNotMatch(localSpecialHtml, /<section class="local-player-dock[^"]*interaction-seat-decision-actor/, "SPECIAL does not invent a local decision role");
+  const localOverlapSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p1" },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, sourceId: "p1", targetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", activeTargetIds: ["p1"], participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, sourceId: "p1", originalTargetIds: ["p1"], activeTargetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1" } },
+    decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
+    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p1", entitled: true },
+  };
+  const localOverlapHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: localOverlapSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(localOverlapHtml, /<section class="local-player-dock[^"]*interaction-seat-source[^"]*interaction-seat-original-target[^"]*interaction-seat-active-target[^"]*interaction-seat-current-participant[^"]*interaction-seat-decision-actor[^"]*interaction-seat-active-resolver[^"]*interaction-seat-viewer-decision[^"]*"[^>]*data-player-anchor="p1"/, "local overlapping roles remain simultaneous");
   const legacyMismatchHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, actionPlayerId: "p2", actionReason: "legacy owner", isMyAction: false, currentAction: { ...uxRoom.currentAction, actorId: "p2", reason: "legacy action" } }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Lü Bu · YOU<\/b>/, "active status ownership comes from PresentationClientView");
   assert.doesNotMatch(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Zhao Yun/, "legacy action owner cannot replace the public decision actor");
@@ -130,6 +165,11 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.match(childStageHtml, /parent frame parent-frame/);
   const restHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: null }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((restHtml.match(/class="interaction-stage"/g) ?? []).length, 0, "REST renders no Interaction Stage");
+  assert.match(restHtml, /<section class="local-player-dock\s*"[^>]*data-player-anchor="p1"/, "REST retains the local player surface");
+  assert.doesNotMatch(restHtml, /<section class="local-player-dock[^"]*interaction-seat-/, "REST local surface has no semantic role classes");
+  assert.doesNotMatch(restHtml, /data-interaction-(?:roles|source|original-target|active-target|current-participant|decision-actor|active-resolver|viewer-decision)=/, "REST local surface has no semantic role data");
+  const localDock = (markup) => markup.match(/<section class="local-player-dock[^>]*data-player-anchor="p1"[^>]*>/)?.[0] ?? "";
+  assert.equal(localDock(legacyMismatchHtml), localDock(html), "legacy room fields cannot change local semantic roles");
 });
 
 test("Legacy distribution keeps private cards static and labels recipients by hero", () => {
@@ -306,7 +346,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((html.match(/class="player-square opponent-player-card/g) ?? []).length, 3, "a four-player board renders only the three opponents");
   assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 4, "every visible player has one authoritative DOM anchor");
-  assert.match(html, /class="local-player-dock"[^>]*data-player-anchor="p1"/);
+  assert.match(html, /class="local-player-dock\s*"[^>]*data-player-anchor="p1"/);
   assert.match(html, /class="player-square[^>]*data-player-anchor="p2"/);
   assert.match(html, /class="player-square[^>]*data-player-anchor="p3"/);
   assert.match(html, /class="mini-zone-card mini-equipment-card"[^>]*data-equipment-id="opponent-weapon"/);
@@ -318,7 +358,7 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(html, /class="draw-stack"[^>]*data-draw-anchor="true"/);
   assert.match(html, /class="discard-stack"[^>]*data-discard-anchor="true"/);
   assert.doesNotMatch(html, /class="player-square player-square-0/);
-  assert.match(html, /class="local-player-dock"/);
+  assert.match(html, /class="local-player-dock\s*"/);
   assert.match(html, /data-hero-id="cao-cao"/);
   assert.match(html, /class="player-square-portrait opponent-hero-portrait" data-hero-id="liu-bei"[\s\S]*data-hero-art-id="liu-bei"/);
   assert.match(html, /data-hero-art-id="xiahou-dun"/);
@@ -522,7 +562,7 @@ test("normalized malformed and unknown response states render safely", () => {
   assert.ok(room);
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(html, /game-exit/);
-  assert.match(html, /class="local-player-dock"/);
+  assert.match(html, /class="local-player-dock\s*"/);
   assert.match(html, /aria-label="Explain Sima Yi"/);
   assert.doesNotMatch(html, />Necromancy<\/em>/);
   const heroInfoHtml = renderToStaticMarkup(React.createElement(HeroInfoDialog, { hero: { id: "simayi", name: "Sima Yi", faction: "Wei", hp: 3, skills: [{ name: "Retaliation", description: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, { name: "Necromancy", description: "After a Judgement card is flipped, you may discard 1 card from your hand. The discarded card then becomes the new Judgement card." }], ability: "After you take damage, you may obtain 1 card from the character that inflicted the damage." }, onClose: () => {} }));
