@@ -86,6 +86,19 @@ function borrowedSwordTargetRoom() {
   });
 }
 
+function pendingTargetCardRoom(actionRevision = "target-card-revision", { handCount = 2 } = {}) {
+  return normalizeRoomData({
+    code: "TARGET-CARD-CONTINUATION-UI", status: "playing", maxPlayers: 2, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "SOURCE", seat: 0, hero: "gan-ning", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 4, maxHp: 4, alive: true, connected: true, handCount, equipmentCards: [{ id: "target-armor", kind: "NioShield", suit: "♣", rank: "2" }], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [card("source-card", "Dismantle")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Choose a target card", isMyAction: true,
+    actionRevision, phase: "response", pending: { kind: "target_card" }, currentAction: { version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose a target card", legalActions: ["choose_target_card"] },
+    pendingTargetCard: { kind: "target_card", sourceId: "p1", actorId: "p1", targetId: "p2", cardKind: "Dismantle" },
+  });
+}
+
 function triggerRoom({ meId = "p1", hero = "huang-yueying", playerName = "HUANG YUEYING", code = "CULTIVATION-UI", triggerOptions = [{ effectId: "huang_yueying_cultivation", label: "Cultivation", description: "Draw 1 card after using a Stratagem.", selection: null }], pendingNegation = null, currentAction = {} } = {}) {
   const players = [
     { id: "p1", name: playerName, seat: 0, hero, hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
@@ -269,6 +282,71 @@ test("Borrowed Sword local target clears when the authoritative revision changes
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false, "stale revision clears the local target");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("pending target-card picker keeps opaque selection local across Confirm and Cancel", async () => {
+  const room = pendingTargetCardRoom();
+  const actionCalls = [];
+  const action = async (...args) => { actionCalls.push(args); return true; };
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const mainBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
+  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false);
+  assert.equal(button(renderer, { children: "Discard selected" }).props.disabled, true, "Confirm is constrained by the existing target-card selection");
+  await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
+  assert.equal(actionCalls.length, 0, "private hand-card selection sends no action");
+  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
+  assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, mainBefore, "local private selection does not alter public presentation attributes");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props["data-interaction-roles"], undefined, "private card identity does not become a public seat role");
+  assert.equal(button(renderer, { children: "Discard selected" }).props.disabled, false);
+  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
+  assert.equal(actionCalls.length, 0, "Cancel sends neither gameplay nor decline action");
+  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "Cancel clears the opaque card selection");
+  assert.equal(button(renderer, { children: "Discard selected" }).props.disabled, true);
+  await act(async () => { button(renderer, { children: "Nio Shield" }).props.onClick(); });
+  await act(async () => { button(renderer, { children: "Discard selected" }).props.onClick(); });
+  assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "Confirm preserves the existing action and payload exactly once");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("target-card trigger picker adds local Cancel while preserving Skip and opaque keys", async () => {
+  const room = triggerRoom({ triggerOptions: [{ effectId: "future_target_cards", label: "Future Target Cards", selection: { type: "target_cards", targetId: "p2", min: 1, max: 2, eligibleKeys: ["hand:0", "not-eligible"] } }] });
+  const actionCalls = [];
+  const action = async (...args) => { actionCalls.push(args); return true; };
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const actionCountBeforeSelection = actionCalls.length;
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 1, "one picker-local Cancel surface is shown");
+  assert.equal(buttonsContaining(renderer, "Skip").length, 1, "Skip remains the separate authoritative action");
+  assert.equal(button(renderer, { children: "Use Future Target Cards" }).props.disabled, true);
+  await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
+  assert.equal(actionCalls.length, actionCountBeforeSelection, "target-card trigger selection sends no action");
+  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
+  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
+  assert.equal(actionCalls.length, actionCountBeforeSelection, "picker Cancel does not decline the trigger");
+  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "picker Cancel clears the full local attempt");
+  await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
+  await act(async () => { button(renderer, { children: "Use Future Target Cards" }).props.onClick(); });
+  assert.deepEqual(actionCalls.filter(([actionName]) => actionName === "trigger"), [["trigger", { providerId: "future_target_cards", cardKeys: ["hand:0"] }]], "Confirm preserves the semantic trigger payload exactly once");
+  assert.equal(renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children.includes("hand:0")).length, 0, "opaque key is not rendered as public text");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("pending target-card selection clears when authoritative availability changes", async () => {
+  const room = pendingTargetCardRoom();
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await act(async () => { button(renderer, { "aria-label": "Hidden hand card 2" }).props.onClick(); });
+  assert.equal(button(renderer, { "aria-label": "Hidden hand card 2" }).props["aria-pressed"], true);
+  const changed = pendingTargetCardRoom(room.actionRevision, { handCount: 1 });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: changed, onRecover: () => {} }, React.createElement(GameRoom, { room: changed, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false, "availability change clears stale opaque selection");
+  assert.equal(button(renderer, { children: "Discard selected" }).props.disabled, true);
   await act(async () => { renderer.unmount(); });
 });
 

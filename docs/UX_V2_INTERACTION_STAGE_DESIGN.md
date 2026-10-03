@@ -329,6 +329,35 @@ eligibility changes clear stale local choice. Opaque private target-card
 pickers remain a separate card-zone flow rather than being generalized into
 player target selection.
 
+### 0.6.8 UI-09 private target-card picker confirmation boundary
+
+UI-09 keeps private target-card choices in the local operation console until
+the existing server action is confirmed. The `pendingTargetCard` Dismantle and
+Steal continuation exposes hidden Hand positions only as opaque `?` controls;
+Equipment and Judgement cards remain the already-authorized public faces. A
+selection changes only local state, Confirm sends the unchanged
+`choose_target_card` action and payload once, and Cancel clears the local zone,
+index, and card ID without sending a gameplay or decline action.
+
+Semantic `target_cards` providers use the existing `eligibleKeys`, min/max
+constraint, and `trigger` payload. Their hidden hand entries remain opaque
+(`hand` or `hand:<index>` keys are never rendered as card identity), while
+public Equipment/Judgement faces are shown only when the server already
+projects those cards. Unmapped providers receive a picker-local Cancel;
+Sima Yi Retaliation keeps its existing profile-owned cancellation surface so
+there is not a second provider cancellation path. Skip/Decline remains the
+authoritative server action and is never substituted by Cancel.
+
+The picker invalidates local input when `actionRevision` or the live target
+card availability changes. Local selected keys are not copied into
+PresentationSnapshot, Interaction Stage, Hero Focus, public seat roles,
+timeline/log text, or another viewer's projection. Confirm remains disabled
+until the existing min/max constraint is satisfied; ineligible keys are not
+rendered/selectable. The overlay and table picker remain contained at the
+existing desktop, 650px, and 480px responsive bounds. This is a picker-boundary
+consumer change only: no server rule, payload, visibility rule, projector,
+topology, animation, or settlement behavior changes.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

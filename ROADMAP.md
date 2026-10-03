@@ -42,10 +42,13 @@ Improve functional feedback for card selection, target selection, confirm,
 decline/skip, disabled controls and in-flight submissions. Keep the server
 projection as the source of legal IDs.
 
-UI-08 is the current bounded slice: Borrowed Sword's server-authorized
-`eligibleTargetIds` are selected locally in amber until Confirm, with Cancel
-clearing the local choice and preserving the existing action/payload boundary.
-Opaque private target-card pickers remain an explicit later gap.
+UI-09 is the current bounded slice: private target-card pickers keep opaque
+hand/equipment/Judgement selections local until Confirm, with Cancel clearing
+only local state. Existing `choose_target_card` and semantic `trigger`
+payloads, server legality, `eligibleKeys`, hidden-card rules and separate
+Skip/Decline actions remain unchanged. Revision/live-eligibility changes clear
+stale choices, and public presentation never receives the local private key.
+Any private picker without a safe deferred contract remains an explicit gap.
 
 ### UX 3 — mobile/touch and information readability
 
