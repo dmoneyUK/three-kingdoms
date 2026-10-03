@@ -305,11 +305,12 @@ does not read or reinterpret `PresentationSnapshot`, `InteractionStageView`,
 or public target roles.
 
 For deferred normal card targeting (including Sky-Piercing Halberd's ordered
-multi-target Attack), active hero-skill targets, trigger/response targets, and
-Serpent Spear targets, eligible seat clicks update only the local amber
-selection. The existing action and payload remain the Confirm boundary. A
-local Cancel clears the complete unsubmitted local selection for the active
-flow, including its card/provider/mode input where applicable; it does not call
+multi-target Attack), active hero-skill targets, trigger/response targets,
+Serpent Spear targets, and Borrowed Sword's forced-Attack target, eligible seat
+clicks update only the local amber selection. The existing action and payload
+remain the Confirm boundary. A local Cancel clears the complete unsubmitted
+local selection for the active flow, including its card/provider/mode input
+where applicable; it does not call
 `decline_trigger`, `decline_response`, `skip_rescue`, or any other gameplay
 action. Existing provider-owned Cancel controls remain the sole Cancel surface
 when they already own complete flow cancellation. Skip/Decline remains the separate
@@ -321,10 +322,12 @@ Public red/cyan/source/defeated presentation roles and Hero Focus remain
 projection-owned and are unchanged by local selection. The command area shows
 one concise local instruction/count plus the applicable Confirm/Cancel surface,
 with bounded styling at desktop, 650px, and 480px widths. Borrowed Sword's
-forced-Attack target picker remains its existing immediate
-`choose_borrowed_sword_target` server action and is a deliberate later GAP;
-opaque private target-card pickers remain a separate card-zone flow rather than
-being generalized into player target selection.
+forced-Attack target now submits the existing `choose_borrowed_sword_target`
+server action only at Confirm, with no payload or resolution change. Its
+server-projected `eligibleTargetIds` remain authoritative; action-revision or
+eligibility changes clear stale local choice. Opaque private target-card
+pickers remain a separate card-zone flow rather than being generalized into
+player target selection.
 
 ### 0.7 Four identities have different jobs
 

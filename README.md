@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-07-FIX1 complete local target cancellation — 2026-10-03
+## Current stage — UX2.0UI-08 Borrowed Sword local target selection — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -53,11 +53,16 @@ no gameplay, Skip, or Decline action; existing click order is preserved in the
 Halberd and generic trigger payloads. Existing provider-owned Cancel controls
 remain the single surface where they already own complete cancellation. Public
 Interaction Stage/Hero Focus roles remain derived only from the server
-presentation projection, so local selection does not create public roles. The
-Borrowed Sword forced-Attack target picker still uses its existing immediate
-server-authoritative `choose_borrowed_sword_target` action and is intentionally
-recorded as a later GAP; private target-card pickers remain their separate
-opaque-card flow. The next milestone is reviewer closure of UI-07-FIX1, then a
+presentation projection, so local selection does not create public roles.
+
+UI-08 extends that local boundary to Borrowed Sword's forced-Attack target:
+eligible seat clicks remain unsubmitted until Confirm, while Cancel clears the
+local target and sends no action. Confirm preserves the existing
+`choose_borrowed_sword_target` action and `{ targetId }` payload exactly once;
+server-projected `eligibleTargetIds` remain the only target authority, and an
+authoritative action revision or eligibility change clears stale local choice.
+Private target-card pickers remain their separate opaque-card flow and are the
+next explicit GAP. The next milestone is reviewer closure of UI-08, then a
 separately bounded UX slice.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02

@@ -71,6 +71,21 @@ function serpentTargetRoom() {
   });
 }
 
+function borrowedSwordTargetRoom() {
+  return normalizeRoomData({
+    code: "BORROWED-SWORD-TARGET-UI", status: "playing", maxPlayers: 4, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "SOURCE", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "WEAPON HOLDER", seat: 1, hero: "zhang-fei", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [{ id: "borrowed-weapon", kind: "GreenDragonBlade", suit: "♠", rank: "Q" }], judgementCards: [], attackRange: 3, distance: 1, isHost: false, role: "Rebel" },
+      { id: "p3", name: "LEGAL TARGET", seat: 2, hero: "liu-bei", hp: 3, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
+      { id: "p4", name: "DEFEATED TARGET", seat: 3, hero: "sun-quan", hp: 0, maxHp: 4, alive: false, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: [], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Choose a target for Borrowed Sword", isMyAction: true,
+    actionRevision: "borrowed-sword-target-revision", phase: "response", currentAction: { version: 3, kind: "borrowed_sword", actorId: "p1", deadline: 0, reason: "Choose a target for the forced Attack", legalActions: ["choose_borrowed_sword_target"] },
+    pendingBorrowedSword: { kind: "borrowed_sword", sourceId: "p1", actorId: "p1", targetId: "p2", holderId: "p2", stage: "choose_target", weaponId: "borrowed-weapon", eligibleTargetIds: ["p3"] },
+  });
+}
+
 function triggerRoom({ meId = "p1", hero = "huang-yueying", playerName = "HUANG YUEYING", code = "CULTIVATION-UI", triggerOptions = [{ effectId: "huang_yueying_cultivation", label: "Cultivation", description: "Draw 1 card after using a Stratagem.", selection: null }], pendingNegation = null, currentAction = {} } = {}) {
   const players = [
     { id: "p1", name: playerName, seat: 0, hero, hp: 3, maxHp: 3, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
@@ -210,6 +225,50 @@ test("Serpent Spear Cancel clears mode, both cost cards, and target", async () =
   assert.equal(handCardButton(renderer, "serpent-cost-one").props.className.includes("selected"), false);
   assert.equal(handCardButton(renderer, "serpent-cost-two").props.className.includes("selected"), false);
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("Borrowed Sword target selection stays local until Confirm and preserves the action contract", async () => {
+  const room = borrowedSwordTargetRoom();
+  const actionCalls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const presentationBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
+  assert.equal(targetButton(renderer, "p3").props.disabled, false, "server-projected eligible target is selectable");
+  assert.equal(targetButton(renderer, "p2").props.disabled, true, "the weapon holder is not a legal forced-Attack target");
+  assert.equal(targetButton(renderer, "p4").props.disabled, true, "defeated target remains unavailable");
+  assert.equal(buttonsContaining(renderer, "Skip").length, 0, "the server exposes no separate skip for this action");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 1);
+  await act(async () => { targetButton(renderer, "p3").props.onClick(); });
+  assert.equal(actionCalls.length, 0, "Borrowed Sword target click is local");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true, "local target is amber-selected");
+  assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, presentationBefore, "local selection does not change public presentation attributes");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
+  assert.equal(actionCalls.length, 0, "Borrowed Sword Cancel sends no action");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false);
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
+  await act(async () => { targetButton(renderer, "p3").props.onClick(); });
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls, [["choose_borrowed_sword_target", { targetId: "p3" }]], "Confirm preserves the existing action and payload exactly");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("Borrowed Sword local target clears when the authoritative revision changes", async () => {
+  const room = borrowedSwordTargetRoom();
+  const action = async () => true;
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await act(async () => { targetButton(renderer, "p3").props.onClick(); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true);
+  const revisedRoom = { ...room, actionRevision: "borrowed-sword-target-revision-2" };
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: revisedRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: revisedRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), false, "stale revision clears the local target");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
   await act(async () => { renderer.unmount(); });
 });
 
