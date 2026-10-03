@@ -1,239 +1,84 @@
 # WTK UX V2 — Current Task Handoff
 
 ## REMOTE HANDOVER RULE — MANDATORY
+HANDOVER.md is tracked remote coordination state. Commit and push it to origin/ux-v2. After implementation append the execution result, push implementation + HANDOVER, fetch origin, verify origin/ux-v2:HANDOVER.md contains the result, then STOP.
 
-HANDOVER.md is tracked remote coordination state. It MUST be committed and pushed to origin/ux-v2. Never keep it local-only, ignore, untrack, revert, discard, or omit it. After implementation append the execution result, push implementation + HANDOVER, git fetch origin, verify origin/ux-v2:HANDOVER.md contains the result, then STOP.
+**CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-**HANDOVER CLEANLINESS RULE:** This file contains only the current task. Previous tasks, reviewer verdicts, completion summaries, and historical execution results must be removed when the Planner writes the next task. Git history and architecture docs preserve history; HANDOVER does not.
-
-Read and follow `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`.
-
----
-
-# NEXT TASK — UX2.0C7-02: Close PresentationSnapshot Contract Before React Migration
+# NEXT TASK — UX2.0C7-03: Resolve Source-Owned Trigger Stable Boundary
 
 ## Objective
+C7-02 found one real contradiction in Ma Chao Cavalry's source-owned attack_targeted trigger: interactionScene is PROVEN, but stableBoundary is identity-free REST, so the atomic PresentationSnapshot correctly fails closed. Resolve this at the PresentationV2 stable-boundary/semantic-decision layer using persisted Pending + causal-envelope authority only. Do not weaken PresentationSnapshot. No gameplay or UI work.
 
-C7-01 + FIX1 established an additive server-side `PresentationSnapshot` with atomic fail-closed public authority. Before any React/UI migration, perform one bounded closure pass proving that the snapshot is a sufficient and safe client boundary across the accepted interaction families and explicitly classify anything still RESERVED or unsupported.
+## Required authority
+First prove the real persisted Ma Chao state. Record/assert pending.kind, pending.actorId, pending.causal interactionId/frameId, continuation kind/event discriminator, envelope interactionId/activeFrameId, active frame stage/source/targets/resolvingPlayerId, checkpoint frame/stage, and interactionScene roles. CurrentAction may corroborate private control only; it is not public proof.
 
-Do not add visual UI.
+If persisted Pending does not independently prove trigger ownership, STOP and report.
 
-## Accepted baseline
+A source-owned trigger may become CHOICE only when:
+- scene is PROVEN;
+- pending.kind is trigger with non-null actorId;
+- pending causal interactionId/frameId exactly match envelope/active frame;
+- checkpoint is coherent with active frame;
+- continuation/event is an accepted typed trigger discriminator;
+- persisted Pending proves that actor owns this trigger decision.
 
-Treat commit `1f0721cb8d3ff1eef762404e894641583e2b22d8` as the accepted baseline:
-- public identity/interaction/decision/stable are admitted atomically;
-- mismatch/REST/reserved SETTLEMENT fails closed to identity-free REST;
-- CurrentAction-derived localControl is viewer-private;
-- settlement = null RESERVED;
-- transitionEvents = [] RESERVED;
-- no gameplay/React/CSS change.
+The real model may truthfully have decisionActorId != activeResolverId: the source can own an optional trigger while the attack target remains frame resolver. Do not rewrite activeResolverId.
 
-Do not reopen C1-C6 semantics.
+## Implementation
+Add the smallest pure typed proof/helper in game/presentation-v2.ts for this exact class of causally linked source-owned trigger. Do not broadly remove the existing resolver-coherence rule.
 
-## Step 1 — inventory future client needs against the snapshot
+Constraints:
+- no hero/card-name checks;
+- no CurrentAction, timeline, finalResult or resolutionId authority;
+- exact causal linkage;
+- typed continuation/event allowlist;
+- malformed/unlinked records fail closed;
+- ordinary target-owned trigger semantics remain unchanged.
 
-Using `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, enumerate the semantic inputs required by the future Interaction Stage/local operation console and map each to:
-- PresentationSnapshot public field;
-- localControl/CurrentAction private source;
-- existing non-snapshot compatibility source that must remain temporarily;
-- RESERVED / future protocol work.
+When proven, interactionScene.decisionActorId must be the trigger owner, stableBoundary must be coherent CHOICE using the existing interaction/checkpoint/revision, and PresentationSnapshot must pass its existing atomic gate unchanged.
 
-The inventory must cover at least:
-- interaction identity/revision;
-- root/active/parent frame relation;
-- stage;
-- source;
-- original targets;
-- active targets;
-- current participant;
-- decision actor;
-- active resolver;
-- participant set;
-- continuity relation;
-- stable boundary;
-- local legal control ownership;
-- settlement;
-- transition/animation occurrence semantics.
+## Negative tests
+Prove no false CHOICE for:
+1. missing causal link;
+2. wrong interactionId;
+3. wrong frameId;
+4. unsupported trigger continuation/event;
+5. arbitrary substituted actor;
+6. malformed checkpoint/frame coherence.
 
-Do not solve a missing item by copying legacy heuristic data into the snapshot.
+Synthetic states are allowed only for negative evidence.
 
-## Step 2 — full accepted-family snapshot characterization
+## Real regressions
+Prove:
+- Ma Chao source-owned pre-Judgement trigger becomes coherent CHOICE snapshot;
+- Skip/decline resumes target-owned Attack response correctly;
+- Ma Chao Judgement continuation/progression remains correct;
+- ordinary Attack/Dodge unchanged;
+- at least one ordinary target-owned trigger unchanged;
+- Dying, Negation, Group child and Borrowed Sword semantics unaffected.
 
-Extend/organize real engine/API assertions so all 13 accepted C6 families have an explicit PresentationSnapshot classification:
+Reuse existing real fixtures.
 
-1. Attack / Dodge
-2. Attack -> Judgement -> Attack resume
-3. Duel responder handoff
-4. Group/AOE normal participant progression
-5. Group -> Negation -> resume
-6. Group -> Damage child -> resume
-7. Group -> Damage -> Dying -> rescue -> resume
-8. independent/root Damage
-9. delayed Lightning Judgement -> Damage
-10. root Negation / counter-Negation
-11. standalone Judgement replacement
-12. Dying rescue handoff
-13. Borrowed Sword
+## C7 matrix
+Update from real evidence only. Expected if fully resolved:
+- Attack -> Judgement -> Attack resume: I GAP -> P and B GAP -> P;
+- final totals 102 P / 2 N/A / 0 GAP / 0 unclassified = 104.
+Keep the two C N/A cells for single-checkpoint Attack/Dodge and independent/root Damage. If any GAP remains, report it; do not claim closure.
 
-For every family classify/apply:
-- active public snapshot correctness;
-- viewer public equality where two viewers are meaningful;
-- private localControl separation where a decision exists;
-- repeated-read/reconnect stability where applicable;
-- checkpoint transition continuity where the scenario has >1 semantic checkpoint;
-- terminal identity-free REST.
+SPECIAL remains RESERVED/unexercised unless this work naturally exposes a real accepted SPECIAL path. Do not manufacture one. settlement remains null and transitionEvents remains empty.
 
-Use N/A honestly for non-applicable checks. Do not force semantic transitions.
-
-## Step 3 — explicit snapshot closure matrix
-
-Add a C7 closure matrix to the design document.
-
-Suggested columns:
-- I = identity/public scene
-- B = stable boundary coherence
-- V = viewer public equality
-- L = localControl separation
-- Q = repeated-read/reconnect stability
-- C = semantic checkpoint continuity/progression
-- T = terminal clear
-- R = reserved-field discipline
-
-Every cell must be P / N/A / GAP with exact fixture/assertion mapping.
-
-A GAP is allowed. Do not fabricate evidence to make the matrix green.
-
-## Step 4 — audit localControl sufficiency
-
-Verify the thin localControl shape is enough as a **reference/entitlement signal**, not a replacement for CurrentAction.
-
-Confirm:
-- it never contains legal option/card/provider payloads;
-- actionRevision remains action validity, not presentation identity;
-- entitled is viewer-local only;
-- public snapshot equality comparisons exclude only localControl;
-- future UI must still use authoritative CurrentAction for actual legal actions until a separately reviewed private-control projection exists.
-
-If the future UI requires richer private controls, document that as a later bounded task. Do not expand localControl in this task unless a concrete current contract bug requires it.
-
-## Step 5 — SPECIAL boundary audit
-
-C7-01-FIX1 found no accepted real API fixture exercising SPECIAL.
-
-Inventory every production path that can currently return `stableBoundary.kind === "SPECIAL"`.
-
-Determine one of:
-- A: a real engine/API path exists and can be exercised without gameplay changes -> add direct positive snapshot evidence;
-- B: SPECIAL is currently reserved/unreachable under accepted real fixtures -> document it honestly as RESERVED/unexercised.
-
-Do not manufacture a synthetic positive and do not change gameplay just to make SPECIAL reachable.
-
-## Step 6 — REST semantics audit
-
-Confirm active causal authority cannot be silently lost because a valid accepted interaction is paired with REST.
-
-Search all real C6 families for any state where:
-- interactionScene semantics = PROVEN
-- stableBoundary = REST
-
-If such a real state exists, STOP and report the contradiction instead of changing snapshot semantics.
-
-If none exists, document the invariant and evidence.
-
-## Step 7 — reserved settlement/transition audit
-
-Keep:
-- settlement = null;
-- transitionEvents = [].
-
-Document exactly what is missing before either can become authoritative:
-- durable public occurrence linkage;
-- reconnect-safe occurrence identity;
-- no dependence on viewer-local finalResult/readyAfterEventId;
-- stable-state reconstruction must not require replaying transitions.
-
-Do not implement those features in this task.
-
-## Step 8 — protocol compatibility
-
-Verify:
-- `presentationSnapshot` remains additive;
-- `presentationV2` remains unchanged for existing consumers;
-- no React/client consumer has switched yet;
-- room/API projection does not leak additional private data;
-- serialization shape is stable for null/empty reserved fields.
-
-Add focused assertions if needed.
-
-## Step 9 — documentation and closure decision
-
-Update design doc and README with:
-- full C7 closure matrix;
-- client-needs inventory;
-- SPECIAL classification;
-- REST audit;
-- reserved-field requirements;
-- explicit statement whether the server snapshot contract is ready for React migration.
-
-Do not say C7 is closed unless matrix has 0 GAP and no contradiction.
+## Documentation
+Update docs/UX_V2_INTERACTION_STAGE_DESIGN.md and README with the exact source-owned-trigger authority rule, why decision actor may differ from active resolver, negative guardrails, matrix totals, and C7 closure readiness. Confirm the PresentationSnapshot atomic gate was not weakened.
 
 ## Validation
-
-Run focused snapshot tests and affected real fixtures, then:
-- `npm run test:fast`
-- `npm run test:api`
-- `npm run build`
-- `npm run lint`
-- `git diff --check`
-
-Report exact counts.
+Run focused Ma Chao/source-owned-trigger and affected presentation tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, and git diff --check. Report exact counts.
 
 ## Scope exclusions
-
-Do not:
-- modify React/CSS;
-- implement Interaction Stage visuals;
-- migrate client consumers;
-- change gameplay;
-- change causal semantics;
-- generate new presentation IDs;
-- populate settlement/transitionEvents;
-- add animation protocol;
-- infer authority from timeline/finalResult/CurrentAction;
-- perform unrelated refactors.
+No gameplay/Ma Chao rule changes, React/CSS, CurrentAction public authority, global resolver-rule removal, hero/card-name authority, timeline/finalResult/resolutionId causal proof, settlement/transition population, or unrelated refactors.
 
 ## Execution result
-
-Append only the C7-02 result to this HANDOVER.
-
-Include:
-- full implementation SHA;
-- files changed;
-- 13-family closure matrix totals;
-- exact GAP/N/A cells;
-- SPECIAL result (real exercised or reserved/unreachable);
-- REST contradiction audit result;
-- localControl sufficiency conclusion;
-- settlement/transition RESERVED conclusion;
-- protocol compatibility result;
-- exact validation counts;
-- explicit recommendation: C7 CLOSED/ready for React migration OR another bounded C7 fix required.
-
-Push implementation + appended HANDOVER to `origin/ux-v2`, fetch, verify remote HANDOVER contains the result, then STOP.
+Append only C7-03 result: full SHA, files, persisted proof observed, helper/rule added, negative cases, real regression fixtures, final matrix totals/GAP/N/A, SPECIAL status, confirmation atomic snapshot gate unchanged, gameplay/React/CSS unchanged, validation counts, and closure recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-
-C7-02 passes only if all 13 accepted interaction families are truthfully characterized at the PresentationSnapshot boundary; public/private separation remains correct; no real PROVEN interaction is silently converted to REST; SPECIAL is honestly exercised or reserved; settlement/transitions remain unpromoted; compatibility is preserved; the matrix contains no hidden/unclassified cells; and no UI/gameplay scope creep occurs.
-
-## Execution result — UX2.0C7-02 PresentationSnapshot closure audit — 2026-10-03
-
-- Implementation SHA: `0ccf0a948b80c79af58cf572c8e4ff03ba0eff04` (`docs(ux-v2): audit presentation snapshot closure`).
-- Files changed: `README.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, `tests/api/ma-chao.test.mjs`, and `tests/presentation-snapshot.test.mjs`.
-- Added the future client-needs inventory and the 13-family × 8-column C7 matrix: **100 P / 2 N/A / 2 GAP / 0 unclassified = 104 cells**. The two N/A cells are checkpoint-continuity N/A for single-checkpoint Attack/Dodge and independent/root Damage. The two GAP cells are identity and stable-boundary coherence for the real Ma Chao source-owned trigger path.
-- REST contradiction: real Ma Chao Cavalry state has `presentationV2.interactionScene.semantics === "PROVEN"` while `presentationV2.stableBoundary.kind === "REST"`; the route snapshot is verified to fail closed to null identity/interaction/decision. This is the C7-02 stop condition. Snapshot semantics and gameplay were not changed.
-- SPECIAL audit: production paths are limited to proven Judgement-without-decision, causally linked Borrowed Sword child without decision, and proven child Damage without decision. No accepted real API fixture exposes stable SPECIAL; it remains RESERVED/unexercised. The synthetic SPECIAL projector test is not positive real evidence.
-- localControl conclusion: sufficient only as a thin viewer-private reference/entitlement signal (`source`, `actionRevision`, `kind`, `actorId`, `entitled`); it contains no legal options, cards, providers, or payloads. CurrentAction remains authoritative for actual controls.
-- `settlement = null` and `transitionEvents = []` remain RESERVED. Durable public occurrence linkage, reconnect-safe occurrence identity, viewer-independent settlement proof, and replay-free stable reconstruction are still required before promotion.
-- Protocol compatibility: `presentationSnapshot` remains additive; `presentationV2` is unchanged; no React consumer switched; no additional private data is projected; null/empty reserved serialization remains stable. No gameplay, React, CSS, animation, or visual UX change.
-- Validation: focused snapshot tests `5/5`; real Ma Chao audit fixture `10/10`; `npm run test:fast` `129/129`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
-- Recommendation: C7 is **not closed** and the server snapshot contract is **not ready for React migration**. Another bounded C7 fix is required to decide the source-owned trigger boundary without weakening the atomic fail-closed invariant.
+Pass only if the real source-owned trigger becomes coherent public CHOICE from Pending + causal-envelope authority alone; decision actor and active resolver remain truthfully distinct where appropriate; malformed/unlinked/arbitrary trigger states fail closed; ordinary families remain unchanged; snapshot atomic fail-closed behavior is untouched; matrix reaches 0 GAP or honestly reports remaining gaps; and no gameplay/UI scope creep occurs.
