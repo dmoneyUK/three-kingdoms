@@ -85,3 +85,30 @@ Append only UI-19 result: SHA, files, browser tooling used, exact viewport/state
 
 ## Acceptance
 Pass only if real browser execution validates the required responsive/motion contracts across the bounded viewport/state matrix, any fixes are tied to reproduced failures, reduced-motion behavior is browser-proven, no gameplay/authority semantics change, and remaining subjective/manual gaps are reported truthfully.
+
+## UI-19 execution result — CI failure remediation — 2026-10-03
+
+- Implementation SHA: `e824652` (`test: repair CI presentation regressions`).
+- Changed files: `tests/active-skill-interactions.test.mjs` and
+  `tests/presentation-client.test.mjs`.
+- Reproduced CI Run #579's `build-and-test` failure at `Run npm test`. The
+  three failing assertions were stale test contracts, not UI-18 production
+  behavior: the Dying fixture omitted `pendingDying.kind` and normalized away
+  its deadline; viewer-equality compared viewer-dependent DOM order instead
+  of the stable anchor set; and a reserved `SETTLEMENT` snapshot was expected
+  to remain visible despite the accepted fail-closed REST boundary.
+- Fixes: added the canonical `kind: "dying"` fixture field; canonicalized the
+  test helper's anchor-set comparison without changing production topology;
+  and asserted that reserved `SETTLEMENT` hides the Dying handoff and subject.
+  No gameplay, API, projector, causal, or UI authority code changed.
+- Validation: the three focused regressions pass 3/3; `npm run test:fast`
+  passes 196/196; `npm run lint` completed without diagnostics. The complete
+  `npm test`/API/build/diff-check gate was not run locally; GitHub Actions
+  remains responsible for that final gate and its status was not polled after
+  this fix.
+- UI-19 browser harness work was not started in this corrective turn, so the
+  required viewport/reduced-motion browser validation remains open and no
+  UI-19 acceptance is claimed.
+- Next bounded recommendation: wait for the pushed CI result; once the CI
+  blocker is green, continue the UI-19 browser harness under a new reviewer
+  handover.
