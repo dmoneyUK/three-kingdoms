@@ -229,3 +229,34 @@ VIS-02 passes only if, for 2–4-player top-row mode:
 - the old top-of-table dashboard geometry no longer applies;
 - browser geometry proves the change at desktop and mobile widths;
 - Interaction Stage internals, Hero Focus size, controls, gameplay, and 5–10-player layout remain unchanged.
+
+## VIS-02 Execution Result
+
+- Implementation SHA: `928a4f9eef594bf516a23e791c371bfe2410b85d`
+- Files changed:
+  - `app/page.tsx`
+  - `app/globals.css`
+  - `tests/browser/ui19.spec.mjs`
+- Safe-zone structure and topology hook:
+  - `.play-table` now mirrors the existing player-board expression as `data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}`.
+  - Its immediate `.interaction-safe-zone` child contains only the unchanged existing `InteractionStage` call.
+  - The wrapper has no UI content, controls, event handlers, semantic inspection, fallback, background, or border. Outside top-row mode it uses `display: contents`, preserving the existing 5–10-player stage containing block.
+- Top-row CSS strategy:
+  - For `[data-seat-topology="top-row"]`, the safe zone is the explicit absolute central region with responsive horizontal insets, a reserved vertical start below the accepted opponent row, and a bottom bounded by the play-table/local-dock boundary.
+  - The desktop breakpoint adds 32px of row clearance; 650px and 480px retain the shared narrow safe-zone structure and insets.
+  - Only inside that safe zone the existing stage becomes a regular centred layout item (`position: relative`, no legacy top/left/translate placement). Its internal content and semantic attributes are unchanged.
+- Browser geometry regression added for `state="interaction", count=4` at 1440x900, 650x900, and 480x900. It asserts one safe zone, visible stage, VIS-01 one-row opponents, six-pixel opponent-to-stage clearance, stage containment, no stage/safe-zone overlap with the Local Dock, no horizontal overflow, and a visible local hand/console. A REST assertion proves the single hook stays empty with no stage, panel background, border, or placeholder.
+- Before/after failure evidence:
+  - Initial focused run: **3 passed, 1 failed**. At 1440px the maximum opponent bottom was `378.25px` while the stage top was `354.625px`, violating the required six-pixel clearance.
+  - The final focused run passed after the desktop clearance adjustment: **4 passed** (4 tests).
+  - The old direct dashboard placement (`top:14px`) cannot satisfy the new regression: with the same `378.25px` opponent bottom, the required `bottom <= stageTop - 6` condition would be false.
+- Focused validation actually run:
+  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-02' --config tests/browser/playwright.config.mjs` — **4 passed** (4 tests).
+- Full validation not run locally, per the user-authorized remote-CI workflow:
+  - `npm run test:browser` — not run; GitHub Actions responsibility.
+  - `npm run test:fast` — not run; GitHub Actions responsibility.
+  - `npm run build` — not run; GitHub Actions responsibility.
+  - `npm run lint` — not run; GitHub Actions responsibility.
+  - `git diff --check` — not run; GitHub Actions responsibility.
+- Remaining VIS-02 issue observed locally: none within assigned scope. CI status was not checked.
+- Recommended next bounded task: reviewer review of VIS-02; do not start a later VIS task before review acceptance.
