@@ -5,178 +5,82 @@ HANDOVER.md is tracked remote coordination state. Commit and push it to origin/u
 
 **CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-# NEXT TASK — UX2.0UI-17: Semantic Scene Transition Contract
+# NEXT TASK — UX2.0UI-18: Semantic Transition Visual Consumer & Motion Safety
 
 ## Objective
-UI-16 is accepted and closed. Introduce the first bounded transition layer that classifies changes between consecutive accepted PresentationClientView snapshots so later animation can react to semantic change without reading gameplay/timeline heuristics.
+UI-17 is accepted and closed. Add a restrained visual consumer for the accepted semantic transition classes so players can perceive focus/frame/interaction changes without layout movement, gameplay delay, or animation-driven authority.
 
-This task defines transition semantics and minimal DOM hooks only. Do NOT add visual animation yet.
+Use the existing data-presentation-transition / buildPresentationTransition contract. Do not reclassify transitions in CSS/components and do not add a second history model.
 
-## Locked transition hierarchy
-Classify an accepted previous -> next presentation pair as exactly one of:
-1. CONTENT_UPDATE — same interaction, same active frame/stage/focus identity; content/checkpoint may update.
-2. FOCUS_UPDATE — same interaction/frame/stage, but proven current participant/active focus/decision actor changes.
-3. FRAME_TRANSITION — same interaction, active frame or parent/child relation changes.
-4. INTERACTION_TRANSITION — interaction starts, ends, or interactionId changes.
-5. NONE — no semantic transition worth presenting.
+## Visual intent
+- CONTENT_UPDATE: subtle content refresh only; no whole-stage movement.
+- FOCUS_UPDATE: emphasize the newly focused semantic subject/decision context.
+- FRAME_TRANSITION: clearly signal nested frame enter/return without replacing the table.
+- INTERACTION_TRANSITION: strongest but still short transition for interaction enter/exit/change.
+- NONE: no transition effect.
 
-The strongest applicable class wins in the order INTERACTION > FRAME > FOCUS > CONTENT > NONE.
+Motion must be restrained and functional, not decorative.
 
 ## Authority rules
-1. Use only accepted PresentationClientView / PresentationSnapshot semantic identities and continuity.
-2. interactionId owns interaction continuity.
-3. active/root/parent frame identity and continuity relation own frame transition.
-4. proven participant/focus/decision identities own focus update.
-5. checkpointId/presentationRevision may identify content progress but must not override stronger semantic classes.
-6. actionRevision, timeline, actionPlayerId, turn owner, pending compatibility fields, card selection, HP-only changes, and local controls are not public transition authority.
-7. Viewer-private differences must not change the public transition class.
-8. REST -> interaction and interaction -> REST are INTERACTION_TRANSITION.
-9. Fail closed to NONE when the pair is incoherent/unproven.
+1. UI-17 transition kind is the sole transition-class authority.
+2. CSS/React visual code must not inspect timeline, CurrentAction, turn, HP, Pending, card identity, or actionPlayerId to decide transition strength.
+3. Animation never delays or blocks controls, network actions, snapshot application, or server handoff.
+4. Seat topology/local dock remain fixed.
+5. Public transition visuals are viewer-equal; local amber selection remains separate.
+6. prefers-reduced-motion must suppress nonessential motion while preserving semantic state.
+7. Repeated NONE/reconnect must not replay animation.
+8. No animation-completion callback may mutate gameplay/presentation authority.
 
-## Step 1 — inventory current semantic surfaces
-Trace how Interaction Stage, Hero Focus, Reaction Chain, Dying handoff, seat roles, and local console consume PresentationClientView. Record which IDs/fields can truthfully classify each transition level.
+## Step 1 — inventory existing visual surfaces
+Identify the smallest existing elements suitable for each class: Interaction Stage shell, Hero Focus/current participant, frame/context region, and/or public semantic seat highlights. Do not animate the entire table if a smaller semantic surface is sufficient.
 
-## Step 2 — pure transition classifier
-Add a pure helper/module, e.g. buildPresentationTransition(previous, next), returning a bounded model:
-- kind;
-- previous/next interactionId;
-- previous/next frame identity where already exposed/proven;
-- previous/next checkpointId/revision;
-- optional reason enum based only on semantic comparison.
-
-Do not store history in the server. Do not derive from timeline. Do not invent frame identity if PresentationClientView does not expose it; extend the client adapter only with already-present snapshot fields if needed.
-
-## Step 3 — minimal client integration
-Track only the immediately previous accepted public semantic view on the client and expose non-visual/scoped DOM hooks on the existing game/Interaction Stage surface, e.g. data-presentation-transition.
+## Step 2 — implement scoped visual states
+Consume only the existing transition hook. Add scoped classes/data selectors and short CSS effects appropriate to each class.
 
 Requirements:
-- no layout movement;
-- no CSS animation/transition effects yet;
-- no gameplay side effects;
-- local-control-only changes do not emit public transition;
-- reconnect/repeated identical snapshot yields NONE;
-- first proven interaction after REST yields INTERACTION_TRANSITION.
+- no seat/local-dock positional animation;
+- no hand-card layout animation caused by public transitions;
+- no modal;
+- no permanent opacity reduction;
+- no pointer-events/control blocking;
+- effects must settle to the exact existing static UI.
 
-## Step 4 — scenario proof
-Use retained real semantic fixtures to prove classification for at least:
-- ordinary same-checkpoint/repeated read -> NONE;
-- checkpoint/content progress -> CONTENT_UPDATE;
-- Duel responder handoff -> FOCUS_UPDATE;
-- Group participant progression -> FOCUS_UPDATE;
-- Negation responder/counter within same frame -> FOCUS_UPDATE or CONTENT_UPDATE according to proven identities;
-- Damage -> Dying child frame -> FRAME_TRANSITION;
-- Dying rescue -> parent resume -> FRAME_TRANSITION;
-- interaction start/end -> INTERACTION_TRANSITION;
-- unrelated new interactionId -> INTERACTION_TRANSITION;
-- viewer-private CurrentAction/options difference -> same public transition classification.
+If React needs a bounded replay key/token, derive it only from accepted public semantic identities/checkpoint/revision; do not use timers as authority.
 
-## Step 5 — negative tests
-Prove mutations only to timeline, actionPlayerId, turnSeat/isMyTurn, actionRevision/localControl, private hand/options, HP, compatibility Pending fields cannot promote a transition class.
+## Step 3 — reduced motion and accessibility
+Add @media (prefers-reduced-motion: reduce) coverage that removes/reduces transforms/keyframes/transitions. The semantic focus, labels, roles, and controls must remain fully understandable without motion.
 
-Malformed/incoherent snapshot pairs must fail closed.
+Do not rely on animation alone to communicate decision ownership.
 
-## Step 6 — docs
-Update README, ROADMAP, and docs/UX_V2_INTERACTION_STAGE_DESIGN.md with the four-level transition contract and explicitly state that animation is NOT implemented in UI-17.
+## Step 4 — regression tests
+At minimum prove:
+1. NONE has no animation class/state;
+2. CONTENT_UPDATE maps only to subtle content visual state;
+3. FOCUS_UPDATE maps to focus emphasis;
+4. FRAME_TRANSITION maps to frame emphasis;
+5. INTERACTION_TRANSITION maps to interaction emphasis;
+6. stronger class is not re-derived/overridden by legacy/private fields;
+7. same public transition hook yields same public visual marker for different viewers;
+8. no transition visual adds/removes/reorders seat anchors;
+9. local dock/console and hand remain present and usable;
+10. transition visuals add no buttons/actions;
+11. repeated identical/reconnect NONE does not replay;
+12. reduced-motion CSS explicitly suppresses nonessential motion;
+13. UI-07..17 regressions remain green.
+
+Tests may assert deterministic DOM classes/data markers and CSS contracts; do not claim pixel quality from SSR/unit tests.
+
+## Step 5 — docs
+Update README, ROADMAP, and docs/UX_V2_INTERACTION_STAGE_DESIGN.md with the visual mapping, reduced-motion contract, and truthful browser/manual GAP.
 
 ## Validation
-Run focused presentation/client/mounted regressions plus retained UI-01..16 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, git diff --check. If local execution is unavailable, do not claim pass; report exact unrun status and any remote CI evidence actually inspected.
+Run focused mounted/presentation/style tests plus retained UI-01..17 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, git diff --check. If execution is unavailable, report it as unrun; do not claim pass.
 
 ## Scope exclusions
-No visual animation; no timers; no settlement animation; no gameplay/API action changes; no projector authority expansion; no server history; no Reaction Chain historical expansion; no topology redesign; no UI-11 pixel-gap claim.
+No gameplay/API changes; no transition classifier changes unless a reviewer-proven bug is found; no server history; no settlement/event-card animation; no sound/haptics; no topology redesign; no full visual redesign; no browser pixel-quality claim.
 
 ## Execution result
-Append only UI-17 result: SHA, files, semantic-surface inventory, classifier contract, scenario mapping, mounted integration evidence, negative authority tests, exact validation status/counts, remaining GAPs, next bounded recommendation. Push and verify remote HANDOVER, then STOP.
+Append only UI-18 result: SHA, files, surface inventory, exact class-to-visual mapping, motion durations/effects, reduced-motion behavior, DOM/CSS regression evidence, exact validation status/counts, remaining manual/browser GAPs, next bounded recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if every emitted transition class is derived solely from proven public semantic identity/continuity, viewer-private changes cannot alter it, repeated/reconnect state is stable, stronger transitions dominate weaker ones, no animation/gameplay behavior is introduced, and unsupported pairs fail closed.
-
-## UI2.0UI-17 Execution Result — 2026-10-03
-
-Implementation SHA: `3f6fbf4` (`feat: add semantic presentation transitions`).
-
-### Changed files
-
-- `game/presentation-transition.ts` — added the pure bounded
-  `buildPresentationTransition(previous, next)` classifier and runtime
-  fail-closed semantic-pair validation.
-- `game/presentation-client.ts` — exposed the already-proven snapshot
-  `rootFrameId` and `activeFrameId` through `PresentationClientView`; REST
-  remains identity-free.
-- `app/page.tsx` — tracks only the immediately previous client semantic view
-  and exposes `data-presentation-transition` on `GameRoom` and the existing
-  Interaction Stage. No visual or gameplay behavior was added.
-- `tests/presentation-client.test.mjs` — covers the pure hierarchy, semantic
-  scenario mapping, private/legacy negative mutations, and malformed/
-  `UNPROVEN` fail-closed pairs.
-- `tests/active-skill-interactions.test.mjs` — adds mounted REST-to-interaction,
-  private-only, and content-update DOM-hook coverage.
-- `README.md`, `ROADMAP.md`,
-  `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` — document the UI-17 contract and
-  explicitly leave animation unimplemented.
-
-### Semantic-surface inventory and authority
-
-Interaction Stage consumes the public stage/effect, interaction/checkpoint/
-revision, frame and continuity identities, source/target scope, current
-participant, decision actor, and active resolver. Hero Focus consumes the
-proven current participant or active-target focus without creating authority.
-Reaction Chain consumes only the proven Negation root/active facts in the same
-public frame. Dying handoff consumes the proven dying participant, decision/
-resolver identities, and parent/child continuity. Seat role projection uses
-the same public source/target/participant identities; its viewer marker is
-local-only. The local console remains CurrentAction/private capability UI and
-is not transition authority.
-
-The classifier hierarchy is `INTERACTION_TRANSITION` > `FRAME_TRANSITION` >
-`FOCUS_UPDATE` > `CONTENT_UPDATE` > `NONE`. Interaction continuity uses
-`interactionId`; frame changes use active/root/parent frame IDs plus continuity
-and stage; focus changes use proven public participant/scope/decision/resolver/
-source identities; checkpoint, presentation revision, and effect are content
-progress only. The result is bounded to public previous/next identities and a
-semantic reason; it stores no server history and reads no timeline or
-gameplay compatibility fields.
-
-### Scenario and negative proof
-
-- Repeated same checkpoint/reconnect -> `NONE`.
-- Checkpoint/revision/effect progress -> `CONTENT_UPDATE`.
-- Duel responder, Group participant, and same-frame Negation counter changes
-  -> `FOCUS_UPDATE`.
-- Damage -> Dying child and Dying -> parent resume -> `FRAME_TRANSITION`.
-- REST start/end and unrelated interaction IDs -> `INTERACTION_TRANSITION`.
-- Timeline, action player, turn/isMyTurn, action revision/local control,
-  private hand/options, HP, and Pending compatibility mutations do not promote
-  a public class; malformed or `UNPROVEN` pairs return `NONE` with no exposed
-  identity.
-
-### Validation and remaining boundaries
-
-Focused tests were updated but not run locally, and no local full tests,
-build, lint, or diff check was run, per the project workflow. GitHub Actions
-is the validation gate; CI status and workflow logs were not inspected, so no
-remote pass is claimed. No animation, timer, settlement animation, gameplay
-or API change, projector-authority expansion, server history, Reaction Chain
-history, topology redesign, or UI-11 pixel-gap claim was introduced. The
-existing browser/manual responsive GAP remains open.
-
-Recommended next bounded task: reviewer-authorize a separate visual consumer
-of `data-presentation-transition` (including motion/accessibility boundaries);
-do not begin that work as part of UI-17.
-
-## UI2.0UI-17 CI correction — 2026-10-03
-
-CI run #577 reported `react-hooks/refs` at `app/page.tsx:875` because the
-initial integration read `previousPresentationView.current` during render.
-The first attempted state/effect correction then exposed the companion
-`react-hooks/set-state-in-effect` rule. Commit `0080b33` replaces both with a
-component-scoped `useSyncExternalStore` transition store: render reads only
-the cached semantic transition snapshot, while the effect accepts the newest
-client view. The store keeps only the immediately previous view, ignores the
-same object during Strict Mode effect replay, and continues to classify
-private-control changes through the public classifier.
-
-The failed CI lint command was reproduced locally with the same original
-`react-hooks/refs` error. After the correction, `npm run lint` completed
-successfully. No tests, build, API suite, or other full checks were run.
-The correction is pushed for GitHub Actions to revalidate; no post-push CI
-result is claimed here.
+Pass only if the existing semantic transition contract drives restrained non-blocking visual feedback, NONE is stable, private/legacy state cannot promote effects, seat/dock/control topology stays fixed, reduced-motion is respected, no gameplay authority changes, and browser pixel quality is not overclaimed.
