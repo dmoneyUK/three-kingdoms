@@ -51,3 +51,15 @@ Append only FIX1 result: SHA, files, removed inference, replacement Group/AOE co
 
 ## Acceptance
 Pass only if no player-facing ordinal target progress is inferred from activeTargets/currentParticipant array position or length; Group/AOE shows only directly proven participant/scope facts; UI-04 hierarchy otherwise remains intact; and validations pass.
+
+## Execution result — UX2.0UI-04-FIX1
+
+- Implementation SHA: `a7991aa88b4344cbb651aa10f8b2e6133e587b97` (`fix(ux-v2): remove inferred target progress`)
+- Files: `game/presentation-client.ts`, `app/page.tsx`, `tests/presentation-client.test.mjs`, `tests/room-safety-render.test.mjs`, `README.md`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Removed inference: deleted `targetProgress` and the `Target N of M` calculation from the display model; React no longer renders a `PROGRESS` row. No server, projector, snapshot, or new progress field was added.
+- Group/AOE replacement: the display keeps the proven current participant and, when materially useful, renders the ordered active target scope as `Active scope`; changed original scope remains the existing `ORIGINAL SCOPE` context. Array order is presented only as scope data, never as ordinal position, completion, remaining, or sequence progress.
+- Negative evidence: focused tests cover original `[B,C,A]`, active `[B,C]`, current `C` without `2 of 2`/`2 of 3` or other progress wording; active-target reordering preserves only scope facts; narrowing to one active target does not imply a completion count. Render regression asserts no `PROGRESS` or `Target N of M` output.
+- Retained hierarchy: ordinary target-owned CHOICE, source-owned Ma Chao decision/resolver distinction, Group/AOE current and scope facts, CHILD_FRAME context, changed/equal targets, viewer equality, missing names, REST, and legacy independence remain covered.
+- Scope confirmation: no gameplay/server/projector/authority redesign, causal changes, hero/card assets, seat/dock/control/target-selection changes, animation, settlement, transition, or unrelated visual redesign.
+- Validation: focused display/render tests `38/38`; `npm run build` passed; `npm run test:fast` `155/155`; `npm run test:api` `239/239`; full `npm test` passed with the same build/fast/API counts; `npm run lint` passed; `git diff --check` passed.
+- Closure recommendation: this FIX1 is ready for reviewer verification and closure. Keep any next Hero Focus or target-highlighting work as a separately authorized slice.
