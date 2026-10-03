@@ -1,32 +1,22 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C7-03-FIX1 source-owned trigger frame proof — 2026-10-03
+## Current stage — UX2.0UI-01 read-only client presentation adapter — 2026-10-03
 
-C6 engine-backed architecture verification is complete: the final 13-family ×
-10-invariant matrix is **128 P / 2 N/A / 0 GAP**. Attack/Dodge and
-independent/root Damage are genuine single-checkpoint flows; their repeated-read
-stability and terminal clearing remain proven, so no semantic checkpoint was
-fabricated.
+C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
+remains the atomic, fail-closed public authority, with source-owned
+`attack_targeted` proof requiring the exact `ATTACK_RESPONSE` source/target/
+resolver relationship. `SPECIAL`, settlement, and transition occurrences
+remain reserved; `presentationV2` and Pending compatibility projections remain
+available to the existing UI.
 
-C7-01 implements the first additive server-side `PresentationSnapshot`
-contract and exposes it alongside `presentationV2`; FIX1 admits public
-identity, interaction, decision, and stable boundary as one atomic coherent
-unit, with mismatches failing closed to identity-free REST. C7-02 identified
-and C7-03 resolved the real Ma Chao source-owned trigger boundary using only
-persisted Pending and causal-envelope proof: the source owns the optional
-trigger decision while the Attack target remains the active frame resolver.
-C7-03-FIX1 tightens that proof to the exact demonstrated frame role: the active
-frame must be `ATTACK_RESPONSE`, its checkpoint must match, and its resolver
-must equal the persisted declaration target. Wrong-stage, wrong-resolver, and
-substituted source/target records fail closed; ordinary target-owned triggers
-keep decision actor and active resolver equal.
-The C7 matrix is now **102 P / 2 N/A / 0 GAP / 0 unclassified**. SPECIAL
-remains reserved/unexercised; settlement and transition events remain
-reserved. C7 is ready for reviewer closure, but no React migration has
-started.
-No gameplay, React, CSS, animation, or visual UX migration has started. The
-next milestone is reviewer closure followed by a separately authorized React
-migration; the atomic snapshot gate remains unchanged.
+UI-01 starts the React migration with one typed, pure, read-only adapter from
+`PresentationSnapshot` to a future Interaction Stage view model. Home computes
+the adapter from `room.presentationSnapshot` and `room.meId`; the current
+game shell exposes only stable semantic `data-*` markers. Existing labels,
+controls, target selection, seat layout, CSS, animation, and gameplay behavior
+remain unchanged. The dependency inventory and authority boundary are recorded
+in `HANDOVER.md`; the next milestone is a separately bounded non-visual or
+first-consumer migration slice, not a board redesign.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

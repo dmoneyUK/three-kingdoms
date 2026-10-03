@@ -64,9 +64,21 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
     players: presentationPlayers.map((player, index) => ({ ...player, hero: index ? "zhao-yun" : "lü-bu", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: index ? 1 : null, isHost: index === 0, role: index ? "Rebel" : "Lord" })),
     myHand: [], turnSeat: 0, phase: "play", deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: true, actionPlayerId: "p1", actionReason: "Play cards", isMyAction: true,
     currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"] },
+    presentationSnapshot: {
+      identity: { interactionId: "interaction-ui", checkpointId: "checkpoint-ui", presentationRevision: 1 },
+      stable: { kind: "CHOICE", interactionId: "interaction-ui", checkpointId: "checkpoint-ui", presentationRevision: 1, decisionActorId: "p1" },
+      interaction: { semantics: "PROVEN", interactionId: "interaction-ui", rootFrameId: "root-ui", activeFrameId: "frame-ui", parentFrameId: null, checkpointId: "checkpoint-ui", presentationRevision: 1, stage: "ATTACK_RESPONSE", sourceId: "p2", effect: "Attack", targetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", activeSourceId: "p2", activeTargetIds: ["p1"], participantIds: ["p1", "p2"], participantRoles: { sourceId: "p2", originalTargetIds: ["p1"], activeTargetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", parentParticipantId: null, participantIds: ["p1", "p2"] }, continuity: { relation: "ROOT_FRAME", parentFrameId: null } },
+      decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
+      localControl: { source: "CurrentAction", actionRevision: "ui-action", kind: "turn", actorId: "p1", entitled: true },
+      settlement: null,
+      transitionEvents: [],
+    },
   });
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room: uxRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
+  assert.match(html, /data-presentation-kind="CHOICE"/);
+  assert.match(html, /data-presentation-has-interaction="true"/);
+  assert.match(html, /data-presentation-local-control="true"/);
   assert.match(html, /GAME STATUS/);
   assert.match(html, /Lü Bu/);
 });

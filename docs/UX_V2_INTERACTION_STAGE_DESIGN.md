@@ -1,6 +1,6 @@
 # UX V2 — Player Dock, Seat Topology, and Interaction Stage
 
-**Status:** discussion draft — saved for design review, **do not implement yet**  
+**Status:** discussion draft — visual redesign remains design-review gated; the UI-01 read-only adapter scaffold is implemented
 **Date:** 2026-10-02
 
 ## Goal
@@ -172,6 +172,26 @@ PresentationSnapshot
 ~~~
 
 Do not duplicate existing protocol fields unnecessarily. Reuse the current authoritative action protocol wherever possible.
+
+### 0.6.1 UI-01 client adapter boundary
+
+The first React migration slice is intentionally non-visual. `game/presentation-client.ts`
+maps the typed server `PresentationSnapshot` and viewer ID to a pure
+`PresentationClientView`. It exposes only public interaction identity, scene
+roles, continuity, stable boundary kind, and thin local-control references.
+Legal cards, options, providers, Pending records, timeline events,
+`presentationV2` compatibility contexts, phase, and hero/card names are not
+inputs to the adapter and cannot be reconstructed by it.
+
+The adapter fails closed to identity-free `REST` when snapshot authority is
+absent, partial, or incoherent. Home computes it from the room snapshot and
+viewer ID, and the existing game shell receives it only through stable semantic
+`data-*` attributes. The current presentation remains visually and
+behaviorally unchanged; the legacy Pending/timeline animation path remains
+temporarily intact. Future Interaction Stage consumers must use this adapter
+and snapshot semantics rather than rediscovering authority from compatibility
+fields. Settlement and transition animation remain legacy compatibility until
+separately designed and accepted.
 
 ### 0.7 Four identities have different jobs
 
