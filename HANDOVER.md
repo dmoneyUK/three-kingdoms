@@ -113,3 +113,15 @@ Append only UI-06 result: SHA, files, HeroFocusView API, focus-selection rules, 
 
 ## Acceptance
 Pass only if Hero Focus selects a character solely from accepted semantic focus rules; ambiguous multi-target states do not guess; source-owned decisions keep target focus distinct from decision owner; public focus is viewer-equal and privacy-safe; REST hides it; and board/dock/controls/gameplay remain unchanged.
+
+## Execution result — UX2.0UI-06
+
+- **Status:** COMPLETE / reviewer-ready. Implementation commit: `197bccef17de6ac68f965eef6c86589154c20720`.
+- **Files:** `game/hero-focus.ts`, `app/page.tsx`, `app/globals.css`, `tests/presentation-client.test.mjs`, `tests/room-safety-render.test.mjs`, `README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- **HeroFocusView API:** `buildHeroFocusView(stage, resolvePlayerDisplay)` returns a typed read-only view with `primary`, `roleLabel`, public `source`, and proven CHILD_FRAME `nestedContext`. It selects IDs from `InteractionStageView` before invoking the optional public display resolver.
+- **Focus rules:** proven `currentParticipantId` wins; otherwise exactly one `activeTargetId` becomes `CURRENT TARGET`; ambiguous multiple active targets produce no primary focus. Decision actor, resolver, source, turn, legacy Pending/timeline/presentationV2/CurrentAction/phase/actionPlayerId/actionReason, card names, hero names, and array order never select focus.
+- **Display boundary:** the selected ID is decorated only with public player name, hero ID/name, and HP/max HP. Missing player/hero data falls back neutrally without changing the selected ID. Ma Chao/source-owned decisions keep the target/current participant focused while Interaction Stage separately shows decision and resolver ownership.
+- **Evidence:** focused tests cover ordinary Attack/Dodge, Ma Chao source-owned, Group/AOE current participant, ambiguous and sole-target fallback, CHILD_FRAME nested context, Dying, viewer equality, missing display data, legacy independence, long names, and REST hiding. Hero Focus renders no buttons, private cards, hand data, legal-action hints, timers, or controls.
+- **Containment:** styling is scoped to the compact Hero Focus panel with desktop/650px/480px rules and no animation; existing seats, player-board coordinates, local dock composition, Interaction Stage authority, target selection, and gameplay remain unchanged.
+- **Validation:** focused presentation/render tests `43/43`; `npm run test:fast` `160/160`; `npm run test:api` `239/239`; full `npm test` passed; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
+- **Next bounded recommendation:** reviewer-check the compact Hero Focus readability on the real screen. Keep INSPECT/PREVIEW/ACTIVE/SELECTABLE DETAIL, participant enlargement, topology, animation, and control migration out of this slice.
