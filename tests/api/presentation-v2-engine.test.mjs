@@ -84,8 +84,12 @@ test("engine-backed Borrowed Sword preserves forced Attack continuation and time
   assert.equal(pending.continuation.kind, "borrowed_sword_attack");
   assert.equal(pending.continuation.origin, "borrowed_sword");
   assert.equal(view.currentAction.actorId, scenario.holder.id);
+  assert.ok(view.currentAction.options?.some((option) => option.providerId === "card"), "the forced-Attack actor receives private response controls");
   assert.equal(view.currentAction.deadline, 0);
   assert.equal(view.currentAction.presentation.readyAfterEventId, null, "Borrowed Sword currently has no explicit readyAfterEventId at the forced-Attack response boundary");
+  assert.equal(view.presentationV2.interactionScene?.semantics, "PROVEN");
+  assert.equal(view.presentationV2.interactionScene?.continuity.relation, "CHILD_FRAME");
+  assert.ok(view.presentationV2.interactionScene?.parentFrameId, "the forced Attack is a child frame of Borrowed Sword");
   assert.equal(view.presentationV2.interactionScene?.participantRoles.sourceId, scenario.holder.id);
   assert.deepEqual(view.presentationV2.interactionScene?.participantRoles.originalTargetIds, [scenario.target.id]);
   assert.deepEqual(view.presentationV2.interactionScene?.participantRoles.activeTargetIds, [scenario.target.id]);
@@ -104,6 +108,8 @@ test("engine-backed Borrowed Sword preserves forced Attack continuation and time
   assert.deepEqual(reconnect.presentationV2.interactionScene, view.presentationV2.interactionScene);
   assert.deepEqual(reconnect.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
   assert.equal(reconnect.currentAction.options, undefined);
+  const declined = await requestAndSettle("decline_response", { code: scenario.game.code, token: scenario.alice.token });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
 });
 
 test("engine-backed single-target card metadata is not projected as Group", { timeout: 30_000 }, async () => {

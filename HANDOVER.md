@@ -174,3 +174,81 @@ Push implementation + appended HANDOVER to `origin/ux-v2`, fetch, verify remote 
 ## Acceptance
 
 FIX1 passes only if the 13 × 10 matrix is truthful cell-by-cell, every P is traceable to an explicit real engine/API assertion, N/A/GAP are used honestly, the reviewer examples are resolved, no synthetic happy path is used as positive proof, no gameplay/authority shortcut is introduced, and documentation/README no longer claim more than the evidence proves.
+
+## Execution result — UX2.0C6-01-FIX1 truthful evidence audit — 2026-10-03
+
+Implementation SHA: pending first implementation commit; this field is replaced
+with that commit SHA before the final handover push.
+
+Files changed:
+
+- `README.md`
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `tests/api/presentation-v2-engine.test.mjs`
+- `HANDOVER.md`
+
+Audit result: 13 required interaction families × 10 columns = 130 cells;
+**107 P, 0 N/A, 23 GAP, 0 unclassified**. No N/A is claimed: every required
+column applies at the family level, so missing explicit evidence is GAP.
+
+Exact GAP cells and reasons:
+
+- Attack / Dodge — `I,F,C,Q`: the mapped fixture proves one response
+  checkpoint and settlement, but not multi-checkpoint/frame relations or an
+  unchanged repeated read.
+- Attack -> Judgement -> Attack — `C,B,P`: the mapped Ma Chao fixtures do
+  not explicitly prove checkpoint progression, `stableBoundary`, and private
+  control separation together.
+- Duel responder handoff — `C`: the real handoff changes `actionRevision`
+  while retaining the same causal checkpoint; it does not prove a complete
+  checkpoint/revision transition contract.
+- Group -> Negation -> resume — `C,T`: the mapped same-frame tests do not
+  explicitly assert checkpoint/revision progression or terminal clear after
+  Group resumes.
+- Group -> Damage -> Dying -> rescue -> resume — `V,P,Q`: FIX15 does not
+  explicitly compare two viewers, private `CurrentAction` options, or an
+  unchanged reconnect read at the Dying checkpoint.
+- independent/root Damage — `C`: the one-root fixture does not assert a
+  semantic checkpoint/revision transition.
+- delayed Lightning Judgement -> Damage — `P`: the fixture does not
+  explicitly compare private `CurrentAction`/options at that checkpoint.
+- root Negation / counter-Negation — `V,P,Q,T`: the fixture lacks explicit
+  viewer equality, private control separation, repeated-read identity, and
+  terminal clear after counter response.
+- standalone Judgement replacement — `C,T`: the fixture does not explicitly
+  assert checkpoint/revision progression or final delayed-effect clear.
+- Borrowed Sword — `C,T`: the forced-Attack fixture does not compare a
+  before/after semantic checkpoint revision and reaches a subsequent
+  Negation chain after decline without driving it to terminal clear.
+
+Previously overclaimed P cells corrected: the prior all-P matrix is replaced
+by the 107/23 cell-level result; specifically Attack/Dodge `C`, Duel `C`, and
+Borrowed Sword `T` are no longer overclaimed, and the prose/table mismatch for
+N/A is removed. The design ledger also records every remaining GAP above.
+
+Real fixture assertions added in this FIX1: the Borrowed Sword Worker/D1
+fixture now asserts the private forced-Attack response control, proven
+`CHILD_FRAME` scene and parent frame, and the live decline response. Existing
+real C6 assertions for viewer/reconnect equality, repeated reads, frame
+relations, and stable boundaries remain mapped in section `0.103`; no
+synthetic happy path is used as positive family evidence.
+
+Traceability: every P cell is mapped in section `0.103` to an exact real test
+name/file and authoritative production sources S1-S5 (`rooms.pending_json`,
+`causal_envelope_json`, causal-envelope transitions, room writes, the
+presentation projector, and viewer-specific `CurrentAction` projection).
+Synthetic malformed/SETTLEMENT fixtures remain negative fail-closed evidence
+only.
+
+Validation:
+
+- focused `presentation-v2-engine.test.mjs`: **24/24 passed**;
+- `npm run test:fast`: **124/124 passed** across 15 files;
+- `npm run test:api`: **239/239 passed** across 23 files;
+- `npm run build`: passed;
+- `npm run lint`: passed;
+- `git diff --check`: passed.
+
+Readiness: C6 is **PARTIAL**, not ready for closure, because 23 applicable
+cells remain GAP. C7, PresentationSnapshot, React/CSS migration, gameplay
+changes, and unrelated refactors remain out of scope.

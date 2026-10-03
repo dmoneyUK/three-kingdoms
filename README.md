@@ -1,20 +1,20 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C6-01 engine-backed invariant matrix — 2026-10-03
+## Current stage — UX2.0C6-01-FIX1 truthful invariant audit — 2026-10-03
 
-C6 closes the verification matrix before C7. Real Worker/D1/API fixtures now
-cover Attack/Dodge, Attack -> Judgement -> Attack resume, Duel handoff,
-Group/AOE progression and child/resume paths, root and delayed Damage,
-Negation/counter-Negation, Judgement replacement, Dying rescue, and Borrowed
-Sword. The matrix explicitly checks causal identity, frame relations,
-checkpoint/revision behavior, typed participant roles, decision authority,
-viewer-stable public semantics, private control separation,
-reconnect/repeated-read stability, terminal clearing, and malformed
-fail-closed behavior. A projector guard keeps reserved `SETTLEMENT` out of
-current boundaries.
+C6 verification is in progress with a cell-by-cell evidence ledger. The audit
+covers 13 real interaction families × 10 invariants: 107 cells are explicitly
+proven and 23 remain bounded GAPs where the mapped Worker/D1/API fixture does
+not assert the required relationship. There are no N/A cells because every
+required column applies at the family level; missing evidence remains GAP.
+The largest corrections are Attack/Dodge checkpoint progression, Duel's
+same-checkpoint handoff, and Borrowed Sword's unproven terminal clear. The full ledger and
+exact fixture/assertion mapping are in section `0.103` of the interaction-stage
+design document.
 
 No production gameplay, React/CSS, animation, or PresentationSnapshot code was
-added. C6 is verification only; C7 remains the next milestone.
+added. C6 is not closed; C7 remains out of scope until the evidence gaps are
+resolved or explicitly accepted.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 
