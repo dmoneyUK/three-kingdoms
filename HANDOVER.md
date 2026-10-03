@@ -1,194 +1,197 @@
 # WTK UI / Layout — Current Task Handoff
 
 ## REMOTE HANDOVER RULE
-HANDOVER.md contains only the current task and this task's execution result. Work only on branch `ux-v2`.
+HANDOVER.md contains only the current reviewer state, one current task, and that task's execution result. Work only on branch `ux-v2`.
 
 Agent sequence:
 1. fetch/pull `origin/ux-v2`
 2. read this HANDOVER and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`
 3. implement only the task below
-4. run the required focused/full local validations you can run
-5. append this task's execution result
-6. commit + push implementation and HANDOVER
-7. fetch origin, verify remote HANDOVER contains the result
+4. run the required validation
+5. append only this task's execution result
+6. commit + push implementation and HANDOVER to `origin/ux-v2`
+7. fetch origin and verify remote HANDOVER contains the result
 8. STOP
 
-Do not wait for or poll CI. CI status is not part of this agent task.
+Do not wait for or poll CI.
 
-# NEXT TASK — UX2.0VIS-03B: Enlarge the Proven Primary Hero Focus in Top-Row Interaction Stage
+## Reviewer status — UX2.0VIS-03B ACCEPTED
+
+Reviewed implementation: `ed9421425c82a54d8d010704390e3b94ad4796fc`.
+
+Accepted facts that the next task must preserve:
+- top-row Hero Focus still uses the existing proven `HeroFocusView.primary`; no semantic selector/helper changed;
+- exactly one Hero Focus is rendered for the reviewed Interaction / Negation / Dying fixtures;
+- portrait is materially enlarged to 90x113 desktop, 72x90 at 481–650, and 64x80 at <=480;
+- top-row seat geometry, safe-zone geometry, LocalPlayerDock, gameplay, Reaction/Dying content and presentation authority were not changed;
+- focused Hero Focus tests reported 9/9 PASS and the combined retained geometry/Hero Focus suite reported 18/18 PASS;
+- the remaining visible problem is that top-row Interaction Stage itself still looks like a large bordered dashboard shell even though the centre is now structurally reserved and the primary hero is enlarged.
+
+# NEXT TASK — UX2.0VIS-03C: Remove the Top-Row Interaction Stage Dashboard Shell
 
 ## Objective
-Fix exactly one remaining player-facing layout defect:
+Fix exactly one visual hierarchy defect:
 
-**In 2–4 player top-row mode, the proven current Hero Focus is still rendered as a tiny 34–38px portrait inside a compact information panel. Promote that existing proven primary Hero Focus into a clearly enlarged central hero presentation.**
+**In 2–4 player top-row mode, stop rendering the entire Interaction Stage as one large dark bordered dashboard panel. Keep the semantic InteractionStage container and all existing Hero / Event / Meta content, but make the outer top-row Stage visually open/transparent so the central battlefield reads as a composition rather than a giant information box.**
 
-This task changes only the visual treatment of the already-selected `HeroFocusView.primary`.
+This is a shell/chrome task only.
 
-Do not add additional participants, do not change how the primary player is selected, and do not redesign Reaction Chain or meta/context blocks yet.
+Do not change semantic content, Hero Focus size, Reaction Chain content, Dying content, meta copy, seat layout, safe-zone geometry, LocalPlayerDock, or gameplay.
 
 ## Why this task exists
-The original UX V2 design explicitly requires:
-- seat thumbnails stay fixed;
-- the selected/current involved player can appear as an enlarged presentation inside Interaction Stage;
-- Top Row Mode has a wide central interaction area;
-- Large Hero Focus is the current primary focus/resolving participant;
-- the compact UI-06 Hero Focus was explicitly temporary.
+Current production still inherits the old UI-03 compact-panel shell:
 
-Current production still uses:
-- desktop portrait ~38x48px;
-- <=650px portrait ~34x43px.
+`.interaction-stage { background:#11140ee8; border:1px solid #9c8249; box-shadow:0 8px 24px #0008; padding:8px 11px; }`
 
-That is still visually a small status avatar, not the intended enlarged Hero Focus.
+and the Stage header still uses a full-width divider.
 
-## Existing accepted work to preserve
-Do not regress:
-- VIS-01 top-row opponent placement;
-- VIS-02 central safe-zone wrapper;
-- VIS-03A desktop wide stage composition and its hero/event/meta regions;
-- 650/480 stacked narrow composition;
-- LocalPlayerDock;
-- Interaction/Negation/Dying containment;
-- PresentationClientView / HeroFocusView semantic authority;
-- all gameplay and controls.
+VIS-03A made the desktop Stage wide and VIS-03B enlarged the proven primary hero, but the outer shell still visually turns the protected centre into one large dashboard. That is the same hierarchy problem visible in the real-game screenshot.
 
-## Production files expected in scope
-Expected:
+The original UX V2 intent is:
+- fixed small opponent seats;
+- protected central Interaction Safe Zone;
+- enlarged interaction content inside that centre;
+- LocalPlayerDock below;
+- no requirement for the whole central zone to be one opaque dashboard card.
+
+## Files expected in scope
+Production:
 - `app/globals.css`
 
-Only change `app/page.tsx` if a small presentational class/hook is strictly required. Do not change `game/hero-focus.ts`, `game/presentation-client.ts`, server, projector, protocol, gameplay, or target logic.
+Regression:
+- `tests/browser/ui19.spec.mjs`
+
+Do not change `app/page.tsx` unless a test-only stable class hook is genuinely missing. Do not change any game/presentation/server helper.
 
 ## Required implementation
 
-### 1. Keep the existing primary identity exactly unchanged
-Continue rendering only:
+### 1. Top-row mode only: remove outer dashboard chrome
+Under:
 
-`buildHeroFocusView(...).primary`
+`.play-table[data-seat-topology="top-row"]`
 
-Do not:
-- infer another source/target from room state;
-- use CurrentAction/timeline/pending fallbacks;
-- add a second Hero Focus;
-- convert source/decision actor into another large hero;
-- change the existing fallback rules.
+override the outer `.interaction-stage` shell so that it is visually open:
 
-This task is visual only.
+- background must be transparent;
+- outer border must be removed;
+- outer box-shadow must be removed;
+- remove shell padding that exists only to create the old panel frame;
+- preserve the Stage's existing semantic DOM element, data attributes, width, position and containment;
+- preserve `pointer-events:none`.
 
-### 2. Promote Hero Focus from compact avatar to enlarged hero presentation
-Inside top-row Interaction Stage only:
+Do not apply this change globally. Side-column mode is not part of this task.
 
-- the hero artwork must become the dominant element of the Hero region;
-- player name, hero name and HP remain visible;
-- existing role label remains visible;
-- source/nested-context text remains secondary;
-- the hero artwork must preserve portrait aspect ratio and use the existing local hero asset;
-- no controls/buttons/private data are added.
+### 2. Keep the Stage header, but make it a compact label rather than a full-width panel divider
+Do not remove or rewrite the existing header text/semantics.
 
-Target visual scale:
-- desktop >650px: hero artwork at least **88px wide and 112px high**;
-- 481–650px: at least **72px wide and 90px high**;
-- <=480px: at least **64px wide and 80px high**.
-
-These are minimums, not pixel-perfect art-direction values. Larger is acceptable only if all existing safe-zone containment tests stay green.
-
-### 3. Make the Hero region read as a presentation, not a panel inside a panel
 For top-row mode:
-- remove/reduce the current compact-dashboard feel of `.hero-focus`;
-- do not add another large outer card background around the entire Stage;
-- the enlarged portrait and identity should be visually dominant;
-- the existing Interaction Stage shell and VIS-03A hero/event/meta structure stay intact.
+- remove the full-width bottom border/divider from `.interaction-stage>header`;
+- do not give the header its own large opaque background;
+- keep `INTERACTION STAGE`, the existing focus label, and `YOUR DECISION` when applicable;
+- keep the header compact and above the composition;
+- it must not reserve a large blank row across the whole safe-zone width.
 
-Do not redesign the Reaction Chain, Dying block or meta region in this task.
+A small inline/fitted label treatment is acceptable. Do not change copy.
 
-### 4. Preserve narrow/mobile containment
-At 650x900 and 480x900:
-- Hero Focus must be enlarged as above;
-- Stage must still remain fully inside the existing safe zone;
-- no clipping, internal scroll, scale transform or hidden text;
-- LocalPlayerDock must remain unobstructed;
-- opponent top-row seats must not move.
+### 3. Preserve the three accepted content regions
+Do not change the DOM or semantic conditions of:
+- `.interaction-stage-hero-region`
+- `.interaction-stage-event-region`
+- `.interaction-stage-meta-region`
 
-If the required minimum enlarged Hero Focus cannot fit at 480x900 while preserving the accepted safe-zone and dock geometry, STOP and report the measured blocker. Do not shrink below the minimum merely to force green.
+Do not change:
+- Hero Focus portrait dimensions from VIS-03B;
+- Hero Focus identity selection;
+- Reaction Chain / Dying content;
+- SOURCE / FOCUS / DECISION / RESOLVER / ORIGINAL SCOPE / CONTEXT copy;
+- the desktop horizontal grid;
+- the <=650 stacked reading order.
+
+The Event region may retain its own Reaction/Dying panel chrome. This task removes only the **outer Interaction Stage dashboard shell**.
+
+### 4. Preserve geometry
+Do not change:
+- `--interaction-safe-top`;
+- safe-zone top/right/bottom/left;
+- Stage width caps;
+- play-table height;
+- player-board geometry;
+- opponent seat sizes/positions;
+- LocalPlayerDock geometry;
+- 5–10 player side-column layout.
+
+The transparent Stage must stay fully inside the same safe zone.
 
 ## Required browser regression
-Extend `tests/browser/ui19.spec.mjs` using existing 4-player fixtures:
-- `state="interaction"`
-- `state="negation"`
-- `state="dying"`
+Extend `tests/browser/ui19.spec.mjs` with a focused top-row shell test using:
+- `state="interaction", count=4`
+- `state="negation", count=4`
+- `state="dying", count=4`
 
-At 1440x900, 650x900 and 480x900 assert:
+Run at:
+- 1440x900
+- 650x900
+- 480x900
 
-1. one visible `[data-hero-focus="true"]`;
-2. its existing `data-hero-focus-player-id` remains the fixture's proven primary;
-3. `.hero-focus-portrait` meets the minimum width/height for that viewport class;
-4. portrait is fully inside `.interaction-stage-hero-region`;
-5. Hero region is fully inside Interaction Stage;
-6. no overlap with Event region or Meta region at desktop;
-7. existing VIS-02/VIS-03A safe-zone containment assertions remain unchanged and pass;
-8. no page horizontal overflow;
-9. LocalPlayerDock remains visible and unobstructed.
+For every case assert:
 
-Add one negative semantic regression:
-- do not render more than one `[data-hero-focus="true"]` for these fixtures.
+1. exactly one visible `.interaction-stage`;
+2. computed outer Stage background is transparent (alpha 0);
+3. computed outer Stage border widths are 0px;
+4. computed outer Stage box shadow is `none`;
+5. `.interaction-stage>header` remains visible;
+6. header bottom border width is 0px;
+7. Hero / Event / Meta region hooks remain mounted exactly once;
+8. Hero Focus size still satisfies VIS-03B minimums;
+9. Stage remains fully inside `.interaction-safe-zone`;
+10. Stage and safe zone do not overlap LocalPlayerDock;
+11. no horizontal page overflow.
 
-Do not weaken existing geometry tests to accommodate the larger hero.
+For Negation and Dying also retain proof that:
+- Reaction Chain / Dying handoff remains visible;
+- its own inner panel/background is not removed by the outer-shell change.
 
-## Forbidden shortcuts
+The new shell regression must fail against the pre-VIS-03C top-row CSS because that CSS has the opaque background, 1px border and box shadow.
+
+## Negative regression / forbidden shortcuts
 Do not:
-- change HeroFocus primary-selection semantics;
-- add source/target inference;
-- add multiple large hero cards;
-- change opponent seat sizes or positions;
-- change safe-zone top/bottom;
-- change LocalPlayerDock geometry;
-- hide Reaction Chain/Dying/meta content;
-- add scrolling/clipping/scaling;
-- reduce existing text solely to fit;
-- change gameplay/presentation authority;
-- start multi-participant composition work.
+- delete the `.interaction-stage` element;
+- hide the Stage;
+- remove the Stage header copy;
+- make Hero/Event/Meta content transparent;
+- remove Reaction Chain/Dying panel chrome;
+- change Hero Focus size;
+- change any semantic selector or data attribute;
+- move seats/safe zone/dock;
+- change side-column mode;
+- change gameplay/server/projector/presentation authority;
+- introduce viewport-specific React trees.
 
 ## Validation
-Run and report actual results for:
-- focused Hero Focus browser regression;
-- existing VIS-02-FIX1 / VIS-03A geometry tests;
-- `npm run test:browser`;
-- `npm run test:fast`;
-- `npm run build`;
-- `npm run lint`;
+Run and report:
+- focused VIS-03C shell browser tests;
+- retained VIS-02-FIX1 / VIS-03A / VIS-03B geometry tests;
+- `npm run test:browser` if allowed by the local execution policy;
+- `npm run test:fast` if allowed by the local execution policy;
+- `npm run build` if allowed by the local execution policy;
+- `npm run lint` if allowed by the local execution policy;
 - `git diff --check`.
 
-Do not claim unrun commands passed. Do not wait for or inspect CI.
+Do not claim unrun commands passed. Do not inspect or wait for CI.
 
 ## Execution result
 Append only:
-- implementation SHA;
+- full implementation SHA;
 - files changed;
-- final Hero Focus portrait dimensions by viewport class;
-- CSS strategy used;
-- proof primary player ID/semantic selection was unchanged;
-- focused/full validation results;
-- any measured GAP.
+- exact top-row shell overrides;
+- header treatment;
+- proof side-column/global shell was not changed;
+- focused/retained validation results;
+- any remaining GAP.
 
 Do not declare the task accepted. Reviewer decides after inspecting the result.
 
 Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if the already-proven primary Hero Focus becomes materially enlarged in top-row mode at desktop and mobile widths, semantic identity selection is untouched, existing Interaction/Negation/Dying containment stays green, and no seat/dock/gameplay/Reaction/meta scope is changed.
-
-## Agent execution result — UX2.0VIS-03B
-
-- Implementation SHA: `ed9421425c82a54d8d010704390e3b94ad4796fc`.
-- Files changed:
-  - `app/globals.css`
-  - `tests/browser/ui19.spec.mjs`
-- Final top-row Hero Focus portrait dimensions:
-  - desktop >650px: `90px × 113px`;
-  - 481–650px: `72px × 90px`;
-  - <=480px: `64px × 80px`.
-- CSS strategy: top-row-scoped CSS Grid promotes the existing portrait into the dominant left column and places the unchanged heading/role, identity, source and nested context in the right column. The existing `.hero-focus-body` becomes `display: contents` only in this scope so no React or semantic structure changed. The old nested compact-panel background, border, inset shadow and padding are removed in top-row mode; artwork keeps the established approximately 4:5 portrait ratio and existing asset/object-fit behavior. At <=650px the event region's external top spacing is reduced from 7px to 3px so the enlarged minimum portrait fits without changing Reaction/Dying content, text, safe-zone geometry or Dock geometry.
-- Primary-selection proof: `app/page.tsx`, `game/hero-focus.ts`, `game/presentation-client.ts` and all server/gameplay files are unchanged. New browser assertions prove exactly one visible `[data-hero-focus="true"]` and preserve the fixture-proven IDs at every tested viewport: Interaction=`p1`, Negation=`p2`, Dying=`p3`.
-- Focused validation:
-  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-03B' --config tests/browser/playwright.config.mjs` — final **9/9 PASS**. An initial 7/9 run exposed the retained compact-panel top margin at 650px; removing that obsolete margin restored both failing cases without reducing the required portrait size.
-  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-(02-FIX1|03B)' --config tests/browser/playwright.config.mjs` — final **18/18 PASS**: 9 existing VIS-02-FIX1/VIS-03A containment cases plus 9 new VIS-03B Hero Focus cases. Before the final external event-spacing adjustment, the existing suite identified 650px Negation and Dying play-table-bottom overruns of approximately 3.1px and 0.6px; the unchanged strict assertions pass after the adjustment.
-- Full validation not run under the project remote-validation workflow: `npm run test:browser`, `npm run test:fast`, `npm run build`, `npm run lint`, and `git diff --check`. GitHub Actions owns those gates; CI status was not inspected or polled.
-- Remaining GAP: none observed within the bounded VIS-03B focused scope. Full-suite and CI results remain unverified pending GitHub Actions/user notification.
+Pass only if top-row Interaction Stage no longer renders as one opaque bordered/shadowed dashboard shell at desktop and mobile widths, while the semantic Stage container, compact header, enlarged primary Hero Focus, Reaction/Dying panels, meta content, safe-zone containment, seats, LocalPlayerDock and gameplay remain unchanged.
