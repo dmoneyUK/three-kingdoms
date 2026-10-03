@@ -12,7 +12,7 @@ const HERO_IDS = [
 
 const card = (id, kind, suit = "♠", rank = "A") => ({ id, kind, suit, rank });
 
-function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisionActorId, currentParticipantId = decisionActorId, activeResolverId = decisionActorId }) {
+function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisionActorId, currentParticipantId = decisionActorId, activeResolverId = decisionActorId, viewerId = decisionActorId }) {
   const interactionId = `browser-${state}-interaction`;
   const rootFrameId = `browser-${state}-root`;
   const activeFrameId = `browser-${state}-active`;
@@ -53,13 +53,23 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
     stable: { kind: "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "picker" ? "trigger" : state === "duel" || state === "negation" ? "response" : "turn", actorId: decisionActorId, entitled: true },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "picker" ? "trigger" : state === "duel" || state === "negation" || state === "group-observer" ? "response" : "turn", actorId: decisionActorId, entitled: viewerId === decisionActorId },
     settlement: null,
     transitionEvents: [],
   };
 }
 
 function currentActionFor(state, actorId, handCardId) {
+  if (state === "group-observer") {
+    return {
+      version: 3,
+      kind: "response",
+      actorId,
+      deadline: 0,
+      reason: "Waiting for the current Raining Arrows participant",
+      legalActions: [],
+    };
+  }
   if (state === "normal" || state === "interaction" || state === "group") {
     return {
       version: 3,
@@ -121,9 +131,11 @@ function currentActionFor(state, actorId, handCardId) {
 
 function browserRoom({ state, count }) {
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
-  const meId = state === "duel" || state === "negation" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
-  const actorId = state === "dying" ? "p3" : meId;
-  const hand = state === "duel"
+  const meId = state === "group-observer" ? "p3" : state === "duel" || state === "negation" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
+  const actorId = state === "group-observer" ? "p1" : state === "dying" ? "p3" : meId;
+  const hand = state === "group-observer"
+    ? []
+    : state === "duel"
     ? [card("browser-attack", "Attack", "♠")]
     : state === "negation"
       ? [card("browser-negation", "Negation", "♣")]
@@ -132,10 +144,10 @@ function browserRoom({ state, count }) {
         : state === "group"
           ? [card("browser-raining-arrows", "RainingArrows", "♥")]
           : [card("browser-attack", "Attack", "♠"), card("browser-peach", "Peach", "♥")];
-  const targets = state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" ? "p1" : "p2"];
-  const stage = state === "duel" ? "DUEL_EXCHANGE" : state === "negation" ? "NEGATION" : state === "dying" ? "DYING" : state === "group" ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
-  const currentAction = state === "rest" ? null : currentActionFor(state, actorId, hand[0].id);
-  const presentationSnapshot = state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: "p1", targetIds: targets, currentParticipantId: state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId });
+  const targets = state === "group-observer" ? ["p1", "p2", "p3"] : state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" ? "p1" : "p2"];
+  const stage = state === "duel" ? "DUEL_EXCHANGE" : state === "negation" ? "NEGATION" : state === "dying" ? "DYING" : state === "group" || state === "group-observer" ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
+  const currentAction = state === "rest" ? null : currentActionFor(state, actorId, hand[0]?.id ?? "");
+  const presentationSnapshot = state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: state === "group-observer" ? "p4" : "p1", targetIds: targets, currentParticipantId: state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
   const players = playerIds.map((id, index) => ({
     id,
     name: `Player ${index + 1}`,
@@ -167,7 +179,7 @@ function browserRoom({ state, count }) {
     myHeroOptions: [],
     players,
     myHand: hand,
-    turnSeat: state === "dying" ? 1 : 0,
+    turnSeat: state === "group-observer" ? 3 : state === "dying" ? 1 : 0,
     phase: state === "dying" ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" ? "play" : "response",
     deckCount: 20,
     discardTop: null,
@@ -186,7 +198,7 @@ function browserRoom({ state, count }) {
     pendingRockCleaving: null,
     pendingFrostSword: null,
     pendingDuel: state === "duel" ? { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", deadline: 0 } : null,
-    pendingGroup: state === "group" ? { kind: "group", cardKind: "RainingArrows", sourceId: "p1", requiredKind: "Dodge" } : null,
+    pendingGroup: state === "group-observer" ? { kind: "group", cardKind: "RainingArrows", sourceId: "p4", requiredKind: "Dodge" } : state === "group" ? { kind: "group", cardKind: "RainingArrows", sourceId: "p1", requiredKind: "Dodge" } : null,
     pendingNegation: state === "negation" ? { kind: "negation", sourceId: "p1", actorId: "p2", effectTargetId: "p1", cardName: "Dismantle", negated: false, deadline: 0 } : null,
     pendingHarvest: null,
     pendingTargetCard: null,

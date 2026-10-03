@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
 import { buildPresentationTransition } from "../game/presentation-transition.ts";
-import { buildHeroFocusView, projectHeroFocusForViewer } from "../game/hero-focus.ts";
+import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer } from "../game/hero-focus.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
@@ -905,4 +905,42 @@ test("viewer Hero Focus projection uses only one uniquely-proven external source
   const unknown = projectionFrom({ sourceId: "A", targetIds: ["missing"], activeTargetIds: ["missing"], currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "missing"] }, "A", (id) => id === "C" ? display("C") : null);
   assert.deepEqual(unknown.projected.primary, { id: "missing", name: "Unknown target", known: false, heroId: null, heroName: null, hp: null, maxHp: null });
   assert.equal(unknown.projected.roleLabel, "CURRENT TARGET");
+});
+
+test("Medium Source projection requires a proven external source beside an active-target focus", () => {
+  const display = (id) => ({ name: displayNames[id] ?? null, heroId: id === "A" ? "ma-chao" : id === "B" ? "zhao-yun" : id === "C" ? "cao-cao" : null, heroName: id === "A" ? "Ma Chao" : id === "B" ? "Zhao Yun" : id === "C" ? "Cao Cao" : null, hp: 4, maxHp: 4 });
+  const mediumFrom = (sceneOverrides, viewerId = "C", displayResolver = display) => {
+    const stage = buildInteractionStageView(semanticView(sceneOverrides, { meId: viewerId }), resolveDisplayName);
+    const publicFocus = buildHeroFocusView(stage, display);
+    const projectedFocus = projectHeroFocusForViewer(stage, publicFocus, viewerId, displayResolver);
+    return { stage, projectedFocus, medium: projectMediumSourceForViewer(stage, projectedFocus, viewerId, displayResolver) };
+  };
+
+  const externalPair = mediumFrom({ participantIds: ["A", "B", "C"] });
+  assert.deepEqual(externalPair.medium, {
+    player: { id: "A", name: "Ma Chao", known: true, heroId: "ma-chao", heroName: "Ma Chao", hp: 4, maxHp: 4 },
+    roleLabel: "SOURCE",
+  });
+
+  assert.equal(mediumFrom({}, "A").medium, null, "the viewer remains only in LocalPlayerDock when they are the source");
+
+  const nonTargetPrimary = mediumFrom({ currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"] }, "D");
+  assert.equal(nonTargetPrimary.projectedFocus.primary?.id, "C");
+  assert.deepEqual(nonTargetPrimary.stage.activeTargets.map((target) => target.id), ["B"]);
+  assert.equal(nonTargetPrimary.medium, null, "a current participant outside activeTargets is not a target focus");
+
+  assert.equal(mediumFrom({ sourceId: "A", targetIds: ["A"], activeTargetIds: ["A"], currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A", participantIds: ["A"] }).medium, null, "the source cannot be the primary card");
+  assert.equal(mediumFrom({ sourceId: "B", targetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantIds: ["B"] }).medium, null, "a self-effect does not duplicate one identity");
+  assert.equal(mediumFrom({ sourceId: null }).medium, null, "missing source authority does not guess a source");
+
+  const unknownSource = mediumFrom({ sourceId: "Z", targetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantIds: ["Z", "B"] }, "C", (id) => id === "B" ? display("B") : null);
+  assert.deepEqual(unknownSource.medium, {
+    player: { id: "Z", name: "Unknown source", known: false, heroId: null, heroName: null, hp: null, maxHp: null },
+    roleLabel: "SOURCE",
+  }, "unknown public decoration keeps the proven ID without substituting another participant");
+
+  const hiddenView = buildPresentationClientView(snapshot({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null } }), "C");
+  const hiddenStage = buildInteractionStageView(hiddenView, resolveDisplayName);
+  const hiddenFocus = buildHeroFocusView(hiddenStage, display);
+  assert.equal(projectMediumSourceForViewer(hiddenStage, hiddenFocus, "C", display), null, "REST is not a source presentation");
 });

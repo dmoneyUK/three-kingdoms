@@ -14,7 +14,7 @@ import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
-import { buildHeroFocusView, projectHeroFocusForViewer, type HeroFocusPlayerDisplay, type HeroFocusView } from "../game/hero-focus";
+import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView } from "../game/hero-focus";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
 import { buildConsoleDecisionDisplay, type ConsoleDecisionKind, type ConsoleSelectionFact } from "../game/console-decision";
 import { buildGroupScopePreview } from "../game/group-scope-preview";
@@ -464,7 +464,7 @@ function OpponentInspectionOverlay({ player, playerHero, judgementInFlight, onCl
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
-function HeroFocus({ view }: { view: HeroFocusView }) {
+function HeroFocus({ view, showSource = true }: { view: HeroFocusView; showSource?: boolean }) {
   if (!view.visible || !view.primary) return null;
   const hero = heroDefinition(view.primary.heroId);
   const heroName = view.primary.heroName ?? hero?.name ?? null;
@@ -474,25 +474,39 @@ function HeroFocus({ view }: { view: HeroFocusView }) {
     <div className="hero-focus-body">
       <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={view.primary.heroId ?? undefined}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
       <div className="hero-focus-identity"><b>{view.primary.name}</b>{heroName && <span>{heroName}</span>}{hp && <small>{hp}</small>}</div>
-      {view.source.id && view.source.id !== view.primary.id && <small className="hero-focus-source">SOURCE · {view.source.name}</small>}
+      {showSource && view.source.id && view.source.id !== view.primary.id && <small className="hero-focus-source">SOURCE · {view.source.name}</small>}
     </div>
     {view.nestedContext && <small className="hero-focus-context">{view.nestedContext}</small>}
   </div>;
 }
 
-export function InteractionStage({ view, viewerId, transitionKind = "NONE", resolvePlayerName, resolvePlayerDisplay }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined }) {
+function MediumParticipantCard({ view }: { view: MediumParticipantView }) {
+  const hero = heroDefinition(view.player.heroId);
+  const heroName = view.player.heroName ?? hero?.name ?? null;
+  const hp = view.player.hp !== null || view.player.maxHp !== null ? `HP ${view.player.hp ?? "?"}/${view.player.maxHp ?? "?"}` : null;
+  return <div className="medium-participant-card" data-medium-participant="source" data-medium-participant-player-id={view.player.id} data-medium-participant-known={view.player.known ? "true" : "false"}>
+    <span className="medium-participant-role">{view.roleLabel}</span>
+    <span className={hero ? "medium-participant-portrait" : "medium-participant-portrait medium-participant-portrait-empty"} data-hero-id={view.player.heroId ?? undefined}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
+    <div className="medium-participant-identity"><b>{view.player.name}</b>{heroName && <span>{heroName}</span>}{hp && <small>{hp}</small>}</div>
+  </div>;
+}
+
+export function InteractionStage({ view, viewerId, transitionKind = "NONE", topRowMode = false, resolvePlayerName, resolvePlayerDisplay }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const display = buildInteractionStageDisplayModel(stage);
   const dyingHandoff = buildDyingHandoffView(stage);
   const reactionChain = buildReactionChainView(stage);
   const publicHeroFocus = buildHeroFocusView(stage, resolvePlayerDisplay);
   const heroFocus = projectHeroFocusForViewer(stage, publicHeroFocus, viewerId, resolvePlayerDisplay);
+  const mediumSource = topRowMode ? projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay) : null;
   if (!display.visible) return null;
   return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined} data-presentation-transition={transitionKind}>
     <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
     <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
-        <HeroFocus view={heroFocus} />
+        {mediumSource && <MediumParticipantCard view={mediumSource} />}
+        {mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">→</span>}
+        <HeroFocus view={heroFocus} showSource={!mediumSource} />
       </div>
       <div className="interaction-stage-event-region">
         {dyingHandoff.visible && <section className="dying-handoff" aria-label="Dying Rescue Handoff" data-dying-handoff="proven" data-dying-player-id={dyingHandoff.dyingPlayer.id ?? undefined} data-dying-decision-actor-id={dyingHandoff.decisionActor.id ?? undefined} data-dying-resolver-id={dyingHandoff.activeResolver.id ?? undefined} data-dying-continuity={dyingHandoff.continuity.relation} data-dying-parent-frame-id={dyingHandoff.parentFrameId ?? undefined}>
@@ -1581,7 +1595,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"} data-presentation-transition={presentationTransition.kind}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button className="text-button" onClick={onLeave}>Exit</button></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${sequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>
-      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} viewerId={room.meId} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} resolvePlayerDisplay={(playerId) => {
+      <div className="interaction-safe-zone"><InteractionStage view={clientPresentation} viewerId={room.meId} topRowMode={room.players.length <= 4} transitionKind={presentationTransition.kind} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} resolvePlayerDisplay={(playerId) => {
         const player = room.players.find((candidate) => candidate.id === playerId);
         if (!player) return null;
         const hero = heroDefinition(player.hero);

@@ -440,6 +440,108 @@ for (const { width, height, minimumPortrait } of HERO_FOCUS_VIEWPORTS) {
   }
 }
 
+for (const { width, height } of HERO_FOCUS_VIEWPORTS) {
+  test(`UX2.0VIS-03E ${width}x${height} shows an external source beside the active-target Hero Focus`, async ({ page }) => {
+    await loadFixture(page, { state: "group-observer", count: 4, width, height });
+    const source = page.locator('[data-medium-participant="source"]');
+    const arrow = page.locator('[data-medium-source-arrow="true"]');
+    const focus = page.locator('[data-hero-focus="true"]');
+    await expect(source).toHaveCount(1);
+    await expect(source).toBeVisible();
+    await expect(source).toHaveAttribute("data-medium-participant-player-id", "p4");
+    await expect(source.locator(".medium-participant-role")).toHaveText("SOURCE");
+    await expect(arrow).toBeVisible();
+    await expect(focus, "exactly one Large Hero Focus remains").toHaveCount(1);
+    await expect(focus).toHaveAttribute("data-hero-focus-player-id", "p1");
+    await expect(page.locator('[data-hero-focus-player-id="p3"]')).toHaveCount(0);
+    await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
+    const sourceSeat = page.locator('.player-board [data-player-anchor="p4"]');
+    await expect(sourceSeat).toBeVisible();
+    await expect(sourceSeat).toHaveClass(/player-square-1/);
+
+    const result = await page.evaluate(() => {
+      const rect = (element) => {
+        const value = element.getBoundingClientRect();
+        return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+      };
+      const overlap = (left, right) => Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left)) * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+      const card = document.querySelector('[data-medium-participant="source"]');
+      const arrow = document.querySelector('[data-medium-source-arrow="true"]');
+      const focus = document.querySelector('[data-hero-focus="true"]');
+      const region = document.querySelector('.interaction-stage-hero-region');
+      const sourcePortrait = card?.querySelector('.medium-participant-portrait');
+      const focusPortrait = focus?.querySelector('.hero-focus-portrait');
+      const sourceSeat = document.querySelector('.player-board [data-player-anchor="p4"]');
+      const stage = document.querySelector('.interaction-stage');
+      const safeZone = document.querySelector('.interaction-safe-zone');
+      const dock = document.querySelector('.local-player-dock');
+      const cardRect = card && rect(card);
+      const arrowRect = arrow && rect(arrow);
+      const focusRect = focus && rect(focus);
+      const regionRect = region && rect(region);
+      const stageRect = stage && rect(stage);
+      const safeZoneRect = safeZone && rect(safeZone);
+      const dockRect = dock && rect(dock);
+      return {
+        card: cardRect,
+        arrow: arrowRect,
+        focus: focusRect,
+        region: regionRect,
+        sourcePortrait: sourcePortrait && rect(sourcePortrait),
+        focusPortrait: focusPortrait && rect(focusPortrait),
+        sourceSeat: sourceSeat && rect(sourceSeat),
+        sourceIsInPlayerBoard: Boolean(sourceSeat?.closest('.player-board')?.contains(card)),
+        stage: stageRect,
+        safeZone: safeZoneRect,
+        stageDockOverlap: stageRect && dockRect ? overlap(stageRect, dockRect) : null,
+        safeZoneDockOverlap: safeZoneRect && dockRect ? overlap(safeZoneRect, dockRect) : null,
+        scrollWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+    const expectedSourcePortrait = width > 650 ? { width: 56, height: 70 } : width > 480 ? { width: 48, height: 60 } : { width: 42, height: 53 };
+    expect(result.card, "medium source card bounds").not.toBeNull();
+    expect(result.arrow, "source-to-target arrow bounds").not.toBeNull();
+    expect(result.focus, "large active-target focus bounds").not.toBeNull();
+    expect(result.sourceIsInPlayerBoard, "central source copy stays independent of the fixed seat anchor").toBe(false);
+    expect(result.card.right, "source precedes the arrow").toBeLessThanOrEqual(result.arrow.left + 1);
+    expect(result.arrow.right, "arrow precedes the active target").toBeLessThanOrEqual(result.focus.left + 1);
+    for (const item of [result.card, result.arrow, result.focus]) {
+      expect(item.left, "source-target composition stays inside the hero region").toBeGreaterThanOrEqual(result.region.left - 1);
+      expect(item.right, "source-target composition stays inside the hero region").toBeLessThanOrEqual(result.region.right + 1);
+    }
+    expect(result.sourcePortrait.width, "medium portrait width follows the responsive spec").toBe(expectedSourcePortrait.width);
+    expect(result.sourcePortrait.height, "medium portrait height follows the responsive spec").toBe(expectedSourcePortrait.height);
+    expect(result.sourcePortrait.width, "source portrait remains smaller than Hero Focus").toBeLessThan(result.focusPortrait.width);
+    expect(result.sourcePortrait.height, "source portrait remains shorter than Hero Focus").toBeLessThan(result.focusPortrait.height);
+    expect(result.stage.left, "stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.left - 4);
+    expect(result.stage.top, "stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.top - 4);
+    expect(result.stage.right, "stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.right + 4);
+    expect(result.stage.bottom, "stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.bottom + 4);
+    expect(result.stageDockOverlap, "stage remains unobstructed by the local dock").toBe(0);
+    expect(result.safeZoneDockOverlap, "safe zone remains unobstructed by the local dock").toBe(0);
+    expect(result.scrollWidth, "medium source introduces no horizontal page overflow").toBeLessThanOrEqual(result.viewportWidth);
+  });
+}
+
+for (const width of [1440, 480]) {
+  test(`UX2.0VIS-03E ${width}px hides a viewer-owned self source`, async ({ page }) => {
+    await loadFixture(page, { state: "interaction", count: 4, width, height: 900 });
+    await expect(page.locator('[data-medium-participant="source"]')).toHaveCount(0);
+    await expect(page.locator('[data-medium-source-arrow="true"]')).toHaveCount(0);
+    await expect(page.locator('[data-hero-focus="true"]')).toHaveAttribute("data-hero-focus-player-id", "p2");
+    await expect(page.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
+    await expect(page.locator('.local-player-dock[data-player-anchor="p1"]')).toBeVisible();
+  });
+}
+
+test("UX2.0VIS-03E keeps NEGATION Reaction Chain without a medium source", async ({ page }) => {
+  await loadFixture(page, { state: "negation", count: 4, width: 480, height: 900 });
+  await expect(page.locator('[data-medium-participant="source"]')).toHaveCount(0);
+  await expect(page.locator('[data-medium-source-arrow="true"]')).toHaveCount(0);
+  await expect(page.locator('[data-reaction-chain="proven"]')).toBeVisible();
+});
+
 test("UX2.0VIS-02 keeps an empty safe-zone hook in REST", async ({ page }) => {
   await loadFixture(page, { state: "rest", count: 4, width: 480, height: 900 });
   const safeZone = page.locator(".interaction-safe-zone");

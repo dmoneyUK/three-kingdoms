@@ -30,6 +30,11 @@ export type HeroFocusView = {
   nestedContext: string | null;
 };
 
+export type MediumParticipantView = {
+  player: HeroFocusPlayerView;
+  roleLabel: "SOURCE";
+};
+
 const HIDDEN_FOCUS: HeroFocusView = {
   visible: false,
   primary: null,
@@ -133,4 +138,28 @@ export function projectHeroFocusForViewer(
     primary: decoratePlayer(candidate, resolvePlayerDisplay),
     roleLabel: isActiveTarget ? "CURRENT TARGET" : "SOURCE",
   };
+}
+
+/**
+ * Project one read-only Medium Source beside a viewer's active-target focus.
+ * The source and active target must come from the proven public Interaction
+ * Stage; viewer-owned sources and self-effects never render a central copy.
+ */
+export function projectMediumSourceForViewer(
+  stage: InteractionStageView,
+  projectedFocus: HeroFocusView,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): MediumParticipantView | null {
+  const primary = projectedFocus.primary;
+  const source = stage.source;
+  if (!stage.visible
+    || !primary
+    || !stage.activeTargets.some((target) => target.id === primary.id)
+    || !source.id
+    || source.id === primary.id
+    || source.id === viewerId) return null;
+
+  const player = decoratePlayer(source, resolvePlayerDisplay);
+  return player ? { player, roleLabel: "SOURCE" } : null;
 }
