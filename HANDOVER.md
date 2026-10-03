@@ -309,3 +309,15 @@ changed.
 - Full test/build/lint checks were not run locally; GitHub Actions owns the
   post-push gate. The CI result has not yet been checked.
 - VIS-03E remains the current reviewer task and has not been started or accepted.
+
+## Execution result — UX2.0VIS-03E
+
+- Implementation commit: `74a39c3d68ed9510281d3340186b2dc3f5af23e3`.
+- Files changed: `game/hero-focus.ts`, `app/page.tsx`, `app/globals.css`, `tests/presentation-client.test.mjs`, `tests/browser/fixture.jsx`, and `tests/browser/ui19.spec.mjs`.
+- Medium Source is returned only when `stage.visible`, a projected primary exists and its ID is in `stage.activeTargets`, a source ID exists, and source differs from both the projected primary and viewer. Its decoration uses the existing public Hero Focus resolver; the role is exactly `SOURCE`.
+- Medium portrait sizes: >650px 56x70; 481–650px 48x60; <=480px 42x53. Existing Large Hero Focus dimensions are unchanged.
+- The additive `group-observer` fixture uses four players: viewer p3; GROUP_RESOLUTION / Raining Arrows; source p4; targets p1, p2, p3; current participant, decision actor, and active resolver p1. Its CurrentAction is a minimal non-local response with no legal actions. Existing `group` fixture is unchanged.
+- Browser assertions confirm the p4 opponent anchor remains in `.player-board` at its existing relative seat, while the independent central p4 card is outside that board; one Large Hero Focus shows p1, with source → target ordering and no p3 central duplicate.
+- Focused validation: Medium Source unit test 1/1 PASS; VIS-03E browser tests 6/6 PASS (group observer at 1440/650/480, self-source at 1440/480, Negation at 480). The first browser attempt exposed an empty-hand fixture dereference; it was fixed and the complete focused set passed on rerun.
+- Retained VIS-02-FIX1 / VIS-03B / VIS-03C / VIS-03D suites were not run locally. Full tests, build, lint, and `git diff --check` were not run under the project workflow; GitHub Actions owns those checks. CI was not inspected or polled.
+- Known GAP: no known task-scope gap from focused validation. Reviewer acceptance and CI result remain unverified and are not claimed.
