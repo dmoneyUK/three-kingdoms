@@ -6,6 +6,12 @@ const MATRIX = [
   { width: 480, height: 900, counts: [4, 6, 10] },
 ];
 
+const TOPOLOGY_MATRIX = [
+  { width: 1440, height: 900 },
+  { width: 650, height: 900 },
+  { width: 480, height: 900 },
+];
+
 async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
@@ -30,6 +36,11 @@ async function geometry(page) {
       return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
     };
     const anchors = [...document.querySelectorAll("[data-player-anchor]")].filter(visible).map(rect);
+    const opponentAnchors = [...document.querySelectorAll('.player-board [data-player-anchor]')].filter(visible).map((element) => {
+      const relativeIndexClass = [...element.classList].find((name) => /^player-square-[1-9]\d*$/.test(name));
+      return { relativeIndex: Number(relativeIndexClass?.replace("player-square-", "")), ...rect(element) };
+    });
+    const localDockAnchors = [...document.querySelectorAll('.local-player-dock[data-player-anchor]')].filter(visible).map(rect);
     const controls = [
       document.querySelector(".local-player-dock"),
       document.querySelector(".local-hand"),
@@ -44,19 +55,50 @@ async function geometry(page) {
         if (smaller > 0 && area / smaller > 0.2) severeAnchorOverlaps.push({ index, other, ratio: area / smaller });
       }
     }
+    const severeOpponentOverlaps = [];
+    for (let index = 0; index < opponentAnchors.length; index += 1) {
+      for (let other = index + 1; other < opponentAnchors.length; other += 1) {
+        const area = overlap(opponentAnchors[index], opponentAnchors[other]);
+        const smaller = Math.min(opponentAnchors[index].width * opponentAnchors[index].height, opponentAnchors[other].width * opponentAnchors[other].height);
+        if (smaller > 0 && area / smaller > 0.2) severeOpponentOverlaps.push({ index, other, ratio: area / smaller });
+      }
+    }
     const stage = document.querySelector(".interaction-stage");
     const stageRect = stage && visible(stage) ? rect(stage) : null;
     const controlOverlap = stageRect ? controls.map((control) => overlap(stageRect, control)).some((area) => area > 0) : false;
     return {
       anchorCount: anchors.length,
       anchors,
+      opponentAnchors,
+      localDockAnchorCount: localDockAnchors.length,
       controls,
       severeAnchorOverlaps,
+      severeOpponentOverlaps,
       controlOverlap,
       scrollWidth: document.documentElement.scrollWidth,
       viewportWidth: window.innerWidth,
     };
   });
+}
+
+for (const { width, height } of TOPOLOGY_MATRIX) {
+  for (const totalPlayers of [2, 3, 4]) {
+    test(`UX2.0VIS-01 ${width}x${height} places ${totalPlayers}-player opponents in one top row`, async ({ page }) => {
+      await loadFixture(page, { state: totalPlayers === 2 ? "rest" : "normal", count: totalPlayers, width, height });
+      const result = await geometry(page);
+      const opponentAnchors = [...result.opponentAnchors].sort((left, right) => left.relativeIndex - right.relativeIndex);
+
+      expect(opponentAnchors, "one visible opponent anchor per non-local player").toHaveLength(totalPlayers - 1);
+      expect(result.localDockAnchorCount, "exactly one local dock anchor").toBe(1);
+      expect(opponentAnchors.map(({ relativeIndex }) => relativeIndex), "relative seat order remains stable").toEqual(Array.from({ length: totalPlayers - 1 }, (_, index) => index + 1));
+      expect(Math.max(...opponentAnchors.map(({ top }) => top)) - Math.min(...opponentAnchors.map(({ top }) => top)), "all opponent anchors share one top row").toBeLessThanOrEqual(4);
+      for (let index = 1; index < opponentAnchors.length; index += 1) {
+        expect(opponentAnchors[index].left + opponentAnchors[index].width / 2, `seat ${index} is right of seat ${index - 1}`).toBeGreaterThan(opponentAnchors[index - 1].left + opponentAnchors[index - 1].width / 2);
+      }
+      expect(result.severeOpponentOverlaps, "opponent anchors do not severely overlap").toEqual([]);
+      expect(result.scrollWidth, "top-row layout does not introduce horizontal overflow").toBeLessThanOrEqual(result.viewportWidth);
+    });
+  }
 }
 
 for (const { width, height, counts } of MATRIX) {
