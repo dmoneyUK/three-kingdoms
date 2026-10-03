@@ -5186,3 +5186,25 @@ SPECIAL remains RESERVED/unexercised; `settlement` remains `null` and
 `transitionEvents` remains `[]`. The atomic `PresentationSnapshot` gate is
 unchanged, with no gameplay, React, CSS, animation, settlement, or transition
 protocol changes. C7-03-FIX1 is ready for reviewer closure.
+
+### 0.109 UX2.0UI-20 final UX V2 integration and release gate — 2026-10-03
+
+UI-20 adds the final contract ledger in
+`docs/UX_V2_RELEASE_GATE.md`. The accepted C1–C7 and UI-01–UI-19 boundaries
+have 14 PASS rows and one intentional N/A row: durable independently proven
+per-counter Reaction Chain history is not part of the accepted snapshot
+contract. No functional GAP is hidden, and no gameplay, projector, causal,
+private-control, transition, or production deployment behavior changed.
+
+The prior UI-19 browser evidence remains 17/17 across 1440x900, 650x900, and
+480x900, including 10-player topology, semantic transitions, reduced motion,
+and the retained target-card picker. The final UI-20 gate is deliberately
+delegated to GitHub Actions under the standing project workflow; this turn does
+not claim a local rerun of the full browser/fast/API/build/lint/diff/npm-test
+commands or any CI result.
+
+The evidence supports **UX V2 Feature Complete candidate pending CI and
+reviewer confirmation**. This is not whole-game/content/release completion.
+Subjective pixel/art direction, touch-device certification, full WCAG auditing,
+live multiplayer timing, and production health remain bounded manual or
+non-blocking gaps.

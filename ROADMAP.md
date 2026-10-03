@@ -13,6 +13,22 @@ WTK Standard content and the confirmed gameplay-correction phase are complete.
 - Private projection, stale/replay rejection and Quick Test infrastructure
 - Completed Lord-role, Unrivaled multi-response, Retaliation random-Hand and Self Sacrifice timing corrections
 
+## UX V2 final integration status — 2026-10-03
+
+UI-20 has audited the accepted C1–C7 and UI-01–UI-19 contracts in
+[`docs/UX_V2_RELEASE_GATE.md`](docs/UX_V2_RELEASE_GATE.md): 14 bounded
+contracts PASS, durable per-counter Reaction Chain history is intentionally
+N/A, and no functional GAP is hidden. The prior UI-19 browser result remains
+17/17, with the retained focused/fast/API/build/lint evidence recorded in its
+handover.
+
+The release gate is a **UX V2 Feature Complete candidate**, not whole-game
+completion. The current workflow sends the complete final gate to GitHub
+Actions; no local full-suite rerun is claimed here. Final confirmation still
+depends on CI and reviewer acceptance. Subjective pixel/art direction,
+touch-device certification, full WCAG auditing, live multiplayer timing, and
+production health remain bounded non-blocking/manual release gaps.
+
 ## Active phase — functional UX improvement
 
 **Goal:** make the completed ruleset easier to understand and operate without

@@ -1,6 +1,18 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-17 Semantic Scene Transition Contract — 2026-10-03
+## Current stage — UX2.0UI-20 Final UX V2 Integration & Release Gate — 2026-10-03
+
+UI-20 has completed the final contract ledger for the accepted C1–C7 and
+UI-01–UI-19 boundaries. The ledger records 14 PASS rows, one intentionally
+reserved N/A row for durable per-counter Reaction Chain history, and no
+unacknowledged functional GAP. See
+[`docs/UX_V2_RELEASE_GATE.md`](docs/UX_V2_RELEASE_GATE.md) for the named
+authorities and retained proofs.
+
+UX V2 is a **Feature Complete candidate pending the CI gate and reviewer
+confirmation**. This status is not a claim that the whole game, all content,
+touch-device certification, full WCAG auditing, subjective art direction, or
+production deployment is complete.
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
