@@ -1,154 +1,57 @@
 # WTK UX V2 — Current Task Handoff
 
 ## REMOTE HANDOVER RULE
-HANDOVER.md is tracked remote coordination state. Commit and push it to origin/ux-v2. After implementation append the result, push implementation + HANDOVER, fetch origin, verify the remote HANDOVER contains the result, then STOP.
+HANDOVER.md is tracked remote coordination state. Commit and push it to origin/ux-v2. After implementation append the result, push implementation and HANDOVER, fetch origin, verify remote HANDOVER contains the result, then STOP.
 
 **CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-# NEXT TASK — UX2.0UI-01: Introduce a Read-Only Client Presentation Adapter
+# NEXT TASK — UX2.0UI-02: Migrate Existing Decision Status to PresentationClientView
 
 ## Objective
-C7 is reviewer-accepted and closed. Begin React migration with the smallest safe client boundary: make the client understand the server-owned PresentationSnapshot through a typed, pure adapter, while preserving the existing visual UI and gameplay behavior.
+UI-01 is accepted. Make the first real React consumer use PresentationClientView for public interaction and decision semantics while preserving the current layout and gameplay controls. Migrate the existing action/status strip semantically; do not redesign it.
 
-This task is architecture/scaffolding only. Do not redesign the board yet.
+## Baseline
+Use commit 6ec79dad38017ab559c145456a2d7fc6870c19ee. The typed pure adapter is accepted. REST fails closed. Legacy Pending/timeline/presentationV2 remain compatibility paths. Do not reopen C1-C7 or UI-01.
 
-Target path:
-server PresentationSnapshot -> typed client adapter -> future Interaction Stage / local console
+## Work
+1. Inventory buildDecisionPresentation and every action-strip value. Classify old sources as turn/status compatibility, public interaction semantics, viewer-private control, or display label.
 
-The current app/page.tsx still contains extensive Pending/timeline-specific presentation logic. Do not replace all of it in one task.
+2. Extract a pure decision-status view model/helper. During an active PresentationClientView interaction, choose stage/source/current participant/decision actor/active resolver and local-control state only from the adapter. Resolve selected IDs to player names afterward as display decoration.
 
-## Accepted baseline
-Treat commit 7b21b8f841b99fd44e51e40a3e5e180b1d9d81b1 as accepted C7 closure:
-- C7 matrix 102 P / 2 N/A / 0 GAP / 104;
-- snapshot public authority is atomic/fail-closed;
-- source-owned attack_targeted proof is exact ATTACK_RESPONSE source/target/resolver authority;
-- localControl is private entitlement/reference only;
-- settlement is null RESERVED;
-- transitionEvents is [] RESERVED;
-- SPECIAL is RESERVED/unexercised;
-- presentationV2 remains compatibility data.
+3. Do not inspect Pending, timeline, presentationV2, hero/card names, actionReason, phase, or CurrentAction to determine active-interaction ownership.
 
-Do not reopen C1-C7.
+4. For identity-free REST/no interaction, preserve existing turn/status compatibility behavior. The snapshot does not yet own ordinary turn-phase status.
 
-## Step 1 — inventory current client presentation dependencies
-Inspect app/page.tsx and related client helpers/styles/tests. Record in the execution result the existing places that derive presentation state from:
-- pending* compatibility fields;
-- currentAction;
-- timeline/presentation events;
-- presentationV2 if any;
-- phase/actionPlayerId/actionReason;
-- local component state.
+5. Preserve the existing action-strip DOM/classes and CSS. No Interaction Stage redesign, new highlights, animations, seat movement, or dock changes.
 
-Classify each dependency as PUBLIC SEMANTIC, PRIVATE CONTROL, LEGACY ANIMATION/COMPATIBILITY, or GAMEPLAY INPUT.
+6. Public decision owner must remain viewer-equal. The existing YOU/local marker may differ by viewer and must come only from adapter local entitlement. Never substitute activeResolverId for decisionActorId. In the Ma Chao source-owned shape, source is decision owner while target remains resolver.
 
-Do not delete anything during inventory.
+## Tests
+Add focused pure/render coverage for:
+- normal target-owned Attack/Dodge CHOICE;
+- source-owned Ma Chao decisionActorId != activeResolverId;
+- acting and uninvolved viewers see identical public ownership while only local marker differs;
+- child-frame interaction;
+- REST retains existing turn/status compatibility;
+- missing player lookup fails safely;
+- changing Pending/timeline/presentationV2/actionReason with fixed PresentationClientView cannot change active-interaction ownership.
 
-## Step 2 — type the snapshot on the client
-Update the Room/client protocol shape so presentationSnapshot is explicitly typed from the production snapshot contract rather than unknown/ad-hoc duplication.
+Keep UI-01 adapter tests.
 
-Prefer importing/reusing exported types from game/presentation-snapshot.ts. Avoid defining a second divergent snapshot schema in page.tsx.
+## Regression boundary
+No action buttons, legal actions, target selection, dialogs, timers, animation queues, sequence presentation, or gameplay submissions may be migrated to PresentationClientView in this slice.
 
-Keep presentationV2 and all existing compatibility fields available.
-
-## Step 3 — create a pure read-only adapter
-Create a small client-facing module outside page.tsx, e.g. game/presentation-client.ts, with a pure function that maps PresentationSnapshot + viewer/meId to a stable view model for future components.
-
-Minimum view model:
-- hasInteraction;
-- interactionId/checkpointId/presentationRevision;
-- stage;
-- sourceId;
-- originalTargetIds;
-- activeTargetIds;
-- currentParticipantId;
-- decisionActorId;
-- activeResolverId;
-- participantIds;
-- continuity relation / parentFrameId;
-- stable kind;
-- isLocalDecisionActor;
-- hasLocalControl;
-- local actionRevision reference.
-
-Authority rules:
-- public fields come only from snapshot public fields;
-- local booleans/reference come only from snapshot.localControl + meId;
-- do not inspect Pending, timeline, CurrentAction payloads, presentationV2 legacy contexts, phase, hero/card names;
-- do not invent IDs/revisions;
-- REST/identity-free snapshot produces hasInteraction=false and null/empty public view;
-- adapter must not mutate input.
-
-Do not copy legal cards/options/providers into this adapter.
-
-## Step 4 — wire the adapter into Home without changing visuals
-Compute the adapter view model in Home from room.presentationSnapshot and room.meId.
-
-For this first slice, expose it only to a non-visual semantic boundary suitable for tests/future components. It may be passed to an extracted semantic container/component or used through stable data-* attributes on an existing top-level game container.
-
-Do NOT change layout, colors, labels, target selection, dialogs, card animation, seat positions, local dock, or action behavior.
-
-Do not replace existing legacy animation logic yet.
-
-## Step 5 — tests
-Add focused pure adapter tests for:
-- coherent CHOICE;
-- source-owned decisionActor != activeResolver;
-- viewer is decision actor;
-- uninvolved viewer;
-- localControl entitled vs absent;
-- identity-free REST;
-- child-frame continuity;
-- repeated identical snapshot -> deep-equal adapter output;
-- malformed/partial input cannot be reconstructed from any fallback because adapter accepts only typed snapshot authority.
-
-Add/adjust a client/render test proving the current game shell receives the semantic adapter state without changing existing rendered controls.
-
-Do not use synthetic data to claim server semantics; synthetic typed snapshots are fine for adapter transformation tests because C7 already proves server semantics.
-
-## Step 6 — guard against accidental legacy authority
-Add a focused test demonstrating that changing legacy Pending/timeline/presentationV2 compatibility data while keeping the same PresentationSnapshot does not change the new adapter output.
-
-The adapter must have no dependency on those legacy values.
-
-## Step 7 — documentation
-Add the UI-01 boundary to docs/UX_V2_INTERACTION_STAGE_DESIGN.md and README:
-- C7 CLOSED;
-- UI migration started;
-- adapter is read-only and non-visual;
-- legacy UI remains temporarily intact;
-- future Interaction Stage must consume adapter/snapshot semantics, not rediscover authority from Pending/timeline;
-- settlement/transition animation remains legacy compatibility until separately designed.
-
-Do not claim the Interaction Stage visual redesign is implemented.
+## Documentation
+Update docs/UX_V2_INTERACTION_STAGE_DESIGN.md and README: UI-02 is the first semantic React consumer; active interaction ownership/status uses PresentationClientView; REST turn/phase remains compatibility-driven; controls/animation remain on existing paths; visual Interaction Stage redesign has not started.
 
 ## Validation
-Run focused adapter/client tests, then:
-- npm run test:fast
-- npm run test:api
-- npm run build
-- npm run lint
-- git diff --check
-Report exact counts.
+Run focused decision-status/render and adapter tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, and git diff --check. Report exact counts.
 
 ## Scope exclusions
-No gameplay changes; no server projector/causal changes; no PresentationSnapshot semantic changes; no visual redesign; no CSS redesign; no seat/local-dock movement; no target-selection rewrite; no animation rewrite; no settlement/transition protocol; no removal of presentationV2/pending compatibility fields; no duplicate legality engine; no unrelated refactor.
+No gameplay/server/projector/snapshot changes, CSS/layout redesign, seat/dock changes, target/control migration, animation rewrite, settlement/transition protocol, compatibility-field removal, CurrentAction public authority, or unrelated refactor.
 
 ## Execution result
-Append only UI-01 result with full SHA, files changed, dependency inventory, exact adapter type/API, authority mapping, tests, proof of legacy-independence, confirmation visuals/gameplay/server semantics unchanged, validation counts, and recommendation for the next bounded UI migration slice. Push and verify remote HANDOVER, then STOP.
+Append only UI-02 result: SHA, files, old/new authority inventory, helper API, migrated fields, REST fallback, viewer equality/private marker evidence, Ma Chao evidence, legacy-independence evidence, scope confirmation, validation counts, and next bounded UI recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if the client has one typed pure read-only PresentationSnapshot adapter; public/private authority stays separated; REST fails closed; adapter output is independent of Pending/timeline/presentationV2 compatibility data; Home is wired to it without visual or gameplay behavior changes; C7 semantics remain untouched; and tests make the boundary explicit.
-
-## Execution result — UX2.0UI-01 read-only client PresentationSnapshot adapter — 2026-10-03
-
-- Implementation SHA: `6ec79dad38017ab559c145456a2d7fc6870c19ee`.
-- Files changed: `game/presentation-client.ts`, `app/page.tsx`, `tests/presentation-client.test.mjs`, `tests/room-safety-render.test.mjs`, `tests/run-fast-tests.mjs`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, and `README.md`.
-- Remote starting point: fetched and fast-forwarded local `ux-v2` from `origin/ux-v2` commit `21c1323`, whose current task is UI-01 and whose accepted C7 baseline is preserved.
-- Existing client dependency inventory: `pending*` fields supply legacy pending detail, sequence scope, and compatibility presentation inputs; `currentAction` supplies canonical private legality/control, response/trigger options, action timers, and gameplay submissions; timeline/presentation events supply legacy messages, event queues, card settlement, animation barriers, and transition sequencing; `presentationV2` is retained in the Room shape but is not read by the adapter; `phase`, `actionPlayerId`, and `actionReason` feed the existing decision/status strip and compatibility gates; local `useState`/`useRef` values own selection, submission, dialogs, timers, optimistic cards, and animation lifecycle. These are respectively LEGACY ANIMATION/COMPATIBILITY, PRIVATE CONTROL/GAMEPLAY INPUT, LEGACY ANIMATION/COMPATIBILITY, LEGACY ANIMATION/COMPATIBILITY, PUBLIC STATUS COMPATIBILITY/GAMEPLAY INPUT, and PRIVATE CONTROL/LEGACY ANIMATION.
-- Client type/API: `Room.presentationSnapshot` now uses the exported production `PresentationSnapshot` type and retains typed `presentationV2`; `buildPresentationClientView(snapshot, meId)` is a pure read-only mapper returning `hasInteraction`, atomic identity fields, `stage`, source/target/participant roles, `continuity`/`parentFrameId`, `stableKind`, local decision/control booleans, and `localActionRevision`. It never accepts or copies legal cards, options, providers, Pending, timeline, phase, or hero/card data.
-- Authority mapping: public values come only from a coherent `PresentationSnapshot.identity`, `stable`, and proven `interaction.participantRoles`/`continuity`; local booleans and the action-revision reference come only from `snapshot.localControl` plus `meId`. Missing, partial, or incoherent authority returns identity-free `REST` with null/empty public fields. The adapter copies arrays/continuity and does not mutate its input.
-- Home computes the adapter from `room.presentationSnapshot` and `room.meId`; the existing `.game-shell` receives only `data-presentation-kind`, `data-presentation-has-interaction`, and `data-presentation-local-control`. No label, control, target-selection, seat, local-dock, CSS, animation, or gameplay behavior was changed.
-- Tests: focused adapter coverage `6/6`; focused adapter plus render regression command `20/20`; `npm run test:fast` `137/137` across 17 files; `npm run test:api` `239/239` across 23 files and 4 shards; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
-- Legacy-independence proof: identical typed snapshot output is deep-equal across repeated reads, input remains unchanged, and changing attached legacy `pending`, `timeline`, or `presentationV2` compatibility data leaves adapter output unchanged. Partial authority cannot be reconstructed from those fields.
-- Scope confirmation: no gameplay, server projector/causal, PresentationSnapshot semantic, settlement/transition protocol, legality, CSS, visual redesign, seat/local-dock, target-selection, or animation rewrite was made. C7 remains untouched and its reserved `SPECIAL`/settlement/transition status remains intact.
-- Recommendation: next bounded slice should introduce one read-only Interaction Stage semantic consumer from `PresentationClientView` (with explicit render assertions) while leaving current controls and legacy animation path intact; do not begin board/seat redesign or migrate authority from Pending/timeline in that slice.
+Pass only if the existing status strip uses PresentationClientView for active interaction semantics; public ownership is viewer-equal and never reconstructed from legacy fields; private YOU indication comes only from local entitlement; REST keeps compatibility turn/status behavior; visuals and gameplay controls are unchanged; and tests prove the boundary.
