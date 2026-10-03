@@ -107,4 +107,95 @@ No server/game-rule/action payload changes; no projector/snapshot authority expa
 Append only UI-10 result: SHA, files, complete console inventory, pure model API, authority/precedence proof, migrated display surfaces, contradictory-state evidence, semantic independence, responsive evidence, exact validation counts, remaining GAPs, next bounded recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
+
 Pass only if the local operation console has a coherent decision/guidance hierarchy built from existing authoritative control facts, exposes no new legality, preserves action/payload semantics, keeps Cancel distinct from Skip/Decline, fails closed under stale contradictions, and leaves public presentation/topology unchanged.
+
+## UI-10 execution result — 2026-10-03
+
+- **SHA:** `848de1b` (`Unify local operation console decision state`)
+- **Branch:** `ux-v2`; implementation and documentation are complete locally.
+- **Files:** `app/page.tsx`, `app/globals.css`, `game/console-decision.ts`, `tests/room-safety-render.test.mjs`, `README.md`, `ROADMAP.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+
+### Console inventory and authority boundary
+
+The production local operation console remains the existing `turn-controls`
+row inside `LocalPlayerDock`. The new model only composes display facts; the
+existing controls remain the submission surfaces.
+
+| Surface | Authority and local input | Submit / decline | Busy and location |
+| --- | --- | --- | --- |
+| Turn Play / End | `CurrentAction.kind=turn`, `canPlay`, existing selected card/target/Serpent facts | `play_card` or `serpent_spear_attack`; `end_turn` is independent | `busy`/presentation barrier; footer `turn-controls` |
+| Attack/Dodge / Duel / Negation response | `CurrentAction.kind=response`, requirement/options and `canUseAction`; selected physical/provider cards stay local | `respond`; `decline_response` renders as Skip | `responseDecisionReady`; footer |
+| Rescue Peach | Peach `CurrentAction` plus existing `canRescue`; selected Peach stays local | `give_peach`; `skip_rescue` renders as Skip | `busy`/presentation barrier; footer |
+| Trigger provider | `CurrentAction.kind=trigger`, trigger options and provider selection facts | `trigger`; `decline_trigger` renders as Skip | response readiness/busy; footer and existing dialogs |
+| Trigger target/card | projected constraints and existing local target/opaque-key selections | existing `trigger` payload; local Cancel only clears input; Skip remains Decline | response readiness/busy; footer or `TargetCardPicker` |
+| Active skill | mapped provider in `CurrentAction.triggerOptions`, local skill card/target state | existing `trigger` provider payload; local Cancel resets mode | busy/presentation barrier; Skills panel and footer |
+| Normal / converted / Serpent target | CurrentAction play capability plus `buildLocalTargetSelectionView` | existing `play_card` or `serpent_spear_attack`; local Cancel only | busy/presentation barrier; opponent seats and footer |
+| Borrowed Sword | projected eligible targets and local target | `choose_borrowed_sword_target` with unchanged `{ targetId }`; local Cancel only | busy/presentation barrier; seats and footer |
+| Pending target-card picker | target-card capability/live availability and opaque local zone/index/id | `choose_target_card`; local Cancel only; trigger picker may retain Skip | busy/live revision guards; table picker |
+| Discard | turn/phase and hand selection facts | `discard_cards`; no replacement Skip | busy and exact count gate; footer |
+| Judgement / replacement | ordinary response or trigger `CurrentAction`/options | existing `respond`/`trigger`; existing decline | response readiness/busy; shared response/trigger surfaces |
+| Special continuation | Harvest, private distribution, and deck reorder keep their dedicated local dialogs | existing `choose_harvest` or `trigger` payloads | each dialog owns its disabled/submitting state |
+
+No control is derived from Pending, timeline, actionPlayerId, public roles, or
+PresentationSnapshot. For source-owned triggers, entitlement uses the local
+CurrentAction actor while public decisionActor/activeResolver remain
+descriptive presentation facts.
+
+### Pure model and precedence
+
+`buildConsoleDecisionDisplay(facts)` in `game/console-decision.ts` accepts only
+`ConsoleDecisionFacts`: kind, instruction, authoritative viewer ownership,
+busy state, optional local selection summary/count, explicit primary
+candidates with numeric priority, local Cancel, authoritative Skip/Decline,
+and secondary labels. It returns one primary `{ id, label, enabled }` or null,
+selection summary/count, Cancel and Skip/Decline visibility, busy state,
+secondary controls, `controlsVisible`, and `coherent`.
+
+Primary precedence is explicit: target-card/Borrowed Sword 80, active-skill
+and trigger Confirm 70, response/rescue/discard 60, ordinary turn 40. A tie
+between unrelated candidates fails closed instead of exposing two primary
+submits. Non-local viewers cannot receive a primary or Skip even if stale
+facts contain candidates; busy state preserves the display but disables
+primary/Cancel/Skip. Cancel is never converted into Skip.
+
+The migrated display surface is the one existing `decision-status` area,
+inside the existing footer `turn-controls` row and marked with
+`data-console-*` diagnostics. Provider/skill/hand/equipment controls remain
+in their existing locations; no controls were added to Hero Focus or
+Interaction Stage. Provider buttons without a selected submission were
+demoted to existing secondary `serpent-control` styling so the console does
+not present several unrelated primaries at once. Discard's submission is
+visually primary without changing its action or payload.
+
+### Evidence, validation, and boundaries
+
+- New pure console coverage covers ordinary turn, response + Skip, Duel,
+  rescue + Skip, trigger target/card + Confirm/Cancel/Skip, active skill,
+  target/Serpent, Borrowed Sword, target-card, discard, source-owned actor vs
+  resolver composition, REST, busy, stale ownership, contradiction fail-closed,
+  and Cancel-vs-Skip separation.
+- Existing mounted UI-01..09 tests remain green. Public
+  PresentationSnapshot mutation cannot create local target selection, and
+  local selection remains absent from public semantic presentation.
+- Responsive evidence is the existing console wrapper: `turn-controls`
+  retains its legacy selector while `data-console-surface="local-operation"`
+  wraps its controls at the existing 520px breakpoint. No board/dock
+  topology or Hero Focus dimensions changed; no browser screenshot was needed
+  for this presentation-only composition slice.
+- `npm run build` — PASS.
+- `npm run test:fast` — **170/170 PASS**.
+- `npm run test:api` — **239/239 PASS** across 23 files / 4 shards.
+- `npm run lint` — PASS.
+- `git diff --check` — PASS.
+
+### Remaining GAPs and recommendation
+
+Private card distribution and deck reorder remain dedicated modal surfaces;
+their internal assignment/order completion state is intentionally not copied
+into the footer model. Harvest keeps its existing card-choice dialog, with
+only its current selection summarized by the console. Actual control buttons
+remain composition-local rather than mechanically generated from the pure
+model; this avoids a payload/legality refactor in UI-10. The next bounded
+recommendation is reviewer closure of UI-10, followed by a separately scoped
+mobile/readability slice only after this handover is accepted.
