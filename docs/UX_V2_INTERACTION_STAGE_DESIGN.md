@@ -4497,3 +4497,106 @@ fields, React, CSS, animation, or client consumer changed. The remaining C7
 boundary is reviewer confirmation of this server-side contract and a later
 decision about any additional bounded snapshot evidence before UI-01. React
 migration and visual UX remain explicitly out of scope.
+
+### 0.105 UX2.0C7-02 PresentationSnapshot closure audit — 2026-10-03
+
+C7-02 audits the additive snapshot boundary before any React migration. It does
+not reopen C1-C6 semantics and does not repair a missing public checkpoint by
+copying `CurrentAction`, timeline, `finalResult`, `resolutionId`, or
+`readyAfterEventId` data into the snapshot.
+
+#### Future client-needs inventory
+
+| Future Interaction Stage input | Public snapshot source | Private/local source | Compatibility source retained temporarily | Classification |
+| --- | --- | --- | --- | --- |
+| interaction identity and revision | `identity.interactionId`, `identity.checkpointId`, `identity.presentationRevision` | none | `presentationV2.interactionScene` / causal envelope | PUBLIC PASS |
+| root, active, and parent frame relation | `interaction.rootFrameId`, `interaction.activeFrameId`, `interaction.parentFrameId` | none | `presentationV2.causalEnvelope` | PUBLIC PASS |
+| stage | `interaction.stage` | none | `presentationV2` typed scene/context | PUBLIC PASS |
+| source and original targets | `interaction.sourceId`, `interaction.targetIds`, `interaction.participantRoles.originalTargetIds` | none | typed `presentationV2` roles | PUBLIC PASS |
+| active targets and current participant | `interaction.activeTargetIds`, `interaction.currentParticipantId`, typed roles | none | `presentationV2` group/damage projections | PUBLIC PASS |
+| decision actor and active resolver | `interaction.decisionActorId`, `interaction.activeResolverId`, `stable` CHOICE actor | `localControl.actorId` only for viewer entitlement, never semantic authority | `CurrentAction` remains the actual control owner | PUBLIC PASS with source-owned-trigger GAP below |
+| participant set and continuity relation | `interaction.participantIds`, `interaction.participantRoles`, `interaction.continuity` | none | `presentationV2` typed scene | PUBLIC PASS |
+| stable boundary | `stable` | none | `presentationV2.stableBoundary` | PUBLIC PASS only when coherent with the scene |
+| local legal control ownership | `localControl.source`, `kind`, `actorId`, `entitled`, `actionRevision` | full `CurrentAction` remains authoritative | existing `CurrentAction` options/cards/providers | PRIVATE REFERENCE PASS; legal controls remain outside snapshot |
+| settlement | none | none | `presentationV2.settlement` remains descriptive only | RESERVED |
+| transition/animation occurrences | none | none | legacy timeline/transition references remain compatibility data | RESERVED |
+
+The inventory is intentionally not a client API for legal options. A future UI
+must read authoritative `CurrentAction` for an actual legal action until a
+separately reviewed private-control projection exists.
+
+#### C7 closure matrix
+
+`P` means the named real fixture contains an explicit assertion at or through
+the route `presentationSnapshot` projection; `N/A` means the invariant does
+not apply to that fixture; `GAP` means the real state contradicts or cannot
+prove the snapshot contract. `I` is public identity/scene, `B` is stable
+boundary coherence, `V` is viewer public equality, `L` is localControl
+separation, `Q` is repeated-read/reconnect stability, `C` is semantic
+checkpoint continuity, `T` is terminal clear, and `R` is reserved-field
+discipline.
+
+| Accepted family | Exact real fixture/assertion mapping | I | B | V | L | Q | C | T | R |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Attack / Dodge | `presentation-v2-engine.test.mjs` — `engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference` | P | P | P | P | P | N/A | P | P |
+| Attack -> Judgement -> Attack resume | `ma-chao.test.mjs` — `Cavalry uses the shared Judgement replacement continuation`; source-owned pre-Judgement trigger is a real PROVEN + REST GAP | GAP | GAP | P | P | P | P | P | P |
+| Duel responder handoff | `presentation-v2-engine.test.mjs` — `engine-backed Duel alternates response actors without changing the root context`; `FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage` | P | P | P | P | P | P | P | P |
+| Group/AOE normal participant progression | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant` | P | P | P | P | P | P | P | P |
+| Group -> Negation -> resume | `presentation-v2-engine.test.mjs` — `FIX9 persists the Group root and keeps nested Negation in the same Frame`; `FIX9 Group counter-Negation stays in one frame and restores Group resolution` | P | P | P | P | P | P | P | P |
+| Group -> Damage child -> resume | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant`; `FIX14 Group failure Damage uses one child frame and resumes the next participant` | P | P | P | P | P | P | P | P |
+| Group -> Damage -> Dying -> rescue -> resume | `presentation-v2-engine.test.mjs` — `FIX15 lethal Group Damage survives Peach rescue with the parent frame available` | P | P | P | P | P | P | P | P |
+| independent/root Damage | `lobby-heroes-wei.test.mjs` — `Legacy privately distributes top two cards and repeats once per damage point` | P | P | P | P | P | N/A | P | P |
+| delayed Lightning Judgement -> Damage | `lobby-heroes-wei.test.mjs` — `delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities` | P | P | P | P | P | P | P | P |
+| root Negation / counter-Negation | `presentation-v2-engine.test.mjs` — `engine-backed Negation/counter-Negation keeps the original effect recoverable`; `stratagems.test.mjs` — `delayed Judgement Negation and counter-Negation reuse one activation frame` | P | P | P | P | P | P | P | P |
+| standalone Judgement replacement | `presentation-v2-engine.test.mjs` — `engine-backed Judgement replacement exposes reveal and resume evidence` | P | P | P | P | P | P | P | P |
+| Dying rescue handoff | `presentation-v2-engine.test.mjs` — `engine-backed Dying/rescue proves the separate timer arm and reconnect behavior`; `C4-01 Dying skips non-rescuers...`; `concurrency.test.mjs` — lethal trigger exhaustion | P | P | P | P | P | P | P | P |
+| Borrowed Sword | `presentation-v2-engine.test.mjs` — `engine-backed Borrowed Sword preserves forced Attack continuation and timer barrier`; `borrowed-sword.test.mjs` — forced ranged Attack/refusal | P | P | P | P | P | P | P | P |
+
+Current totals are **100 P, 2 N/A, 2 GAP, 0 unclassified = 104 cells**. The
+two GAP cells are not a missing test: the real Ma Chao source-owned trigger
+asserts `presentationV2.interactionScene.semantics === "PROVEN"` while
+`presentationV2.stableBoundary.kind === "REST"`; C7-01 consequently returns
+an identity-free snapshot. This is the exact REST contradiction required by
+the C7-02 audit rule. The snapshot must not be changed in this task to make
+that state appear coherent.
+
+#### SPECIAL audit
+
+Production `stableBoundaryFor` can classify SPECIAL only for: a proven
+JUDGEMENT scene without a decision actor; a causally linked
+`borrowed_sword_attack` continuation without a decision actor; or a proven
+CHILD_FRAME DAMAGE scene without a decision actor. The accepted real API
+fixtures do not expose a stable SPECIAL boundary. `tests/presentation-v2.test.mjs`
+`C5-03 keeps a proven non-blocking Judgement context as SPECIAL` is synthetic
+projector evidence only. SPECIAL is therefore RESERVED/unexercised for this
+closure pass; no gameplay change or synthetic positive API claim was added.
+
+#### REST, localControl, reserved fields, and compatibility
+
+The REST audit found the real Ma Chao contradiction above and stopped closure
+work before any snapshot-semantics change. The fail-closed result is preserved:
+it prevents a proven scene from being exposed beside an unaccepted REST
+boundary, but it also means the source-owned trigger has no public snapshot
+identity until a separately bounded causal-boundary decision is reviewed.
+
+`localControl` remains sufficient only as a viewer-private reference and
+entitlement signal. Its stable shape contains `source`, `actionRevision`,
+`kind`, `actorId`, and `entitled`; it contains no options, card IDs, provider
+payloads, or legal-action data. `actionRevision` is command freshness, not
+presentation identity, and public equality comparisons remove only
+`localControl`.
+
+`settlement` remains `null` and `transitionEvents` remains `[]`. Before either
+can become authoritative, the protocol still needs durable public occurrence
+linkage, reconnect-safe occurrence identity, no dependence on viewer-local
+`finalResult`/`readyAfterEventId`, and stable-state reconstruction that does not
+replay transitions. Those features remain out of scope.
+
+`presentationSnapshot` remains additive; `presentationV2` is unchanged; no
+React consumer has switched; the room/API projection leaks no additional
+private data; and null/empty reserved fields remain serialized consistently.
+
+Because the matrix contains the real REST GAP, C7 is **not closed** and the
+server snapshot contract is **not ready for React migration**. Another bounded
+C7 fix is required to decide the source-owned trigger boundary without
+changing gameplay or weakening the atomic fail-closed invariant.

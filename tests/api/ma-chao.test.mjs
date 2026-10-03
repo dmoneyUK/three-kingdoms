@@ -33,6 +33,11 @@ test("Cavalry is an optional source-owned attack_targeted trigger and Skip prese
   assert.equal(trigger.currentAction.kind, "trigger", JSON.stringify(trigger));
   assert.equal(trigger.currentAction.actorId, opened.source.id);
   assert.deepEqual(trigger.currentAction.triggerOptions.map((option) => option.effectId), ["ma_chao_cavalry"]);
+  assert.equal(trigger.presentationV2.interactionScene?.semantics, "PROVEN", "the source-owned trigger still has a proven public Attack scene");
+  assert.deepEqual(trigger.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }, "the source-owned trigger has no accepted stable boundary");
+  assert.equal(trigger.presentationSnapshot.identity, null, "C7-01 fails the mismatched PROVEN-plus-REST state closed");
+  assert.equal(trigger.presentationSnapshot.interaction, null, "C7-01 does not expose a scene alongside the REST boundary");
+  assert.equal(trigger.presentationSnapshot.decision, null, "C7-01 does not infer a decision actor from CurrentAction");
   const skipped = await request("decline_trigger", { code: opened.game.code, token: opened.sourceMember.token });
   assert.equal(skipped.status, 200, JSON.stringify(skipped.data));
   const dodge = (await state(opened.game.code, opened.targetMember.token)).data;

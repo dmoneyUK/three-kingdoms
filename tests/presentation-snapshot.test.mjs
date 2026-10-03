@@ -139,3 +139,25 @@ test("snapshot repeated reads are pure and do not change identity or revision", 
   assert.deepEqual(second, first);
   assert.deepEqual(input, before, "composition does not mutate authoritative inputs");
 });
+
+test("localControl remains a thin viewer-private reference and never carries legal controls", () => {
+  const snapshot = composePresentationSnapshot({
+    presentationV2: presentation(scene()),
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "action-reference",
+    viewerId: "B",
+  });
+
+  assert.deepEqual(Object.keys(snapshot.localControl).sort(), ["actionRevision", "actorId", "entitled", "kind", "source"]);
+  assert.deepEqual(snapshot.localControl, {
+    source: "CurrentAction",
+    actionRevision: "action-reference",
+    kind: "response",
+    actorId: "B",
+    entitled: true,
+  });
+  assert.equal("options" in snapshot.localControl, false);
+  assert.equal("legalActions" in snapshot.localControl, false);
+  assert.equal("cards" in snapshot.localControl, false);
+  assert.equal("providers" in snapshot.localControl, false);
+});
