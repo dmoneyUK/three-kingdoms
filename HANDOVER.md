@@ -15,260 +15,262 @@ Agent sequence:
 
 Do not wait for or poll CI.
 
-## Reviewer status — UX2.0VIS-03D ACCEPTED
+## Reviewer status — UX2.0VIS-03E ACCEPTED
 
-Reviewed implementation: `b389949bc0751520e11b79ee5cd36f14b09b7805`.
+Reviewed implementation: `74a39c3d68ed9510281d3340186b2dc3f5af23e3`.
 
 Accepted facts that the next task must preserve:
-- `buildHeroFocusView` remains the viewer-equal public semantic selector and its current-participant / sole-active-target / Dying fail-closed rules were not changed;
-- viewer-specific self-projection is isolated in `projectHeroFocusForViewer`;
-- a local public primary is replaced only by one unique external candidate derived from proven source/active-target identities; ambiguity fails closed;
-- viewer hero is not duplicated centrally in the reviewed Interaction / Negation / Dying paths;
-- LocalPlayerDock role projection remains unchanged;
-- the synthetic Dying browser fixture now matches existing engine/API evidence: dying/current participant p2, rescuer/decision actor p3;
-- the extra mounted Duel regression change is accepted because the viewer-centric projection intentionally changed only the expected central visual participant while preserving controls/protocol;
-- focused public/viewer-projection unit tests reported 2/2 PASS, mounted interaction regressions 6/6 PASS, focused browser VIS-03D 9/9 PASS, and retained layout/viewer suites 36/36 PASS.
+- Medium Source projection is isolated in `projectMediumSourceForViewer`;
+- it renders only when the viewer-projected Large primary is a proven active target and the source is a different external player;
+- viewer-owned source, source==primary, non-active-target primary and missing source all fail closed;
+- `buildHeroFocusView` and `projectHeroFocusForViewer` semantics were not changed;
+- the central Medium Source is a separate read-only presentation copy; the fixed source seat remains mounted in `.player-board`;
+- the Group/AOE observer fixture uses viewer p3, source p4, active scope p1/p2/p3 and current participant p1 without using CurrentAction as public presentation authority;
+- Medium Source portrait sizes are 56x70 desktop, 48x60 at 481–650 and 42x53 at <=480; Large Hero Focus sizes remain unchanged;
+- focused Medium Source unit coverage reported 1/1 PASS and focused browser coverage reported 6/6 PASS;
+- no server/projector/gameplay/layout-authority changes were found in the reviewed diff.
 
-Remaining visual gap relevant to the real mobile Group/AOE screenshot:
-- when the viewer is not the interaction source and the current large primary is an external active target, the proven external source is still only shown as small text;
-- UX V2 calls for the important second external participant to remain visible as a **Medium Participant Card** while the current participant remains the **Large Hero Focus**;
-- fixed seat thumbnails must remain in place; the medium card is a central presentation copy, not a moved seat.
+Do not reopen VIS-03E.
 
-# NEXT TASK — UX2.0VIS-03E: Add a Medium External Source Beside a Large Active-Target Hero
+# NEXT TASK — UX2.0VIS-04A: Convert 2–4 Player Top-Row Opponents into True Compact Seat Thumbnails
 
 ## Objective
-Fix exactly one participant-hierarchy defect:
+Fix exactly one remaining visual-hierarchy defect:
 
-**In 2–4 player top-row Interaction Stage, when the viewer-projected Large Hero Focus is a proven active target and the proven source is a different external player, show that source as one smaller Medium Participant Card beside the Large Hero Focus.**
+**In 2–4 player Top Row Mode, opponent seats must read as compact fixed seat thumbnails rather than full portrait cards with full public zones.**
 
-This task implements only the **external source -> large active target** relationship.
+Current top-row seats are still visually too large:
+- the opponent hero area uses a tall `2 / 3` portrait card;
+- the seat also renders the full Equipment grid and optional Judgement card faces;
+- the resulting seat can be taller/more visually dominant than the enlarged central Hero Focus.
 
-Do not implement the reverse "large source -> medium target" case yet.
-Do not add multiple medium participants.
-Do not redesign Current Effect, Reaction Chain, Meta, seats, Safe Zone, LocalPlayerDock, or gameplay.
+UX V2 explicitly requires:
+- fixed **Seat Thumbnails** for topology/distance context;
+- Top Row Mode may use a **wider compact thumbnail** because vertical height is valuable;
+- full skills/equipment names/full Judgement cards/long status text do not belong in seat thumbnails;
+- detailed public Equipment/Judgement information belongs in public Inspect / Interaction presentation.
 
-## Design authority
-`docs/UX_V2_INTERACTION_STAGE_DESIGN.md` defines:
-- Large Hero Focus = current primary focus/resolving participant;
-- Medium Participant Card = important source/target whose relationship must remain visible;
-- fixed Seat Thumbnails stay in place while presentation copies appear centrally;
-- wide source/target presentation preserves semantic direction source -> target;
-- viewer's own hero is never duplicated centrally;
-- third-party Negation reactors should remain primarily represented by Reaction Chain rather than extra full hero panels.
+This task changes only **Top Row opponent-seat density and appearance**.
 
-The real layout defect this task targets is the Group/AOE observer case:
-- source is another player;
-- current participant/active target is another player;
-- viewer is neither the source nor the current large focus;
-- current UI enlarges the target but reduces the source to text.
+Do not move the top-row anchors.
+Do not reclaim/move the Interaction Safe Zone yet.
+Do not change Side Column seats yet.
+
+## Current production facts
+The current top-row geometry is already accepted:
+- 2 players: relative seat 1 top-centre;
+- 3 players: relative seats 1/2 top-left/top-right;
+- 4 players: relative seats 1/2/3 top-left/top-centre/top-right.
+
+Current opponent visual CSS is split:
+- top-row placement/width overrides in `app/globals.css`;
+- opponent card/portrait/public-zone styling in `app/sequence-overrides.css`.
+
+Current full opponent surface includes:
+- hero portrait;
+- player/hero identity;
+- HP/hearts;
+- Equipment grid;
+- optional Judgement card faces;
+- Hand count footer.
+
+Preserve the same player anchor and target/inspect behavior.
 
 ## Files expected in scope
 Production:
-- `game/hero-focus.ts`
-- `app/page.tsx`
 - `app/globals.css`
+- `app/sequence-overrides.css`
 
-Tests:
-- `tests/presentation-client.test.mjs`
-- `tests/browser/fixture.jsx`
+Optional production change only if needed for compact public-presence badges:
+- `app/page.tsx`
+
+Regression:
 - `tests/browser/ui19.spec.mjs`
 
-Do not change server, projector, protocol, PresentationSnapshot, PresentationClientView, gameplay, target legality or local controls.
+Do not change presentation/game/server helpers.
 
 ## Required implementation
 
-### 1. Add a separate pure Medium Source projection
-In `game/hero-focus.ts`, add a small pure helper, for example:
+### 1. Top-row seats become wider-than-tall thumbnails
+Scope all compact rules under:
 
-`projectMediumSourceForViewer(stage, projectedFocus, viewerId, resolvePlayerDisplay)`
+`.player-board[data-seat-topology="top-row"]`
 
-Equivalent naming is acceptable.
+Do not globally change `.opponent-player-card`.
 
-Define a small return type containing:
-- decorated public player data using the existing Hero Focus public decoration rules;
-- role label exactly `SOURCE`.
+For top-row opponents:
+- remove the tall portrait-card `2 / 3` visual proportion;
+- use a compact wider-than-tall seat shell;
+- retain rounded frame, existing turn/action/selection/semantic-role treatments;
+- hero artwork remains visible;
+- player name, hero name, HP and Hand count remain visible.
 
-Do not change `buildHeroFocusView` or `projectHeroFocusForViewer` semantics.
+Target maximum total seat heights:
+- >700px viewport: **<=110 CSS px**
+- 481–700px: **<=92 CSS px**
+- <=480px: **<=82 CSS px**
 
-### 2. Exact eligibility rules
-Return a Medium Source only when **all** of these are true:
+The final seat bounding box must satisfy:
 
-1. `stage.visible` is true;
-2. `projectedFocus.primary` exists;
-3. `projectedFocus.primary.id` appears in `stage.activeTargets`;
-4. `stage.source.id` exists;
-5. source ID is different from `projectedFocus.primary.id`;
-6. source ID is different from `viewerId`.
+`seat width > seat height`
 
-Otherwise return null.
+at 1440x900, 650x900 and 480x900.
 
-Important consequences:
-- viewer is the source -> no central Medium Source; viewer stays only in LocalPlayerDock;
-- primary is the source -> no Medium Source in this task;
-- primary is a Negation responder/current participant but is not an active target -> no Medium Source;
-- source == target/self-effect -> no duplicate Medium Source;
-- missing source authority -> no guess.
+Do not use transform scaling. Implement real layout dimensions.
 
-Do not use decisionActor, resolver, CurrentAction, Pending, timeline, participant array order, turn owner or local controls as fallback authority.
+### 2. Keep the hero face useful in compact geometry
+For top-row mode only:
+- change `.opponent-hero-card` from a tall 2:3 portrait region to a compact landscape/wide hero region;
+- continue using the existing public HeroPortrait artwork and `object-fit:cover`;
+- keep the identity overlay readable;
+- keep HP visible;
+- hearts may be compacted or hidden if HP text remains visible;
+- the hero info affordance must remain reachable.
 
-### 3. Reuse the same public decoration rules
-The Medium Source may expose only:
-- player name;
-- hero portrait / hero name when publicly resolvable;
-- HP/maxHP when publicly resolvable;
-- role label `SOURCE`.
+Do not change the HeroPortrait asset or hero identity.
 
-Use the same `resolvePlayerDisplay` and fail-closed decoration behavior already used by Hero Focus.
+### 3. Remove full Equipment/Judgement card faces from the thumbnail
+For Top Row Mode only:
+- do not visually render the full `.opponent-equipment-zone` card grid inside the seat;
+- do not visually render full `.opponent-judgement-zone` card faces beside the seat;
+- do not delete the underlying public player data;
+- do not change the existing `OpponentInspectionOverlay`.
 
-Do not expose hand identities, private role, private providers, hidden cards or local-only information.
+Detailed public Equipment/Judgement remains available through Inspect.
 
-### 4. Add one presentational MediumParticipantCard
-In `app/page.tsx`, add a small read-only component for this source.
+If you add compact presence indicators, keep them limited to counts:
+- Equipment count;
+- Judgement count.
 
-Required DOM hooks:
-- `data-medium-participant="source"`
-- `data-medium-participant-player-id={source.id}`
+Do not render equipment names, card faces or role details inside the compact top-row thumbnail.
 
-The card must show:
-- `SOURCE`;
-- existing public hero artwork if known;
-- player name;
-- hero name when known;
-- HP when known.
+If count indicators are added:
+- use stable hooks such as `data-thumbnail-equipment-count` and `data-thumbnail-judgement-count`;
+- do not change Side Column visual output.
 
-No buttons, click handlers or controls.
+### 4. Preserve Hand count as a compact status
+The Hand count remains public and must stay directly visible in the thumbnail.
 
-Use the existing `HeroPortrait` asset rendering path; do not introduce new art.
+You may compact:
+- "Hand cards 5"
 
-### 5. Compose it with the existing Large Hero Focus
-Inside `.interaction-stage-hero-region`:
-- keep the existing Large `HeroFocus`;
-- when Medium Source exists, render it **before/left of** the Large active-target focus;
-- include a small non-interactive directional marker `→` between them;
-- source/target visual direction must read left-to-right on top-row mode;
-- if Medium Source is null, do not render an empty card or arrow.
+to a smaller treatment such as:
+- "HAND 5"
+or equivalent existing-language copy.
 
-The fixed source seat in `.player-board` must remain mounted in its VIS-01 position. This is a presentation copy only.
+Do not expose card identities.
 
-### 6. Size hierarchy
-For top-row mode use these source portrait sizes:
+### 5. Preserve targeting and Inspect behavior
+Do not change:
+- `data-player-anchor`;
+- relative seat classes;
+- target legality;
+- target selection click path;
+- selected-target treatment;
+- interaction semantic role classes/data;
+- turn/action/defeated states;
+- public Hero info behavior;
+- public OpponentInspectionOverlay;
+- LocalPlayerDock.
 
-- >650px: Medium Source portrait **56x70px**
-- 481–650px: **48x60px**
-- <=480px: **42x53px**
+Outside target-selection mode, clicking the opponent hero body must still open public Inspect exactly as before.
 
-The existing Large Hero Focus portrait sizes remain unchanged:
-- 90x113 desktop;
-- 72x90 at 481–650;
-- 64x80 at <=480.
+Do not move the actual seat DOM into Interaction Stage.
 
-The Medium Source must remain visibly smaller than the Large primary at every tested width.
+### 6. Do not move the Safe Zone in this task
+Keep the accepted values unchanged:
+- desktop `--interaction-safe-top:385px`
+- <=650 `319px`
+- <=480 `326px`
 
-Do not shrink the Large Hero Focus.
+The next reviewer task will reclaim the vertical space only after the compact seat bounds are proven.
 
-### 7. Mobile composition must remain horizontal inside Hero region
-For this bounded source->target pair in 2–4 player top-row mode:
-- keep Medium Source + arrow + Large Hero Focus on one horizontal relationship row even at 650/480;
-- allow text inside each participant block to wrap/compact;
-- do not stack the Medium Source above the Large target;
-- do not introduce horizontal scrolling.
-
-Reaction/Dying/Meta regions keep their existing responsive behavior.
-
-## Add one browser fixture that reproduces the missing Group/AOE observer case
-Extend `tests/browser/fixture.jsx` with a dedicated state:
-
-`group-observer`
-
-For `count=4`, construct:
-- viewer/meId = `p3`
-- stage = `GROUP_RESOLUTION`
-- effect = `Raining Arrows`
-- source = `p4`
-- original/active targets = [`p1`, `p2`, `p3`]
-- currentParticipant = `p1`
-- decisionActor = `p1`
-- activeResolver = `p1`
-
-Local viewer p3 is in group scope but is not the current participant.
-
-Give CurrentAction only the minimum coherent non-local fixture state needed by the harness. Do not use CurrentAction as presentation authority.
-
-Do not alter the existing `group` fixture; add `group-observer` separately.
-
-## Required unit regressions
-Extend `tests/presentation-client.test.mjs` for Medium Source projection:
-
-1. external source A + projected active-target B + viewer C -> Medium Source A.
-2. viewer is source A -> null.
-3. projected primary C not in activeTargets [B] -> null.
-4. projected primary is source A -> null.
-5. source equals projected primary B -> null.
-6. source id null -> null.
-7. unknown proven source keeps the same source ID with unknown/null artwork/HP; no substitute participant.
-
-Retain all VIS-03D viewer-projection tests unchanged.
+Also do not change:
+- InteractionStage width/position;
+- Hero Focus dimensions;
+- Medium Source dimensions;
+- Reaction/Dying/Meta composition;
+- LocalPlayerDock geometry.
 
 ## Required browser regression
 
-### A. Group observer — primary acceptance case
-For `state="group-observer", count=4` at 1440x900, 650x900 and 480x900 assert:
+Use 4-player top-row fixtures at:
+- 1440x900
+- 650x900
+- 480x900
 
-1. exactly one Large Hero Focus;
-2. Large Hero Focus player ID = `p1`;
-3. exactly one `[data-medium-participant="source"]`;
-4. Medium Source player ID = `p4`;
-5. no central Hero Focus / Medium Source uses viewer ID `p3`;
-6. LocalPlayerDock anchor remains `p3`;
-7. fixed opponent seat anchor `p4` still exists in `.player-board`;
-8. Medium Source is a distinct central presentation copy, not the seat node;
-9. Medium Source bounding box is left of the Large Hero Focus;
-10. arrow is between Medium Source and Large Hero Focus;
-11. Medium portrait is smaller than Large portrait;
-12. both participant blocks are fully inside `.interaction-stage-hero-region`;
-13. Interaction Stage remains inside Safe Zone;
-14. Stage/Safe Zone do not overlap LocalPlayerDock;
-15. no horizontal page overflow.
+### A. Compact-seat geometry
+For `state="rest", count=4` assert:
 
-### B. Self-projection negative case
-For existing `state="interaction", count=4` where viewer p1 is source:
-- no Medium Source renders;
-- Large Hero Focus remains external p2;
-- local p1 stays only in LocalPlayerDock.
+1. exactly 3 opponent anchors;
+2. all three remain on one top row within the existing <=4px Y tolerance;
+3. horizontal centre order remains relativeIndex 1 < 2 < 3;
+4. each opponent seat has `width > height`;
+5. each seat height is within the viewport-specific maximum:
+   - 1440: <=110px
+   - 650: <=92px
+   - 480: <=82px
+6. no opponent seat overlaps another;
+7. no horizontal page overflow;
+8. LocalPlayerDock still exists exactly once.
 
-Run at least at 480x900 and 1440x900.
+### B. Compact content contract
+For the same cases assert:
+- player name visible;
+- hero name visible;
+- HP text visible;
+- Hand count visible;
+- the full top-row Equipment grid is not visibly occupying seat height;
+- the full top-row Judgement card-face panel is not visibly occupying space when present.
 
-### C. Negation negative case
-For existing `state="negation", count=4`:
-- no Medium Source is added merely because Reaction Chain exists;
-- existing Reaction Chain remains visible.
+Do not test by deleting DOM nodes; this is a visual-density contract.
 
-Run at least at 480x900.
+### C. Inspect remains available
+At least at 480x900 and 1440x900:
+- load a non-target-selection top-row fixture;
+- click one opponent hero body;
+- assert the existing `.opponent-inspection-panel` opens;
+- close it and prove the same seat anchor remains.
 
-Retain existing VIS-02/VIS-03B/C/D geometry/self-projection assertions; do not weaken them.
+Do not redesign Inspect.
+
+### D. Interaction hierarchy regression
+At `state="interaction", count=4` for 1440/650/480:
+- Large Hero Focus remains at the accepted VIS-03B size;
+- every top-row seat total height is less than the Large Hero Focus portrait height;
+- opponent row stays above the Interaction Stage;
+- existing Safe Zone containment remains true;
+- viewer/local hero remains only in LocalPlayerDock.
+
+### E. Side-column negative regression
+At `state="rest", count=6` at 480x900 and 1440x900:
+- `data-seat-topology="side-column"` remains;
+- the top-row compact width/height rules do not apply;
+- existing Side Column Equipment/Judgement presentation is not hidden by the new top-row selectors.
+
+Do not attempt to improve Side Column layout in this task.
 
 ## Forbidden shortcuts
 Do not:
-- move or clone the actual opponent seat DOM node;
-- render the viewer's hero centrally;
-- add more than one Medium Participant Card;
-- add Medium Source when primary is not a proven active target;
-- infer source from decision actor/resolver/CurrentAction/Pending/timeline;
-- implement medium target/reverse direction yet;
-- change Hero Focus primary-selection rules;
-- shrink Large Hero Focus;
-- change safe-zone/seat/dock geometry;
-- redesign Reaction Chain, Dying handoff or Meta;
-- change gameplay/server/projector semantics.
+- move/reorder opponent anchors;
+- change player identity or relativeIndex;
+- shrink the entire board using CSS transform;
+- hide player/hero name, HP or Hand count;
+- delete public Equipment/Judgement state from room data;
+- remove public Inspect;
+- change target click behavior;
+- move Safe Zone upward yet;
+- resize Large Hero Focus or Medium Source;
+- change 5–10 player layout;
+- change gameplay/server/projector/presentation semantics.
 
 ## Validation
 Run and report:
-- focused unit tests for Medium Source projection;
-- focused `group-observer` browser tests;
-- self-source and Negation negative browser tests;
-- retained VIS-02-FIX1 / VIS-03B / VIS-03C / VIS-03D browser tests;
-- `npm run test:fast` if allowed locally;
+- focused VIS-04A browser tests;
+- retained VIS-01 top-row geometry tests;
+- retained VIS-02 / VIS-03B/C/D/E geometry/presentation tests;
 - `npm run test:browser` if allowed locally;
+- `npm run test:fast` if allowed locally;
 - `npm run build` if allowed locally;
 - `npm run lint` if allowed locally;
 - `git diff --check`.
@@ -277,47 +279,19 @@ Do not claim unrun commands passed. Do not inspect or wait for CI.
 
 ## Execution result
 Append only:
-- full implementation SHA;
+- implementation SHA;
 - files changed;
-- exact Medium Source eligibility rules;
-- final portrait dimensions by viewport;
-- `group-observer` fixture facts;
-- proof source seat remains fixed while central source is a presentation copy;
+- final seat width/height strategy for >700, 481–700 and <=480;
+- what top-row content remains directly visible;
+- how Equipment/Judgement detail remains accessible;
+- measured 4-player seat bounds at 1440/650/480;
+- proof seat order/anchors did not move;
 - focused/retained validation results;
 - any remaining GAP.
 
-Do not declare the task accepted. Reviewer decides after inspection.
+Do not declare VIS-04A accepted. Reviewer decides after inspection.
 
 Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if a top-row observer of a Group/AOE interaction sees one smaller external SOURCE card followed by the existing Large current active-target Hero Focus, the viewer/local hero is never duplicated, the fixed source seat does not move, mobile 480 remains contained with no overflow, and public/gameplay authority remains unchanged.
-
-## CI follow-up — accepted VIS-03D gate correction
-
-User-reported GitHub Actions run #592 (`3d5c0e3`) failed only in `npm test`:
-197 tests passed and two mounted presentation assertions retained the pre-VIS-03D
-Hero Focus expectation. The Duel legacy-field regression now expects the unique
-external active target (`p1`, `CURRENT TARGET`); the Judgement viewer regression
-now asserts no central Hero Focus when the viewer is the subject/source and no
-unique external candidate exists. No production behavior or VIS-03E scope was
-changed.
-
-- Implementation commit: `cf1107c24861e7e2f6457a2502c8bb1f0c235acf`
-- Changed file: `tests/active-skill-interactions.test.mjs`
-- Focused validation: 2/2 PASS for the two previously failing mounted tests.
-- Full test/build/lint checks were not run locally; GitHub Actions owns the
-  post-push gate. The CI result has not yet been checked.
-- VIS-03E remains the current reviewer task and has not been started or accepted.
-
-## Execution result — UX2.0VIS-03E
-
-- Implementation commit: `74a39c3d68ed9510281d3340186b2dc3f5af23e3`.
-- Files changed: `game/hero-focus.ts`, `app/page.tsx`, `app/globals.css`, `tests/presentation-client.test.mjs`, `tests/browser/fixture.jsx`, and `tests/browser/ui19.spec.mjs`.
-- Medium Source is returned only when `stage.visible`, a projected primary exists and its ID is in `stage.activeTargets`, a source ID exists, and source differs from both the projected primary and viewer. Its decoration uses the existing public Hero Focus resolver; the role is exactly `SOURCE`.
-- Medium portrait sizes: >650px 56x70; 481–650px 48x60; <=480px 42x53. Existing Large Hero Focus dimensions are unchanged.
-- The additive `group-observer` fixture uses four players: viewer p3; GROUP_RESOLUTION / Raining Arrows; source p4; targets p1, p2, p3; current participant, decision actor, and active resolver p1. Its CurrentAction is a minimal non-local response with no legal actions. Existing `group` fixture is unchanged.
-- Browser assertions confirm the p4 opponent anchor remains in `.player-board` at its existing relative seat, while the independent central p4 card is outside that board; one Large Hero Focus shows p1, with source → target ordering and no p3 central duplicate.
-- Focused validation: Medium Source unit test 1/1 PASS; VIS-03E browser tests 6/6 PASS (group observer at 1440/650/480, self-source at 1440/480, Negation at 480). The first browser attempt exposed an empty-hand fixture dereference; it was fixed and the complete focused set passed on rerun.
-- Retained VIS-02-FIX1 / VIS-03B / VIS-03C / VIS-03D suites were not run locally. Full tests, build, lint, and `git diff --check` were not run under the project workflow; GitHub Actions owns those checks. CI was not inspected or polled.
-- Known GAP: no known task-scope gap from focused validation. Reviewer acceptance and CI result remain unverified and are not claimed.
+Pass only if 2–4 player Top Row opponents are genuine compact, wider-than-tall thumbnails with visible identity/HP/Hand count, full Equipment/Judgement card faces no longer consume top-row seat space, fixed seat anchors/targeting/Inspect remain intact, the Large central Hero remains visually larger, Side Column mode is untouched, and Safe Zone geometry is not moved in this task.
