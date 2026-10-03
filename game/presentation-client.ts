@@ -39,6 +39,33 @@ export type PresentationDecisionStatus = {
   hasLocalControl: boolean;
 };
 
+export type PresentationDisplayIdentity = {
+  id: string | null;
+  name: string;
+  known: boolean;
+};
+
+export type InteractionStageView = {
+  visible: boolean;
+  interactionId: string | null;
+  checkpointId: string | null;
+  presentationRevision: number | null;
+  stage: PresentationInteractionScene["stage"];
+  stageLabel: string;
+  source: PresentationDisplayIdentity;
+  originalTargets: readonly PresentationDisplayIdentity[];
+  activeTargets: readonly PresentationDisplayIdentity[];
+  currentParticipant: PresentationDisplayIdentity;
+  decisionActor: PresentationDisplayIdentity;
+  activeResolver: PresentationDisplayIdentity;
+  continuity: InteractionSceneContinuity;
+  parentFrameId: string | null;
+  stableKind: PresentationStableBoundaryKind;
+  isViewerDecisionActor: boolean;
+};
+
+export type PresentationPlayerNameResolver = (playerId: string) => string | null | undefined;
+
 const REST_CONTINUITY: InteractionSceneContinuity = {
   relation: "UNPROVEN",
   parentFrameId: null,
@@ -79,6 +106,20 @@ function isInteger(value: unknown): value is number {
 
 function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every(isString);
+}
+
+function presentationStageLabel(stage: PresentationInteractionScene["stage"]): string {
+  if (!stage) return "Active interaction";
+  return stage.split("_").map((part) => part.charAt(0) + part.slice(1).toLowerCase()).join(" ");
+}
+
+function displayIdentity(
+  id: string | null,
+  fallback: string,
+  resolvePlayerName: PresentationPlayerNameResolver,
+): PresentationDisplayIdentity {
+  const resolved = id ? resolvePlayerName(id)?.trim() : "";
+  return { id, name: resolved || fallback, known: Boolean(resolved) };
 }
 
 function isContinuity(value: unknown): value is InteractionSceneContinuity {
@@ -181,5 +222,43 @@ export function buildPresentationDecisionStatus(view: PresentationClientView): P
     isDecision,
     isLocalDecisionActor: isDecision && view.isLocalDecisionActor,
     hasLocalControl: view.hasLocalControl,
+  };
+}
+
+/**
+ * Build the read-only Interaction Stage model. Public IDs are selected from
+ * the adapter before names are resolved, and unknown names never substitute a
+ * different participant or role.
+ */
+export function buildInteractionStageView(
+  view: PresentationClientView,
+  resolvePlayerName: PresentationPlayerNameResolver,
+): InteractionStageView {
+  const source = displayIdentity(view.sourceId, "Unknown source", resolvePlayerName);
+  const originalTargets = view.originalTargetIds.map((id) => displayIdentity(id, "Unknown target", resolvePlayerName));
+  const activeTargets = view.activeTargetIds.map((id) => displayIdentity(id, "Unknown target", resolvePlayerName));
+  const currentParticipant = displayIdentity(view.currentParticipantId, "Unknown participant", resolvePlayerName);
+  const decisionActor = displayIdentity(view.decisionActorId, "Unknown decision actor", resolvePlayerName);
+  const activeResolver = displayIdentity(view.activeResolverId, "Unknown resolver", resolvePlayerName);
+  return {
+    visible: view.hasInteraction,
+    interactionId: view.interactionId,
+    checkpointId: view.checkpointId,
+    presentationRevision: view.presentationRevision,
+    stage: view.stage,
+    stageLabel: presentationStageLabel(view.stage),
+    source,
+    originalTargets,
+    activeTargets,
+    currentParticipant,
+    decisionActor,
+    activeResolver,
+    continuity: { ...view.continuity },
+    parentFrameId: view.parentFrameId,
+    stableKind: view.stableKind,
+    isViewerDecisionActor: view.hasInteraction
+      && view.stableKind === "CHOICE"
+      && Boolean(view.decisionActorId)
+      && view.isLocalDecisionActor,
   };
 }

@@ -3,8 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
+import { buildActiveSkillSubmission, buildDecisionPresentation, calculateHandCardStep, GameRoom, HERO_ART_BY_ID, HERO_SKILL_EFFECT_IDS, HERO_SKILL_RESPONSE_IDS, hpDisplay, HeroInfoDialog, HeroPortrait, HeroSelection, InteractionStage, MandatoryChoiceDialog, normalizeActiveCardSkillSelection, WaitingRoom } from "../app/page.tsx";
 import { IMPLEMENTED_STANDARD_HERO_IDS, STANDARD_HEROES } from "../game/heroes.ts";
+import { buildPresentationClientView } from "../game/presentation-client.ts";
 import { normalizeRoomData } from "../game/room-safety.js";
 
 const card = (id, kind = "Attack") => ({ id, kind, suit: "♠", rank: "A" });
@@ -76,6 +77,10 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   });
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room: uxRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
+  assert.equal((html.match(/class="interaction-stage"/g) ?? []).length, 1, "one read-only Interaction Stage is rendered");
+  assert.match(html, /INTERACTION STAGE/);
+  assert.match(html, /data-continuity="ROOT_FRAME"/);
+  assert.match(html, /<small>DECISION OWNER<\/small><b>Lü Bu<\/b>/);
   assert.match(html, /data-presentation-kind="CHOICE"/);
   assert.match(html, /data-presentation-has-interaction="true"/);
   assert.match(html, /data-presentation-local-control="true"/);
@@ -84,6 +89,27 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.doesNotMatch(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Zhao Yun/, "legacy action owner cannot replace the public decision actor");
   assert.match(html, /YOUR DECISION/);
   assert.match(html, /Lü Bu/);
+  const sourceOwnedSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p2" },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, decisionActorId: "p2", activeResolverId: "p1", participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, decisionActorId: "p2", activeResolverId: "p1" } },
+    decision: { actorId: "p2", stage: "ATTACK_RESPONSE" },
+    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p2", entitled: false },
+  };
+  const sourceOwnedStageHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(sourceOwnedSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
+  assert.match(sourceOwnedStageHtml, /<small>DECISION OWNER<\/small><b>Zhao Yun<\/b>/, "source-owned decision stays on the source");
+  assert.match(sourceOwnedStageHtml, /<small>ACTIVE RESOLVER<\/small><b>Lü Bu<\/b>/, "resolver remains distinct from decision owner");
+  const childSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p1" },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, stage: "DAMAGE", parentFrameId: "parent-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "parent-frame" }, decisionActorId: "p1", activeResolverId: "p1", participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, decisionActorId: "p1", activeResolverId: "p1" } },
+    decision: { actorId: "p1", stage: "DAMAGE" },
+  };
+  const childStageHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(childSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
+  assert.match(childStageHtml, /data-continuity="CHILD_FRAME"/);
+  assert.match(childStageHtml, /Parent frame parent-frame/);
+  const restHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: null }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.equal((restHtml.match(/class="interaction-stage"/g) ?? []).length, 0, "REST renders no Interaction Stage");
 });
 
 test("Legacy distribution keeps private cards static and labels recipients by hero", () => {

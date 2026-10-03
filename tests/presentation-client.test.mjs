@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildPresentationClientView, buildPresentationDecisionStatus } from "../game/presentation-client.ts";
+import { buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus } from "../game/presentation-client.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
@@ -261,4 +261,100 @@ test("REST keeps legacy turn/status compatibility and missing player lookup is s
     localControl: { source: "CurrentAction", actionRevision: "unknown", kind: "response", actorId: "unknown", entitled: false },
   }), "source"));
   assert.equal(active.actionOwner, "the decision actor");
+});
+
+const displayNames = {
+  A: "Ma Chao",
+  B: "Zhao Yun",
+  C: "Cao Cao",
+};
+const resolveDisplayName = (id) => displayNames[id] ?? null;
+
+test("Interaction Stage exposes target-owned Attack/Dodge context from the adapter", () => {
+  const view = buildPresentationClientView(snapshot(), "B");
+  const stage = buildInteractionStageView(view, resolveDisplayName);
+  assert.equal(stage.visible, true);
+  assert.equal(stage.stageLabel, "Attack Response");
+  assert.deepEqual(stage.source, { id: "A", name: "Ma Chao", known: true });
+  assert.deepEqual(stage.originalTargets, [{ id: "B", name: "Zhao Yun", known: true }]);
+  assert.deepEqual(stage.activeTargets, [{ id: "B", name: "Zhao Yun", known: true }]);
+  assert.deepEqual(stage.currentParticipant, { id: "B", name: "Zhao Yun", known: true });
+  assert.deepEqual(stage.decisionActor, { id: "B", name: "Zhao Yun", known: true });
+  assert.equal(stage.isViewerDecisionActor, true);
+});
+
+test("Interaction Stage preserves source-owned Ma Chao decision and resolver roles", () => {
+  const view = buildPresentationClientView(snapshot({
+    interaction: scene({ decisionActorId: "A", activeResolverId: "B", participantRoles: { ...scene().participantRoles, decisionActorId: "A", activeResolverId: "B" } }),
+    stable: { ...snapshot().stable, decisionActorId: "A" },
+    decision: { actorId: "A", stage: "ATTACK_RESPONSE" },
+    localControl: { source: "CurrentAction", actionRevision: "ma-chao", kind: "trigger", actorId: "A", entitled: true },
+  }), "A");
+  const stage = buildInteractionStageView(view, resolveDisplayName);
+  assert.equal(stage.decisionActor.id, "A");
+  assert.equal(stage.decisionActor.name, "Ma Chao");
+  assert.equal(stage.activeResolver.id, "B");
+  assert.equal(stage.activeResolver.name, "Zhao Yun");
+  assert.equal(stage.isViewerDecisionActor, true);
+});
+
+test("Interaction Stage renders Group participants and child Damage/Dying continuity semantically", () => {
+  const group = buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C"], activeTargetIds: ["C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C"], activeTargetIds: ["C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"] } }),
+    stable: { ...snapshot().stable, decisionActorId: "C" },
+    decision: { actorId: "C", stage: "GROUP_RESOLUTION" },
+    localControl: { source: "CurrentAction", actionRevision: "group", kind: "response", actorId: "C", entitled: false },
+  }), "A");
+  const groupStage = buildInteractionStageView(group, resolveDisplayName);
+  assert.deepEqual(groupStage.originalTargets.map((identity) => identity.id), ["B", "C"]);
+  assert.deepEqual(groupStage.activeTargets.map((identity) => identity.id), ["C"]);
+  assert.equal(groupStage.currentParticipant.id, "C");
+
+  const child = buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "DAMAGE", parentFrameId: "group-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" }, decisionActorId: "B", activeResolverId: "B", participantRoles: { ...scene().participantRoles, decisionActorId: "B", activeResolverId: "B" } }),
+    stable: { ...snapshot().stable, decisionActorId: "B" },
+    decision: { actorId: "B", stage: "DAMAGE" },
+  }), "A");
+  const childStage = buildInteractionStageView(child, resolveDisplayName);
+  assert.equal(childStage.continuity.relation, "CHILD_FRAME");
+  assert.equal(childStage.parentFrameId, "group-frame");
+
+  const dying = buildInteractionStageView(buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "DYING", parentFrameId: "damage-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "damage-frame" }, decisionActorId: "B", activeResolverId: "B", participantRoles: { ...scene().participantRoles, decisionActorId: "B", activeResolverId: "B" } }),
+    stable: { ...snapshot().stable, decisionActorId: "B" },
+    decision: { actorId: "B", stage: "DYING" },
+  }), "A"), resolveDisplayName);
+  assert.equal(dying.stageLabel, "Dying");
+  assert.equal(dying.parentFrameId, "damage-frame");
+});
+
+test("Interaction Stage public content is viewer-equal while only the local marker differs", () => {
+  const acting = buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName);
+  const uninvolved = buildInteractionStageView(buildPresentationClientView(snapshot({ localControl: { ...snapshot().localControl, actorId: null, entitled: false } }), "C"), resolveDisplayName);
+  assert.deepEqual({ ...acting, isViewerDecisionActor: undefined }, { ...uninvolved, isViewerDecisionActor: undefined });
+  assert.equal(acting.isViewerDecisionActor, true);
+  assert.equal(uninvolved.isViewerDecisionActor, false);
+});
+
+test("Interaction Stage uses neutral labels for missing names without changing IDs", () => {
+  const stage = buildInteractionStageView(buildPresentationClientView(snapshot({
+    interaction: scene({ sourceId: "missing-source", targetIds: ["missing-target"], activeTargetIds: ["missing-target"], currentParticipantId: "missing-target", decisionActorId: "missing-target", activeResolverId: "missing-resolver", participantRoles: { ...scene().participantRoles, sourceId: "missing-source", originalTargetIds: ["missing-target"], activeTargetIds: ["missing-target"], currentParticipantId: "missing-target", decisionActorId: "missing-target", activeResolverId: "missing-resolver" } }),
+    stable: { ...snapshot().stable, decisionActorId: "missing-target" },
+  }), "missing-viewer"), resolveDisplayName);
+  assert.equal(stage.source.id, "missing-source");
+  assert.equal(stage.source.name, "Unknown source");
+  assert.equal(stage.currentParticipant.name, "Unknown participant");
+  assert.equal(stage.decisionActor.name, "Unknown decision actor");
+  assert.equal(stage.activeResolver.name, "Unknown resolver");
+});
+
+test("Interaction Stage is hidden for REST and independent of legacy room fields", () => {
+  const rest = buildInteractionStageView(buildPresentationClientView(snapshot({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null } }), "B"), resolveDisplayName);
+  assert.equal(rest.visible, false);
+
+  const fixedView = buildPresentationClientView(snapshot(), "B");
+  const roomA = { players: [{ id: "A", name: "Ma Chao" }, { id: "B", name: "Zhao Yun" }], pending: { kind: "response" }, timeline: [{ id: "old" }], presentationV2: { stableBoundary: { kind: "REST" } }, currentAction: { kind: "response" }, phase: "response", actionPlayerId: "A", actionReason: "old" };
+  const roomB = { ...roomA, pending: { kind: "dying" }, timeline: [{ id: "new" }], presentationV2: { stableBoundary: { kind: "SETTLEMENT" } }, currentAction: { kind: "dying" }, phase: "dying", actionPlayerId: "B", actionReason: "new" };
+  const renderWithLegacyRoom = (room) => buildInteractionStageView(fixedView, (id) => room.players.find((player) => player.id === id)?.name ?? null);
+  assert.deepEqual(renderWithLegacyRoom(roomA), renderWithLegacyRoom(roomB));
 });

@@ -211,6 +211,24 @@ they continue to support legacy controls and animation paths. The strip's
 existing DOM/classes and CSS are unchanged, and no Interaction Stage visual
 redesign has begun.
 
+### 0.6.3 UI-03 read-only Interaction Stage consumer
+
+The first dedicated Interaction Stage consumer is a small, read-only table
+context panel. `buildInteractionStageView` accepts only `PresentationClientView`
+and a player-name resolver: it selects interaction, target, participant,
+decision-owner, resolver, stable-boundary, and continuity IDs from the adapter
+before resolving names. Missing names use neutral labels without substituting a
+different identity.
+
+The panel renders only when the adapter proves an interaction. It exposes
+source, original and active targets, current participant, decision owner,
+active resolver, stage, stable boundary, viewer-local decision responsibility,
+and child-frame/parent-frame continuity. It does not render cards, legal
+options, buttons, timers, Pending data, CurrentAction data, or animation
+events. Identity-free REST renders no panel. The existing action strip,
+controls, table/seat layout, local dock, animation, settlement/transition
+paths, and final visual redesign remain separate future slices.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

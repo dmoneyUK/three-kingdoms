@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-02 semantic decision status consumer — 2026-10-03
+## Current stage — UX2.0UI-03 read-only Interaction Stage consumer — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -9,14 +9,16 @@ resolver relationship. `SPECIAL`, settlement, and transition occurrences
 remain reserved; `presentationV2` and Pending compatibility projections remain
 available to the existing UI.
 
-UI-01's typed, pure, read-only adapter is now the first semantic React
-consumer for the existing action/status strip. During a proven interaction,
-public decision ownership, source/current participant, active resolver, and
-stage come from `PresentationClientView`; the private YOU marker comes only
-from its local entitlement. Identity-free REST keeps the existing turn/phase
-compatibility status. The action strip DOM/classes, controls, target
-selection, seat layout, CSS, animation, and gameplay behavior remain
-unchanged. The visual Interaction Stage redesign has not started.
+UI-03 adds the first dedicated, read-only Interaction Stage consumer. A pure
+`InteractionStageView` selects public IDs from `PresentationClientView` before
+resolving player display names, and the small table context panel exposes
+source, original/active targets, current participant, decision owner, active
+resolver, stable boundary, and child-frame continuity. REST renders no stage;
+the private viewer marker comes only from adapter entitlement. Controls, target
+selection, dialogs, timers, animation, seats, dock, gameplay, and the final
+visual Interaction Stage redesign remain unchanged. The next milestone is a
+separately bounded semantic or responsive readability slice, not a board
+redesign.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

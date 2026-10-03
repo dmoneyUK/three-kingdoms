@@ -12,7 +12,7 @@ import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
-import { buildPresentationClientView, buildPresentationDecisionStatus, type PresentationClientView } from "../game/presentation-client";
+import { buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, type InteractionStageView, type PresentationClientView } from "../game/presentation-client";
 
 type Hero = { id: string; name: string; faction: string; hp: number; ability: string; skill?: string; skills?: readonly HeroSkill[] };
 type ActiveSkillSelectionState = { revision: string; effectId: string; cardIds: string[]; targetIds: string[] };
@@ -454,6 +454,27 @@ function OpponentInspectionOverlay({ player, playerHero, judgementInFlight, onCl
 }
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
+
+function interactionIdentityListLabel(identities: readonly InteractionStageView["source"][], emptyLabel: string) {
+  return identities.length ? identities.map((identity) => identity.name).join(", ") : emptyLabel;
+}
+
+export function InteractionStage({ view, resolvePlayerName }: { view: PresentationClientView; resolvePlayerName: (playerId: string) => string | null | undefined }) {
+  const stage = buildInteractionStageView(view, resolvePlayerName);
+  if (!stage.visible) return null;
+  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined}>
+    <header><span>INTERACTION STAGE</span><strong>{stage.stageLabel}</strong>{stage.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
+    <div className="interaction-stage-grid">
+      <div><small>SOURCE</small><b>{stage.source.name}</b></div>
+      <div><small>ORIGINAL TARGET</small><b>{interactionIdentityListLabel(stage.originalTargets, "No target")}</b></div>
+      <div><small>ACTIVE TARGET</small><b>{interactionIdentityListLabel(stage.activeTargets, "No active target")}</b></div>
+      <div><small>CURRENT PARTICIPANT</small><b>{stage.currentParticipant.name}</b></div>
+      <div><small>DECISION OWNER</small><b>{stage.decisionActor.name}</b></div>
+      <div><small>ACTIVE RESOLVER</small><b>{stage.activeResolver.name}</b></div>
+    </div>
+    <footer><span>{stage.continuity.relation.replace("_", " ")}</span>{stage.parentFrameId && <small>Parent frame {stage.parentFrameId}</small>}</footer>
+  </section>;
+}
 
 export type DecisionPresentation = {
   phaseLabel: string;
@@ -1260,6 +1281,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   return <main className="game-shell" data-presentation-kind={clientPresentation.stableKind} data-presentation-has-interaction={clientPresentation.hasInteraction ? "true" : "false"} data-presentation-local-control={clientPresentation.hasLocalControl ? "true" : "false"}><header className="topbar"><Brand /><div className="room"><span className="live-dot" /> ROOM <b>{room.code}</b></div><div className="top-actions"><button className="text-button" onClick={onLeave}>Exit</button></div></header>
     <section className="action-strip" aria-label="Turn and decision ownership"><div className="action-step"><small>TURN OWNER</small><b>{decisionPresentation.turnOwner}</b></div><span className="action-arrow">→</span><div className="action-step"><small>PHASE</small><b>{decisionPresentation.phaseLabel}</b></div><span className="action-arrow">→</span><div className="action-step acting"><small>{decisionPresentation.isDecision ? "DECISION OWNER" : "CURRENT TURN"}</small><b>{decisionPresentation.actionOwner}{decisionPresentation.isViewerRequiredActor ? " · YOU" : ""}</b></div></section>
     <section className={`play-table ${sequenceEvents.length > 0 ? "sequence-active" : ""} ${resolutionClosing ? "sequence-concluding" : ""}`}>
+      <InteractionStage view={clientPresentation} resolvePlayerName={(playerId) => room.players.find((player) => player.id === playerId)?.name ?? null} />
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       <button type="button" className="game-exit" onClick={onLeave}>Exit</button>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
