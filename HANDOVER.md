@@ -177,8 +177,7 @@ FIX1 passes only if the 13 × 10 matrix is truthful cell-by-cell, every P is tra
 
 ## Execution result — UX2.0C6-01-FIX1 truthful evidence audit — 2026-10-03
 
-Implementation SHA: pending first implementation commit; this field is replaced
-with that commit SHA before the final handover push.
+Implementation SHA: `eb530e1` (`docs: make UX2 C6 evidence matrix truthful`).
 
 Files changed:
 
