@@ -15,166 +15,248 @@ Agent sequence:
 
 Do not wait for or poll CI.
 
-## Reviewer status — UX2.0VIS-03B ACCEPTED
+## Reviewer status — UX2.0VIS-03C ACCEPTED
 
-Reviewed implementation: `ed9421425c82a54d8d010704390e3b94ad4796fc`.
+Reviewed implementation: `44f5838902d48618697dc7eacc28f5b01643a43e`.
 
 Accepted facts that the next task must preserve:
-- top-row Hero Focus still uses the existing proven `HeroFocusView.primary`; no semantic selector/helper changed;
-- exactly one Hero Focus is rendered for the reviewed Interaction / Negation / Dying fixtures;
-- portrait is materially enlarged to 90x113 desktop, 72x90 at 481–650, and 64x80 at <=480;
-- top-row seat geometry, safe-zone geometry, LocalPlayerDock, gameplay, Reaction/Dying content and presentation authority were not changed;
-- focused Hero Focus tests reported 9/9 PASS and the combined retained geometry/Hero Focus suite reported 18/18 PASS;
-- the remaining visible problem is that top-row Interaction Stage itself still looks like a large bordered dashboard shell even though the centre is now structurally reserved and the primary hero is enlarged.
+- top-row Interaction Stage outer shell is open: transparent background, zero border, zero shadow and zero shell padding;
+- the semantic Stage element/data attributes remain mounted;
+- the header remains a compact fitted label;
+- inner Reaction Chain / Dying panels retain their own chrome;
+- VIS-03B Hero Focus sizes are unchanged;
+- Hero/Event/Meta regions, safe-zone geometry, seats, LocalPlayerDock, side-column/global shell and gameplay authority are unchanged;
+- focused VIS-03C tests reported 9/9 PASS; retained VIS-02-FIX1/VIS-03B/VIS-03C tests reported 27/27 PASS.
 
-# NEXT TASK — UX2.0VIS-03C: Remove the Top-Row Interaction Stage Dashboard Shell
+Remaining design mismatch:
+- UX V2 requires the viewer's own hero to remain only in LocalPlayerDock and never be duplicated into Interaction Stage;
+- current `buildHeroFocusView` is intentionally public/viewer-equal and can select the viewer as current participant;
+- the fix must therefore be a separate viewer-specific visual projection, not a change to public semantic authority.
+
+# NEXT TASK — UX2.0VIS-03D: Enforce Viewer Self-Projection in Hero Focus Without Changing Public Semantics
 
 ## Objective
-Fix exactly one visual hierarchy defect:
+Fix exactly one viewer-centric presentation defect:
 
-**In 2–4 player top-row mode, stop rendering the entire Interaction Stage as one large dark bordered dashboard panel. Keep the semantic InteractionStage container and all existing Hero / Event / Meta content, but make the outer top-row Stage visually open/transparent so the central battlefield reads as a composition rather than a giant information box.**
+**The viewer's own hero must never appear as a duplicate central Hero Focus. Keep public Hero Focus semantics viewer-equal, then apply a separate viewer-specific visual projection that keeps an external proven primary or, when the public primary is the viewer, substitutes exactly one uniquely-proven external source/target counterpart.**
 
-This is a shell/chrome task only.
+Do not implement full two-hero source/target composition yet. Do not redesign Reaction Chain, meta content, seats, safe-zone geometry, LocalPlayerDock, or gameplay.
 
-Do not change semantic content, Hero Focus size, Reaction Chain content, Dying content, meta copy, seat layout, safe-zone geometry, LocalPlayerDock, or gameplay.
+## Design authority
+`docs/UX_V2_INTERACTION_STAGE_DESIGN.md` requires:
+- the viewer's own hero is never duplicated into Interaction Stage;
+- if the viewer is the source, show the external target centrally and keep YOU in LocalPlayerDock;
+- if the viewer is the target, show the external source centrally and keep YOU in LocalPlayerDock;
+- if the viewer is the current decision actor, decision emphasis belongs in LocalPlayerDock;
+- public event facts remain viewer-equal while spatial presentation is viewer-centric.
 
-## Why this task exists
-Current production still inherits the old UI-03 compact-panel shell:
+Preserve this boundary:
+- **public semantic model = viewer-equal**
+- **visual projection = viewer-specific**
 
-`.interaction-stage { background:#11140ee8; border:1px solid #9c8249; box-shadow:0 8px 24px #0008; padding:8px 11px; }`
+## Existing authority to preserve
 
-and the Stage header still uses a full-width divider.
+### Public Hero Focus helper
+`game/hero-focus.ts::buildHeroFocusView` currently selects only:
+1. proven `currentParticipant`;
+2. otherwise one sole proven active target;
+3. Dying never guesses from active-target fallback.
 
-VIS-03A made the desktop Stage wide and VIS-03B enlarged the proven primary hero, but the outer shell still visually turns the protected centre into one large dashboard. That is the same hierarchy problem visible in the real-game screenshot.
+Its existing semantic tests prove viewer-equal public output.
 
-The original UX V2 intent is:
-- fixed small opponent seats;
-- protected central Interaction Safe Zone;
-- enlarged interaction content inside that centre;
-- LocalPlayerDock below;
-- no requirement for the whole central zone to be one opaque dashboard card.
+**Do not change those selection rules.**
+**Do not make `buildHeroFocusView` accept viewerId.**
+**Do not delete or weaken the existing viewer-equality test.**
+
+### Allowed counterpart facts
+A viewer fallback may use only identities already present in `InteractionStageView`:
+- `stage.source`
+- `stage.activeTargets`
+
+Do not use decisionActor, resolver, turn owner, CurrentAction, Pending, timeline, actionPlayerId, card/hero names, or array position as participant authority.
 
 ## Files expected in scope
 Production:
-- `app/globals.css`
+- `game/hero-focus.ts`
+- `app/page.tsx`
 
-Regression:
+Tests:
+- `tests/presentation-client.test.mjs`
+- `tests/browser/fixture.jsx`
 - `tests/browser/ui19.spec.mjs`
 
-Do not change `app/page.tsx` unless a test-only stable class hook is genuinely missing. Do not change any game/presentation/server helper.
+Touch `app/globals.css` only if a tiny role-label style adjustment is required. Do not change layout geometry.
 
 ## Required implementation
 
-### 1. Top-row mode only: remove outer dashboard chrome
-Under:
+### 1. Add a separate pure viewer projection helper
+In `game/hero-focus.ts`, add a pure helper such as:
 
-`.play-table[data-seat-topology="top-row"]`
+`projectHeroFocusForViewer(stage, publicFocus, viewerId, resolvePlayerDisplay)`
 
-override the outer `.interaction-stage` shell so that it is visually open:
+Equivalent naming is acceptable.
 
-- background must be transparent;
-- outer border must be removed;
-- outer box-shadow must be removed;
-- remove shell padding that exists only to create the old panel frame;
-- preserve the Stage's existing semantic DOM element, data attributes, width, position and containment;
-- preserve `pointer-events:none`.
+The existing `buildHeroFocusView` remains the public/viewer-equal semantic helper.
 
-Do not apply this change globally. Side-column mode is not part of this task.
+### 2. Exact projection algorithm
 
-### 2. Keep the Stage header, but make it a compact label rather than a full-width panel divider
-Do not remove or rewrite the existing header text/semantics.
+#### Case A — no public primary
+If `publicFocus.primary` is null:
+- return the public focus unchanged;
+- do not invent a participant.
 
-For top-row mode:
-- remove the full-width bottom border/divider from `.interaction-stage>header`;
-- do not give the header its own large opaque background;
-- keep `INTERACTION STAGE`, the existing focus label, and `YOUR DECISION` when applicable;
-- keep the header compact and above the composition;
-- it must not reserve a large blank row across the whole safe-zone width.
+#### Case B — public primary is external
+If `publicFocus.primary.id !== viewerId`:
+- return the public focus unchanged.
 
-A small inline/fitted label treatment is acceptable. Do not change copy.
+#### Case C — public primary is the viewer
+If `publicFocus.primary.id === viewerId`:
+- suppress that local hero from central presentation;
+- collect external candidates only from:
+  1. `stage.source` when it has an ID different from viewerId;
+  2. every `stage.activeTargets` identity with an ID different from viewerId;
+- de-duplicate by player ID.
 
-### 3. Preserve the three accepted content regions
-Do not change the DOM or semantic conditions of:
-- `.interaction-stage-hero-region`
-- `.interaction-stage-event-region`
-- `.interaction-stage-meta-region`
+Then:
+- exactly 1 unique external candidate -> render that candidate;
+- 0 candidates -> visible focus with `primary:null`;
+- >1 candidates -> visible focus with `primary:null`.
 
-Do not change:
-- Hero Focus portrait dimensions from VIS-03B;
-- Hero Focus identity selection;
-- Reaction Chain / Dying content;
-- SOURCE / FOCUS / DECISION / RESOLVER / ORIGINAL SCOPE / CONTEXT copy;
-- the desktop horizontal grid;
-- the <=650 stacked reading order.
+Never choose the first candidate from an ambiguous set.
 
-The Event region may retain its own Reaction/Dying panel chrome. This task removes only the **outer Interaction Stage dashboard shell**.
+### 3. Counterpart role label
+For the unique projected external candidate:
+- if its ID is in `stage.activeTargets`, role label = `CURRENT TARGET`;
+- otherwise, if its ID equals `stage.source.id`, role label = `SOURCE`.
 
-### 4. Preserve geometry
-Do not change:
-- `--interaction-safe-top`;
-- safe-zone top/right/bottom/left;
-- Stage width caps;
-- play-table height;
-- player-board geometry;
-- opponent seat sizes/positions;
-- LocalPlayerDock geometry;
-- 5–10 player side-column layout.
+Extend the Hero Focus role-label type to allow `SOURCE` if required.
 
-The transparent Stage must stay fully inside the same safe zone.
+Do not relabel decisionActor or resolver as source/target.
+
+### 4. Public decoration only
+Resolve projected counterpart name/hero/HP through the existing `resolvePlayerDisplay` callback.
+
+Use the same public/unknown decoration behavior as current Hero Focus:
+- missing decoration stays unknown;
+- never substitute another player;
+- no private hand identities, providers or action options.
+
+Small internal refactoring is allowed only to reuse the same decoration code.
+
+### 5. Apply projection only at React render boundary
+Update `InteractionStage` to receive:
+
+`viewerId: string | null`
+
+In `GameRoom`, pass:
+
+`viewerId={room.meId}`
+
+Inside InteractionStage:
+1. build `stage` exactly as today;
+2. build public `heroFocus = buildHeroFocusView(...)`;
+3. call the new viewer projection helper;
+4. render `HeroFocus` from the projected result.
+
+Do not change `PresentationClientView`, `PresentationSnapshot`, projector/server output, participant-role arrays or gameplay.
+
+### 6. Preserve LocalPlayerDock role projection
+When local Hero Focus is suppressed:
+- keep existing local dock semantic role classes/data unchanged;
+- current-participant / active-target / decision treatments remain on LocalPlayerDock;
+- do not add a second local hero image anywhere else.
+
+## Correct one known synthetic Dying-fixture contradiction
+Current `tests/browser/fixture.jsx` Dying data has:
+- dying target `p2`;
+- viewer/decision actor `p3`;
+- but generic fixture construction incorrectly sets `currentParticipantId=p3`.
+
+Real engine/API evidence in `tests/api/presentation-v2-engine.test.mjs` proves Dying uses:
+- originalTargetIds = dying player;
+- activeTargetIds = dying player;
+- currentParticipantId = dying player;
+- decisionActorId = rescuer.
+
+Correct only the synthetic Dying browser fixture:
+- source = `p1`;
+- currentParticipantId = `p2`;
+- activeTargets = [`p2`];
+- decisionActorId = `p3`;
+- activeResolverId = `p3`.
+
+Do not change production projector/gameplay for this fixture.
+
+Update browser expectations that currently expect Dying Hero Focus `p3`; the corrected public primary is `p2`.
+
+## Required unit regressions
+Extend `tests/presentation-client.test.mjs`.
+
+Keep the existing `buildHeroFocusView` viewer-equality regression unchanged.
+
+Add tests for the new viewer projection helper:
+
+1. external primary unchanged: public primary B, viewer A -> B.
+2. viewer is source/current primary; source A, activeTargets [B] -> B, role CURRENT TARGET.
+3. viewer is target/current primary; source A, activeTargets [B], viewer B -> A, role SOURCE.
+4. same external ID appears as source and active target -> de-duplicate and render it once.
+5. source B + active target C while viewer A is public primary -> ambiguous -> primary null.
+6. source/targets all viewer -> primary null.
+7. unknown display decoration stays attached to the same proven candidate and never substitutes another ID.
 
 ## Required browser regression
-Extend `tests/browser/ui19.spec.mjs` with a focused top-row shell test using:
-- `state="interaction", count=4`
-- `state="negation", count=4`
-- `state="dying", count=4`
+Use 4-player top-row fixtures at 1440x900, 650x900 and 480x900.
 
-Run at:
-- 1440x900
-- 650x900
-- 480x900
+### Interaction
+Existing `state="interaction"` has viewer/public primary `p1`, source `p1`, active target `p2`.
 
-For every case assert:
+Assert:
+- no central Hero Focus player ID `p1`;
+- exactly one central Hero Focus;
+- projected central Hero Focus = `p2`;
+- LocalPlayerDock anchor remains `p1`.
 
-1. exactly one visible `.interaction-stage`;
-2. computed outer Stage background is transparent (alpha 0);
-3. computed outer Stage border widths are 0px;
-4. computed outer Stage box shadow is `none`;
-5. `.interaction-stage>header` remains visible;
-6. header bottom border width is 0px;
-7. Hero / Event / Meta region hooks remain mounted exactly once;
-8. Hero Focus size still satisfies VIS-03B minimums;
-9. Stage remains fully inside `.interaction-safe-zone`;
-10. Stage and safe zone do not overlap LocalPlayerDock;
-11. no horizontal page overflow.
+### Negation
+Existing `state="negation"` has viewer/public primary `p2` and one unique external proven `p1`.
 
-For Negation and Dying also retain proof that:
-- Reaction Chain / Dying handoff remains visible;
-- its own inner panel/background is not removed by the outer-shell change.
+Assert:
+- no central Hero Focus `p2`;
+- projected central Hero Focus = `p1`;
+- LocalPlayerDock remains `p2`.
 
-The new shell regression must fail against the pre-VIS-03C top-row CSS because that CSS has the opaque background, 1px border and box shadow.
+### Dying
+After fixture correction:
+- viewer = `p3`;
+- dying/current participant = `p2`;
+- central Hero Focus remains `p2`;
+- LocalPlayerDock remains `p3`;
+- Dying handoff identifies `p2` as dying player and `p3` as decision actor.
 
-## Negative regression / forbidden shortcuts
+For all states/widths retain existing VIS-02/VIS-03A/B/C containment and no-overflow checks.
+
+## Forbidden shortcuts
 Do not:
-- delete the `.interaction-stage` element;
-- hide the Stage;
-- remove the Stage header copy;
-- make Hero/Event/Meta content transparent;
-- remove Reaction Chain/Dying panel chrome;
-- change Hero Focus size;
-- change any semantic selector or data attribute;
+- make public PresentationSnapshot/PresentationClientView viewer-specific;
+- change `buildHeroFocusView` candidate rules;
+- remove its viewer-equality regression;
+- use decision actor/resolver/CurrentAction/Pending/timeline as fallback participant;
+- choose from an ambiguous multi-external set;
+- duplicate local hero centrally;
+- change Hero Focus dimensions;
 - move seats/safe zone/dock;
-- change side-column mode;
-- change gameplay/server/projector/presentation authority;
-- introduce viewport-specific React trees.
+- implement two-external-hero composition;
+- change Reaction Chain/meta layout;
+- modify gameplay/server/projector semantics.
 
 ## Validation
 Run and report:
-- focused VIS-03C shell browser tests;
-- retained VIS-02-FIX1 / VIS-03A / VIS-03B geometry tests;
-- `npm run test:browser` if allowed by the local execution policy;
-- `npm run test:fast` if allowed by the local execution policy;
-- `npm run build` if allowed by the local execution policy;
-- `npm run lint` if allowed by the local execution policy;
+- focused unit tests for viewer Hero projection;
+- focused VIS-03D browser tests;
+- retained VIS-02-FIX1 / VIS-03B / VIS-03C browser tests;
+- `npm run test:fast` if allowed locally;
+- `npm run test:browser` if allowed locally;
+- `npm run build` if allowed locally;
+- `npm run lint` if allowed locally;
 - `git diff --check`.
 
 Do not claim unrun commands passed. Do not inspect or wait for CI.
@@ -183,30 +265,15 @@ Do not claim unrun commands passed. Do not inspect or wait for CI.
 Append only:
 - full implementation SHA;
 - files changed;
-- exact top-row shell overrides;
-- header treatment;
-- proof side-column/global shell was not changed;
-- focused/retained validation results;
+- exact viewer-projection rules;
+- confirmation `buildHeroFocusView` stayed viewer-equal;
+- Dying fixture correction and evidence source;
+- unit/browser validation results;
 - any remaining GAP.
 
-Do not declare the task accepted. Reviewer decides after inspecting the result.
+Do not declare the task accepted. Reviewer decides after inspection.
 
 Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if top-row Interaction Stage no longer renders as one opaque bordered/shadowed dashboard shell at desktop and mobile widths, while the semantic Stage container, compact header, enlarged primary Hero Focus, Reaction/Dying panels, meta content, safe-zone containment, seats, LocalPlayerDock and gameplay remain unchanged.
-
-## Agent execution result — UX2.0VIS-03C
-
-- Implementation SHA: `44f5838902d48618697dc7eacc28f5b01643a43e`.
-- Files changed:
-  - `app/globals.css`
-  - `tests/browser/ui19.spec.mjs`
-- Exact top-row shell overrides: `.play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .interaction-stage` now has `padding: 0`, `background: transparent`, `border: 0`, and `box-shadow: none !important`. The important shadow override prevents the existing Stage transition keyframes from restoring the old dashboard shadow while retaining the semantic Stage element, data attributes, transition marker, width, position, containment and inherited `pointer-events: none`.
-- Header treatment: the unchanged direct Stage header is `inline-flex` with `width: fit-content`, `max-width: 100%`, zero bottom padding and zero bottom border. Narrow top-row mode retains a 6px content separation; desktop uses the existing body grid's 7px top padding and therefore removes the extra header margin. Header text and conditions are unchanged.
-- Side-column/global proof: no global `.interaction-stage` declaration was changed. Every production override added by this task requires the exact top-row play-table plus direct safe-zone/Stage selector, so 5–10 player side-column mode continues to use the existing opaque bordered/shadowed global shell. Hero/Event/Meta DOM, Hero Focus sizes, Reaction/Dying panel styles, meta copy, safe-zone variables, seats and Dock geometry were not changed.
-- Focused validation:
-  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-03C' --config tests/browser/playwright.config.mjs` — **9/9 PASS**. Computed-style assertions prove the transparent/zero-border/no-shadow/zero-padding shell, fitted visible header with no divider, all three mounted content-region hooks, retained VIS-03B portrait minimums, safe-zone/Dock containment, no overflow, and retained non-transparent Reaction/Dying inner panels.
-  - `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-(02-FIX1|03B|03C)' --config tests/browser/playwright.config.mjs` — **27/27 PASS**: 9 retained VIS-02-FIX1/VIS-03A geometry cases, 9 retained VIS-03B Hero Focus cases, and 9 new VIS-03C shell cases.
-- Full validation not run under the project remote-validation workflow: `npm run test:browser`, `npm run test:fast`, `npm run build`, `npm run lint`, and `git diff --check`. GitHub Actions owns those gates; CI status was not inspected or polled.
-- Remaining GAP: none observed within the bounded VIS-03C shell scope. Full-suite and CI results remain unverified pending GitHub Actions/user notification.
+Pass only if the viewer's own hero can no longer be duplicated as central Hero Focus, exactly one uniquely-proven external source/target counterpart is shown when available, ambiguous external sets fail closed, Dying fixture semantics match existing real API evidence, and all existing layout/containment/gameplay/public-authority contracts remain unchanged.
