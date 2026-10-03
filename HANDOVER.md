@@ -85,3 +85,51 @@ Append only UI-20 result: SHA, files, final contract ledger summary/counts, exac
 
 ## Acceptance
 Pass only if the final retained regression/browser/build/lint gates actually run successfully, the contract ledger contains no unacknowledged functional GAP, no private/public or causal authority regression is found, responsive/reduced-motion browser evidence remains green, remaining manual gaps are honestly bounded, and the evidence supports marking UX V2 FEATURE COMPLETE without implying the whole game is complete.
+
+## UI-20 execution result — final UX V2 integration and release gate — 2026-10-03
+
+- Implementation SHA: `09f5a6c634bffb76a54c5d807be7c97501aee2de`
+  (`docs: add UX V2 release gate ledger`). This is a documentation-only
+  closure audit; no production source, gameplay, projector, causal, or UI
+  behavior changed.
+- Changed files: `README.md`, `ROADMAP.md`,
+  `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, and the new
+  `docs/UX_V2_RELEASE_GATE.md`.
+- The ledger covers atomic/fail-closed PresentationSnapshot, causal identity,
+  viewer-equal public/private separation, Interaction Stage/Hero Focus/seat
+  roles, local Confirm/Cancel/Skip, Borrowed Sword and target-card picker,
+  AOE preview, Duel, Judgement/replacement, bounded Reaction Chain,
+  Dying/Peach, transition classification, reduced-motion visual consumption,
+  and the responsive browser harness.
+- Ledger summary: **14 PASS**, **1 intentional N/A**, **0 unacknowledged
+  functional GAP**. The N/A is durable independently proven per-counter
+  Reaction Chain history, which is outside the accepted snapshot contract and
+  UI-15 scope. The ledger names an implementation authority and retained proof
+  for every PASS row.
+- Retained cross-slice evidence is mapped for: Attack response/handoff and
+  REST boundary; Duel -> child Damage/Dying -> rescue; Group/AOE -> response/
+  Negation -> resume; Judgement -> replacement -> delayed continuation;
+  private Reaction Chain response vs viewer-equal public scene; local picker
+  preview -> exact Confirm payload; transition marker -> reduced-motion
+  behavior; repeated snapshot/reconnect stability; and 10-player responsive
+  topology. Existing focused/API/browser tests are the named proof sources;
+  this documentation-only audit added no synthetic semantic proof.
+- Validation policy: the complete UI-20 commands were intentionally **not run
+  locally**, per the user's standing workflow. CI must run exactly
+  `npm run test:browser`, `npm run test:fast`, `npm run test:api`,
+  `npm run build`, `npm run lint`, `git diff --check`, and `npm test` after
+  push. The last accepted UI-19 evidence remains browser **17/17**, focused UI
+  **101/101**, fast **196/196**, API **241/241**, successful build/lint, and
+  clean diff-check; those are retained baseline evidence, not a new UI-20 CI
+  result. No CI status or production health is claimed.
+- No concrete integration defect was found because no local execution was
+  performed and no production code changed. No fix or regression test was
+  added. The release candidate remains subject to CI and reviewer confirmation.
+- Remaining bounded gaps: subjective pixel/art-direction approval,
+  touch-device certification, full WCAG auditing, live multiplayer timing, and
+  production deployment/health verification. These do not imply whole-game or
+  content completion.
+- Recommendation: treat UX V2 as **Feature Complete candidate pending CI and
+  reviewer confirmation**. Await the user's CI notification; if a job fails,
+  inspect only the reported failing path. Otherwise require a new reviewer
+  handover before beginning another task.
