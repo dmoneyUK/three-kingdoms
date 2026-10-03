@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C7-03 source-owned trigger stable boundary — 2026-10-03
+## Current stage — UX2.0C7-03-FIX1 source-owned trigger frame proof — 2026-10-03
 
 C6 engine-backed architecture verification is complete: the final 13-family ×
 10-invariant matrix is **128 P / 2 N/A / 0 GAP**. Attack/Dodge and
@@ -15,6 +15,11 @@ unit, with mismatches failing closed to identity-free REST. C7-02 identified
 and C7-03 resolved the real Ma Chao source-owned trigger boundary using only
 persisted Pending and causal-envelope proof: the source owns the optional
 trigger decision while the Attack target remains the active frame resolver.
+C7-03-FIX1 tightens that proof to the exact demonstrated frame role: the active
+frame must be `ATTACK_RESPONSE`, its checkpoint must match, and its resolver
+must equal the persisted declaration target. Wrong-stage, wrong-resolver, and
+substituted source/target records fail closed; ordinary target-owned triggers
+keep decision actor and active resolver equal.
 The C7 matrix is now **102 P / 2 N/A / 0 GAP / 0 unclassified**. SPECIAL
 remains reserved/unexercised; settlement and transition events remain
 reserved. C7 is ready for reviewer closure, but no React migration has

@@ -229,7 +229,7 @@ function provenBoundaryEnvelope(stage = "ATTACK_RESPONSE", current = { currentSo
   return { version: 1, interactionId: "stable-interaction", frames: [frame], activeFrameId: frame.frameId, checkpoint: { checkpointId: "stable-checkpoint", frameId: frame.frameId, stage }, presentationRevision: 9 };
 }
 
-function sourceOwnedAttackTargetedPending({ actorId = "A", eventName = "attack_targeted", continuationKind = "attack_targeted_event", causal = { interactionId: "stable-interaction", frameId: "stable-frame" }, declarationCausal = causal, continuationCausal = causal } = {}) {
+function sourceOwnedAttackTargetedPending({ actorId = "A", sourceId = "A", targetId = "B", eventName = "attack_targeted", continuationKind = "attack_targeted_event", causal = { interactionId: "stable-interaction", frameId: "stable-frame" }, declarationCausal = causal, continuationCausal = causal } = {}) {
   return {
     kind: "trigger",
     event: eventName,
@@ -239,8 +239,8 @@ function sourceOwnedAttackTargetedPending({ actorId = "A", eventName = "attack_t
       kind: continuationKind,
       causal: continuationCausal,
       declaration: {
-        sourceId: "A",
-        targetId: "B",
+        sourceId,
+        targetId,
         origin: "card",
         physicalCards: [],
         sequenceStartCardId: "attack-card",
@@ -268,22 +268,24 @@ test("C7-03 proves a source-owned Attack-targeted trigger without replacing the 
 test("C7-03 source-owned trigger proof fails closed for every malformed or substituted link", () => {
   const base = { interactionId: "stable-interaction", frameId: "stable-frame" };
   const cases = [
-    ["missing causal link", sourceOwnedAttackTargetedPending({ causal: null })],
-    ["wrong interactionId", sourceOwnedAttackTargetedPending({ causal: { ...base, interactionId: "other-interaction" } })],
-    ["wrong frameId", sourceOwnedAttackTargetedPending({ causal: { ...base, frameId: "other-frame" } })],
-    ["unsupported continuation/event", sourceOwnedAttackTargetedPending({ eventName: "unsupported_event", continuationKind: "unsupported_event" })],
-    ["arbitrary substituted actor", sourceOwnedAttackTargetedPending({ actorId: "C" })],
-    ["malformed checkpoint/frame coherence", sourceOwnedAttackTargetedPending()],
+    ["missing causal link", sourceOwnedAttackTargetedPending({ causal: null }), provenBoundaryEnvelope()],
+    ["wrong interactionId", sourceOwnedAttackTargetedPending({ causal: { ...base, interactionId: "other-interaction" } }), provenBoundaryEnvelope()],
+    ["wrong frameId", sourceOwnedAttackTargetedPending({ causal: { ...base, frameId: "other-frame" } }), provenBoundaryEnvelope()],
+    ["unsupported continuation/event", sourceOwnedAttackTargetedPending({ eventName: "unsupported_event", continuationKind: "unsupported_event" }), provenBoundaryEnvelope()],
+    ["arbitrary substituted actor", sourceOwnedAttackTargetedPending({ actorId: "C" }), provenBoundaryEnvelope()],
+    ["malformed checkpoint/frame coherence", sourceOwnedAttackTargetedPending(), { ...provenBoundaryEnvelope(), checkpoint: { checkpointId: "other-checkpoint", frameId: "other-frame", stage: "ATTACK_RESPONSE" } }],
+    ["wrong active-frame stage", sourceOwnedAttackTargetedPending(), provenBoundaryEnvelope("JUDGEMENT")],
+    ["wrong active-frame resolver", sourceOwnedAttackTargetedPending(), provenBoundaryEnvelope("ATTACK_RESPONSE", { currentSourceId: "A", currentEffect: "Attack", currentTargetIds: ["B"], resolvingPlayerId: "C" })],
+    ["substituted actor and declaration source", sourceOwnedAttackTargetedPending({ actorId: "C", sourceId: "C" }), provenBoundaryEnvelope()],
+    ["substituted declaration target", sourceOwnedAttackTargetedPending({ targetId: "C" }), provenBoundaryEnvelope()],
   ];
-  for (const [label, pending] of cases) {
+  for (const [label, pending, causalEnvelope] of cases) {
     const projected = projectPresentationV2({
       pending,
       currentAction: action({ actorId: "A", kind: "trigger" }),
       actionRevision: `source-owned-${label}`,
       timeline: [],
-      causalEnvelope: label === "malformed checkpoint/frame coherence"
-        ? { ...provenBoundaryEnvelope(), checkpoint: { checkpointId: "other-checkpoint", frameId: "other-frame", stage: "ATTACK_RESPONSE" } }
-        : provenBoundaryEnvelope(),
+      causalEnvelope,
     });
     assert.equal(projected.interactionScene?.decisionActorId, null, `${label}: no semantic actor`);
     assert.deepEqual(projected.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null }, `${label}: fail-closed boundary`);

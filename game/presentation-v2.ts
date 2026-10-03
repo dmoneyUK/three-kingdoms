@@ -262,7 +262,7 @@ function sourceOwnedTriggerDecisionActorId(envelope: CausalEnvelope | null, pend
   if (item?.kind !== "trigger"
     || !SOURCE_OWNED_TRIGGER_EVENTS.has(stringValue(item.event) ?? "")
     || !SOURCE_OWNED_TRIGGER_CONTINUATIONS.has(stringValue(continuation?.kind) ?? "")
-    || !envelope || !activeFrame || !checkpointFrame
+    || !envelope || !activeFrame || activeFrame.stage !== "ATTACK_RESPONSE" || !checkpointFrame
     || !actorId || !sourceId || !targetId
     || actorId !== sourceId
     || causal?.interactionId !== envelope.interactionId
@@ -274,6 +274,7 @@ function sourceOwnedTriggerDecisionActorId(envelope: CausalEnvelope | null, pend
     || checkpointFrame.frameId !== activeFrame.frameId
     || checkpointFrame.stage !== activeFrame.stage
     || envelope.checkpoint.stage !== activeFrame.stage
+    || activeFrame.current.resolvingPlayerId !== targetId
     || activeFrame.origin.originSourceId !== sourceId
     || activeFrame.current.currentSourceId !== sourceId
     || !activeFrame.origin.originalTargetIds.includes(targetId)
@@ -534,7 +535,12 @@ function stableBoundaryFor(scene: PresentationInteractionScene | null, pending: 
   const item = record(pending);
   const continuation = record(item?.continuation);
   const continuationKind = stringValue(continuation?.kind);
-  const persistentSpecial = proven && (
+  const sourceOwnedTriggerCandidate = proven
+    && item?.kind === "trigger"
+    && stringValue(item.event) === "attack_targeted"
+    && continuationKind === "attack_targeted_event"
+    && pendingCausalMatchesScene(scene, pending);
+  const persistentSpecial = proven && !sourceOwnedTriggerCandidate && (
     scene?.stage === "JUDGEMENT"
     || (continuationKind === "borrowed_sword_attack" && pendingCausalMatchesScene(scene, pending))
     || (scene?.continuity.relation === "CHILD_FRAME" && scene.stage === "DAMAGE")

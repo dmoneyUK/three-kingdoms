@@ -4661,3 +4661,38 @@ React, CSS, animation, settlement, or transition protocol was added.
 
 C7-03 is **ready for reviewer closure**. React migration remains a separate
 authorized milestone and has not started.
+
+### 0.107 UX2.0C7-03-FIX1 source-owned trigger frame proof — 2026-10-03
+
+C7-03-FIX1 tightens the accepted source-owned `attack_targeted` boundary to
+the exact persisted frame-role relationship demonstrated by the real Ma Chao
+fixture. `sourceOwnedTriggerDecisionActorId` now requires all prior Pending,
+continuation, declaration, envelope, checkpoint, source, and target links,
+plus:
+
+- the active frame stage is exactly `ATTACK_RESPONSE`;
+- the checkpoint frame and stage equal that active frame; and
+- `activeFrame.current.resolvingPlayerId` equals the persisted declaration
+  `targetId`.
+
+The source remains the semantic decision actor for the optional trigger while
+the Attack target remains the active resolver. The helper is not generalized
+to other trigger families, and ordinary target-owned triggers retain the
+existing resolver-coherence rule. No CurrentAction, timeline, finalResult,
+resolutionId, actionRevision, hero name, or card name is authority.
+
+Focused negative evidence now independently covers a correct causal record
+with the wrong active-frame stage, a correct stage with the wrong resolver,
+source and actor substituted together while the frame source remains
+original, and a substituted declaration target while the frame target and
+resolver remain original. Existing malformed-link, discriminator, and
+checkpoint cases remain fail-closed. The real Ma Chao CHOICE/snapshot and
+Skip-to-target-owned-Dodge regressions remain intact, and the real Guo Jia
+Legacy fixture explicitly asserts ordinary target-owned trigger
+`decisionActorId`, `activeResolverId`, and `CHOICE` boundary equality.
+
+The C7 matrix remains **102 P, 2 N/A, 0 GAP, 0 unclassified = 104 cells**.
+SPECIAL remains RESERVED/unexercised; `settlement` remains `null` and
+`transitionEvents` remains `[]`. The atomic `PresentationSnapshot` gate is
+unchanged, with no gameplay, React, CSS, animation, settlement, or transition
+protocol changes. C7-03-FIX1 is ready for reviewer closure.

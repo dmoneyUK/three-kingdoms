@@ -359,6 +359,8 @@ test("Legacy privately distributes top two cards and repeats once per damage poi
   assert.equal(privateView.presentationV2.interactionScene?.continuity.relation, "ROOT_FRAME");
   assert.equal(privateView.presentationV2.interactionScene?.sourceId, one.source.id);
   assert.deepEqual(privateView.presentationV2.interactionScene?.targetIds, [one.guo.id]);
+  assert.equal(privateView.presentationV2.interactionScene?.decisionActorId, one.guo.id, "ordinary target-owned trigger decision actor remains the target");
+  assert.equal(privateView.presentationV2.interactionScene?.activeResolverId, one.guo.id, "ordinary target-owned trigger resolver remains the target");
   assert.deepEqual(privateView.presentationV2.interactionScene?.participantRoles, { sourceId: one.source.id, originalTargetIds: [one.guo.id], activeTargetIds: [one.guo.id], currentParticipantId: one.guo.id, decisionActorId: one.guo.id, activeResolverId: one.guo.id, parentParticipantId: null, participantIds: [] });
   assert.equal(privateView.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(privateView.presentationV2.stableBoundary.decisionActorId, one.guo.id);
