@@ -337,7 +337,58 @@ test("Hero Focus renders the accepted public participant without becoming a cont
   assert.match(globalStyleSource, /@media\(max-width:650px\)[^\n]*\.hero-focus/);
   assert.match(globalStyleSource, /@media\(max-width:480px\)[^\n]*\.hero-focus/);
   assert.match(globalStyleSource, /\.dying-handoff\{/);
-  assert.doesNotMatch(globalStyleSource, /\.hero-focus[^\n]*animation/);
+  assert.doesNotMatch(globalStyleSource, /(?:^|})\.hero-focus\{[^}]*animation/, "Hero Focus animation remains scoped to an accepted transition marker");
+});
+
+test("UI-18 consumes semantic transition kinds without changing topology or authority", () => {
+  const snapshot = {
+    identity: { interactionId: "visual-interaction", checkpointId: "visual-checkpoint", presentationRevision: 4 },
+    stable: { kind: "CHOICE", interactionId: "visual-interaction", checkpointId: "visual-checkpoint", presentationRevision: 4, decisionActorId: "p1" },
+    interaction: {
+      semantics: "PROVEN", interactionId: "visual-interaction", rootFrameId: "visual-root", activeFrameId: "visual-frame", parentFrameId: null,
+      checkpointId: "visual-checkpoint", presentationRevision: 4, stage: "ATTACK_RESPONSE", sourceId: "p2", effect: "Attack", targetIds: ["p1"],
+      currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", activeSourceId: "p2", activeTargetIds: ["p1"], participantIds: ["p1", "p2"],
+      participantRoles: { sourceId: "p2", originalTargetIds: ["p1"], activeTargetIds: ["p1"], currentParticipantId: "p1", decisionActorId: "p1", activeResolverId: "p1", parentParticipantId: null, participantIds: ["p1", "p2"] },
+      continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+    },
+    decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
+    localControl: { source: "CurrentAction", actionRevision: "visual-action", kind: "response", actorId: "p1", entitled: true },
+    settlement: null,
+    transitionEvents: [],
+  };
+  const players = { p1: "Lü Bu", p2: "Zhao Yun" };
+  const renderStage = (transitionKind, viewerId = "p1") => renderToStaticMarkup(React.createElement(InteractionStage, {
+    view: buildPresentationClientView(snapshot, viewerId),
+    transitionKind,
+    resolvePlayerName: (playerId) => players[playerId] ?? null,
+    resolvePlayerDisplay: (playerId) => ({ name: players[playerId] ?? "Unknown participant", heroId: playerId === "p1" ? "lü-bu" : "zhao-yun", heroName: players[playerId], hp: 4, maxHp: 4 }),
+  }));
+
+  const transitionKinds = ["NONE", "CONTENT_UPDATE", "FOCUS_UPDATE", "FRAME_TRANSITION", "INTERACTION_TRANSITION"];
+  for (const transitionKind of transitionKinds) {
+    const html = renderStage(transitionKind);
+    assert.match(html, new RegExp(`data-presentation-transition="${transitionKind}"`), `${transitionKind} keeps the accepted semantic marker`);
+    assert.doesNotMatch(html, /<button|aria-disabled|pointer-events/i, `${transitionKind} does not add a control surface`);
+  }
+
+  const noneHtml = renderStage("NONE");
+  assert.doesNotMatch(noneHtml, /presentation-(?:content|focus|frame|interaction)|animation/i, "NONE has no visual replay marker or animation state");
+  assert.equal(renderStage("NONE"), noneHtml, "repeated NONE remains stable and does not replay");
+  assert.equal(
+    renderStage("INTERACTION_TRANSITION").match(/data-presentation-transition="[^"]+"/)?.[0],
+    renderStage("INTERACTION_TRANSITION", "p2").match(/data-presentation-transition="[^"]+"/)?.[0],
+    "the public semantic marker is viewer-equal",
+  );
+
+  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="CONTENT_UPDATE"\]\{animation:presentationContentRefresh 180ms/);
+  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="FOCUS_UPDATE"\]\{animation:presentationFocusEmphasis 240ms/);
+  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="FOCUS_UPDATE"\] \.hero-focus\{animation:presentationFocusPanelEmphasis 240ms/);
+  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="FRAME_TRANSITION"\]\{animation:presentationFrameEmphasis 280ms/);
+  assert.match(globalStyleSource, /\.interaction-stage\[data-presentation-transition="INTERACTION_TRANSITION"\]\{animation:presentationInteractionEmphasis 320ms/);
+  assert.match(globalStyleSource, /@media\(prefers-reduced-motion:reduce\)[\s\S]*animation:none!important/);
+  const ui18Styles = globalStyleSource.match(/\/\* UI-18:[\s\S]*?\/\* UI-05:/)?.[0] ?? "";
+  assert.doesNotMatch(ui18Styles, /player-square|local-player-dock|transform|opacity|pointer-events|position|translate/);
+  assert.match(ui18Styles, /@keyframes presentation(?:ContentRefresh|FocusEmphasis|FocusPanelEmphasis|FrameEmphasis|InteractionEmphasis)/);
 });
 
 test("waiting room starts without lobby readiness controls", () => {

@@ -183,6 +183,20 @@ or unproven pairs fail closed, while private CurrentAction/options, timeline,
 turn/action-player, HP, and compatibility fields cannot promote a transition.
 Animation is explicitly not implemented in UI-17.
 
+UI-18 consumes that accepted semantic hook with restrained, non-blocking
+feedback inside the existing Interaction Stage. `CONTENT_UPDATE` uses a 180ms
+stage border refresh, `FOCUS_UPDATE` uses a 240ms stage/hero-focus emphasis,
+`FRAME_TRANSITION` uses a 280ms frame emphasis, and
+`INTERACTION_TRANSITION` uses a 320ms stage emphasis. `NONE` remains visually
+stable. These effects change only border and shadow inside the existing stage;
+they do not move seats, the local dock, the hand, controls, or the table, and
+they never delay gameplay or mutate authority. `prefers-reduced-motion: reduce`
+removes the keyframes while preserving the same semantic markup and labels.
+The focused DOM/CSS contract covers kind mapping, viewer-equal markers,
+repeated `NONE`, fixed topology, private/legacy isolation, control usability,
+and reduced-motion behavior. Pixel-level browser appearance remains a manual
+GAP.
+
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 
 C4-01-FIX2 completes the atomic Dying/Peach rescue handoff boundary. Initial

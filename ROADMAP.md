@@ -138,6 +138,17 @@ HP, compatibility Pending data, and malformed or unproven pairs cannot promote
 a public class. UI-17 does not add animation, timers, gameplay effects, server
 history, or a new projector/API path.
 
+UI-18 adds the first visual consumer of that hook. The existing Interaction
+Stage maps `CONTENT_UPDATE` to a 180ms content refresh, `FOCUS_UPDATE` to a
+240ms focus emphasis, `FRAME_TRANSITION` to a 280ms frame emphasis, and
+`INTERACTION_TRANSITION` to a 320ms interaction emphasis; `NONE` has no visual
+effect. The mapping is data-selector-only, preserves stage/seat/dock/hand
+geometry and controls, and settles on the existing stage styles. Reduced motion
+disables the keyframes without hiding semantic state. Focused DOM/CSS tests
+prove the mapping, viewer equality, repeated-`NONE` stability, authority
+isolation, fixed topology, control presence, and reduced-motion contract;
+pixel-level browser appearance remains a manual GAP.
+
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel
 clearing only local state. Existing `choose_target_card` and semantic

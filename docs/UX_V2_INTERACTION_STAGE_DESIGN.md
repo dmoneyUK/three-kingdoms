@@ -596,6 +596,38 @@ mutation, gameplay side effect, server history, settlement animation, or new
 API/projector path is part of UI-17. Later animation work may consume this hook
 only after a separately authorized task defines its visual contract.
 
+### 0.6.17 UI-18 Semantic Transition Visual Consumer — 2026-10-03
+
+UI-18 is the separately authorized visual consumer of the UI-17 marker. It
+does not classify transitions, maintain a second history model, or infer
+authority from React/game state. Existing `data-presentation-transition`
+values are the only visual input:
+
+| Accepted kind | Existing surface | Feedback | Duration |
+| --- | --- | --- | --- |
+| `NONE` | none | no animation or replay marker | none |
+| `CONTENT_UPDATE` | Interaction Stage shell | subtle border/shadow refresh | 180ms |
+| `FOCUS_UPDATE` | Interaction Stage shell and existing Hero Focus panel | focused border/shadow emphasis | 240ms |
+| `FRAME_TRANSITION` | Interaction Stage shell | nested-frame border/shadow emphasis | 280ms |
+| `INTERACTION_TRANSITION` | Interaction Stage shell | strongest short border/shadow emphasis | 320ms |
+
+The stage remains in place: no seat, local dock, hand, table, control, modal,
+opacity, or pointer-event behavior is changed. Keyframe endpoints settle on
+the pre-existing stage/panel styles, so completion cannot mutate gameplay,
+presentation authority, controls, network, or snapshot handoff. Public
+feedback is viewer-equal because the selector consumes the same projected
+semantic kind; local amber/control feedback remains a separate surface.
+Repeated `NONE`, reconnect, private-only changes, and legacy fields do not
+replay because they do not produce a non-`NONE` accepted semantic marker.
+
+`@media (prefers-reduced-motion: reduce)` removes the nonessential keyframes.
+The stage's semantic labels, roles, and controls remain present and usable, so
+decision ownership is never communicated by motion alone. Focused DOM/CSS
+coverage asserts all five kind mappings, no added controls, fixed topology,
+viewer-equal markers, authority isolation, repeated-`NONE` stability, and the
+reduced-motion rule. Browser pixel polish and assistive-technology smoke
+testing remain manual GAPs.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*
