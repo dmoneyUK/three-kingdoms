@@ -57,3 +57,15 @@ Append only C7-03-FIX1 result with full SHA, files, added predicates, negative c
 
 ## Acceptance
 Pass only if the source-owned trigger requires the exact persisted ATTACK_RESPONSE source/target/resolver relationship proven by the real engine state; wrong-stage/wrong-resolver/substituted-role states fail closed; ordinary target-owned behavior has explicit real regression evidence; matrix remains 0 GAP; and no gameplay/UI/snapshot scope creep occurs.
+
+## Execution result — UX2.0C7-03-FIX1 source-owned trigger frame proof — 2026-10-03
+
+- Implementation SHA: `7b21b8f841b99fd44e51e40a3e5e180b1d9d81b1`.
+- Files changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`, `tests/api/lobby-heroes-wei.test.mjs`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, and `README.md`.
+- Production predicates added to `sourceOwnedTriggerDecisionActorId`: active frame stage must be exactly `ATTACK_RESPONSE`; checkpoint frame/stage must match that active frame; and `activeFrame.current.resolvingPlayerId` must equal the persisted declaration `targetId`. Existing exact Pending/continuation/declaration causal links, typed discriminators, actor/source equality, source coherence, and target membership remain required. The stable-boundary fallback also keeps an identified-but-unproven source-owned trigger at identity-free REST instead of SPECIAL.
+- Negative evidence: focused proof covers missing causal link, wrong interaction ID, wrong frame ID, unsupported event/continuation, arbitrary actor, malformed checkpoint/frame coherence, wrong active-frame stage, wrong active-frame resolver, actor/source substituted together while the frame source remains original, and substituted declaration target while the frame target/resolver remain original. Every case has no semantic decision actor and an identity-free REST boundary.
+- Real evidence: Ma Chao still proves source `decisionActorId`, target `activeResolverId`, coherent CHOICE `PresentationSnapshot`, and Skip resuming target-owned Dodge; the shared Judgement continuation remains covered. The real Guo Jia Legacy target-owned trigger now explicitly asserts decision actor equals resolver/target and the CHOICE boundary remains present.
+- Matrix remains **102 P / 2 N/A / 0 GAP / 0 unclassified = 104 cells**. SPECIAL remains RESERVED/unexercised; `settlement` remains `null` and `transitionEvents` remains `[]`.
+- The atomic `PresentationSnapshot` gate is unchanged. No gameplay, React, CSS, animation, settlement, transition protocol, CurrentAction authority, or new trigger family was added.
+- Validation: focused PresentationV2 `34/34`; targeted Ma Chao + ordinary target-owned trigger API `32/32`; `npm run test:fast` `131/131`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
+- Recommendation: C7-03-FIX1 is ready for reviewer closure; React migration remains separate and has not started.
