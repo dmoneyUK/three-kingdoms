@@ -1,25 +1,33 @@
-# WTK UX V2 — Current Task Handoff
+# WTK — Current Task Handoff
 
-# NEXT TASK — UX2.0UI-20-FIX1: Final Gate Confirmation
+# NEXT TASK — BUG-ZHANG-LIAO-ASSAULT-01: Reproduce and Fix Real Draw-Phase Assault UI
 
-## Status
-UI-20 ledger commit 09f5a6c634bffb76a54c5d807be7c97501aee2de is structurally accepted, but UI-20 is not closed. Its required final validation was not executed locally. Workflow run 37142850218 for ux-v2 head 474e2f15c1dd6f44a2a11bcc58d3c33083582a99 was still in progress at reviewer inspection.
+## User-reported defect
+Real game sequence: Draw Phase offers Assault; activate it; select two legal players; no Confirm button appears; clicking Assault again cancels the local selection; Zhang Liao then cannot successfully activate/resolve Assault.
+
+Existing synthetic mounted coverage claims Confirm works, so it is insufficient and must not be used to dismiss this real defect.
+
+## Reviewer findings
+Server contract in game/capabilities/heroes/zhang-liao-assault.ts is Draw Phase replacement, target min 1/max 2, submitted by trigger with providerId zhang_liao_assault and targetIds. app/page.tsx routes it through activeSkillTargetSelection. A second click on an active target skill calls resetLocalTargetFlow(active-skill), matching the observed cancellation. tests/active-skill-interactions.test.mjs contains a synthetic Assault test expecting Confirm; identify which real API/presentation/busy/revision state that fixture misses.
 
 ## Objective
-Obtain real final-gate evidence. Do not add UX features.
+Reproduce the real Draw Phase state end-to-end, identify the exact state mismatch suppressing Confirm or invalidating the active skill, and make the smallest fix. Do not change Assault gameplay rules.
 
 ## Required work
-1. Inspect workflow run 37142850218 and its jobs/steps. If failed, inspect the actual failing log and make only the smallest evidence-backed fix, then inspect the replacement run.
-2. Prove actual successful execution of: npm run test:browser; npm run test:fast; npm run test:api; npm run build; npm run lint; git diff --check; npm test. A CI step counts only when it clearly executes that command. Run any missing command locally and report its actual result.
-3. Record exact counts where available. Do not reuse UI-19 counts as though they were a new UI-20 run.
-4. Recheck docs/UX_V2_RELEASE_GATE.md. The 14 PASS / 1 intentional N/A / 0 functional GAP ledger must remain truthful. Durable per-counter Reaction Chain history remains N/A.
-5. Only when every required gate is proven green, update README, ROADMAP, release-gate doc, and design status to UX V2 FEATURE COMPLETE. Do not claim whole-game completion. If anything is pending, unrun, or failing, keep candidate status and report the blocker.
+1. Build a real API-backed Zhang Liao Draw Phase fixture through normal turn progression, not only a constructed GameRoom object.
+2. Capture before activation, after activation, after first target, after second target, and after second Assault click: CurrentAction kind/actor/actionRevision/triggerOptions, Assault targetIds/min/max, presentation-busy inputs, active local skill state, console primary, and emitted actions.
+3. Reproduce the missing Confirm in mounted/browser UI using the real projected room state. If not reproducible, identify the exact difference from the reported sequence; do not guess.
+4. Fix only the root cause. Confirm must be visible during active Assault selection and enabled after 1 or 2 legal targets while the authoritative trigger remains current. Submission must remain exactly trigger with providerId zhang_liao_assault and targetIds.
+5. Do not leave the player trapped after local cancellation. Explicit Cancel must send zero gameplay action and reactivation must work while the same CurrentAction remains authoritative. Prefer one clear Cancel surface over ambiguous double-cancel behavior.
+6. Prove one-target and two-target submission, Cancel then reactivate, stale actionRevision fail-closed behavior, invalid target rejection, and zero draw/replacement action before Confirm.
+7. Add a browser regression for the reported sequence if the browser harness can drive the API fixture; after two targets it must assert a visible enabled Confirm.
+8. Run focused Zhang Liao tests, browser regression, test:fast, test:api, build, lint, and git diff --check. Report actual counts only.
 
 ## Scope
-No new UX, redesign, gameplay/card/hero changes, authority expansion, main merge, deployment, or unrelated refactor.
+No Assault rule/target/random-card/draw-replacement changes, no causal/projector authority changes, no unrelated hero or UX redesign. Pause UI-20 closure until this functional defect is reviewer-accepted.
 
 ## Execution result
-Append only the FIX1 result: SHAs, workflow run ID/conclusion, jobs/steps inspected, exact commands/counts/status, any fix, ledger verification, remaining manual gaps, and final feature-complete recommendation. Push and verify remote HANDOVER, then STOP.
+Append only this bug-fix result: root cause, reproduction evidence, SHA/files, behavior before/after, API/browser regression evidence, exact action payload, validation counts, remaining gaps. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only when every required gate has real successful execution evidence, CI is not pending/failing, and the ledger remains truthful.
+Pass only if the real Draw Phase flow proves Confirm visible/enabled after legal target selection, exact Assault submission resolves, Cancel/reactivation cannot strand the skill, stale authority fails closed, and regression coverage goes beyond the old synthetic fixture.
