@@ -215,3 +215,21 @@ Push, verify remote HANDOVER, then STOP.
 
 ## Acceptance
 Pass only if the existing semantic content is unchanged, the 1440x900 top-row Stage becomes a genuine wide horizontal composition, all three desktop states fit entirely inside the existing safe zone, all 9 strict geometry cases pass, mobile remains stacked and green, and no seat/dock/gameplay/presentation authority is changed.
+
+## Agent execution result — UX2.0VIS-03A
+
+- Implementation SHA: `4c1ee9db41c1da191549c2a363d60a2d2cd6d8dc`.
+- Files changed:
+  - `app/page.tsx`
+  - `app/globals.css`
+  - `tests/browser/ui19.spec.mjs`
+- Final DOM regions: the existing Stage header remains unchanged; `.interaction-stage-body` now contains `.interaction-stage-hero-region` (the existing `HeroFocus`), `.interaction-stage-event-region` (the existing conditional Dying handoff and Reaction Chain), and `.interaction-stage-meta-region` (the existing SOURCE / FOCUS and context blocks). Existing semantic conditions and copy were not changed.
+- Desktop width/grid strategy: only top-row mode above 650px expands the Stage to `width: min(100%, 1200px)`. The body uses a three-column grid (`minmax(190px, .8fr)`, `minmax(300px, 1.4fr)`, `minmax(280px, 1fr)`) for hero/event/meta. When the event region is empty, CSS `:has(...:empty)` removes that empty region from layout and resolves hero/meta into two columns. No safe-zone, seat, play-table, dock, Hero Focus sizing, content, font, or gameplay/presentation-authority geometry changed.
+- 1440x900 measured geometry:
+  - Interaction: safe zone `186px`; Stage `122px`.
+  - Negation: safe zone `186px`; Stage `122px`.
+  - Dying: safe zone `186px`; Stage `122px`.
+- Narrow regression status: all three states passed at 650x900 and all three states passed at 480x900; the body remains stacked at widths <=650px.
+- Focused validation: `npx playwright test tests/browser/ui19.spec.mjs --grep 'UX2.0VIS-02-FIX1' --config tests/browser/playwright.config.mjs` — **9/9 PASS**. The same cases now also assert a resolved multi-column desktop grid, all three stable region hooks inside the Stage DOM, geometric containment for visible non-empty regions, and zero pairwise region overlap.
+- Full validation not run under the project remote-validation workflow: `npm run test:browser`, `npm run test:fast`, `npm run build`, `npm run lint`, and `git diff --check`. GitHub Actions owns those gates; CI status was not inspected or polled.
+- Remaining GAP: none observed within the bounded VIS-03A focused geometry scope. Full-suite and CI results remain unverified pending GitHub Actions/user notification.
