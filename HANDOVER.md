@@ -82,3 +82,16 @@ Append only C7-03 result: full SHA, files, persisted proof observed, helper/rule
 
 ## Acceptance
 Pass only if the real source-owned trigger becomes coherent public CHOICE from Pending + causal-envelope authority alone; decision actor and active resolver remain truthfully distinct where appropriate; malformed/unlinked/arbitrary trigger states fail closed; ordinary families remain unchanged; snapshot atomic fail-closed behavior is untouched; matrix reaches 0 GAP or honestly reports remaining gaps; and no gameplay/UI scope creep occurs.
+
+## Execution result — UX2.0C7-03 source-owned trigger stable boundary — 2026-10-03
+
+- Implementation SHA: `cfb10e511a180cf828d61afd3a0008c1630008d8`.
+- Files changed: `game/presentation-v2.ts`, `tests/presentation-v2.test.mjs`, `tests/api/ma-chao.test.mjs`, `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, and `README.md`.
+- Persisted real proof observed in the Ma Chao fixture: `pending.kind=trigger`, `pending.event=attack_targeted`, `pending.actorId=source`; Pending causal, continuation causal, declaration causal, envelope interaction/active frame, and checkpoint frame/stage all match; continuation is `attack_targeted_event`; declaration source/target match the Attack; active frame is `ATTACK_RESPONSE` with source-owned origin/current source, the original/current target, and `resolvingPlayerId=target`.
+- Helper/rule added: pure `sourceOwnedTriggerDecisionActorId` accepts only the typed `attack_targeted` / `attack_targeted_event` proof with exact causal links, coherent checkpoint, source/target frame links, and actor equal to persisted declaration source. It preserves the target as active resolver, while ordinary response and target-owned trigger decisions retain resolver coherence. No CurrentAction, timeline, finalResult, resolutionId, or hero/card name is authority.
+- Negative coverage: missing causal link, wrong interaction ID, wrong frame ID, unsupported event/continuation, arbitrary actor, and malformed checkpoint/frame coherence all fail closed to identity-free REST.
+- Real regressions: Ma Chao source-owned pre-Judgement trigger now yields a coherent CHOICE snapshot; decline resumes the target-owned Attack response; Judgement continuation/progression remains correct; the existing full API suite covers ordinary Attack/Dodge, target-owned triggers, Dying, Negation, Group child, and Borrowed Sword semantics.
+- C7 matrix: **102 P / 2 N/A / 0 GAP / 0 unclassified = 104 cells**. The two C N/A cells remain the single-checkpoint Attack/Dodge and independent/root Damage cells. SPECIAL remains RESERVED/unexercised.
+- The `PresentationSnapshot` atomic gate is unchanged. `settlement` remains `null` and `transitionEvents` remains `[]`; no gameplay, React, or CSS changes were made.
+- Validation: focused PresentationV2 `34/34`; targeted Ma Chao API `10/10`; `npm run test:fast` `131/131`; `npm run test:api` `239/239`; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
+- Recommendation: C7 is ready for reviewer closure. React migration remains a separate next phase and has not started.
