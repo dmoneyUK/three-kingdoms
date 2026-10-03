@@ -1,179 +1,139 @@
 # WTK UI / Layout — Current Task Handoff
 
 ## REMOTE HANDOVER RULE
-HANDOVER.md is tracked remote coordination state. Commit and push the task result to origin/ux-v2. After execution append only the current execution result, push, fetch origin, verify the remote HANDOVER contains it, then STOP.
+HANDOVER.md is the single current task/execution file. Commit and push implementation + appended execution result to origin/ux-v2, fetch origin, verify origin/ux-v2:HANDOVER.md contains the result, then STOP.
 
-**CLEANLINESS:** this file contains only the current UI/Layout task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
+Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md before implementation.
 
-# NEXT TASK — UX2.0VIS-01: Interaction Stage & Seat Topology Visual Architecture Audit
-
-## Why this task exists
-A real iPhone game screenshot exposed a material mismatch between the original UX V2 layout contract and the rendered game.
-
-Observed during Barbarian Invasion / Group Resolution:
-- the current Interaction Stage renders as a wide information/dashboard panel across the upper/central play area;
-- its compact Hero Focus is only a small portrait inside that dashboard;
-- the actual central battlefield remains largely unused;
-- opponent hero cards remain large around the board rather than acting as small fixed seat thumbnails around a protected central stage;
-- the 4-player composition visually resembles the legacy horseshoe/physical-table layout rather than the intended 2–4-player top-row mode.
-
-The original UX V2 intent was different:
-- opponent seats remain small, fixed relative-position thumbnails;
-- the centre is a protected Interaction Safe Zone;
-- the active/involved public hero presentation is enlarged in that centre without moving/removing the original seat anchors;
-- current effect / Duel / Judgement / Dying / Reaction / AOE context belongs in that centre;
-- the local player dock remains persistent at the bottom;
-- public Interaction Stage remains read-only; gameplay controls remain in the local console.
+# NEXT TASK — UX2.0VIS-01: Correct 2–4 Player Opponent Seats to a Real Top Row
 
 ## Objective
-Audit the original UX V2 visual-layout contract against the current DOM/CSS/rendered architecture and produce an implementation-ready gap map.
+Fix one visual-layout defect only:
 
-**This task is intentionally audit-only. Do not patch production layout yet.** The purpose is to prevent another sequence of locally-green CSS/DOM changes that preserve the wrong overall composition.
+**For games with 2–4 total players, every opponent seat must render in one stable top row above the battlefield instead of using the current legacy horseshoe positions.**
 
-## Required sources
-Cross-reference:
-- docs/UX_V2_INTERACTION_STAGE_DESIGN.md
-- ROADMAP.md
-- app/page.tsx
-- app/globals.css
-- game/interaction-stage.ts
-- game/hero-focus.ts
-- game/presentation-client.ts and seat-role helpers as needed
-- tests/browser responsive/layout coverage
-- any retained UI-03/UI-06/UI-11/UI-19 tests that froze the temporary composition
+Do not redesign Interaction Stage, Hero Focus, the central battlefield, or the local dock in this task.
 
-## Step 1 — extract the authoritative visual-layout contract
-Quote/identify the exact design requirements for:
-1. 2–4 total players;
-2. 5–10 total players;
-3. fixed seat thumbnails / distance context;
-4. protected central Interaction Safe Zone;
-5. enlarged active/involved hero presentation;
-6. source vs current participant/target vs decision actor;
-7. local player dock;
-8. public/read-only Interaction Stage vs private local controls.
+## Existing accepted truth
+The UX V2 design already defines:
+- 2–4 total players = top-row opponent topology;
+- the local player remains in the persistent bottom LocalPlayerDock;
+- opponent anchors remain persistent public seat thumbnails;
+- interactions must not move/reorder seat identity;
+- gameplay targeting/click behavior must remain unchanged.
 
-Be explicit about whether the design requires one enlarged focus hero or can show multiple involved heroes for an interaction. Do not assume; derive from the design text.
+Current production already emits:
+- `data-seat-topology="top-row"` when `room.players.length < 5`;
+- opponent seats only in `.player-board`;
+- the local player only in `LocalPlayerDock`.
 
-## Step 2 — map design to current production DOM/CSS
-For each requirement, identify the exact current component/element/CSS rule that implements, partially implements, or contradicts it.
+The defect is CSS/layout: the generic rules still place `.player-square-1` left-middle, `.player-square-2` top-middle, and `.player-square-3` right-middle, which visually recreates the legacy horseshoe even when the DOM says `top-row`.
 
-At minimum inspect:
-- player-board and player-square-* positioning;
-- data-seat-topology / player-count hooks;
-- InteractionStage placement and sizing;
-- HeroFocus placement and portrait/card sizing;
-- z-index / absolute positioning / reserved centre geometry;
-- LocalPlayerDock placement;
-- responsive <=650px and <=480px overrides.
+## Required implementation
 
-Call out exact rules responsible for the top-wide dashboard and any legacy horseshoe positioning.
+### 1. Add topology-specific top-row placement
+In `app/globals.css`, add explicit rules scoped to:
 
-## Step 3 — identify task drift/root cause
-Trace where the implementation intentionally created temporary semantic consumers and where later milestones accidentally treated those temporary consumers as the final layout.
+`[data-seat-topology="top-row"]`
 
-At minimum review the design notes for:
-- UI-03 small read-only Interaction Stage;
-- UI-04 focus summary;
-- UI-06 compact Hero Focus and its explicit future larger redesign;
-- UI-11 topology/containment contract;
-- UI-18 no-layout-movement transition visuals;
-- UI-19 browser geometry tests.
+Do not rely on the generic `.player-square-1/.2/.3` horseshoe rules for 2–4 player games.
 
-Explain which milestones should be preserved semantically and which visual assumptions must now be reopened.
+Required mapping by **total player count**:
 
-## Step 4 — explain why tests passed
-Inspect the browser/SSR/layout tests and classify what they actually prove:
-- anchor count/order;
-- no horizontal overflow;
-- visibility/containment;
-- stable DOM;
-- reduced motion;
-versus what they do NOT prove:
-- intended top-row vs horseshoe visual composition;
-- protected central empty/safe zone;
-- enlarged central hero composition;
-- correct hierarchy between seats and stage;
-- art-direction/player-facing readability.
+- **2 players total**: one opponent (`relativeIndex=1`) centered in the top row.
+- **3 players total**: two opponents (`relativeIndex=1,2`) placed left and right in the same top row.
+- **4 players total**: three opponents (`relativeIndex=1,2,3`) placed left / center / right in the same top row.
 
-Name the specific blind spots that allowed the real screenshot mismatch to pass.
+Preserve relativeIndex order left-to-right: 1, then 2, then 3.
 
-## Step 5 — define the target structural composition
-Produce component/ASCII layouts for:
-- 2-player;
-- 3–4-player top-row mode;
-- 5–10-player side-column mode;
-- mobile narrow mode for 4 players;
-- mobile narrow mode for 6–10 players.
+Use the existing `data-player-count` attribute to make the mapping explicit where needed.
 
-The target must preserve:
-- N-1 fixed opponent seat anchors;
-- one persistent local dock;
-- a reserved central Interaction Safe Zone;
-- enlarged presentation of the currently involved semantic hero(s) in the centre;
-- source/current target/current participant/decision information as secondary context rather than a full-width dashboard;
-- no controls inside the public centre stage.
+### 2. Do not change seat identity or behavior
+Do not modify:
+- `room.players` ordering;
+- `relativeIndex` calculation;
+- target legality;
+- target click handlers;
+- Inspect behavior;
+- semantic role classes;
+- turn/action/defeated/local-selection highlights;
+- local dock rendering.
 
-Do not design new art assets in this task.
+This is position/layout only.
 
-## Step 6 — define implementation invariants
-At minimum:
-- opponent anchor identity/order never changes because an interaction starts;
-- no opponent seat is moved into the centre; centre uses a presentation copy/projection;
-- Interaction Stage cannot cover the seat row/columns or local dock;
-- central stage is geometrically reserved, not merely created by z-index overlay;
-- 2–4 total players use the intended top-row composition;
-- 5–10 use the intended side-column composition;
-- active/involved hero presentation is materially larger than seat thumbnails;
-- Hero Focus identity still comes only from accepted semantic authority;
-- source/decision/resolver distinctions remain truthful;
-- local console remains the only gameplay-control surface;
-- gameplay, target legality, causal/projector semantics and payloads remain unchanged.
+### 3. Do not touch the Interaction Stage yet
+The current top-wide Interaction Stage is a separate defect and will be handled only after this task is reviewed.
 
-## Step 7 — propose bounded implementation slices
-Recommend the smallest safe implementation sequence. Expected shape unless evidence says otherwise:
-- VIS-02: real seat topology + reserved central safe-zone geometry;
-- VIS-03: central enlarged Hero Focus / involved-hero composition, remove top-wide dashboard hierarchy;
-- VIS-04: responsive/mobile composition and real-browser visual contract;
-- VIS-05 only if needed: final layout regression/polish.
+For VIS-01:
+- do not change `InteractionStage` JSX;
+- do not change `.interaction-stage` size/position;
+- do not enlarge Hero Focus;
+- do not introduce a central safe-zone container;
+- do not redesign opponent card content.
 
-For each slice state exact files/components, invariants, and browser evidence required.
+The purpose of this task is to make the seat topology itself truthful first.
 
-## Deliverable
-Create docs/UX_V2_VISUAL_ARCHITECTURE_AUDIT.md containing:
-- design-vs-current matrix;
-- exact DOM/CSS evidence;
-- root-cause/task-drift analysis;
-- test blind spots;
-- target structural layouts;
-- implementation invariants;
-- proposed slices.
+### 4. Responsive behavior
+The top-row mapping must remain true at:
+- desktop 1440x900;
+- 650x900;
+- 480x900.
 
-Update ROADMAP only enough to state that UX V2 visual architecture is reopened and Feature Complete is blocked pending the visual-layout slices.
+At all three widths:
+- all opponents in a 2–4 player game remain on one row;
+- no opponent is positioned in a left-middle/right-middle horseshoe slot;
+- no horizontal page overflow is introduced;
+- the local dock remains present exactly once.
 
-## Scope exclusions
-No production CSS/component/layout changes.
-No gameplay/API/projector/causal changes.
-No card/hero skill fixes.
-No new artwork.
-No speculative redesign beyond the existing UX V2 layout contract.
-Do not claim the screenshot problem fixed.
+Do not add a second mobile-only seat topology.
+
+## Required browser regression
+Extend the existing Playwright layout coverage in `tests/browser/ui19.spec.mjs` (or the smallest existing browser layout file).
+
+Add real geometry assertions, not only a check of the `data-seat-topology` string.
+
+For 2, 3, and 4 total players:
+1. assert opponent anchor count = N - 1;
+2. assert one local dock anchor remains;
+3. assert opponent bounding boxes have approximately the same top/Y position (small tolerance is acceptable);
+4. assert their horizontal centers increase in relativeIndex order;
+5. for 4 players specifically, prove relativeIndex 1/2/3 are left/center/right rather than left-middle/top/right-middle;
+6. run at 1440px and 480px widths at minimum; retain the existing 650px matrix.
+
+The new regression must fail against the old horseshoe CSS.
 
 ## Validation
-Run git diff --check and any documentation/link validation available. No gameplay suite is required for this documentation-only audit.
+Run:
+- focused browser test(s) covering this topology change;
+- `npm run test:browser`;
+- `npm run test:fast`;
+- `npm run build`;
+- `npm run lint`;
+- `git diff --check`.
+
+Report actual counts/status only.
+
+## Scope exclusions
+Do not:
+- change Interaction Stage layout;
+- change Hero Focus;
+- implement the central enlarged combat presentation;
+- change 5–10 player side-column layout;
+- change local dock layout;
+- change gameplay/server/projector/presentation semantics;
+- perform unrelated CSS cleanup.
 
 ## Execution result
-Append only VIS-01 result:
-- full SHA;
+Append only the VIS-01 execution result:
+- implementation SHA;
 - files changed;
-- key mismatches;
-- exact root cause/task drift;
-- browser-test blind spots;
-- target layout summary;
-- recommended VIS-02+ slices;
-- validation status.
+- exact CSS mapping for 2/3/4 players;
+- browser geometry assertions added;
+- before/after defect statement;
+- validation commands and exact results;
+- any remaining issue discovered inside this task scope.
 
 Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if the audit proves from repository evidence why the current visual composition diverges from the original UX V2 design, preserves the already-accepted semantic architecture, and gives implementation-ready bounded layout tasks without changing gameplay authority.
+VIS-01 passes only if 2–4 player games visually use a genuine single opponent top row at desktop and mobile widths, relative seat order is preserved, the old horseshoe placement is impossible under `top-row`, browser geometry tests prove the change, and no Interaction Stage/gameplay/local-dock scope is changed.
