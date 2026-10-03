@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus } from "../game/presentation-client.ts";
+import { buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, projectInteractionSeatRoles } from "../game/presentation-client.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
@@ -174,6 +174,131 @@ test("adapter fails closed for partial authority instead of reconstructing it fr
   assert.equal(view.interactionId, null);
   assert.deepEqual(view.originalTargetIds, []);
   assert.equal(view.isLocalDecisionActor, true, "private entitlement remains local without recreating public authority");
+});
+
+test("semantic seat roles preserve ordinary target-owned and source-owned ownership", () => {
+  const ordinary = buildPresentationClientView(snapshot(), "B");
+  assert.deepEqual(projectInteractionSeatRoles(ordinary, "A"), {
+    isInteractionSource: true,
+    isOriginalTarget: false,
+    isActiveTarget: false,
+    isCurrentParticipant: false,
+    isDecisionActor: false,
+    isActiveResolver: true,
+    isViewerDecisionActor: false,
+  });
+  assert.deepEqual(projectInteractionSeatRoles(ordinary, "B"), {
+    isInteractionSource: false,
+    isOriginalTarget: true,
+    isActiveTarget: true,
+    isCurrentParticipant: true,
+    isDecisionActor: true,
+    isActiveResolver: false,
+    isViewerDecisionActor: true,
+  });
+
+  const sourceOwned = buildPresentationClientView(snapshot({
+    stable: { ...snapshot().stable, decisionActorId: "A" },
+    interaction: scene({ decisionActorId: "A", activeResolverId: "B", participantRoles: { ...scene().participantRoles, decisionActorId: "A", activeResolverId: "B" } }),
+    decision: { actorId: "A", stage: "ATTACK_RESPONSE" },
+    localControl: { ...snapshot().localControl, actorId: "A", entitled: true },
+  }), "A");
+  assert.deepEqual(projectInteractionSeatRoles(sourceOwned, "A"), {
+    isInteractionSource: true,
+    isOriginalTarget: false,
+    isActiveTarget: false,
+    isCurrentParticipant: false,
+    isDecisionActor: true,
+    isActiveResolver: false,
+    isViewerDecisionActor: true,
+  });
+  assert.deepEqual(projectInteractionSeatRoles(sourceOwned, "B"), {
+    isInteractionSource: false,
+    isOriginalTarget: true,
+    isActiveTarget: true,
+    isCurrentParticipant: true,
+    isDecisionActor: false,
+    isActiveResolver: true,
+    isViewerDecisionActor: false,
+  });
+});
+
+test("semantic seat roles preserve Group/AOE, child-frame, Dying, and overlapping facts", () => {
+  const group = buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C", "A"], activeTargetIds: ["C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C", "A"], activeTargetIds: ["C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"] } }),
+    stable: { ...snapshot().stable, decisionActorId: "C" },
+    decision: { actorId: "C", stage: "GROUP_RESOLUTION" },
+  }), "A");
+  assert.deepEqual(projectInteractionSeatRoles(group, "B"), {
+    isInteractionSource: false,
+    isOriginalTarget: true,
+    isActiveTarget: false,
+    isCurrentParticipant: false,
+    isDecisionActor: false,
+    isActiveResolver: false,
+    isViewerDecisionActor: false,
+  });
+  assert.deepEqual(projectInteractionSeatRoles(group, "C"), {
+    isInteractionSource: false,
+    isOriginalTarget: true,
+    isActiveTarget: true,
+    isCurrentParticipant: true,
+    isDecisionActor: true,
+    isActiveResolver: true,
+    isViewerDecisionActor: false,
+  });
+
+  const childDying = buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "DYING", parentFrameId: "damage-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "damage-frame" }, currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantRoles: { ...scene().participantRoles, currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B" } }),
+    stable: { ...snapshot().stable, decisionActorId: "B" },
+    decision: { actorId: "B", stage: "DYING" },
+  }), "A");
+  assert.equal(childDying.continuity.relation, "CHILD_FRAME");
+  assert.equal(projectInteractionSeatRoles(childDying, "B").isCurrentParticipant, true);
+  assert.equal(projectInteractionSeatRoles(childDying, "B").isDecisionActor, true);
+
+  const overlap = buildPresentationClientView(snapshot({
+    interaction: scene({ sourceId: "A", targetIds: ["A"], activeTargetIds: ["A"], currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A", participantRoles: { ...scene().participantRoles, sourceId: "A", originalTargetIds: ["A"], activeTargetIds: ["A"], currentParticipantId: "A", decisionActorId: "A", activeResolverId: "A" } }),
+    stable: { ...snapshot().stable, decisionActorId: "A" },
+    decision: { actorId: "A", stage: "ATTACK_RESPONSE" },
+    localControl: { ...snapshot().localControl, actorId: "A", entitled: true },
+  }), "A");
+  assert.deepEqual(projectInteractionSeatRoles(overlap, "A"), {
+    isInteractionSource: true,
+    isOriginalTarget: true,
+    isActiveTarget: true,
+    isCurrentParticipant: true,
+    isDecisionActor: true,
+    isActiveResolver: true,
+    isViewerDecisionActor: true,
+  });
+});
+
+test("semantic seat roles are viewer-equal, legacy-independent, and empty in REST", () => {
+  const actingView = buildPresentationClientView(snapshot(), "B");
+  const uninvolvedView = buildPresentationClientView(snapshot({ localControl: { ...snapshot().localControl, actorId: null, entitled: false } }), "C");
+  for (const playerId of ["A", "B", "C"]) {
+    const acting = projectInteractionSeatRoles(actingView, playerId);
+    const uninvolved = projectInteractionSeatRoles(uninvolvedView, playerId);
+    assert.deepEqual({ ...acting, isViewerDecisionActor: false }, { ...uninvolved, isViewerDecisionActor: false });
+  }
+  assert.equal(projectInteractionSeatRoles(actingView, "B").isViewerDecisionActor, true);
+  assert.equal(projectInteractionSeatRoles(uninvolvedView, "B").isViewerDecisionActor, false);
+
+  const legacyChanged = buildPresentationClientView(snapshot({ pending: { kind: "dying", targetId: "C" }, timeline: [{ id: "legacy-event" }], presentationV2: { stableBoundary: { kind: "REST" } }, currentAction: { actorId: "C" }, phase: "dying", actionPlayerId: "C", actionReason: "legacy" }), "B");
+  assert.deepEqual(projectInteractionSeatRoles(legacyChanged, "A"), projectInteractionSeatRoles(actingView, "A"));
+  assert.deepEqual(projectInteractionSeatRoles(legacyChanged, "B"), projectInteractionSeatRoles(actingView, "B"));
+
+  const rest = buildPresentationClientView(snapshot({ identity: null, interaction: null, decision: null, stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null } }), "B");
+  for (const playerId of ["A", "B", "C"]) assert.deepEqual(projectInteractionSeatRoles(rest, playerId), {
+    isInteractionSource: false,
+    isOriginalTarget: false,
+    isActiveTarget: false,
+    isCurrentParticipant: false,
+    isDecisionActor: false,
+    isActiveResolver: false,
+    isViewerDecisionActor: false,
+  });
 });
 
 function decisionRoom(overrides = {}) {

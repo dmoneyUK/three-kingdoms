@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-04-FIX1 authority-safe target context — 2026-10-03
+## Current stage — UX2.0UI-05 semantic seat highlight projection — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -22,6 +22,14 @@ controls, target selection, dialogs, timers, animation, seats, dock, gameplay,
 and the final visual Interaction Stage redesign remain unchanged. The next
 milestone is a separately bounded readability or focus slice, not a board
 redesign.
+
+UI-05 adds presentation-only interaction-role highlights to the existing
+opponent seats. The pure role projection reads only the accepted
+`PresentationClientView`: source, original/active target, current participant,
+decision actor, active resolver, and the local viewer marker. Dedicated seat
+classes/data attributes do not change target legality, click behavior, local
+amber selection, turn/defeated state, seat topology, or dimensions. Hero Focus,
+final seat topology, and control migration remain future work.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

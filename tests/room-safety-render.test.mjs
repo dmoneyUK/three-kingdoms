@@ -87,6 +87,23 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.match(html, /data-presentation-kind="CHOICE"/);
   assert.match(html, /data-presentation-has-interaction="true"/);
   assert.match(html, /data-presentation-local-control="true"/);
+  const semanticSeatSnapshot = {
+    ...uxRoom.presentationSnapshot,
+    stable: { ...uxRoom.presentationSnapshot.stable, decisionActorId: "p2" },
+    interaction: { ...uxRoom.presentationSnapshot.interaction, sourceId: "p2", targetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p2", activeResolverId: "p2", activeTargetIds: ["p2"], participantRoles: { ...uxRoom.presentationSnapshot.interaction.participantRoles, sourceId: "p2", originalTargetIds: ["p2"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p2", activeResolverId: "p2" } },
+    decision: { actorId: "p2", stage: "ATTACK_RESPONSE" },
+    localControl: { ...uxRoom.presentationSnapshot.localControl, actorId: "p2", entitled: false },
+  };
+  const semanticSeatHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: semanticSeatSnapshot }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-source[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-original-target[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-active-target[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-current-participant[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-decision-actor[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.match(semanticSeatHtml, /class="[^"]*player-square[^"]*interaction-seat-active-resolver[^"]*"[^>]*data-player-anchor="p2"/);
+  assert.doesNotMatch(semanticSeatHtml, /class="[^"]*player-square[^"]*selected-target[^"]*"[^>]*data-player-anchor="p2"/, "semantic active-target highlighting does not select a gameplay target");
+  assert.match(gameRoomSource, /isSelectedTarget \? "selected-target" : ""/);
+  assert.match(gameRoomSource, /interactionRoles\.isActiveTarget \? "interaction-seat-active-target" : ""/);
   const legacyMismatchHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, actionPlayerId: "p2", actionReason: "legacy owner", isMyAction: false, currentAction: { ...uxRoom.currentAction, actorId: "p2", reason: "legacy action" } }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.match(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Lü Bu · YOU<\/b>/, "active status ownership comes from PresentationClientView");
   assert.doesNotMatch(legacyMismatchHtml, /<small>DECISION OWNER<\/small><b>Zhao Yun/, "legacy action owner cannot replace the public decision actor");

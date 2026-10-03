@@ -82,6 +82,16 @@ export type InteractionStageDisplayModel = {
   nestedContext: string | null;
 };
 
+export type InteractionSeatSemanticRoles = {
+  isInteractionSource: boolean;
+  isOriginalTarget: boolean;
+  isActiveTarget: boolean;
+  isCurrentParticipant: boolean;
+  isDecisionActor: boolean;
+  isActiveResolver: boolean;
+  isViewerDecisionActor: boolean;
+};
+
 export type PresentationPlayerNameResolver = (playerId: string) => string | null | undefined;
 
 const REST_CONTINUITY: InteractionSceneContinuity = {
@@ -242,6 +252,28 @@ export function buildPresentationDecisionStatus(view: PresentationClientView): P
     isDecision,
     isLocalDecisionActor: isDecision && view.isLocalDecisionActor,
     hasLocalControl: view.hasLocalControl,
+  };
+}
+
+/**
+ * Project only the accepted public interaction roles onto one existing seat.
+ * Local entitlement is used solely for the viewer marker on the decision
+ * actor; every other role comes from the viewer-equal public client view.
+ */
+export function projectInteractionSeatRoles(
+  view: PresentationClientView,
+  playerId: string,
+): InteractionSeatSemanticRoles {
+  const visible = view.hasInteraction && Boolean(playerId);
+  const isDecisionActor = visible && view.stableKind === "CHOICE" && view.decisionActorId === playerId;
+  return {
+    isInteractionSource: visible && view.sourceId === playerId,
+    isOriginalTarget: visible && view.originalTargetIds.includes(playerId),
+    isActiveTarget: visible && view.activeTargetIds.includes(playerId),
+    isCurrentParticipant: visible && view.currentParticipantId === playerId,
+    isDecisionActor,
+    isActiveResolver: visible && view.activeResolverId === playerId,
+    isViewerDecisionActor: isDecisionActor && view.isLocalDecisionActor,
   };
 }
 
