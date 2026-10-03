@@ -77,3 +77,14 @@ Append only FIX1 result: SHA, files, identified local surface, local role mappin
 
 ## Acceptance
 Pass only if every visible player representation, including the local player's existing hero/player surface, receives the truthful accepted semantic interaction roles; public roles remain viewer-equal; only the viewer marker is private; REST is empty; and topology/dock/controls/gameplay remain unchanged.
+
+## Execution result — UX2.0UI-05-FIX1
+
+- **Status:** COMPLETE / reviewer-ready. Implementation commit: `c269150b58d6d765bccc1e5281d91e7f9a9a0ea7`.
+- **Files:** `app/page.tsx`, `app/globals.css`, `tests/room-safety-render.test.mjs`, `README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- **Local surface:** the existing `.local-player-dock` is the persistent local hero/player seat; no local player was duplicated into `.player-board`. `GameRoom` now computes `projectInteractionSeatRoles(clientPresentation, room.meId)` for that dock.
+- **Role mapping:** the dock receives the same source, original-target, active-target, current-participant, decision-actor, active-resolver, and viewer-decision classes/data attributes as remote seats. Public roles come only from the fixed `PresentationClientView`; the viewer marker remains the only entitlement-dependent role.
+- **Evidence:** focused render coverage proves ordinary local target-owned decision roles, local Ma Chao source-owned decision with remote target active/current/resolver roles, local target/current without decision, simultaneous overlap, legacy-field independence, and viewer-equal public projection. REST local rendering has no semantic role classes or data.
+- **Independence:** active-target semantics remain outline/inset presentation only; tests retain the existing local hero card, hand anchor, skills, equipment, buttons, selection behavior, and one-anchor-per-visible-player topology. Existing UI-05 opponent-seat assertions remain green.
+- **Validation:** focused presentation/render tests `41/41`; `npm run test:fast` `158/158`; `npm run test:api` `239/239`; full `npm test` passed; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
+- **Closure recommendation:** close UI-05-FIX1. No server, projector, snapshot, gameplay, legality, dock-composition, topology, or control migration work was included.
