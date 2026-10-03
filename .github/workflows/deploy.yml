@@ -26,6 +26,9 @@
              cache: "npm"
          - run: npm ci
          - run: npm run lint
+         - name: Install Chromium for browser validation
+           run: npx playwright install --with-deps chromium
+         - run: npm run test:browser
          - run: npm test   # already runs build first, per package.json
 
      deploy:

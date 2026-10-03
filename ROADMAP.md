@@ -149,6 +149,21 @@ prove the mapping, viewer equality, repeated-`NONE` stability, authority
 isolation, fixed topology, control presence, and reduced-motion contract;
 pixel-level browser appearance remains a manual GAP.
 
+UI-19 adds the first committed Chromium browser harness for that remaining
+validation boundary. `npm run test:browser` runs 17 real-browser tests against
+the existing `GameRoom`: 1440x900 covers 2/4/6/10 players, while 650x900 and
+480x900 cover 4/6/10. The semantic cases exercise Interaction Stage/Hero Focus,
+multi-target preview, Duel, Negation, Dying/Peach, the retained target-card
+picker, UI-18 transition feedback, reduced motion, native controls, and
+keyboard focus. The harness checks DOM
+geometry and semantics rather than screenshots: no horizontal overflow or
+severe seat overlap, all required anchors and local controls remain visible,
+stage/console bounds remain distinct, and reduced motion removes only
+nonessential animation. CI installs Chromium and runs this suite before the
+existing build/API gates. UI-19 does not claim full WCAG conformance,
+pixel-perfect art/layout, touch certification, or gameplay/server validation;
+those remain separate boundaries.
+
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel
 clearing only local state. Existing `choose_target_card` and semantic

@@ -5056,6 +5056,41 @@ server snapshot contract is **not ready for React migration**. Another bounded
 C7 fix is required to decide the source-owned trigger boundary without
 changing gameplay or weakening the atomic fail-closed invariant.
 
+### 0.108 UX2.0UI-19 browser responsive and accessibility validation harness — 2026-10-03
+
+UI-19 closes the absence of a repeatable browser-level check for the existing
+responsive and semantic presentation contracts. `tests/browser/ui19.spec.mjs`
+uses Playwright Chromium and a test-only Vite fixture that mounts the existing
+`GameRoom`; the fixture supplies normalized deterministic rooms through the
+same `PresentationSnapshot` and `CurrentAction` shapes already consumed by
+React. No production route, gameplay/API action, projector, causal identity,
+private-control ownership, or server authority changed.
+
+The executed suite contains **17 tests**. Ten layout tests cover 1440x900 at
+2/4/6/10 players, 650x900 at 4/6/10, and 480x900 at 4/6/10. The remaining seven
+tests cover REST/normal presentation, Interaction Stage plus Hero Focus,
+multi-target/AOE preview, Duel response, Negation Reaction Chain, Dying/Peach
+handoff, UI-18's non-NONE marker, reduced motion, pointer access, native
+keyboard focus, and the retained target-card picker. Layout assertions count the local dock plus opponent anchors,
+verify top-row versus side-column topology, require visible hand/console/table
+surfaces, reject horizontal overflow, reject severe anchor overlap, and keep
+the Interaction Stage separate from local controls, and keep the picker dialog
+inside the 480px viewport with a scroll-safe card row. Semantic assertions
+verify viewer-visible labels and existing data contracts, not private
+card/provider authority.
+
+The first run found only harness defects: the web-server command resolved its
+config path relative to `tests/browser`; the marker selector matched both the
+main shell and stage; the Duel Hero Focus assertion used a nonexistent role
+label; and the reduced-motion fixture had a turn action in a response phase
+and initially focused a disabled button. These were corrected in the harness;
+no production layout defect required a CSS change. The final browser run and a
+focused reduced-motion rerun passed. CI installs Chromium with
+`npx playwright install --with-deps chromium` before `npm run test:browser`.
+This evidence is bounded to DOM/geometry/semantic accessibility behavior: it
+does not claim full WCAG conformance, screenshot/pixel approval, touch/device
+certification, or complete gameplay correctness.
+
 ### 0.106 UX2.0C7-03 source-owned trigger stable boundary — 2026-10-03
 
 C7-03 resolves the C7-02 REST contradiction without changing

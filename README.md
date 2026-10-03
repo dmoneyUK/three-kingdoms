@@ -197,6 +197,25 @@ repeated `NONE`, fixed topology, private/legacy isolation, control usability,
 and reduced-motion behavior. Pixel-level browser appearance remains a manual
 GAP.
 
+UI-19 adds a real Chromium browser validation harness at
+`tests/browser/ui19.spec.mjs`, launched with `npm run test:browser`. The
+test-only Vite fixture mounts the existing `GameRoom` and consumes the existing
+`PresentationSnapshot`/`CurrentAction` contracts; it does not add a production
+route, gameplay shortcut, or authority path. The executed matrix contains 17
+tests: 10 layout cases (1440x900 with 2/4/6/10 players, 650x900 with 4/6/10,
+and 480x900 with 4/6/10) plus seven semantic/accessibility cases covering
+Interaction Stage/Hero Focus, multi-target preview, Duel response, Negation
+Reaction Chain, Dying/Peach handoff, retained target-card picker, and reduced
+motion/native focus.
+Assertions cover anchor counts and topology, visible local dock/hand/console,
+horizontal overflow, severe seat overlap, bounded semantic labels, public AOE
+preview recipients, non-NONE transition markers, reduced-motion animation
+removal, pointer access, keyboard focus, and a picker dialog bounded to the
+480px viewport with a scroll-safe card row. CI installs Chromium with
+`npx playwright install --with-deps chromium` before this suite. This proves
+the listed DOM/geometry/accessibility behavior only; it is not a full WCAG
+audit, screenshot/pixel comparison, or touch/device certification.
+
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 
 C4-01-FIX2 completes the atomic Dying/Peach rescue handoff boundary. Initial
