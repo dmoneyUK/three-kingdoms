@@ -736,6 +736,7 @@ test("delayed Judgement Negation and counter-Negation reuse one activation frame
   const settled = await requestAndSettle("respond", { code: game.code, token: game.members.find((member) => member.name === "Bob").token, cardId: second.id });
   assert.equal(settled.status, 200, JSON.stringify(settled.data));
   assert.equal(settled.data.room.causalEnvelope, null);
+  assert.deepEqual(settled.data.room.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
   assert.equal(settled.data.room.pending, null);
   assert.deepEqual(settled.data.room.players.find((player) => player.id === alicePlayer.id).judgementCards, []);
 });

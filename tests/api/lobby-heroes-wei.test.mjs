@@ -444,12 +444,14 @@ test("delayed Lightning damage keeps one Judgement Interaction across three Lega
   assert.deepEqual(view.presentationV2.interactionScene?.participantRoles, { sourceId: guo.id, originalTargetIds: [guo.id], activeTargetIds: [guo.id], currentParticipantId: guo.id, decisionActorId: guo.id, activeResolverId: guo.id, parentParticipantId: null, participantIds: [] });
   assert.equal(view.presentationV2.stableBoundary.kind, "CHOICE");
   assert.equal(view.presentationV2.stableBoundary.decisionActorId, guo.id);
+  assert.ok(view.currentAction.triggerOptions?.some((option) => option.effectId === "guo_jia_legacy"), "the delayed Lightning actor receives private Legacy controls");
   const otherViewer = (await state(game.code, game.members[0].token)).data;
   assert.equal(otherViewer.causalEnvelope.interactionId, damageRoot.interactionId, "the inherited Judgement/Damage root is public and viewer-stable");
   assert.equal(otherViewer.causalEnvelope.checkpoint.checkpointId, damageRoot.checkpoint.checkpointId);
   assert.equal(otherViewer.causalEnvelope.presentationRevision, damageRoot.presentationRevision);
   assert.deepEqual(otherViewer.presentationV2.interactionScene, view.presentationV2.interactionScene);
   assert.deepEqual(otherViewer.presentationV2.stableBoundary, view.presentationV2.stableBoundary);
+  assert.equal(otherViewer.currentAction.triggerOptions?.length, 0, "delayed Lightning controls remain private to the acting viewer");
   const repeated = (await state(game.code, guoMember.token)).data;
   assert.deepEqual(repeated.presentationV2.interactionScene, view.presentationV2.interactionScene);
   assert.deepEqual(repeated.presentationV2.stableBoundary, view.presentationV2.stableBoundary);

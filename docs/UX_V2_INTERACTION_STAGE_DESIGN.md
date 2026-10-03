@@ -4247,9 +4247,10 @@ Lightning Damage, malformed authority, repeated reads, and acting versus
 uninvolved viewers. The C5 gap is the future C7 PresentationSnapshot wrapper;
 no C7 work is authorized by this classification field.
 
-### 0.103 UX2.0C6-01-FIX1 truthful engine-backed presentation invariant matrix — 2026-10-03
+### 0.103 UX2.0C6-02 evidence-closure update — 2026-10-03
 
-C6 remains verification before C7. This section does not implement a
+C6 remains verification before C7. Building on the accepted C6-01-FIX1
+baseline, this section does not implement a
 `PresentationSnapshot`, move authority into React/CSS, or add gameplay. The
 audit covers 13 families × 10 columns = 130 cells. `P` means the exact real
 Worker/D1/API fixture named in the row contains an explicit assertion for that
@@ -4267,26 +4268,26 @@ target/current participant roles; `A` decision actor/active resolver; `B`
 
 | Real interaction family | Exact real fixture(s) | I | F | C | R | A | B | V | P | Q | T |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Attack / Dodge | `presentation-v2-engine.test.mjs` — `engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference` | GAP | GAP | GAP | P | P | P | P | P | GAP | P |
-| Attack -> Judgement -> Attack resume | `ma-chao.test.mjs` — `Cavalry uses the shared Judgement replacement continuation`; `Cavalry keeps Dodge available when Sima Yi replaces the original red Judgement with Black` | P | P | GAP | P | P | GAP | P | GAP | P | P |
-| Duel responder handoff | `presentation-v2-engine.test.mjs` — `engine-backed Duel alternates response actors without changing the root context`; `FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage` | P | P | GAP | P | P | P | P | P | P | P |
+| Attack / Dodge | `presentation-v2-engine.test.mjs` — `engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference` | P | P | GAP | P | P | P | P | P | P | P |
+| Attack -> Judgement -> Attack resume | `ma-chao.test.mjs` — `Cavalry uses the shared Judgement replacement continuation`; `Cavalry keeps Dodge available when Sima Yi replaces the original red Judgement with Black` | P | P | P | P | P | P | P | P | P | P |
+| Duel responder handoff | `presentation-v2-engine.test.mjs` — `engine-backed Duel alternates response actors without changing the root context`; `FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage` | P | P | P | P | P | P | P | P | P | P |
 | Group/AOE normal participant progression | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant`; `FIX14 Group failure Damage uses one child frame and resumes the next participant` | P | P | P | P | P | P | P | P | P | P |
-| Group -> Negation -> resume | `presentation-v2-engine.test.mjs` — `FIX9 persists the Group root and keeps nested Negation in the same Frame`; `FIX9 Group counter-Negation stays in one frame and restores Group resolution` | P | P | GAP | P | P | P | P | P | P | GAP |
+| Group -> Negation -> resume | `presentation-v2-engine.test.mjs` — `FIX9 persists the Group root and keeps nested Negation in the same Frame`; `FIX9 Group counter-Negation stays in one frame and restores Group resolution` | P | P | P | P | P | P | P | P | P | P |
 | Group -> Damage child -> resume | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant`; `FIX14 Group failure Damage uses one child frame and resumes the next participant` | P | P | P | P | P | P | P | P | P | P |
-| Group -> Damage -> Dying -> rescue -> resume | `presentation-v2-engine.test.mjs` — `FIX15 lethal Group Damage survives Peach rescue with the parent frame available` | P | P | P | P | P | P | GAP | GAP | GAP | P |
+| Group -> Damage -> Dying -> rescue -> resume | `presentation-v2-engine.test.mjs` — `FIX15 lethal Group Damage survives Peach rescue with the parent frame available` | P | P | P | P | P | P | P | P | P | P |
 | independent/root Damage | `lobby-heroes-wei.test.mjs` — `Legacy privately distributes top two cards and repeats once per damage point` | P | P | GAP | P | P | P | P | P | P | P |
-| delayed Lightning Judgement -> Damage | `lobby-heroes-wei.test.mjs` — `delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities` | P | P | P | P | P | P | P | GAP | P | P |
-| root Negation / counter-Negation | `presentation-v2-engine.test.mjs` — `engine-backed Negation/counter-Negation keeps the original effect recoverable` | P | P | P | P | P | P | GAP | GAP | GAP | GAP |
-| standalone Judgement replacement | `presentation-v2-engine.test.mjs` — `engine-backed Judgement replacement exposes reveal and resume evidence` | P | P | GAP | P | P | P | P | P | P | GAP |
+| delayed Lightning Judgement -> Damage | `lobby-heroes-wei.test.mjs` — `delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities` | P | P | P | P | P | P | P | P | P | P |
+| root Negation / counter-Negation | `presentation-v2-engine.test.mjs` — `engine-backed Negation/counter-Negation keeps the original effect recoverable`; `stratagems.test.mjs` — `delayed Judgement Negation and counter-Negation reuse one activation frame` | P | P | P | P | P | P | P | P | P | P |
+| standalone Judgement replacement | `presentation-v2-engine.test.mjs` — `engine-backed Judgement replacement exposes reveal and resume evidence` | P | P | P | P | P | P | P | P | P | P |
 | Dying rescue handoff | `presentation-v2-engine.test.mjs` — `engine-backed Dying/rescue proves the separate timer arm and reconnect behavior`; `C4-01 Dying skips non-rescuers and advances one causal checkpoint between real rescuers`; `concurrency.test.mjs` — `lethal damage trigger exhaustion enters shared Dying and Peach rescue exactly once` | P | P | P | P | P | P | P | P | P | P |
-| Borrowed Sword | `presentation-v2-engine.test.mjs` — `engine-backed Borrowed Sword preserves forced Attack continuation and timer barrier` | P | P | GAP | P | P | P | P | P | P | GAP |
+| Borrowed Sword | `presentation-v2-engine.test.mjs` — `engine-backed Borrowed Sword preserves forced Attack continuation and timer barrier`; `borrowed-sword.test.mjs` — `Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal` | P | P | P | P | P | P | P | P | P | P |
 
-Audit count: **107 P, 23 GAP, 0 N/A, 0 unclassified = 130 cells**. The
-previous matrix's 130 P claims were corrected; in particular Attack/Dodge C is
-now GAP because its mapped fixture has one response checkpoint and settlement,
-not an explicit multi-checkpoint progression assertion. Borrowed Sword T is
-GAP because the mapped forced-Attack fixture reaches a Negation chain after
-response decline and does not explicitly drive that chain to terminal clear.
+Audit count: **128 P, 2 GAP, 0 N/A, 0 unclassified = 130 cells**. The
+accepted C6-01-FIX1 matrix had 23 GAP cells; this closure pass adds direct
+real assertions for 21 of them. Attack/Dodge C remains GAP because its real
+fixture has one response checkpoint and settlement, not an explicit semantic
+checkpoint progression. Independent/root Damage C remains GAP because the
+real one-root Damage fixture has no semantic checkpoint transition to compare.
 
 #### Cell-level evidence ledger
 
@@ -4311,30 +4312,28 @@ fixture, not test-owned replacements:
   `app/api/rooms/route.ts`; public `interactionScene`, `participantRoles`, and
   `stableBoundary` must remain viewer-independent.
 
-**Attack / Dodge.** `R,A,B,V,P,T` are P from the named engine-backed test:
-the test asserts known source/target/current participant and resolver/decision
-actor, CHOICE then REST, deep-equal public root/active/scene/boundary for
-another viewer, absent private options for that viewer, and causal clear after
-Dodge. Sources: S1, S3, S4, S5. `I,F,C,Q` are GAP because this fixture does
-not explicitly compare multiple semantic checkpoints, frame relations, or a
-second unchanged read.
+**Attack / Dodge.** `I,F,R,A,B,V,P,Q,T` are P from the named engine-backed
+test: it asserts the scene's Interaction/root/active Frame linkage, ROOT_FRAME
+relation, typed roles, CHOICE then REST, deep-equal public root/active/scene/
+boundary for another viewer, absent private options for that viewer, and an
+unchanged repeated read. `C` remains GAP because this real one-response path
+does not expose a second semantic checkpoint before settlement. Sources:
+S1, S3, S4, S5.
 
-**Attack -> Judgement -> Attack.** `I,F,R,A,V,T` are P from the two Ma Chao
-fixtures: they assert one Interaction and root Frame through Judgement, typed
-roles and resolver changes, viewer-equal resumed scene, and terminal clear in
-the red replacement path. `Q` is P from the same fixture's reloaded Judgement
-checkpoint identity/revision assertion. Sources: S1–S4. `C` is GAP because no
-explicit before/after checkpoint progression assertion exists; `B,P` are GAP
-because those exact fixtures do not assert both stableBoundary and viewer
-control separation.
+**Attack -> Judgement -> Attack.** All ten cells are P from the two Ma Chao
+fixtures: they assert one Interaction/root Frame through Judgement, a changed
+checkpointId plus one presentationRevision advance, typed roles/resolver
+changes, CHOICE stableBoundary, acting Sima Yi Guicai controls versus an
+uninvolved viewer's empty controls, viewer-equal public scene/roles/boundary,
+reloaded checkpoint/revision stability, and terminal clear in the red
+replacement path. Sources: S1–S5.
 
-**Duel.** `I,F,R,A,B,V,P,Q,T` are P. The engine-backed handoff asserts stable
+**Duel.** All ten cells are P. The engine-backed handoff asserts stable
 Interaction/root Frame, typed alternating roles and resolver, CHOICE then REST,
 viewer-equal scenes with options omitted, and an unchanged repeated read. The
-ordinary Duel Negation fixture supplies terminal clearing. `C` is GAP because
-the real responder handoff changes `actionRevision` while retaining the same
-causal checkpoint; this fixture does not explicitly establish a new checkpoint
-or a complete checkpoint/revision contract for that handoff. Sources: S1–S5.
+ordinary Duel Negation fixture supplies the semantic checkpointId and
+presentationRevision advance from Negation to Duel plus terminal clearing.
+Sources: S1–S5.
 
 **Group/AOE normal progression.** All ten cells are P. The Group Damage and
 FIX14 fixtures assert root versus child frame, parent resume and next
@@ -4342,12 +4341,11 @@ participant, checkpoint/revision identity, all typed roles, CHOICE/REST,
 acting/uninvolved public equality, private options, repeated reads/reconnect,
 and final clearing. Sources: S1–S5.
 
-**Group -> Negation.** `I,F,R,A,B,V,P,Q` are P from the same-frame Group
+**Group -> Negation.** All ten cells are P from the same-frame Group
 Negation and counter-Negation fixtures: they assert one Interaction/Frame,
-typed roles/resolver handoff, CHOICE, viewer equality/privacy, and repeated
-public identity. `C,T` are GAP because these mapped tests do not explicitly
-assert checkpoint/revision progression and terminal clear after the restored
-Group continues. Sources: S1–S5.
+typed roles/resolver handoff, CHOICE, viewer equality/privacy, repeated public
+identity, checkpointId/presentationRevision advance, and a real decline-through-
+all-targets terminal clear. Sources: S1–S5.
 
 **Group -> Damage child.** All ten cells are P from the Group child/resume and
 FIX14 fixtures: explicit CHILD_FRAME parentFrameId, same Interaction, Damage
@@ -4355,12 +4353,11 @@ checkpoint/revision, typed child/parent roles, CHOICE/REST, viewer equality and
 private controls, repeated reads, and final parent/terminal resume. Sources:
 S1–S5.
 
-**Group -> Damage -> Dying.** `I,F,C,R,A,B,T` are P from FIX15: the test
+**Group -> Damage -> Dying.** All ten cells are P from FIX15: the test
 asserts a distinct Dying child, parent Group availability, revision advance,
-roles/rescuer, CHOICE, Peach resume to the parent, and final clear. `V,P,Q`
-are GAP because FIX15 does not explicitly compare two viewers, private
-CurrentAction options, or an unchanged reconnect read at the Dying checkpoint.
-Sources: S1–S4.
+roles/rescuer, CHOICE, Peach resume to the parent, final clear, acting versus
+uninvolved public equality, private Peach separation, and unchanged repeated
+checkpoint/revision/public identity. Sources: S1–S5.
 
 **Independent/root Damage.** `I,F,R,A,B,V,P,Q,T` are P from the Guo Jia
 Worker/D1 fixture: root Damage identity/frame, roles/resolver, CHOICE,
@@ -4368,25 +4365,24 @@ viewer-equal scene/boundary, private controls, repeated read, and final clear
 are directly asserted. `C` is GAP because this one-root fixture does not
 assert a semantic checkpoint/revision transition. Sources: S1–S5.
 
-**Delayed Lightning.** `I,F,C,R,A,B,V,Q,T` are P: the real fixture asserts
+**Delayed Lightning.** All ten cells are P: the real fixture asserts
 Judgement-owned Interaction continuity through Damage, SAME_FRAME root
 behavior, stable revision across three Legacy re-entries, roles/resolver,
-viewer-equal public scene, repeated read, and final clear. `P` is GAP because
-the fixture does not explicitly compare private CurrentAction/options at that
-checkpoint. Sources: S1–S4.
+viewer-equal public scene, acting Legacy controls versus an uninvolved viewer's
+empty controls, repeated read, and final clear. Sources: S1–S5.
 
-**Root Negation/counter-Negation.** `I,F,C,R,A,B` are P: the real fixture
-asserts one root Interaction/Frame, checkpoint revision advance for the
-handoff, source/target/resolver roles, and CHOICE boundaries for the semantic
-response. `V,P,Q,T` are GAP because this fixture does not explicitly assert
-viewer-equal typed public objects, private option separation, repeated-read
-identity, or terminal clear after the counter response. Sources: S1–S4.
+**Root Negation/counter-Negation.** All ten cells are P: the presentation
+fixture asserts one root Interaction/Frame, checkpoint revision advance for the
+handoff, source/target/resolver roles, CHOICE boundaries, viewer-equal typed
+scene/roles/boundary, private Negation controls, and repeated-read identity;
+the real stratagem counter-Negation fixture drives the activation to causal
+clear and REST. Sources: S1–S5.
 
-**Standalone Judgement replacement.** `I,F,R,A,B,V,P,Q` are P: the engine
+**Standalone Judgement replacement.** All ten cells are P: the engine
 fixture asserts one Judgement Interaction/Frame, typed roles and actors,
-CHOICE, viewer-equal scene/boundary, options omitted for the other viewer, and
-repeated-read equality. `C,T` are GAP because it does not explicitly assert a
-checkpoint/revision transition or final delayed-effect clear. Sources: S1–S5.
+CHOICE, a semantic checkpointId/presentationRevision advance after effective
+replacement, viewer-equal scene/boundary, options omitted for the other viewer,
+repeated-read equality, and final delayed-effect clear. Sources: S1–S5.
 
 **Dying rescue.** All ten cells are P across the engine-backed, multi-rescuer,
 and lethal-rescue fixtures: DYING frame proof, checkpoint/revision handoff,
@@ -4394,12 +4390,11 @@ roles/rescuer, CHOICE, public barrier/scene equality, private Peach controls,
 timer/reconnect stability, and causal clear after rescue are explicit. Sources:
 S1–S5.
 
-**Borrowed Sword.** `I,F,R,A,B,V,P,Q` are P after the FIX1 assertion: the
+**Borrowed Sword.** All ten cells are P after the C6-02 assertions: the
 forced Attack child frame and parent relation, typed roles, CHOICE, public
-reconnect equality, actor-only controls, repeated identity, and response
-decline boundary are explicit. `C,T` are GAP because the fixture does not
-compare a before/after semantic checkpoint revision or drive its subsequent
-Negation chain to terminal clear. Sources: S1–S5.
+reconnect equality, actor-only controls, repeated identity, response-decline
+checkpointId/presentationRevision advance, and a real completed forced Attack
+that clears the causal identity are explicit. Sources: S1–S5.
 
 Malformed checkpoint/active-frame mismatch, missing authority, Group typed-link
 mismatch, Dying resolver mismatch, malformed Duel/Judgement envelopes, and
@@ -4407,7 +4402,7 @@ unlinked Borrowed Sword Pending remain covered by negative synthetic/API
 tests. They prove fail-closed behavior only; they are not positive P evidence.
 The reserved `SETTLEMENT` guard also remains negative evidence only.
 
-C6-01-FIX1 therefore leaves C6 **PARTIAL** with 23 bounded GAP cells. No
+C6-02 therefore leaves C6 **PARTIAL** with 2 bounded GAP cells. No
 gameplay or authority shortcut is justified by these gaps. C7,
 `PresentationSnapshot`, React/CSS migration, animation semantics, and durable
 transition occurrence IDs remain out of scope.

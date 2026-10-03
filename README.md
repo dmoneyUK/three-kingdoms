@@ -1,20 +1,19 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C6-01-FIX1 truthful invariant audit — 2026-10-03
+## Current stage — UX2.0C6-02 evidence closure — 2026-10-03
 
-C6 verification is in progress with a cell-by-cell evidence ledger. The audit
-covers 13 real interaction families × 10 invariants: 107 cells are explicitly
-proven and 23 remain bounded GAPs where the mapped Worker/D1/API fixture does
-not assert the required relationship. There are no N/A cells because every
-required column applies at the family level; missing evidence remains GAP.
-The largest corrections are Attack/Dodge checkpoint progression, Duel's
-same-checkpoint handoff, and Borrowed Sword's unproven terminal clear. The full ledger and
-exact fixture/assertion mapping are in section `0.103` of the interaction-stage
+C6-02 re-audits the accepted 13 real interaction families × 10 invariants
+matrix using direct Worker/D1/API assertions: 128 cells are proven and 2
+remain bounded GAPs. The remaining gaps are Attack/Dodge checkpoint
+progression and independent/root Damage checkpoint progression; both real
+fixtures settle after one semantic checkpoint and therefore do not expose a
+second checkpoint transition to compare. The full cell-level ledger and exact
+fixture/assertion mapping are in section `0.103` of the interaction-stage
 design document.
 
-No production gameplay, React/CSS, animation, or PresentationSnapshot code was
-added. C6 is not closed; C7 remains out of scope until the evidence gaps are
-resolved or explicitly accepted.
+No production gameplay, authority, React/CSS, animation, or
+PresentationSnapshot code was added. C6 remains PARTIAL and is not ready for
+reviewer closure; C7 remains out of scope.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

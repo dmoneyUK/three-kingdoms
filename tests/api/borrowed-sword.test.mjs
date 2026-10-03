@@ -29,6 +29,7 @@ test("Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal"
   assert.equal((await requestAndSettle("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id })).status, 200);
   const played = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id });
   assert.equal(played.status, 200, JSON.stringify(played.data)); assert.equal(played.data.room.players.find((player) => player.id === secondTarget.id).hp, 3); assert.equal(played.data.room.players.find((player) => player.id === holder.id).equipmentCards[0].id, weapon.id);
+  assert.equal(played.data.room.causalEnvelope, null, "a completed Borrowed Sword forced Attack clears its causal identity");
 
   const spear = card("SerpentSpear", "borrowed-spear"); setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [card("Peach", "spear-cost-one"), card("Dodge", "spear-cost-two")], 4, 4); setHand(secondTarget.id, [], 4, 4); setEquipment(holder.id, { weapon: spear }); setTurn(game.code, source.seat);
   await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id }); await requestAndSettle("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: secondTarget.id });
@@ -153,4 +154,3 @@ test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuat
   assert.equal(borrowedLongdan.status, 200, JSON.stringify(borrowedLongdan.data));
   assert.equal(borrowedLongdan.data.room.timeline.find((event) => event.type === "card" && event.card.id === longdanBorrowedDodge.id)?.playedAs, "attack");
 });
-

@@ -210,3 +210,76 @@ Push implementation + appended HANDOVER to `origin/ux-v2`, fetch, verify remote 
 ## Acceptance
 
 C6-02 passes only if each claimed closure is backed by explicit real engine/API assertions, checkpoint/revision semantics are not confused with actionRevision, terminal/resume paths are actually executed, viewer/private/reconnect evidence is direct, the matrix remains truthful, no authority/gameplay shortcut is introduced, and any unresolved contradiction remains visible rather than being patched around.
+
+## Execution result — UX2.0C6-02 evidence closure — 2026-10-03
+
+Implementation SHA: pending first implementation commit.
+
+Files changed:
+
+- `README.md`
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `tests/api/presentation-v2-engine.test.mjs`
+- `tests/api/ma-chao.test.mjs`
+- `tests/api/lobby-heroes-wei.test.mjs`
+- `tests/api/borrowed-sword.test.mjs`
+- `tests/api/stratagems.test.mjs`
+- `HANDOVER.md`
+
+Starting GAP count: 23.
+
+Closed real GAP cells (21):
+
+- Attack/Dodge: `I`, `F`, `Q` — the real engine-backed fixture now asserts
+  causal-envelope identity, ROOT_FRAME relation, and repeated public identity.
+- Attack -> Judgement -> Attack: `C`, `B`, `P` — the real Ma Chao Cavalry
+  fixtures assert checkpoint/revision advance, `CHOICE`, and actor-private
+  versus uninvolved controls.
+- Duel: `C` — the real FIX9 ordinary Duel Negation fixture asserts the
+  checkpoint/revision transition back to Duel.
+- Group -> Negation: `C`, `T` — the real FIX9 fixture asserts the
+  checkpoint/revision transition and executes authoritative responses through
+  terminal clear/`REST`.
+- Group -> Damage -> Dying: `V`, `P`, `Q` — the real FIX15 fixture asserts
+  viewer-equal public state, Peach privacy, and repeated checkpoint/revision.
+- delayed Lightning: `P` — the real Legacy fixture asserts private trigger
+  controls for the acting viewer and empty controls for an uninvolved viewer.
+- root Negation/counter: `V`, `P`, `Q`, `T` — the engine-backed fixture asserts
+  public/private/repeated identity, while the real delayed Judgement
+  Negation/counter fixture executes terminal clear/`REST`.
+- standalone Judgement replacement: `C`, `T` — the real fixture asserts
+  effective replacement checkpoint/revision advance and executes the resumed
+  path through terminal clear/`REST`.
+- Borrowed Sword: `C`, `T` — the real forced-Attack fixture asserts the
+  refusal checkpoint/revision transition, and the real successful forced
+  Attack fixture asserts terminal causal-envelope clear.
+
+Final matrix: **128 P, 2 GAP, 0 N/A, 0 unclassified = 130 cells**.
+
+Remaining GAPs:
+
+- Attack/Dodge `C`: the exact real one-response fixture has one semantic
+  response checkpoint and then settles, so it exposes no second semantic
+  checkpoint transition to compare.
+- independent/root Damage `C`: the exact real one-root Damage fixture repeats
+  the same Damage checkpoint and settles, so it exposes no semantic checkpoint
+  transition to compare.
+
+No contradiction requiring production change was found. Production code did
+not change; this pass added only direct assertions to existing real Worker/D1
+fixtures and synchronized the evidence ledger and project documentation. No
+synthetic positive fixture or direct database fabrication was used for positive
+evidence.
+
+Validation:
+
+- changed real fixtures: **81/81 passed**;
+- `npm run test:fast`: **124/124 passed**;
+- `npm run test:api`: **239/239 passed**;
+- `npm run build`: passed;
+- `npm run lint`: passed;
+- `git diff --check`: passed;
+- matrix count: **13 rows, 130 cells, 128 P / 2 GAP / 0 N/A**.
+
+C6 is **PARTIAL and not yet ready for reviewer closure** because the two
+bounded checkpoint-progression GAPs remain visible. C7 remains out of scope.
