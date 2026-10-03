@@ -42,18 +42,19 @@ Improve functional feedback for card selection, target selection, confirm,
 decline/skip, disabled controls and in-flight submissions. Keep the server
 projection as the source of legal IDs.
 
-UI-10 is the current bounded slice: the existing local operation console now
-uses a pure `buildConsoleDecisionDisplay` adapter composed from
-CurrentAction-authorized control facts and viewer-local selection status. One
-explicit primary guidance/submit state is selected by authority-first
-precedence; local Cancel remains separate from authoritative Skip/Decline;
-equal-priority contradictions fail closed. Existing action names, payloads,
-server legality, private selection, public PresentationSnapshot semantics,
-Hero Focus, seat topology and board layout remain unchanged. Turn, response,
-rescue, trigger, active-skill, target, Borrowed Sword, target-card, discard,
-Duel/Judgement and Serpent Spear surfaces are inventoried and retain their
-existing control implementations. The console wraps at touch widths; Hero
-Focus and Interaction Stage intentionally remain control-free.
+UI-10-FIX1 is the current bounded slice: the existing local operation console
+now uses `buildConsoleDecisionDisplay` to govern the actual footer primary,
+local Cancel, and authoritative Skip/Decline exposure. One explicit primary is
+selected by CurrentAction-authorized precedence; stale legacy booleans cannot
+bypass it, and equal-priority or incoherent states fail closed. Dialog-owned
+target-card, Harvest, private distribution, deck reorder, and mandatory-choice
+submissions remain singular outside the footer. Existing action names,
+payloads, server legality, private selection, public PresentationSnapshot
+semantics, Hero Focus, seat topology and board layout remain unchanged. Turn,
+response, rescue, trigger, active-skill, target, Borrowed Sword, discard,
+Duel/Judgement and Serpent Spear controls are mapped to the model while
+target-card dialog controls remain dialog-owned. The console wraps at touch
+widths; Hero Focus and Interaction Stage intentionally remain control-free.
 
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel

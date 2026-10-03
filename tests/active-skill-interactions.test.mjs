@@ -162,6 +162,8 @@ function handCardButton(renderer, cardId) { return nodeWith(renderer, "data-hand
 function targetButton(renderer, playerId) { return nodeWith(renderer, "data-player-anchor", playerId).findAllByType("button")[0]; }
 function text(renderer, value) { return renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children === value); }
 function buttonsContaining(renderer, value) { return renderer.root.findAllByType("button").filter((node) => String(node.props.children).includes(value)); }
+function consoleButtons(renderer) { return nodeWith(renderer, "data-console-surface", "local-operation").findAllByType("button"); }
+function consoleButtonsByClass(renderer, className) { return consoleButtons(renderer).filter((node) => node.props.className === className); }
 function assertOnlyDeflectionProfile(renderer) {
   const matches = buttonsContaining(renderer, "Deflection");
   assert.equal(matches.length, 1, `expected only the profile Deflection control, got ${matches.map((node) => String(node.props.children)).join(" | ")}`);
@@ -180,6 +182,9 @@ test("normal deferred multi-target selection is local until ordered Confirm", as
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     return { renderer: mounted };
   })();
+  assert.equal(consoleButtonsByClass(renderer, "primary").length, 1, "ordinary turn exposes one footer primary");
+  assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "End").length, 1, "ordinary turn retains independent End");
+  assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "Confirm").length, 0, "ordinary turn does not expose a response Confirm");
   await act(async () => { handCardButton(renderer, "halberd-attack").props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select FIRST TARGET" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "normal seat selection remains local");
@@ -253,10 +258,11 @@ test("Borrowed Sword target selection stays local until Confirm and preserves th
   assert.equal(targetButton(renderer, "p4").props.disabled, true, "defeated target remains unavailable");
   assert.equal(buttonsContaining(renderer, "Skip").length, 0, "the server exposes no separate skip for this action");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true);
-  assert.equal(buttonsContaining(renderer, "Cancel").length, 1);
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 0, "local Cancel is hidden until a local selection exists");
   await act(async () => { targetButton(renderer, "p3").props.onClick(); });
   assert.equal(actionCalls.length, 0, "Borrowed Sword target click is local");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p3").props.className.includes("selected-target"), true, "local target is amber-selected");
+  assert.equal(buttonsContaining(renderer, "Cancel").length, 1, "local Cancel follows the console model after local input");
   assert.deepEqual({ kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] }, presentationBefore, "local selection does not change public presentation attributes");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
   await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
@@ -295,6 +301,7 @@ test("pending target-card picker keeps opaque selection local across Confirm and
   const mainBefore = { kind: renderer.root.findByType("main").props["data-presentation-kind"], interaction: renderer.root.findByType("main").props["data-presentation-has-interaction"], local: renderer.root.findByType("main").props["data-presentation-local-control"] };
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false);
   assert.equal(button(renderer, { children: "Discard selected" }).props.disabled, true, "Confirm is constrained by the existing target-card selection");
+  assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "dialog-owned target-card submission is not duplicated in the footer");
   await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
   assert.equal(actionCalls.length, 0, "private hand-card selection sends no action");
   assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
@@ -321,6 +328,7 @@ test("target-card trigger picker adds local Cancel while preserving Skip and opa
   const actionCountBeforeSelection = actionCalls.length;
   assert.equal(buttonsContaining(renderer, "Cancel").length, 1, "one picker-local Cancel surface is shown");
   assert.equal(buttonsContaining(renderer, "Skip").length, 1, "Skip remains the separate authoritative action");
+  assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "dialog-owned target-card trigger submission is not duplicated in the footer");
   assert.equal(button(renderer, { children: "Use Future Target Cards" }).props.disabled, true);
   await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
   assert.equal(actionCalls.length, actionCountBeforeSelection, "target-card trigger selection sends no action");
@@ -351,11 +359,13 @@ test("pending target-card selection clears when authoritative availability chang
 });
 
 test("generic trigger Cancel clears provider and target without replacing Skip", async () => {
-  const room = triggerRoom({ triggerOptions: [{ effectId: "future_target", label: "Future Target", selection: { type: "target", targetIds: ["p2"], min: 1, max: 1 } }] });
+  const room = { ...triggerRoom({ triggerOptions: [{ effectId: "future_target", label: "Future Target", selection: { type: "target", targetIds: ["p2"], min: 1, max: 1 } }] }), isMyTurn: true };
   const actionCalls = [];
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(consoleButtonsByClass(renderer, "primary").length, 0, "a stale isMyTurn flag cannot expose a turn footer primary during a trigger");
+  assert.equal(consoleButtons(renderer).filter((node) => node.props.children === "End").length, 0, "trigger owns the footer instead of stale End");
   await act(async () => { button(renderer, { children: "Use Future Target" }).props.onClick(); });
   await act(async () => { button(renderer, { "aria-label": "Select TARGET" }).props.onClick(); });
   assert.equal(buttonsContaining(renderer, "Cancel").length, 1, "the provider-owned Cancel is the only cancel surface");

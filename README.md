@@ -72,20 +72,21 @@ InteractionStage, Hero Focus, seat roles and timeline text do not receive the
 local selection. Action-revision and live eligibility changes clear stale
 choices.
 
-UI-10 unifies the existing local operation console around a pure
-`buildConsoleDecisionDisplay` model. The model consumes only CurrentAction-
-authorized control facts and viewer-local selection summaries; it exposes one
-explicit primary guidance/submit state, local Cancel, authoritative Skip/
-Decline, busy state, and secondary provider controls. Explicit priority
-resolves legacy boolean overlap and equal-priority contradictions fail closed.
-The existing turn, response, rescue, trigger, active-skill, target,
-Borrowed Sword, target-card, discard, Duel, Judgement, and Serpent Spear
-surfaces retain their action names, payloads, server legality, hand/equipment
-composition, and board topology. PresentationSnapshot, Interaction Stage, and
-Hero Focus remain descriptive only; the console does not move controls into
-those surfaces. Touch-width wrapping is limited to the existing console.
-The next milestone is reviewer closure of UI-10 and a separately bounded UX
-slice.
+UI-10-FIX1 makes the existing local operation console consume the pure
+`buildConsoleDecisionDisplay` result for the actual footer controls. The model
+consumes only CurrentAction-authorized control facts and viewer-local selection
+summaries; it selects the single rendered primary by ID, and gates local
+Cancel plus authoritative Skip/Decline by the same coherent authority result.
+Stale legacy booleans cannot expose a footer primary, and equal-priority or
+incoherent states fail closed. Dialog-owned submissions (target-card,
+target-card triggers, Harvest, private distribution, deck reorder, and
+mandatory choices) remain their sole submit surfaces and are not duplicated in
+the footer. Existing action names, payloads, server legality,
+hand/equipment composition, and board topology remain unchanged.
+PresentationSnapshot, Interaction Stage, and Hero Focus remain descriptive
+only; they do not grant controls. Touch-width wrapping is limited to the
+existing console. The next milestone is reviewer closure of UI-10-FIX1 and a
+separately bounded UX slice.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

@@ -360,14 +360,17 @@ topology, animation, or settlement behavior changes.
 
 ### 0.6.9 UI-10 local operation console decision-state unification
 
-UI-10 composes the existing local operation console through the pure
-`buildConsoleDecisionDisplay` model in `game/console-decision.ts`. Its input is
-limited to already-proven CurrentAction/capability facts, existing local
-selection status, busy state, and concise labels. It does not accept Room,
-Pending, PresentationSnapshot, callbacks, public semantic roles, or raw card
-legality. The model exposes a decision kind/instruction, local selection
-summary/count, one primary action candidate, local Cancel, authoritative
-Skip/Decline, busy state, and secondary provider labels.
+UI-10-FIX1 composes the existing local operation console through the pure
+`buildConsoleDecisionDisplay` model in `game/console-decision.ts` and uses its
+result to govern the actual footer controls. Its input is limited to
+already-proven CurrentAction/capability facts, existing local selection
+status, busy state, and concise labels. It does not accept Room, Pending,
+PresentationSnapshot, callbacks, public semantic roles, or raw card legality.
+The model exposes a decision kind/instruction, local selection summary/count,
+one primary action candidate, local Cancel, authoritative Skip/Decline, busy
+state, and secondary provider labels; the JSX renders a primary only when its
+selected model ID matches the existing control, and hides all authoritative
+footer controls when the model is not coherent or not viewer-authoritative.
 
 The composition boundary is explicit: CurrentAction/capabilities decide
 whether a control exists, local selection describes only unsubmitted viewer
@@ -375,13 +378,16 @@ input, and PresentationSnapshot/Interaction Stage/Hero Focus remain
 descriptive. Primary candidates use explicit authority-first priority; an
 unresolved equal-priority conflict fails closed instead of exposing two
 unrelated submit surfaces. Cancel remains local-only and never replaces
-Skip/Decline. Existing turn/end-turn, response, rescue, trigger, active-skill,
-normal/converted/Serpent target, Borrowed Sword, target-card, discard,
-Duel/Judgement, and special-continuation actions keep their existing names and
-payloads. Provider selection, private hand/equipment composition, board
-topology, Hero Focus and Interaction Stage controls remain intentionally
-separate. Only the existing console wrapper gains bounded flex wrapping at
-touch widths; no control is moved into a public presentation surface.
+Skip/Decline. Target-card pickers, Harvest, private distribution, deck reorder,
+and mandatory-choice dialogs retain their sole submit controls and do not
+advertise a duplicate footer primary. Existing turn/end-turn, response,
+rescue, trigger, active-skill, normal/converted/Serpent target, Borrowed
+Sword, discard, Duel/Judgement, and special-continuation actions keep their
+existing names and payloads. Provider selection, private hand/equipment
+composition, board topology, Hero Focus and Interaction Stage controls remain
+intentionally separate. Only the existing console wrapper gains bounded flex
+wrapping at touch widths; no control is moved into a public presentation
+surface.
 
 ### 0.7 Four identities have different jobs
 
