@@ -5,86 +5,111 @@ HANDOVER.md is tracked remote coordination state. Commit and push it to origin/u
 
 **CLEANLINESS:** keep only this current task. Read docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
 
-# NEXT TASK — UX2.0UI-05-FIX1: Project Semantic Roles Onto the Local Player Seat Too
+# NEXT TASK — UX2.0UI-06: Semantic Hero Focus Projection
 
 ## Objective
-UI-05 is only partially complete. The semantic role helper is sound, but production rendering applies it only to opponent seats because the player-board filters out room.meId. The accepted design requires the same public semantic seat projection for every visible seat, including the local player's persistent hero/dock seat.
+UI-05 is accepted and closed. Add a bounded read-only Hero Focus consumer that makes the currently relevant character easier to read from the accepted Interaction Stage semantics, without enlarging/replacing seats or changing gameplay controls.
 
-Fix only this coverage gap. Do not redesign the dock or topology.
+Hero Focus is presentation context, not a new authority and not an opponent-card redesign.
 
-Use implementation commit 6c4f216f5615118b1ad9acb81bfed7cb829549b5.
+## Accepted baseline
+Use commit c269150b58d6d765bccc1e5281d91e7f9a9a0ea7:
+- semantic roles project to every visible player representation, including local dock;
+- public roles are viewer-equal;
+- local viewer marker is private;
+- target selection and gameplay legality remain separate;
+- Interaction Stage focus summary is accepted.
 
-## Reviewer finding
-Production currently calls projectInteractionSeatRoles(clientPresentation, player.id) only inside:
-room.players.filter(player => player.id !== room.meId).map(... OpponentPlayerCard ...)
+Do not reopen C1-C7 or UI-01..05.
 
-Therefore when the local player is:
-- interaction source;
-- active/original target;
-- current participant;
-- public decision actor;
-- active resolver;
-the semantic role is not projected onto their visible local hero/player surface.
+## Step 1 — define pure HeroFocusView
+Create a pure helper outside page.tsx derived only from InteractionStageView/PresentationClientView plus display-name/hero-display lookup.
 
-This creates viewer-dependent board semantics: another viewer can see that player's public role highlight on an opponent seat, while the player viewing themselves has no equivalent public role projection.
+The focus identity must be selected from accepted semantic IDs before display lookup.
 
-The viewer-private decision marker may differ, but public role projection must not disappear merely because the player is local.
+Required focus rules:
+1. if currentParticipantId exists, it is the primary focused character;
+2. otherwise, if exactly one activeTargetId exists, that target is primary;
+3. otherwise no primary character focus — do not guess from decision actor, resolver, source, turn, actionPlayerId, Pending, timeline, card/hero names, or array order;
+4. source may be exposed separately as context, but must never replace an absent primary focus by inference;
+5. CHILD_FRAME may expose parent/nested context already proven by InteractionStageView;
+6. REST/no interaction -> hidden.
 
-## Required fix
-1. Inventory the actual local-player hero/seat surface in the persistent local console/dock.
-2. Compute projectInteractionSeatRoles(clientPresentation, room.meId) for that surface.
-3. Apply the same public semantic role data/classes, or a clearly equivalent local-seat class mapping, without changing dock structure, dimensions, ordering, controls, hand area, skills, equipment, or click behavior.
-4. Preserve all overlapping roles.
-5. Preserve local viewer-decision marker as the only entitlement-dependent role.
-6. REST applies no interaction semantic roles.
-7. Do not duplicate the local player into player-board. The existing topology remains unchanged.
+Do not invent target progress or causal meaning.
 
-## CSS
-Reuse the UI-05 semantic visual language for the local hero/player surface:
-- source restrained emphasis;
-- active/current affected red;
-- decision cyan;
-- resolver distinct only as already defined;
-- viewer-private marker separate;
-- defeated/local existing states remain independent.
+## Step 2 — minimal read-only Hero Focus component
+Add a small Hero Focus surface inside the existing Interaction Stage area or immediately associated with it.
 
-Use outline/inset-shadow or equivalent non-layout-affecting styling. Do not change dock geometry.
+When a primary focus exists, show only public information already available for that player, for example:
+- hero/player display identity;
+- public hero portrait/art if already available through existing public player data;
+- public HP/max HP if available;
+- concise semantic role label such as CURRENT TARGET / CURRENT PARTICIPANT derived from the rule above.
 
-## Tests
-Add focused render/helper evidence:
-1. local player as ordinary target-owned decision actor receives original/active/current/decision roles on the local visible surface;
-2. local player as Ma Chao source-owned decision actor receives source + decision roles while remote target keeps active/current/resolver;
-3. local player as active target/current participant without decision still receives public target roles;
-4. overlapping local roles remain simultaneous;
-5. acting vs uninvolved viewer projections preserve the same public roles for the same player identity; only viewer marker differs;
-6. REST local surface has no interaction role classes/data;
-7. local semantic active-target role does not mutate local target selection, controls, buttons, hand, skills, equipment, or gameplay state;
-8. legacy Pending/timeline/presentationV2/CurrentAction/phase/actionReason changes cannot change local semantic roles with fixed PresentationClientView.
+Requirements:
+- responsive, compact, and clearly subordinate to the stable board topology;
+- do not clone the full opponent card;
+- do not show hand contents/private cards;
+- no buttons, click handlers, target selection, legal-action hints, timers, or controls;
+- missing hero/name/art must degrade safely without changing focus identity.
 
-Retain all UI-05 opponent-seat tests.
+If exposing HP/hero display requires passing public room display data into a rendering resolver, keep semantic identity selection pure: the resolver may decorate an already-selected playerId but cannot choose who is focused.
 
-## Documentation
-Correct README and docs/UX_V2_INTERACTION_STAGE_DESIGN.md: UI-05 semantic role projection covers both remote seats and the local player's existing visible hero/player surface; it does not alter the persistent dock composition or topology.
+## Step 3 — preserve source-owned semantics
+Ma Chao/source-owned decision case must keep:
+- primary Hero Focus = current participant/target;
+- decision owner remains source in Interaction Stage;
+- active resolver may remain target;
+- Hero Focus must not switch to source merely because source owns the decision.
+
+## Step 4 — Group/AOE and child frames
+For Group/AOE:
+- focus only the proven currentParticipant when present;
+- do not cycle or infer next/previous target;
+- if no currentParticipant and multiple active targets, show no single Hero Focus.
+
+For CHILD_FRAME:
+- focus the child frame current participant/sole active target only if proven;
+- retain compact nested context; do not replace it with parent target inference.
+
+## Step 5 — tests
+Add focused pure/render tests for:
+1. ordinary Attack/Dodge target focus;
+2. Ma Chao source-owned decision keeps target/current participant as Hero Focus;
+3. Group/AOE current participant focus;
+4. Group/AOE multiple active targets with no current participant -> no guessed Hero Focus;
+5. single active target fallback when current participant absent;
+6. CHILD_FRAME focus and nested context;
+7. Dying rescue current participant;
+8. acting vs uninvolved viewers -> identical Hero Focus public content;
+9. missing player/hero display data -> safe neutral fallback with same selected ID;
+10. REST -> no Hero Focus;
+11. legacy Pending/timeline/presentationV2/CurrentAction/phase/actionPlayerId/actionReason changes cannot change selected focus with fixed PresentationClientView;
+12. no private hand/card/control data is rendered.
+
+Use typed synthetic PresentationClientView for transformation tests; do not claim new server semantics.
+
+## Step 6 — bounded styling
+Add only Hero Focus scoped CSS. Verify <=650px and <=480px containment and long names. Do not change player-board coordinates, local dock dimensions/composition, seat dimensions, or Interaction Stage authority.
+
+No animations in this task.
+
+## Step 7 — documentation
+Update README and docs/UX_V2_INTERACTION_STAGE_DESIGN.md:
+- UI-06 adds read-only semantic Hero Focus;
+- primary focus authority is currentParticipant, else sole active target;
+- no focus is guessed for ambiguous multi-target state;
+- source/decision owner remain distinct concepts;
+- full target-selection/control/animation/topology redesign remains future work.
 
 ## Validation
-Run focused seat/local-surface render tests and retained UI-01..05 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, and git diff --check. Report exact counts.
+Run focused Hero Focus/Interaction Stage/seat render tests plus retained UI-01..05 tests, then npm run test:fast, npm run test:api, npm run build, npm run lint, and git diff --check. Report exact counts.
 
 ## Scope exclusions
-No server/projector/snapshot/gameplay changes; no local dock redesign; no hand/skill/equipment movement; no seat topology change; no target legality/click/control changes; no Hero Focus enlargement; no animation/settlement/transition work; no unrelated refactor.
+No gameplay/server/projector/snapshot changes; no new authority; no seat topology redesign; no opponent-card enlargement; no local dock redesign; no target legality/selection/control migration; no animation; no settlement/transition changes; no compatibility removal; no unrelated refactor.
 
 ## Execution result
-Append only FIX1 result: SHA, files, identified local surface, local role mapping, viewer-equality evidence, overlap/REST evidence, dock/control independence proof, retained opponent evidence, validation counts, and closure recommendation. Push and verify remote HANDOVER, then STOP.
+Append only UI-06 result: SHA, files, HeroFocusView API, focus-selection rules, display resolver boundary, Ma Chao/Group/child/Dying evidence, viewer equality, privacy proof, responsive containment, validation counts, and next bounded UI recommendation. Push and verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if every visible player representation, including the local player's existing hero/player surface, receives the truthful accepted semantic interaction roles; public roles remain viewer-equal; only the viewer marker is private; REST is empty; and topology/dock/controls/gameplay remain unchanged.
-
-## Execution result — UX2.0UI-05-FIX1
-
-- **Status:** COMPLETE / reviewer-ready. Implementation commit: `c269150b58d6d765bccc1e5281d91e7f9a9a0ea7`.
-- **Files:** `app/page.tsx`, `app/globals.css`, `tests/room-safety-render.test.mjs`, `README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
-- **Local surface:** the existing `.local-player-dock` is the persistent local hero/player seat; no local player was duplicated into `.player-board`. `GameRoom` now computes `projectInteractionSeatRoles(clientPresentation, room.meId)` for that dock.
-- **Role mapping:** the dock receives the same source, original-target, active-target, current-participant, decision-actor, active-resolver, and viewer-decision classes/data attributes as remote seats. Public roles come only from the fixed `PresentationClientView`; the viewer marker remains the only entitlement-dependent role.
-- **Evidence:** focused render coverage proves ordinary local target-owned decision roles, local Ma Chao source-owned decision with remote target active/current/resolver roles, local target/current without decision, simultaneous overlap, legacy-field independence, and viewer-equal public projection. REST local rendering has no semantic role classes or data.
-- **Independence:** active-target semantics remain outline/inset presentation only; tests retain the existing local hero card, hand anchor, skills, equipment, buttons, selection behavior, and one-anchor-per-visible-player topology. Existing UI-05 opponent-seat assertions remain green.
-- **Validation:** focused presentation/render tests `41/41`; `npm run test:fast` `158/158`; `npm run test:api` `239/239`; full `npm test` passed; `npm run build` passed; `npm run lint` passed; `git diff --check` passed.
-- **Closure recommendation:** close UI-05-FIX1. No server, projector, snapshot, gameplay, legality, dock-composition, topology, or control migration work was included.
+Pass only if Hero Focus selects a character solely from accepted semantic focus rules; ambiguous multi-target states do not guess; source-owned decisions keep target focus distinct from decision owner; public focus is viewer-equal and privacy-safe; REST hides it; and board/dock/controls/gameplay remain unchanged.
