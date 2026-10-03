@@ -101,3 +101,48 @@ Append only UI-15 result: SHA, files, reaction-family inventory, display-model s
 
 ## Acceptance
 Pass only if the displayed reaction hierarchy is backed by proven causal/public authority, preserves the original causal root across nested Negation and resume, does not manufacture pass nodes, is viewer-equal, keeps response options private and CurrentAction-owned, and leaves gameplay actions/payloads unchanged.
+
+## UI-15 execution result — 2026-10-03
+
+Implemented in `fa84399` (`README.md`, `ROADMAP.md`,
+`docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, `game/presentation-client.ts`,
+`app/page.tsx`, `app/globals.css`, and focused presentation, mounted, and
+engine regressions). The new pure `buildReactionChainView` consumes only the
+accepted public `InteractionStageView`: a coherent proven `NEGATION` root
+effect/source/original targets and one active response window/continuity
+relation. It fails closed without the typed root effect/source or scene. The
+read-only region is inside Interaction Stage, contains no provider/card/payload
+data attributes or controls, and does not move Hero Focus or seats.
+
+Reaction-family inventory and evidence: root stratagem Negation and
+counter-Negation use `Pending.response` with `continuation.kind ===
+"negation"`, current-response `CurrentAction` options, and the existing
+`respond`/`decline_response` actions. A counter advances the same `NEGATION`
+frame and preserves the root; API evidence now asserts one frame and the same
+frame ID. Group/AOE Negation remains `SAME_FRAME` and resumes
+`GROUP_RESOLUTION`; Duel Negation remains one frame and resumes
+`DUEL_EXCHANGE`; existing Judgement and other secondary response machinery
+remain unchanged. Decline/pass advances the server-owned responder/checkpoint
+only and creates no reaction-chain node. No timeline, action owner,
+resolution ID, action revision, compatibility `pendingNegation`, or local
+selection is used to infer topology or a next responder.
+
+Privacy/control evidence: the public chain is viewer-equal; only the
+CurrentAction actor receives private Negation options/cards in the existing
+console. Card selection creates no `respond` action until Confirm, Confirm
+preserves `{ providerId: "negation_card", cardId }`, Skip remains the existing
+authoritative decline action, and actor/actionRevision handoff clears stale
+local selection. Mounted negatives cover forged compatibility chain fields,
+non-actor control/card absence, legacy owner/timeline resistance, malformed
+public scene failure, and stable Hero Focus/seat anchors.
+
+Validation passed: focused presentation/mounted 65/65; focused Worker/D1
+engine Negation/reaction 26/26; `npm run build`; `npm run test:fast` 187/187;
+`npm run test:api` 241/241; `npm run lint`; `git diff --check`.
+
+Remaining GAP: `PresentationSnapshot` has no durable independently proven
+per-counter provider/order/terminal-history record. UI-15 therefore truthfully
+shows root plus active response, not fabricated nested historical nodes. A
+future separately authorized server-model task would need to define and prove
+that public historical event model; do not expand the projector or derive it
+from timeline correlation in React.
