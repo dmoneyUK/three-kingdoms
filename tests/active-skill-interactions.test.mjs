@@ -1020,7 +1020,7 @@ test("mounted Duel semantics ignore legacy action owner and turn fields", async 
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findByProps({ "data-stage": "DUEL_EXCHANGE" }).props["data-presentation-revision"], 1);
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT TARGET");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "CurrentAction still owns the local response console");
   assert.equal(buttonsContaining(renderer, "Skip").length, 1);
   await act(async () => { renderer.unmount(); });
@@ -1194,7 +1194,7 @@ test("mounted Judgement keeps public focus viewer-equal without leaking replacem
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(renderer.root.findAllByProps({ "data-hero-focus": "true" }).length, 0, "the viewer's hero is not duplicated centrally when no unique external source is available");
   assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "judgement-replacement" }).length, 0, "replacement candidates remain private to Sima Yi");
   assert.equal(buttonsContaining(renderer, "Necromancy").length, 0);
   assert.equal(buttonsContaining(renderer, "Confirm").length, 0);
