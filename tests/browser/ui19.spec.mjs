@@ -12,6 +12,12 @@ const TOPOLOGY_MATRIX = [
   { width: 480, height: 900 },
 ];
 
+const INTERACTION_STATES = [
+  { state: "interaction", label: "Interaction" },
+  { state: "negation", label: "Negation" },
+  { state: "dying", label: "Dying" },
+];
+
 async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
@@ -90,18 +96,29 @@ async function interactionGeometry(page) {
     const overlap = (left, right) => Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left)) * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
     const safeZone = document.querySelector(".interaction-safe-zone");
     const stage = document.querySelector(".interaction-stage");
+    const playTable = document.querySelector(".play-table");
     const localDock = document.querySelector(".local-player-dock");
+    const reactionChain = document.querySelector('[data-reaction-chain="proven"]');
+    const dyingHandoff = document.querySelector('[data-dying-handoff="proven"]');
     const opponents = [...document.querySelectorAll('.player-board [data-player-anchor]')].map(rect);
     const safeZoneRect = safeZone ? rect(safeZone) : null;
     const stageRect = stage ? rect(stage) : null;
+    const playTableRect = playTable ? rect(playTable) : null;
     const localDockRect = localDock ? rect(localDock) : null;
+    const safeZoneStyle = safeZone ? getComputedStyle(safeZone) : null;
+    const stageStyle = stage ? getComputedStyle(stage) : null;
     return {
       safeZone: safeZoneRect,
       stage: stageRect,
+      playTable: playTableRect,
       localDock: localDockRect,
+      reactionChain: reactionChain ? rect(reactionChain) : null,
+      dyingHandoff: dyingHandoff ? rect(dyingHandoff) : null,
       opponents,
       stageDockOverlap: stageRect && localDockRect ? overlap(stageRect, localDockRect) : null,
       safeZoneDockOverlap: safeZoneRect && localDockRect ? overlap(safeZoneRect, localDockRect) : null,
+      safeZoneOverflow: safeZoneStyle ? { x: safeZoneStyle.overflowX, y: safeZoneStyle.overflowY } : null,
+      stageOverflow: stageStyle ? { x: stageStyle.overflowX, y: stageStyle.overflowY } : null,
       scrollWidth: document.documentElement.scrollWidth,
       viewportWidth: window.innerWidth,
     };
@@ -144,29 +161,44 @@ for (const { width, height, counts } of MATRIX) {
 }
 
 for (const { width, height } of TOPOLOGY_MATRIX) {
-  test(`UX2.0VIS-02 ${width}x${height} reserves the interaction safe zone below the 4-player top row`, async ({ page }) => {
-    await loadFixture(page, { state: "interaction", count: 4, width, height });
-    await expect(page.locator(".interaction-safe-zone")).toHaveCount(1);
-    await expect(page.locator(".interaction-stage")).toBeVisible();
-    await assertVisible(page.locator(".local-player-dock"), "local dock");
-    await assertVisible(page.locator(".local-hand"), "local hand");
-    await assertVisible(page.locator('[data-console-surface="local-operation"]'), "local console");
-    const result = await interactionGeometry(page);
-
-    expect(result.safeZone, "safe-zone bounds").not.toBeNull();
-    expect(result.stage, "Interaction Stage bounds").not.toBeNull();
-    expect(result.localDock, "local dock bounds").not.toBeNull();
-    expect(result.opponents).toHaveLength(3);
-    expect(Math.max(...result.opponents.map(({ top }) => top)) - Math.min(...result.opponents.map(({ top }) => top)), "VIS-01 opponent anchors remain in one row").toBeLessThanOrEqual(4);
-    expect(Math.max(...result.opponents.map(({ bottom }) => bottom)), "opponents clear the Interaction Stage by six pixels").toBeLessThanOrEqual(result.stage.top - 6);
-    expect(result.stage.left, "stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.left - 4);
-    expect(result.stage.top, "stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.top - 4);
-    expect(result.stage.right, "stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.right + 4);
-    expect(result.stage.bottom, "stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.bottom + 4);
-    expect(result.stageDockOverlap, "Interaction Stage does not overlap the local dock").toBe(0);
-    expect(result.safeZoneDockOverlap, "safe zone does not overlap the local dock").toBe(0);
-    expect(result.scrollWidth, "safe zone does not introduce horizontal overflow").toBeLessThanOrEqual(result.viewportWidth);
-  });
+  for (const { state, label } of INTERACTION_STATES) {
+    test(`UX2.0VIS-02-FIX1 ${label} ${width}x${height} stays fully inside the 4-player safe zone`, async ({ page }) => {
+      await loadFixture(page, { state, count: 4, width, height });
+      await expect(page.locator(".interaction-safe-zone")).toHaveCount(1);
+      await expect(page.locator(".interaction-stage")).toBeVisible();
+      await assertVisible(page.locator(".local-player-dock"), "local dock");
+      await assertVisible(page.locator(".local-hand"), "local hand");
+      await assertVisible(page.locator('[data-console-surface="local-operation"]'), "local console");
+      if (state === "negation") await expect(page.locator('[data-reaction-chain="proven"]')).toBeVisible();
+      if (state === "dying") await expect(page.locator('[data-dying-handoff="proven"]')).toBeVisible();
+      const result = await interactionGeometry(page);
+      expect(result.safeZone, "safe-zone bounds").not.toBeNull();
+      expect(result.stage, "Interaction Stage bounds").not.toBeNull();
+      expect(result.playTable, "play-table bounds").not.toBeNull();
+      expect(result.localDock, "local dock bounds").not.toBeNull();
+      expect(result.opponents).toHaveLength(3);
+      expect(Math.max(...result.opponents.map(({ top }) => top)) - Math.min(...result.opponents.map(({ top }) => top)), "VIS-01 opponent anchors remain in one row").toBeLessThanOrEqual(4);
+      expect(Math.max(...result.opponents.map(({ bottom }) => bottom)), "opponents clear the Interaction Stage by six pixels").toBeLessThanOrEqual(result.stage.top - 6);
+      expect(result.stage.left, "stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.left - 4);
+      expect(result.stage.top, "stage stays inside the safe zone").toBeGreaterThanOrEqual(result.safeZone.top - 4);
+      expect(result.stage.right, "stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.right + 4);
+      expect(result.stage.bottom, "stage stays inside the safe zone").toBeLessThanOrEqual(result.safeZone.bottom + 4);
+      expect(result.stage.bottom, "stage remains above the play-table bottom").toBeLessThanOrEqual(result.playTable.bottom - 1);
+      expect(result.stageDockOverlap, "Interaction Stage does not overlap the local dock").toBe(0);
+      expect(result.safeZoneDockOverlap, "safe zone does not overlap the local dock").toBe(0);
+      expect(result.safeZoneOverflow, "safe zone does not clip or scroll content").toEqual({ x: "visible", y: "visible" });
+      expect(result.stageOverflow, "Interaction Stage does not clip or scroll content").toEqual({ x: "visible", y: "visible" });
+      expect(result.scrollWidth, "safe zone does not introduce horizontal overflow").toBeLessThanOrEqual(result.viewportWidth);
+      if (state === "negation") {
+        expect(result.reactionChain, "Reaction Chain bounds").not.toBeNull();
+        expect(result.reactionChain.bottom, "Reaction Chain remains inside the visible stage").toBeLessThanOrEqual(result.stage.bottom + 4);
+      }
+      if (state === "dying") {
+        expect(result.dyingHandoff, "Dying handoff bounds").not.toBeNull();
+        expect(result.dyingHandoff.bottom, "Dying handoff remains inside the visible stage").toBeLessThanOrEqual(result.stage.bottom + 4);
+      }
+    });
+  }
 }
 
 test("UX2.0VIS-02 keeps an empty safe-zone hook in REST", async ({ page }) => {
