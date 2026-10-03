@@ -778,9 +778,9 @@ test("Dying handoff is viewer-equal, neutral without a proven choice, and fails 
   assert.deepEqual(observer, acting);
 
   const resolving = buildDyingHandoffView(buildInteractionStageView(buildPresentationClientView({ ...base, stable: { ...base.stable, kind: "SETTLEMENT", decisionActorId: null }, decision: null, interaction: { ...base.interaction, decisionActorId: null, participantRoles: { ...base.interaction.participantRoles, decisionActorId: null } } }, "A"), resolveDisplayName));
-  assert.equal(resolving.visible, true);
+  assert.equal(resolving.visible, false, "reserved SETTLEMENT authority fails closed to REST");
   assert.equal(resolving.decisionActor.id, null);
-  assert.equal(resolving.dyingPlayer.id, "B");
+  assert.equal(resolving.dyingPlayer.id, null, "reserved SETTLEMENT does not retain a Dying subject");
 
   const missingSubject = buildDyingHandoffView(buildInteractionStageView(buildPresentationClientView({ ...base, interaction: { ...base.interaction, currentParticipantId: null, participantRoles: { ...base.interaction.participantRoles, currentParticipantId: null } } }, "A"), resolveDisplayName));
   assert.equal(missingSubject.visible, false);

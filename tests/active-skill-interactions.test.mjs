@@ -160,7 +160,7 @@ async function gameTree(skill, onAction) {
 function buttons(renderer, props) { return renderer.root.findAllByType("button").filter((button) => Object.entries(props).every(([key, value]) => button.props[key] === value)); }
 function button(renderer, props) { const matches = buttons(renderer, props); assert.equal(matches.length, 1, `expected one button ${JSON.stringify(props)}, got ${matches.length}; buttons=${renderer.root.findAllByType("button").map((entry) => String(entry.props.children)).join(" | ")}`); return matches[0]; }
 function nodeWith(renderer, prop, value) { const matches = renderer.root.findAll((node) => node.props?.[prop] === value); assert.equal(matches.length, 1, `expected one node ${prop}=${value}, got ${matches.length}`); return matches[0]; }
-function seatAnchorIds(renderer) { return [...new Set(renderer.root.findAll((node) => typeof node.props?.["data-player-anchor"] === "string").map((node) => node.props["data-player-anchor"]))]; }
+function seatAnchorIds(renderer) { return [...new Set(renderer.root.findAll((node) => typeof node.props?.["data-player-anchor"] === "string").map((node) => node.props["data-player-anchor"]))].sort(); }
 function handCardButton(renderer, cardId) { return nodeWith(renderer, "data-hand-card-id", cardId).findAllByType("button")[0]; }
 function targetButton(renderer, playerId) { return nodeWith(renderer, "data-player-anchor", playerId).findAllByType("button")[0]; }
 function text(renderer, value) { return renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children === value); }
@@ -305,7 +305,7 @@ function dyingRescueRoom({ meId = "p3", actorId = "p3", actionRevision = "dying-
       { id: "p3", name: "RESCUER", seat: 2, hero: "sun-quan", hp: 4, maxHp: 4, alive: true, connected: true, handCount: meId === actorId ? 1 : 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Spy" },
     ],
     myHand: meId === actorId ? [peach] : [], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: actorId, actionReason: "Choose Peach or skip rescue", isMyAction: meId === actorId,
-    actionRevision, phase: "dying", presentationSnapshot: snapshot, pendingDying: { sourceId: "p1", targetId: "p2", origin: "Attack", recoveryNeeded: 1, deadline: Date.now() + 60_000 },
+    actionRevision, phase: "dying", presentationSnapshot: snapshot, pendingDying: { kind: "dying", sourceId: "p1", targetId: "p2", origin: "Attack", recoveryNeeded: 1, deadline: Date.now() + 60_000 },
     currentAction: { version: 3, kind: "dying", actorId, deadline: 0, reason: "Choose Peach or skip rescue", legalActions: meId === actorId ? ["give_peach", "skip_rescue"] : [], declineAction: "skip_rescue", requirement: "peach", ...(meId === actorId ? { options: [{ providerId: "card", satisfies: "peach", label: "Peach", description: "Give Peach to the dying player.", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [peach.id] } }] } : {}) },
   });
 }
