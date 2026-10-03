@@ -100,6 +100,19 @@ async function interactionGeometry(page) {
     const localDock = document.querySelector(".local-player-dock");
     const reactionChain = document.querySelector('[data-reaction-chain="proven"]');
     const dyingHandoff = document.querySelector('[data-dying-handoff="proven"]');
+    const stageBody = document.querySelector(".interaction-stage-body");
+    const stageRegions = [...document.querySelectorAll(".interaction-stage-hero-region, .interaction-stage-event-region, .interaction-stage-meta-region")].map((element) => {
+      const style = getComputedStyle(element);
+      const bounds = rect(element);
+      return {
+        className: element.className,
+        bounds,
+        display: style.display,
+        hasContent: Boolean(element.textContent?.trim()),
+        insideStage: stage?.contains(element) ?? false,
+        visible: bounds.width > 0 && bounds.height > 0 && style.display !== "none" && style.visibility !== "hidden",
+      };
+    });
     const opponents = [...document.querySelectorAll('.player-board [data-player-anchor]')].map(rect);
     const safeZoneRect = safeZone ? rect(safeZone) : null;
     const stageRect = stage ? rect(stage) : null;
@@ -114,6 +127,8 @@ async function interactionGeometry(page) {
       localDock: localDockRect,
       reactionChain: reactionChain ? rect(reactionChain) : null,
       dyingHandoff: dyingHandoff ? rect(dyingHandoff) : null,
+      stageBody: stageBody ? { bounds: rect(stageBody), display: getComputedStyle(stageBody).display, gridTemplateColumns: getComputedStyle(stageBody).gridTemplateColumns } : null,
+      stageRegions,
       opponents,
       stageDockOverlap: stageRect && localDockRect ? overlap(stageRect, localDockRect) : null,
       safeZoneDockOverlap: safeZoneRect && localDockRect ? overlap(safeZoneRect, localDockRect) : null,
@@ -189,6 +204,29 @@ for (const { width, height } of TOPOLOGY_MATRIX) {
       expect(result.safeZoneOverflow, "safe zone does not clip or scroll content").toEqual({ x: "visible", y: "visible" });
       expect(result.stageOverflow, "Interaction Stage does not clip or scroll content").toEqual({ x: "visible", y: "visible" });
       expect(result.scrollWidth, "safe zone does not introduce horizontal overflow").toBeLessThanOrEqual(result.viewportWidth);
+      if (width === 1440) {
+        expect(result.stageBody, "desktop stage body geometry").not.toBeNull();
+        expect(result.stageBody.display, "desktop stage body uses the horizontal grid composition").toBe("grid");
+        expect(result.stageBody.gridTemplateColumns.trim().split(/\s+/).length, "desktop stage body resolves to multiple columns").toBeGreaterThanOrEqual(2);
+        expect(result.stageRegions, "stable hero, event, and meta regions remain mounted").toHaveLength(3);
+        expect(result.stageRegions.every((region) => region.insideStage), "all three stable regions remain inside the Interaction Stage DOM").toBe(true);
+        const visibleRegions = result.stageRegions.filter((region) => region.visible && region.hasContent);
+        for (const region of visibleRegions) {
+          expect(region.bounds.left, `${region.className} stays inside the stage`).toBeGreaterThanOrEqual(result.stage.left - 4);
+          expect(region.bounds.top, `${region.className} stays inside the stage`).toBeGreaterThanOrEqual(result.stage.top - 4);
+          expect(region.bounds.right, `${region.className} stays inside the stage`).toBeLessThanOrEqual(result.stage.right + 4);
+          expect(region.bounds.bottom, `${region.className} stays inside the stage`).toBeLessThanOrEqual(result.stage.bottom + 4);
+        }
+        for (let index = 0; index < visibleRegions.length; index += 1) {
+          for (let other = index + 1; other < visibleRegions.length; other += 1) {
+            const left = visibleRegions[index].bounds;
+            const right = visibleRegions[other].bounds;
+            const overlapWidth = Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left));
+            const overlapHeight = Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+            expect(overlapWidth * overlapHeight, `${visibleRegions[index].className} does not overlap ${visibleRegions[other].className}`).toBe(0);
+          }
+        }
+      }
       if (state === "negation") {
         expect(result.reactionChain, "Reaction Chain bounds").not.toBeNull();
         expect(result.reactionChain.bottom, "Reaction Chain remains inside the visible stage").toBeLessThanOrEqual(result.stage.bottom + 4);

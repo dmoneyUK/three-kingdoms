@@ -489,32 +489,40 @@ export function InteractionStage({ view, transitionKind = "NONE", resolvePlayerN
   if (!display.visible) return null;
   return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined} data-presentation-transition={transitionKind}>
     <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
-    <HeroFocus view={heroFocus} />
-    {dyingHandoff.visible && <section className="dying-handoff" aria-label="Dying Rescue Handoff" data-dying-handoff="proven" data-dying-player-id={dyingHandoff.dyingPlayer.id ?? undefined} data-dying-decision-actor-id={dyingHandoff.decisionActor.id ?? undefined} data-dying-resolver-id={dyingHandoff.activeResolver.id ?? undefined} data-dying-continuity={dyingHandoff.continuity.relation} data-dying-parent-frame-id={dyingHandoff.parentFrameId ?? undefined}>
-      <header><span>DYING / RESCUE</span><strong>{dyingHandoff.statusLabel}</strong><small>SERVER-AUTHORIZED HANDOFF</small></header>
-      <div className="dying-handoff-grid">
-        <span><small>DYING PLAYER</small><b>{dyingHandoff.dyingPlayer.name}</b></span>
-        {dyingHandoff.decisionActor.id && <span><small>DECISION</small><b>{dyingHandoff.decisionActor.name}</b></span>}
-        {dyingHandoff.activeResolver.id && <span><small>RESOLVER</small><b>{dyingHandoff.activeResolver.name}</b></span>}
+    <div className="interaction-stage-body">
+      <div className="interaction-stage-hero-region">
+        <HeroFocus view={heroFocus} />
       </div>
-      <small className="dying-handoff-guidance">{dyingHandoff.guidance}</small>
-    </section>}
-    {reactionChain.visible && reactionChain.root && reactionChain.active && <section className="reaction-chain" aria-label="Reaction Chain" data-reaction-chain="proven" data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
-      <header><span>REACTION CHAIN</span><small>PUBLIC CAUSAL CONTEXT</small></header>
-      <ol>
-        <li data-reaction-node="root"><small>ROOT EFFECT</small><b>{reactionChain.root.effect}</b><span>{reactionChain.root.source.name} → {reactionChain.root.targets.length ? reactionChain.root.targets.map((target) => target.name).join(", ") : "No proven target"}</span></li>
-        <li data-reaction-node="active" data-reaction-relation={reactionChain.active.relation}><small>ACTIVE RESPONSE</small><b>{reactionChain.active.label}</b>{reactionChain.active.decisionActor.id && <span>DECISION · {reactionChain.active.decisionActor.name}</span>}</li>
-      </ol>
-    </section>}
-    <div className="interaction-stage-focus">
-      <div><small>SOURCE</small><b>{display.source.name}</b></div>
-      <div><small>FOCUS</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
-    </div>
-    <div className="interaction-stage-context">
-      {display.showDecision && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
-      {display.showResolver && <span><small>RESOLVER</small><b>{display.activeResolver.name}</b></span>}
-      {display.showOriginalTargets && <span><small>ORIGINAL SCOPE</small><b>{display.originalTargetSummary}</b></span>}
-      {display.nestedContext && <span><small>CONTEXT</small><b>{display.nestedContext}</b></span>}
+      <div className="interaction-stage-event-region">
+        {dyingHandoff.visible && <section className="dying-handoff" aria-label="Dying Rescue Handoff" data-dying-handoff="proven" data-dying-player-id={dyingHandoff.dyingPlayer.id ?? undefined} data-dying-decision-actor-id={dyingHandoff.decisionActor.id ?? undefined} data-dying-resolver-id={dyingHandoff.activeResolver.id ?? undefined} data-dying-continuity={dyingHandoff.continuity.relation} data-dying-parent-frame-id={dyingHandoff.parentFrameId ?? undefined}>
+          <header><span>DYING / RESCUE</span><strong>{dyingHandoff.statusLabel}</strong><small>SERVER-AUTHORIZED HANDOFF</small></header>
+          <div className="dying-handoff-grid">
+            <span><small>DYING PLAYER</small><b>{dyingHandoff.dyingPlayer.name}</b></span>
+            {dyingHandoff.decisionActor.id && <span><small>DECISION</small><b>{dyingHandoff.decisionActor.name}</b></span>}
+            {dyingHandoff.activeResolver.id && <span><small>RESOLVER</small><b>{dyingHandoff.activeResolver.name}</b></span>}
+          </div>
+          <small className="dying-handoff-guidance">{dyingHandoff.guidance}</small>
+        </section>}
+        {reactionChain.visible && reactionChain.root && reactionChain.active && <section className="reaction-chain" aria-label="Reaction Chain" data-reaction-chain="proven" data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
+          <header><span>REACTION CHAIN</span><small>PUBLIC CAUSAL CONTEXT</small></header>
+          <ol>
+            <li data-reaction-node="root"><small>ROOT EFFECT</small><b>{reactionChain.root.effect}</b><span>{reactionChain.root.source.name} → {reactionChain.root.targets.length ? reactionChain.root.targets.map((target) => target.name).join(", ") : "No proven target"}</span></li>
+            <li data-reaction-node="active" data-reaction-relation={reactionChain.active.relation}><small>ACTIVE RESPONSE</small><b>{reactionChain.active.label}</b>{reactionChain.active.decisionActor.id && <span>DECISION · {reactionChain.active.decisionActor.name}</span>}</li>
+          </ol>
+        </section>}
+      </div>
+      <div className="interaction-stage-meta-region">
+        <div className="interaction-stage-focus">
+          <div><small>SOURCE</small><b>{display.source.name}</b></div>
+          <div><small>FOCUS</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
+        </div>
+        <div className="interaction-stage-context">
+          {display.showDecision && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
+          {display.showResolver && <span><small>RESOLVER</small><b>{display.activeResolver.name}</b></span>}
+          {display.showOriginalTargets && <span><small>ORIGINAL SCOPE</small><b>{display.originalTargetSummary}</b></span>}
+          {display.nestedContext && <span><small>CONTEXT</small><b>{display.nestedContext}</b></span>}
+        </div>
+      </div>
     </div>
   </section>;
 }
