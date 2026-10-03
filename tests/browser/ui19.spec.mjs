@@ -24,6 +24,19 @@ const HERO_FOCUS_VIEWPORTS = [
   { width: 480, height: 900, minimumPortrait: { width: 64, height: 80 } },
 ];
 
+const VIS_04B_VIEWPORTS = [
+  { width: 1440, height: 900, seat: { width: 180, height: 108 }, focus: { width: 90, height: 113 }, medium: { width: 56, height: 70 }, previousTop: "385px" },
+  { width: 650, height: 900, seat: { width: 112, height: 88 }, focus: { width: 72, height: 90 }, medium: { width: 48, height: 60 }, previousTop: "319px" },
+  { width: 480, height: 900, seat: { width: 100, height: 78 }, focus: { width: 64, height: 80 }, medium: { width: 42, height: 53 }, previousTop: "326px" },
+];
+
+const VIS_04B_ACTIVE_STATES = [
+  { state: "interaction", label: "Interaction" },
+  { state: "negation", label: "Negation" },
+  { state: "dying", label: "Dying" },
+  { state: "group-observer", label: "Group observer" },
+];
+
 async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
@@ -287,6 +300,112 @@ for (const { width, height } of [{ width: 1440, height: 900 }, { width: 480, hei
     expect(result.scrollWidth).toBeLessThanOrEqual(result.viewportWidth);
   });
 }
+
+for (const viewport of VIS_04B_VIEWPORTS) {
+  for (const count of [2, 3, 4]) {
+    test(`UX2.0VIS-04B REST ${viewport.width}x${viewport.height} reclaims the gap for ${count} players`, async ({ page }) => {
+      await loadFixture(page, { state: "rest", count, width: viewport.width, height: viewport.height });
+      const seats = await geometry(page);
+      const layout = await interactionGeometry(page);
+      const orderedSeats = [...seats.opponentAnchors].sort((left, right) => left.relativeIndex - right.relativeIndex);
+      const maxOpponentBottom = Math.max(...orderedSeats.map(({ bottom }) => bottom));
+      const clearance = layout.safeZone.top - maxOpponentBottom;
+      const safeZoneVisuals = await page.locator(".interaction-safe-zone").evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          background: style.backgroundColor,
+          borders: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth],
+          text: element.textContent?.trim() ?? "",
+        };
+      });
+
+      expect(await page.locator('.play-table[data-seat-topology="top-row"] .interaction-safe-zone').count()).toBe(1);
+      expect(layout.safeZone.bottom).toBeCloseTo(layout.playTable.bottom - 1, 4);
+      await expect(page.locator(".interaction-stage")).toHaveCount(0);
+      expect(safeZoneVisuals.background).toBe("rgba(0, 0, 0, 0)");
+      expect(safeZoneVisuals.borders).toEqual(["0px", "0px", "0px", "0px"]);
+      expect(safeZoneVisuals.text).toBe("");
+      expect(orderedSeats).toHaveLength(count - 1);
+      expect(seats.localDockAnchorCount).toBe(1);
+      expect(Math.max(...orderedSeats.map(({ top }) => top)) - Math.min(...orderedSeats.map(({ top }) => top))).toBeLessThanOrEqual(4);
+      expect(orderedSeats.map(({ relativeIndex }) => relativeIndex)).toEqual(Array.from({ length: count - 1 }, (_, index) => index + 1));
+      for (let index = 0; index < orderedSeats.length; index += 1) {
+        const seat = orderedSeats[index];
+        expect(seat.width).toBe(viewport.seat.width);
+        expect(seat.height).toBe(viewport.seat.height);
+        if (index > 0) expect(seat.left + seat.width / 2).toBeGreaterThan(orderedSeats[index - 1].left + orderedSeats[index - 1].width / 2);
+      }
+      expect(clearance).toBeGreaterThanOrEqual(6);
+      expect(clearance).toBeLessThanOrEqual(24);
+      expect(seats.scrollWidth).toBeLessThanOrEqual(seats.viewportWidth);
+    });
+  }
+}
+
+for (const viewport of VIS_04B_VIEWPORTS) {
+  for (const { state, label } of VIS_04B_ACTIVE_STATES) {
+    test(`UX2.0VIS-04B ${label} ${viewport.width}x${viewport.height} preserves full stage containment`, async ({ page }) => {
+      await loadFixture(page, { state, count: 4, width: viewport.width, height: viewport.height });
+      const seats = await geometry(page);
+      const result = await interactionGeometry(page);
+      const focusPortrait = await page.locator(".hero-focus-portrait").boundingBox();
+
+      await expect(page.locator(".interaction-stage")).toBeVisible();
+      await assertVisible(page.locator(".local-player-dock"), "local player dock");
+      expect(result.safeZone).not.toBeNull();
+      expect(result.stage).not.toBeNull();
+      expect(result.playTable).not.toBeNull();
+      expect(result.opponents).toHaveLength(3);
+      expect(Math.max(...result.opponents.map(({ bottom }) => bottom))).toBeLessThanOrEqual(result.stage.top - 6);
+      expect(result.stage.left).toBeGreaterThanOrEqual(result.safeZone.left - 4);
+      expect(result.stage.top).toBeGreaterThanOrEqual(result.safeZone.top);
+      expect(result.stage.right).toBeLessThanOrEqual(result.safeZone.right + 4);
+      expect(result.stage.bottom).toBeLessThanOrEqual(result.safeZone.bottom + 4);
+      expect(result.safeZone.bottom).toBeCloseTo(result.playTable.bottom - 1, 4);
+      expect(result.stage.bottom).toBeLessThanOrEqual(result.playTable.bottom - 1);
+      expect(result.stageDockOverlap).toBe(0);
+      expect(result.safeZoneDockOverlap).toBe(0);
+      expect(result.safeZoneOverflow).toEqual({ x: "visible", y: "visible" });
+      expect(result.stageOverflow).toEqual({ x: "visible", y: "visible" });
+      expect(result.scrollWidth).toBeLessThanOrEqual(result.viewportWidth);
+      expect(seats.localDockAnchorCount).toBe(1);
+      expect(focusPortrait.width).toBe(viewport.focus.width);
+      expect(focusPortrait.height).toBe(viewport.focus.height);
+
+      if (state === "negation") await assertVisible(page.locator('[data-reaction-chain="proven"]'), "Reaction Chain");
+      if (state === "dying") {
+        await assertVisible(page.locator('[data-dying-handoff="proven"]'), "Dying handoff");
+        expect(result.dyingHandoff.bottom).toBeLessThanOrEqual(result.stage.bottom + 4);
+      }
+      if (state === "group-observer") {
+        const mediumPortrait = await page.locator(".medium-participant-portrait").boundingBox();
+        expect(mediumPortrait.width).toBe(viewport.medium.width);
+        expect(mediumPortrait.height).toBe(viewport.medium.height);
+      }
+    });
+  }
+}
+
+test("UX2.0VIS-04B Dying 650x900 proves old top offset overflow and new geometry contains content", async ({ page }) => {
+  const viewport = VIS_04B_VIEWPORTS.find(({ width }) => width === 650);
+  await loadFixture(page, { state: "dying", count: 4, width: viewport.width, height: viewport.height });
+  const playTable = page.locator(".play-table");
+
+  await playTable.evaluate((element, previousTop) => element.style.setProperty("--interaction-safe-top", previousTop), viewport.previousTop);
+  const previous = await interactionGeometry(page);
+  expect(previous.stage.bottom).toBeGreaterThan(previous.safeZone.bottom + 4);
+
+  await playTable.evaluate((element) => element.style.removeProperty("--interaction-safe-top"));
+  const current = await interactionGeometry(page);
+  await assertVisible(page.locator('[data-dying-handoff="proven"]'), "Dying handoff");
+  expect(current.stage.height).toBe(previous.stage.height);
+  expect(current.dyingHandoff.height).toBe(previous.dyingHandoff.height);
+  expect(current.stage.bottom).toBeLessThanOrEqual(current.safeZone.bottom + 4);
+  expect(current.stage.bottom).toBeLessThanOrEqual(current.playTable.bottom - 1);
+  expect(current.dyingHandoff.bottom).toBeLessThanOrEqual(current.stage.bottom + 4);
+  expect(current.stageDockOverlap).toBe(0);
+  expect(current.safeZoneDockOverlap).toBe(0);
+});
 
 for (const { width, height, counts } of MATRIX) {
   for (const count of counts) {
