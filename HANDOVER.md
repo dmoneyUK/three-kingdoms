@@ -118,3 +118,17 @@ Append only UI-03 result: implementation SHA, files, helper/component API, rende
 
 ## Acceptance
 Pass only if a dedicated read-only Interaction Stage renders active semantic context solely from PresentationClientView; REST renders none; public content is viewer-equal; source-owned and child-frame distinctions survive; no legacy fallback exists; and gameplay/controls/animation/layout remain unchanged.
+
+## Execution result — UX2.0UI-03
+
+- Implementation SHA: `c078952bd604131087dc0e186342bcc09b52dfb0` (`feat(ux-v2): add read-only interaction stage consumer`).
+- Files changed: `game/presentation-client.ts`, `app/page.tsx`, `app/globals.css`, `tests/presentation-client.test.mjs`, `tests/room-safety-render.test.mjs`, `README.md`, and `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`.
+- Helper/component API: `buildInteractionStageView(view, resolvePlayerName)` is pure and accepts only `PresentationClientView` plus a display-name resolver; `InteractionStage` renders that view read-only and returns nothing when `visible` is false.
+- Rendered semantic fields: active interaction/checkpoint/revision data attributes; stage label; source; original and active targets; current participant; decision owner; active resolver; stable boundary; viewer-local decision marker; continuity relation; and parent frame reference.
+- Authority inputs: all semantic IDs and continuity come from `PresentationClientView`; names are resolved only after ID selection. Missing names use neutral labels without changing IDs. No cards, legal options, buttons, timers, Pending, CurrentAction, timeline, presentationV2, phase, actionPlayerId, or actionReason are accepted by the helper/component.
+- Fixture/test coverage: target-owned Attack/Dodge, source-owned Ma Chao decision versus resolver, Group/AOE participant context, child Damage frame, Dying rescue handoff, full component render assertions, REST hidden state, missing-name safety, and legacy-field independence are covered. Existing UI-01/UI-02 tests remain green.
+- Viewer equality/private marker: acting and uninvolved viewers receive identical public stage IDs/names/continuity; only adapter entitlement can render `YOUR DECISION`.
+- Legacy independence: fixed `PresentationClientView` output remains identical while Pending, timeline, presentationV2, CurrentAction, phase, actionPlayerId, and actionReason fixtures change. The component has no legacy fallback path.
+- Scope confirmation: no gameplay/server/projector/snapshot changes, CSS overhaul, seat topology, local dock, target/control, dialog, timer, animation, settlement/transition protocol, compatibility-field removal, or CurrentAction public authority was added. The panel is a bounded read-only overlay using existing table primitives.
+- Validation: focused adapter/Interaction Stage/render tests `29/29`; `npm run test:fast` `146/146`; `npm run test:api` `239/239`; `npm test` passed (`build` + `146/146` Fast + `239/239` API); `npm run lint` passed; `git diff --check` passed.
+- Next bounded UI recommendation: review one responsive/readability slice for this semantic panel, keeping controls, target selection, animation, settlement/transition presentation, seats, and dock unchanged until separately authorized.
