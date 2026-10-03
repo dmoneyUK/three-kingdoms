@@ -1607,3 +1607,113 @@
     padding: 6px;
   }
 }
+
+/* UI-11: five-to-ten-player rooms keep the established side-column topology.
+   Relative seat order stays in DOM order so semantic focus can decorate a
+   seat without changing its anchor. The local dock remains outside this board. */
+.game-shell .player-board[data-seat-topology="side-column"] {
+  --seat-row-count: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: repeat(var(--seat-row-count), minmax(0, 1fr));
+  grid-auto-flow: row;
+  gap: clamp(6px, 1.2vw, 12px);
+  inset: clamp(10px, 3%, 30px) clamp(10px, 4vw, 48px) clamp(10px, 3%, 30px);
+  align-items: center;
+}
+
+.game-shell .player-board[data-player-count="5"] { --seat-row-count: 2; }
+.game-shell .player-board[data-player-count="6"],
+.game-shell .player-board[data-player-count="7"] { --seat-row-count: 3; }
+.game-shell .player-board[data-player-count="8"],
+.game-shell .player-board[data-player-count="9"] { --seat-row-count: 4; }
+.game-shell .player-board[data-player-count="10"] { --seat-row-count: 5; }
+
+.game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card {
+  position: relative;
+  inset: auto;
+  width: auto;
+  height: min(150px, calc((100% - (var(--seat-row-count) - 1) * 8px) / var(--seat-row-count)));
+  max-width: 100%;
+  min-height: 58px;
+  aspect-ratio: 2 / 3;
+  margin: 0;
+  align-self: center;
+  justify-self: center;
+  transform: none;
+}
+
+/* Keep text and the persistent local operation surface bounded at the two
+   handoff breakpoints. These are containment rules only; they do not hide
+   public facts or move authoritative controls into the stage. */
+.game-shell .interaction-stage,
+.game-shell .hero-focus,
+.game-shell .interaction-stage-focus,
+.game-shell .interaction-stage-context,
+.game-shell .local-player-dock,
+.game-shell .local-hand-section,
+.game-shell .local-player-dock .turn-controls {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.game-shell .interaction-stage,
+.game-shell .hero-focus,
+.game-shell .interaction-stage-focus,
+.game-shell .interaction-stage-context,
+.game-shell .interaction-stage b,
+.game-shell .interaction-stage em,
+.game-shell .hero-focus * {
+  overflow-wrap: anywhere;
+}
+
+.game-shell .local-player-dock .turn-controls > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.game-shell [data-console-surface="local-operation"] > div {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+@media (max-width: 650px) {
+  .game-shell .player-board[data-seat-topology="side-column"] {
+    inset: 6px clamp(5px, 2.5vw, 18px) 8px;
+    gap: 5px;
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card {
+    height: min(128px, calc((100% - (var(--seat-row-count) - 1) * 5px) / var(--seat-row-count)));
+    min-height: 54px;
+  }
+
+  .game-shell .target-card-picker-panel,
+  .game-shell .table-hidden-card-picker.target-card-picker,
+  .game-shell .deck-reorder-panel {
+    max-width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .game-shell .player-board[data-seat-topology="side-column"] {
+    inset: 4px 3px 6px;
+    gap: 3px;
+  }
+
+  .game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card {
+    height: min(108px, calc((100% - (var(--seat-row-count) - 1) * 3px) / var(--seat-row-count)));
+    min-height: 48px;
+  }
+
+  .game-shell .local-player-dock .turn-controls {
+    overflow: visible;
+  }
+
+  .game-shell .local-player-dock .turn-controls > div {
+    gap: 3px;
+  }
+}

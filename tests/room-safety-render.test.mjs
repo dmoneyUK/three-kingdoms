@@ -30,6 +30,46 @@ const presentationRoom = (overrides = {}) => ({
   ...overrides,
 });
 
+const responsiveTopologyRoom = ({ playerCount = 4, handSize = 4 } = {}) => normalizeRoomData({
+  code: `UI11-${playerCount}-${handSize}`,
+  status: "playing",
+  maxPlayers: playerCount,
+  isHost: true,
+  isTestController: true,
+  meId: "p1",
+  myRole: "Lord",
+  myHeroOptions: [],
+  players: ["cao-cao", "liu-bei", "zhang-fei", "sun-quan", "zhao-yun", "gan-ning", "huang-yueying", "xiahou-dun", "guo-jia", "zhuge-liang"].slice(0, playerCount).map((hero, index) => ({
+    id: `p${index + 1}`,
+    name: `Player ${index + 1} with a long name`,
+    seat: index,
+    hero,
+    hp: 4,
+    maxHp: 4,
+    alive: true,
+    connected: true,
+    handCount: index === 0 ? handSize : 2,
+    equipmentCards: [],
+    judgementCards: [],
+    attackRange: 1,
+    distance: index === 0 ? null : 1,
+    isHost: index === 0,
+    role: index === 0 ? "Lord" : "Rebel",
+  })),
+  myHand: Array.from({ length: handSize }, (_, index) => card(`ui11-hand-${index + 1}`, "Attack")),
+  turnSeat: 0,
+  phase: "play",
+  deckCount: 40,
+  discardTop: null,
+  log: [],
+  timeline: [],
+  isMyTurn: true,
+  actionPlayerId: "p1",
+  actionReason: "Play cards",
+  isMyAction: true,
+  currentAction: { version: 3, kind: "turn", actorId: "p1", deadline: 0, reason: "Play cards", legalActions: ["play_card"] },
+});
+
 test("shared decision presentation keeps turn ownership, action ownership, privacy, and revisions distinct", () => {
   const normal = buildDecisionPresentation(presentationRoom());
   assert.equal(normal.primaryStatus, "Lü Bu's turn");
@@ -79,6 +119,9 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   const html = renderToStaticMarkup(React.createElement(GameRoom, { room: uxRoom, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((html.match(/class="decision-status/g) ?? []).length, 1, "one primary status area is rendered");
   assert.equal((html.match(/class="interaction-stage"/g) ?? []).length, 1, "one read-only Interaction Stage is rendered");
+  assert.equal((html.match(/data-player-anchor="/g) ?? []).length, 2, "Interaction Stage insertion preserves both player anchors");
+  assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, "Interaction Stage insertion keeps one local dock");
+  assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, "Interaction Stage insertion keeps one footer console");
   assert.match(html, /INTERACTION STAGE/);
   assert.match(html, /Attack · Attack Response/);
   assert.match(html, /data-continuity="ROOT_FRAME"/);
@@ -166,6 +209,8 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.match(childStageHtml, /parent frame parent-frame/);
   const restHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: null }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((restHtml.match(/class="interaction-stage"/g) ?? []).length, 0, "REST renders no Interaction Stage");
+  assert.equal((restHtml.match(/data-player-anchor="/g) ?? []).length, 2, "REST hides semantic focus without collapsing topology");
+  assert.equal((restHtml.match(/class="local-player-dock/g) ?? []).length, 1, "REST retains one local dock");
   assert.match(restHtml, /<section class="local-player-dock\s*"[^>]*data-player-anchor="p1"/, "REST retains the local player surface");
   assert.doesNotMatch(restHtml, /<section class="local-player-dock[^"]*interaction-seat-/, "REST local surface has no semantic role classes");
   assert.doesNotMatch(restHtml, /data-interaction-(?:roles|source|original-target|active-target|current-participant|decision-actor|active-resolver|viewer-decision)=/, "REST local surface has no semantic role data");
@@ -439,6 +484,49 @@ test("hand cards stay naturally packed and compress only when the rail is tight"
   assert.match(gameRoomSource, /const handCardKey = room\.myHand\.map\(\(item\) => item\.id\)\.join\("\\|"\)/, "hand layout keys the actual card IDs and order");
   assert.match(gameRoomSource, /\[handRailWidth, handCardKey\]/, "hand layout recomputes after card identity, order, or count changes");
   assert.match(gameRoomSource, /calculateHandCardStep\(handRailWidth, handCardKey \? handCardKey\.split\("\\|"\) : \[\]\)/);
+});
+
+test("UI-11 keeps one local dock and stable opponent anchors across supported player counts", () => {
+  for (const playerCount of [2, 3, 4, 5, 6, 8, 10]) {
+    const room = responsiveTopologyRoom({ playerCount });
+    assert.ok(room, `${playerCount}-player fixture normalizes`);
+    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    const boardStart = html.indexOf('<div class="player-board"');
+    const dockStart = html.indexOf('<section class="local-player-dock');
+    assert.ok(boardStart >= 0 && dockStart > boardStart, `${playerCount}-player markup has a board before the dock`);
+    const boardHtml = html.slice(boardStart, dockStart);
+    assert.equal((boardHtml.match(/data-player-anchor="p\d+"/g) ?? []).length, playerCount - 1, `${playerCount}-player board has exactly N-1 opponent anchors`);
+    assert.doesNotMatch(boardHtml, /data-player-anchor="p1"/, `${playerCount}-player board never duplicates the local anchor`);
+    assert.equal((html.match(/data-player-anchor="/g) ?? []).length, playerCount, `${playerCount}-player room has exactly N visible player anchors`);
+    assert.equal((html.match(/data-player-anchor="p1"/g) ?? []).length, 1, `${playerCount}-player room has one local anchor`);
+    assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, `${playerCount}-player room has one local dock`);
+    assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, `${playerCount}-player room has one local console`);
+    assert.equal((html.match(/class="player-square opponent-player-card/g) ?? []).length, playerCount - 1, `${playerCount}-player room renders all opponents once`);
+    assert.match(html, new RegExp(`data-player-count="${playerCount}"`));
+    assert.match(html, new RegExp(`data-seat-topology="${playerCount >= 5 ? "side-column" : "top-row"}"`));
+    assert.doesNotMatch(html, /class="player-square player-square-0/);
+  }
+
+  assert.match(sequenceStyleSource, /player-board\[data-seat-topology="side-column"\]/, "5-10-player topology is an explicit presentation contract");
+  for (const [playerCount, rows] of [[5, 2], [6, 3], [8, 4], [10, 5]]) {
+    assert.match(sequenceStyleSource, new RegExp(`data-player-count="${playerCount}"[\\s\\S]*--seat-row-count: ${rows}`), `${playerCount}-player topology declares its side-column row budget`);
+  }
+  assert.match(sequenceStyleSource, /data-seat-topology="side-column"[\s\S]*height: min\(150px/);
+});
+
+test("UI-11 preserves hand rail and one footer console for one, five, and ten cards", () => {
+  for (const handSize of [1, 5, 10]) {
+    const room = responsiveTopologyRoom({ playerCount: 4, handSize });
+    const html = renderToStaticMarkup(React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
+    assert.equal((html.match(/data-hand-card-id="/g) ?? []).length, handSize, `${handSize}-card hand preserves each physical card`);
+    assert.equal((html.match(/class="local-hand-section"/g) ?? []).length, 1);
+    assert.equal((html.match(/class="local-hand-rail"/g) ?? []).length, 1);
+    assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, `${handSize}-card hand keeps one footer console`);
+    assert.ok(html.indexOf('class="local-hand-section"') < html.indexOf('data-console-surface="local-operation"'), `${handSize}-card hand remains before the console in the dock`);
+  }
+  assert.match(sequenceStyleSource, /local-hand-section[\s\S]*height: var\(--hand-panel-height\)[\s\S]*overflow: visible/);
+  assert.match(sequenceStyleSource, /data-console-surface="local-operation"[\s\S]*flex-wrap: wrap/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*turn-controls[\s\S]*min-height: 48px/);
 });
 
 test("the local player dock replaces the self battlefield square and follows Quick Test perspective", () => {

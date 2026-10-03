@@ -42,7 +42,7 @@ Improve functional feedback for card selection, target selection, confirm,
 decline/skip, disabled controls and in-flight submissions. Keep the server
 projection as the source of legal IDs.
 
-UI-10-FIX1 is the current bounded slice: the existing local operation console
+UI-10-FIX1 is accepted and closed: the existing local operation console
 now uses `buildConsoleDecisionDisplay` to govern the actual footer primary,
 local Cancel, and authoritative Skip/Decline exposure. One explicit primary is
 selected by CurrentAction-authorized precedence; stale legacy booleans cannot
@@ -56,6 +56,16 @@ Duel/Judgement and Serpent Spear controls are mapped to the model while
 target-card dialog controls remain dialog-owned. The console wraps at touch
 widths; Hero Focus and Interaction Stage intentionally remain control-free.
 
+UI-11 is the current bounded responsive hardening slice. It keeps the existing
+2–4 top-row and 5–10 side-column seat topology, adds deterministic
+`data-player-count`/`data-seat-topology` contracts, and proves N−1 opponent
+anchors plus one local dock anchor for 2, 3, 4, 5, 6, 8, and 10 players.
+The <=650px and <=480px rules contain stage/focus copy, side-column seats,
+long names, dialogs, the existing hand rail, and the wrapping footer console.
+Semantic roles remain decoration on stable anchors; the console is still the
+only footer control surface. SSR contracts prove structure and declared CSS,
+but pixel-level responsive appearance remains a later browser/manual GAP.
+
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel
 clearing only local state. Existing `choose_target_card` and semantic
@@ -64,9 +74,11 @@ separate Skip/Decline actions remain unchanged.
 
 ### UX 3 — mobile/touch and information readability
 
-Review the live responsive layout for crowded hands, opponent public zones,
-hero/skill information, Equipment/Judgement readability and touch targets.
-Prioritise usability over visual redesign.
+UI-11 is the first bounded pass for this phase. Review the live responsive
+layout for crowded hands, opponent public zones, hero/skill information,
+Equipment/Judgement readability and touch targets. Prioritise usability over
+visual redesign and close the remaining browser/manual visual GAP before
+claiming pixel-level responsive acceptance.
 
 ### UX 4 — lifecycle feedback
 

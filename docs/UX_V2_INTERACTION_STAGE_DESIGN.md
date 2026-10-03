@@ -389,6 +389,49 @@ intentionally separate. Only the existing console wrapper gains bounded flex
 wrapping at touch widths; no control is moved into a public presentation
 surface.
 
+### 0.6.10 UI-11 responsive topology and console regression hardening
+
+UI-11 keeps the existing board composition and makes its responsive contract
+testable. `GameRoom` renders `data-player-count` and
+`data-seat-topology="top-row"` for 2–4 total players and
+`data-seat-topology="side-column"` for 5–10. Relative opponent seat classes
+remain in DOM order; the local player is filtered out of `player-board` and
+rendered once by `LocalPlayerDock`. The side-column mode uses the existing
+relative order in a two-column grid with a row budget of 2/3/4/5 for 5/6–7/
+8–9/10 players. It is a containment fix for the previously unpositioned
+relative seat classes 4–9, not a new gameplay or board-authority model.
+
+The responsive inventory is explicit:
+
+- baseline/global table and seat rules define the desktop geometry;
+- the existing sequence overrides use <=700px for the compact table/dock and
+  <=520px for the compact board position variables;
+- Interaction Stage/Hero Focus already use <=650px and <=480px text/grid
+  adjustments, and UI-11 adds side-column card sizing plus dialog scroll at
+  those same <=650px and <=480px boundaries;
+- the existing local dock keeps its <=700px, <=480px, and <=360px row/column
+  rules, with hand rail and footer console as separate regions.
+
+The concrete source defect was that the mobile absolute-position rules only
+placed `player-square-1`, `-2`, and `-3`; 5–10 player renders therefore had no
+declared placement for relative seats 4–9. UI-11 adds the explicit side-column
+grid and bounded card sizing, safe stage/focus wrapping, viewport-bounded
+dialog scrolling, and an explicit wrapping rule for the existing
+`data-console-surface="local-operation"` children. No information is hidden,
+no mobile-only gameplay control is added, and no authority or payload changes.
+
+Deterministic SSR contracts cover player counts 2, 3, 4, 5, 6, 8, and 10;
+semantic stage/focus, source-owned, Group/AOE, child Damage, Dying, local
+selection, and REST cases retain their stable anchor ownership in the existing
+render tests. One, five, and ten physical hand cards retain one hand rail and
+one footer console. The focused UI render suite is 18/18, the full fast suite
+is 172/172, and the API suite is 239/239 after a successful build.
+
+These are rendered DOM and declared CSS proofs, not pixel measurements. This
+checkout has no browser or screenshot harness, so desktop, <=650px, and
+<=480px pixel-level appearance, touch ergonomics, and device-specific line
+wrapping remain a visual-only GAP for later manual/browser validation.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

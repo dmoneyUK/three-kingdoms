@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-10 local operation console decision-state unification — 2026-10-03
+## Current stage — UX2.0UI-11 responsive table topology and console regression hardening — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -85,8 +85,26 @@ the footer. Existing action names, payloads, server legality,
 hand/equipment composition, and board topology remain unchanged.
 PresentationSnapshot, Interaction Stage, and Hero Focus remain descriptive
 only; they do not grant controls. Touch-width wrapping is limited to the
-existing console. The next milestone is reviewer closure of UI-10-FIX1 and a
-separately bounded UX slice.
+existing console. UI-10-FIX1 is accepted and closed.
+
+UI-11 hardens the existing responsive geometry without redesigning the board.
+The rendered `GameRoom` now exposes a deterministic topology contract: 2–4
+players retain the established top-row relative seat classes, while 5–10 use
+the established side-column grid in relative DOM order. Every supported count
+renders exactly N−1 opponent anchors plus one persistent local dock anchor;
+semantic Interaction Stage/Hero Focus classes decorate those anchors without
+moving or replacing them. At the <=650px and <=480px boundaries, the stage and
+Hero Focus text wrap safely, the side-column cards stay contained, the local
+hand rail retains its 1/5/10-card physical-card contract, and the existing
+footer console wraps in place. Dialogs remain dialog-owned with bounded scroll;
+no gameplay, payload, legality, projector, snapshot, or visibility behavior
+changed.
+
+UI-11 is proven by deterministic SSR DOM/style contracts and the full fast/API
+validation suite. This checkout has no browser/screenshot harness, so
+pixel-level desktop/650px/480px appearance remains a visual-only GAP for later
+manual or browser validation. The next milestone is reviewer closure of UI-11
+and a separately bounded UX slice.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 
