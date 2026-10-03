@@ -76,6 +76,19 @@ the authority for group participant progression after submission. Sky Piercing
 Halberd remains an explicit local multi-target flow. The remaining UI-11
 desktop/650px/480px visual check is still a browser/manual GAP.
 
+UI-13 closes the Duel response focus and handoff regression. The existing
+semantic Duel continuation persists one causal interaction while alternating
+responses update the proven current participant, decision actor, resolver, and
+stable checkpoint; `CurrentAction` remains the private local control authority,
+and PresentationSnapshot supplies only viewer-equal public roles. Mounted
+coverage proves stable seat anchors, semantic Hero Focus, stale local-selection
+cleanup, legacy-field resistance, and no client-side next-responder derivation.
+Duel failure uses the existing DAMAGE child frame and Dying/Peach continuation,
+with the parent Duel context retained until the child resolves. No new
+protocol, gameplay rule, projector authority, or client sequencing is added.
+The remaining UI-11 desktop/650px/480px visual check is still a browser/manual
+GAP.
+
 UI-09 remains a retained regression boundary: private target-card pickers keep
 opaque hand/equipment/Judgement selections local until Confirm, with Cancel
 clearing only local state. Existing `choose_target_card` and semantic

@@ -1,6 +1,6 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0UI-12 automatic Group/AOE scope preview — 2026-10-03
+## Current stage — UX2.0UI-13 server-owned Duel response focus and handoff — 2026-10-03
 
 C7 is reviewer-accepted and closed: the server-owned `PresentationSnapshot`
 remains the atomic, fail-closed public authority, with source-owned
@@ -118,6 +118,17 @@ The distinct teal dashed decoration clears on deselection, busy presentation,
 or a changed authoritative action. No conditional/immune recipient exclusion
 exists in the current four supported group play paths; other multi-target
 effects such as Sky Piercing Halberd remain explicit target selection.
+
+UI-13 closes the Duel response focus and handoff regression. Alternating Duel
+responses now persist the existing causal frame and checkpoint while the server
+continuation advances the current participant, decision actor, and resolver;
+the public projector exposes those proven roles equally to every viewer, while
+CurrentAction keeps private cards and controls with the acting seat. Mounted
+GameRoom coverage proves stable seat anchors, semantic Hero Focus, local
+revision cleanup on handoff, legacy-field resistance, and no client-derived
+next responder. Duel failure enters the existing DAMAGE child frame, preserves
+the parent Duel context through Dying, and clears the child after Peach rescue.
+No new protocol, rule, projector authority, or client sequencing was added.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

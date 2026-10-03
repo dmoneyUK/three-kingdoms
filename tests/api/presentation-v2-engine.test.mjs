@@ -777,13 +777,67 @@ test("engine-backed Duel alternates response actors without changing the root co
   assert.equal(second.presentationV2.interactionScene?.interactionId, first.presentationV2.interactionScene?.interactionId);
   assert.equal(second.presentationV2.interactionScene?.rootFrameId, first.presentationV2.interactionScene?.rootFrameId);
   assert.equal(second.presentationV2.interactionScene?.stage, "DUEL_EXCHANGE");
-  assert.equal(second.presentationV2.interactionScene?.decisionActorId, null, "the later Duel checkpoint has no matching public Pending causal proof");
-  assert.equal(second.presentationV2.interactionScene?.participantRoles.decisionActorId, null);
-  assert.deepEqual(second.presentationV2.stableBoundary, { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null });
+  assert.equal(second.presentationV2.interactionScene?.currentParticipantId, source.id, "the public Duel participant follows the server-owned handoff");
+  assert.equal(second.presentationV2.interactionScene?.decisionActorId, source.id, "the public Duel decision actor follows CurrentAction");
+  assert.deepEqual(second.presentationV2.interactionScene?.participantRoles, { sourceId: source.id, originalTargetIds: [target.id, source.id], activeTargetIds: [source.id, target.id], currentParticipantId: source.id, decisionActorId: source.id, activeResolverId: source.id, parentParticipantId: null, participantIds: [] });
+  assert.equal(second.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(second.presentationV2.stableBoundary.interactionId, first.presentationV2.interactionScene?.interactionId);
+  assert.equal(second.presentationV2.stableBoundary.decisionActorId, source.id);
+  assert.notEqual(second.presentationV2.stableBoundary.checkpointId, first.presentationV2.stableBoundary.checkpointId);
+  assert.equal(second.presentationV2.stableBoundary.presentationRevision, (first.presentationV2.stableBoundary.presentationRevision ?? 0) + 1);
   const secondOtherViewer = await state(game.code, alice.token);
   assert.deepEqual(secondOtherViewer.data.presentationV2.interactionScene, second.presentationV2.interactionScene, "Duel public scene remains equal after response handoff");
-  assert.equal(secondOtherViewer.data.presentationV2.interactionScene?.decisionActorId, null);
+  assert.equal(secondOtherViewer.data.presentationV2.interactionScene?.decisionActorId, source.id);
   assert.equal(secondOtherViewer.data.currentAction.options, undefined, "the second Duel response options remain private to the acting viewer");
+});
+
+test("engine-backed Duel damage opens a child Dying frame and clears after rescue", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, targetMember] = game.members;
+  const [source, target] = game.room.players;
+  const duel = card("Duel", "projector-duel-dying");
+  const peach = card("Peach", "projector-duel-dying-peach");
+  setHand(source.id, [duel, peach], 4, 4);
+  setHand(target.id, [], 1, 4);
+  setTurn(game.code, source.seat);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: duel.id, targetId: target.id, preserveResponse: true });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const duelRoot = (await state(game.code, sourceMember.token)).data.causalEnvelope;
+  assert.ok(duelRoot);
+  assert.equal(duelRoot.frames.length, 1);
+  assert.equal(duelRoot.frames[0].stage, "DUEL_EXCHANGE");
+
+  const declined = await requestAndSettle("decline_response", { code: game.code, token: targetMember.token, preserveResponse: true });
+  assert.equal(declined.status, 200, JSON.stringify(declined.data));
+  assert.equal(declined.data.room.phase, "dying", JSON.stringify(declined.data.room));
+  const dying = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  const dyingPending = authoritativePending(game.code);
+  assert.equal(dyingPending.kind, "dying");
+  assert.equal(dying.currentAction.kind, "dying");
+  assert.equal(dying.currentAction.actorId, source.id, "the existing Dying order gives the source the Peach decision");
+  assert.equal(dying.presentationV2.interactionScene?.continuity.relation, "CHILD_FRAME");
+  assert.equal(dying.presentationV2.interactionScene?.sourceId, source.id);
+  assert.equal(dying.presentationV2.interactionScene?.currentParticipantId, target.id);
+  assert.equal(dying.presentationV2.interactionScene?.decisionActorId, source.id);
+  assert.equal(dying.presentationV2.interactionScene?.activeResolverId, source.id);
+  assert.equal(dying.presentationV2.interactionScene?.participantRoles.parentParticipantId, null);
+  assert.equal(dying.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(dying.presentationV2.stableBoundary.decisionActorId, source.id);
+  const childFrame = dying.causalEnvelope.frames.find((frame) => frame.frameId === dying.causalEnvelope.activeFrameId);
+  assert.equal(childFrame?.stage, "DYING");
+  assert.equal(childFrame?.parentFrameId, duelRoot.activeFrameId);
+  assert.equal(dying.causalEnvelope.interactionId, duelRoot.interactionId);
+  assert.equal(dying.causalEnvelope.frames.find((frame) => frame.frameId === duelRoot.activeFrameId)?.stage, "DUEL_EXCHANGE");
+  assert.ok(dying.currentAction.options?.some((option) => option.providerId === "card"), "the Dying actor receives private Peach controls");
+  const other = (await state(game.code, targetMember.token)).data;
+  assert.deepEqual(other.presentationV2.interactionScene, dying.presentationV2.interactionScene);
+  assert.equal(other.currentAction.options, undefined);
+
+  const rescued = await requestAndSettle("give_peach", { code: game.code, token: sourceMember.token, cardId: peach.id, preserveResponse: true });
+  assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
+  assert.equal(rescued.data.room.players.find((player) => player.id === target.id).hp, 1);
+  assert.equal(rescued.data.room.causalEnvelope, null, "Duel damage rescue returns to the normal phase and clears the child frame");
+  assert.equal(rescued.data.room.pendingDuel, null);
 });
 
 test("FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage", { timeout: 30_000 }, async () => {

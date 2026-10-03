@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
@@ -159,6 +160,7 @@ async function gameTree(skill, onAction) {
 function buttons(renderer, props) { return renderer.root.findAllByType("button").filter((button) => Object.entries(props).every(([key, value]) => button.props[key] === value)); }
 function button(renderer, props) { const matches = buttons(renderer, props); assert.equal(matches.length, 1, `expected one button ${JSON.stringify(props)}, got ${matches.length}; buttons=${renderer.root.findAllByType("button").map((entry) => String(entry.props.children)).join(" | ")}`); return matches[0]; }
 function nodeWith(renderer, prop, value) { const matches = renderer.root.findAll((node) => node.props?.[prop] === value); assert.equal(matches.length, 1, `expected one node ${prop}=${value}, got ${matches.length}`); return matches[0]; }
+function seatAnchorIds(renderer) { return [...new Set(renderer.root.findAll((node) => typeof node.props?.["data-player-anchor"] === "string").map((node) => node.props["data-player-anchor"]))]; }
 function handCardButton(renderer, cardId) { return nodeWith(renderer, "data-hand-card-id", cardId).findAllByType("button")[0]; }
 function targetButton(renderer, playerId) { return nodeWith(renderer, "data-player-anchor", playerId).findAllByType("button")[0]; }
 function text(renderer, value) { return renderer.root.findAll((node) => typeof node.props?.children === "string" && node.props.children === value); }
@@ -188,6 +190,36 @@ function groupScopeRoom(cardKind, { actionRevision = `${cardKind}-scope-1`, pres
 
 function groupPresentationView() {
   return { hasInteraction: true, interactionId: "real-group", checkpointId: "real-checkpoint", presentationRevision: 1, stage: "AWAITING_RESPONSE", effect: "GROUP", sourceId: "p1", originalTargetIds: ["p2", "p3"], activeTargetIds: ["p2"], currentParticipantId: "p2", decisionActorId: "p2", activeResolverId: null, participantIds: ["p2", "p3"], continuity: { relation: "ROOT_FRAME", parentFrameId: null }, parentFrameId: null, stableKind: "DECISION", isLocalDecisionActor: false, hasLocalControl: false, localActionRevision: null };
+}
+
+function duelResponseRoom({ meId = "p2", actorId = "p2", actionRevision = "duel-response-1", presentationSnapshot } = {}) {
+  const otherId = actorId === "p1" ? "p2" : "p1";
+  const attack = card("duel-response-attack", "Attack");
+  const interaction = {
+    semantics: "PROVEN", interactionId: "duel-interaction", rootFrameId: "duel-frame", activeFrameId: "duel-frame", parentFrameId: null,
+    checkpointId: `duel-checkpoint-${actionRevision}`, presentationRevision: actorId === "p2" ? 1 : 2, stage: "DUEL_EXCHANGE", sourceId: "p1", effect: "duel",
+    targetIds: ["p2", "p1"], currentParticipantId: actorId, decisionActorId: actorId, activeResolverId: actorId, activeSourceId: "p1", activeTargetIds: [actorId, otherId], participantIds: [],
+    participantRoles: { sourceId: "p1", originalTargetIds: ["p2", "p1"], activeTargetIds: [actorId, otherId], currentParticipantId: actorId, decisionActorId: actorId, activeResolverId: actorId, parentParticipantId: null, participantIds: [] },
+    continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+  };
+  const snapshot = presentationSnapshot ?? {
+    identity: { interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision },
+    stable: { kind: "CHOICE", interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: interaction.presentationRevision, decisionActorId: actorId },
+    interaction,
+    decision: { actorId, stage: "DUEL_EXCHANGE" },
+    localControl: { source: "CurrentAction", actionRevision, kind: "response", actorId, entitled: meId === actorId },
+    settlement: null, transitionEvents: [],
+  };
+  return normalizeRoomData({
+    code: `DUEL-RESPONSE-${meId}-${actorId}-${actionRevision}`, status: "playing", maxPlayers: 2, isHost: meId === "p1", isTestController: true, meId, myRole: meId === "p1" ? "Lord" : "Rebel", myHeroOptions: [],
+    players: [
+      { id: "p1", name: "SOURCE", seat: 0, hero: "cao-cao", hp: 4, maxHp: 4, alive: true, connected: true, handCount: meId === "p1" ? 1 : 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
+      { id: "p2", name: "DUELIST", seat: 1, hero: "liu-bei", hp: 4, maxHp: 4, alive: true, connected: true, handCount: meId === "p2" ? 1 : 0, equipmentCards: [], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+    ],
+    myHand: meId === actorId ? [attack] : [], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: actorId, actionReason: "Respond to Duel: select Attack or take 1 damage", isMyAction: meId === actorId,
+    actionRevision, phase: "response", presentationSnapshot: snapshot, pendingDuel: { sourceId: "p1", targetId: "p2", actorId, opponentId: otherId },
+    currentAction: { version: 3, kind: "response", actorId, deadline: 0, reason: "Respond to Duel: select Attack or take 1 damage", legalActions: ["respond", "decline_response"], declineAction: "decline_response", requirement: "attack", ...(meId === actorId ? { options: [{ providerId: "card", satisfies: "attack", label: "Attack", description: "Play Attack", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [attack.id] } }] } : {}) },
+  });
 }
 
 installRenderEnvironment();
@@ -782,4 +814,72 @@ test("group scope preview helper uses only public living-state and turn order", 
   assert.deepEqual(buildGroupScopePreview({ cardKind: "RainingArrows", sourceId: "p1", turnSeat: 2, players, playAuthorized: true }).affectedPlayerIds, ["p2", "p4"]);
   assert.deepEqual(buildGroupScopePreview({ cardKind: "Oath", sourceId: "p1", turnSeat: 2, players, playAuthorized: true }).affectedPlayerIds, ["p1", "p4"]);
   assert.equal(buildGroupScopePreview({ cardKind: "Oath", sourceId: "p1", turnSeat: 2, players, playAuthorized: false }).active, false);
+});
+
+test("mounted Duel response follows the semantic actor for controls and Hero Focus", async () => {
+  const room = duelResponseRoom();
+  const actionCalls = [];
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2"], "Duel focus uses the existing stable seat anchors");
+  assert.equal(renderer.root.findByProps({ "data-stage": "DUEL_EXCHANGE" }).props["data-continuity"], "ROOT_FRAME");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("interaction-seat-decision-actor"), true);
+  assert.equal(buttonsContaining(renderer, "Skip").length, 1, "the acting Duel seat receives one authoritative Skip");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Confirm waits for the local Attack selection");
+  await act(async () => { handCardButton(renderer, "duel-response-attack").props.onClick(); });
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("selected-target"), false, "local card selection cannot overwrite public seat semantics");
+  await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+  assert.deepEqual(actionCalls.filter(([name]) => name === "respond").at(-1), ["respond", { providerId: "card", cardId: "duel-response-attack" }], "the response console preserves the semantic protocol payload");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("mounted Duel response keeps private controls and public focus viewer-equal", async () => {
+  const room = duelResponseRoom({ meId: "p1", actorId: "p2" });
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(buttonsContaining(renderer, "Confirm").length, 0, "a non-actor cannot see private response controls");
+  assert.equal(buttonsContaining(renderer, "Skip").length, 0, "a non-actor cannot submit the authoritative decline");
+  assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "duel-response-attack" }).length, 0, "the response hand remains private to the acting viewer");
+  assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("interaction-seat-decision-actor"), true);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("mounted Duel response clears local selection when the server revision hands off", async () => {
+  let room = duelResponseRoom();
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await act(async () => { handCardButton(renderer, "duel-response-attack").props.onClick(); });
+  assert.equal(handCardButton(renderer, "duel-response-attack").props.className.includes("selected"), true);
+  room = duelResponseRoom({ actorId: "p1", actionRevision: "duel-response-2" });
+  await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2"], "responder handoff keeps seat order and count stable");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(buttonsContaining(renderer, "Confirm").length, 0, "the previous local Confirm is removed after handoff");
+  assert.equal(buttonsContaining(renderer, "Skip").length, 0, "the previous local Skip is removed after handoff");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("mounted Duel semantics ignore legacy action owner and turn fields", async () => {
+  const base = duelResponseRoom();
+  const room = { ...base, actionPlayerId: "p1", actionReason: "legacy owner", turnSeat: 1, isMyTurn: true };
+  let renderer;
+  await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(renderer.root.findByProps({ "data-stage": "DUEL_EXCHANGE" }).props["data-presentation-revision"], 1);
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "CurrentAction still owns the local response console");
+  assert.equal(buttonsContaining(renderer, "Skip").length, 1);
+  await act(async () => { renderer.unmount(); });
+});
+
+test("GameRoom does not calculate a Duel next responder on the client", () => {
+  const source = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /nextDuel(?:Response|Responder)|pendingDuel\.opponentId\s*[?:].*actorId/, "Duel alternation remains a server Pending/continuation concern");
 });

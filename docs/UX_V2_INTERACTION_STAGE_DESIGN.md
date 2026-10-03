@@ -454,6 +454,27 @@ no conditional or immunity recipient exclusion to expose before submission;
 Sky Piercing Halberd remains the separate explicit multi-target flow. The
 UI-11 pixel-level desktop/650px/480px browser/manual check remains a GAP.
 
+### 0.6.12 UI-13 server-owned Duel response focus and handoff
+
+UI-13 treats alternating Duel responses as one existing semantic interaction,
+not a client participant sequence. The initial Duel opens a root
+`DUEL_EXCHANGE` frame; an accepted Attack or secondary Judgement handoff keeps
+the interaction and causal frame while advancing the server-owned checkpoint.
+The public projector exposes only proven source, original/active targets,
+current participant, decision actor, and active resolver; timeline,
+`actionPlayerId`, turn owner, and card selection do not become responder
+authority. The client reads local legality and private cards from `CurrentAction`
+and clears local selection when its action revision changes.
+
+Duel failure enters the existing `DAMAGE` child frame. A lethal result advances
+through the existing Dying continuation with the parent Duel context available;
+Peach rescue clears the child and terminal authority. Mounted coverage proves
+initial and alternating response focus, viewer-equal public roles, stable seat
+anchors, local stale cleanup, legacy-field resistance, and the absence of any
+client-derived next responder. No protocol, rule, projector-topology, or
+animation change is part of UI-13; the UI-11 pixel-level desktop/650px/480px
+browser/manual check remains a GAP.
+
 ### 0.7 Four identities have different jobs
 
 **interactionId** — answers: *is this still the same causal interaction?*

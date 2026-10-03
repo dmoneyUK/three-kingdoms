@@ -2019,8 +2019,21 @@ async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePendi
   const resume = await db().prepare("SELECT * FROM players WHERE id = ?").bind(pending.continuation.resumePlayerId ?? pending.continuation.sourceId).first<PlayerRow>();
   if (!resume) return;
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
+  const parentEnvelope = parseCausalEnvelope(room.causal_envelope_json);
+  const child = parentEnvelope && pending.response.causal
+    && parentEnvelope.interactionId === pending.response.causal.interactionId
+    && parentEnvelope.activeFrameId === pending.response.causal.frameId
+    && parentEnvelope.frames.some((frame) => frame.frameId === pending.response.causal?.frameId)
+    ? childCausalFrame(parentEnvelope, {
+      stage: "DAMAGE",
+      causeNodeId: pending.response.causal.frameId,
+      origin: { originSourceId: opponent.id, originEffect: "duel", originalTargetIds: [loser.id], originRef: { interactionId: pending.response.causal.interactionId, frameId: pending.response.causal.frameId } },
+      current: { currentSourceId: opponent.id, currentEffect: "damage", currentTargetIds: [loser.id], resolvingPlayerId: opponent.id },
+    })
+    : null;
+  const damageRoom = child ? { ...room, causal_envelope_json: JSON.stringify(child.envelope) } : room;
   await resolveSourcedDamage({
-    room,
+    room: damageRoom,
     source: opponent,
     target: loser,
     players: rows.results ?? [],
@@ -2031,7 +2044,8 @@ async function resolveDuelLoss(room: RoomRow, pending: { response: ResponsePendi
     resumePlayerId: resume.id,
     sequenceStartCardId: "",
     damageCards: pending.continuation.damageCards,
-    causal: pending.response.causal,
+    causal: child?.context ?? pending.response.causal,
+    resumeChildCausal: child?.context,
     cause: "duel",
     label: "Duel damage",
     damageDescription: (amount) => `${loser.name} fails to play Attack and takes ${amount} Duel damage from ${opponent.name}`,
@@ -2582,11 +2596,18 @@ async function applyDuelResponseOutcome(room: RoomRow, pending: { response: Resp
       ? reopenSemanticResponse(pending.response, remainingActor, nextLog, `${remainingActor.name} must provide another Attack.`)
       : nextDuelResponse(pending.response, pending.continuation, opponent.id, actor.id, nextResponseDeadline(opponent));
     if (!nextPending) return;
+    const nextActor = remaining && remainingActor ? remainingActor : opponent;
+    const nextOpponentId = nextActor.id === opponent.id ? actor.id : opponent.id;
+    const nextEnvelope = causalEnvelopeAtStage(room, pending.response.causal, "DUEL_EXCHANGE", {
+      currentSourceId: pending.continuation.sourceId,
+      currentEffect: "duel",
+      currentTargetIds: [nextActor.id, nextOpponentId],
+      resolvingPlayerId: nextActor.id,
+    });
     const decision = remaining && remainingActor
       ? freshDecision(nextPending.pending, nextPending.log, "Duel response remains with the same participant.")
       : freshDecision(nextPending, nextLog, `Duel response passes to ${opponent.name}.`);
-    await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
-      .bind(serializePending(decision.pending), JSON.stringify(judged.deck), JSON.stringify(judged.discard), JSON.stringify(decision.log), room.id).run();
+    await causalRoomStateWrite(room.id, { phase: "response", pending: decision.pending, deck: judged.deck, discard: judged.discard, log: decision.log, causalEnvelope: nextEnvelope }).run();
     await advanceDuel(room.id);
   } else {
     await resolveDuelLoss(nextRoom, pending, actor, opponent, judged.discard, addLog(judged.log, `${text} ${resolution.failureText}`));
@@ -5329,10 +5350,18 @@ export async function POST(request: Request) {
           ? withPresentationBarrier(nextDuelResponse(pending.response, pending.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent)), log, presentation.eventId)
           : nextDuelResponse(pending.response, pending.continuation, opponent.id, semanticActor.id, nextResponseDeadline(opponent));
       const nextLog = reopened?.log ?? log;
+      const nextActor = reopened ? semanticActor : opponent;
+      const nextOpponentId = nextActor.id === opponent.id ? semanticActor.id : opponent.id;
+      const nextEnvelope = causalEnvelopeAtStage(liveRoom, pending.response.causal, "DUEL_EXCHANGE", {
+        currentSourceId: pending.continuation.sourceId,
+        currentEffect: "duel",
+        currentTargetIds: [nextActor.id, nextOpponentId],
+        resolvingPlayerId: nextActor.id,
+      });
       await db.batch([
         db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), costActorId),
         turnHistoryAttackWrite(liveRoom, semanticActor),
-        db.prepare("UPDATE rooms SET phase = 'response', pending_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(nextPending), JSON.stringify(discard), JSON.stringify(nextLog), room.id),
+        causalRoomStateWrite(room.id, { phase: "response", pending: nextPending, discard, log: nextLog, causalEnvelope: nextEnvelope }),
       ]);
       await advanceDuel(room.id);
     }
