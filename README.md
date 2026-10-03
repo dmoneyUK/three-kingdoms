@@ -1,19 +1,17 @@
 A web implementation of the **WTK Standard** ruleset, built around authoritative server-side game state and semantic capability-driven actions.
 
-## Current stage — UX2.0C6-02 evidence closure — 2026-10-03
+## Current stage — UX2.0C6-03 documentation closure — 2026-10-03
 
-C6-02 re-audits the accepted 13 real interaction families × 10 invariants
-matrix using direct Worker/D1/API assertions: 128 cells are proven and 2
-remain bounded GAPs. The remaining gaps are Attack/Dodge checkpoint
-progression and independent/root Damage checkpoint progression; both real
-fixtures settle after one semantic checkpoint and therefore do not expose a
-second checkpoint transition to compare. The full cell-level ledger and exact
-fixture/assertion mapping are in section `0.103` of the interaction-stage
-design document.
+C6 engine-backed architecture verification is complete and ready for reviewer
+closure. The final 13-family × 10-invariant matrix is **128 P / 2 N/A / 0
+GAP**: Attack/Dodge and independent/root Damage each contain exactly one
+meaningful semantic checkpoint, so checkpoint progression between checkpoints
+is not applicable in those scenarios. Their repeated-read stability and
+terminal clearing remain explicitly proven; the checkpoint invariant was not
+weakened and no semantic checkpoint was fabricated.
 
-No production gameplay, authority, React/CSS, animation, or
-PresentationSnapshot code was added. C6 remains PARTIAL and is not ready for
-reviewer closure; C7 remains out of scope.
+No production gameplay, authority, test semantics, React/CSS, animation, or
+PresentationSnapshot code was added. C7 and UI migration remain out of scope.
 
 ## UX2.0C4-01 — atomic Dying/Peach rescue handoff — 2026-10-02
 

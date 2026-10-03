@@ -133,3 +133,47 @@ Push the documentation + appended HANDOVER to `origin/ux-v2`, fetch, verify remo
 ## Acceptance
 
 C6-03 passes only if the two non-transition cases are represented honestly as N/A without weakening the checkpoint invariant, the final matrix is internally consistent, C6 documentation/README no longer claim unresolved GAPs, no semantic checkpoint is fabricated, and no C7/UI work begins.
+
+## Execution result — UX2.0C6-03 documentation closure — 2026-10-03
+
+Implementation SHA: pending first documentation commit.
+
+Files changed:
+
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+- `README.md`
+- `HANDOVER.md`
+
+Final matrix: **128 P, 2 N/A, 0 GAP, 0 unclassified = 130 cells**.
+
+N/A classification:
+
+- Attack / Dodge `C`: the real engine-backed fixture exposes exactly one
+  meaningful semantic checkpoint, repeated reads preserve its `checkpointId`
+  and `presentationRevision`, and terminal settlement clears causal identity.
+  There is no second meaningful semantic checkpoint inside this interaction,
+  so checkpoint/revision progression between semantic checkpoints is not
+  applicable. Repeated-read stability remains proven by `Q`; terminal clearing
+  remains proven by `T`.
+- independent/root Damage `C`: the real Guo Jia Worker/D1 fixture exposes
+  exactly one meaningful Damage checkpoint, repeated reads preserve its
+  `checkpointId` and `presentationRevision`, and terminal settlement clears
+  causal identity. There is no second meaningful semantic checkpoint inside
+  this interaction, so progression is not applicable. This is not missing
+  evidence and does not weaken the strict `C` invariant; `Q` and `T` retain the
+  stability and terminal-clear evidence.
+
+No production code, gameplay, projector authority, test semantics, React, or
+CSS changed. No semantic checkpoint was fabricated, and no synthetic positive
+evidence was added. C6 documentation and README now state that verification is
+complete and ready for reviewer closure; C7 remains out of scope.
+
+Validation:
+
+- `npm run build`: passed;
+- `npm run lint`: passed;
+- `git diff --check`: passed;
+- matrix count: **13 rows, 130 cells, 128 P / 2 N/A / 0 GAP**.
+
+C6 documentation is **ready for reviewer closure**. The final two cells are
+honest non-transition N/A classifications, not weakened checkpoint claims.

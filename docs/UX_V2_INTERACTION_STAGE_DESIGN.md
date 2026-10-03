@@ -4247,18 +4247,19 @@ Lightning Damage, malformed authority, repeated reads, and acting versus
 uninvolved viewers. The C5 gap is the future C7 PresentationSnapshot wrapper;
 no C7 work is authorized by this classification field.
 
-### 0.103 UX2.0C6-02 evidence-closure update — 2026-10-03
+### 0.103 UX2.0C6-03 non-transition classification and closure — 2026-10-03
 
-C6 remains verification before C7. Building on the accepted C6-01-FIX1
-baseline, this section does not implement a
+C6 verification is complete before C7. Building on the accepted C6-02
+evidence baseline, this section does not implement a
 `PresentationSnapshot`, move authority into React/CSS, or add gameplay. The
 audit covers 13 families × 10 columns = 130 cells. `P` means the exact real
 Worker/D1/API fixture named in the row contains an explicit assertion for that
 cell. `GAP` means the invariant applies but the mapped real fixture does not
-explicitly prove it. `N/A` would mean the invariant genuinely does not apply;
-there are no N/A cells in this matrix because every required column applies to
-each family at the family level. A missing assertion is therefore GAP, not
-N/A.
+explicitly prove it. `N/A` means the invariant does not apply to the specific
+real scenario because that scenario contains no meaningful transition of the
+kind named by the column. A missing assertion remains GAP, not N/A; the two
+N/A cells below are reviewer-classified single-checkpoint cases, not missing
+evidence.
 
 Column legend: `I` interaction identity continuity; `F` root/active/parent
 frame relation; `C` checkpoint/revision progression; `R` source/original
@@ -4268,26 +4269,31 @@ target/current participant roles; `A` decision actor/active resolver; `B`
 
 | Real interaction family | Exact real fixture(s) | I | F | C | R | A | B | V | P | Q | T |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Attack / Dodge | `presentation-v2-engine.test.mjs` — `engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference` | P | P | GAP | P | P | P | P | P | P | P |
+| Attack / Dodge | `presentation-v2-engine.test.mjs` — `engine-backed Attack/Dodge exposes authoritative decision and legacy resolution reference` | P | P | N/A | P | P | P | P | P | P | P |
 | Attack -> Judgement -> Attack resume | `ma-chao.test.mjs` — `Cavalry uses the shared Judgement replacement continuation`; `Cavalry keeps Dodge available when Sima Yi replaces the original red Judgement with Black` | P | P | P | P | P | P | P | P | P | P |
 | Duel responder handoff | `presentation-v2-engine.test.mjs` — `engine-backed Duel alternates response actors without changing the root context`; `FIX9 ordinary Duel Negation stays in one Frame and restores the Duel stage` | P | P | P | P | P | P | P | P | P | P |
 | Group/AOE normal participant progression | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant`; `FIX14 Group failure Damage uses one child frame and resumes the next participant` | P | P | P | P | P | P | P | P | P | P |
 | Group -> Negation -> resume | `presentation-v2-engine.test.mjs` — `FIX9 persists the Group root and keeps nested Negation in the same Frame`; `FIX9 Group counter-Negation stays in one frame and restores Group resolution` | P | P | P | P | P | P | P | P | P | P |
 | Group -> Damage child -> resume | `presentation-v2-engine.test.mjs` — `engine-backed Group damage trigger resumes the Group parent and next participant`; `FIX14 Group failure Damage uses one child frame and resumes the next participant` | P | P | P | P | P | P | P | P | P | P |
 | Group -> Damage -> Dying -> rescue -> resume | `presentation-v2-engine.test.mjs` — `FIX15 lethal Group Damage survives Peach rescue with the parent frame available` | P | P | P | P | P | P | P | P | P | P |
-| independent/root Damage | `lobby-heroes-wei.test.mjs` — `Legacy privately distributes top two cards and repeats once per damage point` | P | P | GAP | P | P | P | P | P | P | P |
+| independent/root Damage | `lobby-heroes-wei.test.mjs` — `Legacy privately distributes top two cards and repeats once per damage point` | P | P | N/A | P | P | P | P | P | P | P |
 | delayed Lightning Judgement -> Damage | `lobby-heroes-wei.test.mjs` — `delayed Lightning damage keeps one Judgement Interaction across three Legacy opportunities` | P | P | P | P | P | P | P | P | P | P |
 | root Negation / counter-Negation | `presentation-v2-engine.test.mjs` — `engine-backed Negation/counter-Negation keeps the original effect recoverable`; `stratagems.test.mjs` — `delayed Judgement Negation and counter-Negation reuse one activation frame` | P | P | P | P | P | P | P | P | P | P |
 | standalone Judgement replacement | `presentation-v2-engine.test.mjs` — `engine-backed Judgement replacement exposes reveal and resume evidence` | P | P | P | P | P | P | P | P | P | P |
 | Dying rescue handoff | `presentation-v2-engine.test.mjs` — `engine-backed Dying/rescue proves the separate timer arm and reconnect behavior`; `C4-01 Dying skips non-rescuers and advances one causal checkpoint between real rescuers`; `concurrency.test.mjs` — `lethal damage trigger exhaustion enters shared Dying and Peach rescue exactly once` | P | P | P | P | P | P | P | P | P | P |
 | Borrowed Sword | `presentation-v2-engine.test.mjs` — `engine-backed Borrowed Sword preserves forced Attack continuation and timer barrier`; `borrowed-sword.test.mjs` — `Borrowed Sword forces a ranged Attack and transfers the Weapon on refusal` | P | P | P | P | P | P | P | P | P | P |
 
-Audit count: **128 P, 2 GAP, 0 N/A, 0 unclassified = 130 cells**. The
-accepted C6-01-FIX1 matrix had 23 GAP cells; this closure pass adds direct
-real assertions for 21 of them. Attack/Dodge C remains GAP because its real
-fixture has one response checkpoint and settlement, not an explicit semantic
-checkpoint progression. Independent/root Damage C remains GAP because the
-real one-root Damage fixture has no semantic checkpoint transition to compare.
+Audit count: **128 P, 2 N/A, 0 GAP, 0 unclassified = 130 cells**. The
+accepted C6-01-FIX1 matrix had 23 GAP cells; C6-02 added direct real
+assertions for 21 of them, and C6-03 classifies the final two non-transition
+cases honestly as N/A. The `C` invariant remains strict: it concerns
+checkpoint/revision progression between semantic checkpoints. In both final
+scenarios the real fixture exposes exactly one semantic checkpoint, repeated
+reads preserve its `checkpointId` and `presentationRevision`, and terminal
+settlement clears causal identity. No second meaningful semantic checkpoint
+exists inside either interaction, so progression is not applicable. This does
+not make checkpoint behavior untested: stability is covered by `Q`, and
+terminal clearing is covered by `T`.
 
 #### Cell-level evidence ledger
 
@@ -4316,9 +4322,10 @@ fixture, not test-owned replacements:
 test: it asserts the scene's Interaction/root/active Frame linkage, ROOT_FRAME
 relation, typed roles, CHOICE then REST, deep-equal public root/active/scene/
 boundary for another viewer, absent private options for that viewer, and an
-unchanged repeated read. `C` remains GAP because this real one-response path
-does not expose a second semantic checkpoint before settlement. Sources:
-S1, S3, S4, S5.
+unchanged repeated read. `C` is N/A because this real one-response path has
+exactly one semantic checkpoint, preserves its checkpoint/revision on repeat,
+and settles without a second meaningful semantic checkpoint to compare;
+terminal clearing remains directly covered by `T`. Sources: S1, S3, S4, S5.
 
 **Attack -> Judgement -> Attack.** All ten cells are P from the two Ma Chao
 fixtures: they assert one Interaction/root Frame through Judgement, a changed
@@ -4362,8 +4369,11 @@ checkpoint/revision/public identity. Sources: S1–S5.
 **Independent/root Damage.** `I,F,R,A,B,V,P,Q,T` are P from the Guo Jia
 Worker/D1 fixture: root Damage identity/frame, roles/resolver, CHOICE,
 viewer-equal scene/boundary, private controls, repeated read, and final clear
-are directly asserted. `C` is GAP because this one-root fixture does not
-assert a semantic checkpoint/revision transition. Sources: S1–S5.
+are directly asserted. `C` is N/A because this one-root fixture exposes one
+semantic Damage checkpoint, preserves its checkpoint/revision on repeated
+reads, and settles without a second meaningful semantic checkpoint; it is not
+a missing assertion and does not weaken the checkpoint invariant. Sources:
+S1–S5.
 
 **Delayed Lightning.** All ten cells are P: the real fixture asserts
 Judgement-owned Interaction continuity through Damage, SAME_FRAME root
@@ -4402,7 +4412,7 @@ unlinked Borrowed Sword Pending remain covered by negative synthetic/API
 tests. They prove fail-closed behavior only; they are not positive P evidence.
 The reserved `SETTLEMENT` guard also remains negative evidence only.
 
-C6-02 therefore leaves C6 **PARTIAL** with 2 bounded GAP cells. No
-gameplay or authority shortcut is justified by these gaps. C7,
-`PresentationSnapshot`, React/CSS migration, animation semantics, and durable
-transition occurrence IDs remain out of scope.
+C6-03 therefore completes the matrix with **128 P, 2 N/A, 0 GAP** and leaves
+C6 verification **ready for reviewer closure**. No gameplay or authority
+shortcut was used. C7, `PresentationSnapshot`, React/CSS migration, animation
+semantics, and durable transition occurrence IDs remain out of scope.
