@@ -382,9 +382,9 @@ Acceptance: Density matches the post-exclusion rendered card count; existing IDs
 
 ### VIS-07B IMPLEMENTATION RESULT
 
-Implementation SHA: pending commit.
+Implementation SHA: `67dca61`.
 Files changed: `game/hero-focus.ts`, `tests/presentation-client.test.mjs`, `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`.
-Change: Group density now uses the deduplicated secondary cards after viewer, primary, and Medium Source exclusions. Two/three cards remain medium; four or more become compact. No Group progress semantics changed.
-Focused tests: pending.
+Change: Group density now uses the deduplicated secondary cards after viewer, primary, and Medium Source exclusions. The 6-player fixture renders three secondary cards as medium; the 10-player fixture renders seven as compact. No Group progress semantics changed.
+Focused tests: `node --import tsx --test tests/presentation-client.test.mjs` — 38/38; `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-07A' --workers=2` — 9/9 at 1440/650/480px for 4/6/10 players; `git diff --check` passed. No full suite/build/lint was run locally.
 Known gaps: Group progress/order/outcomes remain deferred; this task addresses only card density.
-CI pending: push the implementation and wait for this revision's required workflow before planning another task.
+CI pending: implementation and result record are being pushed; wait for GitHub Actions on that revision before planning another task.
