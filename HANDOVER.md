@@ -7,21 +7,42 @@ History: `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
 ## Latest result — UX2.0VIS-12M: Deduplicate Proven Source Metadata
 
-Status: `IMPLEMENTED — CI PENDING`
+Status: `CI CORRECTION IMPLEMENTED — CI PENDING`
 
-For non-Dying stages, the generic SOURCE row is omitted only when the typed
-Stage source ID exactly matches the rendered Medium Source or Hero Focus source.
-FOCUS/SCOPE and independent context remain; missing or unrendered source
-presentation keeps the SOURCE fallback. Existing Dying deduplication is
-unchanged. No server, projection, or gameplay changes.
+At `298a1ac15e0dc92d426f3423064feee852a46690`, non-Dying Stage omitted the
+generic SOURCE row only when typed `Stage.source.id` exactly matched the
+rendered Medium Source or Hero Focus source. Its CI run `37231645016` failed
+two VIS-07A Side Column Group-scope containment cases at 1440px: with only the
+FOCUS row left, the old two-column metadata grid forced extra wrapping and
+extended the scope 1.89–5.14px below the Safe Zone. The correction gives the
+single remaining role row a full-width track; no content or gameplay semantics
+are removed.
 
-Focused validation: 24/24 VIS-12M and short-portrait browser cases passed;
-targeted ESLint on `app/page.tsx` and `tests/browser/ui19.spec.mjs` passed. No
-full local test/build/lint. Exact revision's GitHub Actions remains unverified
-until the next task-boundary checkpoint.
+Focused correction validation: 26/26 (the two failed cases, four VIS-12M cases,
+and 20 short-portrait Stage cases); targeted ESLint passed. No full local
+test/build/lint. Correction commit and its exact Actions result are pending.
 
-## Current task — UX2.0VIS-12M
+## Current task — UX2.0VIS-12N: Four-Player Interaction Screenshot Matrix
 
-Implementation, regression coverage, and this handoff are included in the
-`ux-v2` delivery. CI remains pending; do not claim green until the exact
-revision is confirmed.
+Status: `PLANNED — PAUSED UNTIL VIS-12M CI CORRECTION IS GREEN`
+
+Purpose: complete the four-player slice of the representative-interaction
+visual gate, prompted by the user's four-player phone screenshot and authorized
+by workflow §10. Current geometry/semantic cases cover many states, but fresh
+visual evidence is concentrated on REST, ordinary turn and single-target.
+
+Scope: four-player Top Row only. Capture and inspect 480×900 screenshots for
+ordinary turn, single-target, Group/AOE observer, Negation, Duel, Dying/Peach,
+and long guidance; add focused screenshot/geometry regressions using the
+existing `GameRoom` typed fixture. Add short-portrait 390×640 evidence for
+Group/AOE and Dying. Check opponent/Stage/Dock hierarchy, clipping and controls
+against design §§0.91.2, 1.5.1–1.5.2 and 2.7.
+
+No production semantic/gameplay changes. If visual evidence exposes a distinct
+layout defect or a trade-off not decided by the approved design, record the
+measurements and split it into a bounded follow-up instead of expanding scope.
+
+Planning gate: approved workflow §§10/19 requirement; all identities and
+actions remain the current typed fixture projections; bounded to one four-player
+Top Row visual slice; directly addresses the reported phone layout; existing
+geometry checks plus fresh screenshots can prove the concern.

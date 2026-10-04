@@ -2012,6 +2012,7 @@ test("UX2.0VIS-12M omits a source summary already named by Hero Focus", async ({
   await expect(stage.locator(".hero-focus")).toHaveAttribute("data-hero-focus-source-id", "p1");
   await expect(stage.locator(".hero-focus-source")).toHaveText("SOURCE · Player 1");
   await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
+  await expect(stage.locator(".interaction-stage-focus")).toHaveClass(/interaction-stage-focus--single/);
   await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("FOCUS");
   await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("Current participant: Player 1");
 });
@@ -2024,6 +2025,7 @@ test("UX2.0VIS-12M omits a source summary already named by Medium Source", async
   await expect(source).toHaveAttribute("data-medium-participant-player-id", "p4");
   await expect(source.locator(".medium-participant-role")).toHaveText("SOURCE");
   await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
+  await expect(stage.locator(".interaction-stage-focus")).toHaveClass(/interaction-stage-focus--single/);
   await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("FOCUS");
 });
 

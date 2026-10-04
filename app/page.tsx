@@ -587,7 +587,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         </section>}
       </div>
       {showMetadataRegion && <div className="interaction-stage-meta-region">
-        {showRoleSummary && <div className="interaction-stage-focus">
+        {showRoleSummary && <div className={`interaction-stage-focus${showSourceSummary ? "" : " interaction-stage-focus--single"}`}>
           {showSourceSummary && <div data-stage-meta-role="source"><small>SOURCE</small><b>{display.source.name}</b></div>}
           <div data-stage-meta-role={display.focusTarget.id ? "focus" : "scope"}><small>{display.focusTarget.id ? "FOCUS" : "SCOPE"}</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
         </div>}

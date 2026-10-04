@@ -23,7 +23,7 @@ Do not copy this entire roadmap into working context unless historical reconstru
 
 ## Current frontier
 
-VIS-12L delivery (2026-10-04): Dock guidance moved below Hand and immediately above actions by reordering the existing grid areas and row sizes across responsive breakpoints. Updated the contrary VIS-06A assertion and strengthened four-player 12K checks. Focused browser matrix 28/28 and targeted ESLint passed; 480px ordinary and 390×640 selected screenshots reviewed. CI pending. Pre-edit latest run `37230539712` on 12K revision `c58a080` was pending; 12J correction run `37230152044` was in progress. Next bounded concern: proven SOURCE metadata duplicated by a visible Hero Focus/Medium Source label; 12M requirements live in HANDOVER.
+VIS-12M delivery (2026-10-04): non-Dying Interaction Stage omits generic SOURCE metadata only when typed `Stage.source.id` exactly matches the rendered Medium Source or Hero Focus source. Run `37231645016` failed two VIS-07A Side Column Group-scope containment cases at 1440px; with only the FOCUS row remaining, its old two-column metadata grid narrowed/wrapped text and extended scope below Safe Zone. The correction gives the single remaining role row a full-width track; focused correction validation passed 26/26 (two failures, four VIS-12M cases, and 20 short-portrait cases) and targeted ESLint passed. No full local test/build/lint. Correction revision and CI retry pending. VIS-12N remains planned after the correction is CI-green.
 
 VIS-12K delivery (2026-10-04): new typed REST ordinary-turn fixture with six mixed synthetic cards and active CurrentAction; extended existing four-player Hero-first checks to ordinary turns and added four complete Dock/selection cases at 390×844, 480×900, 650×900 and 390×640. Focused validation 7/7 and targeted ESLint passed; screenshots reviewed. CI pending. The visual gate identified guidance above Hand, contrary to design §§0.91 / 2.7; VIS-12L is the next bounded bottom-guidance correction in HANDOVER. VIS-12J correction `9a5a245` run `37230152044` was in progress at the 12K source-edit boundary.
 
@@ -34,8 +34,8 @@ Latest completed milestone:
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-12J` narrow-viewport correction: IMPLEMENTED — CI PENDING; focused affected matrix passed 35/35.
-- Next: `UX2.0VIS-12K — Four-Player Ordinary-Turn Visual Gate`; requirements are recorded in `HANDOVER.md`.
+- VIS-12M correction: implementation pushed in the next revision; run `37231645016` failed only the two 1440px VIS-07A Group-scope containment cases. Focused correction validation passed; CI retry pending.
+- Next: `UX2.0VIS-12N — Four-Player Interaction Screenshot Matrix`, paused until the VIS-12M correction is CI-green; requirements are recorded in `HANDOVER.md`.
 - current task authority: `HANDOVER.md`
 
 The previous complete handoff is preserved in [the VIS-12J handover archive](history/UX_V2_HANDOVER_THROUGH_VIS_12J.md). HANDOVER now follows the compact current-task policy reaffirmed by the user on 2026-10-04.

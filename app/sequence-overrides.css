@@ -1910,6 +1910,10 @@
   max-width: 100%;
 }
 
+.game-shell .interaction-stage-focus--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .game-shell .interaction-stage,
 .game-shell .hero-focus,
 .game-shell .interaction-stage-focus,
