@@ -268,3 +268,14 @@ Required regression tests: 18 retained safe-zone state cases, distinct-source Gr
 Required local validation: Focused browser/mounted semantic helper tests and whitespace check, not full build/test/lint.
 CI acceptance: Pushed revision CI green before next task; preserve meaningful tests and classify any failure.
 Task acceptance criteria: Large primary dimensions, smaller Medium Source only when helper proves it, vertical direction, all visible descendants within safe zone/table above dock and >=6px from seats; unchanged Top Row/control authority. Stop if geometry requires unapproved loss of content.
+
+### VIS-05C IMPLEMENTATION RESULT
+
+Implementation SHA: `d04ca9e`.
+Files changed: app/page.tsx; app/sequence-overrides.css; tests/browser/ui19.spec.mjs; README.md; append-only HANDOVER.md.
+What changed: Existing projectMediumSourceForViewer now serves both seat modes, unchanged helper proof. Side Column uses source-above-primary with decorative downward arrow; primary portrait90x113/72x90/64x80, source56x70/48x60/42x53. CSS is scoped to Side Column; no new semantic model.
+What was intentionally preserved: Top Row composition and arrow, semantic IDs/fail-closed focus, viewer exclusion, server/private authority, payloads, CurrentAction, seat/dock/control geometry, full Reaction/Dying content. No source inferred from labels/seat/HP.
+Focused tests: 12 new hierarchy cases plus retained VIS-05B and Top Row VIS-04B: 53/53 Chromium passed. Existing presentation-client + room-safety-render: 56/56 passed with node --import tsx --test. Initial plain-node invocation failed before tests because it lacked the TSX loader; corrected command passed without source/test changes.
+Broader tests: Named bounded tests only; no local full build/test/lint. git diff --check passed. 480px Dying screenshot visually inspected; full Stage and all visible descendants fit the retained safe zone and preserve >=6px seat clearance in the 18 VIS-05B cases.
+Known gaps: Group participant density/progress and final Dock/hand structure are not claimed complete; real-device, WCAG, art approval remain unverified.
+CI pending: Push this revision, wait exact CI, fix only real failures, then inspect the next bounded Group/AOE concern and its available public authority.
