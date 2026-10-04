@@ -287,15 +287,17 @@ for (const { width, height, portraitSize } of [
 }
 
 for (const { width, height } of [{ width: 1440, height: 900 }, { width: 480, height: 900 }]) {
-  test(`UX2.0VIS-04A ${width}x${height} leaves 6-player side-column seats and public zones unchanged`, async ({ page }) => {
+  test(`UX2.0VIS-05A-FIX1 ${width}x${height} retains side-column public zones for Inspect`, async ({ page }) => {
     await loadFixture(page, { state: "rest", count: 6, width, height });
     const result = await geometry(page);
     const board = page.locator('.player-board[data-seat-topology="side-column"]');
 
     await expect(board).toHaveCount(1);
     await expect(board.locator("[data-player-anchor]")).toHaveCount(5);
-    await expect(board.locator('[data-player-anchor="p2"] .opponent-equipment-zone')).toBeVisible();
-    await expect(board.locator('[data-player-anchor="p3"] .opponent-judgement-zone')).toBeVisible();
+    await expect(board.locator('[data-player-anchor="p2"] .opponent-equipment-zone')).toHaveCount(1);
+    await expect(board.locator('[data-player-anchor="p2"] .opponent-equipment-zone')).toBeHidden();
+    await expect(board.locator('[data-player-anchor="p3"] .opponent-judgement-zone')).toHaveCount(1);
+    await expect(board.locator('[data-player-anchor="p3"] .opponent-judgement-zone')).toBeHidden();
     const sideSeatAspectRatios = await board.locator("[data-player-anchor]").evaluateAll((elements) => elements.map((element) => {
       const aspectRatio = getComputedStyle(element).aspectRatio;
       const fraction = aspectRatio.match(/([\d.]+)\s*\/\s*([\d.]+)/);
@@ -545,6 +547,98 @@ async function sideColumnGeometry(page) {
       overflow: document.documentElement.scrollWidth > window.innerWidth,
     };
   });
+}
+
+async function sideThumbnailGeometry(page) {
+  return page.locator('.player-board[data-seat-topology="side-column"]').evaluate((board) => {
+    const bounds = (element) => {
+      const { x, y, width, height, right, bottom } = element.getBoundingClientRect();
+      return { x, y, width, height, right, bottom };
+    };
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return style.visibility !== "hidden" && style.display !== "none" && box.width > 0 && box.height > 0;
+    };
+    return {
+      board: bounds(board), dock: bounds(document.querySelector(".local-player-dock")),
+      rowHeights: getComputedStyle(board).gridTemplateRows.split(" ").map(Number.parseFloat),
+      seats: [...board.querySelectorAll("[data-player-anchor]")].map((seat) => {
+        const target = seat.querySelector(".opponent-hero-target");
+        const targetBox = target.getBoundingClientRect();
+        const hit = document.elementFromPoint(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2);
+        const required = [".opponent-hero-card", ".opponent-hero-target", ".opponent-hero-name", ".player-hp", ".opponent-hand-footer", ".player-hand-count"];
+        return {
+          id: seat.dataset.playerAnchor, side: seat.dataset.sideColumn, row: Number(seat.dataset.sideRow),
+          ...bounds(seat), target: bounds(target), hitSafe: Boolean(hit && target.contains(hit)),
+          requiredVisible: required.map((selector) => ({ selector, visible: visible(seat.querySelector(selector)) })),
+          descendants: [...seat.querySelectorAll("*")].filter(visible).map((element) => ({ className: element.className, ...bounds(element) })),
+        };
+      }),
+      overflow: document.documentElement.scrollWidth > window.innerWidth,
+    };
+  });
+}
+
+for (const width of [480, 650, 1440]) {
+  for (const count of [5, 6, 7, 8, 9, 10]) {
+    test(`UX2.0VIS-05A-FIX1 ${count} players at ${width}px contain every thumbnail descendant and hit target`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "rest", count, width, height: 900 });
+      const result = await sideThumbnailGeometry(page);
+      const left30 = result.board.x + result.board.width * .3;
+      const right70 = result.board.x + result.board.width * .7;
+      expect(result.seats).toHaveLength(count - 1);
+      for (const seat of result.seats) {
+        expect(seat.hitSafe, `${seat.id} hero centre must hit its own target`).toBe(true);
+        expect(seat.width).toBeGreaterThanOrEqual(44);
+        expect(seat.width).toBeLessThanOrEqual(86);
+        expect(seat.height).toBeLessThanOrEqual(result.rowHeights[seat.row - 1] + 2);
+        for (const required of seat.requiredVisible) expect(required.visible, `${seat.id} ${required.selector} remains directly visible`).toBe(true);
+        for (const child of seat.descendants) {
+          const label = `${seat.id} ${child.className}`;
+          expect(child.x, label).toBeGreaterThanOrEqual(seat.x - 2);
+          expect(child.y, label).toBeGreaterThanOrEqual(seat.y - 2);
+          expect(child.right, label).toBeLessThanOrEqual(seat.right + 2);
+          expect(child.bottom, label).toBeLessThanOrEqual(seat.bottom + 2);
+          expect(child.bottom, label).toBeLessThanOrEqual(result.dock.y - 6);
+          if (seat.side === "left") expect(child.right, label).toBeLessThanOrEqual(left30 + 2);
+          else expect(child.x, label).toBeGreaterThanOrEqual(right70 - 2);
+          for (const other of result.seats.filter(({ id }) => id !== seat.id)) {
+            const target = other.target;
+            const overlap = Math.max(0, Math.min(child.right, target.right) - Math.max(child.x, target.x)) * Math.max(0, Math.min(child.bottom, target.bottom) - Math.max(child.y, target.y));
+            expect(overlap, `${label} must not overlap ${other.id} target`).toBe(0);
+          }
+        }
+      }
+      expect(result.overflow).toBe(false);
+      await testInfo.attach("thumbnail-containment", { body: JSON.stringify(result), contentType: "application/json" });
+    });
+  }
+}
+
+for (const width of [480, 1440]) {
+  for (const count of [6, 10]) {
+    test(`UX2.0VIS-05A-FIX1 ${count} players at ${width}px inspect both column extremes and preserve public data`, async ({ page }) => {
+      await loadFixture(page, { state: "rest", count, width, height: 900 });
+      const before = await sideColumnGeometry(page);
+      const extremes = ["left", "right"].flatMap((side) => {
+        const seats = before.seats.filter((seat) => seat.side === side).sort((a, b) => a.row - b.row);
+        return [seats[0].id, seats.at(-1).id];
+      });
+      for (const id of new Set([...extremes, "p3"])) {
+        const number = id.slice(1);
+        await page.locator(`[data-player-anchor="${id}"] .opponent-hero-target`).click();
+        await expect(page.getByRole("dialog", { name: `Player ${number} opponent inspection` })).toBeVisible();
+        if (id === "p2") await expect(page.locator('.opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card')).toHaveCount(1);
+        if (id === "p3") await expect(page.locator('.opponent-inspection-zone[aria-label="Judgement Zone"] .opponent-inspection-card[aria-label="Explain Lightning"]')).toHaveCount(1);
+        await page.getByRole("button", { name: `Close Player ${number} inspection` }).click();
+        await expect(page.locator(".opponent-inspection-panel")).toHaveCount(0);
+        expect((await sideColumnGeometry(page)).seats).toEqual(before.seats);
+      }
+      await expect(page.locator('.player-board .opponent-equipment-zone .mini-zone-card').first()).toBeHidden();
+      await expect(page.locator('.player-board .opponent-judgement-zone .mini-zone-card').first()).toBeHidden();
+    });
+  }
 }
 
 for (const width of [480, 650, 1440]) {

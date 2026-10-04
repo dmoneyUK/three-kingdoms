@@ -1640,10 +1640,10 @@
 .game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card {
   position: relative;
   inset: auto;
-  width: auto;
-  height: min(150px, calc((100% - (var(--seat-row-count) - 1) * 8px) / var(--seat-row-count)));
+  width: clamp(44px, 8vw, 86px);
+  height: min(128px, 100%);
   max-width: 100%;
-  min-height: 58px;
+  min-height: 0;
   aspect-ratio: 2 / 3;
   margin: 0;
   align-self: center;
@@ -1653,6 +1653,64 @@
 
 .game-shell .player-board[data-seat-topology="side-column"] > [data-side-column="left"] { grid-column: 1; }
 .game-shell .player-board[data-seat-topology="side-column"] > [data-side-column="right"] { grid-column: 3; }
+
+/* Side seats are bounded thumbnails. Full public card details stay in Inspect. */
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-public-zones {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hero-card {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+  border-radius: inherit;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hero-overlay {
+  min-height: 0;
+  bottom: 15px;
+  padding: 8px 2px 2px;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hero-name {
+  font-size: 9px;
+  line-height: 1.1;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hero-overlay .player-hp {
+  margin-top: 2px;
+  font-size: 8px;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-player-name,
+.game-shell .player-board[data-seat-topology="side-column"] .player-hearts,
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-zone,
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-judgement-zone { display: none; }
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hand-footer {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  height: 14px;
+  box-sizing: border-box;
+  padding: 1px 3px;
+  gap: 2px;
+  pointer-events: none;
+  border-radius: 0 0 9px 9px;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hand-footer .player-hand-label {
+  font-size: 6px;
+  letter-spacing: 0;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hand-footer .player-hand-count {
+  font-size: 10px;
+  line-height: 1;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .hero-card-info-button {
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+}
 
 /* Keep text and the persistent local operation surface bounded at the two
    handoff breakpoints. These are containment rules only; they do not hide
@@ -1690,8 +1748,7 @@
   }
 
   .game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card {
-    height: min(128px, calc((100% - (var(--seat-row-count) - 1) * 5px) / var(--seat-row-count)));
-    min-height: 54px;
+    height: min(116px, 100%);
   }
 
   .game-shell .target-card-picker-panel,
@@ -1710,8 +1767,7 @@
   }
 
   .game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card {
-    height: min(108px, calc((100% - (var(--seat-row-count) - 1) * 3px) / var(--seat-row-count)));
-    min-height: 48px;
+    height: min(108px, 100%);
   }
 
   .game-shell .local-player-dock .turn-controls {
