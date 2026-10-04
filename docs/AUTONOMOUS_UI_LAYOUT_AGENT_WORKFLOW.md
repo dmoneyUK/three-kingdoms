@@ -37,11 +37,15 @@ The autonomous run ends when either:
 
 Before planning or modifying code, fetch `origin/ux-v2` and read:
 
-- `HANDOVER.md`
-- `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`
-- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
-- `docs/UX_V2_RELEASE_GATE.md`
-- `ROADMAP.md`
+- `AGENTS.md`
+- `docs/AUTONOMOUS_UI_STATUS.md`
+- this workflow file
+
+Then read only the design sections cited by the current task/status and inspect the relevant source/tests.
+
+Consult `HANDOVER.md` history only on demand when an older accepted contract, exact prior measurement, previous SHA/CI result, regression history, or explicit human-review reconstruction is needed.
+
+Do **not** read the complete `HANDOVER.md` by default in autonomous mode.
 
 Also consult when relevant:
 
@@ -93,80 +97,76 @@ Before starting a new task, confirm that no newer remote implementation or HANDO
 
 ---
 
-## 3. HANDOVER policy for this experiment
+## 3. Current state and historical HANDOVER policy
 
-**Do not clean HANDOVER.md.**
+Autonomous current/in-progress state lives in:
 
-**Do not replace old task/result history.**
+`docs/AUTONOMOUS_UI_STATUS.md`
 
-**Do not remove previous task records.**
+This file is updated in place. It should stay compact, normally about 80–120 lines, with a warning threshold of 150 lines.
 
-For this experiment, `HANDOVER.md` becomes an **append-only autonomous task ledger**.
+It contains only:
 
-Preserve all existing content.
+- latest completed task and latest relevant CI;
+- current task/status/objective;
+- critical preserved contracts;
+- deferred semantic gaps;
+- remaining approved direction;
+- human review milestones.
 
-Before implementing each new task, append a task section with this structure:
+`HANDOVER.md` remains the permanent historical/audit ledger.
+
+Preserve all existing HANDOVER history. Do not clean, rewrite, or delete historical entries during autonomous work.
+
+### During task planning and implementation
+
+- Put the complete current bounded task definition in `docs/AUTONOMOUS_UI_STATUS.md`.
+- Do not append a large PLANNED task block to HANDOVER at task start.
+- Keep temporary CI-pending/failure state in STATUS rather than continuously narrating it into HANDOVER.
+- Use git history of STATUS plus focused code/test commits for task evolution.
+
+### When a task closes
+
+When the task becomes either:
+
+`COMPLETED BY AGENT — CI GREEN`
+
+or:
+
+`BLOCKED — HUMAN REVIEW REQUIRED`
+
+append **one compact archival entry** to `HANDOVER.md`.
+
+Use this shape:
 
 ```text
-TASK ID:
-STATUS: PLANNED
-
-Objective:
-Observed gap:
-Why this task is next:
-Design authority:
-Current production evidence:
-Files expected in scope:
-Implementation requirements:
-Explicit non-goals:
-Forbidden shortcuts:
-Required regression tests:
-Required local validation:
-CI acceptance:
-Task acceptance criteria:
-```
-
-Commit/push the planned task record before or together with implementation.
-
-After implementation, append:
-
-```text
-IMPLEMENTATION RESULT
-
+## UX2.0VIS-XX — title
+Status: COMPLETED BY AGENT — CI GREEN
 Implementation SHA:
-Files changed:
-What changed:
-What was intentionally preserved:
-Focused tests:
-Broader tests:
-Known gaps:
-CI pending:
+Final tested revision:
+CI:
+Change:
+Focused evidence:
+Preserved:
+Remaining gap / next rationale:
 ```
 
-Push the implementation.
+If CI required a meaningful correction, add one compact line with the cause/classification and fix SHA.
 
-Then wait for the GitHub Actions run for that pushed revision.
+Do not copy the whole task specification or full logs into HANDOVER.
 
-When CI is green, append:
+Never write `REVIEWER ACCEPTED`. Only the human Reviewer may do that.
 
-```text
-STATUS: COMPLETED BY AGENT — CI GREEN
+### State-file discipline
 
-CI run:
-CI job:
-Final implementation/fix SHAs:
-Final test status:
-Known remaining gaps:
-Recommended next bounded task:
-```
+After task closeout, update STATUS in place:
 
-Never write:
+- move the task into Latest completed;
+- record the exact tested revision and latest relevant CI;
+- set Current task to `NO ACTIVE IMPLEMENTATION TASK` until the next task is selected;
+- then derive the next bounded task from actual code + approved design and replace only the Current task section.
 
-`REVIEWER ACCEPTED`
-
-Only the human Reviewer may do that.
-
-If CI fails, record the failure and all fix attempts in the same task history. Do not erase failed attempts.
+If STATUS approaches 150 lines, remove stale task-specific detail. Do not move historical detail back into it.
 
 ---
 
@@ -187,8 +187,8 @@ For every implementation task:
 11. Push the fix.
 12. Wait for CI again.
 13. Repeat until CI is green.
-14. Update HANDOVER status to `COMPLETED BY AGENT — CI GREEN`.
-15. Only then plan the next task.
+14. Update `docs/AUTONOMOUS_UI_STATUS.md` with the completed result and append one compact archival closeout to HANDOVER.
+15. Only then plan the next task and replace the STATUS current-task section.
 
 Do not start the next implementation while the previous task CI is red.
 
@@ -987,7 +987,7 @@ only after:
 - push succeeds;
 - GitHub Actions for the implementation/fix revision finishes;
 - required CI jobs are green;
-- HANDOVER contains the result and CI evidence.
+- STATUS contains the current result/CI state and HANDOVER contains one compact archival closeout.
 
 This is still not human Reviewer acceptance.
 
@@ -995,35 +995,13 @@ This is still not human Reviewer acceptance.
 
 ## 16. End-of-autonomous-run summary
 
-When all remaining approved UI/Layout work is complete, or when a human-review stop condition occurs, append one final section to HANDOVER:
+When the autonomous run actually stops because the approved UI/Layout work is complete, the user asks to stop, a human-review boundary is reached, or a blocker is hit:
 
-```text
-AUTONOMOUS RUN SUMMARY
+- update `docs/AUTONOMOUS_UI_STATUS.md` with the truthful final current state;
+- append at most one compact run-close note to HANDOVER if it adds useful audit value;
+- do not duplicate task-by-task history already archived.
 
-Tasks planned:
-Tasks completed:
-Tasks with CI fixes:
-Implementation SHAs:
-Final branch head:
-Final CI run:
-Contracts preserved:
-New regression coverage:
-Remaining visual gaps:
-Remaining semantic gaps:
-Known technical debt:
-Items requiring human visual review:
-Items requiring real-device review:
-Recommended reviewer inspection order:
-```
-
-Do not claim:
-
-- production deployment healthy;
-- touch-device certified;
-- WCAG certified;
-- whole game complete;
-
-unless those were separately and explicitly proven.
+Do not claim production deployment health, touch-device certification, WCAG certification, or whole-game completion unless separately and explicitly proven.
 
 ---
 
@@ -1034,14 +1012,15 @@ Do not assume a hard-coded task ID from an earlier version of this document is s
 At the beginning or resumption of every autonomous run:
 
 1. Fetch and fast-forward `origin/ux-v2`.
-2. Read the **complete current remote `HANDOVER.md`**.
-3. Identify the latest implementation task and its final status.
-4. Do not repeat any task already recorded as `COMPLETED BY AGENT — CI GREEN` unless new concrete evidence shows a regression.
-5. Inspect the actual current code for the highest-impact remaining gap against the approved final design.
-6. Apply the planning gate in section 19 before writing the next task.
-7. Append the next `PLANNED` task and continue the normal autonomous task/CI loop.
+2. Read `AGENTS.md`.
+3. Read `docs/AUTONOMOUS_UI_STATUS.md`.
+4. Identify the current task or latest completed task from STATUS.
+5. Read only the cited design sections and inspect relevant production/test code.
+6. Consult historical `HANDOVER.md` selectively only if exact older evidence is required.
+7. Do not repeat a task already recorded as completed unless new concrete evidence shows a regression.
+8. Apply the planning gate in section 19 before replacing the STATUS current-task section with a new bounded task.
 
-At the time this optimization was added, VIS-05B, VIS-05C, and VIS-07A had already been implemented and recorded in HANDOVER. Those IDs are historical milestones, not instructions to repeat them. The remote HANDOVER always wins for current progress.
+The compact STATUS file is the default current-state authority for autonomous work. HANDOVER is historical/audit evidence, not the default resume source.
 
 ---
 
@@ -1061,9 +1040,11 @@ Reference the existing authority instead, for example:
 
 Only record the **task-specific delta**.
 
-### 18.2 Compact task records
+### 18.2 Compact current-task records
 
-A normal `PLANNED` entry should usually contain:
+Keep the active task in `docs/AUTONOMOUS_UI_STATUS.md`.
+
+A normal current-task section should contain only:
 
 - objective;
 - concrete observed gap;
@@ -1073,31 +1054,29 @@ A normal `PLANNED` entry should usually contain:
 - focused regression;
 - one explicit stop condition if needed.
 
-Do not restate unrelated accepted history.
+Do not restate unrelated accepted history and do not append a duplicate PLANNED block to HANDOVER.
 
 ### 18.3 Compact implementation results
 
-A normal implementation result should contain only:
+During implementation, keep current result state in STATUS. At final closeout, the compact HANDOVER archival entry should contain only:
 
-- implementation SHA;
-- files changed;
-- important behavior/geometry measurements;
+- implementation SHA / final tested revision;
+- important behavior or geometry evidence;
 - focused tests actually run;
-- meaningful discovered/fixed regression;
-- remaining gap.
+- meaningful CI correction if any;
+- remaining gap / next rationale.
 
 Do not retell the task specification.
 
 ### 18.4 Compact CI closeout
 
-After CI is green, record only:
+After CI is green:
 
-- exact tested revision;
-- run/job result;
-- whether a CI fix was required;
-- next-task rationale.
+- update STATUS with the exact tested revision and latest relevant CI;
+- append one compact HANDOVER archival record;
+- record only run/job result, CI-fix status, focused evidence and next-task rationale.
 
-Do not repeat local test tables already recorded in the implementation result.
+Do not repeat local test tables or CI logs.
 
 ### 18.5 One run summary only
 
@@ -1184,7 +1163,7 @@ For density, spacing, prominence, and composition rules, compare the implementat
 
 ## 20. Current continuation direction
 
-The complete remote HANDOVER is the authority for exact progress.
+`docs/AUTONOMOUS_UI_STATUS.md` is the authority for current autonomous progress. Historical HANDOVER is consulted only when older evidence is needed.
 
 The remaining approved direction is expected to include, as needed:
 
