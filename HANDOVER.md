@@ -524,3 +524,29 @@ Files changed: `app/page.tsx`, `app/sequence-overrides.css`, `tests/room-safety-
 Change: Viewer-projected persistent Judgement cards now render once as inspectable siblings over the local Hero; empty state creates no overlay. Removed the dedicated panel and third Dock track. Existing physical IDs, `CardFace`, info controls, and `hiddenCardIds` in-flight hiding remain. Skills/Equipment, Hand, action controls, opponent zones, and active Stage rendering are unchanged; no gameplay, protocol, authority, or selection behavior changed. The user's follow-up authorized implementation after the planning-only model-switch pause; do not start a subsequent task.
 Focused validation: `node --import tsx --test tests/room-safety-render.test.mjs` — 19/19; `node --import tsx --test --test-name-pattern='mounted Judgement' tests/active-skill-interactions.test.mjs` — 3/3; `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-09A|UX2.0VIS-08A|UX2.0VIS-08C' --workers=2` — 18/18, including empty/one/two local cards at 1440/650/480px, card/Hero inspection, no Hand/action overlap, and retained opponent/Stage coverage; `git diff --check` passed. No full test suite, build, or lint was run locally.
 Known gaps: CI and deployment for the pushed implementation revision are pending; Human Reviewer acceptance remains separate. No follow-up task is planned at the user's request.
+
+### VIS-09A STATUS: COMPLETED BY AGENT — CI GREEN
+
+Tested revision: `159205965e2464c25d088b8e514bb20c26462359` (implementation `59f15192dc580419443f50651325b9ea4f3abe79`).
+GitHub Actions run: [#617](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37191718705) — completed/success.
+Jobs: `build-and-test` `111405126906` and `deploy` `111405995778`, both completed/success.
+CI fixes: none. Human Reviewer acceptance remains separate; no independent production-health certification is claimed.
+
+## TASK ID: UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
+STATUS: PLANNED
+
+Planning authority: User explicitly requested a next-task plan after reporting VIS-09A CI success; plan only in this turn.
+Objective: Keep large local hands reachable in one horizontal layer without shrinking cards below their usable size or letting the rail spill outside the Hand viewport.
+Observed gap: `calculateHandCardStep` bottoms out at a 30px step, while `.local-hand-rail` remains `overflow: visible` with fixed 68px cards and no horizontal pan. At 25 cards the minimum-step rail spans 788px, exceeding narrow Hand areas. README currently records only the 1/5/10-card rail contract.
+Design authority: `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` §§7.11, 10, 19; `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.82–0.88, 2.2, 2.9. Use platform-native horizontal scrolling/panning; do not invent a custom gesture threshold.
+Existing authority to preserve: Only the viewer's `room.myHand` physical cards and IDs are rendered; selection and eligibility remain governed by existing `CurrentAction`/selection state. No gameplay or server changes.
+Likely scope: `app/page.tsx`, `app/sequence-overrides.css`, focused `tests/room-safety-render.test.mjs` and `tests/browser/ui19.spec.mjs` coverage using existing fixtures/helpers, relevant README contract, append-only `HANDOVER.md`.
+Requirements:
+- Keep one row and the existing usable card dimensions/overlap until geometry reaches its minimum; then provide horizontal navigation instead of further shrinking or clipping cards.
+- Keep every physical card rendered once and reachable after pan; preserve card identity/order, inspection, selected-card visibility, and existing action controls.
+- A pan gesture must not activate/select the card under the gesture; ordinary taps and info controls must still work.
+- Prove fit/overflow behavior for 5/10/15/20/25+ cards at 1440/650/480px, including end-card reachability, no document-level horizontal overflow, and no overlap with action controls.
+- Update the README's 1/5/10 hand statement to the proven behavior; do not claim touch-device certification.
+Non-goals: New gameplay/legality, changing selection semantics, a second row, hand-count-specific breakpoints, and preserving a semantic anchor when cards are authoritatively added/removed (that remaining §0.86–0.87 behavior must not be claimed complete by this slice).
+Stop condition: If the required scroll viewport cannot preserve the selected-card raise and existing controls without an unapproved composition trade-off, record the measured conflict and stop for human review.
+Validation/delivery: Run only focused hand/browser checks locally; GitHub Actions owns full checks. Push code/tests/docs/handover together, do not poll CI, verify remote HANDOVER, then stop for the user's CI report.
