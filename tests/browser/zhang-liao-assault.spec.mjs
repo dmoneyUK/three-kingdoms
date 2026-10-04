@@ -48,6 +48,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     const { seed, gameplayActions, assault } = await selectAssaultTargets(page, request, viewport);
     const diagnostic = await page.evaluate(() => {
       const consoleSurface = document.querySelector('[data-console-surface="local-operation"]');
+      const guidance = document.querySelector('[data-console-guidance="true"]');
       const confirm = consoleSurface?.querySelector("button.primary");
       const cancel = consoleSurface?.querySelector("button.local-target-cancel");
       const box = (element) => {
@@ -56,11 +57,11 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
         return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height, visible: rect.width > 0 && rect.height > 0, insideViewport: rect.x >= 0 && rect.y >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight };
       };
       return {
-        consolePrimary: consoleSurface?.querySelector("[data-console-primary]")?.getAttribute("data-console-primary") ?? null,
-        consolePrimaryEnabled: consoleSurface?.querySelector("[data-console-primary-enabled]")?.getAttribute("data-console-primary-enabled") ?? null,
+        consolePrimary: guidance?.querySelector("[data-console-primary]")?.getAttribute("data-console-primary") ?? null,
+        consolePrimaryEnabled: guidance?.querySelector("[data-console-primary-enabled]")?.getAttribute("data-console-primary-enabled") ?? null,
         confirm: { count: confirm ? 1 : 0, visible: Boolean(confirm && confirm.getClientRects().length), box: box(confirm) },
         cancel: { count: cancel ? 1 : 0, visible: Boolean(cancel && cancel.getClientRects().length), box: box(cancel) },
-        lustOrder: (consoleSurface?.textContent ?? "").includes("Lust order"),
+        lustOrder: (guidance?.textContent ?? "").includes("Lust order"),
         selectedTargets: [...document.querySelectorAll('[data-player-anchor].selected-target')].map((element) => element.getAttribute("data-player-anchor")),
       };
     });
@@ -86,12 +87,13 @@ test("mobile Assault keeps a visible one-target Confirm and submits one target",
   const { seed, gameplayActions } = await selectAssaultTargets(page, request, { width: 390, height: 844 }, 1);
   const diagnostic = await page.evaluate(() => {
     const consoleSurface = document.querySelector('[data-console-surface="local-operation"]');
+    const guidance = document.querySelector('[data-console-guidance="true"]');
     const confirm = consoleSurface?.querySelector("button.primary");
     if (!confirm) return null;
     const rect = confirm.getBoundingClientRect();
     return {
-      primary: consoleSurface?.querySelector("[data-console-primary]")?.getAttribute("data-console-primary"),
-      enabled: consoleSurface?.querySelector("[data-console-primary-enabled]")?.getAttribute("data-console-primary-enabled"),
+      primary: guidance?.querySelector("[data-console-primary]")?.getAttribute("data-console-primary"),
+      enabled: guidance?.querySelector("[data-console-primary-enabled]")?.getAttribute("data-console-primary-enabled"),
       visible: Boolean(confirm.getClientRects().length),
       insideViewport: rect.x >= 0 && rect.y >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
     };
