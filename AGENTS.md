@@ -11,7 +11,8 @@ Autonomous UI/Layout mode is active when the user either:
 
 When autonomous mode is active, use this startup order:
 
-1. synchronize `ux-v2` from `origin`;
+1. inspect the branch and working-tree state, then synchronize `ux-v2` from
+   `origin` without overwriting local changes;
 2. read `AGENTS.md`;
 3. read the complete current `HANDOVER.md` (it is intentionally short);
 4. read `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`;
@@ -31,6 +32,10 @@ While autonomous mode is active, the autonomous workflow may:
 - move completed historical detail into `docs/AUTONOMOUS_UI_ROADMAP.md` so HANDOVER does not grow over time.
 
 Everything else in this file remains in force, especially server/gameplay authority, privacy boundaries, fail-closed semantics, WTK Standard references, no unrelated scope widening, and truthful validation reporting.
+
+If the worktree is dirty, preserve existing changes and inspect ownership before
+branch switching, staging, committing, or synchronizing. Never assume an
+uncommitted change is present on the remote branch or in a new worktree.
 
 Autonomous mode does **not** authorize new product/game semantics. If approved design or authoritative data is insufficient, follow the workflow's `BLOCKED — HUMAN REVIEW REQUIRED` rule.
 
