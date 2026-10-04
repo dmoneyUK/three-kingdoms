@@ -1525,6 +1525,58 @@ test("UX2.0VIS-12I four-player desktop retains its existing Hero and Equipment a
   }
 });
 
+for (const width of [390, 480]) {
+  for (const count of [2, 3, 4]) {
+    test(`UX2.0VIS-12J ${count}-player single-target Stage stays centered at ${width}px`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "interaction", count, width, height: 900 });
+    const layout = await interactionGeometry(page);
+    const stage = await page.locator(".interaction-stage").evaluate((element) => {
+      const bounds = (node) => {
+        const { x, y, right, bottom, width, height } = node.getBoundingClientRect();
+        return { x, y, right, bottom, width, height };
+      };
+      const visibleRegions = [...element.querySelectorAll(":scope > header, :scope > .interaction-stage-body, .interaction-stage-body > .interaction-stage-hero-region, .interaction-stage-body > .interaction-stage-event-region, .interaction-stage-body > .interaction-stage-meta-region")]
+        .filter((node) => {
+          const box = node.getBoundingClientRect();
+          const style = getComputedStyle(node);
+          return box.width > 0 && box.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+        })
+        .map((node) => ({ className: node.className || node.tagName, ...bounds(node) }));
+      return {
+        stage: bounds(element),
+        safeZone: bounds(element.parentElement),
+        visibleRegions,
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+      };
+    });
+
+    expect(stage.stage.width).toBeCloseTo(Math.min(stage.safeZone.width * 0.88, 410), 0);
+    expect(stage.stage.x + stage.stage.width / 2).toBeCloseTo(stage.safeZone.x + stage.safeZone.width / 2, 0);
+    expect(stage.stage.x).toBeGreaterThanOrEqual(stage.safeZone.x);
+    expect(stage.stage.right).toBeLessThanOrEqual(stage.safeZone.right);
+    expect(stage.scrollWidth).toBeLessThanOrEqual(stage.clientWidth);
+    expect(stage.visibleRegions.length).toBeGreaterThanOrEqual(3);
+    for (const region of stage.visibleRegions) {
+      expect(region.x, `${region.className} stays inside the centered Stage`).toBeGreaterThanOrEqual(stage.stage.x - 1);
+      expect(region.right, `${region.className} stays inside the centered Stage`).toBeLessThanOrEqual(stage.stage.right + 1);
+    }
+    expect(layout.opponents).toHaveLength(count - 1);
+    expect(Math.max(...layout.opponents.map(({ bottom }) => bottom))).toBeLessThanOrEqual(layout.stage.top - 6);
+    expect(layout.stageDockOverlap).toBe(0);
+    expect(layout.safeZoneDockOverlap).toBe(0);
+    expect(layout.scrollWidth).toBeLessThanOrEqual(width);
+    await expect(page.locator(".hero-focus")).toBeVisible();
+    if (width === 480 && count === 4) {
+      await testInfo.attach("vis-12j-four-player-single-target-480", {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+    }
+    });
+  }
+}
+
 for (const width of [390, 480, 650]) {
   for (const state of ["rest", "interaction"]) {
     test(`UX2.0VIS-12C ${state} keeps mobile card piles secondary at ${width}px`, async ({ page }, testInfo) => {

@@ -114,6 +114,8 @@ VIS-12I was pushed with result documentation as exact revision `bf78f33bf34f83a5
 
 VIS-12I exact run `37227038410` failed only in 14 retained VIS-10C Top Row cases: one obsolete assertion required Hero art to be wholly separate from the overlay box, which conflicts with the approved full-width art plus compact identity/HP overlay composition. The other 357 browser cases passed; lint/build succeeded; deploy was skipped. Corrected the geometry proof to require art stay within its Hero target while the measured art focal point remains clear of visible identity text/equipment. Test-only root-cause correction; no product assertion was removed or weakened. Retry CI pending.
 
+VIS-12J implementation: on Top Row phone viewports through 480px, center the ordinary Interaction Stage at `min(88%, 410px)`. Geometry was manually verified at 480px (410px stage inside a 474px Safe Zone) and 390px (337.9px stage inside a 384px Safe Zone). Added six real-browser assertions for 2/3/4-player layouts at both widths proving centering, descendant bounds, seat/Safe-Zone/Dock clearance and no overflow. Focused cases passed 6/6; targeted ESLint passed; 480px screenshot reviewed. No full local checks. Prior correction run `37227707859` was in progress at the source-edit checkpoint; VIS-12J push and exact-revision CI pending.
+
 ## Durable accepted UI / presentation contracts
 
 - `CurrentAction` owns viewer legal actions.
