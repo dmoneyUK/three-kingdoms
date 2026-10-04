@@ -110,6 +110,10 @@ The user's 4-player phone screenshot shows the correct three-opponent Top Row bu
 
 VIS-12I implementation: four-player mobile Top Row seats now use an artwork-first composition measured at ~62.2–62.7% Hero art, ~14.8–15.0% name, and ~18.2–18.3% Equipment/Hand area at 390/480/650px. Added six REST/interaction regressions and 480px screenshots, plus a desktop anchor regression. Visual fixtures were inspected at all three mobile widths and 1440px; targeted ESLint passed. The new browser regressions remain for CI (not run locally); no full local checks. Implementation commit `b6b72af`; push and exact-revision CI checkpoint pending.
 
+VIS-12I was pushed with result documentation as exact revision `bf78f33bf34f83a517b548d03c56119aee3a1cf9`; CI remains pending until checked at the next source-edit boundary. For VIS-12J planning, a 480×900 four-player single-target fixture measures the Top Row safe zone and Interaction Stage at 474px wide, filling the corridor. Design §0.91.2 allows a centered 360–410px / approximately 88%-width normal single-target composition. The next bounded task caps and centers that content while preserving all public Stage content and seat/Safe-Zone/Dock geometry; plan recorded in HANDOVER.
+
+VIS-12I exact run `37227038410` failed only in 14 retained VIS-10C Top Row cases: one obsolete assertion required Hero art to be wholly separate from the overlay box, which conflicts with the approved full-width art plus compact identity/HP overlay composition. The other 357 browser cases passed; lint/build succeeded; deploy was skipped. Corrected the geometry proof to require art stay within its Hero target while the measured art focal point remains clear of visible identity text/equipment. Test-only root-cause correction; no product assertion was removed or weakened. Retry CI pending.
+
 ## Durable accepted UI / presentation contracts
 
 - `CurrentAction` owns viewer legal actions.

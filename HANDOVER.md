@@ -373,3 +373,34 @@ Stop condition: if the measured approved proportion cannot keep actual Hero face
 Implementation commit: `b6b72af` (`Improve four-player mobile hero seat layout`). The four-player mobile Top Row now gives existing Hero artwork about 62.2–62.7% of each seat, the Hero-name strip about 14.8–15.0%, and the Equipment/Hand row about 18.2–18.3% at 390/480/650px. Equipment remains public and is grouped with the Hand count in the lower band; desktop art and Equipment anchors remain unchanged. No topology, projected data, gameplay or authority changes.
 
 Regression coverage added: six REST/interaction cases across 390/480/650px, with 480px screenshots, plus one desktop anchor-preservation case. Existing four-player checks now test visible identity-text bounds rather than treating the full art overlay as text. Browser visual inspection covered the 390/480/650px fixtures and 1440px desktop fixture; targeted `npx eslint tests/browser/ui19.spec.mjs app/page.tsx` passed. Browser regression tests were added for CI and were not run locally; no full suite/build/lint was run. Remote push and exact-revision CI status will be recorded at the next checkpoint.
+
+### UX2.0VIS-12I — DELIVERY CHECKPOINT
+
+Pushed final revision: `bf78f33bf34f83a517b548d03c56119aee3a1cf9` (includes implementation `b6b72af`). Exact-revision Actions state is to be checked at the VIS-12J pre-edit checkpoint; until then VIS-12I remains `IMPLEMENTED — CI PENDING`.
+
+### UX2.0VIS-12J — Center the 4-Player Mobile Single-Target Stage Content
+
+Status: `PLANNED`
+
+Planning gate: all five workflow §19 questions pass. After syncing `origin/ux-v2` and reviewing the current workflow plus design §§0.91.2–0.91.5 and 1.2, a 480×900 four-player interaction fixture measured the Top Row safe zone and `.interaction-stage` at the same 474px width: the Stage and each top-level body region stretch across 100% of the corridor. Design §0.91.2 allows a centered 360–410px / approximately 88%-width normal single-target composition to preserve intentional battlefield breathing space. Existing identity and Stage projections suffice; no semantic or gameplay interpretation is needed. This is a measurable mobile-only concern independent of VIS-12I's opponent-seat art proportions.
+
+Objective: bound and center the ordinary single-target Interaction Stage content on a 480px Top Row phone while preserving its public content and accepted seat/Safe-Zone geometry.
+
+Requirements:
+- At the 480px four-player single-target interaction fixture, cap the Stage content to the approved centered 360–410px range and keep all Stage descendants within that content.
+- Preserve Stage header, projected Hero/effect/target/context content and normal text readability; leave unused battlefield area open rather than filling it with new chrome.
+- Preserve opponent-seat geometry, 6px Stage/Safe-Zone clearance, Local Dock separation, target hit safety, and no page-level horizontal overflow.
+- Keep REST without a Stage and retain existing 2-/3-player Top Row, Side Column, semantic, and interaction-control behavior.
+- Add a focused real-browser geometry regression and inspect the 480px interaction screenshot; presentation-only changes, no data or gameplay changes.
+
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.91.1–0.91.5, 1.2 and 3C; workflow §§7.3, 12, 19–20.
+
+Expected scope: `app/sequence-overrides.css`, focused `tests/browser/ui19.spec.mjs`, append-only HANDOVER and `docs/AUTONOMOUS_UI_ROADMAP.md`.
+
+Focused validation: new 480px four-player single-target Stage width/centering/descendant containment assertions plus retained VIS-12I and Top Row safe-zone checks; targeted ESLint if test code changes. No full local suite/build/lint. Before the first source edit, inspect the latest push-triggered Actions run per workflow §4; if failed, fix that run first, and if still queued/running, proceed without waiting.
+
+Stop condition: if the approved centered width causes proven Stage content to collide, clip, or become unreadable without a separately chosen composition trade-off, record measurements/screenshot and stop for human review.
+
+### UX2.0VIS-12I — CI FAILURE DIAGNOSIS / CORRECTION
+
+Exact run [37227038410](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37227038410), commit `bf78f33bf34f83a517b548d03c56119aee3a1cf9`: `build-and-test` failed at `npm run test:browser`; lint and build passed, 357 browser cases passed, and 14 failed. All 14 failures were the same stale VIS-10C Top Row assertion at `tests/browser/ui19.spec.mjs:1267`, expecting the portrait art's right edge to stop at `.opponent-hero-overlay.x`. VIS-12I intentionally makes the portrait full-width behind small overlaid identity/HP text; the test's old split art/text geometry no longer represents the approved 4-player composition. Updated the contract to require the portrait viewport remain inside its Hero target and the actual focal point remain unobscured by identity text/public Equipment. No production change and no assertion was weakened; deployment was skipped. The focused correction is locally linted, and exact-revision CI remains pending.

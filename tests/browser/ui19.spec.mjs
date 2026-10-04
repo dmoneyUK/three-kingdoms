@@ -1264,7 +1264,10 @@ for (const width of [480, 650]) {
       expect(presentation.imageLoaded).toBe(true);
       expect(presentation.art.width).toBeGreaterThanOrEqual(width === 480 ? 39 : 42);
       expect(presentation.art.height).toBeGreaterThanOrEqual(width === 480 ? 44 : 52);
-      expect(presentation.art.right).toBeLessThanOrEqual(presentation.overlay.x + 0.5);
+      expect(presentation.art.x).toBeGreaterThanOrEqual(presentation.hero.x);
+      expect(presentation.art.right).toBeLessThanOrEqual(presentation.hero.right);
+      expect(presentation.art.y).toBeGreaterThanOrEqual(presentation.hero.y);
+      expect(presentation.art.bottom).toBeLessThanOrEqual(presentation.hero.bottom);
       expect(presentation.focusCoveredByText).toBe(false);
       expect(presentation.focusCoveredByEquipment).toBe(false);
       expect(presentation.targetHitSafe).toBe(true);
