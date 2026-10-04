@@ -489,3 +489,30 @@ CI pending: push implementation and this result, then wait for Actions on the ex
 
 CI run `37189288243`, build-and-test job `111397913546`, failed on five UI-19 assertions that still required the Dying `.interaction-stage-meta-region` hook. These assertions contradicted the planned empty-wrapper omission; no production defect was reported. Updated the VIS-02-FIX1/VIS-03B/VIS-03C checks to assert omission for Dying while retaining the mounted Hero/Event, handoff visibility, and geometry/overlap checks; non-Dying metadata remains required. No production files changed for this CI correction.
 Focused validation: relevant Dying cases plus VIS-08C and retained VIS-05B/VIS-08A checks — 18/18 passed; `git diff --check` passed. Awaiting CI on the corrected test revision.
+
+### VIS-08C STATUS: COMPLETED BY AGENT — CI GREEN
+
+Tested revision: `41d6c27f7c4fc7a6f58bef82d40b88cf40dbcdb2` (implementation `4d8a967`; CI test-contract correction `41d6c27`).
+CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37189810296 — completed/success.
+Jobs: `build-and-test` `111399459355` and `deploy` `111400272036`, both completed/success.
+CI fix: updated the stale Dying metadata-wrapper assertions; production code unchanged. Focused corrected browser coverage passed 18/18 locally.
+Known gap: This closes only the proven duplicate Dying metadata; Local Player Dock composition and larger-hand behavior remain unfinished. Human Reviewer acceptance is not implied.
+Recommended next bounded task: Move persistent local Judgement cards from the independent Dock column into a compact overlay associated with the local Hero, as already required by the approved design.
+
+## TASK ID: UX2.0VIS-09A — Move Persistent Local Judgement Into the Hero Overlay
+STATUS: PLANNED
+
+Objective: Show the viewer's persistent Judgement cards as a compact overlay associated with the local Hero, without a permanent independent Dock Judgement panel.
+Observed gap: `LocalPlayerDock` currently renders `player.judgementCards` in `.local-judgement-panel`, a dedicated third `.local-dock-zones` grid column.
+Why this task is next: VIS-08C is CI-green; this is a concrete, independently testable mismatch with the approved Local Player Dock structure and the remaining persistent-Judgement visual direction.
+Design authority: `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` §§7.7, 7.12, 20; `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.77–0.79, 2.6. Persistent state belongs on the Hero; active Judgement resolution remains in Interaction Stage.
+Current production evidence: The local Dock already receives the viewer's `me` projection and renders its `judgementCards` with physical IDs, `CardFace`, info actions, and `hiddenCardIds`; current CSS reserves a fixed `--judgement-panel-width` third track.
+Files expected in scope: `app/page.tsx`, `app/sequence-overrides.css`, `tests/room-safety-render.test.mjs`, `tests/browser/fixture.jsx`, `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`.
+Implementation requirements: Anchor the existing local Judgement cards compactly to the local Hero portrait; preserve each physical card ID, artwork, inspect affordance, and in-flight hiding; remove the independent panel/third track; keep overlay controls as siblings of, not nested buttons inside, the Hero button; retain Skills-before-Equipment layout and responsive Dock bounds.
+Explicit non-goals: No gameplay, protocol, snapshot, CurrentAction, legality, opponent-zone, active-Stage, or full Hand/Dock redesign; do not add new Judgement selection semantics.
+Forbidden shortcuts: Do not infer Judgement status or legality from timeline/animation; do not duplicate or hide local cards; do not create nested interactive buttons or let the overlay block Hero, Hand, or action controls.
+Required regression tests: Mounted local one-/two-card and empty-zone states; prove cards are anchored to the viewer Hero and rendered once, remain inspectable, and stay within responsive bounds at 1440/650/480px; retain opponent-zone and active Interaction Stage coverage.
+Required local validation: `node --import tsx --test tests/room-safety-render.test.mjs`; focused `tests/browser/ui19.spec.mjs` cases via `tests/browser/layout.config.mjs`; `git diff --check`. No local full suite/build/lint.
+CI acceptance: Exact implementation revision build-and-test and deployment must complete successfully before another task is planned.
+Task acceptance criteria: Persistent local Judgement cards are compact Hero overlays rather than a separate Dock column; empty local Judgement state consumes no overlay content; card identity/inspection and responsive usability remain intact; active Judgement resolution still belongs to Interaction Stage; no authority or gameplay boundary changes.
+Execution boundary: Planning only in this handoff; stop before implementation so the user can switch Agent models.
