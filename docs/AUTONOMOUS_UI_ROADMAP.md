@@ -24,14 +24,13 @@ Do not copy this entire roadmap into working context unless historical reconstru
 ## Current frontier
 
 Latest completed milestone:
-- `UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row`
-- implementation `8eb5499edba1c9907d061039efd98cfe5d3c1042`
-- final tested revision `e15008d42abbdc235b20d8bac26b2405ae250c39`
-- CI run `37195526183`: build-and-test and deploy successful
+- `UX2.0VIS-09C — Preserve Hand Viewport Context Across Card Changes`
+- final tested revision `a5fbc33c06453ee2b34f7c83dbdc13fa1328294c`
+- CI run `37196642543`: build-and-test and deploy/production smoke test successful
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-09C — Preserve Hand Viewport Context Across Card Changes`
+- `UX2.0VIS-10A — Keep the Interaction Stage Inside the Safe Zone at Short Portrait Heights`
 - status: PLANNED
 - current task authority: `HANDOVER.md`
 
@@ -39,7 +38,13 @@ Current handoff:
 
 Completed by Agent; CI green on `e15008d42abbdc235b20d8bac26b2405ae250c39` (run `37195526183`). The implementation keeps 68×102px cards in one layer with a 30px minimum exposure, native horizontal pan, keyboard navigation, edge-card reveal and no document-level horizontal overflow. At 480px with 25 cards, the 376px rail viewport reaches the 788px content extent (412px maximum scroll); at 1440px all 25 fit without scrolling. The 30-card geometry matrix and tap/inspection behavior were covered.
 
-The initial CI run (`37194263323`) exposed that Chromium's `Input.synthesizeScrollGesture` helper did not scroll in the Linux runner at 480px or 650px (268 other browser cases passed). The regression was corrected to use explicit trusted browser touch events for pan and independent ordinary-touch tap/inspection tests; focused full-config 09B browser validation passed 23/23. No product gesture semantics or assertions were weakened. Semantic anchoring across hand membership changes and real-device certification remain unproven/out of scope; see VIS-09C and the release gate respectively.
+The initial CI run (`37194263323`) exposed that Chromium's `Input.synthesizeScrollGesture` helper did not scroll in the Linux runner at 480px or 650px (268 other browser cases passed). The regression was corrected to use explicit trusted browser touch events for pan and independent ordinary-touch tap/inspection tests; focused full-config 09B browser validation passed 23/23. No product gesture semantics or assertions were weakened. Semantic anchoring across hand membership changes was subsequently implemented in VIS-09C; real-device certification remains open at the release gate.
+
+## UX2.0VIS-09C — Preserve Hand Viewport Context Across Card Changes
+
+Completed by Agent; CI green on `a5fbc33c06453ee2b34f7c83dbdc13fa1328294c` (run `37196642543`); build-and-test and deployment/production smoke test succeeded. The local Hand rail snapshots viewer-private rendered physical IDs and viewport-relative positions, preserves a surviving visible anchor through preceding-card removal, falls back to the nearest surviving previously visible card if the anchor is removed, and leaves selection/viewport undisturbed on append. Mounted fixture regressions passed 4/4 at 480px and 650px; targeted ESLint and `git diff --check` passed. No gameplay/server/protocol authority changed. Human Reviewer acceptance remains separate.
+
+For next-task planning, a mounted browser probe found short-height Top Row Interaction Stage overflow: at 480×640, Stage/Dock overlap measured 20px in Dying, 120px in Negation and 108px in Group observer; at 650×700, 53px, 97px and 122px respectively. The 900px-high interaction matrix already tests containment. See current bounded task VIS-10A in `HANDOVER.md`.
 
 ## Durable accepted UI / presentation contracts
 
@@ -74,7 +79,7 @@ The initial CI run (`37194263323`) exposed that Chromium's `Input.synthesizeScro
 
 ## Remaining approved direction
 
-After VIS-09C, inspect actual code before choosing the next bounded task. Expected remaining high-impact areas include:
+After VIS-10A, inspect actual code before choosing the next bounded task. Expected remaining high-impact areas include:
 
 1. final LocalPlayerDock Hero / Skills / Equipment proportions and density, if measurable gaps remain;
 2. representative interaction visual audit across REST, single-target, multi-target, AOE, Negation, Duel, Dying, Judgement, Borrowed Sword, Hero skill, and long guidance;
@@ -97,7 +102,9 @@ The detailed historical ledger below preserves the complete pre-migration HANDOV
 - VIS-07A/B: neutral Group scope density and post-exclusion density correction.
 - VIS-08A/B/C: open Side Column Stage shell, fail-closed Stage focus, Dying metadata deduplication.
 - VIS-09A: persistent local Judgement moved into local Hero overlay.
-- VIS-09B: current planned one-row large-Hand navigation task.
+- VIS-09B: one-row large-Hand navigation and native pan.
+- VIS-09C: viewport anchoring across Hand membership changes.
+- VIS-10A: current planned short-portrait Top Row Stage containment task.
 
 ## Historical ledger migrated from HANDOVER.md
 
