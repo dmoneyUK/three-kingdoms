@@ -516,3 +516,11 @@ Required local validation: `node --import tsx --test tests/room-safety-render.te
 CI acceptance: Exact implementation revision build-and-test and deployment must complete successfully before another task is planned.
 Task acceptance criteria: Persistent local Judgement cards are compact Hero overlays rather than a separate Dock column; empty local Judgement state consumes no overlay content; card identity/inspection and responsive usability remain intact; active Judgement resolution still belongs to Interaction Stage; no authority or gameplay boundary changes.
 Execution boundary: Planning only in this handoff; stop before implementation so the user can switch Agent models.
+
+### VIS-09A IMPLEMENTATION RESULT
+
+Implementation SHA: `59f15192dc580419443f50651325b9ea4f3abe79`.
+Files changed: `app/page.tsx`, `app/sequence-overrides.css`, `tests/room-safety-render.test.mjs`, `tests/browser/fixture.jsx`, `tests/browser/ui19.spec.mjs`.
+Change: Viewer-projected persistent Judgement cards now render once as inspectable siblings over the local Hero; empty state creates no overlay. Removed the dedicated panel and third Dock track. Existing physical IDs, `CardFace`, info controls, and `hiddenCardIds` in-flight hiding remain. Skills/Equipment, Hand, action controls, opponent zones, and active Stage rendering are unchanged; no gameplay, protocol, authority, or selection behavior changed. The user's follow-up authorized implementation after the planning-only model-switch pause; do not start a subsequent task.
+Focused validation: `node --import tsx --test tests/room-safety-render.test.mjs` — 19/19; `node --import tsx --test --test-name-pattern='mounted Judgement' tests/active-skill-interactions.test.mjs` — 3/3; `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-09A|UX2.0VIS-08A|UX2.0VIS-08C' --workers=2` — 18/18, including empty/one/two local cards at 1440/650/480px, card/Hero inspection, no Hand/action overlap, and retained opponent/Stage coverage; `git diff --check` passed. No full test suite, build, or lint was run locally.
+Known gaps: CI and deployment for the pushed implementation revision are pending; Human Reviewer acceptance remains separate. No follow-up task is planned at the user's request.
