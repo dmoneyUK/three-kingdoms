@@ -520,30 +520,111 @@ test("UX2.0VIS-04C REST 480x900 rejects the old flexible-row centre alignment", 
     expect(seat.height).toBe(oldSeats.opponentAnchors[index].height);
   }
 });
+const SIDE_COLUMN_MAPPING = {
+  5: [["right", 2], ["right", 1], ["left", 2], ["left", 1]],
+  6: [["right", 3], ["right", 2], ["right", 1], ["left", 2], ["left", 1]],
+  7: [["right", 3], ["right", 2], ["right", 1], ["left", 3], ["left", 2], ["left", 1]],
+  8: [["right", 4], ["right", 3], ["right", 2], ["right", 1], ["left", 3], ["left", 2], ["left", 1]],
+  9: [["right", 4], ["right", 3], ["right", 2], ["right", 1], ["left", 4], ["left", 3], ["left", 2], ["left", 1]],
+  10: [["right", 5], ["right", 4], ["right", 3], ["right", 2], ["right", 1], ["left", 4], ["left", 3], ["left", 2], ["left", 1]],
+};
 
-// The full-width guidance row consumes vertical dock space; keep checking the
-// unchanged side-column seat rules against the resulting board geometry.
-for (const baseline of [
-  { width: 1440, board: { left: 48, top: 15.890625, width: 1344, height: 498.21875 }, seat: { width: 110.625, height: 58 }, positions: [[295.03125, 235.984375], [911.71875, 65.921875], [1281.375, 235.984375], [295.03125, 65.921875], [1281.375, 65.921875]] },
-  { width: 480, board: { left: 3, top: 4, width: 474, height: 618.25 }, seat: { width: 72.265625, height: 66.015625 }, positions: [[65.796875, 280.109375], [266.65625, 73.03125], [404.734375, 280.109375], [65.796875, 73.03125], [404.734375, 73.03125]] },
-]) {
-  test(`UX2.0VIS-04C ${baseline.width}x900 keeps the 6-player Side Column geometry`, async ({ page }) => {
-    await loadFixture(page, { state: "rest", count: 6, width: baseline.width, height: 900 });
-    const board = page.locator('.player-board[data-seat-topology="side-column"]');
-    const boardBounds = await board.boundingBox();
-    const seats = [...(await geometry(page)).opponentAnchors].sort((left, right) => left.relativeIndex - right.relativeIndex);
-    await expect(board).toHaveCount(1);
-    expect(seats.map(({ relativeIndex }) => relativeIndex)).toEqual([1, 2, 3, 4, 5]);
-    for (const [actual, expected] of [[boardBounds.x, baseline.board.left], [boardBounds.y, baseline.board.top], [boardBounds.width, baseline.board.width], [boardBounds.height, baseline.board.height]]) expect(actual).toBeCloseTo(expected, 0);
-    for (const [index, seat] of seats.entries()) {
-      expect(seat.left).toBeCloseTo(baseline.positions[index][0], 0);
-      expect(seat.top).toBeCloseTo(baseline.positions[index][1], 0);
-      expect(seat.width).toBeCloseTo(baseline.seat.width, 0);
-      expect(seat.height).toBeCloseTo(baseline.seat.height, 0);
-    }
-    const alignments = await board.locator(".opponent-player-card").evaluateAll((elements) => elements.map((element) => getComputedStyle(element).alignSelf));
-    expect(alignments).toEqual(["center", "center", "center", "center", "center"]);
+async function sideColumnGeometry(page) {
+  return page.locator('.player-board[data-seat-topology="side-column"]').evaluate((board) => {
+    const bounds = (element) => {
+      const { x, y, width, height, right, bottom } = element.getBoundingClientRect();
+      return { x, y, width, height, right, bottom };
+    };
+    return {
+      board: bounds(board), dock: bounds(document.querySelector(".local-player-dock")),
+      seats: [...board.querySelectorAll("[data-player-anchor]")].map((element) => ({
+        id: element.dataset.playerAnchor, side: element.dataset.sideColumn, row: Number(element.dataset.sideRow),
+        relativeIndex: Number([...element.classList].find((name) => /^player-square-\d+$/.test(name)).replace("player-square-", "")),
+        gridColumn: getComputedStyle(element).gridColumnStart, ...bounds(element),
+      })),
+      overflow: document.documentElement.scrollWidth > window.innerWidth,
+    };
   });
+}
+
+for (const width of [480, 650, 1440]) {
+  for (const count of [5, 6, 7, 8, 9, 10]) {
+    test(`UX2.0VIS-05A ${count} players at ${width}x900 have explicit side columns and a seat-free corridor`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "rest", count, width, height: 900 });
+      const result = await sideColumnGeometry(page);
+      expect(result.seats).toHaveLength(count - 1);
+      expect(result.seats.map(({ relativeIndex, id, side, row }) => ({ relativeIndex, id, side, row }))).toEqual(
+        SIDE_COLUMN_MAPPING[count].map(([side, row], index) => ({ relativeIndex: index + 1, id: `p${index + 2}`, side, row }))
+      );
+      const left30 = result.board.x + result.board.width * .30;
+      const right70 = result.board.x + result.board.width * .70;
+      for (const side of ["left", "right"]) {
+        const seats = result.seats.filter((seat) => seat.side === side).sort((a, b) => a.row - b.row);
+        expect(Math.max(...seats.map(({ x }) => x)) - Math.min(...seats.map(({ x }) => x))).toBeLessThanOrEqual(4);
+        for (let index = 1; index < seats.length; index += 1) expect(seats[index - 1].bottom).toBeLessThanOrEqual(seats[index].y);
+        for (const seat of seats) {
+          expect(seat.gridColumn).toBe(side === "left" ? "1" : "3");
+          if (side === "left") expect(seat.right).toBeLessThanOrEqual(left30 + 4);
+          else expect(seat.x).toBeGreaterThanOrEqual(right70 - 4);
+        }
+      }
+      for (const seat of result.seats) {
+        expect(seat.x).toBeGreaterThanOrEqual(result.board.x - 4);
+        expect(seat.y).toBeGreaterThanOrEqual(result.board.y - 4);
+        expect(seat.right).toBeLessThanOrEqual(result.board.right + 4);
+        expect(seat.bottom).toBeLessThanOrEqual(result.board.bottom + 4);
+        expect(seat.bottom).toBeLessThanOrEqual(result.dock.y - 6);
+      }
+      for (let a = 0; a < result.seats.length; a += 1) for (let b = a + 1; b < result.seats.length; b += 1) {
+        const first = result.seats[a]; const second = result.seats[b];
+        expect(Math.max(0, Math.min(first.right, second.right) - Math.max(first.x, second.x)) * Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.y, second.y))).toBe(0);
+      }
+      expect(result.overflow).toBe(false);
+      await testInfo.attach("side-column-geometry", { body: JSON.stringify({ count, width, left30, right70, ...result }), contentType: "application/json" });
+    });
+  }
+}
+
+for (const [count, left, right] of [
+  [5, ["p5", "p4"], ["p3", "p2"]],
+  [7, ["p7", "p6", "p5"], ["p4", "p3", "p2"]],
+  [10, ["p10", "p9", "p8", "p7"], ["p6", "p5", "p4", "p3", "p2"]],
+]) {
+  test(`UX2.0VIS-05A published ${count}-player example matches clockwise topology`, async ({ page }) => {
+    await loadFixture(page, { state: "rest", count, width: 480, height: 900 });
+    const { seats } = await sideColumnGeometry(page);
+    const order = (side) => seats.filter((seat) => seat.side === side).sort((a, b) => a.y - b.y).map(({ id }) => id);
+    expect(order("left")).toEqual(left);
+    expect(order("right")).toEqual(right);
+    if (count === 10) expect(seats.filter(({ side, row }) => side === "left" && row === 5)).toEqual([]);
+  });
+}
+
+for (const width of [480, 1440]) {
+  test(`UX2.0VIS-05A ${width}px Inspect preserves side and row`, async ({ page }) => {
+    await loadFixture(page, { state: "rest", count: 6, width, height: 900 });
+    const before = await sideColumnGeometry(page);
+    await page.locator('[data-player-anchor="p4"] .opponent-hero-target').click();
+    await expect(page.getByRole("dialog", { name: "Player 4 opponent inspection" })).toBeVisible();
+    await page.getByRole("button", { name: "Close Player 4 inspection" }).click();
+    expect((await sideColumnGeometry(page)).seats).toEqual(before.seats);
+  });
+  for (const count of [2, 3, 4]) {
+    test(`UX2.0VIS-05A ${count} players at ${width}px retain Top Row and action slots`, async ({ page }) => {
+      await loadFixture(page, { state: "rest", count, width, height: 900 });
+      const board = page.locator('.player-board[data-seat-topology="top-row"]');
+      await expect(board).toHaveCount(1);
+      await expect(board.locator("[data-side-column], [data-side-row]")).toHaveCount(0);
+      const result = await interactionGeometry(page);
+      const top = (await board.boundingBox()).y;
+      for (const seat of result.opponents) expect(seat.top - top).toBeGreaterThanOrEqual(0);
+      for (const seat of result.opponents) expect(seat.top - top).toBeLessThanOrEqual(4);
+      const clearance = result.safeZone.top - Math.max(...result.opponents.map(({ bottom }) => bottom));
+      expect(clearance).toBeGreaterThanOrEqual(6);
+      expect(clearance).toBeLessThanOrEqual(24);
+      for (const slot of ["cancel", "primary", "decline"]) await expect(page.locator(`[data-action-slot="${slot}"]`)).toHaveCount(1);
+    });
+  }
 }
 
 for (const { width, height, counts } of MATRIX) {
