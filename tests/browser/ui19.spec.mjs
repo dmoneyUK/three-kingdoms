@@ -1012,8 +1012,13 @@ for (const { width, height } of TOPOLOGY_MATRIX) {
         expect(result.stageBody, "desktop stage body geometry").not.toBeNull();
         expect(result.stageBody.display, "desktop stage body uses the horizontal grid composition").toBe("grid");
         expect(result.stageBody.gridTemplateColumns.trim().split(/\s+/).length, "desktop stage body resolves to multiple columns").toBeGreaterThanOrEqual(2);
-        expect(result.stageRegions, "stable hero, event, and meta regions remain mounted").toHaveLength(3);
-        expect(result.stageRegions.every((region) => region.insideStage), "all three stable regions remain inside the Interaction Stage DOM").toBe(true);
+        const expectedRegionCount = state === "dying" ? 2 : 3;
+        expect(result.stageRegions, "all applicable stable regions remain mounted").toHaveLength(expectedRegionCount);
+        expect(result.stageRegions.every((region) => region.insideStage), "all mounted stable regions remain inside the Interaction Stage DOM").toBe(true);
+        expect(
+          result.stageRegions.some((region) => region.className === "interaction-stage-meta-region"),
+          "Dying omits the empty duplicate metadata region while other states retain it",
+        ).toBe(state !== "dying");
         const visibleRegions = result.stageRegions.filter((region) => region.visible && region.hasContent);
         for (const region of visibleRegions) {
           expect(region.bounds.left, `${region.className} stays inside the stage`).toBeGreaterThanOrEqual(result.stage.left - 4);
@@ -1117,9 +1122,14 @@ for (const { width, height, minimumPortrait } of HERO_FOCUS_VIEWPORTS) {
       expect(result.stageDockOverlap, "Stage remains unobstructed by the LocalPlayerDock").toBe(0);
       expect(result.focusDockOverlap, "Hero Focus remains unobstructed by the LocalPlayerDock").toBe(0);
       expect(result.scrollWidth, "enlarged Hero Focus introduces no page overflow").toBeLessThanOrEqual(result.viewportWidth);
+      if (state === "dying") {
+        expect(result.metaRegion, "empty duplicate Dying metadata is omitted").toBeNull();
+      } else {
+        expect(result.metaRegion, "non-Dying metadata remains available").not.toBeNull();
+      }
       if (width > 650) {
         if (result.eventRegionVisible) expect(result.heroEventOverlap, "Hero and visible Event regions do not overlap").toBe(0);
-        expect(result.heroMetaOverlap, "Hero and Meta regions do not overlap").toBe(0);
+        if (result.metaRegion) expect(result.heroMetaOverlap, "Hero and Meta regions do not overlap").toBe(0);
       }
     });
   }
@@ -1165,7 +1175,10 @@ for (const { width, height, minimumPortrait } of HERO_FOCUS_VIEWPORTS) {
       await expect(stage.locator(":scope > header"), "the existing Stage header remains visible").toBeVisible();
       await expect(page.locator(".interaction-stage-hero-region"), "Hero region hook remains mounted once").toHaveCount(1);
       await expect(page.locator(".interaction-stage-event-region"), "Event region hook remains mounted once").toHaveCount(1);
-      await expect(page.locator(".interaction-stage-meta-region"), "Meta region hook remains mounted once").toHaveCount(1);
+      await expect(
+        page.locator(".interaction-stage-meta-region"),
+        state === "dying" ? "empty duplicate Dying metadata is omitted" : "non-Dying Meta region remains mounted once",
+      ).toHaveCount(state === "dying" ? 0 : 1);
       await assertVisible(page.locator(".local-player-dock"), "local dock");
       if (state === "negation") await expect(page.locator('[data-reaction-chain="proven"]')).toBeVisible();
       if (state === "dying") await expect(page.locator('[data-dying-handoff="proven"]')).toBeVisible();

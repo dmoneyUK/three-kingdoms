@@ -484,3 +484,8 @@ Change: In Dying only, the SOURCE/FOCUS strip is omitted when both role identiti
 Focused validation: `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-08C|UX2.0VIS-05B 6 players dying|UX2.0VIS-08A dying' --workers=2` — 9/9 across desktop/mobile, retained safe-zone/hit and open-shell checks; `git diff --check` passed. The initial browser attempt caught a missing JSX conditional brace; fixed before the passing rerun.
 Known gaps: This closes the Dying duplicate footer only; remaining non-Dying metadata polish and final Dock/hand work remain. Group progress/order/outcomes remain deferred. No full local suite/build/lint was run.
 CI pending: push implementation and this result, then wait for Actions on the exact resulting revision before selecting another task.
+
+### VIS-08C CI failure correction — pending retry
+
+CI run `37189288243`, build-and-test job `111397913546`, failed on five UI-19 assertions that still required the Dying `.interaction-stage-meta-region` hook. These assertions contradicted the planned empty-wrapper omission; no production defect was reported. Updated the VIS-02-FIX1/VIS-03B/VIS-03C checks to assert omission for Dying while retaining the mounted Hero/Event, handoff visibility, and geometry/overlap checks; non-Dying metadata remains required. No production files changed for this CI correction.
+Focused validation: relevant Dying cases plus VIS-08C and retained VIS-05B/VIS-08A checks — 18/18 passed; `git diff --check` passed. Awaiting CI on the corrected test revision.
