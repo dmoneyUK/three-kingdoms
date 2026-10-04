@@ -43,6 +43,10 @@ const VIS_04C_VIEWPORTS = [
   { width: 480, height: 900, boardInset: 55, seat: { width: 100, height: 78 }, seatLefts: [15.5, 190, 364.5] },
 ];
 
+function expectedVis12bSeatWidth(boardWidth) {
+  return Math.min(146, (boardWidth - 18) / 3);
+}
+
 async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize, equipmentCase, hero }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
@@ -801,6 +805,7 @@ for (const viewport of VIS_04B_VIEWPORTS) {
       await loadFixture(page, { state: "rest", count, width: viewport.width, height: viewport.height });
       const seats = await geometry(page);
       const layout = await interactionGeometry(page);
+      const board = await page.locator('.player-board[data-seat-topology="top-row"]').boundingBox();
       const orderedSeats = [...seats.opponentAnchors].sort((left, right) => left.relativeIndex - right.relativeIndex);
       const maxOpponentBottom = Math.max(...orderedSeats.map(({ bottom }) => bottom));
       const clearance = layout.safeZone.top - maxOpponentBottom;
@@ -825,7 +830,15 @@ for (const viewport of VIS_04B_VIEWPORTS) {
       expect(orderedSeats.map(({ relativeIndex }) => relativeIndex)).toEqual(Array.from({ length: count - 1 }, (_, index) => index + 1));
       for (let index = 0; index < orderedSeats.length; index += 1) {
         const seat = orderedSeats[index];
-        expect(seat.width).toBe(viewport.seat.width);
+        const expectedWidth = count === 4 && viewport.width <= 650
+          ? expectedVis12bSeatWidth(board.width)
+          : viewport.seat.width;
+        if (count === 4 && viewport.width <= 650) {
+          expect(seat.width).toBeGreaterThanOrEqual(136);
+          expect(seat.width).toBeLessThanOrEqual(146);
+        } else {
+          expect(seat.width).toBeCloseTo(expectedWidth, 1);
+        }
         expect(seat.height).toBe(viewport.seat.height);
         if (index > 0) expect(seat.left + seat.width / 2).toBeGreaterThan(orderedSeats[index - 1].left + orderedSeats[index - 1].width / 2);
       }
@@ -917,8 +930,7 @@ for (const viewport of VIS_04C_VIEWPORTS) {
       const layout = await interactionGeometry(page);
       const anchors = await geometry(page);
       const seats = [...anchors.opponentAnchors].sort((left, right) => left.relativeIndex - right.relativeIndex);
-      const expectedLefts = count === 2 ? [viewport.seatLefts[1]] : count === 3 ? [viewport.seatLefts[0], viewport.seatLefts[2]] : viewport.seatLefts;
-
+      const expectedLefts = count === 2 ? [viewport.seatLefts[1]] : count === 3 ? [viewport.seatLefts[0], viewport.seatLefts[2]] : [...viewport.seatLefts];
       expect(board.y - layout.playTable.top).toBeCloseTo(viewport.boardInset, 0);
       expect(seats).toHaveLength(count - 1);
       expect(seats.map(({ relativeIndex }) => relativeIndex)).toEqual(Array.from({ length: count - 1 }, (_, index) => index + 1));
@@ -927,8 +939,18 @@ for (const viewport of VIS_04C_VIEWPORTS) {
       for (const [index, seat] of seats.entries()) {
         expect(seat.top - board.y, `seat ${index + 1} starts in the top band`).toBeGreaterThanOrEqual(0);
         expect(seat.top - board.y, `seat ${index + 1} starts in the top band`).toBeLessThanOrEqual(4);
-        expect(seat.left, `seat ${index + 1} keeps its X anchor`).toBeCloseTo(expectedLefts[index], 0);
-        expect(seat.width).toBe(viewport.seat.width);
+        const expectedWidth = count === 4 && viewport.width <= 650
+          ? expectedVis12bSeatWidth(board.width)
+          : viewport.seat.width;
+        if (count === 4 && viewport.width <= 650) {
+          const trackWidth = (board.width - 18) / 3;
+          const expectedLeft = board.x + index * (trackWidth + 9) + (trackWidth - expectedWidth) / 2;
+          expect(seat.left, `seat ${index + 1} follows its centered responsive track`).toBeCloseTo(expectedLeft, 0);
+          expect(seat.width).toBeCloseTo(expectedWidth, 1);
+        } else {
+          expect(seat.left, `seat ${index + 1} keeps its X anchor`).toBeCloseTo(expectedLefts[index], 0);
+          expect(seat.width).toBeCloseTo(expectedWidth, 1);
+        }
         expect(seat.height).toBe(viewport.seat.height);
       }
       const clearance = layout.safeZone.top - Math.max(...seats.map(({ bottom }) => bottom));
@@ -1237,6 +1259,56 @@ for (const width of [480, 650]) {
     await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
     await expect(page.locator('[data-player-anchor="p3"]')).toHaveClass(/selected-target/);
     await expect(page.locator(".borrowed-sword-notice")).toContainText("Target selected");
+  });
+}
+
+for (const width of [390, 480, 650]) {
+  test(`UX2.0VIS-12B four-player Top Row seats follow the Hero-first width at ${width}px`, async ({ page }, testInfo) => {
+    await loadFixture(page, { state: "interaction", count: 4, width, height: 900 });
+    const layout = await interactionGeometry(page);
+    const board = await page.locator('.player-board[data-seat-topology="top-row"]').boundingBox();
+    const seats = [...layout.opponents].sort((left, right) => left.left - right.left);
+    const geometryResult = await geometry(page);
+    const expectedWidth = expectedVis12bSeatWidth(board.width);
+
+    expect(seats).toHaveLength(3);
+    expect(Math.max(...seats.map(({ top }) => top)) - Math.min(...seats.map(({ top }) => top))).toBeLessThanOrEqual(4);
+    expect([...geometryResult.opponentAnchors].sort((left, right) => left.relativeIndex - right.relativeIndex).map(({ relativeIndex }) => relativeIndex)).toEqual([1, 2, 3]);
+    for (const [index, seat] of seats.entries()) {
+      expect(seat.width, `seat ${index + 1} follows the responsive width`).toBeCloseTo(expectedWidth, 1);
+      expect(seat.bottom, `seat ${index + 1} clears the active Interaction Stage`).toBeLessThanOrEqual(layout.stage.top - 6);
+      if (index > 0) expect(seat.left - seats[index - 1].right, `seat ${index + 1} remains separated`).toBeGreaterThanOrEqual(0);
+    }
+    if (width === 480) {
+      for (const seat of seats) expect(seat.width).toBeGreaterThanOrEqual(136);
+      for (const seat of seats) expect(seat.width).toBeLessThanOrEqual(146);
+      expect(seats[0].left).toBeGreaterThanOrEqual(12);
+      expect(width - seats.at(-1).right).toBeGreaterThanOrEqual(12);
+      for (let index = 1; index < seats.length; index += 1) {
+        const gap = seats[index].left - seats[index - 1].right;
+        expect(gap, "480px cards have the approved compact gap").toBeGreaterThanOrEqual(8);
+        expect(gap, "480px cards have the approved compact gap").toBeLessThanOrEqual(10);
+      }
+      await testInfo.attach("vis-12b-four-player-top-row-480", {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+    }
+    if (width === 650) for (const seat of seats) expect(seat.width).toBeCloseTo(146, 0);
+
+    expect(geometryResult.severeOpponentOverlaps).toEqual([]);
+    expect(geometryResult.scrollWidth).toBeLessThanOrEqual(width);
+    for (const playerId of ["p2", "p3", "p4"]) {
+      const presentation = await opponentSeatPresentation(page, playerId);
+      expect(presentation.topology).toBe("top-row");
+      expect(presentation.imageLoaded).toBe(true);
+      expect(presentation.targetHitSafe).toBe(true);
+      expect(presentation.playerNameFits).toBe(true);
+      expect(presentation.heroNameFits).toBe(true);
+      expect(presentation.art.width).toBeGreaterThanOrEqual(39);
+      await assertVisible(page.locator(`[data-player-anchor="${playerId}"] .player-hp`), `${playerId} HP`);
+      await assertVisible(page.locator(`[data-player-anchor="${playerId}"] .opponent-hand-footer .player-hand-count`), `${playerId} Hand count`);
+    }
   });
 }
 

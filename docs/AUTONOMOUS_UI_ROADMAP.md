@@ -24,13 +24,13 @@ Do not copy this entire roadmap into working context unless historical reconstru
 ## Current frontier
 
 Latest completed milestone:
-- `UX2.0VIS-11A — Keep the Interaction Stage Inside the Safe Zone on Narrow Short Portrait Screens`
-- final tested revision `4e8dcb3ca10af5532efc5182bb3ae8b4e37dc708`
-- CI run `37207569443`: build-and-test and deploy successful
+- `UX2.0VIS-12A — Make Local Hero Skills Readable, Full-Label, and Easy to Hit`
+- final tested revision `ee77bbecafb2bf7e47a7bdd4319cedba5a81527e`
+- CI run `37213322962`: build-and-test and deploy successful
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-11B — Place the Mobile Primary Action in the Centre-Right Thumb Zone`
+- `UX2.0VIS-12B — Restore Hero-First Width for Mobile Top-Row Opponent Seats`
 - status: IMPLEMENTED — CI PENDING
 - current task authority: `HANDOVER.md`
 
@@ -65,6 +65,18 @@ Completed by Agent; tested revision `4e8dcb3ca10af5532efc5182bb3ae8b4e37dc708`, 
 ## UX2.0VIS-11B — Place the Mobile Primary Action in the Centre-Right Thumb Zone
 
 Implemented; exact-revision CI pending. The existing conditional Cancel / Primary / authoritative Decline controls now use Cancel → Primary → Decline DOM/keyboard order without changing any visibility predicate, enabled state, handler, or payload. The responsive action grid puts Primary at 55–70% of the usable action-bar width on 360px and 480px phones, anchors Decline at the right edge with a ≥32px safety gutter and ≥8px viewport-edge margin, and keeps contextual Cancel at the left with separation. The old Primary-left summary in autonomous workflow §§7.8/8 now matches design §2.7. Representative 480px target+Confirm+Cancel, response+Skip, and Play+End screenshots were reviewed. Focused browser validation passed 13/13 (six local action flows at 360/480/1440 plus retained 320/360 short-portrait containment); targeted ESLint passed. No full local suite/build/lint. Human Reviewer acceptance remains separate.
+
+## UX2.0VIS-12A — Make Local Hero Skills Readable, Full-Label, and Easy to Hit
+
+Completed by Agent; final tested revision `ee77bbecafb2bf7e47a7bdd4319cedba5a81527e`, CI run `37213322962` — build-and-test and deploy succeeded. Local skill controls are content-sized horizontal targets (minimum 44×44px, maximum 56px high), preserve whole-word labels down to 320px, and remain left of Equipment. Six viewport regressions cover labels, hit geometry, ordering/separation and overflow. Existing VIS-06B skills and VIS-10A/VIS-11A short-portrait Stage containment remained green in the 30/30 supplemental focused run; targeted ESLint passed. No full local suite/build/lint. Human Reviewer acceptance remains separate.
+
+## UX2.0VIS-12B — Restore Hero-First Width for Mobile Top-Row Opponent Seats
+
+Planned after a fresh §19 review. Design §1.5.1 calls for about 136–146px seat widths at the 480px four-player benchmark, but current computed/rendered width is about 100px. Width-only experimentation measured the outer seats extending 5.5px beyond the viewport because the old center anchors were fixed. The design resolves this: use a three-track row with 12–16px outer margins and 8–10px gaps at 480px. Keep cards capped at 146px through 650px and responsive at 390px. Preserve relative order, one-row/vertical anchors, Stage clearance, Dock separation, public identity/equipment, Inspect/target hits and no document overflow. Only update affected VIS-04A/B/C geometry contracts; no Side Column or Hero-crop redesign.
+
+Implementation update: the mobile 4-player Top Row now uses three equal tracks, a 9px gap and a responsive 8–16px inset, with each card capped at 146px. At 480px the mounted regression measures 146px cards, 12px outer margins and 9px gaps; at 390px cards are ~117.5px; at 650px the 146px cap applies. A width-only attempt produced measured -5.5px edge clipping and was replaced by the approved track/margin composition. Updated affected VIS-04B/C assertions. Focused browser matrix passed 74/74; targeted ESLint passed; 480px screenshot reviewed. No full local suite/build/lint. Exact-revision CI pending.
+
+Approved design findings deferred from VIS-12B: ordinary Deck/Discard should remain compact, lower contrast and toward the battlefield edge/background (§0.91.4); validate upper-body Hero crops across Top Row, Side Column, local Hero and Stage Focus (§1.5); complete a representative interaction visual audit and final mobile gate after bounded layout fixes. These remain separate planning candidates, not extra scope for VIS-12B.
 
 ## Durable accepted UI / presentation contracts
 

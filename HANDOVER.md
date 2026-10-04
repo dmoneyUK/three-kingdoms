@@ -75,3 +75,37 @@ Stop condition: if 320px cannot retain two 44×44px controls, full names without
 Remote design/workflow refresh during VIS-12A: fast-forwarded from `747eb06` to `b32fbb6` after finding three reviewer commits. Reviewed the full design/workflow diff, including mobile composition and Stage layering (§§0.91.1–0.91.5), Hero-art crop (§1.5 / §2.3), and Direct-Reversal-First control semantics (§§0.89 / 8). None changes this bounded skill-control task or authorizes adding Stage/crop/control-semantic changes here. Keep those mobile Stage and Hero-art requirements visible for later independent planning.
 
 Supplemental focused validation after the remote design refresh: VIS-12A + existing VIS-06B skill behavior + VIS-10A/VIS-11A short-portrait Stage containment passed 30/30; targeted ESLint on `tests/browser/ui19.spec.mjs` passed. No full suite/build/lint was run.
+
+### UX2.0VIS-12A — CI closure
+
+Status: `COMPLETED BY AGENT — CI GREEN`  
+Tested revision: `ee77bbecafb2bf7e47a7bdd4319cedba5a81527e`  
+CI run: [37213322962](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37213322962) — build-and-test job `111468919876` and deploy job `111470033329` both succeeded. No CI failure fixes required. Human Reviewer acceptance remains separate.
+
+### UX2.0VIS-12B — Restore Hero-First Width for Mobile Top-Row Opponent Seats
+
+Status: `IMPLEMENTED — CI PENDING`
+
+Planning gate: all five §19 checks passed after fetching `origin/ux-v2` and reviewing current workflow §§19–20 and design §§0.91.1–0.91.5, 1.5–1.5.2, 2.3 and 2.7. The approved 4-player Top Row benchmark is about 136–146px per opponent card at 480px; the current rendered cards are about 100px. The 480px fixture screenshot and VIS-04B/C geometry tests prove the measurable gap.
+
+Objective: Increase only the three opponent seats in the 4-player mobile Top Row to the approved Hero-first width and align them to the approved compact row geometry.
+
+Requirements:
+- At 480px, each of the three actually rendered opponent cards measures 136–146px with about 12–16px outer margins and 8–10px gaps; at 390px they remain contained and non-overlapping; at 650px widths stay capped at 146px.
+- Keep the accepted one-row order and vertical anchors; adjust only the horizontal tracks/outer anchors as needed to achieve the approved margins and gaps. Preserve current seat height, Stage clearance, local Dock separation, Hero/identity/HP/Hand/equipment visibility, Inspect and target hit behavior, and no document-level horizontal overflow.
+- Update stale VIS-04A/B/C width/position expectations only where this deliberate width change requires it; retain unchanged 2-/3-player Top Row and Side Column behavior.
+- Use only the rendered 4-player opponent seats for density/geometry checks. Do not infer participant density from nominal table size or excluded viewer/primary/source roles.
+
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.91.1, 0.91.5, 1.5, 1.5.2; workflow §§19–20. Existing public seat projections and fixed relative seat classes remain authoritative.
+
+Expected scope: `app/sequence-overrides.css`, focused `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`, and `docs/AUTONOMOUS_UI_ROADMAP.md`.
+
+Non-goals: no change to seat topology/order semantics, Side Column dimensions, Hero crop focal points/art assets, equipment meaning, Interaction Stage/Deck/Discard placement, controls, gameplay, private projections, or server authority.
+
+Focused validation: mounted 4-player Top Row browser coverage at 390/480/650px, plus only affected VIS-04A/B/C and VIS-10C checks; inspect representative screenshots. No local full suite/build/lint. Push the change and exact-revision CI evidence per autonomous workflow; do not plan another task until that CI run is green.
+
+Stop condition: if the 480px width target cannot coexist with the approved same-row, Safe Zone, and no-overflow constraints without changing another accepted composition, record measured geometry and stop with `BLOCKED — HUMAN REVIEW REQUIRED`.
+
+Implementation result: limited the responsive three-track change to the 4-player mobile Top Row. At 480px, measured seats are 146px wide with 12px outer margins and 9px gaps; widths contract to about 117.5px at 390px and cap at 146px at 650px. Seat height and vertical placement are unchanged. Updated only affected VIS-04B/C geometry expectations and added 390/480/650 mounted regressions for bounds, Stage clearance, Hero art, identity, HP/Hand visibility, target hits, and document overflow. The initial width-only experiment exposed 5.5px edge clipping; the approved three-track margin/gap model fixed it. Reviewed the 480px screenshot. No gameplay, private projection, control, Side Column, or Hero-crop changes.
+
+Focused validation: `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-12B|UX2.0VIS-04A|UX2.0VIS-04B|UX2.0VIS-04C|UX2.0VIS-10C Top Row' --workers=2` — 74/74 passed; the three VIS-12B cases also passed separately. `npx eslint tests/browser/ui19.spec.mjs` passed. No local full suite/build/lint. Commit, push, and exact-revision CI are pending.

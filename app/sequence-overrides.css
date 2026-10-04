@@ -2095,3 +2095,20 @@
     font-size: 20px;
   }
 }
+
+/* UX2.0VIS-12B: honor the approved four-player Hero-first phone benchmark.
+   Equal tracks provide the 480px margins/gaps without clipping; seat order and
+   vertical safe-zone geometry stay fixed while horizontal anchors adapt. */
+@media (max-width: 650px) {
+  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] {
+    inset-inline: clamp(8px, 2.5vw, 16px);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] > .opponent-player-card {
+    width: min(100%, 146px);
+    max-width: 146px;
+    justify-self: center;
+  }
+}
