@@ -2734,7 +2734,7 @@ It remains the smallest major visual region but is structurally protected:
 
 Its compact size must not be confused with low gameplay importance.
 
-The established Cancel / Confirm / Skip semantics remain unchanged.
+The semantic distinction remains strict: Confirm commits, Skip/Decline is authoritative gameplay, and Cancel is only a contextual reset for unsubmitted local input. Cancel is not a permanent third slot.
 
 ### 0.90 Responsive pressure must preserve the composition
 
@@ -2809,6 +2809,134 @@ Hand = right main
 Guidance + Actions = bottom
 Judgement = on Hero
 ~~~
+
+### 0.91.1 Mobile portrait visual proportion guide
+
+Use a real narrow/tall phone viewport as the primary composition reference. A
+480 CSS-pixel portrait width is the main visual benchmark; the same structure
+must remain coherent from roughly 390–650 CSS pixels without scaling the whole
+desktop surface.
+
+The following are **proportion guides, not fixed-height allocations**. Content,
+safe-area insets and authoritative interaction complexity may move the exact
+boundaries:
+
+~~~text
+Opponent seat region        about 15–18% of usable game height
+Interaction Stage           about 40–45%
+Guidance / requirement      about 6–7%
+Local Hero/Skills/Hand      about 25–28%
+Action controls             about 7–8%
+~~~
+
+The critical invariant is the hierarchy, not the arithmetic. Do not force each
+region to consume its nominal share when it has little content. In particular,
+the Interaction Stage is allowed to contain substantial empty battlefield
+space.
+
+Never achieve these proportions with `transform: scale(...)`, viewport-wide
+zooming, or a continuously shrinking desktop layout.
+
+### 0.91.2 Interaction Stage must breathe
+
+The Interaction Stage is an **event-focus area**, not a dashboard that must be
+filled.
+
+When the current event only needs a source, an active card/effect and a target,
+render only those elements and leave the remaining battlefield visible. Empty
+space is intentional because it separates opponent seats, the active event and
+the Local Player Dock.
+
+For a representative 480px portrait layout, a normal single-target composition
+may use a centred content width around 360–410px (or approximately 88% of the
+safe Stage width) rather than stretching every child to 100%.
+
+Useful visual-size starting ranges, subject to real-art validation:
+
+- ordinary Source Hero: about 72–88px wide;
+- active card/effect: about 86–104px wide;
+- ordinary Target Hero: about 72–88px wide;
+- truly dominant Hero Focus, such as a Dying subject: about 110–130px wide.
+
+These are composition targets, not gameplay constants or mandatory hard-coded
+breakpoints.
+
+Participant metadata must not compete with the art. Prefer:
+
+- HP as a compact overlay/badge on the Hero image;
+- Hero name as one narrow line above/below the image;
+- secondary player identity as smaller text only when useful;
+- omission of redundant prose such as `Current participant: X` when the same
+  proven fact is already unambiguously communicated by the Hero Focus label and
+  visual treatment.
+
+Do not remove distinct semantic facts merely to create space. Deduplicate only
+when the same authoritative identity/fact is already visible elsewhere.
+
+### 0.91.3 Battlefield layering and active-card visibility
+
+The current public event card/effect and Hero Focus must remain fully readable.
+Decorative darkness may reduce background contrast, but it must never cover the
+active content.
+
+Use the conceptual layer order:
+
+~~~text
+1. table / battlefield background
+2. optional vignette or background dimming
+3. source / target participant art
+4. active event card / dominant Hero Focus
+5. compact labels, badges and state markers
+6. an explicitly opened tooltip / Inspect surface
+~~~
+
+A permanent or incidental dark rectangle, pseudo-element, backdrop, gradient or
+modal layer must not sit above layer 4 and obscure the face of the active card
+or Hero.
+
+Do not "solve" contrast by putting an opaque or strongly translucent black panel
+over the current card. If background separation is needed, dim the background
+behind the focus or use a local outline/glow/surface around the focus.
+
+### 0.91.4 Deck / Discard and secondary-board hierarchy
+
+Deck and Discard are persistent game state but are normally secondary to the
+current interaction.
+
+Default state:
+
+- keep them compact and toward the edge/background of the battlefield;
+- use lower visual contrast than the active Source/Card/Target composition;
+- do not let them overlap or sit in front of Hero Focus or the active event
+  card;
+- do not enlarge them merely to consume unused Stage space.
+
+They may temporarily gain prominence only when the current authoritative event
+actually concerns drawing, revealing, Judgement, discard settlement or another
+deck/discard interaction.
+
+### 0.91.5 Responsive compression priority
+
+When portrait space becomes tight, compress in this order:
+
+1. decorative padding/chrome;
+2. empty gaps that are larger than the minimum breathing room;
+3. secondary labels and explanatory copy;
+4. secondary player-name text;
+5. Equipment spacing;
+6. duplicated/redundant metadata wording;
+7. only after those, reduce Hero/Hand presentation within the already validated
+   minimums.
+
+Do **not** begin by shrinking:
+
+- recognizable Hero artwork;
+- Hand-card readability/exposed width;
+- the semantic Primary action touch target;
+- HP readability;
+- public Equipment recognition required for target decisions.
+
+This priority applies to both Top Row and Side Column layouts.
 
 
 ## 0.92 UX2.0B review gate — projector foundation is not yet identity evidence
@@ -3082,6 +3210,47 @@ This same upper-body crop principle applies to:
 Larger views may reveal more torso/background, but they should preserve the same recognizable focal point so the Hero looks like the same character when moving between seat thumbnail, local Dock, Inspect, and Interaction Stage.
 
 Visual validation must reject a crop where the source image technically renders but the Hero face/upper body is too small to identify quickly.
+
+#### Opponent-card internal composition
+
+For a compact opponent seat, the Hero image is the dominant visual area. Use
+the following as a starting proportion:
+
+~~~text
+Hero artwork              about 62–68%
+Hero-name strip           about 14–17%
+Equipment + hand summary  about 18–21%
+~~~
+
+HP belongs on top of the Hero image as a compact badge/overlay rather than
+reserving a separate text row.
+
+At the 480px Top Row benchmark for a 4-player game (three opponent seats), start
+with approximately 12–16px outer board margins, 8–10px gaps and opponent cards
+around 136–146px wide. At wider phone/tablet widths, cap growth rather than
+turning the seat into a large status panel; a rule such as
+`clamp(132px, 29vw, 168px)` is a reasonable implementation starting point,
+subject to measured containment.
+
+For Side Column mode, prefer a narrow portrait seat around 74–96px wide and
+108–128px high at mobile sizes, while keeping the same information hierarchy.
+
+The exact dimensions may vary with the real viewport, but these structural
+rules are mandatory:
+
+- do not allocate a large lower panel merely to write `HAND CARDS 4`;
+- keep Hero name to one compact line; long labels may truncate;
+- player/test identity is secondary to Hero identity and must not consume more
+  vertical space than the Hero name;
+- show concealed Hand count as a small icon + number in the lower strip;
+- show only occupied public Equipment slots; empty slots consume little or no
+  permanent space;
+- opponent seat height must not grow because more Equipment becomes occupied;
+- target/turn/decision states use borders, badges or compact markers rather than
+  stealing the Hero-art area.
+
+The result must read first as **which Hero is this?**, then as **HP / public
+Equipment / Hand count**, not the reverse.
 
 ### 1.5.1 Public Equipment at a glance
 
@@ -4095,8 +4264,17 @@ When the local player selects a card or skill requiring one target:
 - Clicking a different legal opponent replaces the old target immediately.
 - The previous thumbnail loses selection and the Interaction Stage switches to the new target.
 - Confirm remains explicit; selecting the target must not auto-submit.
-- Cancel must always be available before submission.
-- Re-clicking the selected card / skill may cancel as a shortcut, but must not be the only cancellation method.
+- **Direct reversal is the default cancellation UX before commit:** re-clicking
+  the selected origin card or Hero Skill cancels the whole unsubmitted local
+  selection session and clears dependent targets.
+- Re-clicking a selected target only deselects/replaces that target; it does not
+  imply that an already committed card/effect was undone.
+- A separate Cancel button is contextual, not mandatory. Show it only when the
+  unsubmitted flow is complex and the origin control is not practically
+  reachable/visible enough to provide a reliable direct reversal.
+- Once the authoritative action has been accepted, remove local Cancel for that
+  action. Any remaining server-required choice must be completed or handled by
+  an explicit authoritative Decline/Skip action if the rules expose one.
 
 The enlarged opponent view should show public information:
 
@@ -4131,6 +4309,8 @@ When a card or skill requires more than one but not all players:
 - Clicking another target while below max adds it.
 - Clicking another target after max is reached must leave the current selection unchanged and show a clear max-target message.
 - Confirm remains visible but disabled until the minimum is satisfied.
+- Re-clicking the origin card/skill cancels the whole **unsubmitted** multi-target session; re-clicking an individual selected target only removes that target.
+- Do not show a permanent Cancel merely because multi-target mode is active; use the contextual Cancel rule from §8.
 - After removal or replacement, re-layout the visible target heroes cleanly.
 
 ### Target ordering
@@ -4196,46 +4376,90 @@ If the local player is not a target:
 
 ## 8. Control semantics
 
-Keep these meanings strictly separate:
+Keep these meanings strictly separate.
+
+### Commit boundary
+
+Use one simple rule:
+
+> **Before authoritative commit, local preview may be reversible. After
+> authoritative commit, the browser must not pretend the action was undone.**
+
+Selecting/highlighting a card, skill, provider, cost or target is local preview
+only until the existing gameplay action is actually submitted and accepted.
+After acceptance, subsequent required choices belong to the authoritative
+interaction and are not a reason to expose a fake local Cancel.
 
 ### Cancel
 
-Cancels an **unsubmitted local selection** only.
+Cancel means **abandon the entire unsubmitted local operation** and return to the
+state before that optional local selection session started.
 
-Examples:
+Prefer **Direct Reversal First**:
 
-- deselect current card,
-- deselect skill activation,
-- clear chosen targets,
-- return to the prior local selection state.
+- re-click the selected Hand card to cancel that unsubmitted card session;
+- re-click the active Hero Skill/provider to cancel that unsubmitted skill
+  session;
+- re-click a child target/card choice to toggle only that child choice where the
+  selection model permits it.
 
-Cancel does not send a gameplay decline.
+Show an explicit Cancel button only when all of these are true:
+
+1. the operation is still unsubmitted/local;
+2. the user voluntarily opened an optional local selection session;
+3. the origin card/skill/provider is no longer practically reachable/visible,
+   or the local flow is sufficiently complex that a clear whole-session escape
+   is necessary.
+
+Therefore Cancel is **contextual**, not a permanent action slot.
+
+Cancel never sends a gameplay decline and never rolls back server state,
+revealed information, random results, consumed cards/costs or a publicly
+committed event.
+
+A card/effect that has already been accepted by the server is past the Cancel
+boundary. For example, if Borrowed Sword has already been committed and the
+server is asking for its forced-Attack target, clearing/replacing the currently
+highlighted target may be offered as local target editing, but it must not be
+labelled or presented as cancelling the already-played Borrowed Sword.
 
 ### Confirm
 
-Submits the currently selected legal action to the server.
+Confirm submits the currently selected legal action to the server.
 
-After Confirm:
+After Confirm/acceptance:
 
-- remove or disable Cancel for that submitted action,
-- enter resolving / busy presentation,
-- do not allow the browser to pretend the submitted action was locally undone.
+- disable/freeze the submitted local controls while in flight;
+- remove any Cancel that referred to that submitted action;
+- enter the appropriate resolving/decision presentation;
+- do not allow the browser to reconstruct the previous unsubmitted state as if
+  the public action never happened.
 
-### Skip
+### Skip / Decline
 
-Skip is an authoritative gameplay decision, not a local-selection reset.
+Skip/Decline is an authoritative gameplay decision, not a local-selection
+reset.
 
-Only show Skip when the authoritative action exposes the corresponding semantic decline, such as:
+Only show it when the authoritative action exposes the corresponding semantic
+decline, such as:
 
-- decline_response,
-- decline_trigger,
-- skip_rescue.
+- `decline_response`;
+- `decline_trigger`;
+- `skip_rescue`.
 
-Never merge Cancel and Skip.
+Never merge Cancel with Skip/Decline.
 
 ### End Turn
 
-End Turn should not visually compete with an active target-selection confirmation.
+End Turn is an authoritative Play-Phase action, not Cancel. It should not
+visually compete with an active target-selection confirmation and remains in the
+separate right-side secondary zone defined in §2.7.
+
+### Close / Escape
+
+Closing an Inspect/info surface or dismissing non-gameplay chrome is neither
+Cancel nor Decline. A close affordance may hide that presentation surface
+without changing the underlying authoritative decision.
 
 ## 9. Selection reset / reconciliation
 
@@ -4330,7 +4554,7 @@ When implementation is approved, split it into reviewable steps:
 1. **UX2.0 — Stable Presentation Contract:** implement the server-side Presentation Projector contract and validate semantic boundaries, interaction/checkpoint identity, blocking decisions, Transition Events, and Reaction Chain projection before relying on it for visual UX.
 2. **UX2.1 — Mobile-first seat topology:** implement Top Row Mode for 2–4 total players and Side Column Mode for 5–10, including responsive thumbnail variants, protected central safe zone, projected distance, layered seat states, and Quick Test perspective remapping.
 3. **UX2.2 — Local Dock + responsive Hero Focus:** establish the large-hand / large-hero dock hierarchy and fixed bottom guidance bar; add INSPECT / PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus states; use wide horizontal event presentation for Top Row Mode and narrow vertical presentation for Side Column Mode; preserve self-projection and Preview → authoritative-event continuity.
-4. **UX2.3 — Selection controls:** unified Cancel / Confirm state and reset semantics.
+4. **UX2.3 — Selection controls:** Direct-Reversal-First local selection, contextual pre-commit Cancel, explicit Confirm boundary, and separate authoritative Skip/Decline/End semantics.
 5. **UX2.4 — Multi-target:** projected min/max, deselection, max feedback, ordered-target markers.
 6. **UX2.5 — AOE:** automatic participants plus resolved/current/pending state.
 7. **UX2.6 — Other-player actions:** source/target/current-actor presentation.
