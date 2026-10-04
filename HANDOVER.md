@@ -442,3 +442,5 @@ Scope: `game/presentation-client.ts`, focused `tests/presentation-client.test.mj
 Requirements: use a proven current participant; otherwise retain only the existing unique-active-target fallback for non-Dying stages. For multiple active targets or Dying without a current participant, expose no focus ID and label the metadata row as scope while retaining the proven active-scope summary. Do not infer progress, order, eligibility, or gameplay state.
 Validation: focused presentation-client tests; mounted ambiguous Group case plus retained VIS-07A browser regression; `git diff --check`. No local full suite/build/lint.
 Acceptance: ambiguous multi-target and unproven Dying states do not render the first target as `FOCUS`; proven current/sole targets remain unchanged, and no authority or privacy boundary changes.
+
+VIS-08B scope clarification: include `app/page.tsx` only to label an identity-bearing focus as `FOCUS` and an identity-free target summary as `SCOPE`; no action/control behavior changes.
