@@ -30,8 +30,8 @@ Latest completed milestone:
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-12F — Validate Single-Layer Hand Interaction at 320–360px`
-- status: IMPLEMENTED — CI PENDING; detail/evidence in `HANDOVER.md`
+- `UX2.0VIS-12H — Refocus Side-Column Hero Thumbnails on the Upper Body`
+- status: PLANNED; VIS-12G implementation is locally validated and awaiting commit/push/CI at this handoff update
 - current task authority: `HANDOVER.md`
 
 ## UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
@@ -93,6 +93,10 @@ VIS-12E implementation: the semantic Interaction Stage Hero Focus uses the appro
 VIS-12D exact run `37219392735` is now confirmed green on `84b49ed59ce73e6239aec85bdf9a2bf690bb63e`: build-and-test job `111486465159` and deploy/smoke job `111487406478` succeeded. VIS-12E was pushed as `8a56add6b3620bf5f566349ecfcfe3fa724915b8`; exact run `37220219500` was `in_progress` at the VIS-12F planning checkpoint. The design/workflow files have no changes since the last review. VIS-12F adds direct single-layer Hand interaction coverage at 320/360px; it does not bundle remaining local-Hero/Dock audits or the final visual gate.
 
 VIS-12F implementation adds the existing 5/10/15/20/25/30-card geometry/selection matrix at 320/360px, plus 25-card native pan and ordinary touch selection/inspection at both widths. All 16 new focused cases passed; targeted ESLint passed, and selected-hand screenshots were reviewed. No product CSS changed; no full suite/build/lint. Exact revision/Actions status pending push.
+
+VIS-12E exact run `37220219500` is confirmed green on `8a56add6b3620bf5f566349ecfcfe3fa724915b8`: build-and-test job `111488867930` and deploy/smoke job `111489661223` succeeded. VIS-12F was pushed as `d6d79791c1f9b5e561b0750dd1d8624cc07fba31`; exact run `37220873567` was `in_progress` at the VIS-12G planning checkpoint. Reviewed the unchanged mobile crop contract; local Hero crop remains the next distinct surface audit.
+
+VIS-12G implementation: the existing local-Hero artwork is enlarged proportionally to 115% of its clipped portrait height and offset 5% upward, keeping the original source ratio, card bounds, stable status labels and Judgement overlay behavior. Focused VIS-12G plus retained VIS-09A cases passed 9/9; targeted ESLint passed. Cao Cao/Liu Bei and one/two-Judgement 480px screenshots were inspected; no horizontal page overflow was introduced. No full local suite/build/lint. Commit, push and exact-revision CI are pending. The remaining crop audit is the tall/narrow Side Column thumbnail, where the current cover fit crops horizontally but cannot move the vertical focal composition.
 
 ## Durable accepted UI / presentation contracts
 

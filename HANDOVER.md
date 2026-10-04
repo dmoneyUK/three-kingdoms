@@ -271,3 +271,59 @@ Implementation result: extended the existing VIS-09B geometry/selection matrix t
 Focused validation: new VIS-12F narrow-width geometry/selection and native touch cases — 16/16 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. No local full suite/build/lint. Commit, push, and CI status pending.
 
 Status update: `IMPLEMENTED — CI PENDING`; exact-revision CI is required before labeling green, but does not block the next-task planning checkpoint.
+
+Delivery checkpoint: pushed revision `d6d79791c1f9b5e561b0750dd1d8624cc07fba31`; latest Actions run [37220873567](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37220873567) was `in_progress` at the next-task boundary. Per workflow §4, do not wait/poll; keep this revision CI pending.
+
+### UX2.0VIS-12E — CI closure
+
+Status: `COMPLETED BY AGENT — CI GREEN`  
+Tested revision: `8a56add6b3620bf5f566349ecfcfe3fa724915b8`  
+GitHub Actions run: [37220219500](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37220219500) — build-and-test job `111488867930` and deploy job `111489661223`, including production smoke test, succeeded. No fixes required. Human Reviewer acceptance remains separate.
+
+### UX2.0VIS-12G — Frame the Persistent Local Hero on Face and Upper Torso
+
+Status: `PLANNED`
+
+Planning gate: all five workflow §19 checks passed after remote sync and review of the current crop/mobile composition design and workflow. No design/workflow changes appeared since the prior review. Design §§1.5 and 2.3 explicitly require a persistent local-Hero upper-body focal crop. Current `.local-hero-card` retains a 2:3 viewport and `.local-hero-portrait > .hero-art-image` fills it with `object-fit: cover` but no focal position; repository `hero-cao-cao.jpg` is 853×1280 (also 2:3), so the current cover fit does not crop that art at all. Existing VIS-09A regressions prove Judgement overlay ownership/hit geometry, not face/upper-torso framing.
+
+Objective: make the local Hero's recognizable face and upper torso the portrait focus while preserving the established Local Dock/card geometry and stable identity/status presentation.
+
+Requirements:
+- Use only existing repository Hero art, preserve its aspect ratio, and remove unnecessary headroom/lower-body emphasis without cropping identity-critical features.
+- Keep the local Hero card dimensions/hit target, name/role/HP, and persistent Judgement overlay behavior intact; do not duplicate the viewer in Stage or alter gameplay.
+- Validate representative local Hero artwork at narrow mobile and standard phone widths, including loaded source dimensions, crop/focal presentation, text-overlay clearance, Judgement coexistence and no page overflow; visually inspect screenshots.
+- Add per-Hero presentation focal metadata only if real-art evidence shows the shared crop fails for a specific Hero.
+
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§1.5, 2.1, 2.3 and 2.6; workflow §§4, 7.7, 7.12, 19–20.
+
+Expected scope: local portrait CSS in `app/sequence-overrides.css`, focused `tests/browser/ui19.spec.mjs`, append-only handover and roadmap.
+
+Focused validation: local Hero crop/overlay cases plus affected VIS-09A Judgement hit/containment regression and targeted ESLint only. No local full suite/build/lint. Latest-run checkpoint before source edits: revision `d6d7979`, run `37220873567`, observed `in_progress`; proceed without waiting and recheck at the next task boundary.
+
+Stop condition: if a shared crop cannot preserve face/headwear, identity/status readability, Judgement interaction and the accepted portrait viewport simultaneously, record measured screenshot/geometry evidence and stop for human review.
+
+### UX2.0VIS-12G — IMPLEMENTATION RESULT
+
+Status: `IMPLEMENTED — CI PENDING`  
+Change: proportionally enlarged existing Local Hero artwork to 115% height and clipped it within the unchanged portrait viewport, preserving source aspect ratio and centring the crop on the approved upper-body focal range. Hero card geometry, labels/HP, viewer identity, Judgement ownership/hit behavior and gameplay remain unchanged.  
+Focused validation: VIS-12G crop + one/two-card Judgement screenshots and retained VIS-09A geometry/hit cases — 9/9 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. The 480px Cao Cao/Liu Bei and one/two-Judgement screenshots were inspected; identity-critical upper-body art remained recognizable, overlays remained inspectable, and page width stayed within the viewport. No full suite/build/lint. Commit and push pending.
+
+### UX2.0VIS-12H — Refocus Side-Column Hero Thumbnails on the Upper Body
+
+Status: `PLANNED`
+
+Planning gate: all five workflow §19 checks passed after fetching `origin/ux-v2` and reviewing the current workflow and mobile composition design. Design §§1.5–1.5.2 explicitly require recognizable upper-body crops for Side Column seats. Current `.opponent-hero-portrait .hero-art-image` uses a viewport-sized `object-fit: cover` image at `object-position: center top`; measured 480/650px Side Column portrait viewports are tall and narrow, so cover crops horizontally while leaving the full vertical illustration/headroom visible. The same measured gap was deferred in VIS-12D; VIS-12D/E/G now address Top Row, Stage Focus, and Local Hero independently.
+
+Objective: make existing Side Column opponent Hero art emphasize recognizable face/headwear and upper torso without changing seat geometry, public text/equipment visibility, or target behavior.
+
+Requirements:
+- Use existing projected Hero identities and repository artwork; preserve aspect ratio and clip any proportional zoom inside the existing portrait viewport.
+- Cover 6- and 10-player Side Column at 480/650px, including the actual loaded Hero assets and their face/headwear/upper-torso crop; add per-Hero focal metadata only if representative art evidence proves the shared crop inadequate.
+- Preserve player/Hero identity, HP, concealed Hand count, public Equipment indicators, Inspect/target hit safety, Safe Zone and Dock clearance, and no document-level horizontal overflow.
+- Inspect representative mobile screenshots; change only Side Column portrait-art presentation and focused browser regressions.
+
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§1.5–1.5.2; workflow §§19–20.
+
+Expected scope: `app/sequence-overrides.css`, focused `tests/browser/ui19.spec.mjs`, append-only handover and roadmap. Focused validation: new Side Column crop matrix plus retained VIS-10C Side Column equipment/hit/containment cases and targeted ESLint only; no local full suite/build/lint.
+
+Stop condition: if a shared upper-body crop removes identity-critical features or obscures the dedicated portrait/overlay contract across actual Side Column assets, record screenshot and geometry evidence and stop for human review rather than changing seat dimensions or public information.

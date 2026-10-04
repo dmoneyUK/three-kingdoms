@@ -1453,6 +1453,75 @@ for (const count of [4, 10]) {
   }
 }
 
+for (const hero of ["cao-cao", "liu-bei"]) {
+  for (const width of [480, 650]) {
+    test(`UX2.0VIS-12G local ${hero} art uses a proportional upper-body crop at ${width}px`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "rest", count: 4, width, height: 900, hero });
+      const localHero = page.locator('.local-player-dock[data-player-anchor="p1"] .local-hero-card');
+      const crop = await localHero.locator(".hero-art-image").evaluate((art) => {
+        const frame = art.parentElement;
+        const frameRect = frame.getBoundingClientRect();
+        const artRect = art.getBoundingClientRect();
+        const style = getComputedStyle(art);
+        return {
+          heroId: frame.getAttribute("data-hero-id"),
+          loaded: Boolean(art.naturalWidth && art.naturalHeight),
+          naturalRatio: art.naturalWidth / art.naturalHeight,
+          renderedRatio: artRect.width / artRect.height,
+          objectFit: style.objectFit,
+          objectPosition: style.objectPosition,
+          overflow: getComputedStyle(frame).overflow,
+          frame: { left: frameRect.left, top: frameRect.top, width: frameRect.width, height: frameRect.height },
+          art: { left: artRect.left, top: artRect.top, width: artRect.width, height: artRect.height },
+          pageWidth: document.documentElement.scrollWidth,
+          viewportWidth: window.innerWidth,
+        };
+      });
+
+      expect(crop.heroId).toBe(hero);
+      expect(crop.loaded, "the original repository Hero art loads").toBe(true);
+      expect(crop.naturalRatio).toBeGreaterThan(0);
+      expect(crop.renderedRatio).toBeCloseTo(crop.naturalRatio, 2);
+      expect(crop.objectFit).toBe("cover");
+      expect(crop.objectPosition).toBe("50% 20%");
+      expect(crop.overflow).toBe("hidden");
+      expect(crop.art.height / crop.frame.height).toBeCloseTo(1.15, 2);
+      expect((crop.frame.top - crop.art.top) / crop.frame.height).toBeCloseTo(0.05, 2);
+      expect(crop.pageWidth, "the local Hero crop does not create horizontal page overflow").toBeLessThanOrEqual(crop.viewportWidth);
+      await expect(localHero.locator(".local-hero-label")).toBeVisible();
+      await expect(localHero.locator(".local-hero-role")).toBeVisible();
+      await expect(localHero.locator(".local-hero-hp")).toBeVisible();
+
+      if (width === 480) {
+        await testInfo.attach(`vis-12g-local-${hero}-480`, {
+          body: await page.screenshot({ animations: "disabled" }),
+          contentType: "image/png",
+        });
+      }
+    });
+  }
+}
+
+for (const state of ["local-judgement-one", "local-judgement-two"]) {
+  test(`UX2.0VIS-12G ${state} keeps the persistent Judgement overlay and local Hero crop`, async ({ page }, testInfo) => {
+    await loadFixture(page, { state, count: 4, width: 480, height: 900, hero: "cao-cao" });
+    const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+    const hero = dock.locator(".local-hero-card");
+    await expect(hero.locator(".hero-art-image")).toBeVisible();
+    await expect(hero.locator(".local-hero-label")).toHaveText("Cao Cao");
+    const judgement = dock.locator(".local-judgement-overlay .local-zone-card");
+    await expect(judgement).toHaveCount(state === "local-judgement-one" ? 1 : 2);
+    await expect(judgement.first().locator(".zone-info-button")).toBeVisible();
+    await expect(hero).toBeVisible();
+    const pageWidth = await page.locator("html").evaluate((html) => html.scrollWidth);
+    expect(pageWidth, "the local Hero crop and Judgement overlay do not create horizontal page overflow").toBeLessThanOrEqual(480);
+    await testInfo.attach(`vis-12g-${state}-480`, {
+      body: await page.screenshot({ animations: "disabled" }),
+      contentType: "image/png",
+    });
+  });
+}
+
 for (const width of [1440, 650, 480]) {
   for (const count of [6, 10]) {
     for (const state of count === 6 ? ["interaction", "negation", "dying", "group-observer"] : ["interaction", "negation"]) {
