@@ -367,3 +367,9 @@ Expected scope: `app/page.tsx` and/or `app/sequence-overrides.css`, focused `tes
 Focused validation: new 4-player Top Row composition regressions at 390/480/650px plus affected VIS-12B/VIS-10C checks and targeted lint if test code changes. Inspect actual Hero artwork and 480px screenshot. No local full suite/build/lint. CI follows the non-blocking §4 checkpoint.
 
 Stop condition: if the measured approved proportion cannot keep actual Hero faces/upper-body immediately recognizable while preserving required public facts and accepted row/Safe-Zone geometry, record screenshot/measurements and the smallest unresolved decision as `BLOCKED — HUMAN REVIEW REQUIRED`.
+
+### UX2.0VIS-12I — IMPLEMENTATION RESULT
+
+Implementation commit: `b6b72af` (`Improve four-player mobile hero seat layout`). The four-player mobile Top Row now gives existing Hero artwork about 62.2–62.7% of each seat, the Hero-name strip about 14.8–15.0%, and the Equipment/Hand row about 18.2–18.3% at 390/480/650px. Equipment remains public and is grouped with the Hand count in the lower band; desktop art and Equipment anchors remain unchanged. No topology, projected data, gameplay or authority changes.
+
+Regression coverage added: six REST/interaction cases across 390/480/650px, with 480px screenshots, plus one desktop anchor-preservation case. Existing four-player checks now test visible identity-text bounds rather than treating the full art overlay as text. Browser visual inspection covered the 390/480/650px fixtures and 1440px desktop fixture; targeted `npx eslint tests/browser/ui19.spec.mjs app/page.tsx` passed. Browser regression tests were added for CI and were not run locally; no full suite/build/lint was run. Remote push and exact-revision CI status will be recorded at the next checkpoint.
