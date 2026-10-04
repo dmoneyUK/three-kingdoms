@@ -414,6 +414,7 @@ function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
 
 function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, onTarget, onInspect, onHeroInfo, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
+  const fourPlayerTopRow = totalPlayers === 4;
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
     const slot = cardDefinition(equipment.kind).equipmentSlot;
@@ -441,7 +442,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
             <span className="player-hearts">{hpDisplay(player.hp)}</span>
           </span>
         </button>
-        {equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
+        {!fourPlayerTopRow && equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
         {playerHero && <button type="button" className="hero-card-info-button" aria-label={`Explain ${playerHero.name}`} onClick={() => onHeroInfo(playerHero)}>i</button>}
       </div>
       {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
@@ -449,7 +450,11 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
         <div className="opponent-judgement-cards">{miniJudgement}</div>
       </section>}
     </div>
-    <div className="opponent-hand-footer"><span className="player-hand-label">Hand cards</span><strong className="player-hand-count">{player.handCount}</strong></div>
+    <div className="opponent-hand-footer">
+      <span className="player-hand-label">Hand cards</span>
+      {fourPlayerTopRow && equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
+      <strong className="player-hand-count">{player.handCount}</strong>
+    </div>
   </article>;
 }
 

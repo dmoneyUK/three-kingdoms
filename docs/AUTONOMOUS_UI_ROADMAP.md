@@ -102,6 +102,12 @@ VIS-12F exact run `37220873567` is confirmed green on `d6d79791c1f9b5e561b0750dd
 
 VIS-12H implementation: Side Column opponent art now uses a shared proportional crop inside the existing clipped seat target; seat/thumbnail dimensions and all public data/control geometry remain unchanged. New six-/ten-player tests at 480/650px prove source-ratio preservation, crop extent/focal offset, target clipping, art/text/equipment separation, hit safety and no page overflow. Retained Side Column VIS-10C equipment/containment/Inspect cases also passed; focused total 10/10 and targeted ESLint passed. Reviewed representative 10-player screenshots at 480/650px. No full local suite/build/lint. Commit, push and exact-revision CI pending.
 
+VIS-12H was pushed as `29d46589929bc1d6bbeba777b5b2f80ee3fb5c6d`; exact Actions run `37224076019` was still in progress at the VIS-12I source-edit checkpoint. Continue without waiting and retain its CI-pending status.
+
+## UX2.0VIS-12I — Planned Four-Player Top-Row Hero-First Composition
+
+The user's 4-player phone screenshot shows the correct three-opponent Top Row but text-led internal seat cards. A fresh 480px REST fixture measured each actual opponent Hero-art viewport at 52×46px inside a 146×78px seat (about 36% of width / 21% of card-face area); current VIS-12B guards seat width but only requires a 39px minimum art width. Design §1.5.1 requires Hero art to dominate at about 62–68%, with compact name and Equipment/Hand bands. The bounded task is to correct that composition and add actual three-opponent regressions at 390/480/650px, retaining projected identity/status, accepted seat geometry, hit behavior, no-overflow, and Top Row/Side Column boundaries. Current plan is recorded in HANDOVER; its CI checkpoint remains non-blocking.
+
 ## Durable accepted UI / presentation contracts
 
 - `CurrentAction` owns viewer legal actions.

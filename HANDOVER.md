@@ -341,3 +341,29 @@ VIS-12G delivery checkpoint: pushed revision `41c83333fe67b83e60cc0c375bbbb952b8
 Status: `IMPLEMENTED — CI PENDING`  
 Change: scoped Side Column Hero artwork to a proportional 115%-height crop, offset 5% upward and centred horizontally inside the existing clipped Hero target. This removes excess headroom/lower-body emphasis without stretching art or changing seat geometry, identity/equipment text, or target controls.  
 Focused validation: VIS-12H six-/ten-player crop matrix at 480/650px plus retained VIS-10C Side Column equipment, hit, Safe Zone and Dock-containment/Inspect checks — 10/10 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. The 10-player 480/650px screenshots were inspected: faces/headwear remain recognizable, identity/equipment overlays stay distinct, and the page remains within the viewport. No full suite/build/lint. Commit/push pending.
+
+### UX2.0VIS-12H — DELIVERY / CI CHECKPOINT
+
+Pushed revision: `29d46589929bc1d6bbeba777b5b2f80ee3fb5c6d`. Exact Actions run `37224076019` was `in_progress` at the VIS-12I task boundary. Per workflow §4, proceed without waiting; VIS-12H remains CI-pending.
+
+### UX2.0VIS-12I — Restore Hero-First Internal Composition in the Four-Player Mobile Top Row
+
+Status: `PLANNED`
+
+Planning gate: all five workflow §19 checks pass. Design §1.5.1 says Hero artwork is the dominant visual area (about 62–68%), followed by a compact Hero-name strip (14–17%) and Equipment/Hand summary (18–21%). A fresh 480px four-player fixture shows the correct three-seat Top Row, but each Hero-art viewport is only 52×46px inside a 146×78px seat: about 36% of seat width and 21% of its face area. Existing VIS-12B checks seat width; its art assertion only requires 39px, so this visual gap passes. Existing projected Hero/art, public status and seat controls provide sufficient authority.
+
+Objective: correct and regression-test only the four-player mobile Top Row's internal Hero-first proportions.
+
+Requirements:
+- At 390/480/650px, use the design's Hero-art/name/Equipment+Hand proportions while keeping all three actually rendered opponents in one row and each Hero recognizable from existing artwork.
+- Preserve compact player/Hero identity, HP, public Equipment, Hand count, Inspect/target hit behavior, accepted outer margins/gaps, Stage and Dock clearance, and no page-level horizontal overflow.
+- Capture the 480px REST/ordinary-turn composition and cover a representative interaction state; retain existing 2-/3-player Top Row and 5–10-player Side Column contracts.
+- Change presentation and focused browser regressions only; do not alter seats/topology, projected data, gameplay, or authority.
+
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.91.1, 1.2, 1.5–1.5.1; workflow §§19–20.
+
+Expected scope: `app/page.tsx` and/or `app/sequence-overrides.css`, focused `tests/browser/ui19.spec.mjs`, append-only HANDOVER, and `docs/AUTONOMOUS_UI_ROADMAP.md`.
+
+Focused validation: new 4-player Top Row composition regressions at 390/480/650px plus affected VIS-12B/VIS-10C checks and targeted lint if test code changes. Inspect actual Hero artwork and 480px screenshot. No local full suite/build/lint. CI follows the non-blocking §4 checkpoint.
+
+Stop condition: if the measured approved proportion cannot keep actual Hero faces/upper-body immediately recognizable while preserving required public facts and accepted row/Safe-Zone geometry, record screenshot/measurements and the smallest unresolved decision as `BLOCKED — HUMAN REVIEW REQUIRED`.
