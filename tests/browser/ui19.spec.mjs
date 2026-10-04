@@ -37,6 +37,12 @@ const VIS_04B_ACTIVE_STATES = [
   { state: "group-observer", label: "Group observer" },
 ];
 
+const VIS_04C_VIEWPORTS = [
+  { width: 1440, height: 900, boardInset: 68, seat: { width: 180, height: 108 }, seatLefts: [10, 630, 1250] },
+  { width: 650, height: 900, boardInset: 60, seat: { width: 112, height: 88 }, seatLefts: [21.5, 269, 516.5] },
+  { width: 480, height: 900, boardInset: 55, seat: { width: 100, height: 78 }, seatLefts: [15.5, 190, 364.5] },
+];
+
 async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
@@ -406,6 +412,137 @@ test("UX2.0VIS-04B Dying 650x900 proves old top offset overflow and new geometry
   expect(current.stageDockOverlap).toBe(0);
   expect(current.safeZoneDockOverlap).toBe(0);
 });
+
+for (const viewport of VIS_04C_VIEWPORTS) {
+  for (const count of [2, 3, 4]) {
+    test(`UX2.0VIS-04C REST ${viewport.width}x${viewport.height} anchors ${count}-player seats to the top band`, async ({ page }) => {
+      await loadFixture(page, { state: "rest", count, width: viewport.width, height: viewport.height });
+      const board = await page.locator('.player-board[data-seat-topology="top-row"]').boundingBox();
+      const layout = await interactionGeometry(page);
+      const anchors = await geometry(page);
+      const seats = [...anchors.opponentAnchors].sort((left, right) => left.relativeIndex - right.relativeIndex);
+      const expectedLefts = count === 2 ? [viewport.seatLefts[1]] : count === 3 ? [viewport.seatLefts[0], viewport.seatLefts[2]] : viewport.seatLefts;
+
+      expect(board.y - layout.playTable.top).toBeCloseTo(viewport.boardInset, 0);
+      expect(seats).toHaveLength(count - 1);
+      expect(seats.map(({ relativeIndex }) => relativeIndex)).toEqual(Array.from({ length: count - 1 }, (_, index) => index + 1));
+      expect(anchors.localDockAnchorCount).toBe(1);
+      expect(Math.max(...seats.map(({ top }) => top)) - Math.min(...seats.map(({ top }) => top))).toBeLessThanOrEqual(4);
+      for (const [index, seat] of seats.entries()) {
+        expect(seat.top - board.y, `seat ${index + 1} starts in the top band`).toBeGreaterThanOrEqual(0);
+        expect(seat.top - board.y, `seat ${index + 1} starts in the top band`).toBeLessThanOrEqual(4);
+        expect(seat.left, `seat ${index + 1} keeps its X anchor`).toBeCloseTo(expectedLefts[index], 0);
+        expect(seat.width).toBe(viewport.seat.width);
+        expect(seat.height).toBe(viewport.seat.height);
+      }
+      const clearance = layout.safeZone.top - Math.max(...seats.map(({ bottom }) => bottom));
+      expect(clearance).toBeGreaterThanOrEqual(6);
+      expect(clearance).toBeLessThanOrEqual(24);
+      expect(layout.safeZone.bottom).toBeCloseTo(layout.playTable.bottom - 1, 4);
+      await expect(page.locator('.play-table[data-seat-topology="top-row"] .interaction-safe-zone')).toHaveCount(1);
+      await expect(page.locator(".interaction-stage")).toHaveCount(0);
+      expect(anchors.scrollWidth).toBeLessThanOrEqual(anchors.viewportWidth);
+    });
+  }
+
+  for (const { state, label } of VIS_04B_ACTIVE_STATES) {
+    test(`UX2.0VIS-04C ${label} ${viewport.width}x${viewport.height} keeps anchored seats and Stage contained`, async ({ page }) => {
+      await loadFixture(page, { state, count: 4, width: viewport.width, height: viewport.height });
+      const board = await page.locator('.player-board[data-seat-topology="top-row"]').boundingBox();
+      const layout = await interactionGeometry(page);
+      const focusPortrait = await page.locator(".hero-focus-portrait").boundingBox();
+      const acceptedSizes = VIS_04B_VIEWPORTS.find(({ width }) => width === viewport.width);
+
+      expect(layout.opponents).toHaveLength(3);
+      for (const seat of layout.opponents) expect(seat.top - board.y).toBeGreaterThanOrEqual(0);
+      for (const seat of layout.opponents) expect(seat.top - board.y).toBeLessThanOrEqual(4);
+      expect(Math.max(...layout.opponents.map(({ bottom }) => bottom))).toBeLessThanOrEqual(layout.stage.top - 6);
+      expect(layout.stage.left).toBeGreaterThanOrEqual(layout.safeZone.left - 4);
+      expect(layout.stage.top).toBeGreaterThanOrEqual(layout.safeZone.top);
+      expect(layout.stage.right).toBeLessThanOrEqual(layout.safeZone.right + 4);
+      expect(layout.stage.bottom).toBeLessThanOrEqual(layout.safeZone.bottom + 4);
+      expect(layout.stageDockOverlap).toBe(0);
+      expect(layout.safeZoneDockOverlap).toBe(0);
+      expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
+      expect(focusPortrait.width).toBe(acceptedSizes.focus.width);
+      expect(focusPortrait.height).toBe(acceptedSizes.focus.height);
+      if (state === "negation") {
+        await assertVisible(page.locator('[data-reaction-chain="proven"]'), "Reaction Chain");
+        expect(layout.reactionChain.bottom).toBeLessThanOrEqual(layout.stage.bottom + 4);
+      }
+      if (state === "dying") {
+        await assertVisible(page.locator('[data-dying-handoff="proven"]'), "Dying handoff");
+        expect(layout.dyingHandoff.bottom).toBeLessThanOrEqual(layout.stage.bottom + 4);
+      }
+      if (state === "group-observer") {
+        const mediumPortrait = await page.locator(".medium-participant-portrait").boundingBox();
+        expect(mediumPortrait.width).toBe(acceptedSizes.medium.width);
+        expect(mediumPortrait.height).toBe(acceptedSizes.medium.height);
+      }
+    });
+  }
+}
+
+for (const width of [700, 701]) {
+  test(`UX2.0VIS-04C REST ${width}x900 keeps Safe Zone close across the 700px board breakpoint`, async ({ page }) => {
+    await loadFixture(page, { state: "rest", count: 4, width, height: 900 });
+    const board = await page.locator('.player-board[data-seat-topology="top-row"]').boundingBox();
+    const layout = await interactionGeometry(page);
+    const seats = (await geometry(page)).opponentAnchors;
+    expect(seats).toHaveLength(3);
+    expect(board.y - layout.playTable.top).toBe(width === 700 ? 60 : 68);
+    for (const seat of seats) expect(seat.top - board.y).toBeGreaterThanOrEqual(0);
+    for (const seat of seats) expect(seat.top - board.y).toBeLessThanOrEqual(4);
+    const clearance = layout.safeZone.top - Math.max(...seats.map(({ bottom }) => bottom));
+    expect(clearance).toBeGreaterThanOrEqual(6);
+    expect(clearance).toBeLessThanOrEqual(24);
+  });
+}
+
+test("UX2.0VIS-04C REST 480x900 rejects the old flexible-row centre alignment", async ({ page }) => {
+  await loadFixture(page, { state: "rest", count: 4, width: 480, height: 900 });
+  const board = page.locator('.player-board[data-seat-topology="top-row"]');
+  const seats = board.locator(".opponent-player-card");
+  await board.evaluate((element) => { element.style.gridTemplateRows = "minmax(120px,1fr) auto minmax(120px,1fr)"; });
+  await seats.evaluateAll((elements) => { for (const element of elements) element.style.alignSelf = "center"; });
+  const boardBounds = await board.boundingBox();
+  const oldSeats = await geometry(page);
+  expect(Math.min(...oldSeats.opponentAnchors.map(({ top }) => top)) - boardBounds.y).toBeGreaterThan(40);
+
+  await board.evaluate((element) => { element.style.removeProperty("grid-template-rows"); });
+  await seats.evaluateAll((elements) => { for (const element of elements) element.style.removeProperty("align-self"); });
+  const currentSeats = await geometry(page);
+  for (const [index, seat] of currentSeats.opponentAnchors.entries()) {
+    expect(seat.top - boardBounds.y).toBeGreaterThanOrEqual(0);
+    expect(seat.top - boardBounds.y).toBeLessThanOrEqual(4);
+    expect(seat.left).toBe(oldSeats.opponentAnchors[index].left);
+    expect(seat.width).toBe(oldSeats.opponentAnchors[index].width);
+    expect(seat.height).toBe(oldSeats.opponentAnchors[index].height);
+  }
+});
+
+for (const baseline of [
+  { width: 1440, board: { left: 48, top: 17.15625, width: 1344, height: 537.6875 }, seat: { width: 110.625, height: 58 }, positions: [[295.03125, 256.984375], [911.71875, 73.765625], [1281.375, 256.984375], [295.03125, 73.765625], [1281.375, 73.765625]] },
+  { width: 480, board: { left: 3, top: 4, width: 474, height: 658 }, seat: { width: 72.265625, height: 70.4375 }, positions: [[65.796875, 297.765625], [266.65625, 77.4375], [404.734375, 297.765625], [65.796875, 77.4375], [404.734375, 77.4375]] },
+]) {
+  test(`UX2.0VIS-04C ${baseline.width}x900 keeps the 6-player Side Column geometry`, async ({ page }) => {
+    await loadFixture(page, { state: "rest", count: 6, width: baseline.width, height: 900 });
+    const board = page.locator('.player-board[data-seat-topology="side-column"]');
+    const boardBounds = await board.boundingBox();
+    const seats = [...(await geometry(page)).opponentAnchors].sort((left, right) => left.relativeIndex - right.relativeIndex);
+    await expect(board).toHaveCount(1);
+    expect(seats.map(({ relativeIndex }) => relativeIndex)).toEqual([1, 2, 3, 4, 5]);
+    for (const [actual, expected] of [[boardBounds.x, baseline.board.left], [boardBounds.y, baseline.board.top], [boardBounds.width, baseline.board.width], [boardBounds.height, baseline.board.height]]) expect(actual).toBeCloseTo(expected, 0);
+    for (const [index, seat] of seats.entries()) {
+      expect(seat.left).toBeCloseTo(baseline.positions[index][0], 0);
+      expect(seat.top).toBeCloseTo(baseline.positions[index][1], 0);
+      expect(seat.width).toBeCloseTo(baseline.seat.width, 0);
+      expect(seat.height).toBeCloseTo(baseline.seat.height, 0);
+    }
+    const alignments = await board.locator(".opponent-player-card").evaluateAll((elements) => elements.map((element) => getComputedStyle(element).alignSelf));
+    expect(alignments).toEqual(["center", "center", "center", "center", "center"]);
+  });
+}
 
 for (const { width, height, counts } of MATRIX) {
   for (const count of counts) {
