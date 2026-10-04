@@ -1,1 +1,60 @@
-# WTK UI / Layout — Current Task Handoff\n\n## Reviewer status — UX2.0VIS-04B ACCEPTED\n\nReviewed implementation: `43b69730365281f26179759c22811a8841621125`.\n\nAccepted: only Top Row safe-zone TOP offsets changed; new values are 253px desktop, 245px at <=650 and 260px at <=480. Measured seat-to-safe-zone clearances are 13.5px / 15.75px / 16.5px. Dying at 650x900 is now fully contained without shrinking or clipping content. Focused VIS-04B tests reported 22/22 PASS and retained VIS-01/02/03/04A coverage reported 64/64 PASS. Preserve compact Top Row seats, Stage internals, LocalPlayerDock, Side Column behavior, gameplay and presentation authority.\n\n# NEXT TASK — UX2.0VIS-05A: Correct 5–10 Player Side-Column Seat Topology\n\n## Objective\nFor 5–10 total players, replace the current generic two-column auto-flow with deterministic LEFT/RIGHT vertical columns and a clear centre corridor. This task changes Side Column seat placement only. Do not compact the Side Column card contents and do not change Top Row or Interaction Stage geometry.\n\n## Normative mapping\nThe design prose and diagrams disagree on one left-column ordering detail. For this task use the published 5/7/10 diagrams plus the documented rule that the extra/exact-opposite seat belongs to the RIGHT column.\n\nLet opponentCount = totalPlayers - 1; rightCount = ceil(opponentCount/2); leftCount = opponentCount - rightCount; rowCount = rightCount. RelativeIndex already runs clockwise from viewer as 1..N-1.\n\nRIGHT: if relativeIndex <= rightCount, row = rightCount - relativeIndex + 1.\nLEFT: otherwise leftOffset = relativeIndex - rightCount, row = leftCount - leftOffset + 1.\n\nExact matrix:\n- 5: RI1 R2, RI2 R1, RI3 L2, RI4 L1.\n- 6: RI1 R3, RI2 R2, RI3 R1, RI4 L2, RI5 L1; L3 empty.\n- 7: RI1 R3, RI2 R2, RI3 R1, RI4 L3, RI5 L2, RI6 L1.\n- 8: RI1 R4, RI2 R3, RI3 R2, RI4 R1, RI5 L3, RI6 L2, RI7 L1; L4 empty.\n- 9: RI1 R4, RI2 R3, RI3 R2, RI4 R1, RI5 L4, RI6 L3, RI7 L2, RI8 L1.\n- 10: RI1 R5, RI2 R4, RI3 R3, RI4 R2, RI5 R1, RI6 L4, RI7 L3, RI8 L2, RI9 L1; L5 empty.\n\n## Production scope\nExpected: `app/page.tsx`, `app/sequence-overrides.css`. Tests: `tests/browser/ui19.spec.mjs`. A tiny pure presentation helper file is acceptable. No game/server/projector/legality changes.\n\n## Required implementation\n1. Add pure `projectSideColumnSeat(totalPlayers, relativeIndex)` (or equivalent) returning side, row and rowCount. Return null outside totalPlayers 5..10 or invalid relativeIndex. It must depend only on totalPlayers and relativeIndex.\n2. On Side Column opponent cards expose stable hooks `data-side-column="left|right"` and `data-side-row="1..5"`. Keep `data-player-anchor`, relativeIndex class, semantic role hooks and target/Inspect handlers. Top Row seats get no side-column hooks.\n3. Replace Side Column `grid-auto-flow` placement with a three-column board grid: LEFT seats column 1, empty flexible centre column 2, RIGHT seats column 3. Use the projected row for grid-row. Existing Side Column portrait/equipment/judgement/hand-footer density stays unchanged.\n4. Protect the centre: at 1440x900, 650x900 and 480x900, every LEFT seat right edge must be at or left of 30% of board width (+4px tolerance), and every RIGHT seat left edge must be at or right of 70% (-4px tolerance). If current card dimensions cannot satisfy this at 480 without redesign, stop and report measured blocker instead of shrinking cards.\n5. Every side seat must remain at least 6px above LocalPlayerDock, with no seat overlap and no page horizontal overflow.\n6. Counts 2/3/4 must keep current Top Row placement, VIS-04A dimensions and VIS-04B 6–24px safe-zone clearance.\n\n## Browser regression\nAt 1440/650/480 and REST counts 5..10 assert exact side/row mapping, N-1 anchors, unchanged player identity/relativeIndex, one X column per side within 4px, row1 above row2 etc., no overlap, dock clearance >=6px and no horizontal overflow.\n\nAdd named example tests:\n- 5 players: LEFT top-to-bottom P5,P4; RIGHT P3,P2.\n- 7 players: LEFT P7,P6,P5; RIGHT P4,P3,P2.\n- 10 players: LEFT P10,P9,P8,P7 with lowest left slot empty; RIGHT P6,P5,P4,P3,P2.\n\nAt count=6 and 480/1440, open/close existing opponent Inspect and prove the same anchor remains in the same side/row. At counts 2/3/4 and 480/1440, prove no side-column hooks and retained Top Row dimensions/clearance.\n\n## Forbidden\nDo not reorder room players, change relativeIndex, use per-player absolute coordinates or DOM measurement, compact/hide Side Column Equipment/Judgement, change Top Row, change InteractionStage/Safe Zone, move LocalPlayerDock, or change gameplay/presentation semantics.\n\n## Validation / result\nRun focused VIS-05A browser tests plus retained VIS-04A/VIS-04B and existing UI-19 Side Column containment tests. Run broader local checks only if allowed; do not claim unrun checks. Do not inspect or wait for CI.\n\nAppend execution result with SHA, files, helper formula, DOM hooks, measured geometry for counts 5–10 at 1440/650/480, proof 5/7/10 examples, proof Top Row unchanged, validation and any blocker. Do not self-accept. Push, verify remote HANDOVER, then STOP.\n\n## Acceptance\nPass only if 5–10 rooms use deterministic LEFT/RIGHT columns matching the published examples and extra-right rule, the middle 40% of the board is free of seat anchors, all seats stay above LocalPlayerDock with no overlap/overflow, and Top Row/gameplay/controls remain unchanged.
+# WTK UI / Layout — Current Task Handoff
+
+## Reviewer status — UX2.0VIS-04B ACCEPTED
+
+Reviewed implementation: `43b69730365281f26179759c22811a8841621125`.
+
+Accepted: only Top Row safe-zone TOP offsets changed; new values are 253px desktop, 245px at <=650 and 260px at <=480. Measured seat-to-safe-zone clearances are 13.5px / 15.75px / 16.5px. Dying at 650x900 is now fully contained without shrinking or clipping content. Focused VIS-04B tests reported 22/22 PASS and retained VIS-01/02/03/04A coverage reported 64/64 PASS. Preserve compact Top Row seats, Stage internals, LocalPlayerDock, Side Column behavior, gameplay and presentation authority.
+
+# NEXT TASK — UX2.0VIS-05A: Correct 5–10 Player Side-Column Seat Topology
+
+## Objective
+For 5–10 total players, replace the current generic two-column auto-flow with deterministic LEFT/RIGHT vertical columns and a clear centre corridor. This task changes Side Column seat placement only. Do not compact the Side Column card contents and do not change Top Row or Interaction Stage geometry.
+
+## Normative mapping
+The design prose and diagrams disagree on one left-column ordering detail. For this task use the published 5/7/10 diagrams plus the documented rule that the extra/exact-opposite seat belongs to the RIGHT column.
+
+Let opponentCount = totalPlayers - 1; rightCount = ceil(opponentCount/2); leftCount = opponentCount - rightCount; rowCount = rightCount. RelativeIndex already runs clockwise from viewer as 1..N-1.
+
+RIGHT: if relativeIndex <= rightCount, row = rightCount - relativeIndex + 1.
+LEFT: otherwise leftOffset = relativeIndex - rightCount, row = leftCount - leftOffset + 1.
+
+Exact matrix:
+- 5: RI1 R2, RI2 R1, RI3 L2, RI4 L1.
+- 6: RI1 R3, RI2 R2, RI3 R1, RI4 L2, RI5 L1; L3 empty.
+- 7: RI1 R3, RI2 R2, RI3 R1, RI4 L3, RI5 L2, RI6 L1.
+- 8: RI1 R4, RI2 R3, RI3 R2, RI4 R1, RI5 L3, RI6 L2, RI7 L1; L4 empty.
+- 9: RI1 R4, RI2 R3, RI3 R2, RI4 R1, RI5 L4, RI6 L3, RI7 L2, RI8 L1.
+- 10: RI1 R5, RI2 R4, RI3 R3, RI4 R2, RI5 R1, RI6 L4, RI7 L3, RI8 L2, RI9 L1; L5 empty.
+
+## Production scope
+Expected: `app/page.tsx`, `app/sequence-overrides.css`. Tests: `tests/browser/ui19.spec.mjs`. A tiny pure presentation helper file is acceptable. No game/server/projector/legality changes.
+
+## Required implementation
+1. Add pure `projectSideColumnSeat(totalPlayers, relativeIndex)` (or equivalent) returning side, row and rowCount. Return null outside totalPlayers 5..10 or invalid relativeIndex. It must depend only on totalPlayers and relativeIndex.
+2. On Side Column opponent cards expose stable hooks `data-side-column="left|right"` and `data-side-row="1..5"`. Keep `data-player-anchor`, relativeIndex class, semantic role hooks and target/Inspect handlers. Top Row seats get no side-column hooks.
+3. Replace Side Column `grid-auto-flow` placement with a three-column board grid: LEFT seats column 1, empty flexible centre column 2, RIGHT seats column 3. Use the projected row for grid-row. Existing Side Column portrait/equipment/judgement/hand-footer density stays unchanged.
+4. Protect the centre: at 1440x900, 650x900 and 480x900, every LEFT seat right edge must be at or left of 30% of board width (+4px tolerance), and every RIGHT seat left edge must be at or right of 70% (-4px tolerance). If current card dimensions cannot satisfy this at 480 without redesign, stop and report measured blocker instead of shrinking cards.
+5. Every side seat must remain at least 6px above LocalPlayerDock, with no seat overlap and no page horizontal overflow.
+6. Counts 2/3/4 must keep current Top Row placement, VIS-04A dimensions and VIS-04B 6–24px safe-zone clearance.
+
+## Browser regression
+At 1440/650/480 and REST counts 5..10 assert exact side/row mapping, N-1 anchors, unchanged player identity/relativeIndex, one X column per side within 4px, row1 above row2 etc., no overlap, dock clearance >=6px and no horizontal overflow.
+
+Add named example tests:
+- 5 players: LEFT top-to-bottom P5,P4; RIGHT P3,P2.
+- 7 players: LEFT P7,P6,P5; RIGHT P4,P3,P2.
+- 10 players: LEFT P10,P9,P8,P7 with lowest left slot empty; RIGHT P6,P5,P4,P3,P2.
+
+At count=6 and 480/1440, open/close existing opponent Inspect and prove the same anchor remains in the same side/row. At counts 2/3/4 and 480/1440, prove no side-column hooks and retained Top Row dimensions/clearance.
+
+## Forbidden
+Do not reorder room players, change relativeIndex, use per-player absolute coordinates or DOM measurement, compact/hide Side Column Equipment/Judgement, change Top Row, change InteractionStage/Safe Zone, move LocalPlayerDock, or change gameplay/presentation semantics.
+
+## Validation / result
+Run focused VIS-05A browser tests plus retained VIS-04A/VIS-04B and existing UI-19 Side Column containment tests. Run broader local checks only if allowed; do not claim unrun checks. Do not inspect or wait for CI.
+
+Append execution result with SHA, files, helper formula, DOM hooks, measured geometry for counts 5–10 at 1440/650/480, proof 5/7/10 examples, proof Top Row unchanged, validation and any blocker. Do not self-accept. Push, verify remote HANDOVER, then STOP.
+
+## Acceptance
+Pass only if 5–10 rooms use deterministic LEFT/RIGHT columns matching the published examples and extra-right rule, the middle 40% of the board is free of seat anchors, all seats stay above LocalPlayerDock with no overlap/overflow, and Top Row/gameplay/controls remain unchanged.
