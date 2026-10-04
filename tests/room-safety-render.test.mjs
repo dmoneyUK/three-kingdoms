@@ -566,7 +566,7 @@ test("UI-11 keeps one local dock and stable opponent anchors across supported pl
   for (const [playerCount, rows] of [[5, 2], [6, 3], [8, 4], [10, 5]]) {
     assert.match(sequenceStyleSource, new RegExp(`data-player-count="${playerCount}"[\\s\\S]*--seat-row-count: ${rows}`), `${playerCount}-player topology declares its side-column row budget`);
   }
-  assert.match(sequenceStyleSource, /data-seat-topology="side-column"[\s\S]*height: min\(150px/);
+  assert.match(sequenceStyleSource, /\.game-shell \.player-board\[data-seat-topology="side-column"\] > \.opponent-player-card\s*\{[^}]*width: clamp\(44px, 8vw, 86px\);[^}]*height: min\(128px, 100%\);[^}]*min-height: 0;/);
 });
 
 test("UI-11 preserves hand rail and one footer console for one, five, and ten cards", () => {
@@ -580,7 +580,8 @@ test("UI-11 preserves hand rail and one footer console for one, five, and ten ca
     assert.ok(html.indexOf('class="local-hand-section"') < html.indexOf('data-console-surface="local-operation"'), `${handSize}-card hand remains before the console in the dock`);
   }
   assert.match(sequenceStyleSource, /local-hand-section[\s\S]*height: var\(--hand-panel-height\)[\s\S]*overflow: visible/);
-  assert.match(sequenceStyleSource, /data-console-surface="local-operation"[\s\S]*flex-wrap: wrap/);
+  assert.match(sequenceStyleSource, /\.local-player-dock \.console-guidance\s*\{[^}]*grid-area: guidance;/);
+  assert.match(sequenceStyleSource, /\.local-player-dock \.turn-controls > \[data-action-extras="true"\]\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/);
   assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*turn-controls[\s\S]*min-height: 48px/);
 });
 
@@ -695,17 +696,18 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const sequenceSource = gameRoomSource.slice(gameRoomSource.indexOf("function TableResolutionSequence"), gameRoomSource.indexOf("function CardFace"));
   assert.doesNotMatch(sequenceSource, /Math\.(sin|cos)|activeAngle|activeRadians|--seat-[xy]/, "resolution placement is not circular seat geometry");
   assert.match(sequenceSource, /centerRelativeToTable/);
-  assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-judgement-panel,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
+  const sharedPanelChrome = sequenceStyleSource.match(/\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-judgement-panel,\s*\.local-hand-section,\s*\.local-player-dock \.console-guidance,\s*\.local-player-dock \.turn-controls\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(sharedPanelChrome, /border: 1px solid #765f3c99;/);
+  assert.match(sharedPanelChrome, /background: #0e120dcc;/);
   assert.match(sequenceStyleSource, /--hand-panel-height: 108px[\s\S]*--hand-peek-height: 102px[\s\S]*--hand-card-height: 102px[\s\S]*--hand-top-inset: 4px[\s\S]*--selected-rise: 48px[\s\S]*--hand-bottom-gutter: 10px/);
   assert.match(sequenceStyleSource, /hand-top-inset - selected-rise \+ hand-card-height[\s\S]*hand-panel-height - hand-bottom-gutter/);
-  assert.match(sequenceStyleSource, /@media \(max-width: 480px\)[\s\S]*--top-panel-height: 58px[\s\S]*grid-template-columns: 70px minmax\(0, 1fr\)[\s\S]*grid-template-rows: var\(--top-panel-height\) var\(--hand-panel-height\) 48px/);
+  assert.match(sequenceStyleSource, /@media \(max-width: 480px\) \{\s*\.game-shell \.play-command \{[^}]*\}\s*\.local-player-dock \{[^}]*--top-panel-height: 58px;[^}]*grid-template-columns: 70px minmax\(0, 1fr\);[^}]*grid-template-rows: auto var\(--top-panel-height\) var\(--hand-panel-height\) minmax\(48px, auto\);/);
   assert.match(sequenceStyleSource, /--top-panel-height: 124px[\s\S]*--zone-card-width: clamp\(28px, 7\.6vw, 34px\)/);
   assert.match(sequenceStyleSource, /\.local-dock-zones\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\) max-content var\(--judgement-panel-width\)[\s\S]*height: var\(--top-panel-height\)/);
   assert.match(sequenceStyleSource, /--judgement-panel-width: calc\(var\(--zone-card-width\) \+ var\(--zone-card-width\) \+ var\(--zone-card-gap\) \+ 8px\)/);
   assert.match(gameRoomSource, /judgementCardLayout\.step - judgementCardWidth/);
   assert.doesNotMatch(gameRoomSource, /judgementCardLayout\.step - 34/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
-  assert.match(sequenceStyleSource, /\.local-dock-identity,\s*\.local-dock-zones,\s*\.local-status-panel,\s*\.local-equipment-panel,\s*\.local-judgement-panel,\s*\.local-hand-section,\s*\.local-player-dock \.turn-controls\s*\{[\s\S]*border: 1px solid #765f3c99[\s\S]*background: #0e120dcc/);
   assert.match(sequenceStyleSource, /\.local-hand-rail\s*\{[\s\S]*top: 0[\s\S]*height: var\(--hand-peek-height\)[\s\S]*overflow: visible/);
   assert.match(gameRoomSource, /ResizeObserver[\s\S]*handRailWidth[\s\S]*calculateHandCardStep/);
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
