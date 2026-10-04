@@ -668,9 +668,10 @@ for (const width of [1440, 650, 480]) {
     test(`UX2.0VIS-07A neutral ${count}-player Group scope at ${width}px remains contained`, async ({ page }, testInfo) => {
       await loadFixture(page, { state: "group-density", count, width, height: 900 });
       const scope = page.locator('[data-group-target-scope="original"]');
-      await expect(scope).toHaveAttribute("data-participant-density", count === 4 ? "medium" : "compact");
+      const renderedSecondaryCount = count - 3; // fixture excludes viewer, primary, and source
+      await expect(scope).toHaveAttribute("data-participant-density", renderedSecondaryCount >= 4 ? "compact" : "medium");
       const cards = scope.locator("[data-group-target-id]");
-      await expect(cards).toHaveCount(count - 3);
+      await expect(cards).toHaveCount(renderedSecondaryCount);
       const ids = await cards.evaluateAll(elements => elements.map(element => element.dataset.groupTargetId));
       expect(ids).not.toContain("p3"); // viewer
       expect(ids).not.toContain("p1"); // authoritative current primary

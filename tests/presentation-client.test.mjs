@@ -956,9 +956,15 @@ test("Group scope density decorates only proven historical targets without progr
   assert.deepEqual(project(["B", "C"])?.players.map(p => p.id), ["C"]);
   assert.equal(project(["B", "C", "E"])?.density, "medium");
   const dense = project(["B", "C", "E", "F", "D", "B"]);
-  assert.equal(dense?.density, "compact");
+  assert.equal(dense?.density, "medium", "density follows the three rendered secondary cards after viewer/primary exclusions");
   assert.deepEqual(dense?.players.map(p => p.id), ["C", "E", "F"], "viewer/primary/duplicate excluded");
   assert.deepEqual(project(["C", "E", "F", "B"])?.players.map(p => p.id), ["C", "E", "F"]);
+  const sourceExcluded = project(["A", "B", "C", "D", "E"]);
+  assert.equal(sourceExcluded?.density, "medium", "source, primary, and viewer do not inflate the rendered participant count");
+  assert.deepEqual(sourceExcluded?.players.map(p => p.id), ["C", "E"]);
+  const fourRendered = project(["A", "B", "C", "E", "F", "G", "D"]);
+  assert.equal(fourRendered?.density, "compact", "four rendered secondary cards use compact density");
+  assert.equal(fourRendered?.players.length, 4);
   assert.deepEqual(project(["B", "C"], { activeTargetIds: ["B"], participantIds: [] }), project(["B", "C"], { activeTargetIds: ["B"], participantIds: ["C", "B"] }), "remaining scope does not manufacture progress");
   assert.deepEqual(project(["B", "C"], { decisionActorId: "C", activeResolverId: "C" })?.players.map(p => p.id), ["C"], "decision role does not create target membership");
   assert.equal(project(["B", "C"], { stage: "NEGATION" }), null, "do not infer Group during other stages");

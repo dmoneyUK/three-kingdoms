@@ -55,11 +55,11 @@ export function projectGroupTargetScopeForViewer(
   for (const target of stage.originalTargets) {
     if (target.id && target.id !== viewerId) targets.set(target.id, target);
   }
-  const density = targets.size >= 4 ? "compact" : "medium";
   const players = [...targets.values()]
     .filter((target) => target.id !== projectedFocus.primary?.id && target.id !== mediumSource?.player.id)
     .map((target) => decoratePlayer(target, resolvePlayerDisplay))
     .filter((player): player is HeroFocusPlayerView => player !== null);
+  const density = players.length >= 4 ? "compact" : "medium";
   return players.length ? { density, players } : null;
 }
 
