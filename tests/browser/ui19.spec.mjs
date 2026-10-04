@@ -317,14 +317,15 @@ test.describe("UX2.0VIS-09C preserve the Hand viewport across membership changes
   }
 });
 
-test.describe("UX2.0VIS-10A short-portrait Top Row Stage containment", () => {
+test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment", () => {
   const states = [
     { state: "interaction", required: [".hero-focus", ".interaction-stage-meta-region"] },
     { state: "negation", required: [".hero-focus", '[data-reaction-chain="proven"]', '[data-reaction-node="root"]', '[data-reaction-node="active"]', ".interaction-stage-meta-region"] },
     { state: "dying", required: [".hero-focus", '[data-dying-handoff="proven"]', ".dying-handoff-grid", ".dying-handoff-guidance"] },
     { state: "group-observer", required: [".hero-focus", ".medium-participant-card", '[data-group-target-scope="original"]', ".interaction-stage-meta-region"] },
+    { state: "long-guidance", required: [".hero-focus", ".interaction-stage-meta-region"] },
   ];
-  for (const viewport of [{ width: 480, height: 640 }, { width: 650, height: 700 }]) {
+  for (const viewport of [{ width: 480, height: 640 }, { width: 650, height: 700 }, { width: 320, height: 640 }, { width: 360, height: 640 }]) {
     for (const { state, required } of states) {
       test(`${state} at ${viewport.width}x${viewport.height} stays inside the Safe Zone without losing Stage content`, async ({ page }) => {
         await loadFixture(page, { state, count: 4, ...viewport, handSize: 25 });
@@ -343,7 +344,7 @@ test.describe("UX2.0VIS-10A short-portrait Top Row Stage containment", () => {
         }
         if (state === "dying") {
           await expect(stage.locator(".dying-handoff > header strong")).toBeVisible();
-          await expect(stage.locator(".dying-handoff-grid > span")).not.toHaveCount(0);
+          await expect(stage.locator(".dying-handoff-grid > span")).toHaveCount(3);
           await expect(stage.locator(".dying-handoff-guidance")).not.toHaveText("");
         }
         if (state === "group-observer") {
@@ -358,6 +359,11 @@ test.describe("UX2.0VIS-10A short-portrait Top Row Stage containment", () => {
         }
         for (const selector of [".local-hero-card", ".local-status-panel", ".local-equipment-panel", ".local-hand-rail", ".console-guidance", ".turn-controls"]) {
           await expect(dock.locator(selector), `the persistent Dock must retain ${selector}`).toBeVisible();
+        }
+        if (state === "long-guidance") {
+          const guidance = dock.locator(".console-guidance .decision-status");
+          await expect(guidance).not.toHaveText("");
+          expect(await guidance.evaluate((element) => element.scrollHeight <= element.clientHeight + 1), "required long guidance stays fully readable").toBe(true);
         }
         await expect(dock.locator(".local-hand-rail")).toHaveAttribute("data-hand-layout", "measured");
 
@@ -382,6 +388,12 @@ test.describe("UX2.0VIS-10A short-portrait Top Row Stage containment", () => {
           };
           return {
             stage: rect('.play-table[data-seat-topology="top-row"] .interaction-stage'),
+            stageContent: [...stage.querySelectorAll(':scope > header, .interaction-stage-body, .hero-focus, .interaction-stage-meta-region, .interaction-stage-focus, .interaction-stage-context, .dying-handoff, .dying-handoff-grid, .dying-handoff-guidance')]
+              .filter((element) => { const box = element.getBoundingClientRect(); return box.width > 0 && box.height > 0; })
+              .map((element) => ({ selector: element.className || element.tagName, ...bounds(element) })),
+            stageTextMetrics: [...stage.querySelectorAll(':scope > header, .hero-focus-identity, .medium-participant-identity, .interaction-stage-focus, .interaction-stage-context, .group-target-identity, .dying-handoff-grid, .dying-handoff-guidance')]
+              .filter((element) => { const box = element.getBoundingClientRect(); return box.width > 0 && box.height > 0; })
+              .map((element) => ({ selector: element.className || element.tagName, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth })),
             safeZone: rect('.play-table[data-seat-topology="top-row"] > .interaction-safe-zone'),
             table: rect('.play-table'),
             dock: rect('.local-player-dock'),
@@ -405,11 +417,22 @@ test.describe("UX2.0VIS-10A short-portrait Top Row Stage containment", () => {
           };
         });
         expect(layout.stage.top).toBeGreaterThanOrEqual(layout.safeZone.top - 1);
-        expect(layout.stage.bottom).toBeLessThanOrEqual(layout.safeZone.bottom + 1);
+        expect(layout.stage.bottom, `Stage remains in the Safe Zone: ${JSON.stringify({ stage: layout.stage, safeZone: layout.safeZone, stageContent: layout.stageContent })}`).toBeLessThanOrEqual(layout.safeZone.bottom + 1);
         expect(layout.stage.bottom).toBeLessThanOrEqual(layout.table.bottom + 1);
         expect(layout.stage.bottom).toBeLessThanOrEqual(layout.dock.top - 4);
         expect(layout.stageDockOverlap).toBe(0);
         expect(layout.safeZoneDockOverlap).toBe(0);
+        if (viewport.width <= 360) {
+          for (const part of layout.stageContent) {
+            expect(part.top, `${part.selector} stays below the Safe Zone top`).toBeGreaterThanOrEqual(layout.safeZone.top - 1);
+            expect(part.bottom, `${part.selector} stays above the Safe Zone bottom`).toBeLessThanOrEqual(layout.safeZone.bottom + 1);
+            expect(part.left, `${part.selector} stays right of the Safe Zone left`).toBeGreaterThanOrEqual(layout.safeZone.left - 1);
+            expect(part.right, `${part.selector} stays left of the Safe Zone right: ${JSON.stringify(part)}`).toBeLessThanOrEqual(layout.safeZone.right + 1);
+          }
+          for (const metrics of layout.stageTextMetrics) {
+            expect(metrics.scrollWidth, `${metrics.selector} has no horizontally clipped text`).toBeLessThanOrEqual(metrics.clientWidth + 1);
+          }
+        }
         expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
         expect(layout.stageOverflow).toEqual({ x: "visible", y: "visible" });
         expect(layout.opponents).toHaveLength(3);
