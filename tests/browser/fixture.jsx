@@ -140,7 +140,7 @@ function currentActionFor(state, actorId, handCardId) {
   };
 }
 
-function browserRoom({ state, count }) {
+function browserRoom({ state, count, handSize }) {
   const hasLocalJudgementFixture = ["local-judgement-empty", "local-judgement-one", "local-judgement-two"].includes(state);
   const localJudgementCount = state === "local-judgement-one" ? 1 : state === "local-judgement-two" ? 2 : 0;
   if (hasLocalJudgementFixture) state = "normal";
@@ -150,7 +150,10 @@ function browserRoom({ state, count }) {
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
   const meId = state === "group-observer" || unfocusedGroup ? "p3" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
   const actorId = state === "group-observer" || unfocusedGroup ? "p1" : state === "dying" ? "p3" : meId;
-  const hand = state === "group-observer" || unfocusedGroup
+  // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
+  const hand = state === "normal" && handSize !== null
+    ? Array.from({ length: handSize }, (_, index) => card(`browser-hand-${index + 1}`, "Attack"))
+    : state === "group-observer" || unfocusedGroup
     ? []
     : state === "duel"
     ? [card("browser-attack", "Attack", "♠")]
@@ -230,10 +233,11 @@ function readFixture() {
   const params = new URLSearchParams(window.location.search);
   const state = params.get("state") || "normal";
   const count = Math.min(10, Math.max(2, Number(params.get("count") || 4)));
-  return { state, count };
+  const handSize = params.has("handSize") ? Math.min(30, Math.max(1, Number(params.get("handSize")))) : null;
+  return { state, count, handSize };
 }
 
-const { state, count } = readFixture();
+const { state, count, handSize } = readFixture();
 const root = createRoot(document.getElementById("root"));
 window.__browserActions = [];
-root.render(<GameRoom room={browserRoom({ state, count })} busy={false} error="" onAction={async (action, extra) => { window.__browserActions.push({ action, extra }); return true; }} onLeave={() => {}} />);
+root.render(<GameRoom room={browserRoom({ state, count, handSize })} busy={false} error="" onAction={async (action, extra) => { window.__browserActions.push({ action, extra }); return true; }} onLeave={() => {}} />);

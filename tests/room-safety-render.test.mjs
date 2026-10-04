@@ -720,7 +720,12 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(gameRoomSource, /hiddenCardIds\.has\(card\.id\)/, "in-flight Judgement cards retain their existing hidden-card behavior");
   assert.doesNotMatch(gameRoomSource, /judgementCardLayout\.step - 34/);
   assert.match(sequenceStyleSource, /\.local-hand-section\s*\{[\s\S]*height: var\(--hand-panel-height\)[\s\S]*padding: var\(--hand-top-inset\) 4px var\(--hand-bottom-gutter\)/);
-  assert.match(sequenceStyleSource, /\.local-hand-rail\s*\{[\s\S]*top: 0[\s\S]*height: var\(--hand-peek-height\)[\s\S]*overflow: visible/);
+  const handViewportRule = sequenceStyleSource.match(/\.local-hand-rail\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(handViewportRule, /top: calc\(-1 \* var\(--hand-lift-clearance\)\)/);
+  assert.match(handViewportRule, /height: calc\(var\(--hand-peek-height\) \+ var\(--hand-lift-clearance\)\)/);
+  assert.match(handViewportRule, /padding: var\(--hand-lift-clearance\) 0 0/);
+  assert.match(handViewportRule, /overflow-x: auto; overflow-y: hidden/);
+  assert.match(handViewportRule, /pointer-events: none/, "empty lift space preserves underlying Skills/Equipment hits");
   assert.match(gameRoomSource, /ResizeObserver[\s\S]*handRailWidth[\s\S]*calculateHandCardStep/);
   assert.doesNotMatch(sequenceStyleSource, /margin-left: -38px|margin-left: -34px/);
   assert.match(html, /class="hand-card-visual"[\s\S]*class="game-card[\s\S]*class="card-info-button"/);

@@ -43,12 +43,166 @@ const VIS_04C_VIEWPORTS = [
   { width: 480, height: 900, boardInset: 55, seat: { width: 100, height: 78 }, seatLefts: [15.5, 190, 364.5] },
 ];
 
-async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false }) {
+async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${handSize === undefined ? "" : `&handSize=${handSize}`}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
+
+for (const width of [1440, 650, 480]) {
+  for (const handSize of [5, 10, 15, 20, 25, 30]) {
+    test(`UX2.0VIS-09B ${handSize} hand cards at ${width}px fit or scroll in one layer`, async ({ page }) => {
+      await loadFixture(page, { width, height: 900, handSize });
+      const rail = page.locator(".local-hand-rail");
+      await expect(rail).toHaveAttribute("data-hand-layout", "measured");
+      const measure = () => rail.evaluate((element) => {
+        const rect = (node) => {
+          const { left, right, top, bottom, width, height } = node.getBoundingClientRect();
+          return { left, right, top, bottom, width, height };
+        };
+        return {
+          viewport: rect(element), available: element.clientWidth, extent: element.scrollWidth,
+          pageWidth: document.documentElement.scrollWidth,
+          cards: [...element.querySelectorAll(".game-card")].map(rect),
+          ids: [...element.querySelectorAll("[data-hand-card-id]")].map((card) => card.dataset.handCardId),
+          actionTop: document.querySelector(".turn-controls").getBoundingClientRect().top,
+        };
+      });
+      const initial = await measure();
+      expect(initial.ids).toEqual(Array.from({ length: handSize }, (_, i) => `browser-hand-${i + 1}`));
+      expect(initial.pageWidth).toBeLessThanOrEqual(width);
+      for (const [i, card] of initial.cards.entries()) {
+        expect(card.width).toBeCloseTo(68, 0);
+        expect(card.height).toBeCloseTo(102, 0);
+        expect(card.top).toBeCloseTo(initial.cards[0].top, 0);
+        expect(card.bottom).toBeLessThanOrEqual(initial.actionTop);
+        if (i) expect(card.left - initial.cards[i - 1].left).toBeGreaterThanOrEqual(29.9);
+      }
+      const overflows = 68 + (handSize - 1) * 30 > initial.available + 1;
+      if (overflows) {
+        expect(initial.extent).toBeGreaterThan(initial.available);
+        await page.mouse.move(initial.viewport.left + 80, initial.cards[0].bottom - 10);
+        await page.mouse.wheel(10000, 0);
+        await expect.poll(async () => (await measure()).cards.at(-1).right)
+          .toBeLessThanOrEqual(initial.viewport.right + 1);
+      } else {
+        expect(initial.extent).toBeLessThanOrEqual(initial.available + 1);
+      }
+      const last = rail.locator(`[data-hand-card-id="browser-hand-${handSize}"]`);
+      await last.locator(".game-card").click();
+      await expect(last.locator(".game-card")).toHaveClass(/selected/);
+      await expect.poll(async () => {
+        const geometry = await measure();
+        return geometry.cards[0].top - geometry.cards.at(-1).top;
+      }).toBeCloseTo(65, 0);
+      const selected = await measure();
+      expect(selected.cards.at(-1).top).toBeGreaterThanOrEqual(selected.viewport.top - 1);
+      expect(selected.cards.at(-1).bottom).toBeLessThanOrEqual(selected.viewport.bottom + 1);
+      expect(selected.cards.at(-1).right).toBeLessThanOrEqual(selected.viewport.right + 1);
+      expect(selected.cards.at(-1).top).toBeCloseTo(selected.cards[0].top - 65, 0);
+      expect(selected.cards.at(-1).bottom).toBeLessThanOrEqual(selected.actionTop);
+      await last.locator(".card-info-button").click();
+      await expect(page.getByRole("dialog").getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Close card explanation" }).click();
+      // The transparent space reserved for lifted cards must not steal skill hits.
+      expect(await page.locator(".hero-skill-button").first().evaluate((button) => {
+        const r = button.getBoundingClientRect();
+        return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest(".hero-skill-button") === button;
+      })).toBe(true);
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+      if (overflows) {
+        await rail.focus();
+        const previousOffset = await rail.evaluate((element) => element.scrollLeft);
+        const keyboardScrollFinished = rail.evaluate((element) => new Promise((resolve) => {
+          element.addEventListener("scrollend", () => resolve(), { once: true });
+        }));
+        await page.keyboard.press("ArrowLeft");
+        await keyboardScrollFinished;
+        expect(await rail.evaluate((element) => element.scrollLeft)).toBeLessThan(previousOffset);
+        const current = await measure();
+        await page.mouse.move(current.viewport.left + 80, current.cards[0].bottom - 10);
+        await page.mouse.wheel(-10000, 0);
+        await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBe(0);
+        const first = rail.locator('[data-hand-card-id="browser-hand-1"] .game-card');
+        await first.click({ position: { x: 10, y: 50 } });
+        await expect(first).toHaveClass(/selected/);
+      }
+    });
+  }
+}
+
+test("UX2.0VIS-09B tapping a clipped edge reveals that same physical card", async ({ page }) => {
+  await loadFixture(page, { width: 480, height: 900, handSize: 25 });
+  const rail = page.locator(".local-hand-rail");
+  await expect(rail).toHaveAttribute("data-hand-layout", "measured");
+  const bounds = await rail.boundingBox();
+  const baseline = await rail.locator(".game-card").first().boundingBox();
+  await page.mouse.move(bounds.x + 80, baseline.y + 50);
+  await page.mouse.wheel(15, 0);
+  await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBe(15);
+  // Direct user coordinates avoid Playwright's automatic scrollIntoView.
+  await page.mouse.click(bounds.x + 5, baseline.y + 50);
+  await expect(rail.locator('[data-hand-card-id="browser-hand-1"] .game-card')).toHaveClass(/selected/);
+  await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBe(0);
+  await page.mouse.move(bounds.x + 80, baseline.y + 50);
+  await page.mouse.wheel(120, 0);
+  await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBe(120);
+  const edge = await rail.evaluate((element) => {
+    const viewport = element.getBoundingClientRect();
+    const slot = [...element.querySelectorAll("[data-hand-card-id]")].filter((node) => {
+      const r = node.getBoundingClientRect();
+      return r.left < viewport.right - 8 && r.right > viewport.right;
+    }).at(-1);
+    const r = slot.getBoundingClientRect();
+    return { id: slot.dataset.handCardId, x: r.left + 5, y: r.top + 50 };
+  });
+  await page.mouse.click(edge.x, edge.y);
+  const selected = rail.locator(`[data-hand-card-id="${edge.id}"] .game-card`);
+  await expect(selected).toHaveClass(/selected/);
+  await expect.poll(async () => {
+    const r = await selected.boundingBox();
+    return r.x + r.width;
+  }).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});
+
+test.describe("UX2.0VIS-09B native touch navigation", () => {
+  test.use({ hasTouch: true });
+  for (const width of [480, 650]) {
+    test(`${width}px pan does not select and a subsequent tap still selects and inspects`, async ({ page, context }) => {
+      await loadFixture(page, { width, height: 900, handSize: 25 });
+      const rail = page.locator(".local-hand-rail");
+      await expect(rail).toHaveAttribute("data-hand-layout", "measured");
+      const viewport = await rail.boundingBox();
+      const first = await rail.locator(".game-card").first().boundingBox();
+      const cdp = await context.newCDPSession(page);
+      await cdp.send("Input.synthesizeScrollGesture", {
+        x: viewport.x + viewport.width - 40, y: first.y + 50,
+        xDistance: -220, yDistance: 0, preventFling: true, gestureSourceType: "touch",
+      });
+      await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(30);
+      await expect(rail.locator(".game-card.selected")).toHaveCount(0);
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+      const tapTarget = await rail.evaluate((element) => {
+        const viewport = element.getBoundingClientRect();
+        const slot = [...element.querySelectorAll("[data-hand-card-id]")].find((node) => {
+          const r = node.getBoundingClientRect();
+          return r.left >= viewport.left && r.right <= viewport.right;
+        });
+        const r = slot.getBoundingClientRect();
+        return { id: slot.dataset.handCardId, x: r.left + 8, y: r.top + 45 };
+      });
+      await page.touchscreen.tap(tapTarget.x, tapTarget.y);
+      const selected = rail.locator(`[data-hand-card-id="${tapTarget.id}"]`);
+      await expect(selected.locator(".game-card")).toHaveClass(/selected/);
+      await selected.locator(".card-info-button").tap();
+      await expect(page.getByRole("dialog").getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+      await cdp.detach();
+    });
+  }
+});
 
 async function assertVisible(locator, label) {
   await expect(locator, label).toBeVisible();

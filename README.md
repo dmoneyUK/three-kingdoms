@@ -14,6 +14,20 @@ confirmation**. This status is not a claim that the whole game, all content,
 touch-device certification, full WCAG auditing, subjective art direction, or
 production deployment is complete.
 
+### Local Hand navigation
+
+The local Hand stays in one row with 68×102px cards. Spacing compresses to a
+30px exposed step; when that no longer fits, native horizontal touch/trackpad
+scrolling and focused arrow-key navigation reach the remaining cards. Tapping
+an edge card reveals that same physical card, retaining its upward selection
+and information control. Panning does not select or submit a card.
+
+Browser coverage exercises 5/10/15/20/25/30 cards at 1440/650/480px, including
+both ends of the Hand, native touch pan versus tap, and preserved Dock control
+hits. This is browser evidence, not real-device touch certification. Semantic
+viewport anchoring across authoritative card additions/removals remains a
+separate follow-up.
+
 ### UX2.0VIS-05B — Side Column central safe zone — 2026-10-04
 
 For 5–10 players, a transparent positioned container now owns the central
@@ -162,7 +176,8 @@ renders exactly N−1 opponent anchors plus one persistent local dock anchor;
 semantic Interaction Stage/Hero Focus classes decorate those anchors without
 moving or replacing them. At the <=650px and <=480px boundaries, the stage and
 Hero Focus text wrap safely, the side-column cards stay contained, the local
-hand rail retains its 1/5/10-card physical-card contract, and the existing
+hand rail retains its physical-card contract (including the larger-hand
+navigation described above), and the existing
 footer console wraps in place. Dialogs remain dialog-owned with bounded scroll;
 no gameplay, payload, legality, projector, snapshot, or visibility behavior
 changed.

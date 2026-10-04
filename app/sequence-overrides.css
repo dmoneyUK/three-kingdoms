@@ -435,6 +435,8 @@
   --hand-card-height: 102px;
   --hand-top-inset: 4px;
   --selected-rise: 48px;
+  --selected-face-rise: 17px;
+  --hand-lift-clearance: calc(var(--selected-rise) + var(--selected-face-rise));
   --hand-bottom-gutter: 10px;
   --top-panel-height: 124px;
   --zone-card-width: clamp(28px, 7.6vw, 34px);
@@ -611,13 +613,19 @@
 /* The top panels stay below the hand so a raised card can paint over them. */
 .local-hand-section { position: relative; grid-area: hand; height: var(--hand-panel-height); min-height: var(--hand-panel-height); min-width: 0; padding: var(--hand-top-inset) 4px var(--hand-bottom-gutter); overflow: visible; z-index: 50; }
 .local-hand { position: relative; height: 100%; min-width: 0; overflow: visible; z-index: 60; }
-.local-hand-rail { position: absolute; top: 0; right: 4px; left: 4px; z-index: 60; display: flex; align-items: flex-start; justify-content: flex-start; width: auto; height: var(--hand-peek-height); min-width: 0; padding: 0; overflow: visible; scrollbar-width: none; }
+/* Native scrolling clips both axes. Reserve the existing lift above the normal
+   baseline inside the viewport, without increasing the Dock's grid height.
+   Empty lift space passes hits through to Skills/Equipment; card descendants
+   still receive native touch/wheel input, and the rail supports keyboard pan. */
+.local-hand-rail { position: absolute; top: calc(-1 * var(--hand-lift-clearance)); right: 4px; left: 4px; z-index: 60; display: flex; align-items: flex-start; justify-content: flex-start; box-sizing: border-box; width: auto; height: calc(var(--hand-peek-height) + var(--hand-lift-clearance)); min-width: 0; padding: var(--hand-lift-clearance) 0 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; pointer-events: none; scrollbar-width: none; }
 .local-hand-rail::-webkit-scrollbar { display: none; }
-.local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 68px; width: 68px; height: var(--hand-peek-height); overflow: hidden; }
+.local-hand-rail:focus-visible { outline: 1px solid #e6cc8c; outline-offset: -1px; }
+.local-hand-rail .card-slot { position: relative; z-index: 1; flex: 0 0 68px; width: 68px; height: var(--hand-peek-height); overflow: hidden; pointer-events: auto; }
 .local-hand-rail .card-slot.single-selected { z-index: 80; height: var(--hand-peek-height); overflow: visible; }
 .local-hand-rail .hand-card-visual { position: relative; width: 100%; height: var(--hand-card-height); }
 .local-hand-rail .card-slot .game-card { width: 100%; height: var(--hand-card-height); margin-left: 0; padding: 8px 5px; }
 .local-hand-rail .card-slot.single-selected .hand-card-visual { transform: translateY(calc(-1 * var(--selected-rise))); }
+.local-hand-rail .card-slot.single-selected .game-card { transform: translateY(calc(-1 * var(--selected-face-rise))); }
 .local-hand-rail .card-info-button { left: 50%; top: calc(var(--hand-card-height) * .67); right: auto; bottom: auto; z-index: 6; opacity: 0; pointer-events: none; width: 16px; height: 16px; font-size: 9px; translate: -50% -50%; transform: none; }
 .local-hand-rail .card-slot.single-selected .card-info-button { opacity: 1; pointer-events: auto; translate: -50% -50%; }
 .local-hand-rail .card-slot:not(.single-selected) .game-card.selected { transform: translateY(-5px); }
