@@ -43,10 +43,10 @@ const VIS_04C_VIEWPORTS = [
   { width: 480, height: 900, boardInset: 55, seat: { width: 100, height: 78 }, seatLefts: [15.5, 190, 364.5] },
 ];
 
-async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize, equipmentCase }) {
+async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize, equipmentCase, hero }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${handSize === undefined ? "" : `&handSize=${handSize}`}${equipmentCase ? `&equipmentCase=${equipmentCase}` : ""}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${handSize === undefined ? "" : `&handSize=${handSize}`}${equipmentCase ? `&equipmentCase=${equipmentCase}` : ""}${hero ? `&hero=${encodeURIComponent(hero)}` : ""}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -1562,6 +1562,72 @@ for (const [count, left, right] of [
     expect(order("left")).toEqual(left);
     expect(order("right")).toEqual(right);
     if (count === 10) expect(seats.filter(({ side, row }) => side === "left" && row === 5)).toEqual([]);
+  });
+}
+
+for (const { width, height } of [
+  { width: 320, height: 640 },
+  { width: 360, height: 640 },
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 650, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`UX2.0VIS-12A keeps both Zhen Ji skill names readable and hit-sized at ${width}px`, async ({ page }) => {
+    await loadFixture(page, { state: "rest", count: 4, width, height, hero: "zhen-ji" });
+    const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+    const skills = dock.locator(".local-status-panel .local-hero-skills");
+    const buttons = skills.locator(".hero-skill-button");
+    await expect(buttons).toHaveText(["Empress Dowager", "Godess of Luo River"]);
+
+    const geometry = await dock.evaluate((element) => {
+      const rect = (node) => {
+        const { left, right, top, bottom, width: boxWidth, height: boxHeight } = node.getBoundingClientRect();
+        return { left, right, top, bottom, width: boxWidth, height: boxHeight };
+      };
+      const skillPanel = element.querySelector(".local-status-panel");
+      const equipmentPanel = element.querySelector(".local-equipment-panel");
+      const controls = [...element.querySelectorAll(".local-hero-skills .hero-skill-button")];
+      return {
+        skills: rect(skillPanel),
+        equipment: rect(equipmentPanel),
+        buttons: controls.map((button) => {
+          const label = button.firstChild;
+          const words = [...label.textContent.matchAll(/\S+/g)].map((match) => {
+            const range = document.createRange();
+            range.setStart(label, match.index);
+            range.setEnd(label, match.index + match[0].length);
+            return range.getClientRects().length;
+          });
+          const bounds = button.getBoundingClientRect();
+          return {
+            ...rect(button),
+            clientWidth: button.clientWidth,
+            scrollWidth: button.scrollWidth,
+            clientHeight: button.clientHeight,
+            scrollHeight: button.scrollHeight,
+            wordLineCounts: words,
+            hitTarget: document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)?.closest(".hero-skill-button") === button,
+          };
+        }),
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      };
+    });
+
+    expect(geometry.skills.right).toBeLessThanOrEqual(geometry.equipment.left + 1);
+    expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+    for (const button of geometry.buttons) {
+      expect(button.top).toBeGreaterThanOrEqual(geometry.skills.top - 1);
+      expect(button.bottom).toBeLessThanOrEqual(geometry.skills.bottom + 1);
+      expect(button.width).toBeGreaterThanOrEqual(44);
+      expect(button.height).toBeGreaterThanOrEqual(44);
+      expect(button.height).toBeLessThanOrEqual(56);
+      expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth + 1);
+      expect(button.scrollHeight).toBeLessThanOrEqual(button.clientHeight + 1);
+      expect(button.wordLineCounts.every((lineCount) => lineCount === 1), JSON.stringify({ width, button })).toBe(true);
+      expect(button.hitTarget).toBe(true);
+    }
   });
 }
 

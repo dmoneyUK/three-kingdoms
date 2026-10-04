@@ -157,7 +157,7 @@ function currentActionFor(state, actorId, handCardId) {
   };
 }
 
-function browserRoom({ state, count, handSize, equipmentCase }) {
+function browserRoom({ state, count, handSize, equipmentCase, heroOverride }) {
   const hasLocalJudgementFixture = ["local-judgement-empty", "local-judgement-one", "local-judgement-two"].includes(state);
   const localJudgementCount = state === "local-judgement-one" ? 1 : state === "local-judgement-two" ? 2 : 0;
   if (hasLocalJudgementFixture) state = "normal";
@@ -189,7 +189,7 @@ function browserRoom({ state, count, handSize, equipmentCase }) {
     id,
     name: `Player ${index + 1}`,
     seat: index,
-    hero: index === 0 && state.startsWith("sun-shangxiang-") ? "sun-shangxiang" : index === 0 && (state === "confirm-cancel-skip" || state === "long-guidance") ? "zhang-liao" : HERO_IDS[index],
+    hero: index === 0 && heroOverride ? heroOverride : index === 0 && state.startsWith("sun-shangxiang-") ? "sun-shangxiang" : index === 0 && (state === "confirm-cancel-skip" || state === "long-guidance") ? "zhang-liao" : HERO_IDS[index],
     generalReady: true,
     ready: true,
     hp: 4,
@@ -252,12 +252,13 @@ function readFixture() {
   const count = Math.min(10, Math.max(2, Number(params.get("count") || 4)));
   const handSize = params.has("handSize") ? Math.min(30, Math.max(1, Number(params.get("handSize")))) : null;
   const equipmentCase = params.get("equipmentCase") || null;
-  return { state, count, handSize, equipmentCase };
+  const heroOverride = params.get("hero") || null;
+  return { state, count, handSize, equipmentCase, heroOverride };
 }
 
-const { state, count, handSize, equipmentCase } = readFixture();
+const { state, count, handSize, equipmentCase, heroOverride } = readFixture();
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, equipmentCase });
+let fixtureRoom = browserRoom({ state, count, handSize, equipmentCase, heroOverride });
 window.__browserActions = [];
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => { window.__browserActions.push({ action, extra }); return true; }} onLeave={() => {}} />);
 window.__setBrowserHandIds = (ids) => {

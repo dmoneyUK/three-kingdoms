@@ -45,3 +45,33 @@ Implementation result: moved the existing conditional Cancel / Primary / authori
 Focused validation: semantic action-slot browser matrix passed 3/3 at 360/480/1440px across six local flows; retained short-portrait Stage containment passed 10/10 at 320/360px; targeted ESLint passed. The matrix verifies 78×32px buttons, thumb-zone geometry at 360/480, right anchoring/gutter, traversal order, no action overlap, and no horizontal page overflow. No full local suite/build/lint was run. Commit/push and exact-revision CI are pending.
 
 Stop condition: if 480px controls cannot simultaneously meet the approved reach zone, >=32px Primary-to-Decline gutter, minimum target size, readable contextual Cancel, and coherent traversal without semantic changes, record exact measurements and stop with `BLOCKED — HUMAN REVIEW REQUIRED`.
+
+## Autonomous run append-only updates — 2026-10-04
+
+### UX2.0VIS-11B — CI closure
+
+Status: `COMPLETED BY AGENT — CI GREEN`  
+Tested revision: `747eb0654fc6be9d5d6ab29b4901b3801239f2d9`  
+CI run: [37210340894](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37210340894) — build-and-test job `111460067223` and deploy job `111461124350` succeeded. Human Reviewer acceptance remains separate. Focused browser matrix 13/13 and targeted ESLint passed; no full local suite/build/lint was run.
+
+### UX2.0VIS-12A — Make Local Hero Skills Readable, Full-Label, and Easy to Hit
+
+Status: `IMPLEMENTED — CI PENDING`
+
+Planning gate: all five §19 checks passed against `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.77–0.80, 2.1, 2.4, 2.9 and the current autonomous workflow §§19–20. The approved design requires large/reliable skill controls, readable names without hover, and Skills-left / Equipment-right placement; existing hero skill metadata supplies presentation labels. The current defect was measured at 944×24 on desktop and 223×22 at 480px, while an experimental 320px horizontal variant clipped Zhen Ji's longest skill labels.
+
+Requirements:
+- Keep skill controls in the right-top band, left of Equipment, with Hand below; preserve labels, enabled/disabled/active states, callbacks, and `CurrentAction` ownership.
+- Use responsive content-sized controls with full visible names and minimum 44×44px hit areas; no ellipsis, clipping, or mid-word line breaks at 320px.
+- Cover Zhen Ji's “Empress Dowager” and “Godess of Luo River” at 320, 360, 390, 480, 650, and 1440px; verify hit geometry, complete readable words, Equipment separation, and no page overflow.
+- Do not change Dock/Hand/Interaction Stage geometry, gameplay, protocol, or authoritative semantics.
+
+Implementation result: changed only the local skills presentation to a compact responsive horizontal row of content-sized controls, at least 44×44px and capped at 56px high; removed ellipsis/clipping, tuned narrow-screen typography to preserve whole-word wrapping, and kept equipment right of skills. Added a test-only hero override to the existing browser fixture and six viewport regressions with geometry, word-line, hit-target, equipment separation, and document-width assertions. No product/gameplay semantics or `README.md` changes.
+
+Focused validation: VIS-12A's six viewport cases and existing VIS-06B enabled/disabled skill behavior/semantic-flow cases passed 10/10. Screenshots at 320, 480, and 1440px were reviewed. Targeted ESLint on `tests/browser/ui19.spec.mjs` reported zero errors; the fixture JSX file is ignored by the repository ESLint configuration. No full local suite/build/lint was run. Commit, push, and exact-revision CI are pending.
+
+Stop condition: if 320px cannot retain two 44×44px controls, full names without splitting words, Equipment to their right, and no overlap/overflow under existing Dock and Stage/Hand constraints, record measurements and stop with `BLOCKED — HUMAN REVIEW REQUIRED`.
+
+Remote design/workflow refresh during VIS-12A: fast-forwarded from `747eb06` to `b32fbb6` after finding three reviewer commits. Reviewed the full design/workflow diff, including mobile composition and Stage layering (§§0.91.1–0.91.5), Hero-art crop (§1.5 / §2.3), and Direct-Reversal-First control semantics (§§0.89 / 8). None changes this bounded skill-control task or authorizes adding Stage/crop/control-semantic changes here. Keep those mobile Stage and Hero-art requirements visible for later independent planning.
+
+Supplemental focused validation after the remote design refresh: VIS-12A + existing VIS-06B skill behavior + VIS-10A/VIS-11A short-portrait Stage containment passed 30/30; targeted ESLint on `tests/browser/ui19.spec.mjs` passed. No full suite/build/lint was run.
