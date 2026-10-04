@@ -1,101 +1,82 @@
-# WTK project execution workflow
+# WTK Project Execution Rules
 
-## Mode selection and autonomous UI/Layout shortcut
+## Document roles
 
-The normal reviewer-authored single-task workflow remains the default for ordinary coding-agent work.
+Use each repository document for one job only:
 
-Autonomous UI/Layout mode is active when the user either:
+- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` — product/UI design authority. It defines the intended UX, interaction semantics, responsive behavior, and reviewer-approved design requirements. It is **not** a task queue.
+- `HANDOVER.md` — current execution handoff. It contains the latest relevant result and exactly one current or next bounded task. The Coding Agent maintains it.
+- `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` — execution method for autonomous UI/Layout work: startup, task boundaries, CI cadence, planning gate, and stop conditions.
+- `docs/AUTONOMOUS_UI_ROADMAP.md` — durable history only: completed milestones, important implementation evidence, and known deferred gaps. It is not task authority.
+- `docs/UX_V2_RELEASE_GATE.md` — release-gate evidence only. It is not task or design authority.
 
-- explicitly says `AUTONOMOUS UI RUN: ACTIVE`; or
-- explicitly tells the Agent to read/follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` and continue the autonomous UI work.
+Direct user instructions override repository process instructions.
 
-When autonomous mode is active, use this startup order:
+A design-document change does **not** automatically replace the active HANDOVER task. If the active bounded task can continue without contradicting the new design, finish it. If it would contradict the new design, stop and request review. Before planning the next task, always review the latest design revision.
 
-1. inspect the branch and working-tree state, then synchronize `ux-v2` from
-   `origin` without overwriting local changes;
-2. read `AGENTS.md`;
-3. read the complete current `HANDOVER.md` (it is intentionally short);
-4. read `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`;
-5. review the current remote `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` as a
-   whole for reviewer feedback, reported issues, and changes to the overall UX
-   direction; compare it with the design revision recorded in HANDOVER, then
-   read all changed and task-cited sections in full;
-6. inspect only the source/tests relevant to the current task;
-7. consult `docs/AUTONOMOUS_UI_ROADMAP.md` only when next-task planning or older historical evidence is actually needed.
+## Working mode and branch
 
-`HANDOVER.md` is the current handoff authority. `docs/AUTONOMOUS_UI_ROADMAP.md` is the long-lived history/roadmap and is not read in full by default. The remote interaction design is the reviewer-facing source for UX proposals, recommendations, and reported issues. Review it at each fresh/resumed task and before every next-task plan, comparing against the last design revision recorded in HANDOVER. The Agent maintains HANDOVER as the concise execution record, design-review checkpoint, and current/next task handoff; it does not replace design review.
+The normal mode is one reviewer-authorized task from `HANDOVER.md`.
 
-While autonomous mode is active, the autonomous workflow may:
+Autonomous UI/Layout mode is active only when the user explicitly activates it or asks the Agent to follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`. In that mode the Agent may plan and execute successive bounded UI/Layout tasks using that workflow.
 
-- derive and begin the next bounded UI/Layout task after the previous implementation is pushed, subject to the latest-run checkpoint below;
-- continue through multiple bounded tasks;
-- inspect GitHub Actions at the start of each new task without waiting for an in-progress run;
-- fix real CI failures before continuing;
-- keep the current task, latest execution result, and next handoff in the short `HANDOVER.md`;
-- move completed historical detail into `docs/AUTONOMOUS_UI_ROADMAP.md` so HANDOVER does not grow over time.
+Autonomous UI/Layout work is performed on `ux-v2`. Do not modify or merge `main` as part of that run.
 
-Everything else in this file remains in force, especially server/gameplay authority, privacy boundaries, fail-closed semantics, WTK Standard references, no unrelated scope widening, and truthful validation reporting.
+Before changing files:
 
-If the worktree is dirty, preserve existing changes and inspect ownership before
-branch switching, staging, committing, or synchronizing. Never assume an
-uncommitted change is present on the remote branch or in a new worktree.
+1. inspect branch and working-tree state;
+2. preserve all existing uncommitted work;
+3. safely synchronize `ux-v2` with `origin/ux-v2` only when doing so cannot overwrite local changes;
+4. read the complete current `HANDOVER.md`;
+5. follow the active mode's workflow.
 
-Autonomous mode does **not** authorize new product/game semantics. If approved design or authoritative data is insufficient, follow the workflow's `BLOCKED — HUMAN REVIEW REQUIRED` rule.
+Never reset, clean, silently stash, force-push, or overwrite unrelated user/agent work.
 
-## Normal-mode task authority
+## Gameplay and architecture boundaries
 
-These rules apply when autonomous UI/Layout mode is **not** active.
-
-- At the start of every normal task, synchronize the current authorized branch from the remote repository and read the complete remote `HANDOVER.md` before changing files.
-- The reviewer-authored task in `HANDOVER.md` is the normal-mode project task authority. Understand its objective, scope, acceptance criteria, validation requirements, branch, and handoff instructions before acting.
-- Execute only the current handover task. Do not invent a follow-up task, widen the scope, or replace a reviewer requirement with a local preference.
-- If the current handover is unclear, malformed, or missing, stop and report that state instead of guessing the next implementation.
-
-In autonomous UI/Layout mode, current task authority comes from the short `HANDOVER.md` plus `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`. `docs/AUTONOMOUS_UI_ROADMAP.md` contains long-lived history and roadmap context.
+- `CurrentAction` owns viewer legal actions. React must not reconstruct legality.
+- `PresentationSnapshot` / `PresentationClientView` own proven public interaction facts. Do not infer source, target, participant, responder, resolver, causality, or order from timeline order, turn ownership, `actionPlayerId`, names, DOM position, HP changes, or animation state.
+- Missing or ambiguous semantic authority fails closed.
+- Keep public presentation separate from private viewer data. Never expose private hand identities, providers, hidden roles, or viewer-private legality through the public Interaction Stage.
+- Keep gameplay controls in the Local Player Dock; do not move legal-action authority into the public Stage.
+- The viewer's Hero stays in the Local Player Dock and is not duplicated centrally.
+- Physical opponent seat DOM stays fixed; central interaction uses projected presentation copies.
+- Preserve server authority, stale/replay safety, semantic continuations, exact physical-card conservation, privacy boundaries, and existing protocol behavior unless a task explicitly authorizes a protocol change.
+- Do not add card/hero-specific HTTP routes or client legality rules when an existing shared capability/continuation path applies.
 
 ## Rules and reference sources
 
-- The active ruleset is WTK Standard only. Do not add Endless Legends or Kingdom Wars cards to new games unless the reviewer explicitly changes this priority.
-- When checking or explaining any card, card rule, physical-card identity, deck membership, hero, or hero skill, consult these repository references first:
-  - `docs/OFFICIAL_CARD_REFERENCE.md` — official WTK card wording and terminology.
-  - `docs/STANDARD_108_DECK_MANIFEST.md` — the complete physical Standard 108-card manifest.
-  - `docs/STANDARD_HERO_REFERENCE.md` — the complete Standard hero and skill reference.
-- Use the official WTK Standard rulebook and YOKA Games' official English Standard catalogue for unresolved terminology or rule interpretation.
-- Do not ship official card artwork without permission.
+WTK Standard is the active ruleset unless the reviewer explicitly changes it.
 
-## Implementation boundaries
+For card, deck, hero, or skill semantics, consult repository references first:
 
-- Preserve server authority, private viewer projections, stale/replay safety, semantic response/trigger continuations, exact physical-card conservation, and `currentAction`-driven React controls.
-- Keep legality, response order, rescue order, next responder, winner, hidden-card knowledge, and terminal outcomes on the server. The client must not infer them from timeline order, `actionPlayerId`, turn ownership, HP, resolution IDs, or animation state.
-- Preserve the existing semantic protocol. New cards and hero abilities must use shared capability/continuation paths and must not add provider-specific HTTP actions or UI routes.
-- Keep Quick Test with one human controller switching between human-style seats, normal human multiplayer, and deterministic tests current for implemented gameplay. Bot gameplay is legacy/inactive and is not a product requirement.
-- Update relevant source, focused functional tests, and product documentation for the current handover task. Before committing a functional change, update `README.md` and `HANDOVER.md` as required by the current handover.
+- `docs/OFFICIAL_CARD_REFERENCE.md`
+- `docs/STANDARD_108_DECK_MANIFEST.md`
+- `docs/STANDARD_HERO_REFERENCE.md`
 
-## Remote validation and delivery
+Use official WTK/YOKA material only when repository references do not resolve the question. Do not ship official card artwork without permission.
 
-- GitHub Actions is the validation gate. Do not run local full tests, build, lint, or other complete checks as a routine step:
-  - `npm test`
-  - `npm run test:fast`
-  - `npm run test:api`
-  - `npm run build`
-  - `npm run lint`
-  - `git diff --check`
-- Commit and push the implementation, focused tests, documentation, and updated handover files together to the branch required by the current remote `HANDOVER.md`.
-- In normal mode, do not poll GitHub Actions after pushing; the user will report failures.
-- In autonomous UI/Layout mode, follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`'s non-blocking CI checkpoint: after pushing, do not wait or poll. Before editing source for the next task, inspect the latest push-triggered Actions run on `ux-v2`. If it has completed with failure, pause new feature work and fix the actual failure; if it is queued/in progress, do not wait—proceed and check again at the following task boundary. A task remains CI-pending until its exact revision's required jobs are confirmed successful; never label an unverified revision green.
-- If a CI failure must be investigated, inspect only the relevant failed job and reproduce the smallest necessary issue.
-- Never claim CI or production deployment was verified unless it was actually checked.
+## Validation and delivery
 
-## Handover and roadmap closeout
+GitHub Actions is the full validation gate.
 
-Normal mode:
-- follow the reviewer-authored HANDOVER instructions.
+Local validation should be focused on the current change. Focused tests, targeted lint, browser geometry checks, and `git diff --check` are allowed when they directly prove the task. Do not routinely run the entire test/build/lint suite locally unless reproducing or diagnosing a relevant failure.
 
-Autonomous UI/Layout mode:
-- keep `HANDOVER.md` short and current: latest task/result plus exactly one next/current bounded task;
-- during implementation, update only the compact execution-result/CI state needed for handoff;
-- when a task closes or blocks, move durable historical detail into `docs/AUTONOMOUS_UI_ROADMAP.md`;
-- replace stale HANDOVER content instead of appending an ever-growing history;
-- at each task boundary, define exactly one next bounded task in HANDOVER and inspect the latest push-triggered CI run before its first source edit; a queued/running run does not block progress, while a completed failure must be fixed before new feature edits.
+Never claim a test, CI run, deployment, device check, or production state was verified unless it was actually observed.
 
-Keep all records truthful: distinguish tests changed from tests actually run, and never claim remote CI success unless it was actually checked.
+Commit and push only files belonging to the authorized task. Keep implementation, focused regressions, and required handoff updates together where practical.
+
+For autonomous UI/Layout CI cadence, follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`.
+
+## HANDOVER discipline
+
+`HANDOVER.md` must stay short and current. It records:
+
+- the latest relevant implementation/result and truthful CI state;
+- the latest design revision reviewed by the Coding Agent;
+- exactly one current or next bounded task;
+- acceptance/validation scope and any precise resume point.
+
+Do not use HANDOVER as an append-only history. Move durable completed history to the roadmap/archive and replace stale handoff text.
+
+Only the human Reviewer may declare reviewer acceptance. Agent completion or green CI does not imply reviewer acceptance.
