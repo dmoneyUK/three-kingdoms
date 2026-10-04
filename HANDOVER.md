@@ -3,217 +3,439 @@
 ## REMOTE HANDOVER RULE
 Work only on `ux-v2`. Read this file and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`. Implement only the task below, validate, append this task's execution result, commit/push, verify remote HANDOVER, then STOP. Do not wait for or poll CI.
 
-## Reviewer status — UX2.0VIS-06A ACCEPTED
+## Reviewer status — UX2.0VIS-06B ACCEPTED
 
-Reviewed implementation: `8f34a827a2040a7a219a0c7192692018b3f81a74`.
+Reviewed implementation: `c18cf31d3d6634844400e090664806c56c23d309`.
 
 Accepted facts to preserve:
-- decision guidance is now a dedicated full-width, content-sized LocalPlayerDock row;
-- the old <=480 guidance clipping was removed;
-- the operation row now has a separate extras region plus three permanent semantic slots in left-to-right order: Cancel / Primary / Decline;
-- representative 480x900 slot bboxes were invariant at x=226/308/390 with 78px widths, and 1440x900 at x=1123/1217/1311 with 90px widths;
-- long guidance measured four wrapped lines at 480 and was not clipped;
-- moved controls kept their existing callbacks, payloads, disabled conditions and busy labels;
-- focused VIS-06A browser coverage reported 3/3 PASS and the retained local-operation/layout set reported 118 PASS.
+- Sun Shangxiang's stable skill mapping now includes both:
+  - `Betrothment -> sun_shangxiang_betrothment`
+  - `Daredevil -> sun_shangxiang_daredevil`
+- Daredevil is now claimed by the existing Hero Skills ownership path rather than the generic bottom provider surface.
+- The production change is limited to the effect-ID mapping; no Daredevil capability/gameplay/server/projector semantics changed.
+- In the reviewed Daredevil trigger fixture:
+  - Betrothment remains present but disabled;
+  - Daredevil is enabled in the local Hero Skills panel;
+  - Cancel and Primary slots remain empty;
+  - Decline contains `Skip`;
+  - no Daredevil control appears in action extras or fixed action slots.
+- Clicking Daredevil still dispatches exactly:
+  `{ action: "trigger", extra: { providerId: "sun_shangxiang_daredevil" } }`
+  through the existing generic mapped-skill callback.
+- Outside the trigger decision, Daredevil stays visible but disabled.
+- The existing unmapped provider-extra fixture remains in the extras region, proving this change did not over-generalize trigger ownership.
+- Focused VIS-06B browser coverage reported 4/4 PASS; retained VIS-06A slot/guidance coverage reported 3/3 PASS; retained mounted active-skill/trigger tests reported 40/40 PASS.
 
-The documented Side Column viewport-Y reflow is ACCEPTED as a natural consequence of the intentionally content-sized LocalPlayerDock: VIS-06A did not change Side Column placement rules, and the task explicitly allowed the dock to grow while the battlefield flexes around it. Do not add negative margins or other compensation to force the old absolute viewport coordinates back.
+Do not reopen VIS-06A or VIS-06B.
 
-### Deferred work state — do not lose this
-**UX2.0VIS-05A is still DEFERRED and INCOMPLETE.**
-It has not been implemented or accepted. After VIS-06B is reviewed, return to VIS-05A unless a newly discovered blocker has higher priority.
+## Deferred work state — RESUME NOW
+**UX2.0VIS-05A was previously deferred and remains INCOMPLETE.**
+It has not been implemented or accepted.
 
-## NEXT TASK — UX2.0VIS-06B: Route Sun Shangxiang Daredevil Through the Hero Skill Panel
+VIS-06A/06B are now complete enough to resume it. The current task below is the original deferred Side Column topology correction, updated only to avoid absolute viewport-Y assumptions because the content-sized LocalPlayerDock from VIS-06A legitimately changes available battlefield height.
+
+# NEXT TASK — UX2.0VIS-05A: Correct 5–10 Player Side-Column Seat Topology
 
 ## Objective
-Fix one confirmed control-ownership defect:
+Fix one structural layout defect:
 
-**When Sun Shangxiang's implemented `Daredevil` trigger is legally available, its action must appear in the existing Hero Skills panel beside the local hero, not as a generic provider button in the bottom action-extras region.**
+**For 5–10 total players, place every opponent in deterministic LEFT/RIGHT vertical columns that match the documented seat topology and leave a real seat-free central corridor.**
 
-Keep the existing authoritative Skip/decline control in the fixed Decline slot.
+Current Side Column CSS is still only:
 
-This is a UI capability-routing task only. Do not change Daredevil gameplay semantics, trigger timing, legality, payload, resolution, or the VIS-06A action-slot layout.
+- two equal columns;
+- `grid-auto-flow: row`;
+- DOM order implicitly determines placement.
 
-## Current implementation facts
-Sun Shangxiang metadata already contains two skills:
-- `Betrothment`;
-- `Daredevil`.
+That is insufficient because:
+- it does not encode which relative seats belong LEFT vs RIGHT;
+- it does not encode the clockwise seat order within each side;
+- the two-column grid lets seat cards occupy too much of the battlefield centre.
 
-The capability implementation already exists:
-- `game/capabilities/heroes/sun-shangxiang-daredevil.ts`
-- effect ID: `sun_shangxiang_daredevil`
-- event: `equipment_lost`
-- selection: none
-- `allowDecline: true`
-- resolving the effect draws 2 cards.
+This task fixes **Side Column seat placement only**.
 
-Current UI mapping in `app/page.tsx` is incomplete:
+Do not compact/redesign Side Column card internals.
+Do not redesign Side Column Interaction Stage geometry.
+Do not change Top Row mode.
+
+## Normative topology rule
+The design document's prose and its concrete 5/7/10-player diagrams disagree on one left-column ordering detail.
+
+For VIS-05A, use the **published 5/7/10 diagrams plus the rule that the extra/exact-opposite seat goes to the clockwise RIGHT column** as normative.
+
+Relative indices already run clockwise from the local viewer as `1..N-1`.
+
+Use:
 
 ```ts
-"sun-shangxiang": {
-  Betrothment: ["sun_shangxiang_betrothment"]
+opponentCount = totalPlayers - 1
+rightCount = Math.ceil(opponentCount / 2)
+leftCount = opponentCount - rightCount
+rowCount = rightCount
+```
+
+### RIGHT projection
+When:
+
+`relativeIndex <= rightCount`
+
+then:
+
+```ts
+side = "right"
+row = rightCount - relativeIndex + 1
+```
+
+So RI1 is the lowest/right-nearest slot and larger right-side relative indices rise upward.
+
+### LEFT projection
+When:
+
+`relativeIndex > rightCount`
+
+then:
+
+```ts
+leftOffset = relativeIndex - rightCount
+side = "left"
+row = leftCount - leftOffset + 1
+```
+
+Rows are numbered top-to-bottom, with row1 highest.
+
+When opponent count is odd, the extra row belongs to RIGHT and the lowest LEFT row remains empty.
+
+## Exact required mapping
+
+### 5 total players
+- RI1 -> RIGHT row2
+- RI2 -> RIGHT row1
+- RI3 -> LEFT row2
+- RI4 -> LEFT row1
+
+Visual top-to-bottom:
+- LEFT: P5, P4
+- RIGHT: P3, P2
+
+### 6 total players
+- RI1 -> RIGHT row3
+- RI2 -> RIGHT row2
+- RI3 -> RIGHT row1
+- RI4 -> LEFT row2
+- RI5 -> LEFT row1
+- LEFT row3 empty
+
+### 7 total players
+- RI1 -> RIGHT row3
+- RI2 -> RIGHT row2
+- RI3 -> RIGHT row1
+- RI4 -> LEFT row3
+- RI5 -> LEFT row2
+- RI6 -> LEFT row1
+
+Visual top-to-bottom:
+- LEFT: P7, P6, P5
+- RIGHT: P4, P3, P2
+
+### 8 total players
+- RI1 -> RIGHT row4
+- RI2 -> RIGHT row3
+- RI3 -> RIGHT row2
+- RI4 -> RIGHT row1
+- RI5 -> LEFT row3
+- RI6 -> LEFT row2
+- RI7 -> LEFT row1
+- LEFT row4 empty
+
+### 9 total players
+- RI1 -> RIGHT row4
+- RI2 -> RIGHT row3
+- RI3 -> RIGHT row2
+- RI4 -> RIGHT row1
+- RI5 -> LEFT row4
+- RI6 -> LEFT row3
+- RI7 -> LEFT row2
+- RI8 -> LEFT row1
+
+### 10 total players
+- RI1 -> RIGHT row5
+- RI2 -> RIGHT row4
+- RI3 -> RIGHT row3
+- RI4 -> RIGHT row2
+- RI5 -> RIGHT row1
+- RI6 -> LEFT row4
+- RI7 -> LEFT row3
+- RI8 -> LEFT row2
+- RI9 -> LEFT row1
+- LEFT row5 empty
+
+Visual top-to-bottom:
+- LEFT: P10, P9, P8, P7
+- RIGHT: P6, P5, P4, P3, P2
+
+## Current production facts
+Current Side Column CSS lives mainly in `app/sequence-overrides.css`:
+
+```css
+.player-board[data-seat-topology="side-column"] {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  grid-template-rows:repeat(var(--seat-row-count),minmax(0,1fr));
+  grid-auto-flow:row;
 }
 ```
 
-Because `Daredevil` is absent from `HERO_SKILL_EFFECT_IDS`, its trigger option is not claimed by `heroTriggerEffectIds` and therefore falls through to the generic trigger buttons in `data-action-extras="true"`.
+Current Side Column cards:
+- retain portrait-card density;
+- retain Equipment/Judgement zones;
+- have responsive height caps;
+- use the same target/Inspect handlers as other opponent seats.
 
-The existing generic hero-skill branch already knows how to execute a mapped no-selection trigger directly with:
-
-`onAction("trigger", { providerId: option.effectId })`
-
-Do not invent another execution path.
+Keep that density/content unchanged in VIS-05A.
 
 ## Files expected in scope
 Production:
 - `app/page.tsx`
+- `app/sequence-overrides.css`
 
 Regression:
-- `tests/browser/fixture.jsx`
 - `tests/browser/ui19.spec.mjs`
 
-Optional focused unit/mounted test file only if needed to prove the mapping without duplicating browser coverage.
+A small pure presentation-only helper file is allowed if it is cleaner than keeping the projection in `app/page.tsx`.
 
 Do not modify:
-- `game/capabilities/heroes/sun-shangxiang-daredevil.ts`;
-- server/projector/protocol;
-- hero metadata;
-- CurrentAction construction in production;
-- VIS-06A CSS/action-slot geometry.
+- game rules;
+- PresentationSnapshot;
+- PresentationClientView;
+- server/projector;
+- target legality;
+- hero/card data;
+- LocalPlayerDock action/guidance semantics.
 
 ## Required implementation
 
-### 1. Complete the existing Sun Shangxiang hero-skill mapping
-Extend only the existing Sun Shangxiang entry so it contains both skills:
+### 1. Add one pure Side Column placement helper
+Add a pure helper such as:
+
+`projectSideColumnSeat(totalPlayers, relativeIndex)`
+
+Return:
 
 ```ts
-"sun-shangxiang": {
-  Betrothment: ["sun_shangxiang_betrothment"],
-  Daredevil: ["sun_shangxiang_daredevil"],
+{
+  side: "left" | "right",
+  row: number,
+  rowCount: number
 }
 ```
 
-Equivalent formatting is fine.
+Return null when:
+- totalPlayers < 5;
+- totalPlayers > 10;
+- relativeIndex < 1;
+- relativeIndex >= totalPlayers.
 
-Do not rename the skill or capability IDs.
+The helper must depend only on:
+- totalPlayers;
+- relativeIndex.
 
-Do not remove or alter the existing Betrothment mapping.
+Do not read:
+- DOM geometry;
+- player names;
+- seat labels;
+- alive/dead status;
+- distance;
+- gameplay state.
 
-### 2. Let the existing hero-skill ownership path do the work
-Once mapped:
-- `activeSkillOptions` may recognise the Daredevil trigger option;
-- `heroTriggerEffectIds` must claim `sun_shangxiang_daredevil`;
-- the generic trigger renderer must therefore stop producing a bottom `Use Daredevil` / `Daredevil` provider button;
-- `heroSkillButtons` must render the metadata-backed Daredevil button in `.local-hero-skills`;
-- clicking it must use the existing direct no-selection trigger callback.
+### 2. Add stable Side Column DOM hooks
+For Side Column opponent cards only, expose:
 
-Do not add a special-case Sun Shangxiang click handler if the existing generic mapped-skill path already satisfies this.
+- `data-side-column="left|right"`
+- `data-side-row="1..5"`
 
-### 3. Preserve authoritative decline
-Daredevil is optional (`allowDecline:true`).
+Equivalent names are acceptable if clear and stable.
 
-When the Daredevil trigger decision is active:
-- the Daredevil skill button belongs beside the hero;
-- the fixed VIS-06A Decline slot must still show `Skip`;
-- the Primary slot should remain empty because the skill button itself is the positive action;
-- the Cancel slot should remain empty because this is not a local selection mode.
+Preserve:
+- `data-player-anchor`;
+- `player-square-{relativeIndex}`;
+- interaction semantic role data;
+- selected-target classes;
+- turn/action/defeated treatment;
+- target/Inspect handlers.
 
-Do not convert Skip into Cancel or hide the decline action.
+Top Row opponents must not receive side-column hooks.
 
-### 4. Preserve the rest of Sun Shangxiang's skill panel
-When the local hero is Sun Shangxiang:
-- both metadata skill names remain visible in the Hero Skills panel;
-- Betrothment remains present and keeps its existing enabled/disabled behavior;
-- Daredevil becomes enabled only when the projected `sun_shangxiang_daredevil` option is actually available;
-- outside that trigger decision, Daredevil remains visible but disabled rather than disappearing.
+### 3. Replace generic auto-flow with explicit edge columns
+For:
 
-Do not infer availability from hero identity alone.
+`.player-board[data-seat-topology="side-column"]`
 
-### 5. Do not over-generalize hero-trigger ownership
-This task is specifically the missing Sun Shangxiang mapping.
+use an explicit 3-column battlefield grid:
 
-Do not:
-- automatically claim every trigger option whose label matches a hero skill;
-- use string/label matching;
-- alter generic unmapped trigger providers;
-- move provider-extra controls from VIS-06A unless they are explicitly mapped hero skills.
+- column 1 = LEFT seat band;
+- column 2 = empty flexible CENTRAL corridor;
+- column 3 = RIGHT seat band.
 
-The stable effect-ID mapping remains the authority.
+Recommended track contract:
 
-## Required browser fixture
-Add one dedicated fixture state:
+```css
+grid-template-columns:
+  minmax(0, 30%)
+  minmax(40%, 1fr)
+  minmax(0, 30%);
+```
 
-`sun-shangxiang-daredevil`
+Equivalent CSS is acceptable if it satisfies the measured corridor contract below.
 
-For a 4-player room:
-- viewer / action actor = `p1`;
-- p1 hero = `sun-shangxiang`;
-- CurrentAction kind = `trigger`;
-- legal actions include `trigger` and `decline_trigger`;
-- decline action = `decline_trigger`;
-- trigger options contain exactly one Daredevil option:
-  - effectId `sun_shangxiang_daredevil`;
-  - label `Daredevil`;
-  - no selection;
-  - allowDecline true.
+Placement authority must come from the projection:
+- LEFT -> grid column 1;
+- RIGHT -> grid column 3;
+- projected row -> grid row.
 
-Keep the fixture minimal. It does not need to simulate equipment loss itself; production capability tests already own trigger legality. The browser fixture only represents the already-projected legal trigger decision.
+`grid-auto-flow` must no longer decide opponent position.
 
-Use the existing `window.__browserActions` capture from VIS-06A.
+Do not use per-player absolute pixel coordinates.
+
+### 4. Preserve current Side Column card internals
+Do not change:
+- card aspect treatment;
+- portrait;
+- Equipment/Judgement visibility;
+- Hand footer;
+- player/hero identity;
+- responsive seat height caps;
+- Inspect behavior;
+- target behavior.
+
+A later task may compact Side Column cards after topology is proven.
+
+### 5. Central corridor contract
+At 1440x900, 650x900 and 480x900:
+
+Let:
+- boardLeft / boardWidth come from the rendered `.player-board`;
+- left30 = boardLeft + boardWidth * 0.30;
+- right70 = boardLeft + boardWidth * 0.70.
+
+Assert:
+- every LEFT seat right edge <= left30 + 4px;
+- every RIGHT seat left edge >= right70 - 4px.
+
+Therefore the middle 40% of the board must contain no opponent seat geometry.
+
+If existing Side Column card dimensions cannot satisfy this at 480 without redesigning/shrinking the cards, STOP and report the measured blocker. Do not compact seats in VIS-05A.
+
+### 6. Relative vertical geometry only — no stale absolute viewport baselines
+VIS-06A made LocalPlayerDock guidance content-sized, so available battlefield height can legitimately vary.
+
+Do NOT restore old absolute Y coordinates and do NOT test fixed viewport Y values for Side Column seats.
+
+Instead assert relative geometry:
+- row1 is visually above row2;
+- row2 above row3, etc.;
+- seats in one side share the same X column within 4px;
+- no two seats overlap;
+- every seat bottom is <= LocalPlayerDock top - 6px;
+- every seat stays inside player-board bounds, with 4px tolerance;
+- no horizontal page overflow.
+
+Do not use negative margins or fixed-Y compensation to recreate pre-VIS-06A positions.
+
+### 7. Preserve Top Row completely
+For counts 2/3/4:
+- topology remains `top-row`;
+- no side-column hooks;
+- VIS-04A compact widths/heights remain;
+- VIS-04C top anchoring remains;
+- Safe Zone stays 6–24px below the row;
+- VIS-06A guidance/action-slot layout remains unchanged.
 
 ## Required browser regression
 
-Run at:
-- 480x900;
-- 1440x900.
+Use REST fixtures at:
+- 1440x900;
+- 650x900;
+- 480x900.
+
+### A. Full 5–10 mapping matrix
+For each total player count 5, 6, 7, 8, 9, 10:
 
 Assert:
+1. opponent count = N-1;
+2. every opponent's `data-side-column` exactly matches the required table;
+3. every opponent's `data-side-row` exactly matches the required table;
+4. relativeIndex and `data-player-anchor` identity remain unchanged;
+5. no opponent is assigned centre column.
 
-1. LocalPlayerDock belongs to p1 and local hero is `sun-shangxiang`.
-2. `.local-hero-skills` contains exactly the metadata skill controls for `Betrothment` and `Daredevil`.
-3. Daredevil button is inside the Hero Skills / local-status panel, not inside `data-action-extras` or any action slot.
-4. Daredevil button is enabled for this fixture.
-5. Betrothment remains present and is not falsely enabled by the Daredevil option.
-6. `data-action-extras="true"` contains no `Daredevil`, `Use Daredevil`, or `Cancel Daredevil` button.
-7. Cancel slot is empty.
-8. Primary slot is empty.
-9. Decline slot contains `Skip`.
-10. Clicking the Hero Skills Daredevil button records exactly:
-    ```js
-    { action: "trigger", extra: { providerId: "sun_shangxiang_daredevil" } }
-    ```
-    using the existing callback path.
-11. The local hero card and local-status/skills panel remain in their existing dock regions; no bottom duplicate control appears.
-12. No horizontal overflow.
+### B. Geometry
+For every count/viewport:
+- all LEFT seats share one X column within 4px;
+- all RIGHT seats share one X column within 4px;
+- LEFT seat right edges satisfy the 30% boundary;
+- RIGHT seat left edges satisfy the 70% boundary;
+- row numbering matches visual top-to-bottom order;
+- no two opponent bboxes overlap;
+- seats remain inside player-board bounds;
+- every seat is at least 6px above LocalPlayerDock;
+- no horizontal overflow.
 
-### Negative regression
-Retain the existing VIS-06A `provider-extra` fixture and prove its unmapped generic provider still remains in `data-action-extras="true"`.
+### C. Named published-example tests
+Add explicit tests locking these three layouts:
 
-This prevents the implementation from accidentally routing all generic providers into the hero panel.
+#### 5 players
+Viewer p1 / room order p1..p5:
+- LEFT top-to-bottom = p5, p4;
+- RIGHT top-to-bottom = p3, p2.
 
-### Inactive-state regression
-Add or reuse a Sun Shangxiang normal-turn fixture with no Daredevil trigger option and prove:
-- Daredevil is still visible in the Hero Skills panel;
-- Daredevil is disabled;
-- no generic Daredevil button exists in the action row.
+#### 7 players
+- LEFT = p7, p6, p5;
+- RIGHT = p4, p3, p2.
+
+#### 10 players
+- LEFT = p10, p9, p8, p7;
+- RIGHT = p6, p5, p4, p3, p2;
+- LEFT row5 has no seat.
+
+### D. Behavior regression
+At count=6 for 480 and 1440:
+- click one opponent outside target-selection mode;
+- existing Opponent Inspect opens;
+- close it;
+- the same opponent still has the same side/row hooks afterward.
+
+Do not redesign Inspect.
+
+### E. Top Row negative regression
+At counts 2/3/4 for 480 and 1440:
+- topology remains top-row;
+- no side-column hooks;
+- compact seat size/X placement remains;
+- seat top remains within 0–4px of player-board top;
+- Safe Zone clearance remains 6–24px;
+- VIS-06A action-slot structure still exists.
 
 ## Forbidden shortcuts
 Do not:
-- hide the generic bottom Daredevil button with CSS while leaving ownership incorrect;
-- duplicate Daredevil in both hero panel and extras;
-- make Daredevil permanently enabled;
-- infer the trigger from hero name/label text;
-- alter `allowDecline`;
-- remove Skip;
-- put Daredevil in Primary/Cancel/Decline slots;
-- change Betrothment behavior;
-- change VIS-06A guidance or slot positions;
-- change gameplay/server/projector/capability semantics.
+- reorder `room.players`;
+- change the relativeIndex calculation;
+- use player names or hard-coded player IDs for placement;
+- use absolute per-player pixel coordinates;
+- use JS DOM measurement for placement;
+- compact/shrink Side Column cards;
+- hide Side Column Equipment/Judgement;
+- move LocalPlayerDock;
+- change guidance/action-slot layout;
+- change Top Row;
+- change InteractionStage/Safe Zone geometry;
+- change target legality, gameplay, server or presentation authority.
 
 ## Validation
 Run and report:
-- focused VIS-06B browser tests at 480 and 1440;
-- retained VIS-06A slot/guidance tests;
-- retained mounted hero-skill/trigger tests relevant to active skills;
-- retained provider-extra negative regression;
+- focused VIS-05A mapping/geometry tests;
+- named 5/7/10 example tests;
+- retained VIS-04A/VIS-04C Top Row tests;
+- retained VIS-06A/VIS-06B local dock/control tests;
+- existing UI-19 Side Column containment tests;
 - broader local checks only if allowed.
 
 Do not claim unrun checks. Do not inspect or wait for CI.
@@ -222,28 +444,17 @@ Do not claim unrun checks. Do not inspect or wait for CI.
 Append only:
 - implementation SHA;
 - files changed;
-- exact mapping change;
-- Daredevil hero-panel / bottom-extras DOM proof;
-- action captured from Daredevil click;
-- Skip preservation proof;
-- inactive-state proof;
-- retained VIS-06A validation result;
-- any GAP.
+- placement-helper formula;
+- exact DOM hooks added;
+- mapping result for 5–10;
+- measured left/right X columns and 30/70 corridor boundaries at 1440/650/480;
+- dock-clearance minimums by viewport;
+- proof 5/7/10 examples match;
+- proof Top Row and VIS-06 local console remain unchanged;
+- focused/retained validation results;
+- any measured blocker/GAP.
 
 Do not self-accept. Push, verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if Sun Shangxiang Daredevil is owned exclusively by the existing Hero Skills panel whenever its projected option is legal, invokes the existing trigger payload unchanged, preserves authoritative Skip in the fixed decline slot, remains disabled-but-visible when unavailable, and generic unmapped provider controls remain in the extras region.
-
-## Deferred after this task
-**VIS-05A remains incomplete.** After VIS-06B review, the reviewer should return to `UX2.0VIS-05A: Correct 5–10 Player Side-Column Seat Topology` unless a new blocker is discovered.
-
-## UX2.0VIS-06B execution result — awaiting reviewer
-
-- Implementation SHA: `c18cf31d3d6634844400e090664806c56c23d309`. Changed `app/page.tsx`, `tests/browser/fixture.jsx`, and `tests/browser/ui19.spec.mjs`; this appended result is delivered in the following documentation commit together with the implementation.
-- Exact production change: added `Daredevil: ["sun_shangxiang_daredevil"]` to the existing Sun Shangxiang `HERO_SKILL_EFFECT_IDS` entry, retaining `Betrothment: ["sun_shangxiang_betrothment"]`. The existing mapped no-selection hero callback and effect-ID ownership filter now handle Daredevil. No CSS, capability, gameplay, server, projector, metadata, or protocol changes.
-- DOM proof at both 480x900 and 1440x900: p1 owns the dock with local hero `sun-shangxiang`; `.local-status-panel .local-hero-skills` contains exactly Betrothment and Daredevil. Daredevil is enabled only for its projected trigger option, while Betrothment remains disabled for this fixture. Daredevil appears nowhere in bottom extras or action slots. Hero identity and status panel retain grid areas `identity` and `zones`; no horizontal overflow.
-- Clicking Daredevil captured exactly the gameplay action `{ action: "trigger", extra: { providerId: "sun_shangxiang_daredevil" } }`. The test excludes only the pre-existing mount lifecycle `start_response_timer` action from the gameplay submission assertion. Cancel and Primary slots remain empty; Decline contains Skip, whose click records `{ action: "decline_trigger" }`.
-- Inactive normal-turn Sun Shangxiang fixture proves Daredevil remains visible but disabled, with no bottom duplicate. The retained unmapped `provider-extra` fixture proves `Cancel Alternate Attack` remains in extras and is not routed into Hero Skills, at both widths.
-- Validation: focused VIS-06B 4/4 passed; retained VIS-06A slot/guidance 3/3 passed (combined browser command: 7 passed). Retained mounted hero-skill/trigger/local-interaction tests: `node --import tsx --test tests/active-skill-interactions.test.mjs`, 40/40 passed. Full tests/build/lint/diff-check were not run locally; GitHub Actions owns remaining validation. CI and deployment were not inspected.
-- GAP: none identified within this UI-routing task. Await reviewer acceptance. VIS-05A remains deferred and incomplete; recommended next bounded task after review is the reviewer-authorized VIS-05A side-column topology correction. No subsequent implementation started.
+Pass only if 5–10 player rooms use deterministic explicit LEFT/RIGHT columns matching the required mapping and published 5/7/10 examples, the middle 40% of the board is free of opponent seats, side seats remain inside the board and above LocalPlayerDock without overlap/overflow, and Top Row / VIS-06 local controls / gameplay semantics remain unchanged.
