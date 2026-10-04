@@ -876,14 +876,12 @@
   height: 23px;
 }
 
-.opponent-equipment-zone,
 .opponent-judgement-zone {
   min-width: 0;
   padding: 3px;
   border: 1px solid #806a4288;
   background: #11140ed9;
 }
-.opponent-equipment-zone { margin-top: 3px; }
 .opponent-zone-label {
   display: block;
   margin-bottom: 2px;
@@ -893,41 +891,50 @@
   text-align: center;
   text-transform: uppercase;
 }
-.opponent-equipment-slots {
+.opponent-equipment-summary {
+  position: absolute;
+  z-index: 3;
+  top: 2px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1px;
+  pointer-events: none;
+}
+.opponent-equipment-indicator {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 2px;
-  min-width: 0;
-}
-.opponent-equipment-slot {
-  position: relative;
-  display: block;
-  min-width: 0;
-  aspect-ratio: 2 / 3;
-}
-.opponent-zone-empty {
-  display: grid;
-  place-items: end center;
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
-  padding: 2px 1px;
-  border: 1px dashed #806a4288;
-  color: #9c8964;
-  font: 5px/1 Arial, sans-serif;
-  overflow: hidden;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.opponent-equipment-slot .mini-zone-card {
-  width: 100%;
-  height: 100%;
   flex: 0 0 auto;
-  pointer-events: auto;
+  place-items: center;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1px solid #d3b36b;
+  border-radius: 3px;
+  background: #171910eF;
+  color: #f2d68f;
+  box-shadow: 0 1px 3px #000c;
 }
-.opponent-equipment-slot .mini-equipment-button { pointer-events: none; }
-.opponent-equipment-slot .zone-info-button { pointer-events: auto; }
+.opponent-equipment-indicator svg {
+  display: block;
+  width: 8px;
+  height: 8px;
+  overflow: visible;
+  fill: currentColor;
+}
+.opponent-equipment-indicator[data-slot="armor"] svg path + path,
+.opponent-equipment-indicator[data-slot$="Horse"] svg path:nth-last-child(-n + 2) {
+  fill: none;
+  stroke: #10130d;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
+}
+.opponent-equipment-indicator[data-slot="defensiveHorse"] svg path:last-child,
+.opponent-equipment-indicator[data-slot="offensiveHorse"] svg path:last-child {
+  stroke: #f2d68f;
+  stroke-width: 1.8;
+}
 .opponent-judgement-zone {
   position: absolute;
   left: calc(100% + 4px);
@@ -1409,9 +1416,7 @@
 .opponent-player-card { overflow: visible; }
 .opponent-hero-card,
 .opponent-hero-target { overflow: hidden; }
-.opponent-equipment-zone,
 .opponent-judgement-zone,
-.opponent-equipment-slots,
 .opponent-judgement-cards { overflow: visible; }
 
 /* Presentation-only opponent inspection. It is bounded to the battlefield,
@@ -1822,8 +1827,21 @@
 }
 .game-shell .player-board[data-seat-topology="side-column"] .opponent-player-name,
 .game-shell .player-board[data-seat-topology="side-column"] .player-hearts,
-.game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-zone,
 .game-shell .player-board[data-seat-topology="side-column"] .opponent-judgement-zone { display: none; }
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-summary {
+  top: 20px;
+  right: 2px;
+  flex-direction: column;
+  gap: 1px;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-equipment-indicator {
+  width: 10px;
+  height: 10px;
+}
+.game-shell .player-board[data-seat-topology="side-column"] .hero-card-info-button {
+  right: auto;
+  left: 2px;
+}
 .game-shell .player-board[data-seat-topology="side-column"] .opponent-hand-footer {
   position: absolute;
   left: 1px;
@@ -1935,15 +1953,48 @@
   aspect-ratio: auto;
 }
 
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-portrait {
+  right: auto;
+  width: min(40%, 52px) !important;
+  height: 100% !important;
+}
+
 .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay {
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: min(40%, 52px);
   align-items: flex-start;
-  justify-content: center;
-  gap: 3px;
+  justify-content: flex-start;
+  gap: 1px;
   min-height: 0;
-  padding: 6px 30px 6px 8px;
-  background: linear-gradient(90deg, #080a08f2 0%, #080a08ce 58%, #080a0870 78%, transparent 100%);
+  padding: 14px 2px 2px 4px;
+  background: linear-gradient(180deg, #11150ff0 0%, #11150fdb 76%, #11150fa8 100%);
   text-align: left;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-equipment-summary {
+  top: 2px;
+  right: 19px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-equipment-indicator {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .opponent-equipment-indicator svg {
+  width: 7px;
+  height: 7px;
+}
+
+.game-shell .player-board[data-seat-topology="top-row"] .hero-card-info-button {
+  top: 2px;
+  right: 2px;
+  width: 15px;
+  height: 15px;
+  font-size: 8px;
 }
 
 .game-shell .player-board[data-seat-topology="top-row"] .opponent-player-name {
@@ -1961,7 +2012,6 @@
 }
 
 .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay .player-hearts,
-.game-shell .player-board[data-seat-topology="top-row"] .opponent-equipment-zone,
 .game-shell .player-board[data-seat-topology="top-row"] .opponent-judgement-zone {
   display: none;
 }
@@ -1981,8 +2031,8 @@
   }
 
   .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay {
-    gap: 2px;
-    padding: 4px 25px 4px 6px;
+    gap: 1px;
+    padding: 14px 2px 2px 4px;
   }
 
   .game-shell .player-board[data-seat-topology="top-row"] .opponent-player-name {
@@ -2015,7 +2065,7 @@
 
   .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-overlay {
     gap: 1px;
-    padding: 3px 22px 3px 5px;
+    padding: 14px 2px 2px 3px;
   }
 
   .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-name {

@@ -19,7 +19,7 @@ Focused browser checks passed (VIS-06A action-slot/guidance 3/3; VIS-10A contain
 
 ### UX2.0VIS-10C — Opponent Hero Readability and Public Equipment at a Glance
 
-Status: `PLANNED`
+Status: `IMPLEMENTED — CI PENDING`
 
 Objective: keep the accepted compact seat topology and footprint while making opponent Hero art recognizable and each publicly equipped Weapon, Armour, +1 Horse, or -1 Horse visible without opening Inspect.
 
@@ -37,3 +37,5 @@ Regression and visual proof: Top Row 4-player and Side Column 6-/10-player fixtu
 Validation: focused browser cases and targeted lint/whitespace checks only; no local full suite/build/lint. Push code, focused tests, relevant docs, and handover; inspect Actions for the exact pushed revision, fix real failures, and continue only after CI is green.
 
 Stop condition: if recognizable Hero art and the complete public equipment summary cannot fit within the approved seat/Safe Zone geometry without obscuring required content or compromising target hits, record measurements and stop with `BLOCKED — HUMAN REVIEW REQUIRED`.
+
+Implementation result: opponent seats now use a dedicated Hero-art crop and compact, occupied-slot-only public Weapon/Armour/Horse glyphs; topology, footprint, Inspect, and interaction authority are unchanged. Added equipment-state fixtures plus Top Row / Side Column responsive visual and interaction regressions. Representative 480px/650px screenshots reviewed; focused browser matrix passed 23/23, targeted render regression passed 1/1, and targeted ESLint reported no errors (fixture JSX is ignored by the configured lint rules). No full local suite/build/lint was run. CI for the pushed revision is pending.

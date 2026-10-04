@@ -1119,7 +1119,9 @@ Do not stop merely because three tasks are complete if the next task is small, c
 
 ## 19. Next-task planning gate
 
-Before self-authoring the next task, answer these questions from the actual current repo and approved design:
+Before planning every next task, first synchronize `ux-v2` from `origin` and review the current `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` and this workflow for newly added or changed requirements, defects, and execution rules. Check the design sections relevant to the candidate plus any new/changed sections surfaced since the previous planning pass. Record approved findings that are deferred in the roadmap so they are not lost; they need not all be implemented immediately, and must not be bundled into the current bounded task without passing this gate.
+
+Then answer these questions from the actual current repo and approved design:
 
 1. **Approved requirement:** Is the desired behavior already explicitly supported by the approved final design or an accepted reviewer decision?
 2. **Authority:** Can it be implemented using existing authoritative data without inventing gameplay/public semantics?

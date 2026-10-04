@@ -406,21 +406,22 @@ export function projectSideColumnSeat(totalPlayers: number, relativeIndex: numbe
     : { side: "left", row: leftCount - (relativeIndex - rightCount) + 1, rowCount: rightCount };
 }
 
-function OpponentPlayerCard({ totalPlayers, player, viewerId, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, onTarget, onInspect, onHeroInfo, onInfoCard, judgementInFlight, serpentSelected, triggerResponse, triggerSelectionUsesCards, responseDecisionReady, triggerCardOption, onToggleEquipment }: OpponentPlayerCardProps) {
+function OpponentEquipmentGlyph({ slot }: { slot: LocalEquipmentSlot }) {
+  if (slot === "weapon") return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="m12.8 1.2-2.7.7-1.6 1.6 1.2 1.2-4.8 4.8-1.2-1.2-2.5 2.5 2.5 2.5 2.5-2.5L5 9.6l4.8-4.8L11 6l1.6-1.6.2-3.2Z" /></svg>;
+  if (slot === "armor") return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.2 12.2 3v3.8c0 2.8-2.4 4.9-5.2 6.4C4.2 11.7 1.8 9.6 1.8 6.8V3L7 1.2Z" /><path d="M4.5 4.2v3.2c0 1.2 1 2.2 2.5 3 1.5-.8 2.5-1.8 2.5-3V4.2" /></svg>;
+  return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M1.2 11.7h11.4l-1-2.2.3-2-1.3-2-1.8-.5L7.4 7H5.1L3.8 4.2l-1.6.4.8 2.9-1.2 1.7Z" /><path d="M4 11.6v1.2m5.8-1.2v1.2" /></svg>;
+}
+
+function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, isTurn, isActionPlayer, isSelectedTarget, isGroupPreview, interactionRoles, targetSelectionActive, targetablePlayer, onTarget, onInspect, onHeroInfo, onInfoCard, judgementInFlight }: OpponentPlayerCardProps) {
   const sideColumnSeat = projectSideColumnSeat(totalPlayers, relativeIndex);
   const equipmentBySlot = new Map<LocalEquipmentSlot, Card>();
   for (const equipment of player.equipmentCards) {
     const slot = cardDefinition(equipment.kind).equipmentSlot;
     if (slot) equipmentBySlot.set(slot, equipment);
   }
-  const miniEquipment = LOCAL_EQUIPMENT_SLOTS.map(({ key, label }) => {
+  const equipmentSummary = LOCAL_EQUIPMENT_SLOTS.flatMap(({ key, label }) => {
     const equipment = equipmentBySlot.get(key);
-    return <span className="opponent-equipment-slot" data-slot={key} aria-label={`${label} slot`} key={key}>
-      {equipment ? <span className="mini-zone-card mini-equipment-card" data-equipment-id={equipment.id}>
-        <button type="button" className={`mini-equipment-button ${serpentSelected.includes(equipment.id) ? "selected-cost" : ""}`} disabled={!(triggerResponse && triggerSelectionUsesCards) || !responseDecisionReady || player.id !== viewerId || Boolean(triggerCardOption && triggerCardOption.selection?.type === "cards" && !triggerCardOption.selection.eligibleCardIds.includes(equipment.id))} onClick={() => onToggleEquipment(equipment.id)}><CardFace card={equipment} /></button>
-        <button type="button" className="zone-info-button" aria-label={`Explain ${cardDefinition(equipment.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(equipment); }}>i</button>
-      </span> : <span className="opponent-zone-empty" aria-label={`${label} empty`}>{label}</span>}
-    </span>;
+    return equipment ? [<span className="opponent-equipment-indicator" data-slot={key} data-equipment-id={equipment.id} data-card-kind={equipment.kind} role="img" aria-label={`${label} equipped: ${cardDefinition(equipment.kind).name}`} title={`${label}: ${cardDefinition(equipment.kind).name}`} key={key}><OpponentEquipmentGlyph slot={key} /></span>] : [];
   });
   const miniJudgement = player.judgementCards.map((judgement) => <span className="mini-zone-card judgement-mini" data-judgement-id={judgement.id} key={judgement.id} style={{ visibility: judgementInFlight.has(judgement.id) ? "hidden" : "visible" }}>
     <span><small>{judgement.rank}{judgement.suit}</small><b>{cardDefinition(judgement.kind).name}</b></span>
@@ -440,12 +441,9 @@ function OpponentPlayerCard({ totalPlayers, player, viewerId, playerHero, relati
             <span className="player-hearts">{hpDisplay(player.hp)}</span>
           </span>
         </button>
+        {equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
         {playerHero && <button type="button" className="hero-card-info-button" aria-label={`Explain ${playerHero.name}`} onClick={() => onHeroInfo(playerHero)}>i</button>}
       </div>
-      <section className="opponent-equipment-zone" aria-label="Equipment">
-        <span className="opponent-zone-label">Equipment</span>
-        <div className="opponent-equipment-slots">{miniEquipment}</div>
-      </section>
       {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
         <span className="opponent-zone-label">Judgement</span>
         <div className="opponent-judgement-cards">{miniJudgement}</div>
@@ -456,7 +454,7 @@ function OpponentPlayerCard({ totalPlayers, player, viewerId, playerHero, relati
 }
 
 function OpponentInspectionOverlay({ player, playerHero, judgementInFlight, onClose, onHeroInfo, onInfoCard }: { player: Player; playerHero: Hero | null; judgementInFlight: ReadonlySet<string>; onClose: () => void; onHeroInfo: (hero: Hero) => void; onInfoCard: (card: Card) => void }) {
-  const renderInspectionCard = (card: Card, hidden = false) => <button type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(card); }}><CardFace card={card} /></button>;
+  const renderInspectionCard = (card: Card, hidden = false) => <button key={card.id} type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(card); }}><CardFace card={card} /></button>;
   return <div className="opponent-inspection-layer" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="opponent-inspection-panel" role="dialog" aria-modal="true" aria-label={`${player.name} opponent inspection`}>
       <div className="opponent-inspection-hero-shell">

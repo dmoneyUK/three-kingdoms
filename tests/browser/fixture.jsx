@@ -12,6 +12,23 @@ const HERO_IDS = [
 
 const card = (id, kind, suit = "♠", rank = "A") => ({ id, kind, suit, rank });
 
+const SEAT_EQUIPMENT_CASES = {
+  empty: [],
+  weapon: [["ZhugeCrossbow", "♦", "A"]],
+  armor: [["NioShield", "♣", "2"]],
+  plusHorse: [["Shadowrunner", "♠", "5"]],
+  minusHorse: [["FerganaSteed", "♠", "K"]],
+  weaponArmor: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"]],
+  multiple: [["ZhugeCrossbow", "♦", "A"], ["NioShield", "♣", "2"], ["Shadowrunner", "♠", "5"], ["FerganaSteed", "♠", "K"]],
+};
+const SEAT_EQUIPMENT_MATRIX = ["weapon", "armor", "plusHorse", "minusHorse", "weaponArmor", "multiple"];
+
+function fixtureSeatEquipment(playerId, equipmentCase) {
+  const playerIndex = Number(playerId.slice(1)) - 2;
+  const scenario = equipmentCase === "matrix" ? SEAT_EQUIPMENT_MATRIX[playerIndex] : playerId === "p2" ? equipmentCase : null;
+  return (SEAT_EQUIPMENT_CASES[scenario] ?? []).map(([kind, suit, rank], index) => card(`browser-${playerId}-seat-equipment-${index}`, kind, suit, rank));
+}
+
 function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisionActorId, currentParticipantId = decisionActorId, activeResolverId = decisionActorId, viewerId = decisionActorId }) {
   const interactionId = `browser-${state}-interaction`;
   const rootFrameId = `browser-${state}-root`;
@@ -140,7 +157,7 @@ function currentActionFor(state, actorId, handCardId) {
   };
 }
 
-function browserRoom({ state, count, handSize }) {
+function browserRoom({ state, count, handSize, equipmentCase }) {
   const hasLocalJudgementFixture = ["local-judgement-empty", "local-judgement-one", "local-judgement-two"].includes(state);
   const localJudgementCount = state === "local-judgement-one" ? 1 : state === "local-judgement-two" ? 2 : 0;
   if (hasLocalJudgementFixture) state = "normal";
@@ -183,7 +200,7 @@ function browserRoom({ state, count, handSize }) {
     judgementCards: hasLocalJudgementFixture && id === meId
       ? [card("browser-local-lightning", "Lightning", "♥", "Q"), card("browser-local-overindulgence", "Overindulgence", "♠", "7")].slice(0, localJudgementCount)
       : state === "rest" && id === "p3" ? [card("browser-lightning", "Lightning", "♥", "Q")] : [],
-    equipmentCards: state === "rest" && id === "p2" ? [card("browser-zhuge-crossbow", "ZhugeCrossbow", "♦", "A")] : [],
+    equipmentCards: equipmentCase ? fixtureSeatEquipment(id, equipmentCase) : state === "rest" && id === "p2" ? [card("browser-zhuge-crossbow", "ZhugeCrossbow", "♦", "A")] : [],
     attackRange: 1,
     distance: id === meId ? null : 1,
     isHost: index === 0,
@@ -234,12 +251,13 @@ function readFixture() {
   const state = params.get("state") || "normal";
   const count = Math.min(10, Math.max(2, Number(params.get("count") || 4)));
   const handSize = params.has("handSize") ? Math.min(30, Math.max(1, Number(params.get("handSize")))) : null;
-  return { state, count, handSize };
+  const equipmentCase = params.get("equipmentCase") || null;
+  return { state, count, handSize, equipmentCase };
 }
 
-const { state, count, handSize } = readFixture();
+const { state, count, handSize, equipmentCase } = readFixture();
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize });
+let fixtureRoom = browserRoom({ state, count, handSize, equipmentCase });
 window.__browserActions = [];
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => { window.__browserActions.push({ action, extra }); return true; }} onLeave={() => {}} />);
 window.__setBrowserHandIds = (ids) => {

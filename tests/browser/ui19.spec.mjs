@@ -43,10 +43,10 @@ const VIS_04C_VIEWPORTS = [
   { width: 480, height: 900, boardInset: 55, seat: { width: 100, height: 78 }, seatLefts: [15.5, 190, 364.5] },
 ];
 
-async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize }) {
+async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize, equipmentCase }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${handSize === undefined ? "" : `&handSize=${handSize}`}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${handSize === undefined ? "" : `&handSize=${handSize}`}${equipmentCase ? `&equipmentCase=${equipmentCase}` : ""}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -593,7 +593,7 @@ for (const { width, height } of TOPOLOGY_MATRIX) {
 }
 
 for (const { width, height } of TOPOLOGY_MATRIX) {
-  test(`UX2.0VIS-04A ${width}x${height} keeps public identity and hand count while hiding zone card faces`, async ({ page }) => {
+  test(`UX2.0VIS-04A ${width}x${height} keeps public identity and hand count with equipment at a glance`, async ({ page }) => {
     await loadFixture(page, { state: "rest", count: 4, width, height });
     for (const playerId of ["p2", "p3", "p4"]) {
       const seat = page.locator(`[data-player-anchor="${playerId}"]`);
@@ -604,8 +604,9 @@ for (const { width, height } of TOPOLOGY_MATRIX) {
     }
 
     const equipmentSeat = page.locator('[data-player-anchor="p2"]');
-    await expect(equipmentSeat.locator(".opponent-equipment-zone")).toBeHidden();
-    await expect(equipmentSeat.locator(".opponent-equipment-slots .mini-zone-card")).toHaveCount(1);
+    const equipmentSummary = equipmentSeat.locator(".opponent-equipment-summary");
+    await expect(equipmentSummary).toBeVisible();
+    await expect(equipmentSummary.locator('[data-slot="weapon"][data-card-kind="ZhugeCrossbow"]')).toHaveCount(1);
     const judgementSeat = page.locator('[data-player-anchor="p3"]');
     await expect(judgementSeat.locator(".opponent-judgement-zone")).toBeHidden();
     await expect(judgementSeat.locator(".opponent-judgement-cards .mini-zone-card")).toHaveCount(1);
@@ -1035,7 +1036,7 @@ async function sideThumbnailGeometry(page) {
         const target = seat.querySelector(".opponent-hero-target");
         const targetBox = target.getBoundingClientRect();
         const hit = document.elementFromPoint(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2);
-        const required = [".opponent-hero-card", ".opponent-hero-target", ".opponent-hero-name", ".player-hp", ".opponent-hand-footer", ".player-hand-count"];
+        const required = [".opponent-hero-card", ".opponent-hero-target", ".opponent-hero-portrait", ".opponent-hero-name", ".player-hp", ".opponent-hand-footer", ".player-hand-count"];
         return {
           id: seat.dataset.playerAnchor, side: seat.dataset.sideColumn, row: Number(seat.dataset.sideRow),
           ...bounds(seat), target: bounds(target), hitSafe: Boolean(hit && target.contains(hit)),
@@ -1077,6 +1078,140 @@ async function sideSafeZoneGeometry(page) {
       dying: Boolean(stage.querySelector('[data-dying-handoff="proven"]')),
       scrollWidth: document.documentElement.scrollWidth, viewport: window.innerWidth,
     };
+  });
+}
+
+async function opponentSeatPresentation(page, playerId) {
+  return page.locator(`[data-player-anchor="${playerId}"]`).evaluate((seat) => {
+    const bounds = (element) => {
+      const { x, y, right, bottom, width, height } = element.getBoundingClientRect();
+      return { x, y, right, bottom, width, height };
+    };
+    const containsPoint = (box, x, y) => Boolean(box && x >= box.x && x <= box.right && y >= box.y && y <= box.bottom);
+    const portrait = seat.querySelector(".opponent-hero-portrait");
+    const overlay = seat.querySelector(".opponent-hero-overlay");
+    const summary = seat.querySelector(".opponent-equipment-summary");
+    const target = seat.querySelector(".opponent-hero-target");
+    const art = bounds(portrait);
+    const focus = { x: art.x + art.width * 0.45, y: art.y + art.height * 0.42 };
+    const targetBox = bounds(target);
+    const hit = document.elementFromPoint(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2);
+    return {
+      topology: seat.closest(".player-board").dataset.seatTopology,
+      seat: bounds(seat), hero: bounds(seat.querySelector(".opponent-hero-card")), art,
+      overlay: bounds(overlay), summary: summary ? bounds(summary) : null,
+      playerNameFits: seat.querySelector(".opponent-player-name").scrollWidth <= seat.querySelector(".opponent-player-name").clientWidth,
+      heroNameFits: seat.querySelector(".opponent-hero-name").scrollWidth <= seat.querySelector(".opponent-hero-name").clientWidth,
+      focusCoveredByText: containsPoint(bounds(overlay), focus.x, focus.y),
+      focusCoveredByEquipment: containsPoint(summary ? bounds(summary) : null, focus.x, focus.y),
+      targetHitSafe: Boolean(hit && target.contains(hit)),
+      slots: [...seat.querySelectorAll(".opponent-equipment-indicator")].map((item) => ({ slot: item.dataset.slot, kind: item.dataset.cardKind, equipmentId: item.dataset.equipmentId, label: item.getAttribute("aria-label"), ...bounds(item) })),
+      imageLoaded: Boolean(seat.querySelector(".opponent-hero-portrait .hero-art-image")?.naturalWidth),
+    };
+  });
+}
+
+const VIS_10C_EQUIPMENT_CASES = [
+  { scenario: "empty", slots: [] },
+  { scenario: "weapon", slots: ["weapon"] },
+  { scenario: "armor", slots: ["armor"] },
+  { scenario: "plusHorse", slots: ["defensiveHorse"] },
+  { scenario: "minusHorse", slots: ["offensiveHorse"] },
+  { scenario: "weaponArmor", slots: ["weapon", "armor"] },
+  { scenario: "multiple", slots: ["weapon", "armor", "defensiveHorse", "offensiveHorse"] },
+];
+
+for (const width of [480, 650]) {
+  for (const equipmentCase of VIS_10C_EQUIPMENT_CASES) {
+    test(`UX2.0VIS-10C Top Row ${equipmentCase.scenario} at ${width}px keeps Hero art and public slot state readable`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "rest", count: 4, width, height: 900, equipmentCase: equipmentCase.scenario });
+      const seat = page.locator('[data-player-anchor="p2"]');
+      const presentation = await opponentSeatPresentation(page, "p2");
+      expect(presentation.topology).toBe("top-row");
+      expect(presentation.imageLoaded).toBe(true);
+      expect(presentation.art.width).toBeGreaterThanOrEqual(width === 480 ? 39 : 42);
+      expect(presentation.art.height).toBeGreaterThanOrEqual(width === 480 ? 44 : 52);
+      expect(presentation.art.right).toBeLessThanOrEqual(presentation.overlay.x + 0.5);
+      expect(presentation.focusCoveredByText).toBe(false);
+      expect(presentation.focusCoveredByEquipment).toBe(false);
+      expect(presentation.targetHitSafe).toBe(true);
+      expect(presentation.seat.height).toBe(width === 480 ? 78 : 88);
+      expect(presentation.slots.map(({ slot }) => slot)).toEqual(equipmentCase.slots);
+      expect(presentation.slots.every(({ width: slotWidth, height: slotHeight }) => slotWidth > 0 && slotHeight > 0)).toBe(true);
+      await assertVisible(seat.locator(".opponent-player-name"), "player identity");
+      await assertVisible(seat.locator(".opponent-hero-name"), "Hero identity");
+      expect(presentation.playerNameFits).toBe(true);
+      expect(presentation.heroNameFits).toBe(true);
+      await assertVisible(seat.locator(".opponent-hero-overlay .player-hp"), "HP");
+      await assertVisible(seat.locator(".opponent-hand-footer .player-hand-count"), "concealed Hand count");
+      await expect(seat.locator(".game-card")).toHaveCount(0);
+      if (equipmentCase.scenario === "multiple") await testInfo.attach("top-row-equipment-art", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
+      const bounds = await seat.evaluate((element) => {
+        const rect = (node) => { const box = node.getBoundingClientRect(); return { left: box.left, right: box.right, top: box.top, bottom: box.bottom }; };
+        const box = rect(element); const dock = rect(document.querySelector(".local-player-dock"));
+        const stage = document.querySelector(".interaction-stage");
+        const stageBox = stage ? rect(stage) : null;
+        const overlap = stageBox && Math.max(0, Math.min(box.right, stageBox.right) - Math.max(box.left, stageBox.left)) * Math.max(0, Math.min(box.bottom, stageBox.bottom) - Math.max(box.top, stageBox.top));
+        return { seat: box, dock, stageOverlap: overlap ?? 0, pageWidth: document.documentElement.scrollWidth, viewport: window.innerWidth };
+      });
+      expect(bounds.seat.bottom).toBeLessThanOrEqual(bounds.dock.top);
+      expect(bounds.stageOverlap).toBe(0);
+      expect(bounds.pageWidth).toBeLessThanOrEqual(bounds.viewport);
+    });
+  }
+}
+
+for (const width of [480, 650]) {
+  for (const count of [6, 10]) {
+    test(`UX2.0VIS-10C Side Column ${count} players at ${width}px keeps every equipment category inside its seat`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "interaction", count, width, height: 900, equipmentCase: "matrix" });
+      const result = await sideThumbnailGeometry(page);
+      expect(result.seats).toHaveLength(count - 1);
+      expect(result.overflow).toBe(false);
+      for (const seatGeometry of result.seats) {
+        expect(seatGeometry.hitSafe, `${seatGeometry.id} target hit`).toBe(true);
+        for (const required of seatGeometry.requiredVisible) expect(required.visible, `${seatGeometry.id} ${required.selector}`).toBe(true);
+        for (const child of seatGeometry.descendants) {
+          expect(child.x, `${seatGeometry.id} ${child.className}`).toBeGreaterThanOrEqual(seatGeometry.x - 2);
+          expect(child.right, `${seatGeometry.id} ${child.className}`).toBeLessThanOrEqual(seatGeometry.right + 2);
+          expect(child.bottom, `${seatGeometry.id} ${child.className}`).toBeLessThanOrEqual(result.dock.y - 6);
+        }
+        const expected = VIS_10C_EQUIPMENT_CASES[Number(seatGeometry.id.slice(1)) - 1]?.slots ?? [];
+        const presentation = await opponentSeatPresentation(page, seatGeometry.id);
+        expect(presentation.topology).toBe("side-column");
+        expect(presentation.imageLoaded).toBe(true);
+        expect(presentation.art.width).toBeGreaterThanOrEqual(42);
+        expect(presentation.art.height).toBeGreaterThanOrEqual(90);
+        expect(presentation.focusCoveredByText, `${seatGeometry.id} Hero focal art remains clear`).toBe(false);
+        expect(presentation.focusCoveredByEquipment, `${seatGeometry.id} equipment stays off the Hero focal area`).toBe(false);
+        expect(presentation.slots.map(({ slot }) => slot), seatGeometry.id).toEqual(expected);
+      }
+      const safeZone = await sideSafeZoneGeometry(page);
+      for (const stage of safeZone.stageBounds) {
+        for (const seat of safeZone.seatBounds) {
+          const clearance = seat.side === "left" ? stage.x - seat.right : seat.x - stage.right;
+          expect(clearance, `${stage.className} clears ${seat.id} ${seat.className}`).toBeGreaterThanOrEqual(6);
+        }
+      }
+      const emptySeat = page.locator('[data-player-anchor="p8"]');
+      if (count === 10) await expect(emptySeat.locator(".opponent-equipment-summary")).toHaveCount(0);
+      if (count === 10) await testInfo.attach("side-column-equipment-art", { body: await page.screenshot({ animations: "disabled" }), contentType: "image/png" });
+    });
+  }
+}
+
+for (const width of [480, 650]) {
+  test(`UX2.0VIS-10C opponent Inspect and target selection remain reachable at ${width}px`, async ({ page }) => {
+    await loadFixture(page, { state: "rest", count: 4, width, height: 900, equipmentCase: "matrix" });
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+    await expect(page.getByRole("dialog", { name: "Player 2 opponent inspection" })).toBeVisible();
+    await expect(page.locator('.opponent-inspection-zone[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
+    await page.getByRole("button", { name: "Close Player 2 inspection" }).click();
+
+    await loadFixture(page, { state: "confirm-cancel", count: 4, width, height: 900, equipmentCase: "matrix" });
+    await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
+    await expect(page.locator('[data-player-anchor="p3"]')).toHaveClass(/selected-target/);
+    await expect(page.locator(".borrowed-sword-notice")).toContainText("Target selected");
   });
 }
 

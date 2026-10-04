@@ -31,7 +31,7 @@ Latest completed milestone:
 
 Current handoff:
 - `UX2.0VIS-10C — Opponent Hero Readability and Public Equipment at a Glance`
-- status: PLANNED
+- status: IMPLEMENTED — CI PENDING
 - current task authority: `HANDOVER.md`
 
 ## UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
