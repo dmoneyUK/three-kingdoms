@@ -1,5 +1,34 @@
 # WTK project execution workflow
 
+## Autonomous UI/Layout mode exception
+
+The normal reviewer-authored single-task workflow above remains the default.
+
+An explicit user instruction containing `AUTONOMOUS UI RUN: ACTIVE` and directing the Agent to
+`docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` activates the experimental autonomous UI/Layout mode.
+
+While that mode is active, the autonomous workflow temporarily overrides only these normal rules:
+
+- the next task does not have to be reviewer-authored in advance;
+- the Agent may derive the next bounded UI/Layout task from the approved design after the previous task is complete;
+- the Agent may continue through multiple bounded tasks instead of stopping after every push;
+- `HANDOVER.md` is append-only for the autonomous run and must not be cleaned/replaced;
+- the Agent may wait for and inspect the GitHub Actions run for its own pushed revision, fix a real CI failure, and continue only after that revision is green.
+
+Everything else in this file remains in force, especially:
+
+- server/gameplay authority;
+- public/private projection boundaries;
+- fail-closed semantic behavior;
+- WTK Standard reference rules;
+- no unrelated scope widening;
+- truthful validation reporting.
+
+Autonomous mode does **not** authorize new product/game semantics. If the approved design or authoritative data is insufficient, follow the workflow's `BLOCKED — HUMAN REVIEW REQUIRED` stop condition.
+
+If the activation phrase is absent, use the normal reviewer-authored workflow in this file.
+
+
 ## Task authority
 
 - At the start of every task, synchronize the current authorized branch from the remote repository and read the complete remote `HANDOVER.md` before changing files.
