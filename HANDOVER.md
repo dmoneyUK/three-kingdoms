@@ -3,31 +3,32 @@
 Branch: `ux-v2`
 Mode: `AUTONOMOUS UI RUN`
 Authority: this file plus `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`.
-History: `docs/AUTONOMOUS_UI_ROADMAP.md`; previous handoff preserved in `docs/history/UX_V2_HANDOVER_THROUGH_VIS_12J.md`.
+History: `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest result — UX2.0VIS-12J
+## Latest result — UX2.0VIS-12K: Four-Player Ordinary-Turn Visual Gate
 
 Status: `IMPLEMENTED — CI PENDING`
 
-Revision `3fe440e9caa793b9ec0663c4de523de87ba60490`, Actions run `37228048954`, build-and-test job `111511699964`: lint/build passed; browser step failed; deployment skipped. Anonymous logs did not expose individual failures. Focused local reproduction found four-player Group-observer and Dying Stage overflow at 320×640 (16.06px / 3.88px below Safe Zone).
+Added an ordinary Play Phase fixture with a typed identity-free REST snapshot, active turn CurrentAction and six synthetic mixed Hand cards. The existing Hero-first seat regression now includes ordinary turns at 390/480/650px. Four integrated cases at 390×844, 480×900, 650×900 and 390×640 cover three opponent seats, a single local Dock, six unique readable-size cards, region bounds, action target/gutter protection and upward selection. Ordinary/selected screenshots and geometry are captured.
 
-Correction: apply the centered `min(88%, 410px)` Stage only at 360–480px; below 360px preserve full corridor width. The affected Stage/short-portrait/four-player matrix passed 35/35 after correction. No full local tests/build/lint. Push the correction; inspect its exact CI revision at the next task boundary without waiting.
+Focused validation: seven new cases passed 7/7; targeted ESLint passed. Reviewed ordinary and selected phone screenshots, including short portrait and 650px. No full local checks. Source scope: `tests/browser/fixture.jsx`, `tests/browser/ui19.spec.mjs`. Push together with this result; exact CI remains pending.
 
-VIS-12I is `COMPLETED BY AGENT — CI GREEN` on correction revision `b818cff112cec2c9f8fe972351d4c353b41854ee`, run `37227707859`, build-and-test `111510686961` and deploy `111511530346` successful. Human Reviewer acceptance remains separate.
+Pre-edit checkpoint: VIS-12J correction `9a5a245e1149c7a0baf721618c845fbe15aef381`, run `37230152044`, was in progress. Its focused affected matrix passed 35/35; remote green has not yet been claimed.
 
-## Current task — UX2.0VIS-12K: Four-Player Ordinary-Turn Visual Gate
+## Current task — UX2.0VIS-12L: Put Guidance Beside the Bottom Action Area
 
 Status: `PLANNED`
 
-User evidence: the supplied four-player phone screenshot shows ordinary Play Phase with six local Hand cards and no active Interaction Stage. Existing VIS-12I seat checks use inactive REST or an active interaction; the normal fixture projects ATTACK_RESPONSE even during a turn. This ordinary-turn composition lacks a representative fixture and integrated regression.
+Evidence: the four-player screenshots and Dock grid place `console-guidance` above Hero/Skills/Hand. Design §§0.91 and 2.7 explicitly require guidance at the bottom rather than above Hand. The current grid begins with `guidance guidance`; row heights begin with its auto track.
 
-Planning gate: all five §19 checks pass. Approved requirements: design §§0.91–0.91.5, 1.2, 1.5–1.5.2, 2.1–2.3, 2.7; workflow §§7.1, 7.7, 12, 19–20. Existing typed REST snapshot, CurrentAction and viewer-private Hand suffice. One bounded validation concern: cover the complete four-player ordinary-turn layout using existing fixtures/geometry helpers.
+Planning gate: all five §19 checks pass. Approved requirement is explicit; existing CurrentAction guidance stays authoritative; one independently testable grid-order concern; it is visibly wrong in the user's screenshot; 12K and existing long-guidance tests provide a meaningful regression.
 
 Requirements:
-- Add a valid ordinary-turn REST fixture with active turn CurrentAction and six synthetic local cards; no invented interaction identity.
-- At 390/480/650px and a short portrait viewport, validate three opponents in the Top Row, recognizable dominant Hero artwork, public status, stable Hero-left / Skills-and-Equipment-right-top / Hand-right-main / protected actions composition.
-- Prove no page overflow or region overlap; inspect representative screenshots and retain an active interaction case.
-- Capture any measured design mismatch as a separate bounded task; do not bundle an unapproved product/layout choice into this coverage task.
+- Place guidance below Hero/Skills/Hand and immediately above actions, preserving usable region sizes and selected-card rise.
+- Reorder corresponding grid row sizing consistently across phone/tablet/desktop widths; keep guidance fully readable, action reach/gutter intact, and Stage/Dock containment.
+- Update the existing contrary VIS-06A assertion to require selected cards above guidance; extend 12K geometry to require Hand → Guidance → Actions.
+- Preserve actual text, state, handlers, authority and semantics.
 
-Scope: browser fixture/tests and handoff/roadmap. Use focused browser validation and targeted test lint only. Before the first source edit inspect the latest ux-v2 push run; fix a completed failure first; proceed if running.
-Stop if a discovered layout trade-off requires a product decision or authoritative data is missing.
+Scope: `app/sequence-overrides.css`, focused browser regressions, handoff/roadmap. Validation: 12K + VIS-06A guidance/action cases + short-portrait Stage matrix; targeted lint only.
+Before source edits inspect the latest ux-v2 push run and apply §4's non-blocking checkpoint.
+Stop if bottom placement cannot preserve readable guidance and accepted Hand/actions without an unresolved design choice.

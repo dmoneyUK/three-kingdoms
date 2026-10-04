@@ -1402,7 +1402,7 @@ for (const width of [390, 480, 650]) {
 }
 
 for (const width of [390, 480, 650]) {
-  for (const state of ["rest", "interaction"]) {
+  for (const state of ["rest", "ordinary-turn", "interaction"]) {
     test(`UX2.0VIS-12I four-player ${state} seats keep Hero-first content proportions at ${width}px`, async ({ page }, testInfo) => {
       await loadFixture(page, { state, count: 4, width, height: 900, equipmentCase: "matrix" });
       const seats = await page.locator('.player-board[data-seat-topology="top-row"][data-player-count="4"] > .opponent-player-card').evaluateAll((items) => {
@@ -1492,6 +1492,69 @@ for (const width of [390, 480, 650]) {
       }
     });
   }
+}
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 650, height: 900 }, { width: 390, height: 640 }]) {
+  test(`UX2.0VIS-12K four-player ordinary turn protects the complete Dock at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+    await loadFixture(page, { state: "ordinary-turn", count: 4, ...viewport });
+    await expect(page.locator(".interaction-stage")).toHaveCount(0);
+    const seats = await geometry(page);
+    expect(seats.opponentAnchors).toHaveLength(3);
+    expect(seats.localDockAnchorCount).toBe(1);
+    expect(seats.severeOpponentOverlaps).toEqual([]);
+    expect(seats.scrollWidth).toBeLessThanOrEqual(viewport.width);
+    const rail = page.locator(".local-hand-rail");
+    await expect(rail).toHaveAttribute("data-hand-layout", "measured");
+    const hand = await readHandViewport(rail);
+    expect(hand.cards).toHaveLength(6);
+    expect(new Set(hand.cards.map(({ id }) => id)).size).toBe(6);
+    expect(hand.cards.every(({ visible }) => visible)).toBe(true);
+    await expect(page.locator('[data-action-slot="decline"] button')).toHaveText("End");
+    await expect(page.locator('[data-action-slot="decline"] button')).toBeEnabled();
+
+    const measureDock = () => page.locator(".local-player-dock").evaluate((dock) => {
+      const box = (element) => {
+        const { left, right, top, bottom, width, height } = element.getBoundingClientRect();
+        return { left, right, top, bottom, width, height };
+      };
+      const parts = Object.fromEntries(Object.entries({ hero: ".local-hero-card", skills: ".local-status-panel", equipment: ".local-equipment-panel", hand: ".local-hand", guidance: ".console-guidance", actions: ".turn-controls" }).map(([name, selector]) => [name, box(dock.querySelector(selector))]));
+      return { dock: box(dock), parts, cards: [...dock.querySelectorAll(".local-hand-rail .game-card")].map(box), buttons: ["primary", "decline"].map((slot) => ({ slot, ...box(dock.querySelector(`[data-action-slot="${slot}"] button`)) })), pageWidth: document.documentElement.scrollWidth };
+    });
+    const layout = await measureDock();
+    const { hero, skills, equipment, hand: handArea, actions } = layout.parts;
+    expect(hero.right).toBeLessThanOrEqual(handArea.left + 1);
+    expect(skills.right).toBeLessThanOrEqual(equipment.left + 1);
+    expect(handArea.top).toBeGreaterThanOrEqual(Math.max(skills.bottom, equipment.bottom) - 1);
+    for (const [name, part] of Object.entries(layout.parts)) {
+      expect(part.width, `${name} remains visible`).toBeGreaterThan(0);
+      expect(part.left, `${name} stays in the Dock`).toBeGreaterThanOrEqual(layout.dock.left - 1);
+      expect(part.right, `${name} stays in the Dock`).toBeLessThanOrEqual(layout.dock.right + 1);
+      expect(part.bottom, `${name} stays in the Dock`).toBeLessThanOrEqual(layout.dock.bottom + 1);
+    }
+    for (const card of layout.cards) {
+      expect(card.width).toBeGreaterThanOrEqual(68);
+      expect(card.height).toBeGreaterThanOrEqual(102);
+      expect(card.bottom).toBeLessThanOrEqual(actions.top);
+    }
+    for (const button of layout.buttons) {
+      expect(button.width).toBeGreaterThanOrEqual(78);
+      expect(button.height).toBeGreaterThanOrEqual(32);
+    }
+    if (viewport.width <= 480) expect(layout.buttons[1].left - layout.buttons[0].right).toBeGreaterThanOrEqual(32);
+    await testInfo.attach("four-player-ordinary-geometry", { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
+    await testInfo.attach("four-player-ordinary", { body: await page.screenshot({ path: testInfo.outputPath("ordinary.png"), animations: "disabled" }), contentType: "image/png" });
+
+    const card = rail.locator('[data-hand-card-id="browser-ordinary-5"] .game-card');
+    const before = await card.boundingBox();
+    await card.click({ position: { x: 8, y: 45 } });
+    await expect(card).toHaveClass(/selected/);
+    const selected = await card.boundingBox();
+    expect(selected.y).toBeLessThan(before.y);
+    expect(selected.y + selected.height).toBeLessThanOrEqual(actions.top);
+    expect((await measureDock()).pageWidth).toBeLessThanOrEqual(viewport.width);
+    await expect(page.locator('[data-action-slot="decline"] button')).toBeEnabled();
+    await testInfo.attach("four-player-selected", { body: await page.screenshot({ path: testInfo.outputPath("selected.png"), animations: "disabled" }), contentType: "image/png" });
+  });
 }
 
 test("UX2.0VIS-12I four-player desktop retains its existing Hero and Equipment anchors", async ({ page }) => {

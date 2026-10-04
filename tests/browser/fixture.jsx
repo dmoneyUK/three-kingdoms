@@ -158,6 +158,8 @@ function currentActionFor(state, actorId, handCardId) {
 }
 
 function browserRoom({ state, count, handSize, equipmentCase, heroOverride }) {
+  const ordinaryTurn = state === "ordinary-turn";
+  if (ordinaryTurn) state = "normal";
   const hasLocalJudgementFixture = ["local-judgement-empty", "local-judgement-one", "local-judgement-two"].includes(state);
   const localJudgementCount = state === "local-judgement-one" ? 1 : state === "local-judgement-two" ? 2 : 0;
   if (hasLocalJudgementFixture) state = "normal";
@@ -168,7 +170,9 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride }) {
   const meId = state === "group-observer" || unfocusedGroup ? "p3" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
   const actorId = state === "group-observer" || unfocusedGroup ? "p1" : state === "dying" ? "p3" : meId;
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
-  const hand = state === "normal" && handSize !== null
+  const hand = ordinaryTurn
+    ? ["Shadowrunner", "Overindulgence", "Negation", "Dodge", "Attack", "Attack"].map((kind, index) => card(`browser-ordinary-${index + 1}`, kind))
+    : state === "normal" && handSize !== null
     ? Array.from({ length: handSize }, (_, index) => card(`browser-hand-${index + 1}`, "Attack"))
     : state === "group-observer" || unfocusedGroup
     ? []
@@ -184,7 +188,15 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride }) {
   const targets = denseGroup ? playerIds.filter((id) => id !== "p4") : unfocusedGroup ? ["p1", "p2"] : state === "group-observer" ? ["p1", "p2", "p3"] : state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
   const stage = state === "duel" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" ? "NEGATION" : state === "dying" ? "DYING" : state === "group" || state === "group-observer" || unfocusedGroup ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
   const currentAction = state === "rest" ? null : currentActionFor(state, actorId, hand[0]?.id ?? "");
-  const presentationSnapshot = state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup ? null : state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
+  const presentationSnapshot = ordinaryTurn ? {
+    identity: null,
+    stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
+    interaction: null,
+    decision: null,
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: "turn", actorId, entitled: true },
+    settlement: null,
+    transitionEvents: [],
+  } : state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup ? null : state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
   const players = playerIds.map((id, index) => ({
     id,
     name: `Player ${index + 1}`,
@@ -231,7 +243,7 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride }) {
     actionRevision: `browser-${state}-action`,
     presentationSnapshot,
     currentAction,
-    pending: currentAction ? { kind: currentAction.kind } : null,
+    pending: ordinaryTurn ? null : currentAction ? { kind: currentAction.kind } : null,
     pendingAttack: null,
     pendingGreenDragon: null,
     pendingRockCleaving: null,
