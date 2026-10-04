@@ -251,3 +251,20 @@ Final implementation/fix SHAs: `8fa843c`, result record `6becbcc`; no CI fixes r
 Final test status: Local bounded browser 96/96; remote lint/build/browser/npm-test gate all passed.
 Known remaining gaps: Side Column still uses old compact Hero Focus and lacks independent Medium Source projection; final dock/hand/group-density work remains. Human reviewer acceptance is not implied.
 Recommended next bounded task: Side Column Large Focus/Medium Source presentation using the existing accepted semantic/viewer helpers, without changing gameplay/public authority or Top Row.
+
+TASK ID: UX2.0VIS-05C — Side Column participant hierarchy
+STATUS: PLANNED
+
+Objective: Large primary portrait and Medium external Source in the proven Side Column safe zone.
+Observed gap: Side Column retains 38x48 desktop/34x43 mobile primary portraits; Medium Source is gated to Top Row in React.
+Why this task is next: Safe-zone CI is green; autonomous roadmap explicitly calls for Side Column Stage adaptation before group density/dock work.
+Design authority: Autonomous workflow sections 7.3 and 10; interaction design section3C Large/Medium hierarchy, viewer exclusion and narrow-centre vertical relationship.
+Current production evidence: projectMediumSourceForViewer already proves distinct external source plus active-target primary, excludes viewer/self and fails closed. Reuse it unchanged.
+Files expected in scope: app/page.tsx, app/sequence-overrides.css, tests/browser/ui19.spec.mjs, README.md, append-only HANDOVER.md.
+Implementation requirements: Extend existing Medium Source projection to Side Column; vertical source -> primary relationship; primary portraits use retained Top Row dimensions90x113/72x90/64x80; source remains smaller. No change to semantic selection/helper.
+Explicit non-goals: Group participant/status/order model, public history, Local Dock/hand composition, gameplay, new assets, Top Row redesign.
+Forbidden shortcuts: No guessed focus from decision/HP/seat; no viewer duplicate; no seat resize; no clipping/scroll/scaling or disappearing Reaction/Dying.
+Required regression tests: 18 retained safe-zone state cases, distinct-source Group observer and Dying hierarchy; viewer source/target excluded from Medium; existing Top Row hierarchy and seat containment/hits.
+Required local validation: Focused browser/mounted semantic helper tests and whitespace check, not full build/test/lint.
+CI acceptance: Pushed revision CI green before next task; preserve meaningful tests and classify any failure.
+Task acceptance criteria: Large primary dimensions, smaller Medium Source only when helper proves it, vertical direction, all visible descendants within safe zone/table above dock and >=6px from seats; unchanged Top Row/control authority. Stop if geometry requires unapproved loss of content.

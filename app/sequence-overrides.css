@@ -1668,6 +1668,51 @@
   align-items: center;
 }
 
+/* VIS-05C: reuse proven semantic participants, with a portrait-oriented
+   hierarchy. Density/geometry never changes which participant is primary. */
+.play-table[data-seat-topology="side-column"] .interaction-stage-hero-region {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.play-table[data-seat-topology="side-column"] .hero-focus {
+  display: grid;
+  grid-template-areas: "portrait heading" "portrait identity" "portrait source" "portrait context";
+  grid-template-columns: 90px minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr auto;
+  column-gap: 10px;
+  row-gap: 4px;
+}
+.play-table[data-seat-topology="side-column"] .hero-focus-body { display: contents; }
+.play-table[data-seat-topology="side-column"] .hero-focus-portrait { grid-area: portrait; width: 90px; height: 113px; align-self: start; }
+.play-table[data-seat-topology="side-column"] .hero-focus-heading { grid-area: heading; flex-wrap: wrap; }
+.play-table[data-seat-topology="side-column"] .hero-focus-identity { grid-area: identity; }
+.play-table[data-seat-topology="side-column"] .hero-focus-source { grid-area: source; margin-left: 0; max-width: none; text-align: left; }
+.play-table[data-seat-topology="side-column"] .hero-focus-context { grid-area: context; }
+.play-table[data-seat-topology="side-column"] .medium-participant-card {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 56px minmax(0, 1fr);
+  grid-template-areas: "portrait role" "portrait identity";
+  text-align: left;
+  column-gap: 8px;
+}
+.play-table[data-seat-topology="side-column"] .medium-participant-portrait { grid-area: portrait; }
+.play-table[data-seat-topology="side-column"] .medium-participant-role { grid-area: role; }
+.play-table[data-seat-topology="side-column"] .medium-participant-identity { grid-area: identity; }
+@media (max-width: 650px) {
+  .play-table[data-seat-topology="side-column"] .hero-focus { grid-template-columns: 72px minmax(0, 1fr); }
+  .play-table[data-seat-topology="side-column"] .hero-focus-portrait { width: 72px; height: 90px; }
+  .play-table[data-seat-topology="side-column"] .medium-participant-card { grid-template-columns: 48px minmax(0, 1fr); }
+  .play-table[data-seat-topology="side-column"] .medium-participant-portrait { width: 48px; height: 60px; }
+}
+@media (max-width: 480px) {
+  .play-table[data-seat-topology="side-column"] .hero-focus { grid-template-columns: 64px minmax(0, 1fr); }
+  .play-table[data-seat-topology="side-column"] .hero-focus-portrait { width: 64px; height: 80px; }
+  .play-table[data-seat-topology="side-column"] .medium-participant-card { grid-template-columns: 42px minmax(0, 1fr); }
+  .play-table[data-seat-topology="side-column"] .medium-participant-portrait { width: 42px; height: 53px; }
+}
+
 .game-shell .player-board[data-player-count="5"] { --seat-row-count: 2; }
 .game-shell .player-board[data-player-count="6"],
 .game-shell .player-board[data-player-count="7"] { --seat-row-count: 3; }

@@ -29,6 +29,17 @@ including every visible Stage/seat descendant and real seat hit targets.
 starting the Worker/D1; the complete CI configuration remains unchanged.
 These checks are not touch-device certification or reviewer acceptance.
 
+### UX2.0VIS-05C — Side Column participant hierarchy — 2026-10-04
+
+Side Column now uses the existing proven viewer projection for a distinct
+external Medium Source above the Large primary Hero Focus. The relationship
+is vertical; the viewer is never duplicated centrally. Primary portraits use
+90x113, 72x90 and 64x80 at desktop/650px/480px; source portraits are smaller.
+Semantic selection, unknown/ambiguous fail-closed behavior, Reaction/Dying,
+seat geometry, Top Row and private local controls remain unchanged. Browser
+regressions verify identities, dimensions, hierarchy and safe-zone containment;
+these are implementation evidence, not human visual acceptance.
+
 ### BUG-ZHANG-LIAO-ASSAULT-01 — Draw Phase Assault UI fix — 2026-10-03
 
 The real API-backed Draw Phase fixture now keeps the authoritative Assault

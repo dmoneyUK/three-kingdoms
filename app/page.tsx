@@ -510,14 +510,14 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const reactionChain = buildReactionChainView(stage);
   const publicHeroFocus = buildHeroFocusView(stage, resolvePlayerDisplay);
   const heroFocus = projectHeroFocusForViewer(stage, publicHeroFocus, viewerId, resolvePlayerDisplay);
-  const mediumSource = topRowMode ? projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay) : null;
+  const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   if (!display.visible) return null;
   return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined} data-presentation-transition={transitionKind}>
     <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
     <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {mediumSource && <MediumParticipantCard view={mediumSource} />}
-        {mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">→</span>}
+        {mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
         <HeroFocus view={heroFocus} showSource={!mediumSource} />
       </div>
       <div className="interaction-stage-event-region">

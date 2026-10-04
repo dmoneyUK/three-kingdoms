@@ -663,6 +663,44 @@ test("UX2.0VIS-05B rejects legacy absolute Stage placement at 480px", async ({ p
   expect(restored.stage.right).toBeLessThanOrEqual(restored.zone.right);
 });
 
+for (const { width, focus, medium } of [
+  { width: 1440, focus: [90, 113], medium: [56, 70] },
+  { width: 650, focus: [72, 90], medium: [48, 60] },
+  { width: 480, focus: [64, 80], medium: [42, 53] },
+]) {
+  for (const state of ["interaction", "negation", "dying", "group-observer"]) {
+    test(`UX2.0VIS-05C ${state} at ${width}px preserves proven participant hierarchy`, async ({ page }) => {
+      await loadFixture(page, { state, count: 6, width, height: 900 });
+      const primary = page.locator(".hero-focus-portrait");
+      const portrait = await primary.boundingBox();
+      expect(portrait.width).toBe(focus[0]);
+      expect(portrait.height).toBe(focus[1]);
+      const source = page.locator('[data-medium-participant="source"]');
+      if (state === "dying" || state === "group-observer") {
+        await expect(source).toHaveCount(1);
+        await expect(source).toHaveAttribute("data-medium-participant-player-id", state === "dying" ? "p1" : "p4");
+        await expect(page.locator(".hero-focus")).toHaveAttribute("data-hero-focus-player-id", state === "dying" ? "p2" : "p1");
+        const sourcePortrait = await source.locator(".medium-participant-portrait").boundingBox();
+        expect(sourcePortrait.width).toBe(medium[0]);
+        expect(sourcePortrait.height).toBe(medium[1]);
+        expect(sourcePortrait.width).toBeLessThan(portrait.width);
+        expect((await source.boundingBox()).y + (await source.boundingBox()).height).toBeLessThanOrEqual(portrait.y);
+        await expect(page.locator('[data-medium-source-arrow="true"]')).toHaveText("↓");
+      } else {
+        await expect(source).toHaveCount(0); // local source or source already primary
+      }
+      const localId = await page.locator(".local-player-dock").getAttribute("data-player-anchor");
+      await expect(page.locator(`.interaction-stage [data-hero-focus-player-id="${localId}"], .interaction-stage [data-medium-participant-player-id="${localId}"]`)).toHaveCount(0);
+      const result = await sideSafeZoneGeometry(page);
+      for (const box of result.stageBounds) {
+        expect(box.x, box.className).toBeGreaterThanOrEqual(result.zone.x - .5);
+        expect(box.right, box.className).toBeLessThanOrEqual(result.zone.right + .5);
+        expect(box.bottom, box.className).toBeLessThanOrEqual(result.zone.bottom);
+      }
+    });
+  }
+}
+
 for (const width of [480, 650, 1440]) {
   for (const count of [5, 6, 7, 8, 9, 10]) {
     test(`UX2.0VIS-05A-FIX1 ${count} players at ${width}px contain every thumbnail descendant and hit target`, async ({ page }, testInfo) => {
