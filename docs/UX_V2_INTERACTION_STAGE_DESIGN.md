@@ -3037,18 +3037,65 @@ Seat thumbnails may use different presentation shapes while preserving the same 
 
 **Side Column Mode** should use a narrow portrait thumbnail to minimise loss of central width.
 
-Suggested information, subject to real-device validation:
+Required at-a-glance information:
 
-- hero portrait / face,
-- hero or player identity,
-- HP,
-- concealed hand count,
-- projected effective distance,
+- a genuinely recognizable Hero portrait / face;
+- hero or player identity;
+- HP;
+- concealed hand count;
+- projected effective distance when the UI already exposes it;
+- compact public Equipment state;
 - lightweight important status markers.
 
-Do not attempt to place full skills, full equipment names, full Judgement cards, role details, or long status text in seat thumbnails. Those belong in public inspect / Interaction Stage presentation.
+The opponent seat must remain a **Hero thumbnail**, not degrade into a mostly-text status strip. Under responsive pressure, compact secondary text, padding and decorative chrome before reducing the useful Hero-art region below a recognizable presentation. Keep a dedicated portrait region whose central artwork is not covered by large name / HP / hand-count overlays. Top Row and Side Column may use different portrait crops and densities, but both must preserve immediate Hero recognition at the validated mobile portrait sizes.
 
-Equipment and Judgement presence may use small status icons where useful.
+### 1.5.1 Public Equipment at a glance
+
+Public equipped cards materially affect target choice and combat reasoning. A player should not need to open Inspect merely to discover whether an opponent visibly has a Weapon, Armour, +1 Horse, or -1 Horse.
+
+Each opponent seat therefore shows a compact, always-visible summary for currently equipped public slots:
+
+- **Weapon**
+- **Armour**
+- **+1 Horse**
+- **-1 Horse**
+
+Prefer a small thumbnail using the existing public physical equipment-card identity / existing mini-card or `CardFace` visual language when it remains legible. If a full mini-card is too dense for a seat, use a compact slot-specific visual icon or cropped thumbnail that still makes the slot category immediately distinguishable.
+
+Rules:
+
+- show only authoritative already-public equipment; never expose private Hand identities or hidden state;
+- equipment indicators are informational presentation, not a new legality system;
+- do not infer Attack legality, distance, range, Borrowed Sword legality, or other gameplay effects from the icons in React;
+- empty equipment slots should consume little or no permanent space;
+- multiple equipped slots must remain individually distinguishable rather than collapse into one generic “equipped” dot;
+- preserve the existing public Inspect surface for exact card names/details and Judgement information;
+- equipment thumbnails/icons must not steal the opponent-seat target hit area or introduce a competing gameplay action; if interactive, they may only use the existing inspect/info behavior;
+- do not hide public equipment merely to satisfy containment. If Top Row and Side Column require different visual densities, preserve the same public equipment facts with topology-specific sizing;
+- do not materially enlarge opponent seats into the Interaction Safe Zone just to make equipment fit.
+
+Judgement presence may continue to use a compact status treatment; full Judgement-card detail belongs in Inspect / Interaction Stage unless an approved interaction specifically requires otherwise.
+
+### 1.5.2 Opponent-thumbnail visual validation
+
+This requirement is complete only after representative mobile validation, not merely because the DOM contains an image and equipment IDs.
+
+Validate at minimum:
+
+- **Top Row:** 4 players at 480px and 650px widths;
+- **Side Column:** representative 6-player and high-density 10-player layouts at 480px and 650px widths;
+- equipment states: none, Weapon only, Armour only, each Horse slot, Weapon + Armour, and multiple occupied slots;
+- Hero portrait remains a visually meaningful dedicated region and is not substantially obscured by identity/status text;
+- player/Hero identity, HP and concealed Hand count remain readable;
+- equipped Weapon / Armour / Horse categories are visible without opening Inspect;
+- empty equipment state does not create a large dead row;
+- target-selection hit areas and layered target/decision/turn visual states still work;
+- opponent seats stay outside the Interaction Safe Zone and above the Local Player Dock;
+- no document-level horizontal overflow is introduced.
+
+Browser geometry/DOM assertions should prove containment, slot presence and hit safety. Screenshot/visual inspection should additionally verify that the Hero artwork is actually recognizable; a tiny technically-visible image does not satisfy this requirement.
+
+Do not attempt to place full skills, long equipment names, full Judgement cards, role details, or long status text in seat thumbnails. Those belong in public Inspect / Interaction Stage presentation.
 
 ### 1.6 Seat position versus gameplay distance
 
