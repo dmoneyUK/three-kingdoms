@@ -18,6 +18,14 @@ The human Reviewer workflow is **not** changed:
 
 During this experiment the Coding Agent may plan and execute multiple consecutive bounded tasks without waiting for human review after every task, provided it follows the design, authority, testing, CI, HANDOVER, and stop rules below.
 
+### Activation
+
+This workflow is active only when the user's instruction explicitly contains:
+
+`AUTONOMOUS UI RUN: ACTIVE`
+
+When active, this document is the authorized exception described in `AGENTS.md`. It overrides only the normal single-task/reviewer-next-task/append-vs-clean/no-CI-polling cadence rules listed there. It does not override architecture, gameplay authority, privacy, WTK Standard references, or fail-closed rules.
+
 The autonomous run ends when either:
 
 1. the remaining approved UI/Layout work is implemented and CI-green; or
@@ -1019,35 +1027,174 @@ unless those were separately and explicitly proven.
 
 ---
 
-## 17. Begin
+## 17. Resume protocol
 
-Current branch CI baseline is GREEN.
+Do not assume a hard-coded task ID from an earlier version of this document is still current.
 
-Fetch `origin/ux-v2`.
+At the beginning or resumption of every autonomous run:
 
-Read the complete existing HANDOVER ledger and required design documents.
+1. Fetch and fast-forward `origin/ux-v2`.
+2. Read the **complete current remote `HANDOVER.md`**.
+3. Identify the latest implementation task and its final status.
+4. Do not repeat any task already recorded as `COMPLETED BY AGENT — CI GREEN` unless new concrete evidence shows a regression.
+5. Inspect the actual current code for the highest-impact remaining gap against the approved final design.
+6. Apply the planning gate in section 19 before writing the next task.
+7. Append the next `PLANNED` task and continue the normal autonomous task/CI loop.
 
-Confirm the accepted VIS-05A / VIS-06 state from actual code.
+At the time this optimization was added, VIS-05B, VIS-05C, and VIS-07A had already been implemented and recorded in HANDOVER. Those IDs are historical milestones, not instructions to repeat them. The remote HANDOVER always wins for current progress.
 
-Append a new `PLANNED` entry for:
+---
 
-`UX2.0VIS-05B — Side Column Central Interaction Safe Zone`
+## 18. Token and context efficiency
 
-Implement it.
+Implementation quality and reviewer traceability matter more than verbose self-documentation.
 
-Push.
+Use the following rules for every autonomous task.
 
-Wait for CI.
+### 18.1 Do not repeat stable background
 
-Fix CI if required.
+Do not copy the full design or architecture background into each task.
 
-Once CI is green, append:
+Reference the existing authority instead, for example:
 
-`COMPLETED BY AGENT — CI GREEN`
+`Design authority: UX_V2_INTERACTION_STAGE_DESIGN.md §7.7; accepted VIS-06A contract.`
 
-Then inspect the actual resulting UI/architecture and autonomously plan the next smallest task toward the approved final design.
+Only record the **task-specific delta**.
 
-Continue until either:
+### 18.2 Compact task records
 
-- the remaining approved UI/Layout work is complete; or
-- a `BLOCKED — HUMAN REVIEW REQUIRED` condition occurs.
+A normal `PLANNED` entry should usually contain:
+
+- objective;
+- concrete observed gap;
+- files likely in scope;
+- 3–7 implementation requirements;
+- key preserved contracts;
+- focused regression;
+- one explicit stop condition if needed.
+
+Do not restate unrelated accepted history.
+
+### 18.3 Compact implementation results
+
+A normal implementation result should contain only:
+
+- implementation SHA;
+- files changed;
+- important behavior/geometry measurements;
+- focused tests actually run;
+- meaningful discovered/fixed regression;
+- remaining gap.
+
+Do not retell the task specification.
+
+### 18.4 Compact CI closeout
+
+After CI is green, record only:
+
+- exact tested revision;
+- run/job result;
+- whether a CI fix was required;
+- next-task rationale.
+
+Do not repeat local test tables already recorded in the implementation result.
+
+### 18.5 One run summary only
+
+Write `AUTONOMOUS RUN SUMMARY` only when the autonomous run actually stops because:
+
+- a human-review boundary is reached;
+- the approved UI/Layout work is complete;
+- the user explicitly asks to stop;
+- available context/budget is becoming unsafe for another bounded task.
+
+Do not write a full run summary after every task.
+
+### 18.6 README discipline
+
+Do not update `README.md` for every small visual/layout task.
+
+Update README only when the user-facing product contract, durable architecture, setup/usage, or release status materially changes.
+
+Task history belongs in HANDOVER; design contracts belong in the design documents.
+
+### 18.7 Reuse tests and helpers
+
+Prefer extending existing browser fixtures, geometry helpers, semantic helpers, and regression matrices.
+
+Do not duplicate large helper blocks merely to create a new test.
+
+Run the smallest focused local validation that proves the task. Let the named CI gate own full-suite validation unless a specific failure requires broader local reproduction.
+
+### 18.8 Read narrowly
+
+After the required first-read documents, inspect only the source/test files relevant to the current gap before widening repository search.
+
+Do not repeatedly reread large unchanged files during the same task unless needed.
+
+### 18.9 Documentation budget
+
+As a target, documentation/history generation should normally consume much less effort than implementation and testing.
+
+Avoid spending more than roughly 10–15% of an autonomous run on repeated narrative/history.
+
+Do not invent token percentages if the runtime does not expose them.
+
+### 18.10 Milestone cadence
+
+Prefer 2–4 completed bounded implementation tasks between human milestone reviews.
+
+A milestone review is recommended after high-impact visual areas such as:
+
+- final Local Player Dock composition;
+- large-hand 20/25+ behavior;
+- final representative mobile visual gate.
+
+Do not stop merely because three tasks are complete if the next task is small, clearly authorized, and context remains healthy.
+
+---
+
+## 19. Next-task planning gate
+
+Before self-authoring the next task, answer these questions from the actual current repo and approved design:
+
+1. **Approved requirement:** Is the desired behavior already explicitly supported by the approved final design or an accepted reviewer decision?
+2. **Authority:** Can it be implemented using existing authoritative data without inventing gameplay/public semantics?
+3. **Boundedness:** Can one architectural/visual concern be implemented and tested independently?
+4. **Impact:** Is it among the highest-impact remaining gaps visible to the player?
+5. **Regression proof:** Can the old defect or missing contract be captured by a meaningful focused test?
+
+If all five are YES, append the task and implement it.
+
+If 1 or 2 is NO, stop with `BLOCKED — HUMAN REVIEW REQUIRED`.
+
+If 3 is NO, split the work smaller before implementation.
+
+If 4 is NO, choose a higher-impact approved gap.
+
+If 5 is difficult but the visual change is still objectively measurable, define the smallest geometry/DOM/interaction proof available and explain the limitation.
+
+### Visual-detail caution
+
+Architecture correctness does not replace visual judgment.
+
+For density, spacing, prominence, and composition rules, compare the implementation against the exact approved design wording before finalizing. In particular, compute participant density from the participants that are actually rendered after viewer/primary/source exclusions, unless an approved design rule explicitly says otherwise.
+
+---
+
+## 20. Current continuation direction
+
+The complete remote HANDOVER is the authority for exact progress.
+
+The remaining approved direction is expected to include, as needed:
+
+- Interaction Stage shell / duplicate metadata simplification;
+- final neutral Group/AOE density polish without invented progress semantics;
+- Local Player Dock final structure;
+- persistent Judgement overlay on the local Hero;
+- single-layer Hand overlap and horizontal-pan behavior for 5/10/15/20/25+ cards;
+- representative interaction visual regression;
+- final mobile visual gate.
+
+Do not implement these as one large task. Derive the next smallest high-impact bounded task using section 19.
+
