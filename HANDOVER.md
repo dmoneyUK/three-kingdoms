@@ -3,254 +3,276 @@
 ## REMOTE HANDOVER RULE
 Work only on `ux-v2`. Read this file and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`. Implement only the task below, validate, append this task's execution result, commit/push, verify remote HANDOVER, then STOP. Do not wait for or poll CI.
 
-## Reviewer status — UX2.0VIS-05A PARTIAL
+## Reviewer status — UX2.0VIS-05A ACCEPTED
 
-Reviewed implementation: `79eda6ea1ee2017a73cd336fbeddbbf7b566b44a`.
+Reviewed implementation chain:
+- topology: `79eda6ea1ee2017a73cd336fbeddbbf7b566b44a`
+- containment fix: `91368228a4d436992082a17e67cbccce3281390d`
 
-### Accepted topology work
-Preserve these parts exactly:
-- `projectSideColumnSeat(totalPlayers, relativeIndex)` is pure and uses only total player count + relative index.
-- Required mappings for 5–10 players are correct.
-- `data-side-column` and `data-side-row` are exposed only in Side Column mode.
-- Side Column placement is now explicit LEFT / empty CENTRE / RIGHT rather than `grid-auto-flow`.
-- Published 5/7/10 examples match the required seat order.
-- The middle 40% corridor is clear when measured from the opponent **container** bboxes.
-- Top Row / VIS-04 / VIS-06 local console behavior was not changed.
-- Focused VIS-05A topology/geometry tests reported 29/29 PASS; retained suite reported 61/61 PASS.
+Accepted facts to preserve:
+- 5–10 player rooms now use deterministic LEFT/RIGHT Side Column projection from `projectSideColumnSeat(totalPlayers, relativeIndex)`;
+- published 5/7/10 seat orders and the extra-right rule are correct;
+- Side Column uses explicit LEFT / empty CENTRAL / RIGHT tracks and no longer relies on `grid-auto-flow` for seat placement;
+- the middle 40% corridor is seat-free;
+- Side Column seats are now self-contained narrow thumbnails rather than overflowing full cards;
+- directly visible Side Column information is compact hero identity/art, HP and concealed Hand count;
+- full Equipment/Judgement card faces are hidden in the thumbnail but remain available through unchanged Opponent Inspect;
+- all 117 hero-target centre hit checks across the 5–10 × 1440/650/480 matrix resolve to the correct seat;
+- real Inspect clicks for high/low seats in both columns work without force-clicking;
+- the previous 1440/N6 p2/p3 footer interception is gone;
+- minimum visible-descendant clearance above LocalPlayerDock was reported as ~24.89px / 17px / 18.63px at 1440 / 650 / 480;
+- Top Row, VIS-06 local console, gameplay and presentation authority were not changed;
+- focused FIX1 reported 24/24 PASS and the retained/focused selection reported 134/134 PASS.
 
-### Blocking gap — VIS-05A is not accepted yet
-The implementation report correctly exposed a real descendant-overflow bug:
+VIS-05A is now complete. Do not reopen its topology or thumbnail containment unless new real-device evidence shows a regression.
 
-At 1440x900 / 6 players:
-- p2 seat container: y≈406.06..464.06, height 58px;
-- p2 hero button extends to y≈570;
-- p2 footer extends to y≈660.48;
-- p3 footer occupies y≈454.41..490.41 and intercepts p2's real click.
-
-Root cause:
-- Side Column container height is capped by the row;
-- internal `.opponent-hero-card` still keeps the old tall portrait `2/3` sizing from the full opponent card;
-- Equipment/Judgement/Hand footer are still laid out as full public zones;
-- parent/public-zone overflow remains visible;
-- therefore descendants escape the projected seat container, overlap adjacent rows, can extend toward the LocalPlayerDock and can block another seat's hit target.
-
-This violates the actual seat-thumbnail design and the VIS-05A usability acceptance even though the outer container geometry passes.
-
-Do not hide this with forced clicks, z-index tricks, pointer-events on neighbouring seats, or by weakening the topology tests.
-
-# NEXT TASK — UX2.0VIS-05A-FIX1: Contain Side-Column Seat Thumbnails and Restore Hit Safety
+# NEXT TASK — UX2.0VIS-05B: Give Side Column Mode a Real Central Interaction Safe Zone
 
 ## Objective
-Complete VIS-05A by making every 5–10 player Side Column opponent a **self-contained narrow thumbnail** whose visible descendants and hit areas stay inside its projected grid cell.
+Fix one remaining Side Column structural defect:
 
-The exact LEFT/RIGHT topology from VIS-05A must remain unchanged.
+**For 5–10 player rooms, place the existing Interaction Stage inside a dedicated central safe zone between the proven LEFT/RIGHT seat columns instead of letting it use the legacy global absolute top/620px dashboard geometry.**
 
-This task may compact the **Side Column thumbnail internals only**, because the previous task has now proven that the old full-card internals cannot fit the Side Column row geometry.
+This is a geometry/containment task only.
 
-Do not change Top Row thumbnails, Side Column mapping, LocalPlayerDock, Interaction Stage, gameplay or public Inspect data.
+Do not redesign Interaction Stage internals, enlarge Side Column Hero Focus, change Reaction/Dying/Meta content, or alter seat topology.
 
-## Design authority
-`docs/UX_V2_INTERACTION_STAGE_DESIGN.md §1.5` requires Side Column Mode to use a **narrow portrait thumbnail** to protect central width.
+## Current production defect
+The wrapper already exists in React:
 
-A seat thumbnail should directly show lightweight information such as:
-- hero face/art;
-- hero or player identity;
-- HP;
-- concealed Hand count;
-- lightweight status markers.
+```tsx
+<div className="interaction-safe-zone">
+  <InteractionStage ... />
+</div>
+```
 
-It must **not** try to render:
-- full skill detail;
-- full Equipment names/cards;
-- full Judgement card faces;
-- long status text.
+but current CSS is:
 
-Full public Equipment/Judgement detail remains available through the existing Opponent Inspect surface.
+```css
+.interaction-safe-zone { display: contents; }
+```
+
+Only Top Row mode overrides that wrapper into a real positioned safe zone.
+
+Therefore Side Column mode still falls back to the legacy global Interaction Stage positioning:
+
+```css
+.interaction-stage {
+  position:absolute;
+  left:50%;
+  top:14px;
+  width:min(94%,620px);
+  translate:-50% 0;
+}
+```
+
+That ignores the newly proven Side Column corridor and can visually compete with or overlap the side seat columns.
+
+UX V2 defines Side Column Mode as:
+- narrow LEFT seats;
+- narrow RIGHT seats;
+- a narrower but taller central Interaction Stage area;
+- side columns terminate above the LocalPlayerDock;
+- the LocalPlayerDock owns full usable screen width.
 
 ## Files expected in scope
 Production:
-- `app/sequence-overrides.css`
-- `app/page.tsx` only if a tiny presentational hook/count badge is required
+- `app/globals.css`
 
 Regression:
 - `tests/browser/ui19.spec.mjs`
 
 Do not modify:
-- `projectSideColumnSeat` formula;
-- Side Column data hooks;
-- relativeIndex calculation;
-- presentation/game/server/projector logic;
-- target legality;
-- LocalPlayerDock;
-- Top Row CSS.
+- `app/page.tsx`;
+- `projectSideColumnSeat`;
+- Side Column thumbnail CSS in `app/sequence-overrides.css`;
+- Top Row geometry;
+- game/presentation/server/projector logic.
 
 ## Required implementation
 
-### 1. Make the Side Column card fit its assigned grid row
+### 1. Turn the existing Side Column wrapper into real geometry
 Under:
 
-`.player-board[data-seat-topology="side-column"]`
+`.play-table[data-seat-topology="side-column"] > .interaction-safe-zone`
 
-the opponent card must be fully bounded by its grid cell.
+create a positioned central safe zone.
 
 Required:
-- remove any Side Column `min-height` that can force a card taller than its row;
-- actual card height must be <= its grid-row height;
-- actual card width must remain entirely inside its 30% side band;
-- use real dimensions, not `transform:scale`;
-- preserve current rowCount and row-gap logic.
+- `position:absolute`;
+- top and bottom remain within the play-table battlefield;
+- left/right boundaries sit between the actual LEFT/RIGHT seat columns;
+- display as a real flex/block container rather than `display:contents`;
+- centre the existing Interaction Stage inside it;
+- keep `pointer-events:none` on the public presentation wrapper.
 
-Use a narrow thumbnail width. A reasonable target is:
-- minimum usable width: 44px;
-- maximum: about 86px;
-- responsive width between those limits.
+Do not add visible background/border/placeholder chrome to the safe-zone wrapper.
 
-Equivalent geometry is acceptable if tests below pass.
+### 2. Remove legacy Stage positioning only inside Side Column mode
+For the direct child Interaction Stage in Side Column mode:
+- override legacy `position:absolute`;
+- override legacy `left:50%`;
+- override legacy `top:14px`;
+- override legacy `translate:-50% 0`;
+- use normal relative positioning inside the safe zone;
+- width must be constrained by the safe-zone width, not by a viewport-wide 620px placement.
 
-### 2. Convert internal public zones to thumbnail density
-For Side Column only:
+Do not change the global legacy rule or Top Row override in this task.
 
-- hero artwork remains the dominant surface and fills the bounded seat;
-- remove the old child `2/3` sizing that makes `.opponent-hero-card` taller than its parent;
-- hero target/button must stay entirely inside the seat;
-- keep a compact readable identity treatment;
-- HP must remain directly visible;
-- concealed Hand count must remain directly visible;
-- full Equipment grid must not consume seat height;
-- full Judgement card faces must not consume seat height;
-- hearts may be hidden/compacted if HP text remains visible.
+### 3. Horizontal seat-clearance contract
+For active Side Column states, at 1440x900, 650x900 and 480x900:
 
-Do not delete Equipment/Judgement state from the DOM/data model merely to make layout pass.
+Let:
+- `leftSeatsRight = max(right edge of all LEFT seat visible descendants)`;
+- `rightSeatsLeft = min(left edge of all RIGHT seat visible descendants)`;
+- `safeZone.left/right` be the central wrapper bounds.
 
-### 3. Hand count becomes a compact in-seat badge/footer
-The Hand count may be rendered as a small overlay/footer inside the thumbnail.
+Require:
+- `safeZone.left >= leftSeatsRight + 6px`;
+- `safeZone.right <= rightSeatsLeft - 6px`.
 
-It must:
-- stay inside the seat bbox;
-- not increase the seat's measured height;
-- not intercept the main hero Inspect/target click.
+For the visible Interaction Stage itself require the same 6px clearance.
 
-If implemented as an overlay, use `pointer-events:none` on the non-interactive badge/footer only.
+Do not use JS runtime measurement for layout; measurements are test-only.
 
-Do not disable pointer events on the seat, hero target or info affordance.
+### 4. Vertical battlefield ownership
+The Side Column safe zone may use the full battlefield height because there is no top row.
 
-### 4. Equipment/Judgement detail remains accessible through Inspect
-In Side Column mode:
-- full `.opponent-equipment-zone` and `.opponent-judgement-zone` card faces may be visually hidden in the thumbnail;
-- the existing `OpponentInspectionOverlay` remains unchanged and must still show the same public Equipment/Judgement information.
+Require:
+- safeZone.top >= playTable.top;
+- safeZone.bottom <= playTable.bottom;
+- Stage fully inside safeZone;
+- Stage bottom <= playTable.bottom - 1px;
+- Safe Zone and Stage do not overlap LocalPlayerDock;
+- no Stage child may extend below the play-table into the dock.
 
-Do not redesign Inspect.
+Do not move LocalPlayerDock or increase play-table height.
 
-### 5. Hit-safety contract
-For every Side Column seat:
-- the centre point of `.opponent-hero-target` must resolve to that button or one of its own descendants via `document.elementFromPoint`;
-- no descendant from another seat may cover that centre point;
-- no visible descendant of one seat may geometrically overlap the next seat's hero target.
-
-Do not solve this with forced Playwright clicks.
-
-### 6. Full visual containment contract
-At 1440x900, 650x900 and 480x900 for counts 5–10:
-
-For each seat, measure:
-- outer seat article;
-- hero card;
-- hero target;
-- hand-count/footer/badge;
-- any visible identity/status overlay;
-- any visible Equipment/Judgement thumbnail presence indicator if one is added.
-
-Every visible measured descendant must be inside the outer seat bbox with 2px tolerance.
-
-Also assert:
-- no visible descendant extends below LocalPlayerDock top - 6px;
-- no visible descendant enters the middle 40% central corridor;
-- no descendant creates horizontal page overflow.
-
-### 7. Preserve VIS-05A topology exactly
+### 5. Preserve Side Column seats exactly
 Do not change:
-- 5–10 side/row mapping;
-- 5/7/10 published order;
-- 30% / 40% / 30% corridor structure;
-- `data-side-column`;
-- `data-side-row`;
-- fixed seat identity/relativeIndex.
+- LEFT/RIGHT mapping;
+- row numbers;
+- 30/40/30 player-board tracks;
+- Side Column thumbnail width/height;
+- hero identity/HP/Hand treatment;
+- hidden thumbnail Equipment/Judgement treatment;
+- Inspect/target callbacks.
 
-The retained topology tests must pass unchanged.
+The retained VIS-05A/FIX1 tests must pass unchanged.
 
-### 8. Preserve Top Row completely
-Counts 2/3/4:
-- Top Row compact dimensions remain unchanged;
-- Equipment/Judgement continue using the existing Top Row rules;
-- Safe Zone clearance remains 6–24px;
-- no Side Column thumbnail rule leaks into Top Row.
+### 6. Preserve Top Row exactly
+Counts 2/3/4 keep:
+- current Top Row seat geometry;
+- current Top Row safe-zone offsets;
+- current wide/open Interaction Stage composition;
+- Hero Focus and Medium Source sizes;
+- VIS-06 guidance/action controls.
+
+No Side Column selector may leak into Top Row.
+
+### 7. Do not redesign Side Column Stage contents yet
+Keep existing Side Column-specific presentation density exactly as it is today:
+- current compact Hero Focus;
+- current header;
+- current Reaction Chain;
+- current Dying handoff;
+- current SOURCE / FOCUS / DECISION / RESOLVER meta;
+- current outer Interaction Stage chrome.
+
+Do not copy the Top Row open-shell/large-Hero CSS into Side Column in this task.
+
+This task proves the corridor geometry first.
+
+If the unchanged Side Column Stage cannot fit at 480x900 for the required states, STOP and report exact measured blocker rather than shrinking/hiding/recomposing content.
+
+## Required browser fixtures/states
+Use existing 6-player Side Column fixtures where possible.
+
+Run active states with `count=6`:
+- `interaction`;
+- `negation`;
+- `dying`;
+- `group-observer`.
+
+Also run one dense-seat check with `count=10` using at least:
+- `interaction`;
+- `negation`.
+
+Do not alter their semantic participant identities merely for layout.
 
 ## Required browser regression
 
-### A. Descendant-containment matrix
-REST, counts 5/6/7/8/9/10, widths 1440/650/480.
+### A. Side Column safe-zone existence
+At 1440/650/480 for the active states above:
 
-For every opponent seat:
-1. seat bbox stays in its projected row/side;
-2. hero card bbox is inside seat;
-3. hero target bbox is inside seat;
-4. Hand count/badge bbox is inside seat;
-5. every visible Side Column seat descendant used for identity/status is inside seat;
-6. no visible descendant crosses the 30/70 central-corridor boundaries;
-7. no visible descendant reaches LocalPlayerDock;
-8. no horizontal overflow.
+Assert:
+1. exactly one `.play-table[data-seat-topology="side-column"] > .interaction-safe-zone`;
+2. wrapper computed display is not `contents`;
+3. one visible `.interaction-stage`;
+4. Stage is a direct child of the safe-zone wrapper;
+5. Stage computed position is not the legacy viewport-absolute placement;
+6. Stage transform/translate does not contain the old `-50%` centring.
 
-### B. No cross-seat hit obstruction
-For the same matrix:
-- use `elementFromPoint` at the centre of every visible `.opponent-hero-target`;
-- assert the returned node belongs to that same hero target;
-- fail if another seat's footer/overlay/zone intercepts the point.
+### B. Horizontal containment
+Measure visible seat descendants using the accepted FIX1 method.
 
-This regression must fail against pre-FIX1 geometry.
+Assert:
+- safe-zone left >= all LEFT visible-descendant right edges + 6px;
+- safe-zone right <= all RIGHT visible-descendant left edges - 6px;
+- Stage left/right satisfy the same limits;
+- Stage fully inside safe zone with 4px tolerance;
+- no Interaction Stage descendant geometrically overlaps a Side Column seat descendant.
 
-### C. Real Inspect click coverage
-At count=6 and count=10, widths 480 and 1440:
-- click at least the highest and lowest seat on BOTH left and right columns using normal Playwright click;
-- Inspect must open for the correct player without `force:true`;
-- close Inspect;
-- topology hooks/position remain unchanged.
+### C. Vertical containment
+Assert:
+- safe zone inside play-table;
+- Stage fully inside safe zone;
+- Stage bottom <= play-table bottom - 1px;
+- Stage/safe-zone overlap with LocalPlayerDock = 0;
+- no horizontal page overflow.
 
-This specifically protects against the p2/p3 interception discovered in review.
+For Negation:
+- Reaction Chain visible and inside Stage.
 
-### D. Inspect data preservation
-Use existing fixture public zones to prove:
-- Side Column thumbnail itself does not visibly render full Equipment/Judgement card faces;
-- opening Inspect still shows the expected public Equipment/Judgement card(s).
+For Dying:
+- Dying handoff visible and inside Stage.
 
-### E. Retained topology + Top Row regression
-Retain unchanged:
-- VIS-05A full mapping matrix;
-- named 5/7/10 example tests;
-- VIS-04A/VIS-04C Top Row tests;
-- VIS-06A/VIS-06B local console tests.
+### D. REST
+At count=6 and count=10 for 480/1440:
+- safe-zone wrapper exists exactly once;
+- no Interaction Stage is visible;
+- wrapper is visually transparent with zero border;
+- no placeholder/dashboard is shown;
+- Side Column seat hit safety still passes.
+
+### E. Retained negative regression
+Counts 2/3/4 at 480 and 1440:
+- Top Row safe zone remains the existing Top Row geometry;
+- Stage retains the accepted Top Row open-shell treatment;
+- no Side Column safe-zone rule changes its bounds or Stage positioning.
 
 ## Forbidden shortcuts
 Do not:
-- change the Side Column mapping helper;
-- move seats to different rows/columns;
-- widen seats into the centre corridor;
-- use `overflow:hidden` as the only fix while leaving important required identity/HP/Hand content inaccessible;
-- hide the entire hero target;
-- use z-index to place one overlapping seat above another;
-- use `force:true` in click tests;
-- disable pointer events on real seat controls;
-- change target/Inspect callbacks;
-- change LocalPlayerDock height/layout;
-- change Top Row;
-- change gameplay/server/projector/presentation semantics.
+- move/shrink Side Column seats;
+- change Side Column mapping;
+- widen the centre by stealing from seat tracks;
+- hide seats while Stage is active;
+- increase play-table height;
+- move LocalPlayerDock;
+- add Stage scrolling/clipping/scaling;
+- hide Reaction/Dying/meta content;
+- enlarge Side Column Hero Focus in this task;
+- copy Top Row outer-shell styling into Side Column;
+- use JS DOM measurement for positioning;
+- change gameplay/presentation semantics.
 
 ## Validation
 Run and report:
-- focused FIX1 descendant-containment matrix;
-- focused hit-obstruction + real Inspect click tests;
-- retained VIS-05A mapping/5-7-10 example tests;
+- focused VIS-05B Side Column active-state safe-zone tests;
+- dense 10-player interaction tests;
+- retained VIS-05A/FIX1 mapping/containment/hit-safety tests;
 - retained VIS-04 Top Row tests;
-- retained VIS-06 local-operation tests;
+- retained VIS-06 local-console tests;
 - broader local checks only if allowed.
 
 Do not claim unrun checks. Do not inspect or wait for CI.
@@ -259,30 +281,14 @@ Do not claim unrun checks. Do not inspect or wait for CI.
 Append only:
 - implementation SHA;
 - files changed;
-- final Side Column thumbnail width/height/internal strategy;
-- which information remains directly visible;
-- how Equipment/Judgement remain available;
-- measured seat/hero/footer bounds for the previous 1440x900 6-player p2/p3 failure;
-- minimum descendant-to-dock clearance at 1440/650/480;
-- hit-test result for every seat in the matrix;
-- real Inspect click results for highest/lowest seats;
-- retained topology results;
-- any remaining GAP.
+- final Side Column safe-zone CSS strategy;
+- measured safe-zone/Stage/left-seat/right-seat bounds at 1440/650/480;
+- Interaction / Negation / Dying / Group Observer containment results;
+- count=10 dense-seat results;
+- proof Top Row unchanged;
+- any exact blocker/GAP.
 
 Do not self-accept. Push, verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if the already-correct 5–10 LEFT/RIGHT topology is preserved and every Side Column thumbnail is visually/self-interactively contained inside its own seat cell, no descendant overlaps or blocks another seat, full Equipment/Judgement detail remains available through Inspect, all real seat clicks work without forcing, the central corridor/dock remain protected, and Top Row/VIS-06/gameplay remain unchanged.
-
-## UX2.0VIS-05A-FIX1 execution result — awaiting reviewer
-
-- Implementation SHA: `91368228a4d436992082a17e67cbccce3281390d`. Changed `app/sequence-overrides.css` and `tests/browser/ui19.spec.mjs`; this appended result is delivered in the following documentation commit with the implementation.
-- Side Column cards use actual width `clamp(44px,8vw,86px)` capped by their side track, height `min(128px,100%)` of the grid row (116px cap <=650, 108px cap <=480), and min-height 0. Public-zone and hero-card flex sizes fit the assigned card; the child portrait aspect sizing is removed. No transforms, cross-seat z-index changes, or overflow clipping workaround added. The accepted placement helper, hooks, row gaps and 30/40/30 tracks are unchanged.
-- Artwork fills the seat; compact hero identity, HP text and concealed Hand count remain directly visible. Player-name duplication and hearts are hidden only in Side Column. The Hand footer is a 14px in-seat overlay with pointer-events:none only on that non-interactive footer; hero target and info button remain interactive. Equipment/Judgement thumbnail zones remain in DOM but are visually hidden; unchanged Inspect still shows their full public cards.
-- Previous 1440x900/N6 failure now measures: p2 article `(x=1147.40625,y=371.0625,w=86,h=128,bottom=499.0625)`, hero card/target `(1148.40625,372.0625,84,126,bottom=498.0625)`, footer `(1149.40625,483.0625,82,14,bottom=497.0625)`; p3 article `(1147.40625,200.984375,86,128,bottom=328.984375)`, hero card/target `(1148.40625,201.984375,84,126,bottom=327.984375)`, footer `(1149.40625,312.984375,82,14,bottom=326.984375)`. Neither footer overlaps the adjacent target.
-- Minimum visible-descendant clearance above LocalPlayerDock across N5–N10: 1440 `24.890625px`, 650 `17px`, 480 `18.625px`. All visible descendants, including artwork, identity, HP, footer/count and info affordance, stay inside their seat with 2px tolerance and outside the middle 40% corridor. Every seat height fits its projected row; no horizontal overflow or cross-seat descendant/hero-target overlap.
-- Matrix hit proof: 18 count/viewport fixtures, 117 opponent targets; elementFromPoint at every target centre belongs to that same target. Against the exact pre-FIX1 CSS, the new N6/1440 regression fails specifically at `p2 hero centre must hit its own target` (false); restoring FIX1 makes it pass.
-- Normal Inspect click proof: N6 and N10 at both 480 and 1440, 20 real clicks total including highest/lowest on BOTH columns plus p3 public Judgement inspection. N6 extremes are left p6/p5 and right p4/p2; N10 extremes left p10/p7 and right p6/p2. Each opens the correct player, closes normally, and leaves all topology hooks/positions unchanged. p2 Equipment and p3 Lightning remain available in Inspect. No force:true clicks.
-- Validation: focused FIX1 24/24 passed (18 containment/hit matrix, 4 real-click/public-data tests, 2 retained-DOM/hidden-thumbnail tests). Final retained/focused selection: 134/134 passed, including unchanged VIS-05A mapping/examples, VIS-04A/B/C Top Row, VIS-06A/B and UI-19 tests. The two old side-column full-zone-visibility tests were updated for the explicitly authorized thumbnail density; Top Row tests are unchanged. Visual inspection of 1440/N6 and 480/N10 screenshots confirmed identity/HP/Hand display and self-contained thumbnails.
-- Local full tests/build/lint/diff-check were not run; GitHub Actions owns broader validation. CI/deployment were not inspected. No gameplay, projection, target callback, local dock or Stage changes.
-- GAP: none identified in the requested containment/hit-safety contract. Await reviewer acceptance; recommended next bounded step is reviewer evaluation of FIX1 and a new handover assignment. Not self-accepted; no subsequent task started.
+Pass only if the unchanged Side Column Interaction Stage is positioned entirely inside a real central safe zone between the proven seat columns, clears all visible seat descendants by at least 6px, remains fully inside the battlefield above LocalPlayerDock at 1440/650/480, preserves Negation/Dying content without clipping, and leaves VIS-05A seat topology plus Top Row/VIS-06/gameplay unchanged.
