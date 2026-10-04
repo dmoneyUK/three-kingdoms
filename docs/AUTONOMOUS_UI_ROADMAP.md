@@ -31,7 +31,7 @@ Latest completed milestone:
 
 Current handoff:
 - `UX2.0VIS-12H — Refocus Side-Column Hero Thumbnails on the Upper Body`
-- status: PLANNED; VIS-12G implementation is locally validated and awaiting commit/push/CI at this handoff update
+- status: IMPLEMENTED — CI PENDING; exact-revision validation is recorded in `HANDOVER.md`
 - current task authority: `HANDOVER.md`
 
 ## UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
@@ -97,6 +97,10 @@ VIS-12F implementation adds the existing 5/10/15/20/25/30-card geometry/selectio
 VIS-12E exact run `37220219500` is confirmed green on `8a56add6b3620bf5f566349ecfcfe3fa724915b8`: build-and-test job `111488867930` and deploy/smoke job `111489661223` succeeded. VIS-12F was pushed as `d6d79791c1f9b5e561b0750dd1d8624cc07fba31`; exact run `37220873567` was `in_progress` at the VIS-12G planning checkpoint. Reviewed the unchanged mobile crop contract; local Hero crop remains the next distinct surface audit.
 
 VIS-12G implementation: the existing local-Hero artwork is enlarged proportionally to 115% of its clipped portrait height and offset 5% upward, keeping the original source ratio, card bounds, stable status labels and Judgement overlay behavior. Focused VIS-12G plus retained VIS-09A cases passed 9/9; targeted ESLint passed. Cao Cao/Liu Bei and one/two-Judgement 480px screenshots were inspected; no horizontal page overflow was introduced. No full local suite/build/lint. Commit, push and exact-revision CI are pending. The remaining crop audit is the tall/narrow Side Column thumbnail, where the current cover fit crops horizontally but cannot move the vertical focal composition.
+
+VIS-12F exact run `37220873567` is confirmed green on `d6d79791c1f9b5e561b0750dd1d8624cc07fba31`: build-and-test job `111490774722` and deploy/smoke job `111491930785` succeeded. VIS-12G was pushed as `41c83333fe67b83e60cc0c375bbbb952b817f0b9`; its latest Actions run `37223461236` remained in progress at the VIS-12H source-edit checkpoint, so VIS-12G remains CI pending.
+
+VIS-12H implementation: Side Column opponent art now uses a shared proportional crop inside the existing clipped seat target; seat/thumbnail dimensions and all public data/control geometry remain unchanged. New six-/ten-player tests at 480/650px prove source-ratio preservation, crop extent/focal offset, target clipping, art/text/equipment separation, hit safety and no page overflow. Retained Side Column VIS-10C equipment/containment/Inspect cases also passed; focused total 10/10 and targeted ESLint passed. Reviewed representative 10-player screenshots at 480/650px. No full local suite/build/lint. Commit, push and exact-revision CI pending.
 
 ## Durable accepted UI / presentation contracts
 

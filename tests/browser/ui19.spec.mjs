@@ -1096,7 +1096,22 @@ async function sideThumbnailGeometry(page) {
           id: seat.dataset.playerAnchor, side: seat.dataset.sideColumn, row: Number(seat.dataset.sideRow),
           ...bounds(seat), target: bounds(target), hitSafe: Boolean(hit && target.contains(hit)),
           requiredVisible: required.map((selector) => ({ selector, visible: visible(seat.querySelector(selector)) })),
-          descendants: [...seat.querySelectorAll("*")].filter(visible).map((element) => ({ className: element.className, ...bounds(element) })),
+          descendants: [...seat.querySelectorAll("*")].filter(visible).map((element) => {
+            const elementBounds = bounds(element);
+            const cropTarget = element.matches(".opponent-hero-portrait > .hero-art-image") ? element.closest(".opponent-hero-target") : null;
+            if (!cropTarget) return { className: element.className, ...elementBounds };
+            const clip = bounds(cropTarget);
+            const x = Math.max(elementBounds.x, clip.x);
+            const y = Math.max(elementBounds.y, clip.y);
+            const right = Math.min(elementBounds.right, clip.right);
+            const bottom = Math.min(elementBounds.bottom, clip.bottom);
+            return {
+              className: element.className,
+              x, y, right, bottom, width: Math.max(0, right - x), height: Math.max(0, bottom - y),
+              clippedByHeroTarget: true,
+              rawBounds: elementBounds,
+            };
+          }),
         };
       }),
       overflow: document.documentElement.scrollWidth > window.innerWidth,
@@ -1110,6 +1125,17 @@ async function sideSafeZoneGeometry(page) {
       const { x, y, width, height, right, bottom } = element.getBoundingClientRect();
       return { x, y, width, height, right, bottom };
     };
+    const visibleBounds = (element) => {
+      const elementBounds = bounds(element);
+      const cropTarget = element.matches(".opponent-hero-portrait > .hero-art-image") ? element.closest(".opponent-hero-target") : null;
+      if (!cropTarget) return elementBounds;
+      const clip = bounds(cropTarget);
+      const x = Math.max(elementBounds.x, clip.x);
+      const y = Math.max(elementBounds.y, clip.y);
+      const right = Math.min(elementBounds.right, clip.right);
+      const bottom = Math.min(elementBounds.bottom, clip.bottom);
+      return { x, y, right, bottom, width: Math.max(0, right - x), height: Math.max(0, bottom - y) };
+    };
     const visible = (element) => {
       const style = getComputedStyle(element);
       const box = element.getBoundingClientRect();
@@ -1119,7 +1145,7 @@ async function sideSafeZoneGeometry(page) {
     const stage = zone.querySelector(".interaction-stage");
     const seatElements = [...document.querySelectorAll('.player-board [data-player-anchor]')];
     const seatBounds = seatElements.flatMap((seat) => [seat, ...seat.querySelectorAll("*")].filter(visible).map((element) => ({
-      id: seat.dataset.playerAnchor, side: seat.dataset.sideColumn, className: element.className, ...bounds(element),
+      id: seat.dataset.playerAnchor, side: seat.dataset.sideColumn, className: element.className, ...visibleBounds(element),
     })));
     const stageStyle = getComputedStyle(stage);
     const zoneStyle = getComputedStyle(zone);
@@ -1150,6 +1176,7 @@ async function opponentSeatPresentation(page, playerId) {
     const summary = seat.querySelector(".opponent-equipment-summary");
     const target = seat.querySelector(".opponent-hero-target");
     const art = bounds(portrait);
+    const artImageBounds = artImage ? bounds(artImage) : null;
     const focus = { x: art.x + art.width * 0.45, y: art.y + art.height * 0.42 };
     const targetBox = bounds(target);
     const hit = document.elementFromPoint(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2);
@@ -1160,6 +1187,9 @@ async function opponentSeatPresentation(page, playerId) {
       artObjectFit: artStyle?.objectFit ?? null,
       artObjectPosition: artStyle?.objectPosition ?? null,
       artNaturalSize: artImage ? { width: artImage.naturalWidth, height: artImage.naturalHeight } : null,
+      artImage: artImageBounds,
+      artImageRatio: artImageBounds ? artImageBounds.width / artImageBounds.height : null,
+      artCropBoundaryOverflow: getComputedStyle(target).overflow,
       overlay: bounds(overlay), summary: summary ? bounds(summary) : null,
       playerNameFits: seat.querySelector(".opponent-player-name").scrollWidth <= seat.querySelector(".opponent-player-name").clientWidth,
       heroNameFits: seat.querySelector(".opponent-hero-name").scrollWidth <= seat.querySelector(".opponent-hero-name").clientWidth,
@@ -1181,6 +1211,44 @@ const VIS_10C_EQUIPMENT_CASES = [
   { scenario: "weaponArmor", slots: ["weapon", "armor"] },
   { scenario: "multiple", slots: ["weapon", "armor", "defensiveHorse", "offensiveHorse"] },
 ];
+
+for (const width of [480, 650]) {
+  for (const count of [6, 10]) {
+    test(`UX2.0VIS-12H ${count}-player Side Column Hero art uses a proportional upper-body crop at ${width}px`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "interaction", count, width, height: 900, equipmentCase: "matrix" });
+      const seatIds = await page.locator('.player-board[data-seat-topology="side-column"] > [data-player-anchor]').evaluateAll((seats) => seats.map((seat) => seat.dataset.playerAnchor));
+      expect(seatIds).toHaveLength(count - 1);
+
+      for (const playerId of seatIds) {
+        const presentation = await opponentSeatPresentation(page, playerId);
+        expect(presentation.topology).toBe("side-column");
+        expect(presentation.heroArtId, `${playerId} has its projected Hero art`).toBeTruthy();
+        expect(presentation.imageLoaded, `${playerId} repository Hero asset is loaded`).toBe(true);
+        expect(presentation.artNaturalSize.width).toBeGreaterThan(0);
+        expect(presentation.artNaturalSize.height).toBeGreaterThan(0);
+        expect(presentation.artImageRatio).toBeCloseTo(presentation.artNaturalSize.width / presentation.artNaturalSize.height, 2);
+        expect(presentation.artObjectFit).toBe("cover");
+        expect(presentation.artObjectPosition).toBe("50% 20%");
+        expect(presentation.artCropBoundaryOverflow).toBe("hidden");
+        expect(presentation.artImage.height / presentation.art.height).toBeCloseTo(1.15, 2);
+        expect((presentation.art.y - presentation.artImage.y) / presentation.art.height).toBeCloseTo(0.05, 2);
+        expect(presentation.artImage.x + presentation.artImage.width / 2).toBeCloseTo(presentation.art.x + presentation.art.width / 2, 1);
+        expect(presentation.focusCoveredByText, `${playerId} portrait focus remains clear of identity text`).toBe(false);
+        expect(presentation.focusCoveredByEquipment, `${playerId} portrait focus remains clear of public equipment`).toBe(false);
+        expect(presentation.targetHitSafe, `${playerId} target hit area remains safe`).toBe(true);
+      }
+
+      const pageWidth = await page.locator("html").evaluate((html) => html.scrollWidth);
+      expect(pageWidth, "Side Column Hero crop does not create horizontal page overflow").toBeLessThanOrEqual(width);
+      if (count === 10) {
+        await testInfo.attach(`vis-12h-side-column-${width}-10-player`, {
+          body: await page.screenshot({ animations: "disabled" }),
+          contentType: "image/png",
+        });
+      }
+    });
+  }
+}
 
 for (const width of [480, 650]) {
   for (const equipmentCase of VIS_10C_EQUIPMENT_CASES) {

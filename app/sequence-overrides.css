@@ -1811,6 +1811,20 @@
 .game-shell .player-board[data-seat-topology="side-column"] > [data-side-column="left"] { grid-column: 1; }
 .game-shell .player-board[data-seat-topology="side-column"] > [data-side-column="right"] { grid-column: 3; }
 
+/* UX2.0VIS-12H: the tall Side Column crop otherwise retains excess headroom
+   and lower-body art. Zoom proportionally within the existing clipped target. */
+.game-shell .player-board[data-seat-topology="side-column"] .opponent-hero-portrait > .hero-art-image {
+  position: absolute;
+  top: -5%;
+  left: 50%;
+  width: auto;
+  height: 115%;
+  max-width: none;
+  object-fit: cover;
+  object-position: center 20%;
+  translate: -50% 0;
+}
+
 /* Side seats are bounded thumbnails. Full public card details stay in Inspect. */
 .game-shell .player-board[data-seat-topology="side-column"] .opponent-public-zones {
   flex: 1 1 auto;

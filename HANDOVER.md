@@ -327,3 +327,17 @@ Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§1.5–1.5.2; work
 Expected scope: `app/sequence-overrides.css`, focused `tests/browser/ui19.spec.mjs`, append-only handover and roadmap. Focused validation: new Side Column crop matrix plus retained VIS-10C Side Column equipment/hit/containment cases and targeted ESLint only; no local full suite/build/lint.
 
 Stop condition: if a shared upper-body crop removes identity-critical features or obscures the dedicated portrait/overlay contract across actual Side Column assets, record screenshot and geometry evidence and stop for human review rather than changing seat dimensions or public information.
+
+### VIS-12F — CI closure
+
+Status: `COMPLETED BY AGENT — CI GREEN`  
+Tested revision: `d6d79791c1f9b5e561b0750dd1d8624cc07fba31`  
+GitHub Actions run: [37220873567](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37220873567) — build-and-test job `111490774722` and deploy job `111491930785`, including production smoke test, succeeded. Human Reviewer acceptance remains separate.
+
+VIS-12G delivery checkpoint: pushed revision `41c83333fe67b83e60cc0c375bbbb952b817f0b9`; latest Actions run [37223461236](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37223461236) was `in_progress` at the VIS-12H source-edit checkpoint. Per workflow §4, proceed without waiting and keep VIS-12G CI pending until its exact required jobs succeed.
+
+### UX2.0VIS-12H — IMPLEMENTATION RESULT
+
+Status: `IMPLEMENTED — CI PENDING`  
+Change: scoped Side Column Hero artwork to a proportional 115%-height crop, offset 5% upward and centred horizontally inside the existing clipped Hero target. This removes excess headroom/lower-body emphasis without stretching art or changing seat geometry, identity/equipment text, or target controls.  
+Focused validation: VIS-12H six-/ten-player crop matrix at 480/650px plus retained VIS-10C Side Column equipment, hit, Safe Zone and Dock-containment/Inspect checks — 10/10 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. The 10-player 480/650px screenshots were inspected: faces/headwear remain recognizable, identity/equipment overlays stay distinct, and the page remains within the viewport. No full suite/build/lint. Commit/push pending.
