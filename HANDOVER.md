@@ -9,8 +9,10 @@ This `HANDOVER.md` is the historical/audit ledger. Autonomous Agents must **not*
 Older task instructions below may be stale and are not current autonomous task authority. Human Reviewer historical inspection remains allowed.
 
 
-## REMOTE HANDOVER RULE
-Work only on `ux-v2`. Read this file and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`. Implement only the task below, validate, append this task's execution result, commit/push, verify remote HANDOVER, then STOP. Do not wait for or poll CI.
+## HISTORICAL NORMAL-MODE HANDOVER RULE
+The following legacy rule is preserved for audit history and normal non-autonomous work. It is **not** the startup rule for autonomous UI mode. Autonomous Agents use `docs/AUTONOMOUS_UI_STATUS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` instead.
+
+Work only on `ux-v2`. In normal non-autonomous mode, read this file and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`. Implement only the reviewer-authorized task, validate, append its execution result, commit/push, verify remote HANDOVER, then STOP. Do not wait for or poll CI.
 
 ## Reviewer status — UX2.0VIS-05A ACCEPTED; CI baseline RED
 
