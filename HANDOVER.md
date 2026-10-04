@@ -9,7 +9,7 @@ This file contains only the current execution handoff. Product design is in `doc
 
 Revision `8407c8dcf14444d107d348bfa43f473ac8331d2c` was confirmed green in GitHub Actions run `37240016937`: both `build-and-test` and `deploy` succeeded.
 
-Later reviewer design-only commit `d3854354317111af3acb7d8cc7a70ee79392e496` added long-term interaction-correctness requirements to the UX V2 design. It does **not** change the current task. Its Actions run was still in progress at the last check; do not infer a result.
+Later reviewer design/workflow documentation changes do **not** change the current VIS-12N task. This handoff does not claim CI-green status for documentation-only revisions after the confirmed baseline; apply the normal one-time CI checkpoint before the next source edit.
 
 ## Design review checkpoint
 
