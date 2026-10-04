@@ -205,3 +205,33 @@ Implementation result: mobile 4-player Top Row Hero art now uses `object-fit: co
 Focused validation: VIS-12D 4-player Top Row crop checks at 480/650px — 2/2 passed; retained VIS-10C Top Row/Side Column equipment, containment, and hit-safety matrix — 20/20 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. No full local suite/build/lint. Commit, push, and CI status are pending. Before editing, the latest checkpoint was process-guidance revision `f115f2e`, run `37218274066`, with build-and-test and deploy/smoke successful.
 
 Status update: `IMPLEMENTED — CI PENDING`; focused checks above passed. Side Column crop is explicitly deferred based on measured portrait geometry; no vertical focal change is claimed for that topology.
+
+Delivery checkpoint: pushed revision `84b49ed59ce73e6239aec85bdf9a2bf690bb63e`; latest Actions run [37219392735](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37219392735) was `in_progress` at the next-task boundary. Per workflow §4, no waiting/polling; this revision remains CI pending.
+
+### UX2.0VIS-12E — Set an Upper-Body Focal Point for Interaction Stage Hero Focus
+
+Status: `PLANNED`
+
+Planning gate: all five workflow §19 checks passed after syncing `origin/ux-v2` and reviewing the current design/workflow. No design-document changes were present since the last design baseline. Design §§1.5 crop contract, 0.91.2–0.91.3 and 3C require recognizable upper-body art in the larger semantic Hero Focus while keeping the active interaction unobscured. The Hero Focus image currently inherits `object-fit: cover; object-position: center top` (`app/globals.css`); existing VIS-03B cases prove semantic focus identity and geometry but do not verify artwork focal positioning or image load.
+
+Objective: align only the Interaction Stage Hero Focus art with the approved face/upper-torso focal range, preserving its existing viewport, semantic role, source art, and stage composition.
+
+Requirements:
+- Use existing Hero artwork with `object-fit: cover` and a shared upper-body focal point in the design's suggested 15–25% vertical range; do not add per-Hero metadata unless representative evidence proves the shared crop inadequate.
+- Add focused browser evidence for the actual computed focal point, loaded intrinsic artwork, and portrait bounds in representative Top Row and Side Column mobile Hero Focus states.
+- Retain the VIS-03B identity, Stage/Safe-Zone/Dock containment and no-overflow regressions; inspect a representative screenshot for face/headwear/upper-torso recognition and unobscured active content.
+- Change presentation only; preserve projected participant identity, public/private data boundaries, CurrentAction, and all gameplay semantics.
+
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§1.5, 0.91.2–0.91.3 and 3C; workflow §§4, 19–20.
+
+Expected scope: `app/globals.css`, focused `tests/browser/ui19.spec.mjs`, append-only handover and roadmap.
+
+Focused validation: new crop checks plus the affected VIS-03B representative cases and targeted ESLint only. No local full suite/build/lint. Latest-run checkpoint before source edits: revision `84b49ed`, run `37219392735`, observed `in_progress`; proceed without waiting and recheck at the next task boundary.
+
+Stop condition: if a shared approved-range focal point obscures identity-critical art or active event content in either topology, record the measured evidence and stop for human review rather than altering accepted Stage/seat geometry.
+
+Implementation result: set the shared Hero Focus artwork to `object-fit: cover; object-position: center 20%`; no asset, per-Hero metadata, Stage geometry, or semantic changes. Added 4-/10-player Top Row/Side Column checks at 480/650px for projected Hero art loading, intrinsic dimensions, computed focal position, and clipped portrait viewport. Reviewed both 480px screenshots; face/headwear and upper torso remain recognizable, with Stage context unobscured.
+
+Focused validation: VIS-12E crop cases plus retained VIS-03B Hero Focus geometry/semantic cases — 13/13 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. The first test draft incorrectly treated expected image-box overflow as visible overflow; the final assertion verifies the portrait's clipping viewport instead. No full local suite/build/lint. Revision, push, and CI status pending.
+
+Status update: `IMPLEMENTED — CI PENDING`; commit and push checkpoint to follow. No CI-green claim until exact-revision Actions jobs are confirmed.

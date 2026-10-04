@@ -30,8 +30,8 @@ Latest completed milestone:
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-12D — Set an Upper-Body Focal Crop for Mobile Opponent Seats`
-- status: IMPLEMENTED — CI PENDING; task detail is in `HANDOVER.md`
+- `UX2.0VIS-12E — Set an Upper-Body Focal Point for Interaction Stage Hero Focus`
+- status: IMPLEMENTED — CI PENDING; detail/evidence in `HANDOVER.md`
 - current task authority: `HANDOVER.md`
 
 ## UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
@@ -85,6 +85,10 @@ Completed by Agent; final tested revision `102f36d1430663f5005c4696a90b6bc113594
 VIS-12C completed on `60c353de5fb6957e716b07ac07dfb48f692ace33`; exact-revision run `37216175450` passed build-and-test and deployment/production smoke test. At 390/480/650px, Deck/Discard envelopes are 56×78px with lower-contrast surfaces; the existing lower-middle anchor, discard face/art and interaction behavior remain unchanged. Focused mobile regressions passed 6/6, retained discard identity render passed 1/1, and targeted ESLint passed. Exact pile-edge placement and Hero crop validation remain separate future candidates.
 
 Current VIS-12D is narrowed to 4-player mobile Top Row Hero crop. The Top Row viewport has vertical overflow, so the approved `object-position: 20%` focal point changes the actual crop; the 480px screenshot retains recognizable faces/headwear and upper-body detail. Side Column art boxes are approximately 44×108px at 480px and 52×116px at 650px; with 0.75 source art, `cover` crops horizontally, so a vertical position change is ineffective. Defer Side Column crop composition, plus local Hero/Stage Focus crops, to separate audits. The non-blocking CI checkpoint guidance was pushed at `f115f2e479ec7d7ef1c292478ba353c44c6a2836`; exact run `37218274066` and its build-and-test/deploy jobs were confirmed green at the VIS-12D pre-edit checkpoint.
+
+VIS-12D was pushed as `84b49ed59ce73e6239aec85bdf9a2bf690bb63e`; exact Actions run `37219392735` was `in_progress` at the VIS-12E planning checkpoint. Workflow §4 allows work to continue without waiting; retain VIS-12D as CI pending until exact-revision jobs are confirmed.
+
+VIS-12E implementation: the semantic Interaction Stage Hero Focus uses the approved upper-body focal point (`object-position: 50% 20%`) while preserving its existing clipped portrait viewport and all identity/layout authority. Focused crop plus retained VIS-03B checks passed 13/13; targeted ESLint passed; 480px Top Row and Side Column screenshots were reviewed. No full suite/build/lint. Exact revision/Actions status pending push.
 
 ## Durable accepted UI / presentation contracts
 

@@ -1403,6 +1403,48 @@ for (const width of [480, 650]) {
   });
 }
 
+for (const count of [4, 10]) {
+  for (const width of [480, 650]) {
+    test(`UX2.0VIS-12E ${count}-player Hero Focus uses the upper-body crop at ${width}px`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "interaction", count, width, height: 900 });
+      const heroFocus = page.locator('[data-hero-focus="true"]');
+      await expect(heroFocus).toHaveCount(1);
+      const crop = await heroFocus.locator(".hero-focus-portrait").evaluate((portrait) => {
+        const art = portrait.querySelector(".hero-art-image");
+        const style = art ? getComputedStyle(art) : null;
+        const portraitRect = portrait.getBoundingClientRect();
+        const artRect = art?.getBoundingClientRect() ?? null;
+        return {
+          heroId: portrait.getAttribute("data-hero-id"),
+          loaded: Boolean(art?.naturalWidth && art.naturalHeight),
+          naturalSize: art ? { width: art.naturalWidth, height: art.naturalHeight } : null,
+          objectFit: style?.objectFit ?? null,
+          objectPosition: style?.objectPosition ?? null,
+          portraitOverflow: getComputedStyle(portrait).overflow,
+          portrait: { left: portraitRect.left, top: portraitRect.top, right: portraitRect.right, bottom: portraitRect.bottom },
+          artIntersectsPortrait: Boolean(artRect && artRect.left < portraitRect.right && artRect.right > portraitRect.left && artRect.top < portraitRect.bottom && artRect.bottom > portraitRect.top),
+        };
+      });
+
+      expect(crop.heroId, "Hero Focus uses the proven projected Hero").not.toBeNull();
+      expect(crop.loaded, "the repository Hero artwork is loaded").toBe(true);
+      expect(crop.naturalSize.width).toBeGreaterThan(0);
+      expect(crop.naturalSize.height).toBeGreaterThan(0);
+      expect(crop.objectFit).toBe("cover");
+      expect(crop.objectPosition, "Hero Focus uses the approved upper-body focal range").toBe("50% 20%");
+      expect(crop.portraitOverflow, "the portrait clips source-art overflow to its visible viewport").toBe("hidden");
+      expect(crop.artIntersectsPortrait, "the art remains visible within the portrait viewport").toBe(true);
+
+      if (width === 480) {
+        await testInfo.attach(`vis-12e-hero-focus-${count}-players-480`, {
+          body: await page.screenshot({ animations: "disabled" }),
+          contentType: "image/png",
+        });
+      }
+    });
+  }
+}
+
 for (const width of [1440, 650, 480]) {
   for (const count of [6, 10]) {
     for (const state of count === 6 ? ["interaction", "negation", "dying", "group-observer"] : ["interaction", "negation"]) {
