@@ -663,6 +663,48 @@ test("UX2.0VIS-05B rejects legacy absolute Stage placement at 480px", async ({ p
   expect(restored.stage.right).toBeLessThanOrEqual(restored.zone.right);
 });
 
+for (const width of [1440, 650, 480]) {
+  for (const count of [4, 6, 10]) {
+    test(`UX2.0VIS-07A neutral ${count}-player Group scope at ${width}px remains contained`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state: "group-density", count, width, height: 900 });
+      const scope = page.locator('[data-group-target-scope="original"]');
+      await expect(scope).toHaveAttribute("data-participant-density", count === 4 ? "medium" : "compact");
+      const cards = scope.locator("[data-group-target-id]");
+      await expect(cards).toHaveCount(count - 3);
+      const ids = await cards.evaluateAll(elements => elements.map(element => element.dataset.groupTargetId));
+      expect(ids).not.toContain("p3"); // viewer
+      expect(ids).not.toContain("p1"); // authoritative current primary
+      expect(ids).not.toContain("p4"); // distinct source
+      expect(new Set(ids).size).toBe(ids.length);
+      await expect(page.locator(".hero-focus")).toHaveAttribute("data-hero-focus-player-id", "p1");
+      expect(await scope.innerText()).not.toMatch(/completed|pending|resolved|remaining|outcome|order|eligible|target \d+ of/i);
+      await expect(scope.locator("button")).toHaveCount(0);
+      const focusPortrait = await page.locator(".hero-focus-portrait").boundingBox();
+      const secondary = await scope.locator(".group-target-portrait").first().boundingBox();
+      expect(secondary.width).toBeLessThan(focusPortrait.width);
+      const result = await page.locator(".interaction-stage").evaluate(stage => {
+        const rect = element => { const r=element.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom}; };
+        const visible = element => { const s=getComputedStyle(element),r=element.getBoundingClientRect();return s.display!=="none"&&s.visibility!=="hidden"&&r.width>0&&r.height>0; };
+        return {zone:rect(stage.parentElement),dock:rect(document.querySelector(".local-player-dock")),boxes:[stage,...stage.querySelectorAll("*")].filter(visible).map(rect)};
+      });
+      await testInfo.attach("group-scope-bounds", {body:JSON.stringify(result),contentType:"application/json"});
+      for (const box of result.boxes) {
+        expect(box.x).toBeGreaterThanOrEqual(result.zone.x - .5);
+        expect(box.right).toBeLessThanOrEqual(result.zone.right + .5);
+        expect(box.bottom).toBeLessThanOrEqual(result.zone.bottom + .5);
+        expect(box.bottom).toBeLessThanOrEqual(result.dock.y);
+      }
+      if (count > 4) {
+        const layout = await sideSafeZoneGeometry(page);
+        for (const box of [layout.zone,...layout.stageBounds]) for (const seat of layout.seatBounds) {
+          expect(seat.side === "left" ? box.x-seat.right : seat.x-box.right).toBeGreaterThanOrEqual(6);
+        }
+        expect((await sideThumbnailGeometry(page)).seats.every(seat => seat.hitSafe)).toBe(true);
+      }
+    });
+  }
+}
+
 for (const { width, focus, medium } of [
   { width: 1440, focus: [90, 113], medium: [56, 70] },
   { width: 650, focus: [72, 90], medium: [48, 60] },

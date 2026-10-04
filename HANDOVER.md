@@ -324,3 +324,24 @@ Known technical debt: Side-zone inset/thumbnail budget mirrors accepted CSS geom
 Items requiring human visual review: 480px/10-player Negation safe zone; 480px Dying source-above-primary hierarchy; mobile whitespace/art balance and final design direction.
 Items requiring real-device review: Touch pan/tap, response accessibility, reduced-height portrait and full WCAG; not certified here.
 Recommended reviewer inspection order: VIS-05B CSS/descendant geometry and retained hit tests; VIS-05C helper reuse/viewer exclusion/portrait dimensions; named green CI runs; then decide Group scope option1 or2 before resume.
+
+## Autonomous run resumed — user decision 2026-10-04
+
+The user explicitly authorizes option1: presentation-only participant density with no progress/status/order/outcome claims, followed by independent Stage/Dock/hand work. The earlier stop is resolved for this bounded visual scope only; server-owned Group progress remains deferred, not implemented or accepted.
+
+TASK ID: UX2.0VIS-07A — Neutral Group target-scope density
+STATUS: PLANNED
+
+Objective: Render proven external Group target identities as neutral secondary cards, retaining the authoritative primary focus as dominant.
+Observed gap: GROUP_RESOLUTION currently shows one focus and text scope only, not density-adapted secondary target cards.
+Why this task is next: Explicit user-approved resolution of the preceding authority boundary; VIS-05B/VIS-05C are CI-green.
+Design authority: Autonomous workflow sections7.5/10, interaction design sections3C/6, and user's option1 decision. Progress semantics expressly deferred.
+Current production evidence: InteractionStageView originalTargets is proven historical target scope; currentParticipant remains separate. Existing HeroFocus and MediumSource helpers stay unchanged.
+Files expected in scope: game/hero-focus.ts (pure visual density projection only), app/page.tsx, app/sequence-overrides.css, focused semantic/browser tests and fixture, README.md, append-only HANDOVER.md.
+Implementation requirements: GROUP_RESOLUTION only; original target scope label, no current-eligibility/progress claim; exclude viewer and already-rendered primary/source from secondary copies; 2–3 external targets medium, 4+ compact; no arbitrary primary if semantic focus is absent; known IDs decorated only after selection.
+Explicit non-goals: Resolved/pending/paused/outcome/order markers, new public protocol, local selection preview, nested-frame Group inference, gameplay/legality/hidden data, Stage chrome/Dock changes in this task.
+Forbidden shortcuts: No array-difference progress, compatibility Pending/timeline/HP/turn/seat inference, duplicate viewer, controls in Stage, or fabricated selected-order labels.
+Required regression tests: Pure density/identity/viewer/REST/ambiguous/unknown/legacy/order guards; dense6/10-player Group scope at1440/650/480; retained safe-zone, current focus, semantic controls and Top Row hierarchy.
+Required local validation: Focused semantic/render and browser layout tests only; whitespace check per autonomous workflow. Full checks in CI.
+CI acceptance: Exact push must be green before the next implementation.
+Task acceptance criteria: Neutral external cards from proven originalTargets only; proper density, current focus dominant when proven, no progress or eligibility claims; visible content inside safe zone/table and above Dock without seat/control interference.

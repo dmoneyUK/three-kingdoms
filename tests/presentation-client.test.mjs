@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles } from "../game/presentation-client.ts";
 import { buildPresentationTransition } from "../game/presentation-transition.ts";
-import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer } from "../game/hero-focus.ts";
+import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupTargetScopeForViewer } from "../game/hero-focus.ts";
 import { buildDecisionPresentation } from "../app/page.tsx";
 
 function scene(overrides = {}) {
@@ -943,4 +943,31 @@ test("Medium Source projection requires a proven external source beside an activ
   const hiddenStage = buildInteractionStageView(hiddenView, resolveDisplayName);
   const hiddenFocus = buildHeroFocusView(hiddenStage, display);
   assert.equal(projectMediumSourceForViewer(hiddenStage, hiddenFocus, "C", display), null, "REST is not a source presentation");
+});
+
+test("Group scope density decorates only proven historical targets without progress or eligibility", () => {
+  const project = (ids, overrides = {}, viewerId = "D") => {
+    const stage = buildInteractionStageView(semanticView({ stage: "GROUP_RESOLUTION", targetIds: ids, ...overrides }, { meId: viewerId }), resolveDisplayName);
+    const focus = projectHeroFocusForViewer(stage, buildHeroFocusView(stage), viewerId);
+    const source = projectMediumSourceForViewer(stage, focus, viewerId);
+    return projectGroupTargetScopeForViewer(stage, focus, source, viewerId);
+  };
+  assert.equal(project(["B"]), null, "sole target is already the primary");
+  assert.deepEqual(project(["B", "C"])?.players.map(p => p.id), ["C"]);
+  assert.equal(project(["B", "C", "E"])?.density, "medium");
+  const dense = project(["B", "C", "E", "F", "D", "B"]);
+  assert.equal(dense?.density, "compact");
+  assert.deepEqual(dense?.players.map(p => p.id), ["C", "E", "F"], "viewer/primary/duplicate excluded");
+  assert.deepEqual(project(["C", "E", "F", "B"])?.players.map(p => p.id), ["C", "E", "F"]);
+  assert.deepEqual(project(["B", "C"], { activeTargetIds: ["B"], participantIds: [] }), project(["B", "C"], { activeTargetIds: ["B"], participantIds: ["C", "B"] }), "remaining scope does not manufacture progress");
+  assert.deepEqual(project(["B", "C"], { decisionActorId: "C", activeResolverId: "C" })?.players.map(p => p.id), ["C"], "decision role does not create target membership");
+  assert.equal(project(["B", "C"], { stage: "NEGATION" }), null, "do not infer Group during other stages");
+  const unknown = project(["B", "missing"]);
+  assert.equal(unknown?.players[0].id, "missing");
+  assert.equal(unknown?.players[0].heroId, null);
+  assert.doesNotMatch(JSON.stringify(dense), /completed|remaining|pending|resolved|outcome|order|eligible|legal/i);
+  const ambiguous = project(["B", "C"], { currentParticipantId: null, activeTargetIds: ["B", "C"] });
+  assert.deepEqual(ambiguous?.players.map(p => p.id), ["B", "C"], "ambiguous focus does not choose first target");
+  const rest = buildInteractionStageView(buildPresentationClientView(null, "D"), resolveDisplayName);
+  assert.equal(projectGroupTargetScopeForViewer(rest, buildHeroFocusView(rest), null, "D"), null);
 });

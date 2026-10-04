@@ -40,6 +40,18 @@ seat geometry, Top Row and private local controls remain unchanged. Browser
 regressions verify identities, dimensions, hierarchy and safe-zone containment;
 these are implementation evidence, not human visual acceptance.
 
+### UX2.0VIS-07A — neutral Group target-scope density — 2026-10-04
+
+During a proven Group resolution, original external target identities now
+appear as neutral secondary cards: medium for small scopes and compact for
+4+ external targets. The authoritative primary remains visually dominant;
+viewer, primary and already-rendered source are not duplicated. The label
+"Original target scope" explicitly denotes historical membership, not current
+eligibility. No completed/pending/outcome/order or progress is inferred.
+Nested non-Group stages remain unchanged. Public Group progress is deferred
+until a separately accepted server-owned contract exists. Focused tests cover
+neutral identity/density guards and 4/6/10-player responsive containment.
+
 ### BUG-ZHANG-LIAO-ASSAULT-01 — Draw Phase Assault UI fix — 2026-10-03
 
 The real API-backed Draw Phase fixture now keeps the authoritative Assault

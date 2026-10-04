@@ -35,6 +35,34 @@ export type MediumParticipantView = {
   roleLabel: "SOURCE";
 };
 
+export type GroupTargetScopeView = {
+  density: "medium" | "compact";
+  players: readonly HeroFocusPlayerView[];
+};
+
+/** Historical target membership only, never progress, eligibility or order.
+ * The current primary remains owned by HeroFocus; unknown primary stays unknown.
+ * Input is the accepted public Stage, not Room/Pending/private selection. */
+export function projectGroupTargetScopeForViewer(
+  stage: InteractionStageView,
+  projectedFocus: HeroFocusView,
+  mediumSource: MediumParticipantView | null,
+  viewerId: string | null,
+  resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
+): GroupTargetScopeView | null {
+  if (!stage.visible || stage.stage !== "GROUP_RESOLUTION") return null;
+  const targets = new Map<string, PresentationDisplayIdentity>();
+  for (const target of stage.originalTargets) {
+    if (target.id && target.id !== viewerId) targets.set(target.id, target);
+  }
+  const density = targets.size >= 4 ? "compact" : "medium";
+  const players = [...targets.values()]
+    .filter((target) => target.id !== projectedFocus.primary?.id && target.id !== mediumSource?.player.id)
+    .map((target) => decoratePlayer(target, resolvePlayerDisplay))
+    .filter((player): player is HeroFocusPlayerView => player !== null);
+  return players.length ? { density, players } : null;
+}
+
 const HIDDEN_FOCUS: HeroFocusView = {
   visible: false,
   primary: null,

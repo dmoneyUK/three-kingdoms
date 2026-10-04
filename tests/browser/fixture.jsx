@@ -141,6 +141,8 @@ function currentActionFor(state, actorId, handCardId) {
 }
 
 function browserRoom({ state, count }) {
+  const denseGroup = state === "group-density";
+  if (denseGroup) state = "group-observer";
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
   const meId = state === "group-observer" ? "p3" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
   const actorId = state === "group-observer" ? "p1" : state === "dying" ? "p3" : meId;
@@ -155,7 +157,7 @@ function browserRoom({ state, count }) {
         : state === "group"
           ? [card("browser-raining-arrows", "RainingArrows", "♥")]
           : [card("browser-attack", "Attack", "♠"), card("browser-peach", "Peach", "♥")];
-  const targets = state === "group-observer" ? ["p1", "p2", "p3"] : state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
+  const targets = denseGroup ? playerIds.filter((id) => id !== "p4") : state === "group-observer" ? ["p1", "p2", "p3"] : state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
   const stage = state === "duel" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" ? "NEGATION" : state === "dying" ? "DYING" : state === "group" || state === "group-observer" ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
   const currentAction = state === "rest" ? null : currentActionFor(state, actorId, hand[0]?.id ?? "");
   const presentationSnapshot = state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: state === "group-observer" ? "p4" : "p1", targetIds: targets, currentParticipantId: state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
