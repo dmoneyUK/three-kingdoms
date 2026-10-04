@@ -3,304 +3,218 @@
 ## REMOTE HANDOVER RULE
 Work only on `ux-v2`. Read this file and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`. Implement only the task below, validate, append this task's execution result, commit/push, verify remote HANDOVER, then STOP. Do not wait for or poll CI.
 
-## Reviewer status — UX2.0VIS-04C ACCEPTED
+## Reviewer status — UX2.0VIS-06A ACCEPTED
 
-Reviewed implementation: `e7d898d3474ee0b8e028c32e15fa9e82c37741a6`.
+Reviewed implementation: `8f34a827a2040a7a219a0c7192692018b3f81a74`.
 
 Accepted facts to preserve:
-- 2–4 player Top Row seats are now anchored to the actual player-board top band instead of being vertically centred in a flexible row;
-- player-board top insets remain 68 / 60 / 55px at desktop / <=700 / <=480;
-- Top Row seat size/X mapping remains unchanged;
-- Safe Zone now follows 14 / 16 / 16px below the seat row at 1440 / 650 / 480;
-- Interaction / Negation / Dying / Group Observer containment remains green in the focused retained suite;
-- Side Column, LocalPlayerDock, Stage internals, gameplay and presentation authority were not changed.
+- decision guidance is now a dedicated full-width, content-sized LocalPlayerDock row;
+- the old <=480 guidance clipping was removed;
+- the operation row now has a separate extras region plus three permanent semantic slots in left-to-right order: Cancel / Primary / Decline;
+- representative 480x900 slot bboxes were invariant at x=226/308/390 with 78px widths, and 1440x900 at x=1123/1217/1311 with 90px widths;
+- long guidance measured four wrapped lines at 480 and was not clipped;
+- moved controls kept their existing callbacks, payloads, disabled conditions and busy labels;
+- focused VIS-06A browser coverage reported 3/3 PASS and the retained local-operation/layout set reported 118 PASS.
 
-The user-approved final visual target is now the generated mockup family:
-- true compact opponent top row;
-- open central battlefield / Interaction Stage;
-- enlarged interaction participants only when semantically relevant;
-- large persistent local player dock;
-- hero skills adjacent to the local hero;
-- stable action controls;
-- guidance text must remain readable on mobile.
+The documented Side Column viewport-Y reflow is ACCEPTED as a natural consequence of the intentionally content-sized LocalPlayerDock: VIS-06A did not change Side Column placement rules, and the task explicitly allowed the dock to grow while the battlefield flexes around it. Do not add negative margins or other compensation to force the old absolute viewport coordinates back.
 
-### Newly confirmed implementation defects
-Code review found three concrete local-operation defects that must be addressed in sequence:
+### Deferred work state — do not lose this
+**UX2.0VIS-05A is still DEFERRED and INCOMPLETE.**
+It has not been implemented or accepted. After VIS-06B is reviewed, return to VIS-05A unless a newly discovered blocker has higher priority.
 
-1. **Action positions are unstable.**
-   `.turn-controls` currently renders one flex-wrapping button container. Confirm / Cancel / Skip / End / provider buttons are conditionally emitted in different DOM order across rescue, Borrowed Sword, trigger, active-skill, response and turn flows. Their screen positions therefore move between flows and can also move when extra provider buttons appear or wrapping changes.
-
-2. **Long guidance is intentionally clipped on <=480.**
-   Current mobile CSS fixes `.turn-controls` to 48px and sets `.decision-status` to `max-height:100%; overflow:hidden`. Long instructions can therefore be cut off.
-
-3. **Sun Shangxiang Daredevil is still owned by the generic bottom trigger surface.**
-   `HERO_SKILL_EFFECT_IDS["sun-shangxiang"]` maps Betrothment only. The implemented trigger `sun_shangxiang_daredevil` is not mapped to the hero-skill panel, so its projected trigger option can appear in the generic bottom operation controls instead of beside the hero. This is a separate semantic/control-ownership fix and is intentionally NOT part of VIS-06A below; it is the next priority after this layout task.
-
-The previously deferred Side Column task remains deferred until the local operation console is made stable.
-
-# NEXT TASK — UX2.0VIS-06A: Stabilize Local Action Slots and Move Guidance to a Full-Width Row
+## NEXT TASK — UX2.0VIS-06B: Route Sun Shangxiang Daredevil Through the Hero Skill Panel
 
 ## Objective
-Fix one interaction-safety problem across all local card/skill flows:
+Fix one confirmed control-ownership defect:
 
-**Separate decision guidance from action buttons, and give Cancel / Primary / Decline controls permanent screen slots so their positions never change when the current card, skill, provider or response flow changes.**
+**When Sun Shangxiang's implemented `Daredevil` trigger is legally available, its action must appear in the existing Hero Skills panel beside the local hero, not as a generic provider button in the bottom action-extras region.**
 
-This is a UI-structure/layout task only.
+Keep the existing authoritative Skip/decline control in the fixed Decline slot.
 
-Do not change gameplay legality, CurrentAction semantics, provider selection semantics, action payloads or callbacks.
+This is a UI capability-routing task only. Do not change Daredevil gameplay semantics, trigger timing, legality, payload, resolution, or the VIS-06A action-slot layout.
 
 ## Current implementation facts
-In `app/page.tsx`:
-- `.turn-controls` currently contains both `.decision-status` and one anonymous button wrapper;
-- branches render buttons directly in different orders:
-  - rescue: Peach + Skip;
-  - Borrowed Sword: Confirm + Cancel;
-  - trigger flows: provider controls + Confirm + Cancel + Skip;
-  - active skill: Confirm + Cancel;
-  - response: provider controls + Confirm + Skip;
-  - normal turn: optional Spear + Play/Confirm + Cancel + End.
+Sun Shangxiang metadata already contains two skills:
+- `Betrothment`;
+- `Daredevil`.
 
-In `app/sequence-overrides.css`:
-- action wrapper is flex + wrap + `justify-content:flex-end`;
-- <=480 turn-controls height is fixed to 48px;
-- <=480 decision-status is clipped with `overflow:hidden`.
+The capability implementation already exists:
+- `game/capabilities/heroes/sun-shangxiang-daredevil.ts`
+- effect ID: `sun_shangxiang_daredevil`
+- event: `equipment_lost`
+- selection: none
+- `allowDecline: true`
+- resolving the effect draws 2 cards.
 
-These are the defects to remove.
+Current UI mapping in `app/page.tsx` is incomplete:
+
+```ts
+"sun-shangxiang": {
+  Betrothment: ["sun_shangxiang_betrothment"]
+}
+```
+
+Because `Daredevil` is absent from `HERO_SKILL_EFFECT_IDS`, its trigger option is not claimed by `heroTriggerEffectIds` and therefore falls through to the generic trigger buttons in `data-action-extras="true"`.
+
+The existing generic hero-skill branch already knows how to execute a mapped no-selection trigger directly with:
+
+`onAction("trigger", { providerId: option.effectId })`
+
+Do not invent another execution path.
 
 ## Files expected in scope
 Production:
 - `app/page.tsx`
-- `app/sequence-overrides.css`
 
 Regression:
 - `tests/browser/fixture.jsx`
 - `tests/browser/ui19.spec.mjs`
 
-A tiny pure presentational helper/type in `app/page.tsx` is acceptable.
+Optional focused unit/mounted test file only if needed to prove the mapping without duplicating browser coverage.
 
-Do not change game/server/projector/current-action construction.
+Do not modify:
+- `game/capabilities/heroes/sun-shangxiang-daredevil.ts`;
+- server/projector/protocol;
+- hero metadata;
+- CurrentAction construction in production;
+- VIS-06A CSS/action-slot geometry.
 
 ## Required implementation
 
-### 1. Move decision guidance out of the action row
-Keep the existing `consoleDecision` model and the existing decision copy/data attributes.
+### 1. Complete the existing Sun Shangxiang hero-skill mapping
+Extend only the existing Sun Shangxiang entry so it contains both skills:
 
-Render the existing decision-status content in a dedicated full-width guidance row that spans the whole LocalPlayerDock, above the hero/zones/hand/action area.
+```ts
+"sun-shangxiang": {
+  Betrothment: ["sun_shangxiang_betrothment"],
+  Daredevil: ["sun_shangxiang_daredevil"],
+}
+```
 
-Use a stable hook such as:
+Equivalent formatting is fine.
 
-`data-console-guidance="true"`
+Do not rename the skill or capability IDs.
 
-The guidance row must preserve:
-- `data-console-decision-kind`;
-- `data-console-coherent`;
-- `data-console-primary`;
-- `data-console-primary-enabled`;
-- `data-console-selection-count`;
-- `data-console-local-cancel`;
-- `data-console-authoritative-decline`;
-- `role="status"`;
-- `aria-live="polite"`;
-- `aria-atomic="true"`.
+Do not remove or alter the existing Betrothment mapping.
 
-Do not duplicate the guidance in the old turn-controls row.
+### 2. Let the existing hero-skill ownership path do the work
+Once mapped:
+- `activeSkillOptions` may recognise the Daredevil trigger option;
+- `heroTriggerEffectIds` must claim `sun_shangxiang_daredevil`;
+- the generic trigger renderer must therefore stop producing a bottom `Use Daredevil` / `Daredevil` provider button;
+- `heroSkillButtons` must render the metadata-backed Daredevil button in `.local-hero-skills`;
+- clicking it must use the existing direct no-selection trigger callback.
 
-### 2. Guidance must be full width and content-sized
-For all viewports:
-- guidance spans the full LocalPlayerDock width;
-- text wraps normally;
-- height grows with content;
-- no ellipsis, line clamp or `overflow:hidden`;
-- long instruction + selection summary + local-cancel hint remain readable;
-- guidance must not overlap the raised selected hand-card area;
-- guidance must not cover buttons.
+Do not add a special-case Sun Shangxiang click handler if the existing generic mapped-skill path already satisfies this.
 
-At <=480 specifically:
-- remove the existing clipping rule for decision-status;
-- do not force the guidance into the old 48px action height;
-- allow at least three normal wrapped text lines without clipping.
+### 3. Preserve authoritative decline
+Daredevil is optional (`allowDecline:true`).
 
-The LocalPlayerDock may become taller; the battlefield should flex around it. Do not create page horizontal overflow.
+When the Daredevil trigger decision is active:
+- the Daredevil skill button belongs beside the hero;
+- the fixed VIS-06A Decline slot must still show `Skip`;
+- the Primary slot should remain empty because the skill button itself is the positive action;
+- the Cancel slot should remain empty because this is not a local selection mode.
 
-### 3. Make turn-controls actions-only
-After moving guidance, `.turn-controls` must contain action controls only.
+Do not convert Skip into Cancel or hide the decline action.
 
-Add two stable child areas:
-- `data-action-extras="true"` — optional provider/mode controls;
-- `data-action-slots="true"` — fixed semantic action slots.
+### 4. Preserve the rest of Sun Shangxiang's skill panel
+When the local hero is Sun Shangxiang:
+- both metadata skill names remain visible in the Hero Skills panel;
+- Betrothment remains present and keeps its existing enabled/disabled behavior;
+- Daredevil becomes enabled only when the projected `sun_shangxiang_daredevil` option is actually available;
+- outside that trigger decision, Daredevil remains visible but disabled rather than disappearing.
 
-The semantic slot container must always render three stable slots in this left-to-right order:
+Do not infer availability from hero identity alone.
 
-1. `data-action-slot="cancel"`
-2. `data-action-slot="primary"`
-3. `data-action-slot="decline"`
+### 5. Do not over-generalize hero-trigger ownership
+This task is specifically the missing Sun Shangxiang mapping.
 
-Empty slots remain empty; they are not removed merely because that action is unavailable.
+Do not:
+- automatically claim every trigger option whose label matches a hero skill;
+- use string/label matching;
+- alter generic unmapped trigger providers;
+- move provider-extra controls from VIS-06A unless they are explicitly mapped hero skills.
 
-### 4. Exact slot ownership
-Move the existing buttons/callbacks into these slots without changing semantics.
+The stable effect-ID mapping remains the authority.
 
-#### CANCEL slot
-Only local non-authoritative cancellation of the current local selection:
-- Borrowed Sword local Cancel;
-- trigger target local Cancel when a separate provider-cancel surface is not already the owner;
-- active-skill target local Cancel;
-- normal local target Cancel.
+## Required browser fixture
+Add one dedicated fixture state:
 
-Do not put provider-mode buttons like `Cancel <Skill>` here; those remain extras because they toggle a provider/mode rather than the common local-selection Cancel action.
+`sun-shangxiang-daredevil`
 
-#### PRIMARY slot
-The current main commit action:
-- Confirm;
-- Play / Form Attack;
-- Peach rescue;
-- Discard N selected;
-- equivalent current `consoleDecision.primary` action.
+For a 4-player room:
+- viewer / action actor = `p1`;
+- p1 hero = `sun-shangxiang`;
+- CurrentAction kind = `trigger`;
+- legal actions include `trigger` and `decline_trigger`;
+- decline action = `decline_trigger`;
+- trigger options contain exactly one Daredevil option:
+  - effectId `sun_shangxiang_daredevil`;
+  - label `Daredevil`;
+  - no selection;
+  - allowDecline true.
 
-The primary slot stays in the same geometric column even when its label changes.
+Keep the fixture minimal. It does not need to simulate equipment loss itself; production capability tests already own trigger legality. The browser fixture only represents the already-projected legal trigger decision.
 
-#### DECLINE slot
-Authoritative decline / turn-finalization:
-- Skip;
-- End.
-
-Do not put local Cancel in this slot.
-
-### 5. Extras cannot move the three semantic slots
-Provider/mode controls remain in the extras region, including examples such as:
-- generic explicit response provider buttons;
-- generic trigger provider buttons;
-- Spear / Normal mode;
-- provider-owned `Cancel <label>` toggles.
-
-The extras region may wrap independently, but its presence/absence must not change the X position of the Cancel / Primary / Decline slot columns.
-
-Hero-specific skill ownership is not redesigned here. Sun Shangxiang Daredevil is a separate follow-up.
-
-### 6. Stable geometry contract
-At 480x900 and 1440x900:
-- all three semantic slot containers exist exactly once;
-- their X ordering is always Cancel < Primary < Decline;
-- each slot's left/right geometry is invariant within 4px across the focused fixture states;
-- if a slot has no action, the slot stays empty rather than allowing another semantic action to slide into it;
-- buttons remain at least the existing minimum touch size;
-- no button overlaps another or the guidance row;
-- no horizontal overflow.
-
-### 7. Preserve callbacks and disabled rules
-Do not rewrite action logic.
-
-For every moved button:
-- keep the exact existing `disabled` condition;
-- keep the exact existing `onClick` callback/payload;
-- keep busy labels such as Confirming…, Playing…, Skipping…;
-- keep provider selection/reset behavior;
-- keep server revalidation unchanged.
-
-This task is presentation/layout only.
-
-## Required fixture coverage
-Add minimal dedicated browser fixture states if existing fixtures cannot expose the necessary action combinations. Do not change production semantics merely to create them.
-
-Required representative states:
-
-1. **confirm-cancel**
-   - primary Confirm visible;
-   - local Cancel visible;
-   - no authoritative decline.
-
-2. **confirm-skip**
-   - primary Confirm visible;
-   - authoritative Skip visible;
-   - no local Cancel.
-
-3. **confirm-cancel-skip**
-   - all three semantic actions visible simultaneously from one coherent trigger/selection fixture.
-
-4. **turn-play-end**
-   - primary Play visible;
-   - End in decline slot;
-   - cancel slot empty.
-
-5. **provider-extra**
-   - at least one provider/mode button visible in extras while primary/decline remain in their fixed slots.
-
-6. **long-guidance**
-   - use a realistic long instruction/selection summary long enough to wrap to 3+ lines at 480px.
-
-Prefer current-action facts already understood by the fixture. Do not invent gameplay legality in React production code.
+Use the existing `window.__browserActions` capture from VIS-06A.
 
 ## Required browser regression
 
-At both 480x900 and 1440x900 for the representative states:
+Run at:
+- 480x900;
+- 1440x900.
 
-### A. Slot structure
 Assert:
-- one guidance row;
-- one extras region;
-- one action-slot region;
-- exactly one cancel slot;
-- exactly one primary slot;
-- exactly one decline slot;
-- slot X order Cancel < Primary < Decline.
 
-### B. Position invariance
-Capture each slot bbox across every representative state.
+1. LocalPlayerDock belongs to p1 and local hero is `sun-shangxiang`.
+2. `.local-hero-skills` contains exactly the metadata skill controls for `Betrothment` and `Daredevil`.
+3. Daredevil button is inside the Hero Skills / local-status panel, not inside `data-action-extras` or any action slot.
+4. Daredevil button is enabled for this fixture.
+5. Betrothment remains present and is not falsely enabled by the Daredevil option.
+6. `data-action-extras="true"` contains no `Daredevil`, `Use Daredevil`, or `Cancel Daredevil` button.
+7. Cancel slot is empty.
+8. Primary slot is empty.
+9. Decline slot contains `Skip`.
+10. Clicking the Hero Skills Daredevil button records exactly:
+    ```js
+    { action: "trigger", extra: { providerId: "sun_shangxiang_daredevil" } }
+    ```
+    using the existing callback path.
+11. The local hero card and local-status/skills panel remain in their existing dock regions; no bottom duplicate control appears.
+12. No horizontal overflow.
 
-For a given viewport:
-- cancel-slot X/width variance <=4px;
-- primary-slot X/width variance <=4px;
-- decline-slot X/width variance <=4px.
+### Negative regression
+Retain the existing VIS-06A `provider-extra` fixture and prove its unmapped generic provider still remains in `data-action-extras="true"`.
 
-This must fail against the current flex-wrap implementation.
+This prevents the implementation from accidentally routing all generic providers into the hero panel.
 
-### C. Button ownership
-Assert:
-- Cancel only appears in cancel slot;
-- Confirm/Play/Peach/Discard primary action only appears in primary slot;
-- Skip/End only appears in decline slot;
-- extras do not contain plain common `Confirm`, plain `Cancel`, `Skip` or `End`.
-
-Provider-owned labels such as `Cancel <provider>` are not plain local Cancel and may remain extras when applicable.
-
-### D. Long guidance
-At 480:
-- long guidance text is fully visible;
-- computed overflow is not hidden;
-- guidance bbox does not overlap action slots;
-- guidance does not overlap selected hand card geometry;
-- no horizontal overflow.
-
-### E. Existing gameplay-control regression
-Keep existing mounted interaction/control tests for:
-- rescue;
-- response/Negation;
-- active skill;
-- turn play/end;
-- local target selection.
-
-Do not weaken them.
+### Inactive-state regression
+Add or reuse a Sun Shangxiang normal-turn fixture with no Daredevil trigger option and prove:
+- Daredevil is still visible in the Hero Skills panel;
+- Daredevil is disabled;
+- no generic Daredevil button exists in the action row.
 
 ## Forbidden shortcuts
 Do not:
-- change `buildConsoleDecisionDisplay` semantics merely to fit layout;
-- merge Cancel and Skip into one action;
-- reuse one slot for different semantic roles;
-- hide long guidance;
-- reduce font to unreadable sizes;
-- use absolute pixel positioning per fixture;
-- use JS DOM measurements to place action buttons;
-- change hero skill ownership in this task;
-- move Hero Focus / seats / Safe Zone;
-- change LocalPlayerDock hero/hand/equipment semantics;
-- change server/gameplay/projector logic.
+- hide the generic bottom Daredevil button with CSS while leaving ownership incorrect;
+- duplicate Daredevil in both hero panel and extras;
+- make Daredevil permanently enabled;
+- infer the trigger from hero name/label text;
+- alter `allowDecline`;
+- remove Skip;
+- put Daredevil in Primary/Cancel/Decline slots;
+- change Betrothment behavior;
+- change VIS-06A guidance or slot positions;
+- change gameplay/server/projector/capability semantics.
 
 ## Validation
 Run and report:
-- focused VIS-06A browser slot tests;
-- retained local-operation mounted tests;
-- retained VIS-03/VIS-04 layout tests;
-- broader local browser/fast/build/lint/diff-check only if allowed locally.
+- focused VIS-06B browser tests at 480 and 1440;
+- retained VIS-06A slot/guidance tests;
+- retained mounted hero-skill/trigger tests relevant to active skills;
+- retained provider-extra negative regression;
+- broader local checks only if allowed.
 
 Do not claim unrun checks. Do not inspect or wait for CI.
 
@@ -308,26 +222,18 @@ Do not claim unrun checks. Do not inspect or wait for CI.
 Append only:
 - implementation SHA;
 - files changed;
-- final LocalPlayerDock row structure;
-- exact semantic slot mapping;
-- slot bboxes for all representative states at 480 and 1440;
-- long-guidance measured height/line-wrap proof at 480;
-- confirmation callbacks/disabled conditions were preserved;
-- focused/retained validation results;
+- exact mapping change;
+- Daredevil hero-panel / bottom-extras DOM proof;
+- action captured from Daredevil click;
+- Skip preservation proof;
+- inactive-state proof;
+- retained VIS-06A validation result;
 - any GAP.
 
 Do not self-accept. Push, verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if decision guidance is full-width and never clipped, Cancel / Primary / Decline have invariant semantic positions across card/skill/response flows, provider extras cannot move those positions, and no gameplay/action semantics are changed.
+Pass only if Sun Shangxiang Daredevil is owned exclusively by the existing Hero Skills panel whenever its projected option is legal, invokes the existing trigger payload unchanged, preserves authoritative Skip in the fixed decline slot, remains disabled-but-visible when unavailable, and generic unmapped provider controls remain in the extras region.
 
-## UX2.0VIS-06A execution result — awaiting reviewer
-
-- Implementation SHA: `8f34a827a2040a7a219a0c7192692018b3f81a74`. Changed `app/page.tsx`, `app/sequence-overrides.css`, `tests/browser/fixture.jsx`, and `tests/browser/ui19.spec.mjs`. This handover update is in the following documentation commit, pushed together with the implementation.
-- LocalPlayerDock now has a full-width, content-sized `console-guidance` row above the existing identity/zones and hand rows, followed by an actions-only `turn-controls` row. The existing decision-status content, data attributes, aria-live status, invalid-response message, and Lust order note move with guidance. No server, projector, legality, Hero Focus, equipment, or seat-positioning rules changed.
-- Actions row has a wrapping extras region and three always-present slots, left to right: `cancel` owns local-selection Cancel (Borrowed Sword, trigger target without provider cancel, active-skill target, normal target); `primary` owns Confirm, Play/Form Attack, Peach, and Discard; `decline` owns authoritative Skip or End. Provider/mode buttons, including `Cancel <provider>` and Spear/Normal, stay in extras. Empty roles retain their empty slot. Moved controls preserve their pre-existing callbacks/payloads, disabled conditions, busy labels, and provider-selection/reset behavior.
-- Measured slot bboxes `(x,width)` at 480x900: confirm-cancel, confirm-skip, confirm-cancel-skip, turn-play-end, provider-extra, and long-guidance each had Cancel `(226,78)`, Primary `(308,78)`, Decline `(390,78)` px. At 1440x900, those same six states each had Cancel `(1123,90)`, Primary `(1217,90)`, Decline `(1311,90)` px. Per-slot X and width variance was 0px at each viewport. Tests also assert button touch bounds, non-overlap, no horizontal overflow, and semantic ownership.
-- At 480x900, the long instruction measured 55px high at 13.75px line-height (4 lines); the guidance container measured 109px client/scroll height with computed vertical overflow `visible`. Selected-hand geometry remained below guidance.
-- Focused VIS-06A browser tests: 3 passed. Retained VIS-03/VIS-04, UI-19 mounted local-operation, and real Assault browser tests together with VIS-06A: 118 passed. Local full tests, build, lint, and diff-check were not run; GitHub Actions owns those gates. CI status and production deployment were not inspected.
-- Geometry note/GAP for reviewer: the content-sized guidance row naturally reduces available table height by about 40px at the tested viewport. The old VIS-04C absolute six-player board/seat coordinates therefore changed, although seat positioning rules, left coordinates, topology, Stage containment, and Safe Zone separation did not. The two geometry baselines were updated to measured coordinates; an attempted negative-margin compensation was rejected because it overlapped the Safe Zone. Reviewer should decide whether this vertical reflow is acceptable under the no-seat-movement boundary. No other known GAP.
-- Recommended next bounded task: reviewer evaluates VIS-06A, especially the documented table-height reflow; only a new reviewer-authored handover should authorize subsequent work. Not self-accepted.
+## Deferred after this task
+**VIS-05A remains incomplete.** After VIS-06B review, the reviewer should return to `UX2.0VIS-05A: Correct 5–10 Player Side-Column Seat Topology` unless a new blocker is discovered.
