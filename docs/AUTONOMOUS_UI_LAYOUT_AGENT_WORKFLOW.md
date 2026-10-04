@@ -20,11 +20,18 @@ During this experiment the Coding Agent may plan and execute multiple consecutiv
 
 ### Activation
 
-This workflow is active only when the user's instruction explicitly contains:
+This workflow is active when the user either:
 
-`AUTONOMOUS UI RUN: ACTIVE`
+- explicitly says `AUTONOMOUS UI RUN: ACTIVE`; or
+- tells the Agent to read/follow this file and continue the autonomous UI work.
 
-When active, this document is the authorized exception described in `AGENTS.md`. It overrides only the normal single-task/reviewer-next-task/append-vs-clean/no-CI-polling cadence rules listed there. It does not override architecture, gameplay authority, privacy, WTK Standard references, or fail-closed rules.
+A normal user instruction such as:
+
+`Read docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md and continue the next task.`
+
+is sufficient. The user does not need to restate startup order, HANDOVER policy, CI policy, token/context policy, or task-planning rules; they are defined in the repository.
+
+When active, this document is the authorized exception described in `AGENTS.md`. It overrides only the normal single-task/reviewer-next-task/HANDOVER-current-state/no-CI-polling cadence rules listed there. It does not override architecture, gameplay authority, privacy, WTK Standard references, or fail-closed rules.
 
 The autonomous run ends when either:
 
