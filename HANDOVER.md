@@ -475,3 +475,12 @@ Validation: mounted Dying regression at representative desktop/mobile widths, re
 Acceptance: Dying retains its semantic panels and any unique context but no longer repeats their proven identities in a redundant footer metadata block; no other state loses metadata.
 
 VIS-08C layout clarification: treat the two-column SOURCE/FOCUS strip as a unit. Remove it only when both identities are represented in their matching visible semantic panels; otherwise keep the strip intact. Decision/resolver context rows may be deduplicated independently by exact ID.
+
+### VIS-08C IMPLEMENTATION RESULT
+
+Implementation SHA: `4d8a967`.
+Files changed: `app/page.tsx`, `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`.
+Change: In Dying only, the SOURCE/FOCUS strip is omitted when both role identities are already visible in the matching Medium Source/Hero Focus or Dying Handoff panels. Decision/resolver rows are omitted only for exact IDs already shown by Dying Handoff. Distinct roles, changed original-target scope, nested context, and non-Dying metadata remain available; empty Dying metadata wrappers are removed. No semantic/control behavior changed.
+Focused validation: `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-08C|UX2.0VIS-05B 6 players dying|UX2.0VIS-08A dying' --workers=2` — 9/9 across desktop/mobile, retained safe-zone/hit and open-shell checks; `git diff --check` passed. The initial browser attempt caught a missing JSX conditional brace; fixed before the passing rerun.
+Known gaps: This closes the Dying duplicate footer only; remaining non-Dying metadata polish and final Dock/hand work remain. Group progress/order/outcomes remain deferred. No full local suite/build/lint was run.
+CI pending: push implementation and this result, then wait for Actions on the exact resulting revision before selecting another task.
