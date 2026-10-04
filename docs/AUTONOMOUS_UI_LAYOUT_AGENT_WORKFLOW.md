@@ -1157,6 +1157,23 @@ For density, spacing, prominence, and composition rules, compare the implementat
 
 `HANDOVER.md` is the authority for current autonomous progress. `docs/AUTONOMOUS_UI_ROADMAP.md` is consulted when historical evidence or long-term roadmap context is needed.
 
+For new visual/layout work, treat `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`
+§§0.91.1–0.91.5, 1.5–1.5.2, 2.3 and 2.7 as the current mobile visual
+composition contract. In particular:
+
+- preserve intentional battlefield breathing space; do not fill the Interaction
+  Stage merely because room is available;
+- keep active cards/Hero Focus above decorative dimming and never obscure them
+  with dark overlays;
+- make opponent seats Hero-first: recognizable upper-body crop, compact HP/name,
+  occupied Equipment-at-a-glance and concise Hand count;
+- compress decoration/secondary metadata before shrinking Hero art, Hand
+  readability or Primary controls;
+- use Direct-Reversal-First for unsubmitted card/skill selection; explicit
+  Cancel is contextual and disappears after authoritative commit;
+- keep mobile Primary/Confirm in the centre-right thumb zone with authoritative
+  Skip/Decline/End separated at the right.
+
 The remaining approved direction is expected to include, as needed:
 
 - Interaction Stage shell / duplicate metadata simplification;
@@ -1165,6 +1182,7 @@ The remaining approved direction is expected to include, as needed:
 - persistent Judgement overlay on the local Hero;
 - single-layer Hand overlap and horizontal-pan behavior for 5/10/15/20/25+ cards;
 - opponent-seat Hero readability plus always-visible public Equipment-at-a-glance, with Top Row and Side Column mobile validation;
+- mobile Stage breathing-space / layering polish, including Deck/Discard visual de-emphasis and active-card occlusion checks;
 - representative interaction visual regression;
 - final mobile visual gate.
 
