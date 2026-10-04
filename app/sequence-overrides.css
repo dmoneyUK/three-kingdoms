@@ -1657,6 +1657,29 @@
     --side-safe-board-inset: 3px;
   }
 }
+
+/* VIS-08A: Side Column uses the accepted open Stage composition. Keep chrome
+   on semantic child panels, not around the whole Interaction Stage. */
+.game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone > .interaction-stage {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none !important;
+}
+.game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone > .interaction-stage > header {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 6px;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+@media (min-width: 651px) {
+  .game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone > .interaction-stage > header {
+    margin-bottom: 0;
+  }
+}
+
 .game-shell .player-board[data-seat-topology="side-column"] {
   --seat-row-count: 2;
   display: grid;

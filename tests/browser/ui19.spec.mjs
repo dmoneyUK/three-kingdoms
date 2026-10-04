@@ -706,6 +706,53 @@ for (const width of [1440, 650, 480]) {
   }
 }
 
+for (const width of [1440, 650, 480]) {
+  for (const state of ["interaction", "negation", "dying", "group-observer"]) {
+    test(`UX2.0VIS-08A ${state} at ${width}px keeps an open Side Column Stage shell`, async ({ page }) => {
+      await loadFixture(page, { state, count: 6, width, height: 900 });
+      const stage = page.locator(".interaction-stage");
+      await expect(stage).toHaveCount(1);
+      const shell = await stage.evaluate(element => {
+        const style = getComputedStyle(element);
+        const header = element.querySelector(":scope > header");
+        const headerStyle = getComputedStyle(header);
+        const stageRect = element.getBoundingClientRect();
+        const headerRect = header.getBoundingClientRect();
+        return {
+          background: style.backgroundColor,
+          borderWidth: style.borderTopWidth,
+          boxShadow: style.boxShadow,
+          padding: style.padding,
+          headerDisplay: headerStyle.display,
+          headerBorderWidth: headerStyle.borderBottomWidth,
+          headerWidth: headerRect.width,
+          stageWidth: stageRect.width,
+        };
+      });
+      expect(shell.background).toBe("rgba(0, 0, 0, 0)");
+      expect(shell.borderWidth).toBe("0px");
+      expect(shell.boxShadow).toBe("none");
+      expect(shell.padding).toBe("0px");
+      expect(shell.headerDisplay).toBe("inline-flex");
+      expect(shell.headerBorderWidth).toBe("0px");
+      expect(shell.headerWidth).toBeLessThanOrEqual(shell.stageWidth + 0.5);
+      await expect(stage).toContainText("INTERACTION STAGE");
+
+      const retainedPanel = state === "negation" ? page.locator(".reaction-chain")
+        : state === "dying" ? page.locator(".dying-handoff")
+        : page.locator(".hero-focus");
+      await expect(retainedPanel).toBeVisible();
+      const panelBackground = await retainedPanel.evaluate(element => getComputedStyle(element).backgroundColor);
+      expect(panelBackground).not.toBe("rgba(0, 0, 0, 0)");
+
+      const geometry = await sideSafeZoneGeometry(page);
+      expect(geometry.stage.x).toBeGreaterThanOrEqual(geometry.zone.x - 0.5);
+      expect(geometry.stage.right).toBeLessThanOrEqual(geometry.zone.right + 0.5);
+      expect(geometry.stage.bottom).toBeLessThanOrEqual(geometry.dock.y);
+    });
+  }
+}
+
 for (const { width, focus, medium } of [
   { width: 1440, focus: [90, 113], medium: [56, 70] },
   { width: 650, focus: [72, 90], medium: [48, 60] },
