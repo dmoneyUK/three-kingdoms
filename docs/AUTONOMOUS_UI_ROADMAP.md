@@ -24,15 +24,17 @@ Do not copy this entire roadmap into working context unless historical reconstru
 ## Current frontier
 
 Latest completed milestone:
-- `UX2.0VIS-12C — Reduce Mobile Deck/Discard Prominence`
-- final tested revision `60c353de5fb6957e716b07ac07dfb48f692ace33`
-- CI run `37216175450`: build-and-test and deploy/smoke successful
+- `UX2.0VIS-12I — Four-Player Top Row Hero-First Composition`
+- final tested correction revision `b818cff112cec2c9f8fe972351d4c353b41854ee`
+- CI run `37227707859`: build-and-test `111510686961` and deploy `111511530346` successful
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-12H — Refocus Side-Column Hero Thumbnails on the Upper Body`
-- status: IMPLEMENTED — CI PENDING; exact-revision validation is recorded in `HANDOVER.md`
+- `UX2.0VIS-12J` narrow-viewport correction: IMPLEMENTED — CI PENDING; focused affected matrix passed 35/35.
+- Next: `UX2.0VIS-12K — Four-Player Ordinary-Turn Visual Gate`; requirements are recorded in `HANDOVER.md`.
 - current task authority: `HANDOVER.md`
+
+The previous complete handoff is preserved in [the VIS-12J handover archive](history/UX_V2_HANDOVER_THROUGH_VIS_12J.md). HANDOVER now follows the compact current-task policy reaffirmed by the user on 2026-10-04.
 
 ## UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
 
@@ -749,3 +751,7 @@ Requirements:
 Non-goals: New gameplay/legality, changing selection semantics, a second row, hand-count-specific breakpoints, and preserving a semantic anchor when cards are authoritatively added/removed (that remaining §0.86–0.87 behavior must not be claimed complete by this slice).
 Stop condition: If the required scroll viewport cannot preserve the selected-card raise and existing controls without an unapproved composition trade-off, record the measured conflict and stop for human review.
 Validation/delivery: Run only focused hand/browser checks locally; GitHub Actions owns full checks. Push code/tests/docs/handover together, do not poll CI, verify remote HANDOVER, then stop for the user's CI report.
+
+## UX2.0VIS-12J CI correction — 2026-10-04
+
+Run `37228048954` on `3fe440e` failed in browser tests after lint/build passed. Focused local reproduction isolated two 4-player 320×640 short-portrait failures (Group-observer and Dying): the new 88%-width Stage wrapped content below the Safe Zone by 16.06px and 3.88px. Corrected the width rule to apply only from 360px through 480px, preserving the accepted centered 390/480px layout and the previous full-width constraint at 320px. Focused post-fix validation and exact-revision CI remain pending; this is not a green closure.

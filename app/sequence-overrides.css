@@ -2271,7 +2271,7 @@
 
 /* UX2.0VIS-12J: keep the mobile Top Row Stage readable without filling its
    entire corridor when a normal single-target interaction is active. */
-@media (max-width: 480px) {
+@media (min-width: 360px) and (max-width: 480px) {
   .game-shell .play-table[data-seat-topology="top-row"] > .interaction-safe-zone > .interaction-stage {
     width: min(88%, 410px);
   }
