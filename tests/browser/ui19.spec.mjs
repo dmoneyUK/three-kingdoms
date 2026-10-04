@@ -47,10 +47,10 @@ function expectedVis12bSeatWidth(boardWidth) {
   return Math.min(146, (boardWidth - 18) / 3);
 }
 
-async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize, equipmentCase, hero }) {
+async function loadFixture(page, { state = "normal", count = 4, width, height, reducedMotion = false, handSize, equipmentCase, hero, source }) {
   await page.setViewportSize({ width, height });
   await page.emulateMedia({ reducedMotion: reducedMotion ? "reduce" : "no-preference" });
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${handSize === undefined ? "" : `&handSize=${handSize}`}${equipmentCase ? `&equipmentCase=${equipmentCase}` : ""}${hero ? `&hero=${encodeURIComponent(hero)}` : ""}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${handSize === undefined ? "" : `&handSize=${handSize}`}${equipmentCase ? `&equipmentCase=${equipmentCase}` : ""}${hero ? `&hero=${encodeURIComponent(hero)}` : ""}${source ? `&source=${encodeURIComponent(source)}` : ""}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -367,7 +367,9 @@ test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment",
         }
         if (state !== "dying") {
           await expect(stage.locator(".interaction-stage-meta-region .interaction-stage-focus")).toBeVisible();
-          await expect(stage.locator(".interaction-stage-meta-region .interaction-stage-focus > div")).toHaveCount(2);
+          const sourceAlreadyVisible = await stage.locator(".medium-participant-card, .hero-focus-source").count() > 0;
+          await expect(stage.locator(".interaction-stage-focus > [data-stage-meta-role]")).toHaveCount(sourceAlreadyVisible ? 1 : 2);
+          await expect(stage.locator('[data-stage-meta-role="focus"], [data-stage-meta-role="scope"]')).toBeVisible();
         }
         for (const selector of [".local-hero-card", ".local-status-panel", ".local-equipment-panel", ".local-hand-rail", ".console-guidance", ".turn-controls"]) {
           await expect(dock.locator(selector), `the persistent Dock must retain ${selector}`).toBeVisible();
@@ -2004,11 +2006,42 @@ for (const width of [1440, 480]) {
   });
 }
 
-test("UX2.0VIS-08C preserves ordinary Interaction Stage metadata outside Dying", async ({ page }) => {
+test("UX2.0VIS-12M omits a source summary already named by Hero Focus", async ({ page }) => {
   await loadFixture(page, { state: "interaction", count: 4, width: 650, height: 900 });
-  await expect(page.locator(".interaction-stage-meta-region")).toHaveCount(1);
-  await expect(page.locator(".interaction-stage-meta-region")).toContainText("SOURCE");
-  await expect(page.locator(".interaction-stage-meta-region")).toContainText("FOCUS");
+  const stage = page.locator('[aria-label="Interaction Stage"]');
+  await expect(stage.locator(".hero-focus")).toHaveAttribute("data-hero-focus-source-id", "p1");
+  await expect(stage.locator(".hero-focus-source")).toHaveText("SOURCE · Player 1");
+  await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
+  await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("FOCUS");
+  await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("Current participant: Player 1");
+});
+
+test("UX2.0VIS-12M omits a source summary already named by Medium Source", async ({ page }) => {
+  await loadFixture(page, { state: "group-observer", count: 4, width: 480, height: 900 });
+  const stage = page.locator('[aria-label="Interaction Stage"]');
+  const source = stage.locator('[data-medium-participant="source"]');
+  await expect(source).toBeVisible();
+  await expect(source).toHaveAttribute("data-medium-participant-player-id", "p4");
+  await expect(source.locator(".medium-participant-role")).toHaveText("SOURCE");
+  await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
+  await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("FOCUS");
+});
+
+test("UX2.0VIS-12M keeps source and scope metadata when no source presentation is rendered", async ({ page }) => {
+  await loadFixture(page, { state: "group-unfocused", count: 4, width: 650, height: 900 });
+  const stage = page.locator('[aria-label="Interaction Stage"]');
+  await expect(stage.locator(".hero-focus")).toHaveCount(0);
+  await expect(stage.locator(".medium-participant-card")).toHaveCount(0);
+  await expect(stage.locator('[data-stage-meta-role="source"]')).toContainText("Player 4");
+  await expect(stage.locator('[data-stage-meta-role="scope"]')).toContainText("No proven focus");
+});
+
+test("UX2.0VIS-12M keeps source fallback when Stage source identity is missing", async ({ page }) => {
+  await loadFixture(page, { state: "interaction", count: 4, width: 650, height: 900, source: "none" });
+  const stage = page.locator('[aria-label="Interaction Stage"]');
+  await expect(stage.locator(".hero-focus-source")).toHaveCount(0);
+  await expect(stage.locator('[data-stage-meta-role="source"]')).toContainText("Unknown source");
+  await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("FOCUS");
 });
 
 for (const { width, focus, medium } of [

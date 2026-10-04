@@ -524,6 +524,15 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     || dyingHandoff.dyingPlayer.id === display.focusTarget.id
   ));
   const showRoleSummary = !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible);
+  const nonDyingSourceAlreadyVisible = Boolean(!dyingHandoff.visible && stage.source.id && (
+    mediumSource?.player.id === stage.source.id
+    || (!mediumSource
+      && heroFocus.visible
+      && heroFocus.primary?.id
+      && heroFocus.primary.id !== stage.source.id
+      && heroFocus.source.id === stage.source.id)
+  ));
+  const showSourceSummary = showRoleSummary && !nonDyingSourceAlreadyVisible;
   const showDecisionSummary = display.showDecision && !(dyingHandoff.visible
     && display.decisionActor.id
     && dyingHandoff.decisionActor.id === display.decisionActor.id);
@@ -579,8 +588,8 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
       </div>
       {showMetadataRegion && <div className="interaction-stage-meta-region">
         {showRoleSummary && <div className="interaction-stage-focus">
-          <div><small>SOURCE</small><b>{display.source.name}</b></div>
-          <div><small>{display.focusTarget.id ? "FOCUS" : "SCOPE"}</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
+          {showSourceSummary && <div data-stage-meta-role="source"><small>SOURCE</small><b>{display.source.name}</b></div>}
+          <div data-stage-meta-role={display.focusTarget.id ? "focus" : "scope"}><small>{display.focusTarget.id ? "FOCUS" : "SCOPE"}</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
         </div>}
         {showMetadataContext && <div className="interaction-stage-context">
           {showDecisionSummary && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}

@@ -157,7 +157,7 @@ function currentActionFor(state, actorId, handCardId) {
   };
 }
 
-function browserRoom({ state, count, handSize, equipmentCase, heroOverride }) {
+function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride }) {
   const ordinaryTurn = state === "ordinary-turn";
   if (ordinaryTurn) state = "normal";
   const hasLocalJudgementFixture = ["local-judgement-empty", "local-judgement-one", "local-judgement-two"].includes(state);
@@ -196,7 +196,7 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride }) {
     localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: "turn", actorId, entitled: true },
     settlement: null,
     transitionEvents: [],
-  } : state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup ? null : state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
+  } : state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: sourceOverride === "none" ? null : state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup ? null : state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
   const players = playerIds.map((id, index) => ({
     id,
     name: `Player ${index + 1}`,
@@ -265,12 +265,13 @@ function readFixture() {
   const handSize = params.has("handSize") ? Math.min(30, Math.max(1, Number(params.get("handSize")))) : null;
   const equipmentCase = params.get("equipmentCase") || null;
   const heroOverride = params.get("hero") || null;
-  return { state, count, handSize, equipmentCase, heroOverride };
+  const sourceOverride = params.get("source") || null;
+  return { state, count, handSize, equipmentCase, heroOverride, sourceOverride };
 }
 
-const { state, count, handSize, equipmentCase, heroOverride } = readFixture();
+const { state, count, handSize, equipmentCase, heroOverride, sourceOverride } = readFixture();
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, equipmentCase, heroOverride });
+let fixtureRoom = browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride });
 window.__browserActions = [];
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => { window.__browserActions.push({ action, extra }); return true; }} onLeave={() => {}} />);
 window.__setBrowserHandIds = (ids) => {
