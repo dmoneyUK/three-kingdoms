@@ -755,8 +755,10 @@ for (const { width, height } of [{ width: 1440, height: 900 }, { width: 480, hei
 
     await expect(board).toHaveCount(1);
     await expect(board.locator("[data-player-anchor]")).toHaveCount(5);
-    await expect(board.locator('[data-player-anchor="p2"] .opponent-equipment-zone')).toHaveCount(1);
-    await expect(board.locator('[data-player-anchor="p2"] .opponent-equipment-zone')).toBeHidden();
+    const publicEquipment = board.locator('[data-player-anchor="p2"] .opponent-equipment-summary');
+    await expect(publicEquipment).toHaveCount(1);
+    await expect(publicEquipment).toBeVisible();
+    await expect(publicEquipment.locator('.opponent-equipment-indicator[data-slot="weapon"][data-equipment-id="browser-zhuge-crossbow"]')).toHaveCount(1);
     await expect(board.locator('[data-player-anchor="p3"] .opponent-judgement-zone')).toHaveCount(1);
     await expect(board.locator('[data-player-anchor="p3"] .opponent-judgement-zone')).toBeHidden();
     const sideSeatAspectRatios = await board.locator("[data-player-anchor]").evaluateAll((elements) => elements.map((element) => {
