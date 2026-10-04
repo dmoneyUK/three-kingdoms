@@ -1,40 +1,51 @@
 # WTK project execution workflow
 
-## Autonomous UI/Layout mode exception
+## Mode selection and autonomous UI/Layout shortcut
 
-The normal reviewer-authored single-task workflow above remains the default.
+The normal reviewer-authored single-task workflow remains the default for ordinary coding-agent work.
 
-An explicit user instruction containing `AUTONOMOUS UI RUN: ACTIVE` and directing the Agent to
-`docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` activates the experimental autonomous UI/Layout mode.
+Autonomous UI/Layout mode is active when the user either:
 
-While that mode is active, the autonomous workflow temporarily overrides only these normal rules:
+- explicitly says `AUTONOMOUS UI RUN: ACTIVE`; or
+- explicitly tells the Agent to read/follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` and continue the autonomous UI work.
 
-- the next task does not have to be reviewer-authored in advance;
-- the Agent may derive the next bounded UI/Layout task from the approved design after the previous task is complete;
-- the Agent may continue through multiple bounded tasks instead of stopping after every push;
-- `HANDOVER.md` is append-only for the autonomous run and must not be cleaned/replaced;
-- the Agent may wait for and inspect the GitHub Actions run for its own pushed revision, fix a real CI failure, and continue only after that revision is green.
+When autonomous mode is active, use this startup order:
 
-Everything else in this file remains in force, especially:
+1. synchronize `ux-v2` from `origin`;
+2. read `AGENTS.md`;
+3. read `docs/AUTONOMOUS_UI_STATUS.md`;
+4. read `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`;
+5. read only the design sections cited by the current status/task;
+6. inspect only the source/tests relevant to the current task;
+7. consult historical `HANDOVER.md` selectively only when older evidence is actually needed.
 
-- server/gameplay authority;
-- public/private projection boundaries;
-- fail-closed semantic behavior;
-- WTK Standard reference rules;
-- no unrelated scope widening;
-- truthful validation reporting.
+**Do not read the complete `HANDOVER.md` by default in autonomous mode.**
 
-Autonomous mode does **not** authorize new product/game semantics. If the approved design or authoritative data is insufficient, follow the workflow's `BLOCKED — HUMAN REVIEW REQUIRED` stop condition.
+Historical HANDOVER lookup is appropriate only when an older accepted contract, exact prior measurement, previous SHA/CI result, regression history, or explicit human-review reconstruction is needed.
 
-If the activation phrase is absent, use the normal reviewer-authored workflow in this file.
+While autonomous mode is active, the autonomous workflow may:
 
+- derive the next bounded UI/Layout task from the approved design after the previous task is complete;
+- continue through multiple bounded tasks;
+- wait for and inspect GitHub Actions for its own pushed revision;
+- fix real CI failures before continuing;
+- keep current/in-progress state in `docs/AUTONOMOUS_UI_STATUS.md`;
+- append only one compact archival record to `HANDOVER.md` when a task closes or blocks.
 
-## Task authority
+Everything else in this file remains in force, especially server/gameplay authority, privacy boundaries, fail-closed semantics, WTK Standard references, no unrelated scope widening, and truthful validation reporting.
 
-- At the start of every task, synchronize the current authorized branch from the remote repository and read the complete remote `HANDOVER.md` before changing files.
-- The reviewer-authored task in `HANDOVER.md` is the only project task authority. Understand its objective, scope, acceptance criteria, validation requirements, branch, and handoff instructions before acting.
+Autonomous mode does **not** authorize new product/game semantics. If approved design or authoritative data is insufficient, follow the workflow's `BLOCKED — HUMAN REVIEW REQUIRED` rule.
+
+## Normal-mode task authority
+
+These rules apply when autonomous UI/Layout mode is **not** active.
+
+- At the start of every normal task, synchronize the current authorized branch from the remote repository and read the complete remote `HANDOVER.md` before changing files.
+- The reviewer-authored task in `HANDOVER.md` is the normal-mode project task authority. Understand its objective, scope, acceptance criteria, validation requirements, branch, and handoff instructions before acting.
 - Execute only the current handover task. Do not invent a follow-up task, widen the scope, or replace a reviewer requirement with a local preference.
 - If the current handover is unclear, malformed, or missing, stop and report that state instead of guessing the next implementation.
+
+In autonomous UI/Layout mode, current task authority comes from `docs/AUTONOMOUS_UI_STATUS.md` plus `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; historical `HANDOVER.md` is an audit ledger, not the default current-state source.
 
 ## Rules and reference sources
 
@@ -64,12 +75,20 @@ If the activation phrase is absent, use the normal reviewer-authored workflow in
   - `npm run lint`
   - `git diff --check`
 - Commit and push the implementation, focused tests, documentation, and updated handover files together to the branch required by the current remote `HANDOVER.md`.
-- Do not poll GitHub Actions, inspect gate status, or stream workflow logs after pushing. The user receives GitHub notifications and will report test failures. Do not claim that CI or production deployment was verified when it was not checked.
-- If the user reports a CI failure, inspect only the relevant failed job and reproduce the smallest necessary issue. Do not fetch or print unrelated workflow logs.
-- After the required push, verify only the remote handover content if the current handover requires that verification, then stop. Do not begin another task until a new reviewer handover authorizes it.
+- In normal mode, do not poll GitHub Actions after pushing; the user will report failures.
+- In autonomous UI/Layout mode, follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`: the Agent may wait for and inspect the CI run for its own exact revision, fix relevant failures, and continue only after green.
+- If a CI failure must be investigated, inspect only the relevant failed job and reproduce the smallest necessary issue.
+- Never claim CI or production deployment was verified unless it was actually checked.
 
-## Handover closeout
+## Handover and status closeout
 
-- Append only the current task's execution result to `HANDOVER.md`.
-- Record the implementation SHA, changed files, behavior and authority boundaries, focused test updates, known gaps, validation responsibility transferred to GitHub Actions, and the recommended next bounded task.
-- Keep the handover truthful: distinguish changed tests from tests actually run, and never report remote CI success unless the user provides that result or explicitly asks for a status check.
+Normal mode:
+- follow the reviewer-authored HANDOVER instructions and append the current task execution result as required.
+
+Autonomous UI/Layout mode:
+- maintain current/in-progress task state in `docs/AUTONOMOUS_UI_STATUS.md`;
+- do not continuously narrate planning, CI-pending state, and retries into HANDOVER;
+- when a task becomes `COMPLETED BY AGENT — CI GREEN` or `BLOCKED — HUMAN REVIEW REQUIRED`, append one compact archival entry to `HANDOVER.md`;
+- then refresh `docs/AUTONOMOUS_UI_STATUS.md` in place with the new current state.
+
+Keep all records truthful: distinguish tests changed from tests actually run, and never claim remote CI success unless it was actually checked.
