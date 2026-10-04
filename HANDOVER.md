@@ -141,3 +141,27 @@ Focused validation: only the new 390/480/650 mounted cases and relevant existing
 Implementation result: changed only mobile Deck/Discard presentation. Both pile envelopes are 56×78px at 390/480/650px, remain centered at the existing lower-middle anchor, and use quieter surfaces/shadows; removing the mobile Discard tilt was required because its transformed visible bounds exceeded the approved envelope. The existing discard card face/art is unchanged. A reviewed 480px Interaction screenshot confirms the piles stay visually secondary to the Stage and local controls. Files: `app/sequence-overrides.css`, `tests/browser/ui19.spec.mjs`, this handover, and `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
 Focused validation: `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-12C' --workers=2` — 6/6 passed; retained mounted local-Dock/discard identity regression — 1/1 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. No local full suite/build/lint. Commit, push, and exact-revision CI are pending.
+
+### UX2.0VIS-12C — CI closure
+
+Status: `COMPLETED BY AGENT — CI GREEN`  
+Tested revision: `60c353de5fb6957e716b07ac07dfb48f692ace33`  
+GitHub Actions run: [37216175450](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37216175450) — build-and-test job `111477024607` and deploy job `111478068875` both succeeded, including production smoke test. No CI fixes required. Human Reviewer acceptance remains separate.
+
+### UX2.0PROCESS-01 — Use a Non-Blocking CI Checkpoint Between Autonomous Tasks
+
+Status: `PLANNED`
+
+Objective: update persistent repository guidance so autonomous UI work does not wait after each push, but checks the latest `ux-v2` push-triggered Actions run before beginning the next task's source edits.
+
+Requirements:
+- After commit/push, proceed directly to bounded next-task planning; do not wait, sleep-poll, or repeatedly inspect that run.
+- At the next task boundary, check the latest push-triggered run before editing source. If it failed, pause feature work and fix the actual failure; if it is queued/running, proceed without waiting and check again at the following task boundary.
+- Keep every revision's CI state truthful; never call an unchecked or pending revision green.
+- Apply the same rule to future sessions through `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`.
+
+Focused validation: review for conflicting wait-until-green instructions in the two active guidance files; no product tests are needed. Push this guidance change and use the newly documented checkpoint before the next UI implementation.
+
+Implementation update: `AGENTS.md` and this workflow now share the same non-blocking checkpoint: push without waiting; before the next task's source edits, inspect the latest `ux-v2` push run; fix a completed failure before feature work; proceed immediately if queued/running; and keep unverified revisions CI-pending. Completion wording still requires exact-revision required jobs to succeed. The VIS-12C run/job evidence above was confirmed before this procedural change. The new guidance revision remains CI pending until its own Actions result is observed.
+
+Focused validation: manually reconciled activation, delivery, planning-gate, task-completion, and handoff sections in both guidance files; `rg` review found no remaining autonomous instruction to wait for green before starting the next task. No product tests were changed or run.

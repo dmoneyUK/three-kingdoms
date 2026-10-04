@@ -18,6 +18,14 @@ The human Reviewer workflow is **not** changed:
 
 During this experiment the Coding Agent may plan and execute multiple consecutive bounded tasks without waiting for human review after every task, provided it follows the design, authority, testing, CI, HANDOVER, and stop rules below.
 
+CI uses a non-blocking checkpoint cadence: after a push, do not wait for that
+run to finish. Plan and prepare the next bounded task; immediately before its
+first source edit, inspect the latest push-triggered GitHub Actions run on
+`ux-v2`. If that run is still queued or in progress, proceed without polling
+and check again only at the next task boundary. If it has failed, pause new
+feature work and fix the actual failure. A revision is not `CI GREEN` until
+its exact required run has been confirmed successful.
+
 ### Activation
 
 This workflow is active when the user either:
@@ -147,27 +155,37 @@ Never write `REVIEWER ACCEPTED`. Only the human Reviewer may do that.
 
 ---
 
-## 4. Mandatory CI loop for every task
+## 4. Non-blocking CI checkpoint for every task
 
 For every implementation task:
 
-1. Implement the bounded task.
-2. Run focused local tests.
-3. Run the relevant broader local tests allowed by the repository.
-4. Run `git diff --check`.
-5. Commit.
-6. Push to `origin/ux-v2`.
-7. Wait for the GitHub Actions run triggered by that push.
-8. Inspect the actual CI jobs and failure logs.
-9. If CI fails, diagnose the real reason.
-10. Fix the root cause.
-11. Push the fix.
-12. Wait for CI again.
-13. Repeat until CI is green.
-14. Record the durable completed result in `docs/AUTONOMOUS_UI_ROADMAP.md`.
-15. Replace/update the short HANDOVER with the compact completed result plus exactly one next bounded task, then continue.
+1. Implement the bounded task and run only the focused local validation allowed
+   by `AGENTS.md` and the current handoff.
+2. Commit and push to `origin/ux-v2`; record the exact revision as
+   `IMPLEMENTED — CI PENDING` until its result is known.
+3. Do not wait, sleep-poll, or repeatedly inspect the just-pushed Actions run.
+   Continue with next-task planning.
+4. At the next task boundary, synchronize `ux-v2`, review the required design
+   and workflow documents, select the bounded task, then—before its first
+   source edit—inspect the latest push-triggered Actions run on `ux-v2`:
+   - if completed successfully, proceed;
+   - if queued or in progress, do not wait or poll; proceed and check again at
+     the next task boundary;
+   - if completed with failure, pause new feature work, inspect only the
+     relevant failed job/logs, fix the root cause, and push the correction.
+     Do not wait for the correction's CI run; resume bounded work and inspect
+     the latest run at the next task boundary.
+5. If no relevant run/status is available, record CI as unverified and
+   proceed without claiming success.
+6. Keep each revision's CI state truthful in `HANDOVER.md` and the roadmap:
+   only mark a revision `COMPLETED BY AGENT — CI GREEN` after its exact required
+   jobs are confirmed successful. A pending/unchecked revision stays pending,
+   even when a later task has started.
 
-Do not start the next implementation while the previous task CI is red.
+The latest-run check is a checkpoint, not a wait gate. Do not start new feature
+work when the checked latest run is already a completed failure; do not block
+on queued/running CI. Recheck only at the next new-task boundary, not between
+commits or as background monitoring.
 
 ### Starting baseline
 
@@ -978,6 +996,10 @@ only after:
 - required CI jobs are green;
 - the roadmap contains durable history and the short HANDOVER accurately contains the latest result plus current/next task.
 
+Implementation may continue into a later bounded task while CI is pending, as
+directed by §4. In that case keep the earlier task explicitly pending; starting
+another task does not imply completion or Reviewer acceptance.
+
 This is still not human Reviewer acceptance.
 
 ---
@@ -1058,13 +1080,19 @@ During implementation, keep only the task-relevant result/CI state in HANDOVER. 
 
 Do not retell old task specifications.
 
-### 18.4 Compact CI closeout
+### 18.4 Compact CI status and handoff
 
-After CI is green:
+At each task boundary:
 
-- add the durable completion record to the roadmap;
-- replace/update HANDOVER so it contains the concise final result and exactly one next/current bounded task;
+- record a completed exact-revision CI result in the roadmap when it has been observed;
+- keep a pending or unchecked revision explicitly pending in HANDOVER/roadmap;
+- define exactly one next bounded task before its implementation starts;
 - record only run/job result, CI-fix status, focused evidence and next-task rationale.
+
+When the next-task checkpoint finds a run still pending, do not delay task
+planning or implementation merely to close the record. Recheck only at the
+following task boundary; never infer that a pending revision passed because a
+later task was started or pushed.
 
 Do not repeat local test tables or CI logs.
 
@@ -1126,6 +1154,10 @@ Do not stop merely because three tasks are complete if the next task is small, c
 ## 19. Next-task planning gate
 
 Before planning every next task, first synchronize `ux-v2` from `origin` and review the current `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` and this workflow for newly added or changed requirements, defects, and execution rules. Check the design sections relevant to the candidate plus any new/changed sections surfaced since the previous planning pass. Record approved findings that are deferred in the roadmap so they are not lost; they need not all be implemented immediately, and must not be bundled into the current bounded task without passing this gate.
+
+After choosing the next task and before editing its source, apply the non-
+blocking CI checkpoint in §4. A completed failure takes priority over the
+planned feature task; a queued/running run does not delay it.
 
 Then answer these questions from the actual current repo and approved design:
 

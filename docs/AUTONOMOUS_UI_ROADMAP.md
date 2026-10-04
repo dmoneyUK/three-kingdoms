@@ -24,14 +24,14 @@ Do not copy this entire roadmap into working context unless historical reconstru
 ## Current frontier
 
 Latest completed milestone:
-- `UX2.0VIS-12B — Restore Hero-First Width for Mobile Top-Row Opponent Seats`
-- final tested revision `102f36d1430663f5005c4696a90b6bc1135944a4`
-- CI run `37215156772`: build-and-test and deploy/smoke successful
+- `UX2.0VIS-12C — Reduce Mobile Deck/Discard Prominence`
+- final tested revision `60c353de5fb6957e716b07ac07dfb48f692ace33`
+- CI run `37216175450`: build-and-test and deploy/smoke successful
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-12C — Reduce Mobile Deck/Discard Prominence`
-- status: IMPLEMENTED — CI PENDING
+- `UX2.0PROCESS-01 — Use a Non-Blocking CI Checkpoint Between Autonomous Tasks`
+- status: IMPLEMENTED — CI PENDING; task detail is in `HANDOVER.md`
 - current task authority: `HANDOVER.md`
 
 ## UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
@@ -82,9 +82,7 @@ Approved design findings deferred from VIS-12B: ordinary Deck/Discard should rem
 
 Completed by Agent; final tested revision `102f36d1430663f5005c4696a90b6bc1135944a4`, GitHub Actions run `37215156772` — build-and-test job `111474046079` and deploy job `111474896190` succeeded, including production smoke test. At 480px, three mobile Top Row opponent seats render 146px wide with 12px margins and 9px gaps; 390px cards are ~117.5px; at 650px the cap is 146px. Kept seat height and vertical anchors, public details, inspect/target behavior and Side Column unchanged. Updated affected VIS-04B/C assertions. Focused browser matrix 74/74; targeted ESLint passed. Human Reviewer acceptance remains separate.
 
-Current planned VIS-12C isolates default pile compactness and contrast while retaining the current lower-middle background anchor. Exact edge placement and Hero crop validation remain deferred, separate candidates.
-
-VIS-12C has been implemented locally and its focused 390/480/650px Rest/Interaction regressions pass; commit, push, and exact-revision CI remain pending. The persistent pile envelope is 56×78px and ordinary surfaces are lower-contrast; discard-card face/art and the existing lower-middle anchor remain unchanged. See the handover execution result for exact files, checks, and final CI evidence.
+VIS-12C completed on `60c353de5fb6957e716b07ac07dfb48f692ace33`; exact-revision run `37216175450` passed build-and-test and deployment/production smoke test. At 390/480/650px, Deck/Discard envelopes are 56×78px with lower-contrast surfaces; the existing lower-middle anchor, discard face/art and interaction behavior remain unchanged. Focused mobile regressions passed 6/6, retained discard identity render passed 1/1, and targeted ESLint passed. Exact pile-edge placement and Hero crop validation remain separate future candidates.
 
 ## Durable accepted UI / presentation contracts
 

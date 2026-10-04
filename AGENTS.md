@@ -23,9 +23,9 @@ When autonomous mode is active, use this startup order:
 
 While autonomous mode is active, the autonomous workflow may:
 
-- derive the next bounded UI/Layout task from the approved design after the previous task is complete;
+- derive and begin the next bounded UI/Layout task after the previous implementation is pushed, subject to the latest-run checkpoint below;
 - continue through multiple bounded tasks;
-- wait for and inspect GitHub Actions for its own pushed revision;
+- inspect GitHub Actions at the start of each new task without waiting for an in-progress run;
 - fix real CI failures before continuing;
 - keep the current task, latest execution result, and next handoff in the short `HANDOVER.md`;
 - move completed historical detail into `docs/AUTONOMOUS_UI_ROADMAP.md` so HANDOVER does not grow over time.
@@ -74,7 +74,7 @@ In autonomous UI/Layout mode, current task authority comes from the short `HANDO
   - `git diff --check`
 - Commit and push the implementation, focused tests, documentation, and updated handover files together to the branch required by the current remote `HANDOVER.md`.
 - In normal mode, do not poll GitHub Actions after pushing; the user will report failures.
-- In autonomous UI/Layout mode, follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`: the Agent may wait for and inspect the CI run for its own exact revision, fix relevant failures, and continue only after green.
+- In autonomous UI/Layout mode, follow `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`'s non-blocking CI checkpoint: after pushing, do not wait or poll. Before editing source for the next task, inspect the latest push-triggered Actions run on `ux-v2`. If it has completed with failure, pause new feature work and fix the actual failure; if it is queued/in progress, do not wait—proceed and check again at the following task boundary. A task remains CI-pending until its exact revision's required jobs are confirmed successful; never label an unverified revision green.
 - If a CI failure must be investigated, inspect only the relevant failed job and reproduce the smallest necessary issue.
 - Never claim CI or production deployment was verified unless it was actually checked.
 
@@ -88,6 +88,6 @@ Autonomous UI/Layout mode:
 - during implementation, update only the compact execution-result/CI state needed for handoff;
 - when a task closes or blocks, move durable historical detail into `docs/AUTONOMOUS_UI_ROADMAP.md`;
 - replace stale HANDOVER content instead of appending an ever-growing history;
-- after CI green, define exactly one next bounded task in HANDOVER before continuing.
+- at each task boundary, define exactly one next bounded task in HANDOVER and inspect the latest push-triggered CI run before its first source edit; a queued/running run does not block progress, while a completed failure must be fixed before new feature edits.
 
 Keep all records truthful: distinguish tests changed from tests actually run, and never claim remote CI success unless it was actually checked.
