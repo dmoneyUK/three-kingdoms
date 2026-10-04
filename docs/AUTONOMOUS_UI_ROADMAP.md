@@ -24,13 +24,13 @@ Do not copy this entire roadmap into working context unless historical reconstru
 ## Current frontier
 
 Latest completed milestone:
-- `UX2.0VIS-10C — Opponent Hero Readability and Public Equipment at a Glance`
-- final tested revision `f8fd113ece95e11665758b1d267172e97b731a5d`
-- CI run `37205238173`: build-and-test and deploy successful
+- `UX2.0VIS-11A — Keep the Interaction Stage Inside the Safe Zone on Narrow Short Portrait Screens`
+- final tested revision `4e8dcb3ca10af5532efc5182bb3ae8b4e37dc708`
+- CI run `37207569443`: build-and-test and deploy successful
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-11A — Keep the Interaction Stage Inside the Safe Zone on Narrow Short Portrait Screens`
+- `UX2.0VIS-11B — Place the Mobile Primary Action in the Centre-Right Thumb Zone`
 - status: IMPLEMENTED — CI PENDING
 - current task authority: `HANDOVER.md`
 
@@ -60,7 +60,11 @@ Completed by Agent; final tested revision `f8fd113ece95e11665758b1d267172e97b731
 
 ## UX2.0VIS-11A — Keep the Interaction Stage Inside the Safe Zone on Narrow Short Portrait Screens
 
-Implemented; CI pending. On ≤360px Safe Zone widths, Group observer now uses flexible tracks rather than overflowing fixed columns; narrow Dying Rescue uses a full-width second-row handoff panel so all three role fields and local-console guidance remain together. Critical-height focus/metadata compaction remains presentation-only. Browser regression expanded the VIS-10A matrix to five states at 320×640 and 360×640 (25-card Hand), while retaining the 480×640 and 650×700 baselines; it checks required Stage content/text bounds, Dock/action containment, and document width. The regression exposed a 475px Group child against a 318px Safe Zone edge and a Dying Stage 19px below the Safe Zone; both are fixed. Representative 320×640 Dying screenshot reviewed. Focused browser matrix passed 20/20; targeted ESLint passed; no full local suite/build/lint. Exact-revision CI and Human Reviewer acceptance remain pending.
+Completed by Agent; tested revision `4e8dcb3ca10af5532efc5182bb3ae8b4e37dc708`, CI run `37207569443` — `build-and-test` job `111451871032` and `deploy` job `111452846296` both succeeded. On ≤360px Safe Zone widths, Group observer now uses flexible tracks rather than overflowing fixed columns; narrow Dying Rescue uses a full-width second-row handoff panel so all three role fields and local-console guidance remain together. Critical-height focus/metadata compaction remains presentation-only. Browser regression expanded the VIS-10A matrix to five states at 320×640 and 360×640 (25-card Hand), retaining 480×640 and 650×700 baselines; checks include required Stage child/text bounds, Dock/action containment, and document width. It exposed/fixed a 475px Group child against a 318px Safe Zone edge and a Dying Stage 19px below the Safe Zone. Representative 320×640 Dying screenshot reviewed. Focused matrix passed 20/20; targeted ESLint passed; no full local suite/build/lint. Human Reviewer acceptance remains separate.
+
+## UX2.0VIS-11B — Place the Mobile Primary Action in the Centre-Right Thumb Zone
+
+Implemented; exact-revision CI pending. The existing conditional Cancel / Primary / authoritative Decline controls now use Cancel → Primary → Decline DOM/keyboard order without changing any visibility predicate, enabled state, handler, or payload. The responsive action grid puts Primary at 55–70% of the usable action-bar width on 360px and 480px phones, anchors Decline at the right edge with a ≥32px safety gutter and ≥8px viewport-edge margin, and keeps contextual Cancel at the left with separation. The old Primary-left summary in autonomous workflow §§7.8/8 now matches design §2.7. Representative 480px target+Confirm+Cancel, response+Skip, and Play+End screenshots were reviewed. Focused browser validation passed 13/13 (six local action flows at 360/480/1440 plus retained 320/360 short-portrait containment); targeted ESLint passed. No full local suite/build/lint. Human Reviewer acceptance remains separate.
 
 ## Durable accepted UI / presentation contracts
 
@@ -80,7 +84,7 @@ Implemented; CI pending. On ≤360px Safe Zone widths, Group observer now uses f
 - Ambiguous Stage focus is shown as scope rather than fabricating a primary.
 - Dying duplicate metadata is omitted only when the same proven identities are already visible.
 - Local Guidance is a dedicated full-width wrapping row.
-- Local action semantics remain distinct; Primary is left-anchored while Cancel and Decline group at right (a lone secondary action also anchors right), with a clear empty center gutter.
+- Local action semantics remain distinct; on phones Primary belongs in the centre-right thumb zone (55–70%) and Decline/Skip/End stays far right with a measurable safety gutter. Cancel is contextual, and keyboard/DOM order should match the visual order. Desktop/tablet may use conventional left/centre alignment.
 - Provider/mode controls live in Extras and must not fill the gutter or displace the horizontal action anchors.
 - Mapped Hero skills remain in Hero Skills.
 - Hand remains one horizontal layer.
@@ -95,13 +99,12 @@ Implemented; CI pending. On ≤360px Safe Zone widths, Group observer now uses f
 
 ## Remaining approved direction
 
-After VIS-11A, inspect actual code before choosing the next bounded task. Planning review before VIS-11A found no design-file changes since VIS-10C planning; workflow §19 now requires checking for such changes before each task. Approved work intentionally deferred from VIS-11A includes:
+After VIS-11B, inspect actual code before choosing the next bounded task. Planning review before VIS-11B scanned the full design/workflow changes since the VIS-11A plan: the only new design requirement was §2.7's mobile centre-right Primary thumb zone and safety separation; workflow was unchanged but retains a stale Primary-left summary in §§7.8/8. The current task reconciles that duplicate. Approved work intentionally deferred from VIS-11B includes:
 
 1. final LocalPlayerDock Hero / Skills / Equipment proportions and density, if measurable gaps remain;
-2. phone action-bar thumb-zone refinement added in design §2.7 by `09b5bbd`: Primary in the centre-right reach zone, Decline/Skip/End at far right with a measurable safety gutter, contextual Cancel only when needed, and 480px touch-target/overlap/order/usability review;
-3. representative interaction visual audit across REST, single-target, multi-target, AOE, Negation, Duel, Dying, Judgement, Borrowed Sword, Hero skill, and long guidance;
-4. reduced-height/mobile containment and final mobile visual gate;
-5. small Stage/Dock polish discovered by those audits.
+2. representative interaction visual audit across REST, single-target, multi-target, AOE, Negation, Duel, Dying, Judgement, Borrowed Sword, Hero skill, and long guidance;
+3. final mobile visual gate after the Interaction Stage, Local Dock, action slots, and hand layout are individually settled;
+4. small Stage/Dock polish discovered by those audits.
 
 Do not implement this list as one task.
 
@@ -124,7 +127,8 @@ The detailed historical ledger below preserves the complete pre-migration HANDOV
 - VIS-10A: short-portrait Top Row Stage containment.
 - VIS-10B: Primary-left / Cancel-and-Decline-right action-zone task (CI green).
 - VIS-10C: opponent Hero readability / public equipment-at-a-glance task (CI green).
-- VIS-11A: current implemented, CI-pending narrow-short-portrait Interaction Stage containment task.
+- VIS-11A: narrow-short-portrait Interaction Stage containment task (CI green).
+- VIS-11B: current planned mobile Primary thumb-zone action placement task.
 
 ## Historical ledger migrated from HANDOVER.md
 

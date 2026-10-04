@@ -2094,7 +2094,7 @@ async function loadConsoleState(page, state, width) {
   }
 }
 
-for (const width of [480, 1440]) {
+for (const width of [360, 480, 1440]) {
   test(`UX2.0VIS-06A ${width}x900 keeps semantic action slots invariant across local flows`, async ({ page }) => {
     const snapshots = [];
     for (const { state, buttons } of VIS_06A_STATES) {
@@ -2104,7 +2104,7 @@ for (const width of [480, 1440]) {
       const controls = dock.locator('[data-console-surface="local-operation"]');
       const extras = controls.locator('[data-action-extras="true"]');
       const slots = controls.locator('[data-action-slots="true"]');
-      const slotNames = ["primary", "cancel", "decline"];
+      const slotNames = ["cancel", "primary", "decline"];
       const orderedSlots = slotNames.map((name) => slots.locator(`[data-action-slot="${name}"]`));
       await expect(guidance, `${state} has one guidance row`).toHaveCount(1);
       await expect(extras, `${state} has one extras region`).toHaveCount(1);
@@ -2133,30 +2133,37 @@ for (const width of [480, 1440]) {
         const leftInset = bounds.left + Number.parseFloat(style.borderLeftWidth) + Number.parseFloat(style.paddingLeft);
         const rightInset = bounds.right - Number.parseFloat(style.borderRightWidth) - Number.parseFloat(style.paddingRight);
         const slotsElement = element.querySelector('[data-action-slots="true"]');
-        const actionButtons = ["primary", "cancel", "decline"].map((name) => slotsElement.querySelector(`[data-action-slot="${name}"] button`)).filter(Boolean);
+        const actionButtons = ["cancel", "primary", "decline"].map((name) => slotsElement.querySelector(`[data-action-slot="${name}"] button`)).filter(Boolean);
         const keyboardOrder = actionButtons.every((button, index) => index === actionButtons.length - 1 || Boolean(button.compareDocumentPosition(actionButtons[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING));
         const primary = rect("primary");
         const cancel = rect("cancel");
         const decline = rect("decline");
-        const firstSecondary = cancel ?? decline;
-        const rightmost = decline ?? cancel;
+        const actionWidth = rightInset - leftInset;
+        const primaryCenter = primary ? (primary.left + primary.right) / 2 : null;
         return {
           leftInset,
           rightInset,
+          actionWidth,
           primary,
           cancel,
           decline,
-          firstSecondary,
-          rightmost,
+          primaryCenterRatio: primaryCenter === null ? null : (primaryCenter - leftInset) / actionWidth,
+          declineViewportMargin: decline === null ? null : window.innerWidth - decline.right,
           keyboardOrder,
         };
       });
-      expect(Math.abs(actionGeometry.primary.left - actionGeometry.leftInset), `${state} Primary is anchored left`).toBeLessThanOrEqual(1);
-      expect(Math.abs(actionGeometry.rightmost.right - actionGeometry.rightInset), `${state} right action is anchored right`).toBeLessThanOrEqual(1);
-      expect(actionGeometry.firstSecondary.left - actionGeometry.primary.right, `${state} has a clear center gutter`).toBeGreaterThanOrEqual(32);
-      if (actionGeometry.cancel && actionGeometry.decline) {
-        expect(actionGeometry.decline.left - actionGeometry.cancel.right, `${state} keeps Cancel beside Decline`).toBeGreaterThanOrEqual(0);
-        expect(actionGeometry.decline.left - actionGeometry.cancel.right, `${state} keeps the right group compact`).toBeLessThanOrEqual(8);
+      if (width <= 700) {
+        expect(actionGeometry.primaryCenterRatio, `${state} Primary is in the centre-right phone thumb zone`).toBeGreaterThanOrEqual(0.55);
+        expect(actionGeometry.primaryCenterRatio, `${state} Primary stays safely away from the far-right edge`).toBeLessThanOrEqual(0.70);
+      }
+      if (actionGeometry.cancel) {
+        expect(Math.abs(actionGeometry.cancel.left - actionGeometry.leftInset), `${state} contextual Cancel starts at the left safety zone`).toBeLessThanOrEqual(1);
+        expect(actionGeometry.primary.left - actionGeometry.cancel.right, `${state} Cancel remains visually separated from Primary`).toBeGreaterThanOrEqual(width <= 700 ? 32 : 4);
+      }
+      if (actionGeometry.decline) {
+        expect(Math.abs(actionGeometry.decline.right - actionGeometry.rightInset), `${state} Decline is anchored in the far-right secondary zone`).toBeLessThanOrEqual(1);
+        expect(actionGeometry.decline.left - actionGeometry.primary.right, `${state} has a clear Primary-to-Decline safety gutter`).toBeGreaterThanOrEqual(32);
+        expect(actionGeometry.declineViewportMargin, `${state} Decline keeps a visible margin from the phone edge`).toBeGreaterThanOrEqual(8);
       }
       expect(actionGeometry.keyboardOrder, `${state} keyboard traversal matches left-to-right visual order`).toBe(true);
       expect(guidanceBox.width).toBeGreaterThanOrEqual(dockBox.width - 16);
@@ -2187,14 +2194,14 @@ for (const width of [480, 1440]) {
         const extrasBox = await extras.boundingBox();
         expect(extrasBox.y + extrasBox.height).toBeLessThanOrEqual(actionGeometry.primary.top);
       }
-      snapshots.push({ state, primary: actionGeometry.primary, rightmost: actionGeometry.rightmost });
+      snapshots.push({ state, primary: actionGeometry.primary, decline: actionGeometry.decline });
     }
     const primaryLefts = snapshots.map(({ primary }) => primary.left);
     const primaryWidths = snapshots.map(({ primary }) => primary.right - primary.left);
-    const rightEdges = snapshots.map(({ rightmost }) => rightmost.right);
+    const rightEdges = snapshots.filter(({ decline }) => decline).map(({ decline }) => decline.right);
     expect(Math.max(...primaryLefts) - Math.min(...primaryLefts), `Primary X is stable at ${width}px`).toBeLessThanOrEqual(4);
     expect(Math.max(...primaryWidths) - Math.min(...primaryWidths), `Primary width is stable at ${width}px`).toBeLessThanOrEqual(4);
-    expect(Math.max(...rightEdges) - Math.min(...rightEdges), `right action edge is stable at ${width}px`).toBeLessThanOrEqual(4);
+    expect(Math.max(...rightEdges) - Math.min(...rightEdges), `Decline edge is stable at ${width}px`).toBeLessThanOrEqual(4);
   });
 }
 

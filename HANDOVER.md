@@ -7,39 +7,41 @@ Current authority: this file and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`. 
 
 ## Latest result
 
-### UX2.0VIS-10C — Opponent Hero Readability and Public Equipment at a Glance
+### UX2.0VIS-11A — Keep the Interaction Stage Inside the Safe Zone on Narrow Short Portrait Screens
 
 Status: `COMPLETED BY AGENT — CI GREEN`  
-Tested revision: `f8fd113ece95e11665758b1d267172e97b731a5d`  
-CI run: [37205238173](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37205238173) — build-and-test and deploy succeeded. Initial run [37204909828](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37204909828) exposed two stale retained equipment-wrapper assertions; corrected to verify the visible public Weapon summary, focused rerun 2/2 passed. Human Reviewer acceptance remains separate.
+Tested revision: `4e8dcb3ca10af5532efc5182bb3ae8b4e37dc708`  
+CI run: [37207569443](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37207569443) — `build-and-test` job `111451871032` and `deploy` job `111452846296` succeeded. Human Reviewer acceptance remains separate.
 
-Focused VIS-10C browser matrix passed 23/23; targeted render regression 1/1; targeted ESLint had no errors (fixture JSX is not configured for lint). No full local suite/build/lint was run.
+Focused short-portrait browser matrix passed 20/20; targeted ESLint passed. No full local suite/build/lint was run. During implementation, design revision `09b5bbd` added the mobile thumb-zone action requirement in §2.7; it is recorded below as the next bounded task.
 
 ## Current task
 
-### UX2.0VIS-11A — Keep the Interaction Stage Inside the Safe Zone on Narrow Short Portrait Screens
+### UX2.0VIS-11B — Place the Mobile Primary Action in the Centre-Right Thumb Zone
 
 Status: `IMPLEMENTED — CI PENDING`
 
-Objective: prevent the Top Row Interaction Stage from extending into the Local Player Dock on narrow, short portrait viewports while preserving required Stage information and the fixed Dock composition.
+Objective: move the mobile semantic Primary action into the approved centre-right thumb zone while keeping authoritative Decline/Skip/End safely at the far right and preserving contextual Cancel.
 
-Evidence: screenshot and DOM geometry probe at 320×640 in `long-guidance` with 25 Hand cards measured Stage y=149–324.4, Safe Zone bottom=288.5, and Dock top=294.5: Stage overruns the Safe Zone by 35.9px and overlaps the Dock by 29.9px. Existing VIS-10A coverage starts at 480×640 / 650×700.
+Evidence at task start: at 480px, `.turn-controls > [data-action-slots]` put Primary in the first 78px track and grouped Cancel/Decline at the right; VIS-06A asserted Primary was left-anchored. Design §2.7 instead requires the mobile Primary in the 55–70% centre-right region. Workflow §§7.8/8 duplicated the superseded Primary-left rule; reconciled during this task.
 
-Authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.90–0.91, 1.4, 2.10; `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` §§7.3, 7.7, 19. Preserve Top Row topology, required semantic Stage content, local Dock hierarchy, `CurrentAction` authority, and existing gameplay/privacy boundaries.
+Authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §2.7 and Action-placement validation; revision `09b5bbd` explicitly supersedes the earlier far-left phone anchor. Workflow §1 names the design document as primary UI authority; synchronize only its stale action-slot summary in §§7.8/8 as part of this task.
 
 Requirements:
-- Keep required current Stage content within the measured Safe Zone and above the Dock; Stage must not overlap the Dock, Guidance, or action controls.
-- Validate 320×640 and 360×640 with a 25-card Hand for representative Interaction, Negation, Dying, and Group-observer states; prove required Stage content remains visible, Dock/action controls remain contained and usable, and document width does not overflow.
-- Use approved responsive compaction only; do not silently hide/truncate current semantic focus, decision, or required guidance, change composition, or alter gameplay/server authority.
+- At 480px portrait, place Primary in the 55–70% horizontal thumb zone and not flush to either edge; place Decline/Skip/End far right with at least a 32px measurable Primary-to-Decline gutter and a deliberate edge margin.
+- Keep Cancel contextual (rendered only when `CurrentAction`-owned local cancellation is available); arrange any visible Cancel/Primary/Decline controls in visual and keyboard/DOM order without changing action meaning.
+- Preserve minimum 78×32px action targets; keep Primary visually more prominent than End Turn; do not overlap Guidance, Hand, other controls, or introduce page overflow.
+- Cover card+target+Confirm, response+Skip/Decline, normal Play Phase+End Turn, and a genuine local picker requiring Cancel at 480px; retain 1440px desktop regression and inspect representative phone screenshots for one-handed reach / accidental-tap risk.
+- Preserve action visibility, labels, enabled state, `CurrentAction` authority, callback/payload, and server/gameplay semantics; provider Extras stay outside the Primary/Decline safety gutter.
 
-Regression and visual proof: add focused short-portrait geometry/visibility cases to the existing VIS-10A matrix and inspect representative screenshots; DOM presence alone is insufficient.
+Expected files: `app/page.tsx`, `app/sequence-overrides.css`, `tests/browser/ui19.spec.mjs`, `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`, `HANDOVER.md`, and `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-Validation: focused browser cases and targeted lint only; no local full suite/build/lint. Push code, focused tests, relevant docs, and handover; inspect Actions for the exact pushed revision, fix real failures, and continue only after CI is green.
+Validation: focused browser tests and targeted lint only; no local full suite/build/lint. Push source/tests/docs/handover and wait for Actions on the exact revision; fix actual failures and continue only after CI is green.
 
-Planning gate: all five §19 checks passed. The approved Stage/Dock non-overlap invariant is explicit; the defect is measured and reproducible; the work is presentation-only and independently testable. Design-file diff since VIS-10C planning: none. During implementation, remote revision `09b5bbd` updated design §2.7 with phone Primary centre-right thumb-zone placement and safety separation from Decline/Skip/End, superseding the earlier far-left anchor. This does not change VIS-11A's Safe Zone scope; the new action-placement requirement is tracked separately for the next planning review. Other deferred items remain Local Dock final proportions/density and representative interaction/final mobile visual audit.
+Planning gate: all five §19 checks passed. The current visual invariant is explicit and the old left-anchor implementation/test gap is measurable; only presentation/DOM traversal changes are needed, with all actual action semantics preserved. The design update resolves the older anchor; no product decision is inferred. Implementation rechecked touch geometry and the three-control picker arrangement against §2.7.
 
-Implementation result: `app/globals.css` now uses a flexible four-track Group layout at ≤360px Safe Zone width and moves the narrow Dying Rescue panel into a full-width second row with its three handoff roles kept together. The existing critical-height metadata compaction remains presentation-only. Extended VIS-10A coverage to 320×640 and 360×640, with Interaction, Negation, Dying, Group-observer, and long-guidance states at 25 cards; assertions now verify Stage-child bounds/text, full Dying handoff fields, Dock containment, and no horizontal document overflow. The test caught and fixed a Group implicit-column overflow (child edge 475px vs Safe Zone right 318px) and a 320×640 Dying Stage extending 19px below the Safe Zone. Representative 320×640 Dying screenshot visually reviewed; all required handoff text remained legible.
+Implementation result: moved the existing conditional Cancel / Primary / authoritative Decline slots into left-to-right DOM order without changing visibility conditions, enabled state, handlers, or payloads. The phone grid places Primary in the measured 55–70% region and Decline at the right edge with >=32px separation and >=8px viewport-edge margin; contextual Cancel stays left with its own separation. Reconciled workflow §§7.8/8 with design §2.7. Reviewed 480px screenshots for target+Confirm+Cancel, response+Skip, and Play+End.
 
-Focused validation: `npx playwright test --config tests/browser/layout.config.mjs --grep 'stays inside the Safe Zone without losing Stage content' --workers=2` — 20/20 passed across 480×640, 650×700, 320×640, and 360×640. `node_modules/.bin/eslint tests/browser/ui19.spec.mjs` passed. No full local suite/build/lint was run. Commit/push and exact-revision CI are pending.
+Focused validation: semantic action-slot browser matrix passed 3/3 at 360/480/1440px across six local flows; retained short-portrait Stage containment passed 10/10 at 320/360px; targeted ESLint passed. The matrix verifies 78×32px buttons, thumb-zone geometry at 360/480, right anchoring/gutter, traversal order, no action overlap, and no horizontal page overflow. No full local suite/build/lint was run. Commit/push and exact-revision CI are pending.
 
-Stop condition: if required Stage content cannot fit inside the approved Safe Zone without removing/hiding required meaning or changing the approved Dock composition, record measurements and stop with `BLOCKED — HUMAN REVIEW REQUIRED`.
+Stop condition: if 480px controls cannot simultaneously meet the approved reach zone, >=32px Primary-to-Decline gutter, minimum target size, readable contextual Cancel, and coherent traversal without semantic changes, record exact measurements and stop with `BLOCKED — HUMAN REVIEW REQUIRED`.

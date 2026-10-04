@@ -1762,6 +1762,12 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           {room.isMyTurn && canPlay && consoleKind === "turn" && canFormSerpentAttack && <button className={`serpent-control ${serpentMode ? "active" : ""}`} onClick={() => { setSerpentMode((active) => !active); setSerpentSelected([]); setSelected(""); setTarget(""); }}>{serpentMode ? "Normal" : "Spear"}</button>}
         </div>
         <div data-action-slots="true">
+          <div data-action-slot="cancel">
+            {borrowedSwordTargetSelectionActive && consoleDecision.localCancel.visible && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
+            {triggerResponse && triggerTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !triggerHasProviderCancelSurface && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
+            {(activeSkillSelection || activeSkillTargetSelection) && activeSkillTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && <button className="end local-target-cancel" disabled={busy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && normalTargetSelectionActive && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
+          </div>
           <div data-action-slot="primary">
             {rescueDecisionReady && !canRespond && consolePrimaryId === "rescue" && <button className="primary" disabled={busy || card?.kind !== "Peach" || !consoleDecision.primary?.enabled} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button>}
             {borrowedSwordTargetSelectionActive && consolePrimaryId === "borrowed-sword" && <button className="primary" disabled={busy || presentationBusy || !localTargetSelection.canConfirm || !consoleDecision.primary?.enabled} onClick={() => void confirmBorrowedSwordTarget()}>{busy ? "Confirming…" : "Confirm"}</button>}
@@ -1772,19 +1778,11 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
             {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy || !card || selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid) || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted"].includes(card.kind) && !target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}
           </div>
-          <div data-action-secondary="true">
-            <div data-action-slot="cancel">
-              {borrowedSwordTargetSelectionActive && consoleDecision.localCancel.visible && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
-              {triggerResponse && triggerTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !triggerHasProviderCancelSurface && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
-              {(activeSkillSelection || activeSkillTargetSelection) && activeSkillTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && <button className="end local-target-cancel" disabled={busy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
-              {room.isMyTurn && canPlay && consoleKind === "turn" && normalTargetSelectionActive && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !normalHasProviderCancelSurface && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
-            </div>
-            <div data-action-slot="decline">
-              {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
-              {triggerResponse && triggerDeclineAction && !targetCardPickerOption && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
-              {canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>Skip</button>}
-              {room.isMyTurn && canPlay && consoleKind === "turn" && <button className="end" disabled={busy || presentationBusy} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "End"}</button>}
-            </div>
+          <div data-action-slot="decline">
+            {rescueDecisionReady && !canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={busy || !consoleDecision.authoritativeDecline.enabled} onClick={() => { void onAction("skip_rescue"); setSelected(""); }}>{busy ? "Skipping…" : "Skip"}</button>}
+            {triggerResponse && triggerDeclineAction && !targetCardPickerOption && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !consoleDecision.authoritativeDecline.enabled} onClick={() => onAction("decline_trigger")}>Skip</button>}
+            {canRespond && consoleDecision.authoritativeDecline && <button className="end" disabled={responseControlsDisabled || !responseDamageAction || !consoleDecision.authoritativeDecline.enabled} onClick={() => responseDamageAction && onAction(responseDamageAction)}>Skip</button>}
+            {room.isMyTurn && canPlay && consoleKind === "turn" && <button className="end" disabled={busy || presentationBusy} onClick={() => onAction("end_turn")}>{busy ? "Finishing…" : "End"}</button>}
           </div>
         </div>
       </div>

@@ -639,11 +639,11 @@
 .local-player-dock .console-guidance > .error { margin: 4px 0 0; }
 .local-player-dock .turn-controls { --action-slot-width: 90px; position: relative; grid-area: actions; z-index: 100; min-height: 65px; height: auto; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 4px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
 .local-player-dock .turn-controls > [data-action-extras="true"] { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px; width: 100%; min-width: 0; }
-.local-player-dock .turn-controls > [data-action-slots="true"] { display: grid; grid-template-columns: var(--action-slot-width) minmax(32px, 1fr) max-content; grid-template-areas: "primary . secondary"; align-items: center; column-gap: 4px; width: 100%; min-width: 0; }
+.local-player-dock .turn-controls > [data-action-slots="true"] { display: grid; grid-template-columns: var(--action-slot-width) var(--action-slot-width) minmax(32px, 1fr) var(--action-slot-width); grid-template-areas: "cancel primary . decline"; align-items: center; column-gap: 4px; width: 100%; min-width: 0; }
+.local-player-dock [data-action-slot="cancel"] { grid-area: cancel; }
 .local-player-dock [data-action-slot="primary"] { grid-area: primary; }
-.local-player-dock [data-action-secondary="true"] { grid-area: secondary; display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: max-content; max-width: 100%; }
-.local-player-dock [data-action-secondary="true"] [data-action-slot] { flex: 0 0 var(--action-slot-width); }
-.local-player-dock [data-action-secondary="true"] [data-action-slot]:not(:has(button)) { display: none; }
+.local-player-dock [data-action-slot="decline"] { grid-area: decline; }
+.local-player-dock [data-action-slot]:not(:has(button)) { display: none; }
 .local-player-dock [data-action-slot] { display: flex; min-width: 0; align-items: center; justify-content: center; }
 .local-player-dock [data-action-slot] button { box-sizing: border-box; width: 100%; min-width: 0; }
 .local-player-dock .turn-controls button { min-width: 78px; min-height: 32px; padding: 5px 8px; font-size: 8px; }
@@ -680,6 +680,15 @@
   .local-player-dock .turn-controls [data-action-slot] button { min-width: 0; }
   .local-target-selection { gap: 2px 5px; font-size: 7px; }
   .local-target-selection b { font-size: 6px; }
+}
+
+@media (max-width: 700px) {
+  .local-player-dock .turn-controls { --action-slot-width: 78px; }
+  .local-player-dock .turn-controls > [data-action-slots="true"] {
+    grid-template-columns: var(--action-slot-width) minmax(0, min(calc(62% - 117px), calc(100% - 266px))) var(--action-slot-width) minmax(32px, 1fr) var(--action-slot-width);
+    grid-template-areas: "cancel . primary . decline";
+    column-gap: 0;
+  }
 }
 
 @media (max-width: 360px) {

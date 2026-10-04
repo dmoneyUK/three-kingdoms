@@ -525,19 +525,25 @@ Structural ownership:
 **ACTION**
 - stable semantic slots
 
-### 7.8 Stable action slots
+### 7.8 Stable action semantics and responsive placement
 
-Already accepted semantic slots, with the updated spatial grouping:
+Keep the semantic action meanings distinct:
 
-```text
-PRIMARY  |  clear center gutter  |  CANCEL  DECLINE
-```
+- **Cancel** cancels an unsubmitted local selection and is rendered only when
+  the authoritative local-cancel capability is present;
+- **Primary** commits the main action;
+- **Decline** performs an authoritative Skip / End / decline action.
 
-Primary is left-anchored. Cancel and Decline are grouped at the right; when
-only one is present, it occupies the right edge. Keep visual and keyboard
-traversal order left-to-right: Primary, Cancel, Decline.
-Provider/mode controls stay in Extras and must not fill the gutter or displace
-the action anchors.
+On phones, follow `UX_V2_INTERACTION_STAGE_DESIGN.md` §2.7: place Primary in
+the centre-right thumb zone (approximately 55–70% of the action-bar width),
+keep Decline at the far right with a measurable safety gutter, and place a
+contextual Cancel before Primary when present. Preserve a minimum 78×32px
+target, distinct meanings, and left-to-right visual/keyboard/DOM order. This
+phone rule supersedes the earlier permanent far-left Primary anchor.
+
+Desktop/tablet may use conventional left/centre alignment while preserving the
+same semantic order and separation. Provider/mode controls stay in Extras and
+must not fill the Primary/Decline safety gutter or displace the action anchors.
 
 Semantic meanings:
 
@@ -651,7 +657,7 @@ Accepted:
 - Medium external source projection;
 - viewer Hero excluded from central duplication;
 - full-width long-form Local Dock guidance;
-- permanent semantic action slots, with Primary left and Cancel / Decline grouped right;
+- distinct CurrentAction-owned Cancel / Primary / Decline semantics; phone Primary uses the approved centre-right thumb zone, with Decline far right and contextual Cancel before Primary;
 - provider Extras separated from semantic action slots;
 - Sun Shangxiang Daredevil routed to Hero Skills;
 - 5–10 Side Column deterministic topology;
