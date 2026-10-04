@@ -3,196 +3,304 @@
 ## REMOTE HANDOVER RULE
 Work only on `ux-v2`. Read this file and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`. Implement only the task below, validate, append this task's execution result, commit/push, verify remote HANDOVER, then STOP. Do not wait for or poll CI.
 
-## Reviewer status — UX2.0VIS-04B ACCEPTED, VIS-05A DEFERRED BEFORE START
+## Reviewer status — UX2.0VIS-04C ACCEPTED
 
-Reviewed implementation: `43b69730365281f26179759c22811a8841621125`.
+Reviewed implementation: `e7d898d3474ee0b8e028c32e15fa9e82c37741a6`.
 
 Accepted facts to preserve:
-- Top Row compact thumbnails remain 180x108 at 1440, 112x88 at 650, 100x78 at 480.
-- Top Row Safe Zone currently clears those seats by 13.5 / 15.75 / 16.5px at 1440 / 650 / 480.
-- Dying@650 is contained without shrinking/clipping content.
-- Hero Focus / Medium Source / Reaction / Dying / LocalPlayerDock / gameplay authority remain unchanged.
+- 2–4 player Top Row seats are now anchored to the actual player-board top band instead of being vertically centred in a flexible row;
+- player-board top insets remain 68 / 60 / 55px at desktop / <=700 / <=480;
+- Top Row seat size/X mapping remains unchanged;
+- Safe Zone now follows 14 / 16 / 16px below the seat row at 1440 / 650 / 480;
+- Interaction / Negation / Dying / Group Observer containment remains green in the focused retained suite;
+- Side Column, LocalPlayerDock, Stage internals, gameplay and presentation authority were not changed.
 
-New reviewer evidence from the real iPhone REST screenshot shows one remaining Top Row geometry defect:
-- the three opponent thumbnails are horizontally correct but visually float too far down from the top of the battlefield;
-- there is a large unused band above them;
-- code confirms why: Top Row still inherits `grid-template-rows:minmax(120px,1fr) auto minmax(120px,1fr)` and the opponent card uses `align-self:center`, so row 1 expands and centres the seat inside a tall track;
-- VIS-04B correctly moved the Safe Zone just below the seats, but it therefore followed the seats' unnecessarily-low Y position.
+The user-approved final visual target is now the generated mockup family:
+- true compact opponent top row;
+- open central battlefield / Interaction Stage;
+- enlarged interaction participants only when semantically relevant;
+- large persistent local player dock;
+- hero skills adjacent to the local hero;
+- stable action controls;
+- guidance text must remain readable on mobile.
 
-The previously assigned VIS-05A Side Column task has not started and is deferred. Fix the visible Top Row vertical anchor first.
+### Newly confirmed implementation defects
+Code review found three concrete local-operation defects that must be addressed in sequence:
 
-# NEXT TASK — UX2.0VIS-04C: Anchor Compact Top-Row Seats to the Actual Top Band
+1. **Action positions are unstable.**
+   `.turn-controls` currently renders one flex-wrapping button container. Confirm / Cancel / Skip / End / provider buttons are conditionally emitted in different DOM order across rescue, Borrowed Sword, trigger, active-skill, response and turn flows. Their screen positions therefore move between flows and can also move when extra provider buttons appear or wrapping changes.
+
+2. **Long guidance is intentionally clipped on <=480.**
+   Current mobile CSS fixes `.turn-controls` to 48px and sets `.decision-status` to `max-height:100%; overflow:hidden`. Long instructions can therefore be cut off.
+
+3. **Sun Shangxiang Daredevil is still owned by the generic bottom trigger surface.**
+   `HERO_SKILL_EFFECT_IDS["sun-shangxiang"]` maps Betrothment only. The implemented trigger `sun_shangxiang_daredevil` is not mapped to the hero-skill panel, so its projected trigger option can appear in the generic bottom operation controls instead of beside the hero. This is a separate semantic/control-ownership fix and is intentionally NOT part of VIS-06A below; it is the next priority after this layout task.
+
+The previously deferred Side Column task remains deferred until the local operation console is made stable.
+
+# NEXT TASK — UX2.0VIS-06A: Stabilize Local Action Slots and Move Guidance to a Full-Width Row
 
 ## Objective
-In 2–4 player Top Row Mode, make the already-accepted compact opponent thumbnails sit at the actual top of the player-board area instead of being vertically centred inside a large flexible grid row.
+Fix one interaction-safety problem across all local card/skill flows:
 
-Then retune only the Top Row Safe Zone top so it continues to begin 6–24px below the newly-anchored row.
+**Separate decision guidance from action buttons, and give Cancel / Primary / Decline controls permanent screen slots so their positions never change when the current card, skill, provider or response flow changes.**
 
-This is a vertical-placement correction only.
+This is a UI-structure/layout task only.
 
-## Production scope
-Expected:
-- `app/globals.css`
+Do not change gameplay legality, CurrentAction semantics, provider selection semantics, action payloads or callbacks.
+
+## Current implementation facts
+In `app/page.tsx`:
+- `.turn-controls` currently contains both `.decision-status` and one anonymous button wrapper;
+- branches render buttons directly in different orders:
+  - rescue: Peach + Skip;
+  - Borrowed Sword: Confirm + Cancel;
+  - trigger flows: provider controls + Confirm + Cancel + Skip;
+  - active skill: Confirm + Cancel;
+  - response: provider controls + Confirm + Skip;
+  - normal turn: optional Spear + Play/Confirm + Cancel + End.
+
+In `app/sequence-overrides.css`:
+- action wrapper is flex + wrap + `justify-content:flex-end`;
+- <=480 turn-controls height is fixed to 48px;
+- <=480 decision-status is clipped with `overflow:hidden`.
+
+These are the defects to remove.
+
+## Files expected in scope
+Production:
+- `app/page.tsx`
+- `app/sequence-overrides.css`
 
 Regression:
+- `tests/browser/fixture.jsx`
 - `tests/browser/ui19.spec.mjs`
 
-Do not modify `app/page.tsx`, `app/sequence-overrides.css`, game helpers, server/projector or fixtures unless strictly required by an existing test harness.
+A tiny pure presentational helper/type in `app/page.tsx` is acceptable.
+
+Do not change game/server/projector/current-action construction.
 
 ## Required implementation
 
-### 1. Remove the legacy expanding first-row behaviour in Top Row mode
-Under:
+### 1. Move decision guidance out of the action row
+Keep the existing `consoleDecision` model and the existing decision copy/data attributes.
 
-`.player-board[data-seat-topology="top-row"]`
+Render the existing decision-status content in a dedicated full-width guidance row that spans the whole LocalPlayerDock, above the hero/zones/hand/action area.
 
-the first grid row must size to the opponent thumbnail band rather than consuming `1fr`.
+Use a stable hook such as:
 
-Preferred approach:
-- make row 1 content-sized / fixed to the existing thumbnail height;
-- keep the remaining unused board area flexible below it;
-- change top-row opponent alignment from vertical centring to top alignment.
+`data-console-guidance="true"`
 
-Equivalent CSS is acceptable if it produces the same geometry.
+The guidance row must preserve:
+- `data-console-decision-kind`;
+- `data-console-coherent`;
+- `data-console-primary`;
+- `data-console-primary-enabled`;
+- `data-console-selection-count`;
+- `data-console-local-cancel`;
+- `data-console-authoritative-decline`;
+- `role="status"`;
+- `aria-live="polite"`;
+- `aria-atomic="true"`.
 
-Do not change the generic legacy `.player-board` row model globally.
+Do not duplicate the guidance in the old turn-controls row.
 
-### 2. Keep the existing player-board outer top inset
-Preserve the accepted Top Row player-board top insets:
-- desktop: 68px;
-- <=700: 60px;
-- <=480: 55px.
+### 2. Guidance must be full width and content-sized
+For all viewports:
+- guidance spans the full LocalPlayerDock width;
+- text wraps normally;
+- height grows with content;
+- no ellipsis, line clamp or `overflow:hidden`;
+- long instruction + selection summary + local-cancel hint remain readable;
+- guidance must not overlap the raised selected hand-card area;
+- guidance must not cover buttons.
 
-These offsets reserve space for existing battlefield chrome/controls.
+At <=480 specifically:
+- remove the existing clipping rule for decision-status;
+- do not force the guidance into the old 48px action height;
+- allow at least three normal wrapped text lines without clipping.
 
-Do not move the whole player-board upward.
+The LocalPlayerDock may become taller; the battlefield should flex around it. Do not create page horizontal overflow.
 
-### 3. Preserve all accepted seat X geometry and dimensions
-Do not change:
-- 2-player centre mapping;
-- 3-player left/right mapping;
-- 4-player left/centre/right mapping;
-- seat widths/heights;
-- hero-region height;
-- Hand footer height;
-- hidden top-row Equipment/Judgement treatment;
-- target/Inspect behaviour;
-- player identity / relativeIndex.
+### 3. Make turn-controls actions-only
+After moving guidance, `.turn-controls` must contain action controls only.
 
-The only seat change is Y anchoring within the existing player-board.
+Add two stable child areas:
+- `data-action-extras="true"` — optional provider/mode controls;
+- `data-action-slots="true"` — fixed semantic action slots.
 
-### 4. Seat-top contract
-At 1440x900, 650x900 and 480x900, for counts 2/3/4:
+The semantic slot container must always render three stable slots in this left-to-right order:
 
-`seatTop - playerBoardTop`
+1. `data-action-slot="cancel"`
+2. `data-action-slot="primary"`
+3. `data-action-slot="decline"`
 
-must be:
-- >= 0px;
-- <= 4px.
+Empty slots remain empty; they are not removed merely because that action is unavailable.
 
-All opponents in the same room must still share one row within the existing <=4px Y tolerance.
+### 4. Exact slot ownership
+Move the existing buttons/callbacks into these slots without changing semantics.
 
-This new regression must fail against the current pre-VIS-04C CSS where row 1 expands and centres the seats.
+#### CANCEL slot
+Only local non-authoritative cancellation of the current local selection:
+- Borrowed Sword local Cancel;
+- trigger target local Cancel when a separate provider-cancel surface is not already the owner;
+- active-skill target local Cancel;
+- normal local target Cancel.
 
-### 5. Retune Safe Zone top after moving seats
-Because seats move upward, update only the Top Row `--interaction-safe-top` values / equivalent top geometry so:
+Do not put provider-mode buttons like `Cancel <Skill>` here; those remain extras because they toggle a provider/mode rather than the common local-selection Cancel action.
 
-`safeZone.top - maxOpponentBottom`
+#### PRIMARY slot
+The current main commit action:
+- Confirm;
+- Play / Form Attack;
+- Peach rescue;
+- Discard N selected;
+- equivalent current `consoleDecision.primary` action.
 
-remains:
-- >= 6px;
-- <= 24px.
+The primary slot stays in the same geometric column even when its label changes.
 
-Do not change:
-- safe-zone left/right/bottom;
-- play-table height;
-- Stage width or internals;
-- LocalPlayerDock.
+#### DECLINE slot
+Authoritative decline / turn-finalization:
+- Skip;
+- End.
 
-Do not leave the current 253/245/260 values if they create a large dead band after the seats move.
+Do not put local Cancel in this slot.
 
-### 6. Preserve all accepted active-state containment
-For count=4 at 1440/650/480, retain:
-- interaction;
-- negation;
-- dying;
-- group-observer.
+### 5. Extras cannot move the three semantic slots
+Provider/mode controls remain in the extras region, including examples such as:
+- generic explicit response provider buttons;
+- generic trigger provider buttons;
+- Spear / Normal mode;
+- provider-owned `Cancel <label>` toggles.
 
-For each state assert:
-- max opponent bottom <= Stage top - 6px;
-- Stage fully inside Safe Zone;
-- Reaction Chain / Dying remains fully visible where applicable;
-- Hero Focus dimensions unchanged;
-- Medium Source dimensions unchanged where applicable;
-- Stage/Safe Zone do not overlap LocalPlayerDock;
-- no horizontal page overflow.
+The extras region may wrap independently, but its presence/absence must not change the X position of the Cancel / Primary / Decline slot columns.
 
-Do not shrink or recompose Stage content.
+Hero-specific skill ownership is not redesigned here. Sun Shangxiang Daredevil is a separate follow-up.
 
-### 7. REST composition
-At REST:
-- no Interaction Stage is visible;
-- Safe Zone remains invisible geometry only;
-- deck/discard may remain in the central battlefield as today;
-- opponent thumbnails must visually read as a real top row, leaving the large open centre below them rather than a large empty band above them.
+### 6. Stable geometry contract
+At 480x900 and 1440x900:
+- all three semantic slot containers exist exactly once;
+- their X ordering is always Cancel < Primary < Decline;
+- each slot's left/right geometry is invariant within 4px across the focused fixture states;
+- if a slot has no action, the slot stays empty rather than allowing another semantic action to slide into it;
+- buttons remain at least the existing minimum touch size;
+- no button overlaps another or the guidance row;
+- no horizontal overflow.
 
-### 8. Side Column remains untouched
-Counts 5–10 keep the current side-column behaviour exactly as-is in this task.
+### 7. Preserve callbacks and disabled rules
+Do not rewrite action logic.
 
-Do not start the deferred VIS-05A implementation.
+For every moved button:
+- keep the exact existing `disabled` condition;
+- keep the exact existing `onClick` callback/payload;
+- keep busy labels such as Confirming…, Playing…, Skipping…;
+- keep provider selection/reset behavior;
+- keep server revalidation unchanged.
+
+This task is presentation/layout only.
+
+## Required fixture coverage
+Add minimal dedicated browser fixture states if existing fixtures cannot expose the necessary action combinations. Do not change production semantics merely to create them.
+
+Required representative states:
+
+1. **confirm-cancel**
+   - primary Confirm visible;
+   - local Cancel visible;
+   - no authoritative decline.
+
+2. **confirm-skip**
+   - primary Confirm visible;
+   - authoritative Skip visible;
+   - no local Cancel.
+
+3. **confirm-cancel-skip**
+   - all three semantic actions visible simultaneously from one coherent trigger/selection fixture.
+
+4. **turn-play-end**
+   - primary Play visible;
+   - End in decline slot;
+   - cancel slot empty.
+
+5. **provider-extra**
+   - at least one provider/mode button visible in extras while primary/decline remain in their fixed slots.
+
+6. **long-guidance**
+   - use a realistic long instruction/selection summary long enough to wrap to 3+ lines at 480px.
+
+Prefer current-action facts already understood by the fixture. Do not invent gameplay legality in React production code.
 
 ## Required browser regression
 
-### A. Top-row anchor matrix
-REST, counts 2/3/4, widths 1440/650/480:
-- seat count N-1;
-- exact existing relativeIndex/X mapping;
-- exact existing VIS-04A seat width/height;
-- all seat tops within 0–4px of player-board top;
-- same-row Y spread <=4px;
-- Safe Zone clearance 6–24px below max seat bottom;
-- one LocalPlayerDock;
-- no overflow.
+At both 480x900 and 1440x900 for the representative states:
 
-### B. Active containment matrix
-Count=4, widths 1440/650/480, states:
-- interaction;
-- negation;
-- dying;
-- group-observer.
+### A. Slot structure
+Assert:
+- one guidance row;
+- one extras region;
+- one action-slot region;
+- exactly one cancel slot;
+- exactly one primary slot;
+- exactly one decline slot;
+- slot X order Cancel < Primary < Decline.
 
-Retain all VIS-04B containment and VIS-03 participant-size assertions.
+### B. Position invariance
+Capture each slot bbox across every representative state.
 
-### C. Old-geometry negative proof
-Add one named 480x900 REST regression proving the pre-VIS-04C flexible-row/centre alignment would place the opponent row materially below the player-board top, while the new geometry satisfies the <=4px anchor contract.
+For a given viewport:
+- cancel-slot X/width variance <=4px;
+- primary-slot X/width variance <=4px;
+- decline-slot X/width variance <=4px.
 
-Do not implement this by testing source-code strings; use rendered geometry.
+This must fail against the current flex-wrap implementation.
 
-### D. Side-column negative regression
-At count=6, widths 1440 and 480:
-- topology remains side-column;
-- no Side Column seat geometry/style changes caused by VIS-04C.
+### C. Button ownership
+Assert:
+- Cancel only appears in cancel slot;
+- Confirm/Play/Peach/Discard primary action only appears in primary slot;
+- Skip/End only appears in decline slot;
+- extras do not contain plain common `Confirm`, plain `Cancel`, `Skip` or `End`.
+
+Provider-owned labels such as `Cancel <provider>` are not plain local Cancel and may remain extras when applicable.
+
+### D. Long guidance
+At 480:
+- long guidance text is fully visible;
+- computed overflow is not hidden;
+- guidance bbox does not overlap action slots;
+- guidance does not overlap selected hand card geometry;
+- no horizontal overflow.
+
+### E. Existing gameplay-control regression
+Keep existing mounted interaction/control tests for:
+- rescue;
+- response/Negation;
+- active skill;
+- turn play/end;
+- local target selection.
+
+Do not weaken them.
 
 ## Forbidden shortcuts
 Do not:
-- change opponent widths/heights;
-- change player-board outer top inset;
-- use transform translate to fake the Y position;
-- use JS DOM measurements;
-- move Safe Zone bottom;
-- change LocalPlayerDock;
-- change Stage/Hero/Medium Source internals;
-- change deck/discard geometry;
-- change Side Column;
-- change gameplay/presentation semantics.
+- change `buildConsoleDecisionDisplay` semantics merely to fit layout;
+- merge Cancel and Skip into one action;
+- reuse one slot for different semantic roles;
+- hide long guidance;
+- reduce font to unreadable sizes;
+- use absolute pixel positioning per fixture;
+- use JS DOM measurements to place action buttons;
+- change hero skill ownership in this task;
+- move Hero Focus / seats / Safe Zone;
+- change LocalPlayerDock hero/hand/equipment semantics;
+- change server/gameplay/projector logic.
 
 ## Validation
 Run and report:
-- focused VIS-04C top-anchor tests;
-- retained VIS-04A compact-seat tests;
-- retained VIS-04B containment tests;
-- retained VIS-03B/C/D/E presentation tests;
-- broader local checks only if allowed.
+- focused VIS-06A browser slot tests;
+- retained local-operation mounted tests;
+- retained VIS-03/VIS-04 layout tests;
+- broader local browser/fast/build/lint/diff-check only if allowed locally.
 
 Do not claim unrun checks. Do not inspect or wait for CI.
 
@@ -200,32 +308,15 @@ Do not claim unrun checks. Do not inspect or wait for CI.
 Append only:
 - implementation SHA;
 - files changed;
-- old vs new Top Row grid-row/alignment strategy;
-- measured playerBoardTop / seatTop / seatBottom / safeZoneTop at 1440/650/480;
-- proof widths/heights/X anchors stayed unchanged;
-- active-state containment results;
-- Side Column negative regression result;
+- final LocalPlayerDock row structure;
+- exact semantic slot mapping;
+- slot bboxes for all representative states at 480 and 1440;
+- long-guidance measured height/line-wrap proof at 480;
+- confirmation callbacks/disabled conditions were preserved;
+- focused/retained validation results;
 - any GAP.
 
 Do not self-accept. Push, verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if 2–4 player opponent thumbnails are actually anchored to the top of the existing player-board band, retain all accepted size/X/behaviour contracts, Safe Zone follows 6–24px below them, active states remain fully contained, and Side Column/gameplay are unchanged.
-
-## Execution result — UX2.0VIS-04C (2026-10-04)
-
-- Implementation SHA: `e7d898d3474ee0b8e028c32e15fa9e82c37741a6` (`Anchor compact top-row seats to board top`). Changed `app/globals.css` and `tests/browser/ui19.spec.mjs`; this section is the only `HANDOVER.md` change.
-- Top Row strategy: row 1 changed from `minmax(120px,1fr)` with opponent `align-self:center` to `max-content` with `align-self:start`; the remaining board space is flexible below it. The player-board outer top insets remain 68/60/55px. Top Row Safe Zone top changed from desktop 253px / <=650 245px / <=480 260px to desktop 190px / <=700 164px / <=480 149px; only its top is retuned. The 651–700px breakpoint now uses 164px to follow the existing 60px board inset.
-- Measured 4-player REST geometry (the same row geometry is asserted for 2/3/4 players):
-
-  | Viewport | playerBoardTop | seatTop | seatBottom | safeZoneTop | Clearance |
-  | --- | ---: | ---: | ---: | ---: | ---: |
-  | 1440×900 | 68px | 68px | 176px | 190px | 14px |
-  | 650×900 | 60px | 60px | 148px | 164px | 16px |
-  | 480×900 | 55px | 55px | 133px | 149px | 16px |
-
-- Seat size/X proof: 1440 retains 180×108px at X=10/630/1250; 650 retains 112×88px at X=21.5/269/516.5; 480 retains 100×78px at X=15.5/190/364.5. The 2-player centre and 3-player left/right mappings, relative indices, same-row alignment, and one LocalPlayerDock are asserted. The rendered old-geometry simulation at 480 places seats 110.5px below the board top and fails the <=4px anchor contract; the new geometry places them 0px below it.
-- Active-state containment: the new Interaction, Negation, Dying, and group-observer matrix passes at 1440/650/480 with opponent-to-Stage separation, Stage/Safe Zone and dock containment, unchanged Hero Focus and Medium Source portrait dimensions, visible Reaction Chain/Dying handoff, and no horizontal overflow. The retained VIS-04B matrix additionally confirms REST Safe Zone invisibility and no scrolling/clipping.
-- Side Column negative regression: 6-player geometry and `align-self:center` baseline remain unchanged at 1440 and 480; both cases pass. No side-column CSS, Stage internals, deck/discard geometry, LocalPlayerDock, gameplay, or projection logic changed.
-- Validation actually run: VIS-04C focused browser tests **26 passed**; retained VIS-04A, VIS-04B, and VIS-03B/C/D/E browser tests **68 passed**. Full browser suite, full tests, build, lint, and `git diff --check` were not run under the remote-validation workflow; GitHub Actions owns the remaining gate validation and was not inspected.
-- GAP: no known failure in the scoped browser contracts. A fresh real-iPhone screenshot was not captured; reviewer should inspect that composition and decide VIS-04C acceptance before assigning further work. VIS-05A remains deferred.
+Pass only if decision guidance is full-width and never clipped, Cancel / Primary / Decline have invariant semantic positions across card/skill/response flows, provider extras cannot move those positions, and no gameplay/action semantics are changed.
