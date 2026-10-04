@@ -367,3 +367,24 @@ Files changed in this closeout: HANDOVER.md only, append-only. Implementation fi
 Known remaining gaps: Group progress/order/outcomes remain deferred; open Stage shell/duplicate metadata and final Dock/hand composition remain unfinished. Agent completion is not reviewer acceptance.
 Recommended next bounded task: Reviewer-authored Side Column open Stage shell task, preserving semantic content, participant hierarchy, Reaction/Dying, accepted seats, Top Row and Dock controls.
 Workflow boundary: The latest user-supplied AGENTS.md requires reviewer-authored task authority and prohibits CI polling. The older autonomous planning/CI-loop instructions conflict with those rules. No new task was self-authored or implemented; await the reviewer's next bounded HANDOVER task or an explicit user clarification of this conflict.
+
+## TASK ID: UX2.0VIS-07B — Group density after rendered-participant exclusions
+STATUS: PLANNED
+
+Objective: Choose neutral Group-card density from the secondary participant cards actually rendered.
+Observed gap: `projectGroupTargetScopeForViewer` currently chooses density before excluding the separately rendered viewer, primary focus, and Medium Source; six-player Group therefore uses compact styling for only three cards.
+Design authority: AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md §§7.5, 19–20; approved neutral-scope decision in VIS-07A; latest user instruction on rendered participant density.
+Scope: `game/hero-focus.ts`, focused projection/browser tests, append-only HANDOVER.md.
+Requirements: deduplicate proven historical target IDs; exclude viewer/primary/source first; use medium below four rendered secondary cards and compact at four or more; preserve neutral identity-only semantics and fail-closed focus; exercise 2/3/4-card thresholds plus 4/6/10-player layouts at 1440/650/480px.
+Non-goals: Group progress/order/outcomes, authority/protocol/gameplay changes, Stage chrome, Dock/hand composition, README changes.
+Validation: focused presentation-client test file, bounded browser layout tests for VIS-07B and retained VIS-07A, `git diff --check`.
+Acceptance: Density matches the post-exclusion rendered card count; existing IDs and responsive bounds remain correct, with no progress or eligibility claims.
+
+### VIS-07B IMPLEMENTATION RESULT
+
+Implementation SHA: pending commit.
+Files changed: `game/hero-focus.ts`, `tests/presentation-client.test.mjs`, `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`.
+Change: Group density now uses the deduplicated secondary cards after viewer, primary, and Medium Source exclusions. Two/three cards remain medium; four or more become compact. No Group progress semantics changed.
+Focused tests: pending.
+Known gaps: Group progress/order/outcomes remain deferred; this task addresses only card density.
+CI pending: push the implementation and wait for this revision's required workflow before planning another task.
