@@ -388,3 +388,29 @@ Change: Group density now uses the deduplicated secondary cards after viewer, pr
 Focused tests: `node --import tsx --test tests/presentation-client.test.mjs` — 38/38; `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-07A' --workers=2` — 9/9 at 1440/650/480px for 4/6/10 players; `git diff --check` passed. No full suite/build/lint was run locally.
 Known gaps: Group progress/order/outcomes remain deferred; this task addresses only card density.
 CI pending: implementation and result record are being pushed; wait for GitHub Actions on that revision before planning another task.
+
+### VIS-07B STATUS: COMPLETED BY AGENT — CI GREEN
+
+Tested revision: `55e18c8ada0608e080cc87f42ff72a807949161f` (implementation `67dca61`).
+CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37186359071 — completed/success.
+Jobs: `build-and-test` `111388996568` and `deploy` `111389762790`, both completed/success.
+CI fixes: none.
+Next-task rationale: VIS-07A's actual rendered-card density is now corrected. The approved Side Column Stage direction still calls for an open shell and compact context; inspect the current Stage shell/metadata and split that visual gap into one bounded task.
+
+### VIS-07B STATUS: COMPLETED BY AGENT — CI GREEN
+
+Tested revision: `55e18c8ada0608e080cc87f42ff72a807949161f` (implementation `67dca61`).
+CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37186359071 — completed/success; `build-and-test` `111388996568` and `deploy` `111389762790` both passed.
+CI fixes: none.
+
+## TASK ID: UX2.0VIS-08A — Open Side Column Interaction Stage shell
+STATUS: PLANNED
+
+Objective: Remove the dashboard-like outer panel chrome from the Side Column Interaction Stage.
+Observed gap: The shared `.interaction-stage` still supplies opaque background, border, shadow, padding, and a full-width divider header in Side Column; the accepted Top Row open-shell treatment does not currently cover Side Column.
+Design authority: AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md §§7.3, 8, 20; accepted VIS-05B safe-zone and VIS-05C participant hierarchy; current approved final mockup direction.
+Scope: `app/sequence-overrides.css`, focused `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`.
+Requirements: make only the Side Column outer shell/header open and compact; preserve Stage geometry and all text/semantic regions; retain independent Hero Focus, Reaction Chain, and Dying panel chrome; preserve seat, safe-zone, dock, Top Row, and reduced-motion behavior.
+Non-goals: duplicate metadata cleanup, participant/progress semantics, Dock/hand/Judgement changes, gameplay or protocol changes, README changes.
+Validation: focused browser cases for interaction, Negation, Dying, and Group-observer states at 1440/650/480px; retained geometry/hit assertions; screenshot inspection; `git diff --check`.
+Acceptance: Side Column Stage outer background is transparent with no border/shadow/padding; compact header has no divider; inner semantic panels retain their own visible surfaces; Stage stays inside the accepted safe zone and above the Dock without clipping.
