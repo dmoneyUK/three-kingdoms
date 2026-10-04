@@ -423,3 +423,11 @@ Change: Side Column now uses a transparent, unpadded Stage shell and fit-content
 Focused validation: 40/40 browser cases passed (`VIS-08A`, retained `VIS-05B` safe-zone/hit checks, and `VIS-07A` Group density) at 1440/650/480px; `git diff --check` passed. 480px Dying and 10-player Group screenshots inspected. An initial combined run's only two failures were an overly strict assertion that the header must be narrower than the Stage at 480px; the content fills that narrow width naturally. The final assertion checks that it never overflows.
 Known gaps: Stage metadata duplication and final Dock/hand composition remain. No full suite/build/lint was run locally.
 CI pending: implementation/result revision must complete GitHub Actions before another task begins.
+
+### VIS-08A STATUS: COMPLETED BY AGENT — CI GREEN
+
+Tested revision: `b96f5bb4058a8b235f1610dc8a635bfc4227bbcc` (implementation `48287fa`).
+CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37187150243 — completed/success.
+Jobs: `build-and-test` `111391406926` and `deploy` `111392199055`, both completed/success.
+CI fixes: none.
+Next-task rationale: inspect the current Interaction Stage focus/context projection for remaining misleading or duplicate metadata, especially whether an unproven single focus is displayed when multiple targets exist; select only a design-authorized, bounded correction.
