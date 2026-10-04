@@ -34,8 +34,9 @@ may accept, partially accept, reject, or redirect work.
   a newer direct user instruction changes that status or scope.
 - This file defines autonomous planning, validation, CI, and handoff cadence.
 - docs/UX_V2_INTERACTION_STAGE_DESIGN.md is the product/UI design authority.
-- docs/PLANNER_DEVELOPMENT_WORKFLOW.md is the architecture/development
-  workflow authority.
+- The former standalone Planner workflow has been retired. Until the Reviewer
+  publishes its replacement, use AGENTS.md and the current HANDOVER.md for
+  architecture constraints and task acceptance criteria.
 - docs/UX_V2_RELEASE_GATE.md records release-gate evidence; it is not a
   substitute for current code or current task authority.
 - docs/AUTONOMOUS_UI_ROADMAP.md stores durable history and broad directions,
@@ -59,8 +60,7 @@ At the start of a new conversation or when resuming after a pause:
 4. Continue the current handover task; do not repeat tasks marked
    COMPLETED BY AGENT — CI GREEN and do not invent a replacement task.
 5. Read the current task's cited sections in
-   docs/UX_V2_INTERACTION_STAGE_DESIGN.md and, when relevant,
-   docs/PLANNER_DEVELOPMENT_WORKFLOW.md.
+   docs/UX_V2_INTERACTION_STAGE_DESIGN.md.
 6. Inspect only the relevant production and test code. Consult
    docs/AUTONOMOUS_UI_ROADMAP.md selectively for planning or historical
    evidence; do not read it in full by default.
