@@ -1,7 +1,8 @@
 # UX V2 — Player Dock, Seat Topology, and Interaction Stage
 
 **Status:** discussion draft — saved for design review, **do not implement yet**  
-**Date:** 2026-10-02
+**Date:** 2026-10-02  
+**Gameplay/interaction review update:** 2026-10-04 — self-target symmetry, failed response-provider continuation, and Borrowed Sword complete-path legality approved for the long-term design.
 
 ## Goal
 
@@ -277,6 +278,37 @@ Do not replace them with a duplicate UI legality system such as canClickAttack, 
 
 The Presentation layer may expose or thinly project the viewer's authoritative CurrentAction; gameplay legality remains owned by the existing rules/action system.
 
+### 0.10.1 Authoritative self-target symmetry
+
+If the authoritative selection contract includes the viewer's own player ID in `targetIds`, the Local Player Dock must expose a target-selection affordance with the same semantic weight as an opponent target.
+
+This is a general interaction rule, not a Hua Tuo-specific exception.
+
+Required behaviour:
+
+- a legal self target must be selectable from the persistent Local Player Dock;
+- selection state for self must stay synchronised with the same authoritative target set used for opponent Seat Thumbnails / Hero Focus;
+- React must not re-decide whether self-targeting is legal from hero identity, card name, HP, range, or other gameplay rules;
+- target selection and Inspect remain independent operations, so selecting the local Hero must not remove the dedicated Hero-info affordance;
+- the local Hero is never duplicated into the Interaction Stage merely to make self-targeting possible.
+
+Example — Hua Tuo Prodigal Healer / First Aid:
+
+~~~text
+authoritative targetIds = [Hua Tuo, another injured character]
+
+Local Player Dock:
+  Hua Tuo is targetable
+  tap/click local Hero -> select Hua Tuo
+
+Opponent Seat Thumbnail:
+  other injured character is targetable
+~~~
+
+The client must not support only the opponent branch while silently dropping the legal self branch.
+
+Regression coverage for any generic self-target selection path should prove that a server-projected self target can actually be selected and submitted, not merely that the server listed the viewer in `targetIds`.
+
 ### 0.11 Local-only UI sessions stay outside authoritative Presentation
 
 These do not create server checkpoints by themselves:
@@ -500,6 +532,53 @@ Waiting for Sima Yi...
 ~~~
 
 If nobody can meaningfully modify it, advance directly to the meaningful Judgement result. The reveal may be a Transition Event while the stable snapshot already describes the resulting Judgement context.
+
+### 0.18.1 Failed response provider is not a Pass
+
+A response provider attempting to satisfy a semantic requirement has three distinct outcomes:
+
+~~~text
+provider satisfies requirement
+provider attempt fails
+player declines / passes the requirement
+~~~
+
+Do not collapse provider failure into `decline_response`.
+
+Eight Trigrams is the reference case. When it is chosen to satisfy a Dodge requirement:
+
+~~~text
+Attack requires Dodge
+-> player chooses Eight Trigrams
+-> Judgement
+~~~
+
+If the final Judgement succeeds, the provider satisfies Dodge and normal semantic success handling continues.
+
+If the final Judgement fails:
+
+~~~text
+Eight Trigrams failed
+-> Dodge requirement still exists
+-> required Dodge count is unchanged
+-> Eight Trigrams is unavailable for this same response attempt
+-> remaining legal Dodge providers are projected again
+-> player may use a physical Dodge / another legal provider / Skip
+~~~
+
+Failure must not jump directly to Attack damage or group-effect damage.
+
+The provider that initiated a Judgement-based response must remain identifiable across Judgement-modifier windows so the engine can disable only that failed provider after the final Judgement result. For example, Sima Yi's Judgement modification must not lose the fact that Eight Trigrams initiated the attempt.
+
+For multi-count requirements, provider failure consumes none of the semantic count:
+
+~~~text
+requires 2 Dodges
+Eight Trigrams succeeds -> 1 Dodge remains
+Eight Trigrams fails    -> 2 Dodges remain
+~~~
+
+This rule applies to ordinary Attack Dodge responses and group/AOE Dodge responses. The domain transition should preserve the same actor, requirement, continuation, and causal interaction while reopening only the still-legal response options.
 
 ### 0.19 Persistent interaction geometry
 
@@ -729,6 +808,65 @@ F2 settles
 ~~~
 
 By contrast, an Attack card submitted merely to satisfy a Duel exchange does not become a normal Attack Child Frame if the rules treat it only as the Duel response.
+
+### 0.27.1 Borrowed Sword complete-path legality and two-player case
+
+Borrowed Sword must not be implemented with a blanket "three living players required" rule.
+
+Under the current project rule, the source of Borrowed Sword may also be the forced Attack target, provided the Weapon holder can legally Attack that source.
+
+Therefore, with exactly two living players:
+
+~~~text
+A = Borrowed Sword source
+B = Weapon holder
+
+if B can legally Attack A:
+  A may choose B as Borrowed Sword's primary target
+  A is the legal forced Attack target
+  B must Attack A or surrender the Weapon
+~~~
+
+If B cannot legally Attack A because of distance, range, target restrictions, or another authoritative rule, then B is not a legal Borrowed Sword primary target.
+
+Borrowed Sword legality is multi-stage and must be validated as a complete path, not one target at a time:
+
+~~~text
+A chooses Weapon holder B
+AND
+there exists at least one legal forced Attack target C for B
+~~~
+
+Only then may B be presented as a legal primary target.
+
+The authoritative rules layer should provide one shared legality result that can be reused for:
+
+- Play Phase target projection;
+- `play_card` validation;
+- post-Negation / deferred resolution revalidation;
+- forced-Attack target projection;
+- forced-Attack target submission validation.
+
+React must not independently reconstruct Weapon ownership, Attack range, or downstream forced-target legality.
+
+Immediately before the engine creates a blocking "choose forced Attack target" decision, it must recompute the legal forced targets. A blocking player decision may never be projected with zero executable legal actions unless an explicit authoritative Cancel / Decline action exists.
+
+Liveness invariant:
+
+~~~text
+BLOCKING CHOICE
+-> at least 1 executable legal action
+
+or
+
+-> explicit authoritative Cancel / Decline
+
+never
+
+-> zero legal actions + waiting forever
+~~~
+
+If a previously legal Borrowed Sword path becomes impossible before the second stage opens, the effect must settle or cancel deterministically according to the game rules and return to the correct continuation. It must not leave a zero-option Pending state.
 
 ### 0.28 Duel and Lust
 
