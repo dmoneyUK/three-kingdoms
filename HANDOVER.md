@@ -473,3 +473,5 @@ Scope: `app/page.tsx`, focused `tests/browser/ui19.spec.mjs`, append-only `HANDO
 Requirements: suppress Dying source/focus summaries only when their exact identities are already rendered in Medium Source/Hero Focus; suppress decision/resolver rows only when the same IDs are shown by Dying Handoff. Preserve distinct source identity, changed original-target scope, and nested context; omit empty metadata wrappers. Leave non-Dying layouts unchanged.
 Validation: mounted Dying regression at representative desktop/mobile widths, retained VIS-05B Dying safe-zone/hit checks and VIS-08A open-shell checks, `git diff --check`. No local full suite/build/lint.
 Acceptance: Dying retains its semantic panels and any unique context but no longer repeats their proven identities in a redundant footer metadata block; no other state loses metadata.
+
+VIS-08C layout clarification: treat the two-column SOURCE/FOCUS strip as a unit. Remove it only when both identities are represented in their matching visible semantic panels; otherwise keep the strip intact. Decision/resolver context rows may be deduplicated independently by exact ID.
