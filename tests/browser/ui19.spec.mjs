@@ -170,20 +170,39 @@ test("UX2.0VIS-09B tapping a clipped edge reveals that same physical card", asyn
 test.describe("UX2.0VIS-09B native touch navigation", () => {
   test.use({ hasTouch: true });
   for (const width of [480, 650]) {
-    test(`${width}px pan does not select and a subsequent tap still selects and inspects`, async ({ page, context }) => {
+    test(`${width}px native pan scrolls without selecting or submitting`, async ({ page, context }) => {
       await loadFixture(page, { width, height: 900, handSize: 25 });
       const rail = page.locator(".local-hand-rail");
       await expect(rail).toHaveAttribute("data-hand-layout", "measured");
       const viewport = await rail.boundingBox();
       const first = await rail.locator(".game-card").first().boundingBox();
       const cdp = await context.newCDPSession(page);
-      await cdp.send("Input.synthesizeScrollGesture", {
-        x: viewport.x + viewport.width - 40, y: first.y + 50,
-        xDistance: -220, yDistance: 0, preventFling: true, gestureSourceType: "touch",
+      const startX = Math.round(viewport.x + viewport.width - 40);
+      const touchY = Math.round(first.y + 50);
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x: startX, y: touchY, id: 0 }],
       });
+      // Send an explicit browser touch sequence instead of relying on
+      // Chromium's platform-dependent synthesized-scroll helper. This still
+      // exercises native overflow scrolling and click suppression.
+      for (let step = 1; step <= 6; step += 1) {
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: Math.round(startX - (220 * step) / 6), y: touchY, id: 0 }],
+        });
+      }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
       await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(30);
       await expect(rail.locator(".game-card.selected")).toHaveCount(0);
       expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+      await cdp.detach();
+    });
+
+    test(`${width}px ordinary touch tap selects a card and opens its explanation`, async ({ page }) => {
+      await loadFixture(page, { width, height: 900, handSize: 25 });
+      const rail = page.locator(".local-hand-rail");
+      await expect(rail).toHaveAttribute("data-hand-layout", "measured");
       const tapTarget = await rail.evaluate((element) => {
         const viewport = element.getBoundingClientRect();
         const slot = [...element.querySelectorAll("[data-hand-card-id]")].find((node) => {
@@ -193,13 +212,15 @@ test.describe("UX2.0VIS-09B native touch navigation", () => {
         const r = slot.getBoundingClientRect();
         return { id: slot.dataset.handCardId, x: r.left + 8, y: r.top + 45 };
       });
+      const hitCardId = await page.evaluate(({ x, y }) =>
+        document.elementFromPoint(x, y)?.closest("[data-hand-card-id]")?.getAttribute("data-hand-card-id"), tapTarget);
+      expect(hitCardId).toBe(tapTarget.id);
       await page.touchscreen.tap(tapTarget.x, tapTarget.y);
       const selected = rail.locator(`[data-hand-card-id="${tapTarget.id}"]`);
       await expect(selected.locator(".game-card")).toHaveClass(/selected/);
       await selected.locator(".card-info-button").tap();
       await expect(page.getByRole("dialog").getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
       expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
-      await cdp.detach();
     });
   }
 });

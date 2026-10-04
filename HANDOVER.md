@@ -88,11 +88,8 @@ When VIS-09B closes:
 
 Do not append a growing task history to this file.
 
-## VIS-09B implementation result — CI pending
+## VIS-09B implementation result — CI repair pending
 
-Implementation revision: the commit containing this result; exact tested SHA will be recorded at CI closeout.
-Files: `app/page.tsx`, `app/sequence-overrides.css`, `tests/browser/fixture.jsx`, `tests/browser/ui19.spec.mjs`, `tests/room-safety-render.test.mjs`, `README.md`, this handover.
-Result: Native horizontal scrolling preserves the 68×102px cards, minimum 30px exposure and single layer. The viewport reserves the existing 48px wrapper + 17px face lift; transparent lift space passes hits to Skills/Equipment. Keyboard arrows, touch/trackpad pan, edge-card reveal and info controls work without changing selection authority or submitting on pan.
-Regression evidence: Before the fix, the 480px/25-card test could not reach the last card (right edge 877px versus viewport edge 465px). Afterward, the 376px viewport scrolls the 788px rail through 412px; the last card is fully reachable. Desktop 1440px fits all 25 without scrolling. Both screenshots inspected.
-Focused validation: render file 19/19; browser `VIS-09B|VIS-09A|VIS-06A` 27/27 (21 new, 6 retained); changed TS/MJS files pass ESLint; `git diff --check` passed. No full local test/build/lint. Native touch tests use Chromium input gestures, not synthetic click cancellation.
-Known gaps: Semantic scroll anchoring on authoritative card add/remove and real-device certification remain outside this slice. GitHub Actions owns full validation; CI result pending.
+Implementation: `8eb5499edba1c9907d061039efd98cfe5d3c1042`. The Hand now scrolls horizontally as one layer, retains 68×102px cards and 30px minimum exposure, and keeps selected-card reveal/inspection and existing selection authority. At 480px/25 cards, the 376px viewport reaches the 788px rail's end; 25 cards fit at 1440px. Semantic scroll anchoring across authoritative card changes and real-device certification remain out of scope.
+
+CI run `37194263323` failed only the two native-pan browser cases: Chromium's synthesized-scroll helper left `scrollLeft` at 0 at 480px and 650px; 268 other browser cases passed. The test now uses explicit trusted browser touch events for pan and separately proves ordinary touch tap/inspection, without relaxing either assertion. Focused full-config 09B browser checks: 23/23; targeted ESLint and `git diff --check`: pass. CI repair revision and rerun pending.
