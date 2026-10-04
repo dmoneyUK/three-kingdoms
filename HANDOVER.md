@@ -431,3 +431,14 @@ CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37187150243 — 
 Jobs: `build-and-test` `111391406926` and `deploy` `111392199055`, both completed/success.
 CI fixes: none.
 Next-task rationale: inspect the current Interaction Stage focus/context projection for remaining misleading or duplicate metadata, especially whether an unproven single focus is displayed when multiple targets exist; select only a design-authorized, bounded correction.
+
+## TASK ID: UX2.0VIS-08B — Fail-closed Interaction Stage metadata focus
+STATUS: PLANNED
+
+Objective: Keep the Stage metadata from presenting an arbitrary active target as its single focus.
+Observed gap: `buildInteractionStageDisplayModel` falls back to `activeTargets[0]` when `currentParticipant` is absent, unlike `buildHeroFocusView`, which only permits a sole-target fallback outside Dying.
+Design authority: AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md §§6.4, 7.3, 7.5, 19; UX_V2_INTERACTION_STAGE_DESIGN.md §3C and §6; accepted VIS-07A requirement that an absent semantic focus must not produce an arbitrary primary.
+Scope: `game/presentation-client.ts`, focused `tests/presentation-client.test.mjs`, a bounded mounted fixture/test in `tests/browser/fixture.jsx` and `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`.
+Requirements: use a proven current participant; otherwise retain only the existing unique-active-target fallback for non-Dying stages. For multiple active targets or Dying without a current participant, expose no focus ID and label the metadata row as scope while retaining the proven active-scope summary. Do not infer progress, order, eligibility, or gameplay state.
+Validation: focused presentation-client tests; mounted ambiguous Group case plus retained VIS-07A browser regression; `git diff --check`. No local full suite/build/lint.
+Acceptance: ambiguous multi-target and unproven Dying states do not render the first target as `FOCUS`; proven current/sole targets remain unchanged, and no authority or privacy boundary changes.
