@@ -445,8 +445,9 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(198px, 253px) minmax(0, 1fr);
-  grid-template-rows: var(--top-panel-height) var(--hand-panel-height) 65px;
+  grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(65px, auto);
   grid-template-areas:
+    "guidance guidance"
     "identity zones"
     "identity hand"
     "actions actions";
@@ -466,6 +467,7 @@
 .local-equipment-panel,
 .local-judgement-panel,
 .local-hand-section,
+.local-player-dock .console-guidance,
 .local-player-dock .turn-controls {
   box-sizing: border-box;
   border: 1px solid #765f3c99;
@@ -618,10 +620,16 @@
 .local-hand-rail .game-card .corner { width: 17px; min-height: 23px; padding: 1px 1px 4px; border-width: 1px; border-radius: 0 0 5px 0; font-size: 8px; }
 .local-hand-rail .game-card .corner i { font-size: 7px; }
 
-.local-player-dock .turn-controls { position: relative; grid-area: actions; z-index: 100; min-height: 65px; height: 65px; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
-.local-player-dock .turn-controls > span { min-width: 0; overflow: hidden; white-space: normal; }
-.local-player-dock .turn-controls > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
+.local-player-dock .console-guidance { grid-area: guidance; width: 100%; min-width: 0; height: auto; padding: 5px 8px; overflow: visible; }
+.local-player-dock .console-guidance .decision-status { width: 100%; max-height: none; overflow: visible; white-space: normal; overflow-wrap: break-word; }
+.local-player-dock .console-guidance > .error { margin: 4px 0 0; }
+.local-player-dock .turn-controls { --action-slot-width: 90px; position: relative; grid-area: actions; z-index: 100; min-height: 65px; height: auto; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 8px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
+.local-player-dock .turn-controls > [data-action-extras="true"] { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px; min-width: 0; }
+.local-player-dock .turn-controls > [data-action-slots="true"] { display: grid; grid-template-columns: repeat(3, var(--action-slot-width)); align-items: center; gap: 4px; width: max-content; min-width: 0; }
+.local-player-dock [data-action-slot] { display: flex; min-width: 0; align-items: center; justify-content: center; }
+.local-player-dock [data-action-slot] button { box-sizing: border-box; width: 100%; min-width: 0; }
 .local-player-dock .turn-controls button { min-width: 78px; min-height: 32px; padding: 5px 8px; font-size: 8px; }
+.local-player-dock .turn-controls [data-action-slot] button { min-width: 0; }
 .local-target-selection { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 7px; margin-top: 3px; color: #efc979; font: 8px/1.2 Arial, sans-serif; letter-spacing: .02em; text-transform: none; }
 .local-target-selection b { color: #ffc85d; font-size: 7px; letter-spacing: .11em; }
 .local-target-selection span { color: #e4d7b5; }
@@ -632,13 +640,13 @@
      still owns the centred piles and all four player slots; the lower empty
      track is simply smaller so the side seats do not float too far above the
      local dock. */
-  .local-player-dock { --top-panel-height: 116px; grid-template-columns: 121px minmax(0, 1fr); grid-template-rows: var(--top-panel-height) var(--hand-panel-height) 62px; }
+  .local-player-dock { --top-panel-height: 116px; grid-template-columns: 121px minmax(0, 1fr); grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(62px, auto); }
 }
 
 @media (max-width: 480px) {
   .game-shell .play-command { padding: 4px 6px 5px; }
-  .local-player-dock { --top-panel-height: 58px; grid-template-columns: 70px minmax(0, 1fr); grid-template-rows: var(--top-panel-height) var(--hand-panel-height) 48px; padding: 0; }
-  .local-dock-identity { grid-row: span 2; align-items: stretch; }
+  .local-player-dock { --top-panel-height: 58px; grid-template-columns: 70px minmax(0, 1fr); grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(48px, auto); padding: 0; }
+  .local-dock-identity { align-items: stretch; }
   .local-hero-card { flex-basis: auto; width: 100%; max-width: 72px; height: auto; }
   .local-dock-identity { gap: 2px; padding: 3px; }
   .local-hero-skills { gap: 2px; }
@@ -650,8 +658,9 @@
   .local-status-panel,
   .local-equipment-panel,
   .local-judgement-panel { padding: 3px; }
-  .local-player-dock .turn-controls { min-height: 48px; height: 48px; padding: 5px; gap: 4px; }
-  .local-player-dock .turn-controls button { min-width: 78px; min-height: 28px; padding: 4px 5px; font-size: 7px; }
+  .local-player-dock .turn-controls { --action-slot-width: 78px; min-height: 48px; padding: 5px; gap: 4px; }
+  .local-player-dock .turn-controls button { min-width: 78px; min-height: 32px; padding: 4px 5px; font-size: 7px; }
+  .local-player-dock .turn-controls [data-action-slot] button { min-width: 0; }
   .local-target-selection { gap: 2px 5px; font-size: 7px; }
   .local-target-selection b { font-size: 6px; }
 }
@@ -1672,12 +1681,6 @@
   max-width: 100%;
 }
 
-.game-shell [data-console-surface="local-operation"] > div {
-  display: flex;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
 @media (max-width: 650px) {
   .game-shell .player-board[data-seat-topology="side-column"] {
     inset: 6px clamp(5px, 2.5vw, 18px) 8px;
@@ -1713,17 +1716,7 @@
     overflow: visible;
   }
 
-  /* The decision copy is a sibling of the action buttons. Keep its long
-     instruction from expanding the fixed mobile grid row and pushing the
-     actual controls below the viewport. */
-  .game-shell .local-player-dock .turn-controls > .decision-status {
-    display: block;
-    min-height: 0;
-    max-height: 100%;
-    overflow: hidden;
-  }
-
-  .game-shell .local-player-dock .turn-controls > div {
+  .game-shell .local-player-dock .turn-controls > [data-action-extras="true"] {
     gap: 3px;
     align-self: center;
   }

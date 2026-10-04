@@ -521,9 +521,11 @@ test("UX2.0VIS-04C REST 480x900 rejects the old flexible-row centre alignment", 
   }
 });
 
+// The full-width guidance row consumes vertical dock space; keep checking the
+// unchanged side-column seat rules against the resulting board geometry.
 for (const baseline of [
-  { width: 1440, board: { left: 48, top: 17.15625, width: 1344, height: 537.6875 }, seat: { width: 110.625, height: 58 }, positions: [[295.03125, 256.984375], [911.71875, 73.765625], [1281.375, 256.984375], [295.03125, 73.765625], [1281.375, 73.765625]] },
-  { width: 480, board: { left: 3, top: 4, width: 474, height: 658 }, seat: { width: 72.265625, height: 70.4375 }, positions: [[65.796875, 297.765625], [266.65625, 77.4375], [404.734375, 297.765625], [65.796875, 77.4375], [404.734375, 77.4375]] },
+  { width: 1440, board: { left: 48, top: 15.890625, width: 1344, height: 498.21875 }, seat: { width: 110.625, height: 58 }, positions: [[295.03125, 235.984375], [911.71875, 65.921875], [1281.375, 235.984375], [295.03125, 65.921875], [1281.375, 65.921875]] },
+  { width: 480, board: { left: 3, top: 4, width: 474, height: 618.25 }, seat: { width: 72.265625, height: 66.015625 }, positions: [[65.796875, 280.109375], [266.65625, 73.03125], [404.734375, 280.109375], [65.796875, 73.03125], [404.734375, 73.03125]] },
 ]) {
   test(`UX2.0VIS-04C ${baseline.width}x900 keeps the 6-player Side Column geometry`, async ({ page }) => {
     await loadFixture(page, { state: "rest", count: 6, width: baseline.width, height: 900 });
@@ -1008,4 +1010,113 @@ test("UI-19 reduced motion removes nonessential transition animation without hid
   await expect(page.locator('[data-console-surface="local-operation"]')).toHaveCSS("pointer-events", "auto");
   await page.locator('[data-console-surface="local-operation"] button:not(:disabled)').first().focus();
   await expect(page.locator(':focus')).toHaveClass(/primary|end|serpent-control/);
+});
+
+const VIS_06A_STATES = [
+  { state: "confirm-cancel", buttons: ["Cancel", "Confirm", ""] },
+  { state: "confirm-skip", buttons: ["", "Confirm", "Skip"] },
+  { state: "confirm-cancel-skip", buttons: ["Cancel", "Confirm", "Skip"] },
+  { state: "turn-play-end", buttons: ["", "Play", "End"] },
+  { state: "provider-extra", buttons: ["", "Confirm", "Skip"] },
+  { state: "long-guidance", buttons: ["Cancel", "Confirm", "Skip"] },
+];
+
+async function loadConsoleState(page, state, width) {
+  await loadFixture(page, { state, count: 4, width, height: 900 });
+  if (state === "confirm-cancel") await page.locator('[data-player-anchor="p3"] .opponent-hero-target').click();
+  if (state === "confirm-skip") await page.locator('[data-hand-card-id="browser-negation"] .game-card').click();
+  if (state === "confirm-cancel-skip" || state === "long-guidance") {
+    await page.getByRole("button", { name: "Assault", exact: true }).click();
+    await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
+  }
+  if (state === "provider-extra") {
+    await page.locator('[data-action-extras="true"] button').first().click();
+    await page.locator('[data-hand-card-id="browser-attack"] .game-card').click();
+  }
+}
+
+for (const width of [480, 1440]) {
+  test(`UX2.0VIS-06A ${width}x900 keeps semantic action slots invariant across local flows`, async ({ page }) => {
+    const snapshots = [];
+    for (const { state, buttons } of VIS_06A_STATES) {
+      await loadConsoleState(page, state, width);
+      const dock = page.locator(".local-player-dock");
+      const guidance = dock.locator('[data-console-guidance="true"]');
+      const controls = dock.locator('[data-console-surface="local-operation"]');
+      const extras = controls.locator('[data-action-extras="true"]');
+      const slots = controls.locator('[data-action-slots="true"]');
+      const orderedSlots = ["cancel", "primary", "decline"].map((name) => slots.locator(`[data-action-slot="${name}"]`));
+      await expect(guidance, `${state} has one guidance row`).toHaveCount(1);
+      await expect(extras, `${state} has one extras region`).toHaveCount(1);
+      await expect(slots, `${state} has one slot region`).toHaveCount(1);
+      await expect(controls.locator(".decision-status"), `${state} does not duplicate guidance`).toHaveCount(0);
+      await expect(guidance.locator('.decision-status[role="status"][aria-live="polite"][aria-atomic="true"]')).toHaveCount(1);
+      for (const attribute of ["data-console-decision-kind", "data-console-coherent", "data-console-primary", "data-console-primary-enabled", "data-console-local-cancel", "data-console-authoritative-decline"]) await expect(guidance.locator(".decision-status")).toHaveAttribute(attribute, /.+/);
+      for (let index = 0; index < orderedSlots.length; index += 1) {
+        await expect(orderedSlots[index], `${state} keeps slot ${index}`).toHaveCount(1);
+        const action = orderedSlots[index].locator("button");
+        if (buttons[index]) await expect(action).toHaveText(buttons[index]);
+        else await expect(action).toHaveCount(0);
+      }
+      const slotBoxes = await Promise.all(orderedSlots.map((slot) => slot.boundingBox()));
+      expect(slotBoxes[0].x).toBeLessThan(slotBoxes[1].x);
+      expect(slotBoxes[1].x).toBeLessThan(slotBoxes[2].x);
+      const dockBox = await dock.boundingBox();
+      const guidanceBox = await guidance.boundingBox();
+      const controlBox = await controls.boundingBox();
+      expect(guidanceBox.width).toBeGreaterThanOrEqual(dockBox.width - 16);
+      expect(guidanceBox.y + guidanceBox.height).toBeLessThanOrEqual(controlBox.y);
+      const visual = await controls.evaluate((element) => {
+        const rects = [...element.querySelectorAll("button")].map((button) => {
+          const bounds = button.getBoundingClientRect();
+          return { text: button.textContent?.trim() ?? "", left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom, width: bounds.width, height: bounds.height };
+        });
+        const overlaps = [];
+        for (let first = 0; first < rects.length; first += 1) for (let second = first + 1; second < rects.length; second += 1) {
+          const a = rects[first]; const b = rects[second];
+          if (Math.min(a.right, b.right) > Math.max(a.left, b.left) && Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top)) overlaps.push([a.text, b.text]);
+        }
+        return { rects, overlaps, overflow: document.documentElement.scrollWidth > window.innerWidth };
+      });
+      expect(visual.overlaps, `${state} buttons do not overlap`).toEqual([]);
+      expect(visual.overflow, `${state} has no horizontal page overflow`).toBe(false);
+      for (const button of visual.rects) {
+        expect(button.width, `${state} ${button.text} touch width`).toBeGreaterThanOrEqual(78);
+        expect(button.height, `${state} ${button.text} touch height`).toBeGreaterThanOrEqual(32);
+        expect(button.top, `${state} buttons stay below guidance`).toBeGreaterThanOrEqual(guidanceBox.y + guidanceBox.height);
+      }
+      const extrasLabels = await extras.locator("button").allTextContents();
+      expect(extrasLabels.map((label) => label.trim()).filter((label) => /^(Confirm|Cancel|Skip|End)$/.test(label))).toEqual([]);
+      if (state === "provider-extra") expect(extrasLabels).toContain("Cancel Alternate Attack");
+      snapshots.push({ state, slots: slotBoxes.map(({ x, width: slotWidth }) => ({ x, width: slotWidth })) });
+    }
+    for (const index of [0, 1, 2]) {
+      const xs = snapshots.map(({ slots }) => slots[index].x);
+      const widths = snapshots.map(({ slots }) => slots[index].width);
+      expect(Math.max(...xs) - Math.min(...xs), `slot ${index} X is stable at ${width}px`).toBeLessThanOrEqual(4);
+      expect(Math.max(...widths) - Math.min(...widths), `slot ${index} width is stable at ${width}px`).toBeLessThanOrEqual(4);
+    }
+  });
+}
+
+test("UX2.0VIS-06A 480x900 shows long guidance and leaves raised hand cards clear", async ({ page }) => {
+  await loadConsoleState(page, "long-guidance", 480);
+  const guidance = page.locator('[data-console-guidance="true"]');
+  const status = guidance.locator(".decision-status");
+  const instruction = status.locator("strong");
+  const metrics = await instruction.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    return { height: bounds.height, lineHeight: Number.parseFloat(style.lineHeight), overflow: getComputedStyle(element.closest('[data-console-guidance="true"]')).overflowY, scrollHeight: element.closest('[data-console-guidance="true"]').scrollHeight, clientHeight: element.closest('[data-console-guidance="true"]').clientHeight };
+  });
+  expect(metrics.height / metrics.lineHeight).toBeGreaterThanOrEqual(3);
+  expect(metrics.overflow).not.toBe("hidden");
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
+  await expect(status.locator("em")).toBeVisible();
+  await expect(status.locator('[data-local-target-selection="true"]')).toBeVisible();
+  await loadConsoleState(page, "turn-play-end", 480);
+  await page.locator('[data-hand-card-id="browser-attack"] .game-card').click();
+  const selectedCard = await page.locator('.card-slot.single-selected .game-card').boundingBox();
+  const guidanceBox = await page.locator('[data-console-guidance="true"]').boundingBox();
+  expect(selectedCard.y).toBeGreaterThanOrEqual(guidanceBox.y + guidanceBox.height);
 });
