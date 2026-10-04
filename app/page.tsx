@@ -512,6 +512,29 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const heroFocus = projectHeroFocusForViewer(stage, publicHeroFocus, viewerId, resolvePlayerDisplay);
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
+  const dyingSourceAlreadyVisible = Boolean(dyingHandoff.visible && stage.source.id && (
+    mediumSource?.player.id === stage.source.id
+    || (heroFocus.primary?.id && heroFocus.primary.id !== stage.source.id && heroFocus.source.id === stage.source.id)
+  ));
+  const dyingFocusAlreadyVisible = Boolean(dyingHandoff.visible && display.focusTarget.id && (
+    heroFocus.primary?.id === display.focusTarget.id
+    || dyingHandoff.dyingPlayer.id === display.focusTarget.id
+  ));
+  const showRoleSummary = !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible);
+  const showDecisionSummary = display.showDecision && !(dyingHandoff.visible
+    && display.decisionActor.id
+    && dyingHandoff.decisionActor.id === display.decisionActor.id);
+  const showResolverSummary = display.showResolver && !(dyingHandoff.visible
+    && display.activeResolver.id
+    && dyingHandoff.activeResolver.id === display.activeResolver.id);
+  const showNestedContextSummary = Boolean(display.nestedContext)
+    && !(dyingHandoff.visible && heroFocus.primary && heroFocus.nestedContext === display.nestedContext);
+  const showMetadataContext = !dyingHandoff.visible
+    || showDecisionSummary
+    || showResolverSummary
+    || display.showOriginalTargets
+    || showNestedContextSummary;
+  const showMetadataRegion = showRoleSummary || showMetadataContext;
   if (!display.visible) return null;
   return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined} data-presentation-transition={transitionKind}>
     <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
@@ -551,18 +574,18 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
           </ol>
         </section>}
       </div>
-      <div className="interaction-stage-meta-region">
-        <div className="interaction-stage-focus">
+      {showMetadataRegion && <div className="interaction-stage-meta-region">
+        {showRoleSummary && <div className="interaction-stage-focus">
           <div><small>SOURCE</small><b>{display.source.name}</b></div>
           <div><small>{display.focusTarget.id ? "FOCUS" : "SCOPE"}</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
-        </div>
-        <div className="interaction-stage-context">
-          {display.showDecision && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
-          {display.showResolver && <span><small>RESOLVER</small><b>{display.activeResolver.name}</b></span>}
+        </div>}
+        {showMetadataContext && <div className="interaction-stage-context">
+          {showDecisionSummary && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
+          {showResolverSummary && <span><small>RESOLVER</small><b>{display.activeResolver.name}</b></span>}
           {display.showOriginalTargets && <span><small>ORIGINAL SCOPE</small><b>{display.originalTargetSummary}</b></span>}
-          {display.nestedContext && <span><small>CONTEXT</small><b>{display.nestedContext}</b></span>}
-        </div>
-      </div>
+          {showNestedContextSummary && <span><small>CONTEXT</small><b>{display.nestedContext}</b></span>}
+        </div>}
+      </div>}
     </div>
   </section>;
 }

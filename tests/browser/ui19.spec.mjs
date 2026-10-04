@@ -765,6 +765,26 @@ test("UX2.0VIS-08B ambiguous Group scope does not fabricate a single Stage focus
   await expect(stage.locator(".interaction-stage-meta-region")).not.toContainText("FOCUS");
 });
 
+for (const width of [1440, 480]) {
+  test(`UX2.0VIS-08C ${width}px Dying handoff omits duplicate role metadata`, async ({ page }) => {
+    await loadFixture(page, { state: "dying", count: 6, width, height: 900 });
+    await expect(page.locator('[data-medium-participant="source"]')).toHaveAttribute("data-medium-participant-player-id", "p1");
+    await expect(page.locator(".hero-focus")).toHaveAttribute("data-hero-focus-player-id", "p2");
+    const handoff = page.locator('[data-dying-handoff="proven"]');
+    await expect(handoff).toBeVisible();
+    await expect(handoff).toContainText("Player 2");
+    await expect(handoff).toContainText("Player 3");
+    await expect(page.locator(".interaction-stage-meta-region")).toHaveCount(0);
+  });
+}
+
+test("UX2.0VIS-08C preserves ordinary Interaction Stage metadata outside Dying", async ({ page }) => {
+  await loadFixture(page, { state: "interaction", count: 4, width: 650, height: 900 });
+  await expect(page.locator(".interaction-stage-meta-region")).toHaveCount(1);
+  await expect(page.locator(".interaction-stage-meta-region")).toContainText("SOURCE");
+  await expect(page.locator(".interaction-stage-meta-region")).toContainText("FOCUS");
+});
+
 for (const { width, focus, medium } of [
   { width: 1440, focus: [90, 113], medium: [56, 70] },
   { width: 650, focus: [72, 90], medium: [48, 60] },
