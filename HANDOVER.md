@@ -211,3 +211,21 @@ Do not self-accept. Push, verify remote HANDOVER, then STOP.
 
 ## Acceptance
 Pass only if 2–4 player opponent thumbnails are actually anchored to the top of the existing player-board band, retain all accepted size/X/behaviour contracts, Safe Zone follows 6–24px below them, active states remain fully contained, and Side Column/gameplay are unchanged.
+
+## Execution result — UX2.0VIS-04C (2026-10-04)
+
+- Implementation SHA: `e7d898d3474ee0b8e028c32e15fa9e82c37741a6` (`Anchor compact top-row seats to board top`). Changed `app/globals.css` and `tests/browser/ui19.spec.mjs`; this section is the only `HANDOVER.md` change.
+- Top Row strategy: row 1 changed from `minmax(120px,1fr)` with opponent `align-self:center` to `max-content` with `align-self:start`; the remaining board space is flexible below it. The player-board outer top insets remain 68/60/55px. Top Row Safe Zone top changed from desktop 253px / <=650 245px / <=480 260px to desktop 190px / <=700 164px / <=480 149px; only its top is retuned. The 651–700px breakpoint now uses 164px to follow the existing 60px board inset.
+- Measured 4-player REST geometry (the same row geometry is asserted for 2/3/4 players):
+
+  | Viewport | playerBoardTop | seatTop | seatBottom | safeZoneTop | Clearance |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | 1440×900 | 68px | 68px | 176px | 190px | 14px |
+  | 650×900 | 60px | 60px | 148px | 164px | 16px |
+  | 480×900 | 55px | 55px | 133px | 149px | 16px |
+
+- Seat size/X proof: 1440 retains 180×108px at X=10/630/1250; 650 retains 112×88px at X=21.5/269/516.5; 480 retains 100×78px at X=15.5/190/364.5. The 2-player centre and 3-player left/right mappings, relative indices, same-row alignment, and one LocalPlayerDock are asserted. The rendered old-geometry simulation at 480 places seats 110.5px below the board top and fails the <=4px anchor contract; the new geometry places them 0px below it.
+- Active-state containment: the new Interaction, Negation, Dying, and group-observer matrix passes at 1440/650/480 with opponent-to-Stage separation, Stage/Safe Zone and dock containment, unchanged Hero Focus and Medium Source portrait dimensions, visible Reaction Chain/Dying handoff, and no horizontal overflow. The retained VIS-04B matrix additionally confirms REST Safe Zone invisibility and no scrolling/clipping.
+- Side Column negative regression: 6-player geometry and `align-self:center` baseline remain unchanged at 1440 and 480; both cases pass. No side-column CSS, Stage internals, deck/discard geometry, LocalPlayerDock, gameplay, or projection logic changed.
+- Validation actually run: VIS-04C focused browser tests **26 passed**; retained VIS-04A, VIS-04B, and VIS-03B/C/D/E browser tests **68 passed**. Full browser suite, full tests, build, lint, and `git diff --check` were not run under the remote-validation workflow; GitHub Actions owns the remaining gate validation and was not inspected.
+- GAP: no known failure in the scoped browser contracts. A fresh real-iPhone screenshot was not captured; reviewer should inspect that composition and decide VIS-04C acceptance before assigning further work. VIS-05A remains deferred.
