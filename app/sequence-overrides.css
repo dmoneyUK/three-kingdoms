@@ -637,9 +637,13 @@
 .local-player-dock .console-guidance { grid-area: guidance; width: 100%; min-width: 0; height: auto; padding: 5px 8px; overflow: visible; }
 .local-player-dock .console-guidance .decision-status { width: 100%; max-height: none; overflow: visible; white-space: normal; overflow-wrap: break-word; }
 .local-player-dock .console-guidance > .error { margin: 4px 0 0; }
-.local-player-dock .turn-controls { --action-slot-width: 90px; position: relative; grid-area: actions; z-index: 100; min-height: 65px; height: auto; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 8px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
-.local-player-dock .turn-controls > [data-action-extras="true"] { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px; min-width: 0; }
-.local-player-dock .turn-controls > [data-action-slots="true"] { display: grid; grid-template-columns: repeat(3, var(--action-slot-width)); align-items: center; gap: 4px; width: max-content; min-width: 0; }
+.local-player-dock .turn-controls { --action-slot-width: 90px; position: relative; grid-area: actions; z-index: 100; min-height: 65px; height: auto; padding: 7px 8px; display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 4px; color: #c8b487; font: 10px/1.2 Arial, sans-serif; }
+.local-player-dock .turn-controls > [data-action-extras="true"] { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px; width: 100%; min-width: 0; }
+.local-player-dock .turn-controls > [data-action-slots="true"] { display: grid; grid-template-columns: var(--action-slot-width) minmax(32px, 1fr) max-content; grid-template-areas: "primary . secondary"; align-items: center; column-gap: 4px; width: 100%; min-width: 0; }
+.local-player-dock [data-action-slot="primary"] { grid-area: primary; }
+.local-player-dock [data-action-secondary="true"] { grid-area: secondary; display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: max-content; max-width: 100%; }
+.local-player-dock [data-action-secondary="true"] [data-action-slot] { flex: 0 0 var(--action-slot-width); }
+.local-player-dock [data-action-secondary="true"] [data-action-slot]:not(:has(button)) { display: none; }
 .local-player-dock [data-action-slot] { display: flex; min-width: 0; align-items: center; justify-content: center; }
 .local-player-dock [data-action-slot] button { box-sizing: border-box; width: 100%; min-width: 0; }
 .local-player-dock .turn-controls button { min-width: 78px; min-height: 32px; padding: 5px 8px; font-size: 8px; }

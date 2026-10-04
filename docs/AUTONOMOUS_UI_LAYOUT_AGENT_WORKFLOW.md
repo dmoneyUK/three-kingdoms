@@ -527,11 +527,17 @@ Structural ownership:
 
 ### 7.8 Stable action slots
 
-Already accepted:
+Already accepted semantic slots, with the updated spatial grouping:
 
 ```text
-Cancel | Primary | Decline
+PRIMARY  |  clear center gutter  |  CANCEL  DECLINE
 ```
+
+Primary is left-anchored. Cancel and Decline are grouped at the right; when
+only one is present, it occupies the right edge. Keep visual and keyboard
+traversal order left-to-right: Primary, Cancel, Decline.
+Provider/mode controls stay in Extras and must not fill the gutter or displace
+the action anchors.
 
 Semantic meanings:
 
@@ -645,7 +651,7 @@ Accepted:
 - Medium external source projection;
 - viewer Hero excluded from central duplication;
 - full-width long-form Local Dock guidance;
-- permanent Cancel / Primary / Decline slots;
+- permanent semantic action slots, with Primary left and Cancel / Decline grouped right;
 - provider Extras separated from semantic action slots;
 - Sun Shangxiang Daredevil routed to Hero Skills;
 - 5–10 Side Column deterministic topology;
@@ -1154,4 +1160,3 @@ The remaining approved direction is expected to include, as needed:
 - final mobile visual gate.
 
 Do not implement these as one large task. Derive the next smallest high-impact bounded task using section 19.
-

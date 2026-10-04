@@ -1912,12 +1912,12 @@ test("UI-19 reduced motion removes nonessential transition animation without hid
 });
 
 const VIS_06A_STATES = [
-  { state: "confirm-cancel", buttons: ["Cancel", "Confirm", ""] },
-  { state: "confirm-skip", buttons: ["", "Confirm", "Skip"] },
-  { state: "confirm-cancel-skip", buttons: ["Cancel", "Confirm", "Skip"] },
-  { state: "turn-play-end", buttons: ["", "Play", "End"] },
-  { state: "provider-extra", buttons: ["", "Confirm", "Skip"] },
-  { state: "long-guidance", buttons: ["Cancel", "Confirm", "Skip"] },
+  { state: "confirm-cancel", buttons: { primary: "Confirm", cancel: "Cancel", decline: "" } },
+  { state: "confirm-skip", buttons: { primary: "Confirm", cancel: "", decline: "Skip" } },
+  { state: "confirm-cancel-skip", buttons: { primary: "Confirm", cancel: "Cancel", decline: "Skip" } },
+  { state: "turn-play-end", buttons: { primary: "Play", cancel: "", decline: "End" } },
+  { state: "provider-extra", buttons: { primary: "Confirm", cancel: "", decline: "Skip" } },
+  { state: "long-guidance", buttons: { primary: "Confirm", cancel: "Cancel", decline: "Skip" } },
 ];
 
 async function loadConsoleState(page, state, width) {
@@ -1944,7 +1944,8 @@ for (const width of [480, 1440]) {
       const controls = dock.locator('[data-console-surface="local-operation"]');
       const extras = controls.locator('[data-action-extras="true"]');
       const slots = controls.locator('[data-action-slots="true"]');
-      const orderedSlots = ["cancel", "primary", "decline"].map((name) => slots.locator(`[data-action-slot="${name}"]`));
+      const slotNames = ["primary", "cancel", "decline"];
+      const orderedSlots = slotNames.map((name) => slots.locator(`[data-action-slot="${name}"]`));
       await expect(guidance, `${state} has one guidance row`).toHaveCount(1);
       await expect(extras, `${state} has one extras region`).toHaveCount(1);
       await expect(slots, `${state} has one slot region`).toHaveCount(1);
@@ -1954,15 +1955,50 @@ for (const width of [480, 1440]) {
       for (let index = 0; index < orderedSlots.length; index += 1) {
         await expect(orderedSlots[index], `${state} keeps slot ${index}`).toHaveCount(1);
         const action = orderedSlots[index].locator("button");
-        if (buttons[index]) await expect(action).toHaveText(buttons[index]);
+        if (buttons[slotNames[index]]) await expect(action).toHaveText(buttons[slotNames[index]]);
         else await expect(action).toHaveCount(0);
       }
-      const slotBoxes = await Promise.all(orderedSlots.map((slot) => slot.boundingBox()));
-      expect(slotBoxes[0].x).toBeLessThan(slotBoxes[1].x);
-      expect(slotBoxes[1].x).toBeLessThan(slotBoxes[2].x);
       const dockBox = await dock.boundingBox();
       const guidanceBox = await guidance.boundingBox();
       const controlBox = await controls.boundingBox();
+      const actionGeometry = await controls.evaluate((element) => {
+        const rect = (name) => {
+          const button = element.querySelector(`[data-action-slot="${name}"] button`);
+          if (!button) return null;
+          const box = button.getBoundingClientRect();
+          return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+        };
+        const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const leftInset = bounds.left + Number.parseFloat(style.borderLeftWidth) + Number.parseFloat(style.paddingLeft);
+        const rightInset = bounds.right - Number.parseFloat(style.borderRightWidth) - Number.parseFloat(style.paddingRight);
+        const slotsElement = element.querySelector('[data-action-slots="true"]');
+        const actionButtons = ["primary", "cancel", "decline"].map((name) => slotsElement.querySelector(`[data-action-slot="${name}"] button`)).filter(Boolean);
+        const keyboardOrder = actionButtons.every((button, index) => index === actionButtons.length - 1 || Boolean(button.compareDocumentPosition(actionButtons[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING));
+        const primary = rect("primary");
+        const cancel = rect("cancel");
+        const decline = rect("decline");
+        const firstSecondary = cancel ?? decline;
+        const rightmost = decline ?? cancel;
+        return {
+          leftInset,
+          rightInset,
+          primary,
+          cancel,
+          decline,
+          firstSecondary,
+          rightmost,
+          keyboardOrder,
+        };
+      });
+      expect(Math.abs(actionGeometry.primary.left - actionGeometry.leftInset), `${state} Primary is anchored left`).toBeLessThanOrEqual(1);
+      expect(Math.abs(actionGeometry.rightmost.right - actionGeometry.rightInset), `${state} right action is anchored right`).toBeLessThanOrEqual(1);
+      expect(actionGeometry.firstSecondary.left - actionGeometry.primary.right, `${state} has a clear center gutter`).toBeGreaterThanOrEqual(32);
+      if (actionGeometry.cancel && actionGeometry.decline) {
+        expect(actionGeometry.decline.left - actionGeometry.cancel.right, `${state} keeps Cancel beside Decline`).toBeGreaterThanOrEqual(0);
+        expect(actionGeometry.decline.left - actionGeometry.cancel.right, `${state} keeps the right group compact`).toBeLessThanOrEqual(8);
+      }
+      expect(actionGeometry.keyboardOrder, `${state} keyboard traversal matches left-to-right visual order`).toBe(true);
       expect(guidanceBox.width).toBeGreaterThanOrEqual(dockBox.width - 16);
       expect(guidanceBox.y + guidanceBox.height).toBeLessThanOrEqual(controlBox.y);
       const visual = await controls.evaluate((element) => {
@@ -1987,14 +2023,18 @@ for (const width of [480, 1440]) {
       const extrasLabels = await extras.locator("button").allTextContents();
       expect(extrasLabels.map((label) => label.trim()).filter((label) => /^(Confirm|Cancel|Skip|End)$/.test(label))).toEqual([]);
       if (state === "provider-extra") expect(extrasLabels).toContain("Cancel Alternate Attack");
-      snapshots.push({ state, slots: slotBoxes.map(({ x, width: slotWidth }) => ({ x, width: slotWidth })) });
+      if (extrasLabels.length > 0) {
+        const extrasBox = await extras.boundingBox();
+        expect(extrasBox.y + extrasBox.height).toBeLessThanOrEqual(actionGeometry.primary.top);
+      }
+      snapshots.push({ state, primary: actionGeometry.primary, rightmost: actionGeometry.rightmost });
     }
-    for (const index of [0, 1, 2]) {
-      const xs = snapshots.map(({ slots }) => slots[index].x);
-      const widths = snapshots.map(({ slots }) => slots[index].width);
-      expect(Math.max(...xs) - Math.min(...xs), `slot ${index} X is stable at ${width}px`).toBeLessThanOrEqual(4);
-      expect(Math.max(...widths) - Math.min(...widths), `slot ${index} width is stable at ${width}px`).toBeLessThanOrEqual(4);
-    }
+    const primaryLefts = snapshots.map(({ primary }) => primary.left);
+    const primaryWidths = snapshots.map(({ primary }) => primary.right - primary.left);
+    const rightEdges = snapshots.map(({ rightmost }) => rightmost.right);
+    expect(Math.max(...primaryLefts) - Math.min(...primaryLefts), `Primary X is stable at ${width}px`).toBeLessThanOrEqual(4);
+    expect(Math.max(...primaryWidths) - Math.min(...primaryWidths), `Primary width is stable at ${width}px`).toBeLessThanOrEqual(4);
+    expect(Math.max(...rightEdges) - Math.min(...rightEdges), `right action edge is stable at ${width}px`).toBeLessThanOrEqual(4);
   });
 }
 

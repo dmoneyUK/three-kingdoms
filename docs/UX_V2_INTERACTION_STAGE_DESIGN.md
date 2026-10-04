@@ -3254,12 +3254,21 @@ It may show states such as:
 
 ```text
 Your turn · Play Phase                              End Turn
-Attack selected · Select 1 target          Cancel   Confirm
-Select 1–3 targets · Selected 2/3          Cancel   Confirm
-Respond with Dodge                          Confirm   Skip
-Select 2 cards to discard · 1/2            Cancel   Confirm
+Attack selected · Select 1 target          Confirm      Cancel
+Select 1–3 targets · Selected 2/3           Confirm      Cancel
+Respond with Dodge                          Confirm      Skip
+Select 2 cards to discard · 1/2             Confirm      Cancel
 Waiting for Zhao Yun...
 ```
+
+When action controls share a row, keep two stable spatial zones: the semantic
+Primary action (Confirm/Play/equivalent) is anchored at the left; local Cancel
+and authoritative Decline (Skip/End) are grouped at the right. Leave a clearly
+empty center gutter between those zones (at least 32px at the 480px mobile
+layout). When only one secondary action is available, anchor it at the right
+edge. Keep DOM/keyboard traversal in visual order: Primary, Cancel, Decline.
+Provider Extras must remain outside that gutter and must not displace either
+horizontal anchor.
 
 Rules:
 

@@ -24,13 +24,13 @@ Do not copy this entire roadmap into working context unless historical reconstru
 ## Current frontier
 
 Latest completed milestone:
-- `UX2.0VIS-09C — Preserve Hand Viewport Context Across Card Changes`
-- final tested revision `a5fbc33c06453ee2b34f7c83dbdc13fa1328294c`
-- CI run `37196642543`: build-and-test and deploy/production smoke test successful
+- `UX2.0VIS-10A — Keep the Interaction Stage Inside the Safe Zone at Short Portrait Heights`
+- final tested revision `b107ca2dde5cb58ff2e264ca45b5fbbe61db4033`
+- CI run `37200561740`: build-and-test and deploy/production smoke test successful
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-10A — Keep the Interaction Stage Inside the Safe Zone at Short Portrait Heights`
+- `UX2.0VIS-10B — Separate the Primary Action from Secondary Actions`
 - status: PLANNED
 - current task authority: `HANDOVER.md`
 
@@ -44,7 +44,11 @@ The initial CI run (`37194263323`) exposed that Chromium's `Input.synthesizeScro
 
 Completed by Agent; CI green on `a5fbc33c06453ee2b34f7c83dbdc13fa1328294c` (run `37196642543`); build-and-test and deployment/production smoke test succeeded. The local Hand rail snapshots viewer-private rendered physical IDs and viewport-relative positions, preserves a surviving visible anchor through preceding-card removal, falls back to the nearest surviving previously visible card if the anchor is removed, and leaves selection/viewport undisturbed on append. Mounted fixture regressions passed 4/4 at 480px and 650px; targeted ESLint and `git diff --check` passed. No gameplay/server/protocol authority changed. Human Reviewer acceptance remains separate.
 
-For next-task planning, a mounted browser probe found short-height Top Row Interaction Stage overflow: at 480×640, Stage/Dock overlap measured 20px in Dying, 120px in Negation and 108px in Group observer; at 650×700, 53px, 97px and 122px respectively. The 900px-high interaction matrix already tests containment. See current bounded task VIS-10A in `HANDOVER.md`.
+The VIS-10A planning probe found short-height Top Row Interaction Stage overflow: at 480×640, Stage/Dock overlap measured 20px in Dying, 120px in Negation and 108px in Group observer; at 650×700, 53px, 97px and 122px respectively. The 900px-high interaction matrix already tested containment; VIS-10A's completed result is recorded below.
+
+## UX2.0VIS-10A — Keep the Interaction Stage Inside the Safe Zone at Short Portrait Heights
+
+Completed by Agent; final revision `b107ca2dde5cb58ff2e264ca45b5fbbe61db4033`, CI run `37200561740` — build-and-test and deploy/production smoke test succeeded. Responsive Stage pressure is constrained to narrow mobile widths; compact layouts contain the required Stage content without changing desktop geometry. The follow-up fixed an overly broad height query exposed by the retained 1440×900 Hero Focus tests and updated the 650×900 Dying probe to assert containment under a contracted Safe Zone instead of expecting the old overflow. Focused browser cases passed 40/40; targeted ESLint and `git diff --check` passed. Human Reviewer acceptance remains separate.
 
 ## Durable accepted UI / presentation contracts
 
@@ -64,8 +68,8 @@ For next-task planning, a mounted browser probe found short-height Top Row Inter
 - Ambiguous Stage focus is shown as scope rather than fabricating a primary.
 - Dying duplicate metadata is omitted only when the same proven identities are already visible.
 - Local Guidance is a dedicated full-width wrapping row.
-- Local action semantics are fixed: Cancel | Primary | Decline.
-- Provider/mode controls live in Extras and must not move the fixed action slots.
+- Local action semantics remain distinct; Primary is left-anchored while Cancel and Decline group at right (a lone secondary action also anchors right), with a clear empty center gutter.
+- Provider/mode controls live in Extras and must not fill the gutter or displace the horizontal action anchors.
 - Mapped Hero skills remain in Hero Skills.
 - Hand remains one horizontal layer.
 - Persistent local Judgement belongs with/on the local Hero.
@@ -79,7 +83,7 @@ For next-task planning, a mounted browser probe found short-height Top Row Inter
 
 ## Remaining approved direction
 
-After VIS-10A, inspect actual code before choosing the next bounded task. Expected remaining high-impact areas include:
+After VIS-10B, inspect actual code before choosing the next bounded task. Expected remaining high-impact areas include:
 
 1. final LocalPlayerDock Hero / Skills / Equipment proportions and density, if measurable gaps remain;
 2. representative interaction visual audit across REST, single-target, multi-target, AOE, Negation, Duel, Dying, Judgement, Borrowed Sword, Hero skill, and long guidance;
@@ -104,7 +108,8 @@ The detailed historical ledger below preserves the complete pre-migration HANDOV
 - VIS-09A: persistent local Judgement moved into local Hero overlay.
 - VIS-09B: one-row large-Hand navigation and native pan.
 - VIS-09C: viewport anchoring across Hand membership changes.
-- VIS-10A: current planned short-portrait Top Row Stage containment task.
+- VIS-10A: short-portrait Top Row Stage containment.
+- VIS-10B: current planned Primary-left / Cancel-and-Decline-right action-zone task.
 
 ## Historical ledger migrated from HANDOVER.md
 
