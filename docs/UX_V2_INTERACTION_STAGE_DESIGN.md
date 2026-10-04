@@ -3049,6 +3049,40 @@ Required at-a-glance information:
 
 The opponent seat must remain a **Hero thumbnail**, not degrade into a mostly-text status strip. Under responsive pressure, compact secondary text, padding and decorative chrome before reducing the useful Hero-art region below a recognizable presentation. Keep a dedicated portrait region whose central artwork is not covered by large name / HP / hand-count overlays. Top Row and Side Column may use different portrait crops and densities, but both must preserve immediate Hero recognition at the validated mobile portrait sizes.
 
+#### Hero-art crop contract
+
+Use the repository's actual Hero artwork for every seat and local-Hero presentation. Do not substitute newly generated, approximate, or stylistically similar character art.
+
+The compact presentation should intentionally show the **Hero's recognizable upper body**, not the entire source illustration:
+
+- crop away most empty headroom above the Hero;
+- crop away most of the lower body / legs;
+- keep the complete face, head/hair/headwear, shoulders, chest/upper torso, and a useful amount of distinctive weapon/clothing detail;
+- do not crop through the face, forehead, chin, or other identity-critical features;
+- do not letterbox the full source image just to preserve every pixel;
+- do not stretch or distort the original aspect ratio.
+
+The normal implementation is a fixed portrait viewport with the real Hero asset rendered using `object-fit: cover`. Position the crop around the face/upper torso with `object-position`, rather than shrinking the full-body art into a tiny image. A useful starting point is approximately `50% 15–25%`, but this is **not** a universal hard-coded value: the Hero asset may need a per-Hero focal-point override because the face is not at the same coordinate in every illustration.
+
+If per-Hero tuning is required, store only presentation metadata such as a focal point / object-position, for example:
+
+```ts
+heroThumbnailCrop: { x: 50, y: 20 }
+```
+
+Do not create alternate gameplay Hero identities or duplicate artwork files merely for cropping.
+
+This same upper-body crop principle applies to:
+
+- opponent Top Row thumbnails;
+- opponent Side Column thumbnails;
+- the persistent local-player Hero panel;
+- enlarged Interaction Stage Hero Focus / Source cards, with a looser crop when extra space is available.
+
+Larger views may reveal more torso/background, but they should preserve the same recognizable focal point so the Hero looks like the same character when moving between seat thumbnail, local Dock, Inspect, and Interaction Stage.
+
+Visual validation must reject a crop where the source image technically renders but the Hero face/upper body is too small to identify quickly.
+
 ### 1.5.1 Public Equipment at a glance
 
 Public equipped cards materially affect target choice and combat reasoning. A player should not need to open Inspect merely to discover whether an opponent visibly has a Weapon, Armour, +1 Horse, or -1 Horse.
@@ -3240,7 +3274,9 @@ The local hero should remain visually large. It is both gameplay identity and a 
 
 Do not reduce the local hero to a small avatar merely to fit more metadata.
 
-The hero area should include the hero's essential stable status, such as name and HP, without covering important artwork unnecessarily.
+The persistent local-Hero panel follows the **Hero-art crop contract in §1.5**: use the real repository Hero asset and frame the recognizable head/upper body with `object-fit: cover`, removing unnecessary headroom and most lower-body art instead of shrinking the full illustration. The local panel may use a slightly looser crop than an opponent thumbnail, but the face and upper torso remain the focal point.
+
+The hero area should include the hero's essential stable status, such as name and HP, without covering important artwork unnecessarily. Prefer compact overlays/badges for HP and persistent Judgement rather than shrinking the portrait viewport.
 
 Core viewer-centric rule: **the local hero is never duplicated in the Interaction Stage.** If the viewer is a source, target, decision actor, or resolving participant, that semantic role is projected onto the Local Player Dock.
 
