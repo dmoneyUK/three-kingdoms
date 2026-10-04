@@ -24,13 +24,13 @@ Do not copy this entire roadmap into working context unless historical reconstru
 ## Current frontier
 
 Latest completed milestone:
-- `UX2.0VIS-10A — Keep the Interaction Stage Inside the Safe Zone at Short Portrait Heights`
-- final tested revision `b107ca2dde5cb58ff2e264ca45b5fbbe61db4033`
-- CI run `37200561740`: build-and-test and deploy/production smoke test successful
+- `UX2.0VIS-10B — Separate the Primary Action from Secondary Actions`
+- final tested revision `a4a404fb71f2319c8682ae317399443fc02ba67e`
+- CI run `37201916286`: build-and-test and deploy/production smoke test successful
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-10B — Separate the Primary Action from Secondary Actions`
+- `UX2.0VIS-10C — Opponent Hero Readability and Public Equipment at a Glance`
 - status: PLANNED
 - current task authority: `HANDOVER.md`
 
@@ -49,6 +49,10 @@ The VIS-10A planning probe found short-height Top Row Interaction Stage overflow
 ## UX2.0VIS-10A — Keep the Interaction Stage Inside the Safe Zone at Short Portrait Heights
 
 Completed by Agent; final revision `b107ca2dde5cb58ff2e264ca45b5fbbe61db4033`, CI run `37200561740` — build-and-test and deploy/production smoke test succeeded. Responsive Stage pressure is constrained to narrow mobile widths; compact layouts contain the required Stage content without changing desktop geometry. The follow-up fixed an overly broad height query exposed by the retained 1440×900 Hero Focus tests and updated the 650×900 Dying probe to assert containment under a contracted Safe Zone instead of expecting the old overflow. Focused browser cases passed 40/40; targeted ESLint and `git diff --check` passed. Human Reviewer acceptance remains separate.
+
+## UX2.0VIS-10B — Separate the Primary Action from Secondary Actions
+
+Completed by Agent; tested revision `a4a404fb71f2319c8682ae317399443fc02ba67e`, CI run `37201916286` — build-and-test and deploy/production smoke test succeeded. The semantic Primary action is first in visual/DOM order and anchored left; Cancel and Decline/End remain grouped at right with a measured center gutter, while provider Extras stay separate. Handlers, labels, enabled states, payloads, and action authority are unchanged. Focused browser cases passed (VIS-06A action-slot/guidance 3/3; VIS-10A containment plus VIS-04B 9/9), as did targeted ESLint and `git diff --check`. Human Reviewer acceptance remains separate.
 
 ## Durable accepted UI / presentation contracts
 
@@ -83,7 +87,7 @@ Completed by Agent; final revision `b107ca2dde5cb58ff2e264ca45b5fbbe61db4033`, C
 
 ## Remaining approved direction
 
-After VIS-10B, inspect actual code before choosing the next bounded task. Expected remaining high-impact areas include:
+After VIS-10C, inspect actual code before choosing the next bounded task. Expected remaining high-impact areas include:
 
 1. final LocalPlayerDock Hero / Skills / Equipment proportions and density, if measurable gaps remain;
 2. representative interaction visual audit across REST, single-target, multi-target, AOE, Negation, Duel, Dying, Judgement, Borrowed Sword, Hero skill, and long guidance;
@@ -109,7 +113,8 @@ The detailed historical ledger below preserves the complete pre-migration HANDOV
 - VIS-09B: one-row large-Hand navigation and native pan.
 - VIS-09C: viewport anchoring across Hand membership changes.
 - VIS-10A: short-portrait Top Row Stage containment.
-- VIS-10B: current planned Primary-left / Cancel-and-Decline-right action-zone task.
+- VIS-10B: Primary-left / Cancel-and-Decline-right action-zone task (CI green).
+- VIS-10C: current planned opponent Hero readability / public equipment-at-a-glance task.
 
 ## Historical ledger migrated from HANDOVER.md
 
