@@ -444,3 +444,12 @@ Validation: focused presentation-client tests; mounted ambiguous Group case plus
 Acceptance: ambiguous multi-target and unproven Dying states do not render the first target as `FOCUS`; proven current/sole targets remain unchanged, and no authority or privacy boundary changes.
 
 VIS-08B scope clarification: include `app/page.tsx` only to label an identity-bearing focus as `FOCUS` and an identity-free target summary as `SCOPE`; no action/control behavior changes.
+
+### VIS-08B IMPLEMENTATION RESULT
+
+Implementation SHA: `826c062`.
+Files changed: `game/presentation-client.ts`, `app/page.tsx`, `tests/presentation-client.test.mjs`, `tests/browser/fixture.jsx`, `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`.
+Change: Stage metadata now selects the proven current participant, or a sole active target only outside Dying. Ambiguous/empty scope and unproven Dying expose no focus identity; the row is labelled `SCOPE` and retains the public scope summary. No progress/order/eligibility or gameplay semantics were added.
+Focused validation: `node --import tsx --test tests/presentation-client.test.mjs` — 39/39; `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-08B|UX2.0VIS-07A' --workers=2` — 10/10, including the mounted ambiguous Group case and retained 4/6/10-player Group layouts at 1440/650/480px; `git diff --check` passed.
+Known gaps: Group progress/order/outcomes remain deferred; no full local suite/build/lint was run.
+CI pending: push the implementation and this result, then wait for Actions on the exact resulting revision before selecting another task.
