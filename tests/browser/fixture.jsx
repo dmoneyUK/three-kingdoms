@@ -53,13 +53,18 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
     stable: { kind: "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "confirm-cancel-skip" || state === "long-guidance" ? "trigger" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "provider-extra" || state === "group-observer" ? "response" : "turn", actorId: decisionActorId, entitled: viewerId === decisionActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" ? "trigger" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "provider-extra" || state === "group-observer" ? "response" : "turn", actorId: decisionActorId, entitled: viewerId === decisionActorId },
     settlement: null,
     transitionEvents: [],
   };
 }
 
 function currentActionFor(state, actorId, handCardId) {
+  if (state === "sun-shangxiang-daredevil") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Draw two cards after losing equipment, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
+    triggerOptions: [{ effectId: "sun_shangxiang_daredevil", label: "Daredevil", allowDecline: true }],
+  };
+  if (state === "sun-shangxiang-inactive") return currentActionFor("normal", actorId, handCardId);
   if (state === "confirm-cancel") return { version: 3, kind: "borrowed_sword", actorId, deadline: 0, reason: "Choose a target for the forced Attack", legalActions: ["choose_borrowed_sword_target"] };
   if (state === "confirm-cancel-skip" || state === "long-guidance") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Choose one living opponent for Assault", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
@@ -158,7 +163,7 @@ function browserRoom({ state, count }) {
     id,
     name: `Player ${index + 1}`,
     seat: index,
-    hero: index === 0 && (state === "confirm-cancel-skip" || state === "long-guidance") ? "zhang-liao" : HERO_IDS[index],
+    hero: index === 0 && state.startsWith("sun-shangxiang-") ? "sun-shangxiang" : index === 0 && (state === "confirm-cancel-skip" || state === "long-guidance") ? "zhang-liao" : HERO_IDS[index],
     generalReady: true,
     ready: true,
     hp: 4,
@@ -186,12 +191,12 @@ function browserRoom({ state, count }) {
     players,
     myHand: hand,
     turnSeat: state === "group-observer" ? 3 : state === "dying" ? 1 : 0,
-    phase: state === "dying" ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" ? "play" : "response",
+    phase: state === "dying" ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" ? "play" : "response",
     deckCount: 20,
     discardTop: null,
     log: [],
     timeline: [],
-    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end",
+    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive",
     actionPlayerId: currentAction?.actorId ?? null,
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
     isMyAction: Boolean(currentAction?.actorId === meId),

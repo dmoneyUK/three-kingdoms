@@ -810,7 +810,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   daqiao: { Captivating: ["daqiao_captivating"], Deflection: ["daqiao_deflection"] },
   "diao-chan": { Lust: ["diao_chan_lust"], "Beauty Outshining the Moon": ["diao_chan_beauty_outshining_moon"] },
   "hua-tuo": { "Prodigal Healer": ["hua_tuo_prodigal_healer"] },
-  "sun-shangxiang": { Betrothment: ["sun_shangxiang_betrothment"] },
+  "sun-shangxiang": { Betrothment: ["sun_shangxiang_betrothment"], Daredevil: ["sun_shangxiang_daredevil"] },
   "huang-yueying": { Cultivation: ["huang_yueying_cultivation"] },
 };
 

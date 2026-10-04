@@ -1120,3 +1120,47 @@ test("UX2.0VIS-06A 480x900 shows long guidance and leaves raised hand cards clea
   const guidanceBox = await page.locator('[data-console-guidance="true"]').boundingBox();
   expect(selectedCard.y).toBeGreaterThanOrEqual(guidanceBox.y + guidanceBox.height);
 });
+
+for (const width of [480, 1440]) {
+  test(`UX2.0VIS-06B ${width}x900 owns Daredevil in Hero Skills and preserves Skip`, async ({ page }) => {
+    await loadFixture(page, { state: "sun-shangxiang-daredevil", count: 4, width, height: 900 });
+    const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+    const skills = dock.locator('.local-status-panel .local-hero-skills');
+    await expect(dock.locator('.local-dock-identity .local-hero-card [data-hero-id="sun-shangxiang"]')).toHaveCount(1);
+    await expect(skills.locator('button')).toHaveText(["Betrothment", "Daredevil"]);
+    await expect(skills.getByRole('button', { name: "Betrothment", exact: true })).toBeDisabled();
+    const daredevil = skills.getByRole('button', { name: "Daredevil", exact: true });
+    await expect(daredevil).toBeEnabled();
+    const actions = dock.locator('[data-console-surface="local-operation"]');
+    await expect(actions.getByRole('button', { name: /Daredevil/ })).toHaveCount(0);
+    await expect(actions.locator('[data-action-slot="cancel"] button')).toHaveCount(0);
+    await expect(actions.locator('[data-action-slot="primary"] button')).toHaveCount(0);
+    await expect(actions.locator('[data-action-slot="decline"] button')).toHaveText("Skip");
+    const regions = await dock.evaluate((element) => ({
+      identity: getComputedStyle(element.querySelector('.local-dock-identity')).gridArea,
+      zones: getComputedStyle(element.querySelector('.local-status-panel').parentElement).gridArea,
+      overflow: document.documentElement.scrollWidth > window.innerWidth,
+    }));
+    expect(regions.identity).toBe("identity");
+    expect(regions.zones).toBe("zones");
+    expect(regions.overflow).toBe(false);
+    await daredevil.click();
+    // Mounting the response decision also starts its existing timer; assert
+    // the exact gameplay submission independently of that lifecycle action.
+    expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action !== "start_response_timer"))).toEqual([{ action: "trigger", extra: { providerId: "sun_shangxiang_daredevil" } }]);
+    await actions.locator('[data-action-slot="decline"] button').click();
+    expect(await page.evaluate(() => window.__browserActions.at(-1))).toEqual({ action: "decline_trigger" });
+  });
+
+  test(`UX2.0VIS-06B ${width}x900 keeps inactive Daredevil visible and generic providers in extras`, async ({ page }) => {
+    await loadFixture(page, { state: "sun-shangxiang-inactive", count: 4, width, height: 900 });
+    const dock = page.locator('.local-player-dock');
+    await expect(dock.locator('.local-hero-skills button')).toHaveText(["Betrothment", "Daredevil"]);
+    await expect(dock.locator('.local-hero-skills').getByRole('button', { name: "Daredevil", exact: true })).toBeVisible();
+    await expect(dock.locator('.local-hero-skills').getByRole('button', { name: "Daredevil", exact: true })).toBeDisabled();
+    await expect(dock.locator('[data-console-surface="local-operation"]').getByRole('button', { name: /Daredevil/ })).toHaveCount(0);
+    await loadConsoleState(page, "provider-extra", width);
+    await expect(page.locator('[data-action-extras="true"]').getByRole('button', { name: "Cancel Alternate Attack", exact: true })).toBeVisible();
+    await expect(page.locator('.local-hero-skills').getByRole('button', { name: /Alternate Attack/ })).toHaveCount(0);
+  });
+}
