@@ -230,3 +230,15 @@ Required regression tests: Count6 interaction/negation/dying/group-observer and 
 Required local validation: Focused geometry/hit tests; relevant bounded regressions; git diff --check under autonomous workflow. No routine full build/test/lint.
 CI acceptance: Exact implementation revision build-and-test green before planning another task; diagnose only relevant failed jobs.
 Task acceptance criteria: Wrapper and visible Stage clear every seat descendant >=6px; Stage fully inside table/above dock without content suppression. If unchanged Stage cannot fit at480px, record exact BLOCKED measurements and stop for human review without secretly adapting Stage composition.
+
+### VIS-05B IMPLEMENTATION RESULT
+
+Implementation SHA: `8fa843c`.
+Files changed: app/sequence-overrides.css; tests/browser/ui19.spec.mjs; tests/browser/layout.config.mjs; README.md; append-only HANDOVER.md.
+What changed: Transparent absolute wrapper follows inward edges of the accepted outer 30% seat tracks plus 8px clearance. Stage is relative/normal-flow, translate/transform none, existing content untouched. Added 18 active-state cases plus a negative legacy-position regression. Fixture-only config avoids unrelated Worker startup locally; full CI still uses both servers.
+What was intentionally preserved: Seat mapping, dimensions, Inspect, Top Row, Hero Focus sizes/content, Reaction/Dying, server authority, public/private projections, CurrentAction, local controls, payloads and gameplay. No CI workflow changes.
+Focused tests: Initial 18 positive cases passed; initial negative fixture failed to reproduce legacy overflow because existing max-width still constrained it. Corrected only that negative fixture with maxWidth:none; final combined VIS-05B/VIS-05A/VIS-04C Chromium run passed 96/96 (19 new, 77 retained). Command: npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-05B|UX2.0VIS-05A|UX2.0VIS-04C' --workers=2.
+Broader tests: Only the named bounded browser regressions above; no local full test/build/lint. git diff --check passed under autonomous workflow.
+Geometry: At480px safe zone x104.09375, width271.8125; at650px x142.875, width364.25; at1440px x300.59375, width838.8125. Existing Stage fits without clipping/scroll/scaling or suppressing semantic content. All visible Stage and seat descendants are explicitly compared. 480px/10-player Negation screenshot visually inspected locally.
+Known gaps: This closes positioning only, not final Large/Medium Side Column Hero Focus design, touch/WCAG certification, subjective art approval or deployment verification. Reviewer acceptance is not claimed.
+CI pending: Push exact implementation and this result to origin/ux-v2; wait for build-and-test and fix only actual failures before selecting another task.
