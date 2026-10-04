@@ -3300,33 +3300,82 @@ This bar is a stable UX anchor and must never be covered by the hand, selected c
 It may show states such as:
 
 ```text
-Your turn · Play Phase                              End Turn
-Attack selected · Select 1 target          Confirm      Cancel
-Select 1–3 targets · Selected 2/3           Confirm      Cancel
-Respond with Dodge                          Confirm      Skip
-Select 2 cards to discard · 1/2             Confirm      Cancel
+Your turn · Play Phase                                      End Turn
+Attack selected · Select 1 target                 Confirm          End
+Respond with Dodge                                 Respond         Skip
+Complex local picker                         Cancel      Confirm
 Waiting for Zhao Yun...
 ```
 
-When action controls share a row, keep two stable spatial zones: the semantic
-Primary action (Confirm/Play/equivalent) is anchored at the left; local Cancel
-and authoritative Decline (Skip/End) are grouped at the right. Leave a clearly
-empty center gutter between those zones (at least 32px at the 480px mobile
-layout). When only one secondary action is available, anchor it at the right
-edge. Keep DOM/keyboard traversal in visual order: Primary, Cancel, Decline.
-Provider Extras must remain outside that gutter and must not displace either
-horizontal anchor.
+#### Mobile primary-action placement
+
+WTK is mobile-portrait first, so the primary commit action must be reachable by a
+right-handed thumb without being placed directly on the extreme screen edge.
+
+For phone layouts:
+
+- place the semantic Primary action (Confirm / Play / Respond / equivalent) in
+  the **bottom centre-right thumb zone**, approximately the 55–70% horizontal
+  region of the action bar rather than hard against either edge;
+- keep a deliberate safety margin between Primary and the right edge;
+- keep authoritative Decline / Skip / End at the far-right secondary zone;
+- preserve a clearly measurable gutter between Primary and Decline / End so a
+  normal tap on Confirm cannot easily become an irreversible End / Skip;
+- Primary should be visually more prominent than End Turn;
+- End Turn may remain reachable, but must not occupy the easiest or largest
+  right-thumb target while an active confirmation is present;
+- do not change gameplay semantics, ordering, enabled state or payload merely
+  to obtain the visual placement.
+
+This supersedes any earlier rule that permanently anchored Primary at the far
+left. Desktop/tablet may use a more conventional left/centre alignment because
+mouse/pointer reachability is different, but the semantic relationship remains
+stable: Primary is the main commit action; Decline / Skip / End is a separate
+authoritative secondary action.
+
+When a true local Cancel is required, it is contextual rather than a permanent
+third slot. In a modal or complex pre-commit picker, a conventional
+`Cancel ... Confirm` pair is acceptable, with Cancel visually separated from
+the commit action. Do not place Cancel merely to fill an empty slot.
+
+Provider Extras must stay outside the Primary-versus-secondary safety gutter and
+must not displace the main horizontal anchors.
 
 Rules:
 
-- guidance stays at the bottom rather than above the hand,
-- selected hand cards rise away from it,
-- controls stay in predictable positions where practical,
-- Confirm remains disabled until the current local selection is valid,
-- Cancel and Skip retain their distinct semantics defined later in this document,
-- the bar must remain readable during complex Reaction Chains.
+- guidance stays at the bottom rather than above the hand;
+- selected hand cards rise away from it;
+- controls stay in predictable positions where practical;
+- Confirm remains disabled until the current local selection is valid;
+- Cancel, Skip / Decline and End Turn retain their distinct semantics defined later in this document;
+- the bar must remain readable during complex Reaction Chains;
+- phone validation must include right-thumb reachability and accidental-tap risk,
+  not geometry alone.
 
 A player who is uncertain what the game currently expects should be able to look at the bottom of the screen and immediately understand the next local action.
+
+#### Action-placement validation
+
+At minimum, validate the phone layout at 480px portrait width with representative
+states for:
+
+- card + target + Confirm;
+- response + authoritative Skip / Decline;
+- normal Play Phase + End Turn;
+- a genuine complex local picker where Cancel is required.
+
+The proof should check:
+
+- Primary is in the centre-right thumb zone and not flush to the viewport edge;
+- Decline / Skip / End stays distinctly to the right of Primary;
+- the gap is large enough to avoid adjacent-target ambiguity;
+- touch targets remain at least the established minimum size;
+- controls do not overlap Guidance, Hand or each other;
+- keyboard/DOM order remains coherent with the visual order;
+- no document-level horizontal overflow is introduced.
+
+Final visual review should additionally check one-handed reach and whether
+Confirm can be tapped repeatedly without a high risk of hitting End / Skip.
 
 ### 2.8 Local Dock semantic states
 
