@@ -631,6 +631,37 @@ test("Interaction Stage display hierarchy keeps Group/AOE scope facts without or
   assert.match(model.originalTargetSummary, /Zhao Yun, Cao Cao, Ma Chao/);
 });
 
+test("Interaction Stage metadata fails closed when no unique primary focus is proven", () => {
+  const makeStage = (stageName, activeTargetIds) => {
+    const participantRoles = {
+      ...scene().participantRoles,
+      originalTargetIds: activeTargetIds,
+      activeTargetIds,
+      currentParticipantId: null,
+    };
+    const view = buildPresentationClientView(snapshot({
+      interaction: scene({ stage: stageName, targetIds: activeTargetIds, activeTargetIds, currentParticipantId: null, participantRoles }),
+      decision: { actorId: "B", stage: stageName },
+    }), "A");
+    return buildInteractionStageView(view, resolveDisplayName);
+  };
+
+  const ambiguous = makeStage("GROUP_RESOLUTION", ["B", "C"]);
+  const ambiguousModel = buildInteractionStageDisplayModel(ambiguous);
+  assert.equal(ambiguousModel.focusTarget.id, null);
+  assert.equal(ambiguousModel.focusTarget.name, "No proven focus");
+  assert.match(ambiguousModel.targetSummary, /Active scope: Zhao Yun, Cao Cao/);
+  assert.equal(buildHeroFocusView(ambiguous).primary, null);
+
+  const soleTargetModel = buildInteractionStageDisplayModel(makeStage("GROUP_RESOLUTION", ["B"]));
+  assert.equal(soleTargetModel.focusTarget.id, "B", "a unique non-Dying target remains a safe fallback");
+
+  const dyingWithoutParticipant = { ...makeStage("GROUP_RESOLUTION", ["B"]), stage: "DYING" };
+  const dyingModel = buildInteractionStageDisplayModel(dyingWithoutParticipant);
+  assert.equal(dyingModel.focusTarget.id, null, "Dying does not borrow its focus from the target list");
+  assert.equal(dyingModel.focusTarget.name, "No proven focus");
+});
+
 test("Interaction Stage never infers ordinal progress from target order or scope length", () => {
   const makeModel = (activeTargetIds, currentParticipantId = "C") => buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot({
     interaction: scene({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C", "A"], activeTargetIds, currentParticipantId, decisionActorId: currentParticipantId, activeResolverId: currentParticipantId, participantIds: ["A", "B", "C"], participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C", "A"], activeTargetIds, currentParticipantId, decisionActorId: currentParticipantId, activeResolverId: currentParticipantId, participantIds: ["A", "B", "C"] } }),

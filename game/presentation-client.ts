@@ -421,9 +421,18 @@ function displayNames(identities: readonly PresentationDisplayIdentity[], emptyL
  * semantic fields retained by InteractionStageView.
  */
 export function buildInteractionStageDisplayModel(stage: InteractionStageView): InteractionStageDisplayModel {
-  const activeTarget = stage.currentParticipant.id
-    ? stage.currentParticipant
-    : stage.activeTargets[0] ?? { id: null, name: "No active target", known: false };
+  const currentParticipant = stage.currentParticipant.id ? stage.currentParticipant : null;
+  const soleActiveTarget = stage.stage !== "DYING"
+    && !currentParticipant
+    && stage.activeTargets.length === 1
+    && stage.activeTargets[0]?.id
+    ? stage.activeTargets[0]
+    : null;
+  const activeTarget = currentParticipant ?? soleActiveTarget ?? {
+    id: null,
+    name: stage.activeTargets.length > 0 ? "No proven focus" : "No active target",
+    known: false,
+  };
   const sourceOwned = Boolean(stage.source.id && stage.source.id === stage.decisionActor.id);
   const showResolver = Boolean(stage.activeResolver.id
     && stage.activeResolver.id !== stage.decisionActor.id

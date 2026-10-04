@@ -753,6 +753,18 @@ for (const width of [1440, 650, 480]) {
   }
 }
 
+test("UX2.0VIS-08B ambiguous Group scope does not fabricate a single Stage focus", async ({ page }) => {
+  await loadFixture(page, { state: "group-unfocused", count: 6, width: 650, height: 900 });
+  const stage = page.locator(".interaction-stage");
+  const scopeRow = page.locator(".interaction-stage-meta-region .interaction-stage-focus > div").nth(1);
+  await expect(stage).toHaveCount(1);
+  await expect(page.locator(".hero-focus")).toHaveCount(0);
+  await expect(scopeRow.locator("small")).toHaveText("SCOPE");
+  await expect(scopeRow.locator("b")).toHaveText("No proven focus");
+  await expect(scopeRow.locator("em")).toHaveText("Active scope: Player 1, Player 2");
+  await expect(stage.locator(".interaction-stage-meta-region")).not.toContainText("FOCUS");
+});
+
 for (const { width, focus, medium } of [
   { width: 1440, focus: [90, 113], medium: [56, 70] },
   { width: 650, focus: [72, 90], medium: [48, 60] },

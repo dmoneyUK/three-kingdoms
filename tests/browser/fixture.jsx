@@ -53,7 +53,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
     stable: { kind: "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" ? "trigger" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "provider-extra" || state === "group-observer" ? "response" : "turn", actorId: decisionActorId, entitled: viewerId === decisionActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" ? "trigger" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" ? "response" : "turn", actorId: decisionActorId, entitled: viewerId === decisionActorId },
     settlement: null,
     transitionEvents: [],
   };
@@ -71,7 +71,7 @@ function currentActionFor(state, actorId, handCardId) {
     triggerOptions: [{ effectId: "zhang_liao_assault", label: "Assault", description: state === "long-guidance" ? "Choose one living opponent within the projected legal target set, review the selected target and any selected cost cards, then confirm the Assault effect; cancel the local selection to choose a different opponent before submitting." : "Choose one living opponent", selection: { type: "target", targetIds: ["p2", "p3"], min: 1, max: 1 } }],
   };
   if (state === "provider-extra") return { version: 3, kind: "response", actorId, deadline: 0, reason: "Choose an Attack response provider", legalActions: ["respond", "decline_response"], requirement: "attack", options: [{ providerId: "browser_explicit_attack", label: "Alternate Attack", satisfies: "attack", activation: "explicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }] };
-  if (state === "group-observer") {
+  if (state === "group-observer" || state === "group-unfocused") {
     return {
       version: 3,
       kind: "response",
@@ -142,11 +142,12 @@ function currentActionFor(state, actorId, handCardId) {
 
 function browserRoom({ state, count }) {
   const denseGroup = state === "group-density";
+  const unfocusedGroup = state === "group-unfocused";
   if (denseGroup) state = "group-observer";
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
-  const meId = state === "group-observer" ? "p3" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
-  const actorId = state === "group-observer" ? "p1" : state === "dying" ? "p3" : meId;
-  const hand = state === "group-observer"
+  const meId = state === "group-observer" || unfocusedGroup ? "p3" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
+  const actorId = state === "group-observer" || unfocusedGroup ? "p1" : state === "dying" ? "p3" : meId;
+  const hand = state === "group-observer" || unfocusedGroup
     ? []
     : state === "duel"
     ? [card("browser-attack", "Attack", "♠")]
@@ -157,10 +158,10 @@ function browserRoom({ state, count }) {
         : state === "group"
           ? [card("browser-raining-arrows", "RainingArrows", "♥")]
           : [card("browser-attack", "Attack", "♠"), card("browser-peach", "Peach", "♥")];
-  const targets = denseGroup ? playerIds.filter((id) => id !== "p4") : state === "group-observer" ? ["p1", "p2", "p3"] : state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
-  const stage = state === "duel" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" ? "NEGATION" : state === "dying" ? "DYING" : state === "group" || state === "group-observer" ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
+  const targets = denseGroup ? playerIds.filter((id) => id !== "p4") : unfocusedGroup ? ["p1", "p2"] : state === "group-observer" ? ["p1", "p2", "p3"] : state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
+  const stage = state === "duel" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" ? "NEGATION" : state === "dying" ? "DYING" : state === "group" || state === "group-observer" || unfocusedGroup ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
   const currentAction = state === "rest" ? null : currentActionFor(state, actorId, hand[0]?.id ?? "");
-  const presentationSnapshot = state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: state === "group-observer" ? "p4" : "p1", targetIds: targets, currentParticipantId: state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
+  const presentationSnapshot = state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup ? null : state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
   const players = playerIds.map((id, index) => ({
     id,
     name: `Player ${index + 1}`,

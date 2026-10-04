@@ -554,7 +554,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
       <div className="interaction-stage-meta-region">
         <div className="interaction-stage-focus">
           <div><small>SOURCE</small><b>{display.source.name}</b></div>
-          <div><small>FOCUS</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
+          <div><small>{display.focusTarget.id ? "FOCUS" : "SCOPE"}</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
         </div>
         <div className="interaction-stage-context">
           {display.showDecision && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
