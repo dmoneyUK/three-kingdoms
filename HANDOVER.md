@@ -3,292 +3,209 @@
 ## REMOTE HANDOVER RULE
 Work only on `ux-v2`. Read this file and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`. Implement only the task below, validate, append this task's execution result, commit/push, verify remote HANDOVER, then STOP. Do not wait for or poll CI.
 
-## Reviewer status — UX2.0VIS-05A ACCEPTED
+## Reviewer status — UX2.0VIS-05A ACCEPTED; CI baseline RED
 
 Reviewed implementation chain:
-- topology: `79eda6ea1ee2017a73cd336fbeddbbf7b566b44a`
-- containment fix: `91368228a4d436992082a17e67cbccce3281390d`
+- VIS-05A topology: `79eda6ea1ee2017a73cd336fbeddbbf7b566b44a`
+- VIS-05A containment/hit-safety fix: `91368228a4d436992082a17e67cbccce3281390d`
+- latest reviewed CI run: GitHub Actions run `604` / `build-and-test` job `111335606012`
 
 Accepted facts to preserve:
-- 5–10 player rooms now use deterministic LEFT/RIGHT Side Column projection from `projectSideColumnSeat(totalPlayers, relativeIndex)`;
-- published 5/7/10 seat orders and the extra-right rule are correct;
-- Side Column uses explicit LEFT / empty CENTRAL / RIGHT tracks and no longer relies on `grid-auto-flow` for seat placement;
-- the middle 40% corridor is seat-free;
-- Side Column seats are now self-contained narrow thumbnails rather than overflowing full cards;
-- directly visible Side Column information is compact hero identity/art, HP and concealed Hand count;
-- full Equipment/Judgement card faces are hidden in the thumbnail but remain available through unchanged Opponent Inspect;
-- all 117 hero-target centre hit checks across the 5–10 × 1440/650/480 matrix resolve to the correct seat;
-- real Inspect clicks for high/low seats in both columns work without force-clicking;
-- the previous 1440/N6 p2/p3 footer interception is gone;
-- minimum visible-descendant clearance above LocalPlayerDock was reported as ~24.89px / 17px / 18.63px at 1440 / 650 / 480;
-- Top Row, VIS-06 local console, gameplay and presentation authority were not changed;
-- focused FIX1 reported 24/24 PASS and the retained/focused selection reported 134/134 PASS.
+- 5–10 player Side Column mapping/topology is accepted.
+- Side Column opponent cards are bounded narrow thumbnails.
+- accepted desktop Side Column seat geometry is `width: clamp(44px, 8vw, 86px)`, `height: min(128px, 100%)`, `min-height: 0`, with accepted responsive height caps `116px` at <=650 and `108px` at <=480.
+- compact hero art/identity, HP and concealed Hand count remain directly visible.
+- Equipment/Judgement thumbnail card faces are hidden in Side Column but remain available through Opponent Inspect.
+- VIS-05A/FIX1 browser containment/hit-safety tests passed in CI.
+- the VIS-06 dedicated guidance/action split is accepted: `.console-guidance` owns decision/status text while `.turn-controls[data-console-surface="local-operation"]` owns actions; action extras wrap inside `[data-action-extras="true"]`.
 
-VIS-05A is now complete. Do not reopen its topology or thumbnail containment unless new real-device evidence shows a regression.
+Current CI evidence from run 604:
+- `npm ci`: PASS
+- `npm run lint`: PASS
+- Chromium install: PASS
+- `npm run build`: PASS
+- `npm run test:browser`: PASS
+- `npm test`: FAIL — 197/200 pass, exactly 3 failures
 
-# NEXT TASK — UX2.0VIS-05B: Give Side Column Mode a Real Central Interaction Safe Zone
+These 3 failures are stale source-shape assertions in `tests/room-safety-render.test.mjs`. They assert pre-VIS-05A-FIX1 / pre-VIS-06 CSS structure. They are not evidence of a production regression.
+
+The previously assigned VIS-05B safe-zone task is deferred until the baseline test suite is green. Do not start VIS-05B in this task.
+
+# NEXT TASK — UX2.0CI-FIX1: Repair Stale room-safety-render Assertions Without Changing Production
 
 ## Objective
-Fix one remaining Side Column structural defect:
+Restore the baseline `npm test` gate by updating only the three stale static/source-shape assertions in `tests/room-safety-render.test.mjs` so that they verify the current accepted production contracts.
 
-**For 5–10 player rooms, place the existing Interaction Stage inside a dedicated central safe zone between the proven LEFT/RIGHT seat columns instead of letting it use the legacy global absolute top/620px dashboard geometry.**
+This is a **test-maintenance-only** task.
 
-This is a geometry/containment task only.
+Do not change production CSS/React to satisfy old expectations. In particular, do not restore the old 150px Side Column seat height, do not collapse the dedicated guidance row back into the action console, and do not remove `.console-guidance` from the shared dock-panel styling group.
 
-Do not redesign Interaction Stage internals, enlarge Side Column Hero Focus, change Reaction/Dying/Meta content, or alter seat topology.
+## Expected file scope
+Change only:
+- `tests/room-safety-render.test.mjs`
 
-## Current production defect
-The wrapper already exists in React:
+Do not modify:
+- `app/sequence-overrides.css`
+- `app/globals.css`
+- `app/page.tsx`
+- `tests/browser/ui19.spec.mjs`
+- any gameplay/server/presentation/projector code
+- `HANDOVER.md` except appending the execution result after implementation
 
-```tsx
-<div className="interaction-safe-zone">
-  <InteractionStage ... />
-</div>
+If a production change appears necessary, STOP and report the exact mismatch instead of changing production.
+
+## CI failure 1 — stale Side Column height assertion
+
+Failing test:
+`UI-11 keeps one local dock and stable opponent anchors across supported player counts`
+
+Current stale assertion near the end of that test expects:
+
+```js
+assert.match(sequenceStyleSource, /data-seat-topology="side-column"[\s\S]*height: min\(150px/);
 ```
 
-but current CSS is:
+That 150px contract was intentionally replaced by accepted VIS-05A-FIX1 bounded thumbnail geometry.
+
+### Required repair
+Replace the stale 150px assertion with a source-shape assertion scoped to the main Side Column opponent-card block that proves the accepted contract:
 
 ```css
-.interaction-safe-zone { display: contents; }
-```
-
-Only Top Row mode overrides that wrapper into a real positioned safe zone.
-
-Therefore Side Column mode still falls back to the legacy global Interaction Stage positioning:
-
-```css
-.interaction-stage {
-  position:absolute;
-  left:50%;
-  top:14px;
-  width:min(94%,620px);
-  translate:-50% 0;
+.game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card {
+  width: clamp(44px, 8vw, 86px);
+  height: min(128px, 100%);
+  min-height: 0;
 }
 ```
 
-That ignores the newly proven Side Column corridor and can visually compete with or overlap the side seat columns.
+The assertion must be specific enough that an unrelated later `height` declaration elsewhere in the stylesheet cannot satisfy it accidentally.
 
-UX V2 defines Side Column Mode as:
-- narrow LEFT seats;
-- narrow RIGHT seats;
-- a narrower but taller central Interaction Stage area;
-- side columns terminate above the LocalPlayerDock;
-- the LocalPlayerDock owns full usable screen width.
+Keep the existing row-budget assertions for 5/6/8/10 unchanged.
 
-## Files expected in scope
-Production:
-- `app/globals.css`
+Optional but acceptable in the same test: add narrowly scoped assertions for the already-accepted responsive caps:
+- <=650: `height: min(116px, 100%)`
+- <=480: `height: min(108px, 100%)`
 
-Regression:
-- `tests/browser/ui19.spec.mjs`
+Do not reintroduce `150px` in production.
 
-Do not modify:
-- `app/page.tsx`;
-- `projectSideColumnSeat`;
-- Side Column thumbnail CSS in `app/sequence-overrides.css`;
-- Top Row geometry;
-- game/presentation/server/projector logic.
+## CI failure 2 — stale console CSS assertion
 
-## Required implementation
+Failing test:
+`UI-11 preserves hand rail and one footer console for one, five, and ten cards`
 
-### 1. Turn the existing Side Column wrapper into real geometry
-Under:
+The rendered-markup assertions already correctly prove there is one:
 
-`.play-table[data-seat-topology="side-column"] > .interaction-safe-zone`
+```html
+data-console-surface="local-operation"
+```
 
-create a positioned central safe zone.
+The stale CSS assertion then incorrectly searches the stylesheet for that HTML data attribute followed by `flex-wrap: wrap`:
 
-Required:
-- `position:absolute`;
-- top and bottom remain within the play-table battlefield;
-- left/right boundaries sit between the actual LEFT/RIGHT seat columns;
-- display as a real flex/block container rather than `display:contents`;
-- centre the existing Interaction Stage inside it;
-- keep `pointer-events:none` on the public presentation wrapper.
+```js
+assert.match(sequenceStyleSource, /data-console-surface="local-operation"[\s\S]*flex-wrap: wrap/);
+```
 
-Do not add visible background/border/placeholder chrome to the safe-zone wrapper.
+Current accepted VIS-06 structure is:
+- `.local-player-dock .turn-controls` is the action console and uses grid layout.
+- `.local-player-dock .turn-controls > [data-action-extras="true"]` is the wrapping auxiliary-action area and uses `display:flex; flex-wrap:wrap`.
+- `[data-action-slots="true"]` owns the fixed action-slot grid.
 
-### 2. Remove legacy Stage positioning only inside Side Column mode
-For the direct child Interaction Stage in Side Column mode:
-- override legacy `position:absolute`;
-- override legacy `left:50%`;
-- override legacy `top:14px`;
-- override legacy `translate:-50% 0`;
-- use normal relative positioning inside the safe zone;
-- width must be constrained by the safe-zone width, not by a viewport-wide 620px placement.
+### Required repair
+Keep the existing rendered HTML check for one `data-console-surface="local-operation"`.
 
-Do not change the global legacy rule or Top Row override in this task.
+Replace the stale stylesheet assertion with scoped assertions that prove:
+1. `.local-player-dock .turn-controls` is the action surface layout;
+2. `[data-action-extras="true"]` under `.turn-controls` uses `display: flex` and `flex-wrap: wrap`;
+3. do not require the HTML-only `data-console-surface` attribute to appear in CSS.
 
-### 3. Horizontal seat-clearance contract
-For active Side Column states, at 1440x900, 650x900 and 480x900:
+Do not move guidance content back into `.turn-controls`.
 
-Let:
-- `leftSeatsRight = max(right edge of all LEFT seat visible descendants)`;
-- `rightSeatsLeft = min(left edge of all RIGHT seat visible descendants)`;
-- `safeZone.left/right` be the central wrapper bounds.
+## CI failure 3 — stale shared dock styling selector list
 
-Require:
-- `safeZone.left >= leftSeatsRight + 6px`;
-- `safeZone.right <= rightSeatsLeft - 6px`.
+Failing test:
+`the local player dock replaces the self battlefield square and follows Quick Test perspective`
 
-For the visible Interaction Stage itself require the same 6px clearance.
+The stale assertion expects this shared styling selector list to jump directly from `.local-hand-section` to `.local-player-dock .turn-controls`.
 
-Do not use JS runtime measurement for layout; measurements are test-only.
+Current accepted CSS intentionally includes the dedicated guidance row in the same shared panel chrome:
 
-### 4. Vertical battlefield ownership
-The Side Column safe zone may use the full battlefield height because there is no top row.
+```css
+.local-dock-identity,
+.local-dock-zones,
+.local-status-panel,
+.local-equipment-panel,
+.local-judgement-panel,
+.local-hand-section,
+.local-player-dock .console-guidance,
+.local-player-dock .turn-controls {
+  box-sizing: border-box;
+  border: 1px solid #765f3c99;
+  background: #0e120dcc;
+}
+```
 
-Require:
-- safeZone.top >= playTable.top;
-- safeZone.bottom <= playTable.bottom;
-- Stage fully inside safeZone;
-- Stage bottom <= playTable.bottom - 1px;
-- Safe Zone and Stage do not overlap LocalPlayerDock;
-- no Stage child may extend below the play-table into the dock.
+### Required repair
+Update this source-shape assertion so it explicitly includes:
 
-Do not move LocalPlayerDock or increase play-table height.
+```css
+.local-player-dock .console-guidance,
+.local-player-dock .turn-controls
+```
 
-### 5. Preserve Side Column seats exactly
-Do not change:
-- LEFT/RIGHT mapping;
-- row numbers;
-- 30/40/30 player-board tracks;
-- Side Column thumbnail width/height;
-- hero identity/HP/Hand treatment;
-- hidden thumbnail Equipment/Judgement treatment;
-- Inspect/target callbacks.
+and still proves the shared:
+- `border: 1px solid #765f3c99`
+- `background: #0e120dcc`
 
-The retained VIS-05A/FIX1 tests must pass unchanged.
+Prefer a narrowly scoped assertion over a very broad `[\s\S]*` match that could accidentally cross unrelated CSS blocks.
 
-### 6. Preserve Top Row exactly
-Counts 2/3/4 keep:
-- current Top Row seat geometry;
-- current Top Row safe-zone offsets;
-- current wide/open Interaction Stage composition;
-- Hero Focus and Medium Source sizes;
-- VIS-06 guidance/action controls.
+Also retain the existing production/markup assertions around local hero, hand, equipment, judgement and opponent public zones.
 
-No Side Column selector may leak into Top Row.
+## Guardrails
+Do not weaken coverage by deleting the three assertions outright.
 
-### 7. Do not redesign Side Column Stage contents yet
-Keep existing Side Column-specific presentation density exactly as it is today:
-- current compact Hero Focus;
-- current header;
-- current Reaction Chain;
-- current Dying handoff;
-- current SOURCE / FOCUS / DECISION / RESOLVER meta;
-- current outer Interaction Stage chrome.
+The repaired tests must continue to protect these real contracts:
+- Side Column thumbnails remain bounded rather than reverting to the old tall-card geometry.
+- one local operation console remains present in rendered markup.
+- action extras remain wrappable.
+- dedicated `.console-guidance` and `.turn-controls` remain separately styled dock regions.
+- VIS-05A and VIS-06 production code remain untouched.
 
-Do not copy the Top Row open-shell/large-Hero CSS into Side Column in this task.
-
-This task proves the corridor geometry first.
-
-If the unchanged Side Column Stage cannot fit at 480x900 for the required states, STOP and report exact measured blocker rather than shrinking/hiding/recomposing content.
-
-## Required browser fixtures/states
-Use existing 6-player Side Column fixtures where possible.
-
-Run active states with `count=6`:
-- `interaction`;
-- `negation`;
-- `dying`;
-- `group-observer`.
-
-Also run one dense-seat check with `count=10` using at least:
-- `interaction`;
-- `negation`.
-
-Do not alter their semantic participant identities merely for layout.
-
-## Required browser regression
-
-### A. Side Column safe-zone existence
-At 1440/650/480 for the active states above:
-
-Assert:
-1. exactly one `.play-table[data-seat-topology="side-column"] > .interaction-safe-zone`;
-2. wrapper computed display is not `contents`;
-3. one visible `.interaction-stage`;
-4. Stage is a direct child of the safe-zone wrapper;
-5. Stage computed position is not the legacy viewport-absolute placement;
-6. Stage transform/translate does not contain the old `-50%` centring.
-
-### B. Horizontal containment
-Measure visible seat descendants using the accepted FIX1 method.
-
-Assert:
-- safe-zone left >= all LEFT visible-descendant right edges + 6px;
-- safe-zone right <= all RIGHT visible-descendant left edges - 6px;
-- Stage left/right satisfy the same limits;
-- Stage fully inside safe zone with 4px tolerance;
-- no Interaction Stage descendant geometrically overlaps a Side Column seat descendant.
-
-### C. Vertical containment
-Assert:
-- safe zone inside play-table;
-- Stage fully inside safe zone;
-- Stage bottom <= play-table bottom - 1px;
-- Stage/safe-zone overlap with LocalPlayerDock = 0;
-- no horizontal page overflow.
-
-For Negation:
-- Reaction Chain visible and inside Stage.
-
-For Dying:
-- Dying handoff visible and inside Stage.
-
-### D. REST
-At count=6 and count=10 for 480/1440:
-- safe-zone wrapper exists exactly once;
-- no Interaction Stage is visible;
-- wrapper is visually transparent with zero border;
-- no placeholder/dashboard is shown;
-- Side Column seat hit safety still passes.
-
-### E. Retained negative regression
-Counts 2/3/4 at 480 and 1440:
-- Top Row safe zone remains the existing Top Row geometry;
-- Stage retains the accepted Top Row open-shell treatment;
-- no Side Column safe-zone rule changes its bounds or Stage positioning.
-
-## Forbidden shortcuts
-Do not:
-- move/shrink Side Column seats;
-- change Side Column mapping;
-- widen the centre by stealing from seat tracks;
-- hide seats while Stage is active;
-- increase play-table height;
-- move LocalPlayerDock;
-- add Stage scrolling/clipping/scaling;
-- hide Reaction/Dying/meta content;
-- enlarge Side Column Hero Focus in this task;
-- copy Top Row outer-shell styling into Side Column;
-- use JS DOM measurement for positioning;
-- change gameplay/presentation semantics.
+Do not rename tests merely to make the failure disappear. Small wording updates are allowed only if they improve accuracy.
 
 ## Validation
-Run and report:
-- focused VIS-05B Side Column active-state safe-zone tests;
-- dense 10-player interaction tests;
-- retained VIS-05A/FIX1 mapping/containment/hit-safety tests;
-- retained VIS-04 Top Row tests;
-- retained VIS-06 local-console tests;
-- broader local checks only if allowed.
+Run and report, in this order:
 
-Do not claim unrun checks. Do not inspect or wait for CI.
+1. focused file:
+```bash
+node --test tests/room-safety-render.test.mjs
+```
+
+2. full fast/unit suite:
+```bash
+npm test
+```
+
+Expected baseline after this task: all current 200 tests pass.
+
+3. lint:
+```bash
+npm run lint
+```
+
+Because this task must not change production/browser code, a full browser rerun is not required locally. If you choose to run it, report it accurately; do not wait for or poll GitHub Actions.
 
 ## Execution result
 Append only:
 - implementation SHA;
 - files changed;
-- final Side Column safe-zone CSS strategy;
-- measured safe-zone/Stage/left-seat/right-seat bounds at 1440/650/480;
-- Interaction / Negation / Dying / Group Observer containment results;
-- count=10 dense-seat results;
-- proof Top Row unchanged;
-- any exact blocker/GAP.
+- exact three stale assertions repaired;
+- focused `room-safety-render` result;
+- full `npm test` result;
+- lint result;
+- confirmation that no production files changed;
+- any remaining GAP.
 
 Do not self-accept. Push, verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if the unchanged Side Column Interaction Stage is positioned entirely inside a real central safe zone between the proven seat columns, clears all visible seat descendants by at least 6px, remains fully inside the battlefield above LocalPlayerDock at 1440/650/480, preserves Negation/Dying content without clipping, and leaves VIS-05A seat topology plus Top Row/VIS-06/gameplay unchanged.
+Pass only if the three stale assertions are updated to the current accepted VIS-05A/VIS-06 contracts, `npm test` is fully green, lint passes, no production file is changed, and no assertion is removed or weakened into a meaningless broad match.
