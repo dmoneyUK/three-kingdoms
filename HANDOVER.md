@@ -235,3 +235,39 @@ Implementation result: set the shared Hero Focus artwork to `object-fit: cover; 
 Focused validation: VIS-12E crop cases plus retained VIS-03B Hero Focus geometry/semantic cases — 13/13 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. The first test draft incorrectly treated expected image-box overflow as visible overflow; the final assertion verifies the portrait's clipping viewport instead. No full local suite/build/lint. Revision, push, and CI status pending.
 
 Status update: `IMPLEMENTED — CI PENDING`; commit and push checkpoint to follow. No CI-green claim until exact-revision Actions jobs are confirmed.
+
+Delivery checkpoint: pushed revision `8a56add6b3620bf5f566349ecfcfe3fa724915b8`; latest Actions run [37220219500](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37220219500) was `in_progress` at the next-task boundary. Per workflow §4, no waiting/polling; this revision remains CI pending.
+
+### UX2.0VIS-12D — CI closure
+
+Status: `COMPLETED BY AGENT — CI GREEN`  
+Tested revision: `84b49ed59ce73e6239aec85bdf9a2bf690bb63e`  
+GitHub Actions run: [37219392735](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37219392735) — build-and-test job `111486465159` and deploy job `111487406478`, including production smoke test, succeeded. Focused local crop/retained matrix 22/22 and targeted ESLint passed. No fixes required; human Reviewer acceptance remains separate.
+
+### UX2.0VIS-12F — Validate Single-Layer Hand Interaction at 320–360px
+
+Status: `PLANNED`
+
+Planning gate: all five workflow §19 checks passed after remote sync and review of the current Hand/mobile composition design and autonomous continuation rules. Design §§0.81–0.88 require one horizontal layer, readable fixed-size cards, pan/tap separation, selected-card visibility, and preserved viewport context; the 5/10/15/20/25+ sizes are benchmarks, not implementation thresholds. Existing VIS-09B exercises counts 5/10/15/20/25/30 at 480/650/1440px; VIS-10A reaches 320/360px with 25 cards but checks Stage/Dock containment, not the Hand rail's own fit, pan, selection and inspection behavior.
+
+Objective: extend focused Hand usability evidence to the narrow portrait widths already used by the mobile Stage gate, without changing Dock composition or card semantics.
+
+Requirements:
+- Cover 320px and 360px for the existing 5/10/15/20/25/30-card geometry/selection matrix; preserve 68×102px cards, one row, measured overlap/scroll, selected-card lift, action-bar clearance and no document overflow.
+- Cover 25-card tap/inspection and horizontal pan at both widths; a pan must not select/submit, and an ordinary tap must continue to identify/select the intended physical card.
+- Reuse VIS-09B helpers and fixtures; change production CSS only if measured behavior violates the approved contract.
+- Preserve VIS-09C viewport anchoring, physical IDs, CurrentAction authority, action payloads and all gameplay semantics.
+
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.81–0.88, 0.91.1 and 0.91.5; workflow §§4, 11–12, 19–20.
+
+Expected scope: focused extensions in `tests/browser/ui19.spec.mjs`; `app/sequence-overrides.css` only if a proven layout defect is found; append-only handover and roadmap.
+
+Focused validation: narrow-width VIS-09B geometry/tap/pan matrix plus retained VIS-09C anchor cases only if the same viewport handling changes. No local full suite/build/lint. Latest-run checkpoint before source edits: revision `8a56add`, run `37220219500`, observed `in_progress`; proceed without waiting and recheck at the next task boundary.
+
+Stop condition: if narrow-width usability cannot preserve readable card size, single-row geometry, tap/pan separation and action-bar clearance without changing an approved invariant, record measured evidence and stop for human review.
+
+Implementation result: extended the existing VIS-09B geometry/selection matrix to 320/360px for 5/10/15/20/25/30 cards and native pan/tap coverage to 25 cards at both widths. The current measured layout satisfied the approved one-row, card-size, clipping, selection-rise, action-clearance and no-page-overflow constraints; no production CSS change was needed. Reviewed 320/360px selected-25-card screenshots.
+
+Focused validation: new VIS-12F narrow-width geometry/selection and native touch cases — 16/16 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. No local full suite/build/lint. Commit, push, and CI status pending.
+
+Status update: `IMPLEMENTED — CI PENDING`; exact-revision CI is required before labeling green, but does not block the next-task planning checkpoint.

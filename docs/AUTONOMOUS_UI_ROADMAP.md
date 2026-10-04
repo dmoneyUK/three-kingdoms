@@ -30,7 +30,7 @@ Latest completed milestone:
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-12E — Set an Upper-Body Focal Point for Interaction Stage Hero Focus`
+- `UX2.0VIS-12F — Validate Single-Layer Hand Interaction at 320–360px`
 - status: IMPLEMENTED — CI PENDING; detail/evidence in `HANDOVER.md`
 - current task authority: `HANDOVER.md`
 
@@ -89,6 +89,10 @@ Current VIS-12D is narrowed to 4-player mobile Top Row Hero crop. The Top Row vi
 VIS-12D was pushed as `84b49ed59ce73e6239aec85bdf9a2bf690bb63e`; exact Actions run `37219392735` was `in_progress` at the VIS-12E planning checkpoint. Workflow §4 allows work to continue without waiting; retain VIS-12D as CI pending until exact-revision jobs are confirmed.
 
 VIS-12E implementation: the semantic Interaction Stage Hero Focus uses the approved upper-body focal point (`object-position: 50% 20%`) while preserving its existing clipped portrait viewport and all identity/layout authority. Focused crop plus retained VIS-03B checks passed 13/13; targeted ESLint passed; 480px Top Row and Side Column screenshots were reviewed. No full suite/build/lint. Exact revision/Actions status pending push.
+
+VIS-12D exact run `37219392735` is now confirmed green on `84b49ed59ce73e6239aec85bdf9a2bf690bb63e`: build-and-test job `111486465159` and deploy/smoke job `111487406478` succeeded. VIS-12E was pushed as `8a56add6b3620bf5f566349ecfcfe3fa724915b8`; exact run `37220219500` was `in_progress` at the VIS-12F planning checkpoint. The design/workflow files have no changes since the last review. VIS-12F adds direct single-layer Hand interaction coverage at 320/360px; it does not bundle remaining local-Hero/Dock audits or the final visual gate.
+
+VIS-12F implementation adds the existing 5/10/15/20/25/30-card geometry/selection matrix at 320/360px, plus 25-card native pan and ordinary touch selection/inspection at both widths. All 16 new focused cases passed; targeted ESLint passed, and selected-hand screenshots were reviewed. No product CSS changed; no full suite/build/lint. Exact revision/Actions status pending push.
 
 ## Durable accepted UI / presentation contracts
 

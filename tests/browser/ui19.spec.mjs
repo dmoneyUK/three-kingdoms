@@ -78,9 +78,10 @@ function visibleHandAnchor(snapshot) {
     .sort((left, right) => Math.abs((left.left + left.right) / 2 - snapshot.viewportWidth / 2) - Math.abs((right.left + right.right) / 2 - snapshot.viewportWidth / 2) || left.index - right.index)[0];
 }
 
-for (const width of [1440, 650, 480]) {
+for (const width of [1440, 650, 480, 360, 320]) {
   for (const handSize of [5, 10, 15, 20, 25, 30]) {
-    test(`UX2.0VIS-09B ${handSize} hand cards at ${width}px fit or scroll in one layer`, async ({ page }) => {
+    const task = width <= 360 ? "UX2.0VIS-12F" : "UX2.0VIS-09B";
+    test(`${task} ${handSize} hand cards at ${width}px fit or scroll in one layer`, async ({ page }, testInfo) => {
       await loadFixture(page, { width, height: 900, handSize });
       const rail = page.locator(".local-hand-rail");
       await expect(rail).toHaveAttribute("data-hand-layout", "measured");
@@ -130,6 +131,12 @@ for (const width of [1440, 650, 480]) {
       expect(selected.cards.at(-1).right).toBeLessThanOrEqual(selected.viewport.right + 1);
       expect(selected.cards.at(-1).top).toBeCloseTo(selected.cards[0].top - 65, 0);
       expect(selected.cards.at(-1).bottom).toBeLessThanOrEqual(selected.actionTop);
+      if (width <= 360 && handSize === 25) {
+        await testInfo.attach(`vis-12f-hand-${width}-25-cards-selected`, {
+          body: await page.screenshot({ animations: "disabled" }),
+          contentType: "image/png",
+        });
+      }
       await last.locator(".card-info-button").click();
       await expect(page.getByRole("dialog").getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Close card explanation" }).click();
@@ -197,8 +204,9 @@ test("UX2.0VIS-09B tapping a clipped edge reveals that same physical card", asyn
 
 test.describe("UX2.0VIS-09B native touch navigation", () => {
   test.use({ hasTouch: true });
-  for (const width of [480, 650]) {
-    test(`${width}px native pan scrolls without selecting or submitting`, async ({ page, context }) => {
+  for (const width of [320, 360, 480, 650]) {
+    const task = width <= 360 ? "UX2.0VIS-12F" : "UX2.0VIS-09B";
+    test(`${task} ${width}px native pan scrolls without selecting or submitting`, async ({ page, context }) => {
       await loadFixture(page, { width, height: 900, handSize: 25 });
       const rail = page.locator(".local-hand-rail");
       await expect(rail).toHaveAttribute("data-hand-layout", "measured");
@@ -227,7 +235,7 @@ test.describe("UX2.0VIS-09B native touch navigation", () => {
       await cdp.detach();
     });
 
-    test(`${width}px ordinary touch tap selects a card and opens its explanation`, async ({ page }) => {
+    test(`${task} ${width}px ordinary touch tap selects a card and opens its explanation`, async ({ page }) => {
       await loadFixture(page, { width, height: 900, handSize: 25 });
       const rail = page.locator(".local-hand-rail");
       await expect(rail).toHaveAttribute("data-hand-layout", "measured");
