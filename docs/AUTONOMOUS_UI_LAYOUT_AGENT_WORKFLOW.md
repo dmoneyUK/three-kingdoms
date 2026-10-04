@@ -1156,6 +1156,7 @@ The remaining approved direction is expected to include, as needed:
 - Local Player Dock final structure;
 - persistent Judgement overlay on the local Hero;
 - single-layer Hand overlap and horizontal-pan behavior for 5/10/15/20/25+ cards;
+- opponent-seat Hero readability plus always-visible public Equipment-at-a-glance, with Top Row and Side Column mobile validation;
 - representative interaction visual regression;
 - final mobile visual gate.
 
