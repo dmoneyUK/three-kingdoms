@@ -317,6 +317,124 @@ test.describe("UX2.0VIS-09C preserve the Hand viewport across membership changes
   }
 });
 
+test.describe("UX2.0VIS-10A short-portrait Top Row Stage containment", () => {
+  const states = [
+    { state: "interaction", required: [".hero-focus", ".interaction-stage-meta-region"] },
+    { state: "negation", required: [".hero-focus", '[data-reaction-chain="proven"]', '[data-reaction-node="root"]', '[data-reaction-node="active"]', ".interaction-stage-meta-region"] },
+    { state: "dying", required: [".hero-focus", '[data-dying-handoff="proven"]', ".dying-handoff-grid", ".dying-handoff-guidance"] },
+    { state: "group-observer", required: [".hero-focus", ".medium-participant-card", '[data-group-target-scope="original"]', ".interaction-stage-meta-region"] },
+  ];
+  for (const viewport of [{ width: 480, height: 640 }, { width: 650, height: 700 }]) {
+    for (const { state, required } of states) {
+      test(`${state} at ${viewport.width}x${viewport.height} stays inside the Safe Zone without losing Stage content`, async ({ page }) => {
+        await loadFixture(page, { state, count: 4, ...viewport, handSize: 25 });
+        const stage = page.locator('.play-table[data-seat-topology="top-row"] .interaction-stage');
+        const dock = page.locator(".local-player-dock");
+        await expect(stage).toBeVisible();
+        for (const selector of required) await expect(stage.locator(selector)).toBeVisible();
+        const heroFocus = stage.locator(".hero-focus");
+        await expect(heroFocus.locator(".hero-focus-identity b")).not.toHaveText("");
+        await expect(heroFocus.locator(".hero-focus-identity span")).toBeVisible();
+        await expect(heroFocus.locator(".hero-focus-identity small")).toBeVisible();
+        if (state === "negation") {
+          await expect(stage.locator('[data-reaction-node="root"] b, [data-reaction-node="root"] span')).toHaveCount(2);
+          await expect(stage.locator('[data-reaction-node="active"] b')).toBeVisible();
+          await expect(stage.locator('[data-reaction-node="active"] span')).toBeVisible();
+        }
+        if (state === "dying") {
+          await expect(stage.locator(".dying-handoff > header strong")).toBeVisible();
+          await expect(stage.locator(".dying-handoff-grid > span")).not.toHaveCount(0);
+          await expect(stage.locator(".dying-handoff-guidance")).not.toHaveText("");
+        }
+        if (state === "group-observer") {
+          await expect(stage.locator(".medium-participant-identity b")).not.toHaveText("");
+          await expect(stage.locator(".medium-participant-identity span")).toBeVisible();
+          await expect(stage.locator('[data-group-target-scope="original"] .group-target-card')).toHaveCount(1);
+          await expect(stage.locator('[data-group-target-scope="original"] .group-target-identity b')).not.toHaveText("");
+        }
+        if (state !== "dying") {
+          await expect(stage.locator(".interaction-stage-meta-region .interaction-stage-focus")).toBeVisible();
+          await expect(stage.locator(".interaction-stage-meta-region .interaction-stage-focus > div")).toHaveCount(2);
+        }
+        for (const selector of [".local-hero-card", ".local-status-panel", ".local-equipment-panel", ".local-hand-rail", ".console-guidance", ".turn-controls"]) {
+          await expect(dock.locator(selector), `the persistent Dock must retain ${selector}`).toBeVisible();
+        }
+        await expect(dock.locator(".local-hand-rail")).toHaveAttribute("data-hand-layout", "measured");
+
+        const layout = await page.evaluate(() => {
+          const rect = (selector) => {
+            const element = document.querySelector(selector);
+            if (!element) return null;
+            const bounds = element.getBoundingClientRect();
+            return { top: bounds.top, bottom: bounds.bottom, left: bounds.left, right: bounds.right };
+          };
+          const overlap = (left, right) => Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left))
+            * Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+          const stage = document.querySelector('.play-table[data-seat-topology="top-row"] .interaction-stage');
+          const safeZone = document.querySelector('.play-table[data-seat-topology="top-row"] > .interaction-safe-zone');
+          const dock = document.querySelector('.local-player-dock');
+          const stageBounds = stage.getBoundingClientRect();
+          const safeZoneBounds = safeZone.getBoundingClientRect();
+          const dockBounds = dock.getBoundingClientRect();
+          const bounds = (element) => {
+            const value = element.getBoundingClientRect();
+            return { top: value.top, bottom: value.bottom, left: value.left, right: value.right };
+          };
+          return {
+            stage: rect('.play-table[data-seat-topology="top-row"] .interaction-stage'),
+            safeZone: rect('.play-table[data-seat-topology="top-row"] > .interaction-safe-zone'),
+            table: rect('.play-table'),
+            dock: rect('.local-player-dock'),
+            board: rect('.player-board[data-seat-topology="top-row"]'),
+            opponents: [...document.querySelectorAll('.player-board[data-seat-topology="top-row"] [data-player-anchor]')].map(bounds),
+            stageDockOverlap: overlap(stageBounds, dockBounds),
+            safeZoneDockOverlap: overlap(safeZoneBounds, dockBounds),
+            viewportWidth: window.innerWidth,
+            documentWidth: document.documentElement.scrollWidth,
+            stageOverflow: { x: getComputedStyle(stage).overflowX, y: getComputedStyle(stage).overflowY },
+            dockParts: [".local-hero-card", ".local-status-panel", ".local-equipment-panel", ".local-hand-rail", ".console-guidance", ".turn-controls"].map(rect),
+            handLayout: (() => {
+              const rail = document.querySelector(".local-hand-rail");
+              const style = getComputedStyle(rail);
+              return { wrap: style.flexWrap, scrollHeight: rail.scrollHeight, clientHeight: rail.clientHeight };
+            })(),
+            guidance: rect('.local-player-dock .console-guidance'),
+            actions: rect('.local-player-dock .turn-controls'),
+            documentHeight: document.documentElement.scrollHeight,
+            viewportHeight: window.innerHeight,
+          };
+        });
+        expect(layout.stage.top).toBeGreaterThanOrEqual(layout.safeZone.top - 1);
+        expect(layout.stage.bottom).toBeLessThanOrEqual(layout.safeZone.bottom + 1);
+        expect(layout.stage.bottom).toBeLessThanOrEqual(layout.table.bottom + 1);
+        expect(layout.stage.bottom).toBeLessThanOrEqual(layout.dock.top - 4);
+        expect(layout.stageDockOverlap).toBe(0);
+        expect(layout.safeZoneDockOverlap).toBe(0);
+        expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
+        expect(layout.stageOverflow).toEqual({ x: "visible", y: "visible" });
+        expect(layout.opponents).toHaveLength(3);
+        for (const seat of layout.opponents) {
+          expect(seat.top - layout.board.top).toBeGreaterThanOrEqual(0);
+          expect(seat.top - layout.board.top).toBeLessThanOrEqual(4);
+          expect(seat.bottom).toBeLessThanOrEqual(layout.stage.top - 6);
+        }
+        for (const part of layout.dockParts) {
+          expect(part.top).toBeGreaterThanOrEqual(layout.dock.top - 1);
+          expect(part.bottom).toBeLessThanOrEqual(layout.dock.bottom + 1);
+          expect(part.left).toBeGreaterThanOrEqual(layout.dock.left - 1);
+          expect(part.right).toBeLessThanOrEqual(layout.dock.right + 1);
+        }
+        expect(layout.handLayout.wrap).toBe("nowrap");
+        expect(layout.handLayout.scrollHeight).toBeLessThanOrEqual(layout.handLayout.clientHeight + 1);
+        expect(layout.guidance.top).toBeGreaterThanOrEqual(layout.dock.top);
+        expect(layout.actions.bottom).toBeLessThanOrEqual(layout.dock.bottom);
+        expect(layout.dock.bottom).toBeLessThanOrEqual(layout.viewportHeight);
+        expect(layout.documentHeight).toBeLessThanOrEqual(layout.viewportHeight);
+      });
+    }
+  }
+});
+
 async function assertVisible(locator, label) {
   await expect(locator, label).toBeVisible();
   await expect(locator).not.toHaveCSS("display", "none");
