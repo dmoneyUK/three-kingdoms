@@ -345,3 +345,14 @@ Required regression tests: Pure density/identity/viewer/REST/ambiguous/unknown/l
 Required local validation: Focused semantic/render and browser layout tests only; whitespace check per autonomous workflow. Full checks in CI.
 CI acceptance: Exact push must be green before the next implementation.
 Task acceptance criteria: Neutral external cards from proven originalTargets only; proper density, current focus dominant when proven, no progress or eligibility claims; visible content inside safe zone/table and above Dock without seat/control interference.
+
+### VIS-07A IMPLEMENTATION RESULT
+
+Implementation SHA: `69e04cd`.
+Files changed: game/hero-focus.ts, app/page.tsx, app/sequence-overrides.css, tests/presentation-client.test.mjs, tests/browser/fixture.jsx, tests/browser/ui19.spec.mjs, README.md, append-only HANDOVER.md.
+What changed: Pure GROUP_RESOLUTION-only historical target-scope projection; deduplicates viewer/primary/rendered source; medium/compact density by external target count. Neutral read-only cards labelled Original target scope; current primary remains unchanged. Unknown decorations retain proven IDs. New dense fixture is geometry evidence only, not new engine semantic proof.
+What was intentionally preserved: Snapshot/protocol/server/legality/currentAction/private data, gameplay, focus fail-closed, Top Row and side mapping/dimensions, Inspect, existing Reaction/Dying and Dock controls. No progress/order/outcome/eligibility claims or array-difference inference.
+Focused tests: 57/57 presentation-client + room-safety-render (one new pure projection test); initial browser run60/62 found actual dense10 overflow at1440 (~6px) and650 (~19px). Fixed only new compact-card padding/gaps and3-column breakpoint600px; no assertion relaxed, content hidden or accepted primary resized. Final62/62 bounded browser regression and9/9 fresh VIS-07A rerun passed; 480px10-player Group screenshot inspected.
+Broader tests: Named bounded browser/semantic/render tests only; no local full build/test/lint. git diff --check passed.
+Known gaps: Public Group progress/order/outcomes remain explicitly deferred by user's option1 approval. Stage shell/duplicate metadata and final Dock/hand still intermediate, not final visual acceptance.
+CI pending: Push code and this ledger, wait exact run and repair only actual failures. Only then plan next bounded visual task.
