@@ -279,3 +279,48 @@ Focused tests: 12 new hierarchy cases plus retained VIS-05B and Top Row VIS-04B:
 Broader tests: Named bounded tests only; no local full build/test/lint. git diff --check passed. 480px Dying screenshot visually inspected; full Stage and all visible descendants fit the retained safe zone and preserve >=6px seat clearance in the 18 VIS-05B cases.
 Known gaps: Group participant density/progress and final Dock/hand structure are not claimed complete; real-device, WCAG, art approval remain unverified.
 CI pending: Push this revision, wait exact CI, fix only real failures, then inspect the next bounded Group/AOE concern and its available public authority.
+
+### VIS-05C STATUS: COMPLETED BY AGENT — CI GREEN
+
+CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37183863972 for `1a10128dbb5c9f3f0fe15ecbfcaf357021dd5a4a`.
+CI job: build-and-test `111381652287` completed/success; deploy `111382354553` completed/success. No independent production visual/health certification is claimed.
+Final implementation/fix SHAs: `d04ca9e`, result ledger `1a10128`; no CI fixes.
+Final test status: 53/53 bounded browser and 56/56 focused semantic/render tests locally; remote lint/build/full-browser/npm-test all passed.
+Known remaining gaps: Group density/progress, Stage chrome/metadata simplification, final Dock and hand composition, real-device/WCAG/visual acceptance.
+Recommended next bounded task: Reviewer must clarify the Group/AOE presentation authority boundary below before the autonomous run resumes. Agent completion is not reviewer acceptance.
+
+## Group/AOE follow-up — BLOCKED — HUMAN REVIEW REQUIRED
+
+Observed requirement: UX_V2_INTERACTION_STAGE_DESIGN.md section6 asks for resolved/current/pending group participants; sections0.35–0.36 and0.51 require explicit resolution semantics and per-participant status/order. The autonomous roadmap places multi-target/AOE participant hierarchy after Side Column adaptation. Card-density-only presentation is independently possible, but cannot be claimed to complete this progress requirement.
+
+Exact missing authority:
+- game/presentation-v2.ts PresentationInteractionScene/PresentationParticipantRoles expose IDs, original/active target scope, current participant, actor/resolver and continuity. They do not expose per-participant outcome/status or resolutionSemantics/semantic order.
+- groupProjectionValues takes participantIds from group.remainingIds; historical originalTargetIds are separate. Presence/absence/order in these arrays does not prove RESOLVED/PENDING/PAUSED/NO_LONGER_APPLICABLE or an outcome. No progress inference was added.
+- game/presentation-snapshot.ts aliases this accepted typed scene and keeps settlement null and transitionEvents empty; it cannot supply the missing progress contract.
+- tests/presentation-client.test.mjs "Interaction Stage display hierarchy keeps Group/AOE scope facts without ordinal progress" and "Interaction Stage never infers ordinal progress from target order or scope length" explicitly forbid completed/remaining/sequence/progress inference from array shape. Both remain passing in the 56-test focused run.
+- The Group observer browser fixture is geometry evidence only, not real engine proof of a new public status contract.
+
+Why stopped: Proceeding with complete Group progress would require either inventing semantic authority in React (forbidden), weakening an accepted test (forbidden), or extending the accepted server/projector contract (requires reviewer architecture decision). The autonomous workflow section15 requires a human-review stop for missing required semantic authority/unclear architecture. No follow-up production/test code was changed.
+
+Smallest human decision:
+1. Authorize a presentation-only Group participant-density slice using proven target/current-participant IDs, neutral secondary cards and no completed/pending/order/outcome markers; explicitly defer progress semantics. Then continue independent Stage/Dock/hand visual work.
+2. Or require progress now and provide/approve a bounded server-owned public Group status/resolution-semantics contract with real engine/API proof before React consumes it.
+
+Forbidden alternatives: Infer progress from target-array order/differences, timeline/HP, turn/seat, compatibility Pending in React, or animation; silently drop the design's progress requirement while claiming complete.
+
+## AUTONOMOUS RUN SUMMARY — stopped at human-review boundary
+
+Tasks planned: VIS-05B and VIS-05C; Group/AOE follow-up assessed but not implemented.
+Tasks completed: VIS-05B central safe zone; VIS-05C Large Focus/Medium Source; both COMPLETED BY AGENT — CI GREEN, not reviewer accepted.
+Tasks with CI fixes: None. Local negative-test repro condition and missing TSX-loader invocation are accurately recorded above.
+Implementation SHAs: `8fa843c`, `d04ca9e`; result/CI ledger commits `6becbcc`, `981755c`, `1a10128`.
+Final branch head: Last CI-tested head `1a10128dbb5c9f3f0fe15ecbfcaf357021dd5a4a`; this append-only closeout commit is identified by Git history and changes HANDOVER only.
+Final CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37183863972; build-and-test and deploy completed/success. HANDOVER-only pushes are excluded by workflow paths-ignore, so no new code-gate claim applies to the closeout commit.
+Contracts preserved: Server/private/CurrentAction authority, causal snapshot and fail-closed focus, viewer Hero only in Dock, physical seat DOM/mapping/dimensions, Top Row, Inspect, full Reaction/Dying, existing gameplay/protocol.
+New regression coverage: 19 safe-zone/negative-layout cases and12 hierarchy cases; local 96/96 then53/53 browser regressions, plus56/56 retained semantic/render tests. Full validation responsibility fulfilled by named CI runs, not local full suites.
+Remaining visual gaps: Group density, open Stage chrome/duplicate metadata, final Dock hero/skills/equipment/judgement arrangement, larger single-layer hand and viewport/pan behavior; screenshot is intermediate, not final target.
+Remaining semantic gaps: Per-participant Group status/outcomes and explicit resolution order/semantics lack an accepted public snapshot contract; durable counter history/settlement events remain reserved.
+Known technical debt: Side-zone inset/thumbnail budget mirrors accepted CSS geometry; retained geometry tests protect against drift. Historical header/old RED task remains preserved intentionally; newest appended records govern this run.
+Items requiring human visual review: 480px/10-player Negation safe zone; 480px Dying source-above-primary hierarchy; mobile whitespace/art balance and final design direction.
+Items requiring real-device review: Touch pan/tap, response accessibility, reduced-height portrait and full WCAG; not certified here.
+Recommended reviewer inspection order: VIS-05B CSS/descendant geometry and retained hit tests; VIS-05C helper reuse/viewer exclusion/portrait dimensions; named green CI runs; then decide Group scope option1 or2 before resume.
