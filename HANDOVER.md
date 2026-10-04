@@ -27,7 +27,7 @@ Minor future audit note: resize/orientation followed by Hand membership change i
 
 ### UX2.0VIS-10A — Keep the Top Row Interaction Stage Inside the Safe Zone at Short Portrait Heights
 
-Status: `IMPLEMENTED — CI PENDING`
+Status: `IMPLEMENTED — FOLLOW-UP CI PENDING`
 
 Objective:
 Remove the measured short-height Top Row Stage/Dock collision using presentation-only responsive compaction while preserving every required semantic panel and the accepted Local Player Dock composition.
@@ -82,4 +82,4 @@ If the required semantic content cannot fit at 480×640 and 650×700 using appro
 
 Never write `REVIEWER ACCEPTED` for future tasks; this acceptance applies only to VIS-09C.
 
-Implementation result: `app/globals.css` applies safe-zone-height pressure to the Top Row Stage while retaining the approved open shell. Short-height regressions cover every required Stage state/content, Stage and Safe Zone boundaries, zero Stage/Safe Zone-to-Dock overlap, three top-band seats with accepted clearance, Dock composition and one-row Hand, and no horizontal page overflow. Focused browser validation passed 36/36 (VIS-10A short portrait, VIS-04B and VIS-04C at 900px, VIS-09B native touch); targeted ESLint and `git diff --check` passed. CI for the pushed revision is pending.
+Implementation result: `app/globals.css` applies safe-zone-height pressure to the Top Row Stage while retaining the approved open shell. Short-height regressions cover required Stage content, seat band/clearance, Dock composition, overlap and viewport bounds. Initial CI run `37200036937` failed four browser tests: the broad height query altered 1440×900 Hero geometry (Safe Zone height was 327px), and an old-offset probe still expected overflow despite the new pressure layout containing it. The query is now limited to <=700px container width and the probe verifies compact containment. Focused browser validation passed 40/40; targeted ESLint and `git diff --check` passed. Follow-up CI is pending.

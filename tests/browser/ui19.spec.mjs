@@ -854,20 +854,28 @@ for (const viewport of VIS_04B_VIEWPORTS) {
   }
 }
 
-test("UX2.0VIS-04B Dying 650x900 proves old top offset overflow and new geometry contains content", async ({ page }) => {
+test("UX2.0VIS-04B Dying 650x900 applies compact pressure when the Safe Zone contracts", async ({ page }) => {
   const viewport = VIS_04B_VIEWPORTS.find(({ width }) => width === 650);
   await loadFixture(page, { state: "dying", count: 4, width: viewport.width, height: viewport.height });
   const playTable = page.locator(".play-table");
 
   await playTable.evaluate((element, previousTop) => element.style.setProperty("--interaction-safe-top", previousTop), viewport.previousTop);
-  const previous = await interactionGeometry(page);
-  expect(previous.stage.bottom).toBeGreaterThan(previous.safeZone.bottom + 4);
+  const pressured = await interactionGeometry(page);
+  await assertVisible(page.locator('[data-dying-handoff="proven"]'), "Dying handoff remains visible under pressure");
+  expect(pressured.safeZone.height).toBeLessThanOrEqual(330);
+  expect(pressured.stageBody.display).toBe("grid");
+  expect(pressured.stage.top).toBeGreaterThanOrEqual(pressured.safeZone.top);
+  expect(pressured.stage.bottom).toBeLessThanOrEqual(pressured.safeZone.bottom + 4);
+  expect(pressured.stage.bottom).toBeLessThanOrEqual(pressured.playTable.bottom - 1);
+  expect(pressured.dyingHandoff.bottom).toBeLessThanOrEqual(pressured.stage.bottom + 4);
+  expect(pressured.stageDockOverlap).toBe(0);
+  expect(pressured.safeZoneDockOverlap).toBe(0);
 
   await playTable.evaluate((element) => element.style.removeProperty("--interaction-safe-top"));
   const current = await interactionGeometry(page);
   await assertVisible(page.locator('[data-dying-handoff="proven"]'), "Dying handoff");
-  expect(current.stage.height).toBe(previous.stage.height);
-  expect(current.dyingHandoff.height).toBe(previous.dyingHandoff.height);
+  expect(current.stageBody.display).toBe("flex");
+  expect(current.stage.height).toBeGreaterThan(pressured.stage.height);
   expect(current.stage.bottom).toBeLessThanOrEqual(current.safeZone.bottom + 4);
   expect(current.stage.bottom).toBeLessThanOrEqual(current.playTable.bottom - 1);
   expect(current.dyingHandoff.bottom).toBeLessThanOrEqual(current.stage.bottom + 4);
