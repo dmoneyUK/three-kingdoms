@@ -23,13 +23,15 @@ Run `37232498163` then failed `npm test` only because
 `tests/room-safety-render.test.mjs:711` still asserted the superseded Dock row
 order (`auto` before the top panel). The accepted rows are top panel, Hand,
 Guidance, Actions; the source-shape assertion now checks that order without
-changing production code. The focused failing test passes 1/1 locally. No full
-test/build/lint. The test-only correction commit and its Actions result are
-pending.
+changing production code. The focused failing test passes 1/1 locally. The
+test-only correction was pushed as
+`b0ac80d682da631a66f2b628e77ea773cb2173d6`; latest-run checkpoint
+`37234054061` was `in_progress`, so work proceeded without waiting. CI is not
+claimed green. No full test/build/lint.
 
 ## Current task — UX2.0VIS-12N: Four-Player Interaction Screenshot Matrix
 
-Status: `PLANNED — AFTER CI-CORRECTION PUSH AND NEXT-TASK CHECKPOINT`
+Status: `IN PROGRESS — LATEST CHECKPOINT RUN 37234054061 WAS IN PROGRESS`
 
 Purpose: complete the four-player slice of the representative-interaction
 visual gate, prompted by the user's four-player phone screenshot and authorized
