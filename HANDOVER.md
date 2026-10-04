@@ -1,5 +1,14 @@
 # WTK UI / Layout — Current Task Handoff
 
+## CURRENT AUTONOMOUS STATE NOTICE
+
+For autonomous UI/Layout work, current task/status lives in `docs/AUTONOMOUS_UI_STATUS.md`.
+
+This `HANDOVER.md` is the historical/audit ledger. Autonomous Agents must **not** read this entire file by default; consult historical sections selectively only when older accepted contracts, measurements, SHAs, CI evidence, or regression history are specifically needed.
+
+Older task instructions below may be stale and are not current autonomous task authority. Human Reviewer historical inspection remains allowed.
+
+
 ## REMOTE HANDOVER RULE
 Work only on `ux-v2`. Read this file and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`. Implement only the task below, validate, append this task's execution result, commit/push, verify remote HANDOVER, then STOP. Do not wait for or poll CI.
 
