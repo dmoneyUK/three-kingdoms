@@ -1312,6 +1312,61 @@ for (const width of [390, 480, 650]) {
   });
 }
 
+for (const width of [390, 480, 650]) {
+  for (const state of ["rest", "interaction"]) {
+    test(`UX2.0VIS-12C ${state} keeps mobile card piles secondary at ${width}px`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state, count: 4, width, height: 900 });
+      const piles = await page.locator(".play-center").evaluate((center) => {
+        const rect = (element) => {
+          const box = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            left: box.left, top: box.top, right: box.right, bottom: box.bottom,
+            width: box.width, height: box.height,
+            background: style.backgroundColor, borderColor: style.borderTopColor,
+          };
+        };
+        const table = document.querySelector(".play-table").getBoundingClientRect();
+        const draw = center.querySelector(".draw-stack");
+        const discard = center.querySelector(".discard-stack");
+        return {
+          center: rect(center), table: { left: table.left, top: table.top, width: table.width, height: table.height, bottom: table.bottom },
+          draw: { ...rect(draw), label: draw.getAttribute("aria-label"), text: draw.textContent },
+          discard: { ...rect(discard), label: discard.getAttribute("aria-label"), text: discard.textContent },
+          pileZ: getComputedStyle(center).zIndex,
+          stageZ: document.querySelector(".interaction-stage") ? getComputedStyle(document.querySelector(".interaction-stage")).zIndex : null,
+          pageWidth: document.documentElement.scrollWidth,
+        };
+      });
+
+      for (const [name, pile] of [["Deck", piles.draw], ["Discard", piles.discard]]) {
+        expect(pile.width, `${name} remains compact`).toBe(56);
+        expect(pile.height, `${name} remains compact`).toBe(78);
+      }
+      expect(piles.center.left + piles.center.width / 2).toBeCloseTo(piles.table.left + piles.table.width / 2, 0);
+      expect(piles.center.top + piles.center.height / 2).toBeGreaterThan(piles.table.top + piles.table.height * 0.45);
+      expect(piles.center.bottom).toBeLessThanOrEqual(piles.table.bottom);
+      expect(piles.draw.background).toBe("rgb(18, 21, 16)");
+      expect(piles.discard.background).toBe("rgb(52, 49, 39)");
+      expect(piles.draw.label).toMatch(/^Draw pile, \d+ cards$/);
+      expect(piles.discard.label).toBe("Discard pile, empty");
+      expect(piles.draw.text).toContain("DECK");
+      expect(piles.discard.text).toContain("DISCARD");
+      expect(piles.pageWidth).toBeLessThanOrEqual(width);
+      if (state === "interaction") {
+        expect(Number(piles.stageZ)).toBeGreaterThan(Number(piles.pileZ));
+        await assertVisible(page.locator(".interaction-stage"), "active Interaction Stage remains prominent");
+      }
+      if (width === 480 && state === "interaction") {
+        await testInfo.attach("vis-12c-mobile-card-piles-480", {
+          body: await page.screenshot({ animations: "disabled" }),
+          contentType: "image/png",
+        });
+      }
+    });
+  }
+}
+
 for (const width of [1440, 650, 480]) {
   for (const count of [6, 10]) {
     for (const state of count === 6 ? ["interaction", "negation", "dying", "group-observer"] : ["interaction", "negation"]) {

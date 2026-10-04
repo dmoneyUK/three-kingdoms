@@ -2112,3 +2112,44 @@
     justify-self: center;
   }
 }
+
+/* UX2.0VIS-12C: keep the ordinary mobile piles compact and in the background.
+   A top discard card retains its existing face/art; only the persistent pile
+   envelope, empty surface and labels are visually quieter. */
+@media (max-width: 650px) {
+  .game-shell .play-center {
+    gap: 8px;
+  }
+
+  .game-shell .draw-stack,
+  .game-shell .discard-stack {
+    width: 56px;
+    height: 78px;
+    box-shadow: 0 6px 14px #0007;
+  }
+
+  .game-shell .draw-stack {
+    background: #121510;
+    border-color: #736548;
+    color: #bca96d;
+  }
+
+  .game-shell .discard-stack {
+    background: #343127;
+    border-color: #786945;
+    color: #c9b98e;
+    transform: none;
+  }
+
+  .game-shell .draw-stack b,
+  .game-shell .discard-stack b {
+    font-size: 16px;
+  }
+
+  .game-shell .draw-stack span,
+  .game-shell .discard-stack span {
+    margin-top: 6px;
+    font-size: 7px;
+    letter-spacing: .1em;
+  }
+}

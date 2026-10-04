@@ -109,3 +109,35 @@ Stop condition: if the 480px width target cannot coexist with the approved same-
 Implementation result: limited the responsive three-track change to the 4-player mobile Top Row. At 480px, measured seats are 146px wide with 12px outer margins and 9px gaps; widths contract to about 117.5px at 390px and cap at 146px at 650px. Seat height and vertical placement are unchanged. Updated only affected VIS-04B/C geometry expectations and added 390/480/650 mounted regressions for bounds, Stage clearance, Hero art, identity, HP/Hand visibility, target hits, and document overflow. The initial width-only experiment exposed 5.5px edge clipping; the approved three-track margin/gap model fixed it. Reviewed the 480px screenshot. No gameplay, private projection, control, Side Column, or Hero-crop changes.
 
 Focused validation: `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-12B|UX2.0VIS-04A|UX2.0VIS-04B|UX2.0VIS-04C|UX2.0VIS-10C Top Row' --workers=2` — 74/74 passed; the three VIS-12B cases also passed separately. `npx eslint tests/browser/ui19.spec.mjs` passed. No local full suite/build/lint. Commit, push, and exact-revision CI are pending.
+
+### UX2.0VIS-12B — CI closure
+
+Status: `COMPLETED BY AGENT — CI GREEN`  
+Tested revision: `102f36d1430663f5005c4696a90b6bc1135944a4`  
+GitHub Actions run: [37215156772](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37215156772) — build-and-test job `111474046079` succeeded; deploy job `111474896190` and production smoke test succeeded. No CI fixes required. Human Reviewer acceptance remains separate.
+
+### UX2.0VIS-12C — Reduce Mobile Deck/Discard Prominence
+
+Status: `IMPLEMENTED — CI PENDING`
+
+Planning gate: all five §19 checks passed after fetching `origin/ux-v2` and reviewing current workflow §§19–20 plus design §§0.91.2–0.91.4 and 1.5. The 480px interaction screenshot shows the default Deck/Discard anchors at 70×98px in the lower-middle battlefield; the empty Discard surface is much brighter than the active Stage and local controls. The approved design explicitly says these are secondary in ordinary interactions, compact, and lower-contrast.
+
+Objective: Reduce only the mobile default Deck/Discard footprint and surface prominence while retaining the existing lower-middle/background anchor and readable pile labels/card face.
+
+Requirements:
+- At 390/480/650px, render both pile containers no larger than 56×78px; preserve the existing center alignment, lower-middle vertical anchor, accessible labels/counts, and pile contents.
+- Use quieter surface/border/shadow treatment for the empty/default piles; preserve legibility of the top discard card itself and leave active event/card treatments untouched.
+- Keep Deck/Discard below the Interaction Stage/Hero Focus and clear of opponent seats, local Dock, and controls. Preserve existing sequence-active hiding and any authoritative event/reveal behavior.
+- Add focused mounted regressions for ordinary/rest and interaction views, including pile geometry, readable labels, active Stage stacking/containment, and no page overflow; retain relevant existing pile/reveal coverage.
+
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.91.2–0.91.4; workflow §§19–20. No new gameplay/event semantics are needed.
+
+Expected scope: `app/sequence-overrides.css`, focused `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`, and `docs/AUTONOMOUS_UI_ROADMAP.md`.
+
+Non-goals: do not move the piles to a newly selected left/right corner or add event-specific emphasis; do not change card identity/art, reveal timing, server/gameplay semantics, Interaction Stage content, or local controls. The exact edge destination remains a separate future composition decision; current lower-middle placement is retained for this bounded de-emphasis slice.
+
+Focused validation: only the new 390/480/650 mounted cases and relevant existing pile/Stage browser tests; inspect a representative mobile screenshot. No local full suite/build/lint. Push and require exact-revision CI green before planning another task.
+
+Implementation result: changed only mobile Deck/Discard presentation. Both pile envelopes are 56×78px at 390/480/650px, remain centered at the existing lower-middle anchor, and use quieter surfaces/shadows; removing the mobile Discard tilt was required because its transformed visible bounds exceeded the approved envelope. The existing discard card face/art is unchanged. A reviewed 480px Interaction screenshot confirms the piles stay visually secondary to the Stage and local controls. Files: `app/sequence-overrides.css`, `tests/browser/ui19.spec.mjs`, this handover, and `docs/AUTONOMOUS_UI_ROADMAP.md`.
+
+Focused validation: `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-12C' --workers=2` — 6/6 passed; retained mounted local-Dock/discard identity regression — 1/1 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. No local full suite/build/lint. Commit, push, and exact-revision CI are pending.

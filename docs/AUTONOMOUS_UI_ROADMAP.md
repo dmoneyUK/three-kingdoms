@@ -24,13 +24,13 @@ Do not copy this entire roadmap into working context unless historical reconstru
 ## Current frontier
 
 Latest completed milestone:
-- `UX2.0VIS-12A — Make Local Hero Skills Readable, Full-Label, and Easy to Hit`
-- final tested revision `ee77bbecafb2bf7e47a7bdd4319cedba5a81527e`
-- CI run `37213322962`: build-and-test and deploy successful
+- `UX2.0VIS-12B — Restore Hero-First Width for Mobile Top-Row Opponent Seats`
+- final tested revision `102f36d1430663f5005c4696a90b6bc1135944a4`
+- CI run `37215156772`: build-and-test and deploy/smoke successful
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0VIS-12B — Restore Hero-First Width for Mobile Top-Row Opponent Seats`
+- `UX2.0VIS-12C — Reduce Mobile Deck/Discard Prominence`
 - status: IMPLEMENTED — CI PENDING
 - current task authority: `HANDOVER.md`
 
@@ -77,6 +77,14 @@ Planned after a fresh §19 review. Design §1.5.1 calls for about 136–146px se
 Implementation update: the mobile 4-player Top Row now uses three equal tracks, a 9px gap and a responsive 8–16px inset, with each card capped at 146px. At 480px the mounted regression measures 146px cards, 12px outer margins and 9px gaps; at 390px cards are ~117.5px; at 650px the 146px cap applies. A width-only attempt produced measured -5.5px edge clipping and was replaced by the approved track/margin composition. Updated affected VIS-04B/C assertions. Focused browser matrix passed 74/74; targeted ESLint passed; 480px screenshot reviewed. No full local suite/build/lint. Exact-revision CI pending.
 
 Approved design findings deferred from VIS-12B: ordinary Deck/Discard should remain compact, lower contrast and toward the battlefield edge/background (§0.91.4); validate upper-body Hero crops across Top Row, Side Column, local Hero and Stage Focus (§1.5); complete a representative interaction visual audit and final mobile gate after bounded layout fixes. These remain separate planning candidates, not extra scope for VIS-12B.
+
+## UX2.0VIS-12B — Restore Hero-First Width for Mobile Top-Row Opponent Seats
+
+Completed by Agent; final tested revision `102f36d1430663f5005c4696a90b6bc1135944a4`, GitHub Actions run `37215156772` — build-and-test job `111474046079` and deploy job `111474896190` succeeded, including production smoke test. At 480px, three mobile Top Row opponent seats render 146px wide with 12px margins and 9px gaps; 390px cards are ~117.5px; at 650px the cap is 146px. Kept seat height and vertical anchors, public details, inspect/target behavior and Side Column unchanged. Updated affected VIS-04B/C assertions. Focused browser matrix 74/74; targeted ESLint passed. Human Reviewer acceptance remains separate.
+
+Current planned VIS-12C isolates default pile compactness and contrast while retaining the current lower-middle background anchor. Exact edge placement and Hero crop validation remain deferred, separate candidates.
+
+VIS-12C has been implemented locally and its focused 390/480/650px Rest/Interaction regressions pass; commit, push, and exact-revision CI remain pending. The persistent pile envelope is 56×78px and ordinary surfaces are lower-contrast; discard-card face/art and the existing lower-middle anchor remain unchanged. See the handover execution result for exact files, checks, and final CI evidence.
 
 ## Durable accepted UI / presentation contracts
 
