@@ -414,3 +414,12 @@ Requirements: make only the Side Column outer shell/header open and compact; pre
 Non-goals: duplicate metadata cleanup, participant/progress semantics, Dock/hand/Judgement changes, gameplay or protocol changes, README changes.
 Validation: focused browser cases for interaction, Negation, Dying, and Group-observer states at 1440/650/480px; retained geometry/hit assertions; screenshot inspection; `git diff --check`.
 Acceptance: Side Column Stage outer background is transparent with no border/shadow/padding; compact header has no divider; inner semantic panels retain their own visible surfaces; Stage stays inside the accepted safe zone and above the Dock without clipping.
+
+### VIS-08A IMPLEMENTATION RESULT
+
+Implementation SHA: `48287fa`.
+Files changed: `app/sequence-overrides.css`, `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`.
+Change: Side Column now uses a transparent, unpadded Stage shell and fit-content divider-free header, matching the accepted open Top Row composition. Hero Focus, Reaction Chain, and Dying panels retain their own backgrounds/borders. No semantic or control markup changed.
+Focused validation: 40/40 browser cases passed (`VIS-08A`, retained `VIS-05B` safe-zone/hit checks, and `VIS-07A` Group density) at 1440/650/480px; `git diff --check` passed. 480px Dying and 10-player Group screenshots inspected. An initial combined run's only two failures were an overly strict assertion that the header must be narrower than the Stage at 480px; the content fills that narrow width naturally. The final assertion checks that it never overflows.
+Known gaps: Stage metadata duplication and final Dock/hand composition remain. No full suite/build/lint was run locally.
+CI pending: implementation/result revision must complete GitHub Actions before another task begins.
