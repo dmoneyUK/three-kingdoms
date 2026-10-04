@@ -50,6 +50,30 @@ async function loadFixture(page, { state = "normal", count = 4, width, height, r
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
+async function readHandViewport(rail) {
+  return rail.evaluate((element) => {
+    const viewport = element.getBoundingClientRect();
+    const cards = Array.from(element.querySelectorAll("[data-hand-card-id]")).map((slot, index) => {
+      const bounds = slot.getBoundingClientRect();
+      return {
+        id: slot.dataset.handCardId,
+        index,
+        left: bounds.left - viewport.left,
+        right: bounds.right - viewport.left,
+        visible: bounds.left < viewport.right && bounds.right > viewport.left,
+        fullyVisible: bounds.left >= viewport.left && bounds.right <= viewport.right,
+      };
+    });
+    return { scrollLeft: element.scrollLeft, viewportWidth: viewport.width, scrollWidth: element.scrollWidth, cards };
+  });
+}
+
+function visibleHandAnchor(snapshot) {
+  return snapshot.cards
+    .filter((card) => card.visible)
+    .sort((left, right) => Math.abs((left.left + left.right) / 2 - snapshot.viewportWidth / 2) - Math.abs((right.left + right.right) / 2 - snapshot.viewportWidth / 2) || left.index - right.index)[0];
+}
+
 for (const width of [1440, 650, 480]) {
   for (const handSize of [5, 10, 15, 20, 25, 30]) {
     test(`UX2.0VIS-09B ${handSize} hand cards at ${width}px fit or scroll in one layer`, async ({ page }) => {
@@ -220,6 +244,74 @@ test.describe("UX2.0VIS-09B native touch navigation", () => {
       await expect(selected.locator(".game-card")).toHaveClass(/selected/);
       await selected.locator(".card-info-button").tap();
       await expect(page.getByRole("dialog").getByRole("heading", { name: "Attack", exact: true })).toBeVisible();
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+    });
+  }
+});
+
+test.describe("UX2.0VIS-09C preserve the Hand viewport across membership changes", () => {
+  for (const width of [480, 650]) {
+    test(`${width}px preserves a surviving anchor and uses a nearby survivor when it is removed`, async ({ page }) => {
+      await loadFixture(page, { width, height: 900, handSize: 25 });
+      const rail = page.locator(".local-hand-rail");
+      await expect(rail).toHaveAttribute("data-hand-layout", "measured");
+      await rail.evaluate((element) => { element.scrollLeft = (element.scrollWidth - element.clientWidth) * 0.45; });
+      await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(30);
+
+      const initial = await readHandViewport(rail);
+      const anchor = visibleHandAnchor(initial);
+      expect(anchor).toBeTruthy();
+      expect(anchor.index).toBeGreaterThan(3);
+      const remainingIds = initial.cards.slice(3).map((card) => card.id);
+      await page.evaluate((ids) => window.__setBrowserHandIds(ids), remainingIds);
+      await expect(rail.locator('[data-hand-card-id="browser-hand-1"]')).toHaveCount(0);
+      await expect.poll(async () => {
+        const snapshot = await readHandViewport(rail);
+        return Math.abs(snapshot.cards.find((card) => card.id === anchor.id).left - anchor.left);
+      }).toBeLessThanOrEqual(1);
+
+      const beforeAnchorRemoval = await readHandViewport(rail);
+      const removedAnchor = visibleHandAnchor(beforeAnchorRemoval);
+      const nearbySurvivor = beforeAnchorRemoval.cards
+        .filter((card) => card.visible && card.id !== removedAnchor.id)
+        .sort((left, right) => Math.abs(left.index - removedAnchor.index) - Math.abs(right.index - removedAnchor.index) || left.index - right.index)[0];
+      expect(nearbySurvivor).toBeTruthy();
+      const afterAnchorRemovalIds = beforeAnchorRemoval.cards.filter((card) => card.id !== removedAnchor.id).map((card) => card.id);
+      await page.evaluate((ids) => window.__setBrowserHandIds(ids), afterAnchorRemovalIds);
+      await expect(rail.locator(`[data-hand-card-id="${removedAnchor.id}"]`)).toHaveCount(0);
+      await expect.poll(async () => {
+        const snapshot = await readHandViewport(rail);
+        return Math.abs(snapshot.cards.find((card) => card.id === nearbySurvivor.id).left - nearbySurvivor.left);
+      }).toBeLessThanOrEqual(1);
+      expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+    });
+
+    test(`${width}px appending cards does not move the viewport or change selection`, async ({ page }) => {
+      await loadFixture(page, { width, height: 900, handSize: 25 });
+      const rail = page.locator(".local-hand-rail");
+      await expect(rail).toHaveAttribute("data-hand-layout", "measured");
+      await rail.evaluate((element) => { element.scrollLeft = (element.scrollWidth - element.clientWidth) * 0.5; });
+      await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeGreaterThan(30);
+
+      const initial = await readHandViewport(rail);
+      const selected = initial.cards.find((card) => card.fullyVisible && card.index > 0);
+      expect(selected).toBeTruthy();
+      const selectedCard = rail.locator(`[data-hand-card-id="${selected.id}"] .game-card`);
+      await selectedCard.click({ position: { x: 8, y: 45 } });
+      await expect(selectedCard).toHaveClass(/selected/);
+
+      const beforeAppend = await readHandViewport(rail);
+      const anchor = visibleHandAnchor(beforeAppend);
+      expect(anchor).toBeTruthy();
+      const appendedIds = [...beforeAppend.cards.map((card) => card.id), "browser-hand-added-1", "browser-hand-added-2", "browser-hand-added-3"];
+      await page.evaluate((ids) => window.__setBrowserHandIds(ids), appendedIds);
+      await expect(rail.locator('[data-hand-card-id="browser-hand-added-3"]')).toHaveCount(1);
+      await expect.poll(() => rail.evaluate((element) => element.scrollLeft)).toBeCloseTo(beforeAppend.scrollLeft, 0);
+      await expect.poll(async () => {
+        const snapshot = await readHandViewport(rail);
+        return Math.abs(snapshot.cards.find((card) => card.id === anchor.id).left - anchor.left);
+      }).toBeLessThanOrEqual(1);
+      await expect(rail.locator(`[data-hand-card-id="${selected.id}"] .game-card`)).toHaveClass(/selected/);
       expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
     });
   }

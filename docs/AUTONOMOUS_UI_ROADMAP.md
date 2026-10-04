@@ -23,17 +23,23 @@ Do not copy this entire roadmap into working context unless historical reconstru
 
 ## Current frontier
 
-Latest completed milestone at migration time:
-- `UX2.0VIS-09A — Move Persistent Local Judgement Into the Hero Overlay`
-- implementation `59f15192dc580419443f50651325b9ea4f3abe79`
-- tested revision `159205965e2464c25d088b8e514bb20c26462359`
-- CI run `37191718705`: build-and-test and deploy successful
+Latest completed milestone:
+- `UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row`
+- implementation `8eb5499edba1c9907d061039efd98cfe5d3c1042`
+- final tested revision `e15008d42abbdc235b20d8bac26b2405ae250c39`
+- CI run `37195526183`: build-and-test and deploy successful
 - human Reviewer acceptance remains separate from Agent completion
 
-Current handoff at migration time:
-- `UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row`
+Current handoff:
+- `UX2.0VIS-09C — Preserve Hand Viewport Context Across Card Changes`
 - status: PLANNED
 - current task authority: `HANDOVER.md`
+
+## UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
+
+Completed by Agent; CI green on `e15008d42abbdc235b20d8bac26b2405ae250c39` (run `37195526183`). The implementation keeps 68×102px cards in one layer with a 30px minimum exposure, native horizontal pan, keyboard navigation, edge-card reveal and no document-level horizontal overflow. At 480px with 25 cards, the 376px rail viewport reaches the 788px content extent (412px maximum scroll); at 1440px all 25 fit without scrolling. The 30-card geometry matrix and tap/inspection behavior were covered.
+
+The initial CI run (`37194263323`) exposed that Chromium's `Input.synthesizeScrollGesture` helper did not scroll in the Linux runner at 480px or 650px (268 other browser cases passed). The regression was corrected to use explicit trusted browser touch events for pan and independent ordinary-touch tap/inspection tests; focused full-config 09B browser validation passed 23/23. No product gesture semantics or assertions were weakened. Semantic anchoring across hand membership changes and real-device certification remain unproven/out of scope; see VIS-09C and the release gate respectively.
 
 ## Durable accepted UI / presentation contracts
 
@@ -68,13 +74,12 @@ Current handoff at migration time:
 
 ## Remaining approved direction
 
-After VIS-09B, inspect actual code before choosing the next bounded task. Expected remaining high-impact areas include:
+After VIS-09C, inspect actual code before choosing the next bounded task. Expected remaining high-impact areas include:
 
-1. final LocalPlayerDock Hero / Skills / Equipment proportions and density;
-2. Hand 20/25+ pan/tap/selection behavior if VIS-09B does not fully close it;
-3. representative interaction visual audit across REST, single-target, multi-target, AOE, Negation, Duel, Dying, Judgement, Borrowed Sword, Hero skill, and long guidance;
-4. reduced-height/mobile containment and final mobile visual gate;
-5. small Stage/Dock polish discovered by those audits.
+1. final LocalPlayerDock Hero / Skills / Equipment proportions and density, if measurable gaps remain;
+2. representative interaction visual audit across REST, single-target, multi-target, AOE, Negation, Duel, Dying, Judgement, Borrowed Sword, Hero skill, and long guidance;
+3. reduced-height/mobile containment and final mobile visual gate;
+4. small Stage/Dock polish discovered by those audits.
 
 Do not implement this list as one task.
 
@@ -663,4 +668,3 @@ Requirements:
 Non-goals: New gameplay/legality, changing selection semantics, a second row, hand-count-specific breakpoints, and preserving a semantic anchor when cards are authoritatively added/removed (that remaining §0.86–0.87 behavior must not be claimed complete by this slice).
 Stop condition: If the required scroll viewport cannot preserve the selected-card raise and existing controls without an unapproved composition trade-off, record the measured conflict and stop for human review.
 Validation/delivery: Run only focused hand/browser checks locally; GitHub Actions owns full checks. Push code/tests/docs/handover together, do not poll CI, verify remote HANDOVER, then stop for the user's CI report.
-

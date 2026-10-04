@@ -239,5 +239,16 @@ function readFixture() {
 
 const { state, count, handSize } = readFixture();
 const root = createRoot(document.getElementById("root"));
+let fixtureRoom = browserRoom({ state, count, handSize });
 window.__browserActions = [];
-root.render(<GameRoom room={browserRoom({ state, count, handSize })} busy={false} error="" onAction={async (action, extra) => { window.__browserActions.push({ action, extra }); return true; }} onLeave={() => {}} />);
+const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => { window.__browserActions.push({ action, extra }); return true; }} onLeave={() => {}} />);
+window.__setBrowserHandIds = (ids) => {
+  const myHand = ids.map((id) => card(id, "Attack"));
+  fixtureRoom = {
+    ...fixtureRoom,
+    myHand,
+    players: fixtureRoom.players.map((player) => player.id === fixtureRoom.meId ? { ...player, handCount: myHand.length } : player),
+  };
+  renderFixture();
+};
+renderFixture();

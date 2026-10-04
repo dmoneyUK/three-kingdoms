@@ -3,93 +3,43 @@
 Branch: `ux-v2`  
 Mode: `AUTONOMOUS UI RUN`
 
-This file is the **current task handoff authority** and is intentionally short.
-
-Long-term roadmap and historical task/CI records live in:
-`docs/AUTONOMOUS_UI_ROADMAP.md`
-
-Execution workflow lives in:
-`docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`
-
-Do not load the full roadmap/history unless the current task or next-task planning actually needs older evidence.
+Current task authority. Long-lived decisions/history: `docs/AUTONOMOUS_UI_ROADMAP.md`. Workflow: `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`.
 
 ## Previous result
 
-### UX2.0VIS-09A — Move Persistent Local Judgement Into the Hero Overlay
+### UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
 
 Status: `COMPLETED BY AGENT — CI GREEN`  
-Implementation: `59f15192dc580419443f50651325b9ea4f3abe79`  
-Final tested revision: `159205965e2464c25d088b8e514bb20c26462359`  
-CI: run `37191718705`; build-and-test and deploy succeeded.
+Implementation: `8eb5499edba1c9907d061039efd98cfe5d3c1042`
 
-Result:
-- persistent local Judgement now renders once as a compact local-Hero overlay;
-- the independent Dock Judgement column was removed;
-- physical IDs, card inspection, in-flight hiding, Skills/Equipment, Hand and actions were preserved;
-- active Judgement resolution remains Interaction Stage-owned.
+Final tested revision: `e15008d42abbdc235b20d8bac26b2405ae250c39`
 
-Human Reviewer acceptance remains separate.
+CI: [run 37195526183](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37195526183) — build-and-test and deploy succeeded.
+
+One-layer 68×102px Hand cards now remain reachable by native horizontal pan and keyboard; the 480px/25-card rail scrolls its 788px content extent without document overflow. CI's platform-dependent synthesized scroll helper was replaced with explicit trusted touch events; independent tap/inspection checks and focused 09B browser validation passed 23/23. Human Reviewer acceptance remains separate. Semantic anchoring across card changes and real-device certification remain open.
 
 ## Current task
 
-### UX2.0VIS-09B — Navigate Overflowing Hand Cards in One Row
+### UX2.0VIS-09C — Preserve Hand Viewport Context Across Card Changes
 
 Status: `PLANNED — READY TO IMPLEMENT`
 
-Objective:
-Keep large local hands reachable in one horizontal layer without shrinking cards below their usable size or letting the rail spill outside the Hand viewport.
+Objective: Keep the viewer's physical-card context in place when authoritative local Hand membership changes, without auto-panning to newly appended cards.
 
-Design authority:
-- `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` §§7.11, 10, 19–20
-- `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.82–0.88, 2.2, 2.9
+Observed gap: the rail currently adjusts only to reveal a selected card (`app/page.tsx`, Hand layout effects). There is no physical-card viewport anchor when an earlier card is removed. Appended-card behavior has no mounted-update regression proof.
 
-Preserve:
-- only viewer `room.myHand` physical cards/IDs are rendered;
-- selection and eligibility remain `CurrentAction`-driven;
-- one horizontal Hand layer;
-- existing card identity/order/inspection/selection;
-- fixed Local Dock Guidance and Cancel | Primary | Decline action semantics;
-- no gameplay/server/protocol changes.
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.86–0.87; workflow §§6.1, 12, 19. Use only viewer-private `room.myHand` IDs as local presentation anchors.
 
 Requirements:
-- keep existing usable card dimensions and controlled overlap until the minimum useful step is reached;
-- beyond that point, use platform-native horizontal scrolling/panning rather than further shrinking or clipping;
-- render every physical Hand card exactly once and keep the end cards reachable;
-- preserve selected-card visibility and info controls;
-- a pan gesture must not activate/select the card under the gesture, while ordinary taps still work;
-- prove behavior for 5/10/15/20/25+ cards at 1440/650/480px;
-- prevent document-level horizontal overflow and overlap with action controls;
-- update README only if the durable proven Hand contract materially changes; do not claim touch-device certification.
+- Preserve a surviving visible physical-card anchor at its viewport-relative position after Hand IDs change.
+- If that card is removed, keep the nearest surviving card from the previous visible neighborhood in view.
+- Appending cards must not steal the current viewport or change selection; a genuinely replaced Hand/viewer may establish a new anchor.
+- Keep native scrolling, one-layer geometry, current selected-card reveal, `CurrentAction` legality, and all gameplay/server/protocol authority unchanged.
 
-Non-goals:
-- no new gameplay/legality;
-- no second Hand row;
-- no arbitrary hand-count-specific layout breakpoints;
-- do not claim semantic scroll-anchor preservation across authoritative card add/remove unless separately proven.
+Focused regression: extend the existing browser fixture to rerender a mounted `GameRoom` with changed synthetic physical IDs; assert anchor position after preceding/anchor-card removal and no viewport jump after appending cards at 480px and 650px. Synthetic IDs remain geometry-only.
 
-Stop condition:
-If the scroll viewport cannot preserve selected-card raise and existing controls without an unapproved composition trade-off, record the measured conflict and stop with `BLOCKED — HUMAN REVIEW REQUIRED`.
+Likely scope: `app/page.tsx`, `tests/browser/fixture.jsx`, `tests/browser/ui19.spec.mjs`, this handoff, and roadmap closeout. Run only focused render/browser validation and `git diff --check`; GitHub Actions is the final gate.
 
-Focused validation:
-- focused Hand/render tests;
-- focused browser geometry/interaction cases using existing fixtures/helpers;
-- `git diff --check`;
-- GitHub Actions is the final validation gate.
+Planning gate: approved requirement YES; private existing identity authority YES; bounded local-UI behavior YES; high impact to repeated large-Hand use YES; mounted geometry regression YES.
 
-## Handoff update rule
-
-During VIS-09B, keep this file concise.
-
-When VIS-09B closes:
-1. record its compact execution result and final CI state here;
-2. move the older VIS-09A result/history into `docs/AUTONOMOUS_UI_ROADMAP.md` if not already recorded;
-3. inspect actual code plus the approved roadmap/design and define exactly one next bounded task here;
-4. keep only the latest result plus the next/current task in HANDOVER.
-
-Do not append a growing task history to this file.
-
-## VIS-09B implementation result — CI repair pending
-
-Implementation: `8eb5499edba1c9907d061039efd98cfe5d3c1042`. The Hand now scrolls horizontally as one layer, retains 68×102px cards and 30px minimum exposure, and keeps selected-card reveal/inspection and existing selection authority. At 480px/25 cards, the 376px viewport reaches the 788px rail's end; 25 cards fit at 1440px. Semantic scroll anchoring across authoritative card changes and real-device certification remain out of scope.
-
-CI run `37194263323` failed only the two native-pan browser cases: Chromium's synthesized-scroll helper left `scrollLeft` at 0 at 480px and 650px; 268 other browser cases passed. The test now uses explicit trusted browser touch events for pan and separately proves ordinary touch tap/inspection, without relaxing either assertion. Focused full-config 09B browser checks: 23/23; targeted ESLint and `git diff --check`: pass. CI repair revision and rerun pending.
+Stop if physical IDs cannot establish continuity or implementation would require guessing new gameplay/public semantics or an unapproved reset/anchor trade-off. Never write `REVIEWER ACCEPTED`.

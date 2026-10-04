@@ -957,6 +957,41 @@ export function LocalPlayerDock({ player, hero, interactionRoles, children, hero
   </section>;
 }
 
+type HandViewportCardPosition = { id: string; index: number; left: number; center: number; visible: boolean };
+type HandViewportSnapshot = {
+  viewerId: string | null;
+  handKey: string;
+  anchorId: string | null;
+  anchorIndex: number;
+  cards: HandViewportCardPosition[];
+};
+
+function captureHandViewportSnapshot(rail: HTMLElement, viewerId: string | null): HandViewportSnapshot {
+  const viewport = rail.getBoundingClientRect();
+  const cards = Array.from(rail.querySelectorAll<HTMLElement>("[data-hand-card-id]")).map((slot, index) => {
+    const bounds = slot.getBoundingClientRect();
+    return {
+      id: slot.dataset.handCardId ?? "",
+      index,
+      left: bounds.left - viewport.left,
+      center: (bounds.left + bounds.right) / 2 - viewport.left,
+      visible: bounds.left < viewport.right && bounds.right > viewport.left,
+    };
+  });
+  const viewportCenter = viewport.width / 2;
+  const anchor = cards
+    .filter((card) => card.visible)
+    .map((card) => ({ card, distance: Math.abs(card.center - viewportCenter) }))
+    .sort((left, right) => left.distance - right.distance || left.card.index - right.card.index)[0]?.card ?? null;
+  return {
+    viewerId,
+    handKey: cards.map((card) => card.id).join("|"),
+    anchorId: anchor?.id ?? null,
+    anchorIndex: anchor?.index ?? 0,
+    cards,
+  };
+}
+
 export function GameRoom({ room, presentationView, busy, error, onAction, onLeave }: { room: Room; presentationView?: PresentationClientView; busy: boolean; error: string; onAction: (action: GameplayAction, extra?: Record<string, unknown>) => Promise<boolean>; onLeave: () => void }) {
   const initialPendingSequence = pendingTimelineSequence(room);
   const initialHeldCardIds = new Set(initialPendingSequence.flatMap(eventCards).map((item) => item.id));
@@ -968,6 +1003,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   }, [clientPresentation, presentationTransitionStore]);
   const [selected, setSelected] = useState(""); const [wushengMode, setWushengMode] = useState<"play" | "response" | null>(null); const [longdanMode, setLongdanMode] = useState<"play" | "response" | null>(null); const [targetIds, setTargetIds] = useState<string[]>([]); const [borrowedSwordTargetId, setBorrowedSwordTargetId] = useState(""); const target = targetIds[0] ?? "";
   const handRailRef = useRef<HTMLDivElement | null>(null);
+  const handViewportSnapshotRef = useRef<HandViewportSnapshot | null>(null);
   const [handRailWidth, setHandRailWidth] = useState(0);
   const [harvestSelected, setHarvestSelected] = useState("");
   const queuedHarvestPreview = useRef<string | null>(null); const harvestPreviewInFlight = useRef(false);
@@ -1223,6 +1259,27 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   }), [handRailWidth, handCardKey]);
   const handOverflows = handRailWidth > 0 && room.myHand.length > 1
     && 68 + (room.myHand.length - 1) * handCardLayout.step > handRailWidth + 1;
+  useLayoutEffect(() => {
+    const rail = handRailRef.current;
+    if (!rail) return;
+    const previous = handViewportSnapshotRef.current;
+    if (previous && previous.viewerId === room.meId && previous.handKey !== handCardKey) {
+      const currentIds = new Set(handCardKey ? handCardKey.split("|") : []);
+      const nearestByIndex = (cards: HandViewportCardPosition[]) => cards
+        .filter((card) => currentIds.has(card.id))
+        .sort((left, right) => Math.abs(left.index - previous.anchorIndex) - Math.abs(right.index - previous.anchorIndex) || left.index - right.index)[0];
+      const anchor = previous.anchorId && currentIds.has(previous.anchorId)
+        ? previous.cards.find((card) => card.id === previous.anchorId)
+        : nearestByIndex(previous.cards.filter((card) => card.visible)) ?? nearestByIndex(previous.cards);
+      const slot = anchor && Array.from(rail.querySelectorAll<HTMLElement>("[data-hand-card-id]"))
+        .find((element) => element.dataset.handCardId === anchor.id);
+      if (anchor && slot) {
+        const viewport = rail.getBoundingClientRect();
+        rail.scrollLeft += slot.getBoundingClientRect().left - (viewport.left + anchor.left);
+      }
+    }
+    handViewportSnapshotRef.current = captureHandViewportSnapshot(rail, room.meId);
+  }, [handCardKey, room.meId]);
   useLayoutEffect(() => {
     const rail = handRailRef.current;
     const selectedCard = rail?.querySelector<HTMLElement>(".card-slot.single-selected");
@@ -1698,7 +1755,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           <div className="local-hand" data-card-origin-anchor={room.meId} aria-label="Your hand">{(() => { const multiSelectMode = room.phase === "discard" || Boolean(activeSkillSelection || serpentMode || responseSelectionMax > 1 || triggerSelectionMax > 1); const responseSelectionLimit = triggerResponse && triggerSelectionUsesCards ? triggerSelection.max : responseSelectionUsesCards ? responseSelection.max : 2; const toggleHandCard = (item: Card) => { const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; if (room.phase === "discard") setDiscardSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < excessCards ? [...ids, item.id] : ids); else if (activeSkillSelection) setActiveSkillSelectionState((state) => { if (!state || !activeSkillStateIsCurrent) return state; const validIds = state.cardIds.filter((id) => activeSkillSelection.eligibleCardIds.includes(id)); return validIds.includes(item.id) ? { ...state, cardIds: validIds.filter((id) => id !== item.id) } : validIds.length < activeSkillSelection.max ? { ...state, cardIds: [...validIds, item.id] } : { ...state, cardIds: validIds }; }); else if (costSelection) setSerpentSelected((ids) => ids.includes(item.id) ? ids.filter((id) => id !== item.id) : ids.length < responseSelectionLimit ? [...ids, item.id] : ids); else { setSelected((id) => id === item.id ? "" : item.id); setTarget(""); } setTargetCardIndex(null); }; const renderHandCard = (item: Card, index: number) => { const definition = cardDefinition(item.kind); const costSelection = serpentMode || canRespond && responseSelectionUsesCards && responseSelectionMax > 1 || triggerResponse && triggerSelectionUsesCards && triggerSelectionMax > 1; const isSelected = room.phase === "discard" ? discardSelected.includes(item.id) : activeSkillSelection ? activeSkillSelectedCardIds.includes(item.id) : costSelection ? serpentSelected.includes(item.id) : selected === item.id; const singleSelected = !multiSelectMode && isSelected; const maySelect = (room.isMyTurn && (canPlay || room.phase === "discard")) || responseDecisionReady || rescueDecisionReady; const skillModeCardDisabled = Boolean(activeSkillTargetSelection || wushengMode && !wushengEligibleCardIds.has(item.id) || longdanMode && !longdanEligibleCardIds.has(item.id) || activeSkillSelection && !activeSkillSelection.eligibleCardIds.includes(item.id)); const skillModeEligible = wushengMode && wushengEligibleCardIds.has(item.id) || longdanMode && longdanEligibleCardIds.has(item.id) || activeSkillSelection?.eligibleCardIds.includes(item.id) === true; return <div className={`card-slot ${singleSelected ? "single-selected" : ""}`} data-hand-card-id={item.id} key={`rail-${item.id}`} style={{ marginLeft: index === 0 ? 0 : `${handCardLayout.step - 68}px` }}><div className="hand-card-visual"><button disabled={!maySelect || skillModeCardDisabled || (responseDecisionReady && (canRespond || triggerResponse) && !responseCardAllowed(item)) || (rescueDecisionReady && !canRespond && item.kind !== "Peach")} onClick={() => toggleHandCard(item)} className={`game-card ${item.kind.toLowerCase()} ${suitColorClass(item.suit)} ${isSelected ? "selected" : ""} ${skillModeEligible ? "hero-skill-eligible" : ""}`}><span className="corner">{item.rank}<i>{item.suit}</i></span><span className="card-name-mark">{definition.name}</span><strong>{definition.category} card</strong></button><button type="button" className="card-info-button" aria-label={`Explain ${definition.name}`} onClick={(event) => { event.stopPropagation(); setInfoCard(item); }}>i</button></div></div>; };
           // The native scroll region needs keyboard focus; it has no custom selection role.
           // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-          return <div ref={handRailRef} className="local-hand-rail" data-hand-layout={handCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: room.myHand.length === 1 ? "center" : "flex-start" }} data-hand-overflow={handOverflows ? "true" : "false"} tabIndex={handOverflows ? 0 : undefined} role="region" aria-label={handOverflows ? "Hand cards — scroll horizontally to browse" : "Hand cards"}>{room.myHand.map((item, index) => renderHandCard(item, index))}</div>; })()}</div>
+          return <div ref={handRailRef} onScroll={(event) => { handViewportSnapshotRef.current = captureHandViewportSnapshot(event.currentTarget, room.meId); }} className="local-hand-rail" data-hand-layout={handCardLayout.measured ? "measured" : "pending"} style={{ justifyContent: room.myHand.length === 1 ? "center" : "flex-start" }} data-hand-overflow={handOverflows ? "true" : "false"} tabIndex={handOverflows ? 0 : undefined} role="region" aria-label={handOverflows ? "Hand cards — scroll horizontally to browse" : "Hand cards"}>{room.myHand.map((item, index) => renderHandCard(item, index))}</div>; })()}</div>
         </div>
       <div className="turn-controls" data-console-surface="local-operation" aria-label="Local operation console">
         <div data-action-extras="true">
