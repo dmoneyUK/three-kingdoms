@@ -237,3 +237,13 @@ Pass only if Sun Shangxiang Daredevil is owned exclusively by the existing Hero 
 
 ## Deferred after this task
 **VIS-05A remains incomplete.** After VIS-06B review, the reviewer should return to `UX2.0VIS-05A: Correct 5–10 Player Side-Column Seat Topology` unless a new blocker is discovered.
+
+## UX2.0VIS-06B execution result — awaiting reviewer
+
+- Implementation SHA: `c18cf31d3d6634844400e090664806c56c23d309`. Changed `app/page.tsx`, `tests/browser/fixture.jsx`, and `tests/browser/ui19.spec.mjs`; this appended result is delivered in the following documentation commit together with the implementation.
+- Exact production change: added `Daredevil: ["sun_shangxiang_daredevil"]` to the existing Sun Shangxiang `HERO_SKILL_EFFECT_IDS` entry, retaining `Betrothment: ["sun_shangxiang_betrothment"]`. The existing mapped no-selection hero callback and effect-ID ownership filter now handle Daredevil. No CSS, capability, gameplay, server, projector, metadata, or protocol changes.
+- DOM proof at both 480x900 and 1440x900: p1 owns the dock with local hero `sun-shangxiang`; `.local-status-panel .local-hero-skills` contains exactly Betrothment and Daredevil. Daredevil is enabled only for its projected trigger option, while Betrothment remains disabled for this fixture. Daredevil appears nowhere in bottom extras or action slots. Hero identity and status panel retain grid areas `identity` and `zones`; no horizontal overflow.
+- Clicking Daredevil captured exactly the gameplay action `{ action: "trigger", extra: { providerId: "sun_shangxiang_daredevil" } }`. The test excludes only the pre-existing mount lifecycle `start_response_timer` action from the gameplay submission assertion. Cancel and Primary slots remain empty; Decline contains Skip, whose click records `{ action: "decline_trigger" }`.
+- Inactive normal-turn Sun Shangxiang fixture proves Daredevil remains visible but disabled, with no bottom duplicate. The retained unmapped `provider-extra` fixture proves `Cancel Alternate Attack` remains in extras and is not routed into Hero Skills, at both widths.
+- Validation: focused VIS-06B 4/4 passed; retained VIS-06A slot/guidance 3/3 passed (combined browser command: 7 passed). Retained mounted hero-skill/trigger/local-interaction tests: `node --import tsx --test tests/active-skill-interactions.test.mjs`, 40/40 passed. Full tests/build/lint/diff-check were not run locally; GitHub Actions owns remaining validation. CI and deployment were not inspected.
+- GAP: none identified within this UI-routing task. Await reviewer acceptance. VIS-05A remains deferred and incomplete; recommended next bounded task after review is the reviewer-authorized VIS-05A side-column topology correction. No subsequent implementation started.
