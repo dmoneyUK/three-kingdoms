@@ -13,15 +13,13 @@ When autonomous mode is active, use this startup order:
 
 1. synchronize `ux-v2` from `origin`;
 2. read `AGENTS.md`;
-3. read `docs/AUTONOMOUS_UI_STATUS.md`;
+3. read the complete current `HANDOVER.md` (it is intentionally short);
 4. read `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`;
-5. read only the design sections cited by the current status/task;
+5. read only the design sections cited by the current task;
 6. inspect only the source/tests relevant to the current task;
-7. consult historical `HANDOVER.md` selectively only when older evidence is actually needed.
+7. consult `docs/AUTONOMOUS_UI_ROADMAP.md` only when next-task planning or older historical evidence is actually needed.
 
-**Do not read the complete `HANDOVER.md` by default in autonomous mode.**
-
-Historical HANDOVER lookup is appropriate only when an older accepted contract, exact prior measurement, previous SHA/CI result, regression history, or explicit human-review reconstruction is needed.
+`HANDOVER.md` is the current handoff authority. `docs/AUTONOMOUS_UI_ROADMAP.md` is the long-lived history/roadmap and is not read in full by default.
 
 While autonomous mode is active, the autonomous workflow may:
 
@@ -29,8 +27,8 @@ While autonomous mode is active, the autonomous workflow may:
 - continue through multiple bounded tasks;
 - wait for and inspect GitHub Actions for its own pushed revision;
 - fix real CI failures before continuing;
-- keep current/in-progress state in `docs/AUTONOMOUS_UI_STATUS.md`;
-- append only one compact archival record to `HANDOVER.md` when a task closes or blocks.
+- keep the current task, latest execution result, and next handoff in the short `HANDOVER.md`;
+- move completed historical detail into `docs/AUTONOMOUS_UI_ROADMAP.md` so HANDOVER does not grow over time.
 
 Everything else in this file remains in force, especially server/gameplay authority, privacy boundaries, fail-closed semantics, WTK Standard references, no unrelated scope widening, and truthful validation reporting.
 
@@ -45,7 +43,7 @@ These rules apply when autonomous UI/Layout mode is **not** active.
 - Execute only the current handover task. Do not invent a follow-up task, widen the scope, or replace a reviewer requirement with a local preference.
 - If the current handover is unclear, malformed, or missing, stop and report that state instead of guessing the next implementation.
 
-In autonomous UI/Layout mode, current task authority comes from `docs/AUTONOMOUS_UI_STATUS.md` plus `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; historical `HANDOVER.md` is an audit ledger, not the default current-state source.
+In autonomous UI/Layout mode, current task authority comes from the short `HANDOVER.md` plus `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`. `docs/AUTONOMOUS_UI_ROADMAP.md` contains long-lived history and roadmap context.
 
 ## Rules and reference sources
 
@@ -80,15 +78,16 @@ In autonomous UI/Layout mode, current task authority comes from `docs/AUTONOMOUS
 - If a CI failure must be investigated, inspect only the relevant failed job and reproduce the smallest necessary issue.
 - Never claim CI or production deployment was verified unless it was actually checked.
 
-## Handover and status closeout
+## Handover and roadmap closeout
 
 Normal mode:
-- follow the reviewer-authored HANDOVER instructions and append the current task execution result as required.
+- follow the reviewer-authored HANDOVER instructions.
 
 Autonomous UI/Layout mode:
-- maintain current/in-progress task state in `docs/AUTONOMOUS_UI_STATUS.md`;
-- do not continuously narrate planning, CI-pending state, and retries into HANDOVER;
-- when a task becomes `COMPLETED BY AGENT — CI GREEN` or `BLOCKED — HUMAN REVIEW REQUIRED`, append one compact archival entry to `HANDOVER.md`;
-- then refresh `docs/AUTONOMOUS_UI_STATUS.md` in place with the new current state.
+- keep `HANDOVER.md` short and current: latest task/result plus exactly one next/current bounded task;
+- during implementation, update only the compact execution-result/CI state needed for handoff;
+- when a task closes or blocks, move durable historical detail into `docs/AUTONOMOUS_UI_ROADMAP.md`;
+- replace stale HANDOVER content instead of appending an ever-growing history;
+- after CI green, define exactly one next bounded task in HANDOVER before continuing.
 
 Keep all records truthful: distinguish tests changed from tests actually run, and never claim remote CI success unless it was actually checked.
