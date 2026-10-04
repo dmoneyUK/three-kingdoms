@@ -165,3 +165,43 @@ Focused validation: review for conflicting wait-until-green instructions in the 
 Implementation update: `AGENTS.md` and this workflow now share the same non-blocking checkpoint: push without waiting; before the next task's source edits, inspect the latest `ux-v2` push run; fix a completed failure before feature work; proceed immediately if queued/running; and keep unverified revisions CI-pending. Completion wording still requires exact-revision required jobs to succeed. The VIS-12C run/job evidence above was confirmed before this procedural change. The new guidance revision remains CI pending until its own Actions result is observed.
 
 Focused validation: manually reconciled activation, delivery, planning-gate, task-completion, and handoff sections in both guidance files; `rg` review found no remaining autonomous instruction to wait for green before starting the next task. No product tests were changed or run.
+
+Process-guidance revision: `f115f2e479ec7d7ef1c292478ba353c44c6a2836`. Its Actions run has not been checked after push; status is unverified, not green. The next-task checkpoint below is where it will be checked.
+
+### UX2.0PROCESS-01 — CI closure
+
+Status: `COMPLETED BY AGENT — CI GREEN`  
+Tested revision: `f115f2e479ec7d7ef1c292478ba353c44c6a2836`  
+GitHub Actions run: [37218274066](https://github.com/dmoneyUK/three-kingdoms/actions/runs/37218274066) — build-and-test job `111483170685` and deploy job `111484194397`, including production smoke test, succeeded. No fixes required. Human Reviewer acceptance remains separate.
+
+### UX2.0VIS-12D — Set an Upper-Body Focal Crop for Mobile Opponent Seats
+
+Status: `PLANNED`
+
+Planning gate: all five §19 checks passed after syncing `origin/ux-v2`, reading the current handover and reviewing workflow §§4, 15, 18.4, 19–20 and design §§1.5–1.5.2. The approved crop contract calls for a recognizable face/upper torso and suggests a 15–25% vertical focal position as a starting range. Current `.opponent-hero-portrait .hero-art-image` uses `object-fit: cover; object-position: center top`; existing VIS-10C regressions prove image load, geometry, metadata-clear focal point and hit safety, but do not assert or visually audit the crop focal position. The 480px Top Row / 10-player Side Column screenshots show the current real-art treatment and provide representative contexts.
+
+Objective: align only mobile opponent-seat portrait framing with the approved upper-body focal contract while retaining the existing seat layout and public information.
+
+Requirements:
+- Audit and tune the shared mobile opponent-seat crop for Top Row and Side Column using real repository art; begin within the approved 15–25% range and use a per-Hero focal adjustment only if representative screenshots show the shared crop obscures identity-critical features.
+- Cover 4-player Top Row at 480/650px and 6-/10-player Side Column at 480/650px; inspect representative real-art screenshots in both topologies.
+- Add focused regression evidence for the computed crop/focal position, image bounds/load, unoccluded face focus, public Equipment, target hit safety, seat/Stage/Dock containment, and no page overflow; retain VIS-10C coverage.
+- Preserve source assets, aspect ratio, seat topology/dimensions, public/private projection boundaries, and all gameplay/control behavior.
+
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§1.5–1.5.2 and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` §§19–20.
+
+Expected scope: opponent portrait CSS, focused `tests/browser/ui19.spec.mjs` and, only if the crop evidence requires it, presentation-only per-Hero focal metadata in the existing Hero art path; append-only handover and roadmap.
+
+Non-goals: do not redesign local Hero or Interaction Stage Focus crops in this slice; those are separate surfaces to audit later. Do not change the art assets, opponent seat geometry, equipment summaries, Inspect, hit targets, semantics, server data or private projections.
+
+Focused validation: existing VIS-10C Top Row/Side Column mounted cases at 480/650px plus new crop checks for representative heroes; screenshot inspection; targeted lint only if test code changes. No local full suite/build/lint. Apply the newly documented latest-run CI checkpoint before the first source edit.
+
+Stop condition: if an approved-range shared or per-Hero presentation crop cannot keep the full face/headwear recognizable while framing the upper body without altering seat geometry or covering public information, record the measured visual evidence and stop for human review.
+
+Scope refinement: CSS geometry shows a 480px Side Column portrait viewport of about 44×108px (and 52×116px at 650px) against a 0.75 source-art ratio. `object-fit: cover` therefore crops horizontally, so changing vertical `object-position` has no vertical crop effect there. Keep VIS-12D to the 4-player Top Row where the square-ish viewport has vertical overflow; do not alter Side Column seat dimensions or claim a visual crop change there. Plan a separate Side Column crop composition task if the approved design still requires it after its art viewport is measured.
+
+Implementation result: mobile 4-player Top Row Hero art now uses `object-fit: cover` with `object-position: 50% 20%`, replacing the previous top-aligned crop; no per-Hero overrides or asset changes were needed. Reviewed the 480px real-art screenshot; faces/headwear and upper-body details remain recognizable, with the existing text/Equipment focus area and seat geometry intact. Side Column, local Hero and Stage Focus crops remain separate audits. Files: `app/sequence-overrides.css`, `tests/browser/ui19.spec.mjs`, this handover, and `docs/AUTONOMOUS_UI_ROADMAP.md`.
+
+Focused validation: VIS-12D 4-player Top Row crop checks at 480/650px — 2/2 passed; retained VIS-10C Top Row/Side Column equipment, containment, and hit-safety matrix — 20/20 passed; `npx eslint tests/browser/ui19.spec.mjs` passed. No full local suite/build/lint. Commit, push, and CI status are pending. Before editing, the latest checkpoint was process-guidance revision `f115f2e`, run `37218274066`, with build-and-test and deploy/smoke successful.
+
+Status update: `IMPLEMENTED — CI PENDING`; focused checks above passed. Side Column crop is explicitly deferred based on measured portrait geometry; no vertical focal change is claimed for that topology.

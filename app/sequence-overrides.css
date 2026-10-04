@@ -2153,3 +2153,11 @@
     letter-spacing: .1em;
   }
 }
+
+/* UX2.0VIS-12D: mobile opponent seats should frame the Hero's upper body,
+   trimming some source-image headroom while keeping each original asset. */
+@media (max-width: 650px) {
+  .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-portrait .hero-art-image {
+    object-position: center 20%;
+  }
+}

@@ -1136,6 +1136,8 @@ async function opponentSeatPresentation(page, playerId) {
     };
     const containsPoint = (box, x, y) => Boolean(box && x >= box.x && x <= box.right && y >= box.y && y <= box.bottom);
     const portrait = seat.querySelector(".opponent-hero-portrait");
+    const artImage = portrait.querySelector(".hero-art-image");
+    const artStyle = artImage ? getComputedStyle(artImage) : null;
     const overlay = seat.querySelector(".opponent-hero-overlay");
     const summary = seat.querySelector(".opponent-equipment-summary");
     const target = seat.querySelector(".opponent-hero-target");
@@ -1146,6 +1148,10 @@ async function opponentSeatPresentation(page, playerId) {
     return {
       topology: seat.closest(".player-board").dataset.seatTopology,
       seat: bounds(seat), hero: bounds(seat.querySelector(".opponent-hero-card")), art,
+      heroArtId: artImage?.getAttribute("data-hero-art-id") ?? null,
+      artObjectFit: artStyle?.objectFit ?? null,
+      artObjectPosition: artStyle?.objectPosition ?? null,
+      artNaturalSize: artImage ? { width: artImage.naturalWidth, height: artImage.naturalHeight } : null,
       overlay: bounds(overlay), summary: summary ? bounds(summary) : null,
       playerNameFits: seat.querySelector(".opponent-player-name").scrollWidth <= seat.querySelector(".opponent-player-name").clientWidth,
       heroNameFits: seat.querySelector(".opponent-hero-name").scrollWidth <= seat.querySelector(".opponent-hero-name").clientWidth,
@@ -1365,6 +1371,36 @@ for (const width of [390, 480, 650]) {
       }
     });
   }
+}
+
+for (const width of [480, 650]) {
+  test(`UX2.0VIS-12D four-player Top Row Hero art uses the upper-body crop at ${width}px`, async ({ page }, testInfo) => {
+    await loadFixture(page, { state: "rest", count: 4, width, height: 900, equipmentCase: "matrix" });
+    const seatIds = await page.locator(".player-board [data-player-anchor]").evaluateAll((seats) => seats.map((seat) => seat.getAttribute("data-player-anchor")));
+    expect(seatIds).toHaveLength(3);
+
+    for (const playerId of seatIds) {
+      const presentation = await opponentSeatPresentation(page, playerId);
+      expect(presentation.heroArtId, `${playerId} uses a real repository Hero asset`).not.toBeNull();
+      expect(presentation.imageLoaded, `${playerId} Hero art is loaded`).toBe(true);
+      expect(presentation.artNaturalSize.width, `${playerId} source art retains intrinsic width`).toBeGreaterThan(0);
+      expect(presentation.artNaturalSize.height, `${playerId} source art retains intrinsic height`).toBeGreaterThan(0);
+      expect(presentation.artObjectFit, `${playerId} art keeps its aspect ratio`).toBe("cover");
+      expect(presentation.artObjectPosition, `${playerId} crop uses the approved upper-body focal range`).toBe("50% 20%");
+      expect(presentation.focusCoveredByText, `${playerId} face/upper-body focus stays clear of identity text`).toBe(false);
+      expect(presentation.focusCoveredByEquipment, `${playerId} face/upper-body focus stays clear of Equipment`).toBe(false);
+      expect(presentation.targetHitSafe, `${playerId} target hit area remains reachable`).toBe(true);
+      expect(presentation.art.x).toBeGreaterThanOrEqual(presentation.seat.x - 1);
+      expect(presentation.art.right).toBeLessThanOrEqual(presentation.seat.right + 1);
+    }
+
+    if (width === 480) {
+      await testInfo.attach("vis-12d-top-row-hero-crop-480", {
+        body: await page.screenshot({ animations: "disabled" }),
+        contentType: "image/png",
+      });
+    }
+  });
 }
 
 for (const width of [1440, 650, 480]) {

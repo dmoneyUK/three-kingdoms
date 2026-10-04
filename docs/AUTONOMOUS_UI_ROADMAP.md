@@ -30,7 +30,7 @@ Latest completed milestone:
 - human Reviewer acceptance remains separate from Agent completion
 
 Current handoff:
-- `UX2.0PROCESS-01 — Use a Non-Blocking CI Checkpoint Between Autonomous Tasks`
+- `UX2.0VIS-12D — Set an Upper-Body Focal Crop for Mobile Opponent Seats`
 - status: IMPLEMENTED — CI PENDING; task detail is in `HANDOVER.md`
 - current task authority: `HANDOVER.md`
 
@@ -83,6 +83,8 @@ Approved design findings deferred from VIS-12B: ordinary Deck/Discard should rem
 Completed by Agent; final tested revision `102f36d1430663f5005c4696a90b6bc1135944a4`, GitHub Actions run `37215156772` — build-and-test job `111474046079` and deploy job `111474896190` succeeded, including production smoke test. At 480px, three mobile Top Row opponent seats render 146px wide with 12px margins and 9px gaps; 390px cards are ~117.5px; at 650px the cap is 146px. Kept seat height and vertical anchors, public details, inspect/target behavior and Side Column unchanged. Updated affected VIS-04B/C assertions. Focused browser matrix 74/74; targeted ESLint passed. Human Reviewer acceptance remains separate.
 
 VIS-12C completed on `60c353de5fb6957e716b07ac07dfb48f692ace33`; exact-revision run `37216175450` passed build-and-test and deployment/production smoke test. At 390/480/650px, Deck/Discard envelopes are 56×78px with lower-contrast surfaces; the existing lower-middle anchor, discard face/art and interaction behavior remain unchanged. Focused mobile regressions passed 6/6, retained discard identity render passed 1/1, and targeted ESLint passed. Exact pile-edge placement and Hero crop validation remain separate future candidates.
+
+Current VIS-12D is narrowed to 4-player mobile Top Row Hero crop. The Top Row viewport has vertical overflow, so the approved `object-position: 20%` focal point changes the actual crop; the 480px screenshot retains recognizable faces/headwear and upper-body detail. Side Column art boxes are approximately 44×108px at 480px and 52×116px at 650px; with 0.75 source art, `cover` crops horizontally, so a vertical position change is ineffective. Defer Side Column crop composition, plus local Hero/Stage Focus crops, to separate audits. The non-blocking CI checkpoint guidance was pushed at `f115f2e479ec7d7ef1c292478ba353c44c6a2836`; exact run `37218274066` and its build-and-test/deploy jobs were confirmed green at the VIS-12D pre-edit checkpoint.
 
 ## Durable accepted UI / presentation contracts
 
