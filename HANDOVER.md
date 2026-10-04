@@ -453,3 +453,11 @@ Change: Stage metadata now selects the proven current participant, or a sole act
 Focused validation: `node --import tsx --test tests/presentation-client.test.mjs` — 39/39; `npx playwright test --config tests/browser/layout.config.mjs --grep 'UX2.0VIS-08B|UX2.0VIS-07A' --workers=2` — 10/10, including the mounted ambiguous Group case and retained 4/6/10-player Group layouts at 1440/650/480px; `git diff --check` passed.
 Known gaps: Group progress/order/outcomes remain deferred; no full local suite/build/lint was run.
 CI pending: push the implementation and this result, then wait for Actions on the exact resulting revision before selecting another task.
+
+### VIS-08B STATUS: COMPLETED BY AGENT — CI GREEN
+
+Tested revision: `17e75fc4e154c96356f730813d0bb5455cdc55f` (implementation `826c062`).
+CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37188237593 — completed/success.
+Jobs: `build-and-test` `111394726206` and `deploy` `111395564436`, both completed/success.
+CI fixes: none.
+Next-task rationale: VIS-08B closes the ambiguous-focus fallback. Next inspect the remaining Stage metadata against the already-rendered Hero Focus, Reaction Chain, and Dying panels; simplify only rows proven redundant while retaining unique public context.
