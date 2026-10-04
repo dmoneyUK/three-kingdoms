@@ -580,6 +580,89 @@ async function sideThumbnailGeometry(page) {
   });
 }
 
+async function sideSafeZoneGeometry(page) {
+  return page.evaluate(() => {
+    const bounds = (element) => {
+      const { x, y, width, height, right, bottom } = element.getBoundingClientRect();
+      return { x, y, width, height, right, bottom };
+    };
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && box.width > 0 && box.height > 0;
+    };
+    const zone = document.querySelector(".interaction-safe-zone");
+    const stage = zone.querySelector(".interaction-stage");
+    const seatElements = [...document.querySelectorAll('.player-board [data-player-anchor]')];
+    const seatBounds = seatElements.flatMap((seat) => [seat, ...seat.querySelectorAll("*")].filter(visible).map((element) => ({
+      id: seat.dataset.playerAnchor, side: seat.dataset.sideColumn, className: element.className, ...bounds(element),
+    })));
+    const stageStyle = getComputedStyle(stage);
+    const zoneStyle = getComputedStyle(zone);
+    return {
+      table: bounds(document.querySelector(".play-table")), dock: bounds(document.querySelector(".local-player-dock")),
+      zone: bounds(zone), stage: bounds(stage), seatBounds,
+      stageBounds: [stage, ...stage.querySelectorAll("*")].filter(visible).map((element) => ({ className: element.className, ...bounds(element) })),
+      stageStyle: { position: stageStyle.position, translate: stageStyle.translate, transform: stageStyle.transform, overflowX: stageStyle.overflowX, overflowY: stageStyle.overflowY },
+      zoneStyle: { position: zoneStyle.position, display: zoneStyle.display, background: zoneStyle.backgroundColor, border: zoneStyle.borderWidth, overflowX: zoneStyle.overflowX, overflowY: zoneStyle.overflowY },
+      reaction: Boolean(stage.querySelector('[data-reaction-chain="proven"]')),
+      dying: Boolean(stage.querySelector('[data-dying-handoff="proven"]')),
+      scrollWidth: document.documentElement.scrollWidth, viewport: window.innerWidth,
+    };
+  });
+}
+
+for (const width of [1440, 650, 480]) {
+  for (const count of [6, 10]) {
+    for (const state of count === 6 ? ["interaction", "negation", "dying", "group-observer"] : ["interaction", "negation"]) {
+      test(`UX2.0VIS-05B ${count} players ${state} at ${width}px preserve the central safe zone`, async ({ page }, testInfo) => {
+        await loadFixture(page, { state, count, width, height: 900 });
+        const result = await sideSafeZoneGeometry(page);
+        await testInfo.attach("side-safe-zone-geometry", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
+        expect(result.zoneStyle).toEqual({ position: "absolute", display: "flex", background: "rgba(0, 0, 0, 0)", border: "0px", overflowX: "visible", overflowY: "visible" });
+        expect(result.stageStyle).toEqual({ position: "relative", translate: "none", transform: "none", overflowX: "visible", overflowY: "visible" });
+        expect(result.zone.width).toBeGreaterThan(0);
+        expect(result.zone.height).toBeGreaterThan(0);
+        for (const box of [result.zone, ...result.stageBounds]) {
+          expect(box.x, box.className).toBeGreaterThanOrEqual(result.zone.x - .5);
+          expect(box.right, box.className).toBeLessThanOrEqual(result.zone.right + .5);
+          expect(box.y, box.className).toBeGreaterThanOrEqual(result.table.y);
+          expect(box.bottom, box.className).toBeLessThanOrEqual(result.table.bottom);
+          expect(box.bottom, box.className).toBeLessThanOrEqual(result.dock.y);
+          for (const seat of result.seatBounds) {
+            const clearance = seat.side === "left" ? box.x - seat.right : seat.x - box.right;
+            expect(clearance, `${box.className ?? "safe zone"} / ${seat.id} ${seat.className}`).toBeGreaterThanOrEqual(6);
+          }
+        }
+        expect(result.scrollWidth).toBeLessThanOrEqual(result.viewport);
+        if (state === "negation") {
+          expect(result.reaction).toBe(true);
+          await expect(page.locator('[data-reaction-chain="proven"]')).toBeVisible();
+        }
+        if (state === "dying") {
+          expect(result.dying).toBe(true);
+          await expect(page.locator('[data-dying-handoff="proven"]')).toBeVisible();
+        }
+        await expect(page.locator(".interaction-stage button")).toHaveCount(0);
+        const thumbnails = await sideThumbnailGeometry(page);
+        expect(thumbnails.seats.every((seat) => seat.hitSafe)).toBe(true);
+      });
+    }
+  }
+}
+
+test("UX2.0VIS-05B rejects legacy absolute Stage placement at 480px", async ({ page }) => {
+  await loadFixture(page, { state: "negation", count: 10, width: 480, height: 900 });
+  const stage = page.locator(".interaction-stage");
+  await stage.evaluate((element) => Object.assign(element.style, { position: "absolute", left: "50%", top: "7px", width: "96vw", maxWidth: "none", translate: "-50% 0" }));
+  const legacy = await sideSafeZoneGeometry(page);
+  expect(legacy.stage.x < legacy.zone.x || legacy.stage.right > legacy.zone.right).toBe(true);
+  await stage.evaluate((element) => element.removeAttribute("style"));
+  const restored = await sideSafeZoneGeometry(page);
+  expect(restored.stage.x).toBeGreaterThanOrEqual(restored.zone.x);
+  expect(restored.stage.right).toBeLessThanOrEqual(restored.zone.right);
+});
+
 for (const width of [480, 650, 1440]) {
   for (const count of [5, 6, 7, 8, 9, 10]) {
     test(`UX2.0VIS-05A-FIX1 ${count} players at ${width}px contain every thumbnail descendant and hit target`, async ({ page }, testInfo) => {

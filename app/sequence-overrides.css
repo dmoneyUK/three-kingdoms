@@ -1619,6 +1619,44 @@
 
 /* VIS-05A: projected relative seats own their side and row. A central track
    remains seat-free; DOM order and existing card contents stay intact. */
+/* VIS-05B: seats are centred in the outer 30% tracks. Their inward edge is
+   15% of table width + 70% of board inset + half the thumbnail width.
+   Reserve another 8px, including a 2px rounding margin over the 6px contract.
+   This uses geometry only; no gameplay or participant roles affect layout. */
+.game-shell .play-table[data-seat-topology="side-column"] {
+  --side-safe-board-inset: clamp(10px, 4vw, 48px);
+  --side-safe-thumb-width: clamp(44px, 8vw, 86px);
+  --side-safe-edge: calc(15% + var(--side-safe-board-inset) * .7 + var(--side-safe-thumb-width) * .5 + 8px);
+}
+.game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone {
+  position: absolute;
+  z-index: 15;
+  inset: 8px var(--side-safe-edge);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  pointer-events: none;
+  overflow: visible;
+}
+.game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone > .interaction-stage {
+  position: relative;
+  left: auto;
+  top: auto;
+  width: min(100%, 620px);
+  translate: none;
+  transform: none;
+  overflow: visible;
+}
+@media (max-width: 650px) {
+  .game-shell .play-table[data-seat-topology="side-column"] {
+    --side-safe-board-inset: clamp(5px, 2.5vw, 18px);
+  }
+}
+@media (max-width: 480px) {
+  .game-shell .play-table[data-seat-topology="side-column"] {
+    --side-safe-board-inset: 3px;
+  }
+}
 .game-shell .player-board[data-seat-topology="side-column"] {
   --seat-row-count: 2;
   display: grid;

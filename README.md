@@ -14,6 +14,21 @@ confirmation**. This status is not a claim that the whole game, all content,
 touch-device certification, full WCAG auditing, subjective art direction, or
 production deployment is complete.
 
+### UX2.0VIS-05B — Side Column central safe zone — 2026-10-04
+
+For 5–10 players, a transparent positioned container now owns the central
+Interaction Stage geometry. Its edges follow the accepted side-seat track,
+inset and thumbnail width with an 8px inward clearance budget. The Stage uses
+normal flow inside that container, without the legacy viewport-centred
+absolute translation. Existing Stage content, Hero Focus, Reaction Chain,
+Dying handoff, seat dimensions/mapping, Top Row and local controls are unchanged.
+Focused Chromium coverage checks the 6-player interaction/Negation/Dying/group
+states and dense 10-player interaction/Negation states at 1440, 650 and 480px,
+including every visible Stage/seat descendant and real seat hit targets.
+`tests/browser/layout.config.mjs` supports fixture-only layout checks without
+starting the Worker/D1; the complete CI configuration remains unchanged.
+These checks are not touch-device certification or reviewer acceptance.
+
 ### BUG-ZHANG-LIAO-ASSAULT-01 — Draw Phase Assault UI fix — 2026-10-03
 
 The real API-backed Draw Phase fixture now keeps the authoritative Assault

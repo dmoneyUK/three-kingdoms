@@ -209,3 +209,24 @@ Do not self-accept. Push, verify remote HANDOVER, then STOP.
 
 ## Acceptance
 Pass only if the three stale assertions are updated to the current accepted VIS-05A/VIS-06 contracts, `npm test` is fully green, lint passes, no production file is changed, and no assertion is removed or weakened into a meaningless broad match.
+
+## Autonomous UI/Layout run — 2026-10-04
+
+The user starts the autonomous run in this chat on `ux-v2`. Preserve all historical content above. The newer AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md authorizes the starting VIS-05B task and subsequent bounded tasks after CI-green closure. CI-FIX1 is already implemented by `b5fed0d`; baseline `a935d408119b432cdfe9ab775ab1d877c7a75b25` passed run https://github.com/dmoneyUK/three-kingdoms/actions/runs/37169930005. The older RED/CI-FIX1 text is historical, not an instruction to repeat the repaired task.
+
+TASK ID: UX2.0VIS-05B
+STATUS: PLANNED
+
+Objective: Positioned transparent Side Column central safe zone and normal-flow Interaction Stage, clear of seats and dock.
+Observed gap: The wrapper is display:contents outside Top Row; Side Column Stage retains legacy absolute placement.
+Why this task is next: Explicit starting task in autonomous workflow section 9; accepted VIS-05A/VIS-06 and CI-green baseline are preserved.
+Design authority: AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md section 9; UX_V2_INTERACTION_STAGE_DESIGN.md sections 1.4, 1.10 and 3C; PLANNER_DEVELOPMENT_WORKFLOW.md; UX_V2_RELEASE_GATE.md; ROADMAP.md.
+Current production evidence: Accepted side/row helper and 30/40/30 tracks, bounded narrow thumbnails, guidance/action split; real geometry exists only for Top Row safe zone.
+Files expected in scope: app/sequence-overrides.css, tests/browser/ui19.spec.mjs, README.md, append-only HANDOVER.md. Geometry diagnostic evidence may be added separately if the explicit stop condition is reached before production changes.
+Implementation requirements: Measure unchanged Stage first; positioned transparent wrapper, relative Stage, >=6px clearance from all visible seat descendants, Stage within table and above dock, Reaction/Dying visible.
+Explicit non-goals: No seat mapping/dimension changes, Top Row changes, Stage density redesign, gameplay/projector/private controls, or CI configuration changes.
+Forbidden shortcuts: No clipping, scrolling, scaling, hiding metadata/Reaction/Dying, reducing Hero Focus, or widening centre at expense of accepted seats.
+Required regression tests: Count6 interaction/negation/dying/group-observer and count10 interaction/negation at 1440x900, 650x900, 480x900; retain Top Row and seat-hit evidence.
+Required local validation: Focused geometry/hit tests; relevant bounded regressions; git diff --check under autonomous workflow. No routine full build/test/lint.
+CI acceptance: Exact implementation revision build-and-test green before planning another task; diagnose only relevant failed jobs.
+Task acceptance criteria: Wrapper and visible Stage clear every seat descendant >=6px; Stage fully inside table/above dock without content suppression. If unchanged Stage cannot fit at480px, record exact BLOCKED measurements and stop for human review without secretly adapting Stage composition.
