@@ -1,3 +1,7 @@
+> Archived proposal baseline. Later C1/C2 records and the current UX V2 design
+> document implementation progress and supersede this proposal's historical
+> status statements. This file is retained for design rationale and evidence.
+
 # UX2.0C0 — Minimum Authoritative Causal Contract
 
 Status: design/audit only. This document proposes the smallest engine and
@@ -10,13 +14,13 @@ Evidence baseline: UX2.0B-FINAL on 2026-10-02
 
 Related evidence:
 
-- [`UX_V2_INTERACTION_STAGE_DESIGN.md`](UX_V2_INTERACTION_STAGE_DESIGN.md)
+- [`UX_V2_INTERACTION_STAGE_DESIGN.md`](../UX_V2_INTERACTION_STAGE_DESIGN.md)
 - [`UX_V2_0A_PRESENTATION_IDENTITY_AUDIT.md`](UX_V2_0A_PRESENTATION_IDENTITY_AUDIT.md)
-- [`HANDOVER.md`](../HANDOVER.md)
-- [`game/pending.ts`](../game/pending.ts)
-- [`game/protocol.d.ts`](../game/protocol.d.ts)
-- [`game/presentation-v2.ts`](../game/presentation-v2.ts)
-- [`tests/api/presentation-v2-engine.test.mjs`](../tests/api/presentation-v2-engine.test.mjs)
+- [`HANDOVER.md`](../../HANDOVER.md)
+- [`game/pending.ts`](../../game/pending.ts)
+- [`game/protocol.d.ts`](../../game/protocol.d.ts)
+- [`game/presentation-v2.ts`](../../game/presentation-v2.ts)
+- [`tests/api/presentation-v2-engine.test.mjs`](../../tests/api/presentation-v2-engine.test.mjs)
 
 ## 1. Decision summary
 
@@ -453,7 +457,7 @@ projector inference or a React-side workaround.
 
 ## 12. Scope conclusion
 
-UX2.0C0 is complete as a proposal only. No C1 implementation has started. The
+At the C0 proposal baseline, no C1 implementation had started. The
 contract deliberately keeps the existing gameplay protocol and rules intact,
 does not add final IDs to the current room projection, and leaves the main UX
 design document unchanged pending review.

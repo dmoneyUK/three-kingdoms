@@ -1,3 +1,7 @@
+> Archived C1 implementation notes. The C1 boundaries below describe that
+> historical stage; consult later causal-propagation records and the current
+> UX V2 design for the system's current state.
+
 # UX2.0C1-FIX — Causal Envelope Implementation Notes
 
 This document records the narrow C1 infrastructure and proof work. It does

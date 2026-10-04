@@ -1,3 +1,7 @@
+> Archived historical audit. Its `origin/main` baseline and conclusions are
+> retained as evidence; consult the current UX V2 design and later causal
+> implementation records for the present system state.
+
 # UX2.0A — Presentation Identity Audit
 
 Status: audit only. No gameplay, protocol, or UX implementation changes are
@@ -5,7 +9,7 @@ included in this document.
 
 Branch: `ux-v2`  
 Audit baseline: `origin/main` at `2cb87d5`  
-Design source of truth: [`UX_V2_INTERACTION_STAGE_DESIGN.md`](UX_V2_INTERACTION_STAGE_DESIGN.md)
+Design source of truth: [`UX_V2_INTERACTION_STAGE_DESIGN.md`](../UX_V2_INTERACTION_STAGE_DESIGN.md)
 
 ## Executive conclusion
 
@@ -184,10 +188,10 @@ should wait for review of this audit.
 ## UX2.0B Characterization Results
 
 UX2.0B adds a pure projector foundation in
-[`game/presentation-v2.ts`](../game/presentation-v2.ts), server-side room
+[`game/presentation-v2.ts`](../../game/presentation-v2.ts), server-side room
 projection beside the existing fields in
-[`app/api/rooms/route.ts`](../app/api/rooms/route.ts), and deterministic
-fixtures in [`tests/presentation-v2.test.mjs`](../tests/presentation-v2.test.mjs).
+[`app/api/rooms/route.ts`](../../app/api/rooms/route.ts), and deterministic
+fixtures in [`tests/presentation-v2.test.mjs`](../../tests/presentation-v2.test.mjs).
 The existing React presentation queue and all gameplay actions remain in
 place. The new result is exposed as `presentationV2`; no client consumer has
 been migrated.
