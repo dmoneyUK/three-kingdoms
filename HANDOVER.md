@@ -242,3 +242,12 @@ Broader tests: Only the named bounded browser regressions above; no local full t
 Geometry: At480px safe zone x104.09375, width271.8125; at650px x142.875, width364.25; at1440px x300.59375, width838.8125. Existing Stage fits without clipping/scroll/scaling or suppressing semantic content. All visible Stage and seat descendants are explicitly compared. 480px/10-player Negation screenshot visually inspected locally.
 Known gaps: This closes positioning only, not final Large/Medium Side Column Hero Focus design, touch/WCAG certification, subjective art approval or deployment verification. Reviewer acceptance is not claimed.
 CI pending: Push exact implementation and this result to origin/ux-v2; wait for build-and-test and fix only actual failures before selecting another task.
+
+### VIS-05B STATUS: COMPLETED BY AGENT — CI GREEN
+
+CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37183434567 — completed/success for `6becbcc2abd94552c849ea974afc5ce1fc9b5715`.
+CI job: build-and-test `111380418874` success; run also completed deployment successfully, but no independent production/manual health certification is claimed.
+Final implementation/fix SHAs: `8fa843c`, result record `6becbcc`; no CI fixes required.
+Final test status: Local bounded browser 96/96; remote lint/build/browser/npm-test gate all passed.
+Known remaining gaps: Side Column still uses old compact Hero Focus and lacks independent Medium Source projection; final dock/hand/group-density work remains. Human reviewer acceptance is not implied.
+Recommended next bounded task: Side Column Large Focus/Medium Source presentation using the existing accepted semantic/viewer helpers, without changing gameplay/public authority or Top Row.
