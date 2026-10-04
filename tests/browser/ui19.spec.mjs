@@ -255,6 +255,81 @@ for (const { width, height } of [{ width: 1440, height: 900 }, { width: 480, hei
   });
 }
 
+for (const { width, height } of TOPOLOGY_MATRIX) {
+  test(`UX2.0VIS-09A ${width}x${height} anchors persistent local Judgement to the Hero`, async ({ page }) => {
+    const cases = [
+      { state: "local-judgement-empty", ids: [] },
+      { state: "local-judgement-one", ids: ["browser-local-lightning"] },
+      { state: "local-judgement-two", ids: ["browser-local-lightning", "browser-local-overindulgence"] },
+    ];
+
+    for (const { state, ids } of cases) {
+      await loadFixture(page, { state, count: 4, width, height });
+      const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+      const hero = dock.locator(".local-hero-card");
+      const anchor = dock.locator(".local-hero-anchor");
+      const overlay = anchor.locator(":scope > .local-judgement-overlay");
+
+      await expect(dock.locator(".local-judgement-panel")).toHaveCount(0);
+      await expect(dock.locator(".local-dock-zones > *")).toHaveCount(2);
+      if (ids.length === 0) {
+        await expect(overlay).toHaveCount(0);
+        await expect(dock.locator('[data-judgement-id^="browser-local-"]')).toHaveCount(0);
+        continue;
+      }
+
+      await expect(hero).toHaveCount(1);
+      await expect(overlay).toHaveCount(1);
+      await expect(overlay.locator(":scope > .local-judgement-card-slot")).toHaveCount(ids.length);
+      await expect(overlay).toHaveAttribute("data-judgement-layout", "measured");
+      for (const [index, id] of ids.entries()) {
+        const card = overlay.locator(`[data-judgement-id="${id}"]`);
+        await expect(page.locator(`[data-judgement-id="${id}"]`), `${id} is rendered exactly once`).toHaveCount(1);
+        await expect(card.locator(".played-card")).toBeVisible();
+        const explanation = card.locator(".zone-info-button");
+        await expect(explanation).toHaveAccessibleName(index === 0 ? "Explain Lightning" : "Explain Overindulgence");
+        await explanation.click();
+        await expect(page.getByRole("dialog").getByRole("heading", { name: index === 0 ? "Lightning" : "Overindulgence" })).toBeVisible();
+        await page.getByRole("button", { name: "Close card explanation" }).click();
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+      }
+
+      const geometry = await dock.evaluate((element) => {
+        const rect = (node) => {
+          const bounds = node.getBoundingClientRect();
+          return { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom, width: bounds.width, height: bounds.height };
+        };
+        const overlaps = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)) > 0;
+        const heroAnchor = rect(element.querySelector(".local-hero-anchor"));
+        const heroCard = rect(element.querySelector(".local-hero-card"));
+        const judgement = [...element.querySelectorAll(".local-judgement-overlay .local-zone-card")].map(rect);
+        const hand = rect(element.querySelector(".local-hand-section"));
+        const actions = rect(element.querySelector(".turn-controls"));
+        return {
+          heroAnchor,
+          heroCard,
+          judgement,
+          hand,
+          actions,
+          cardOutsideHeroAnchor: judgement.some((card) => card.left < heroAnchor.left - 1 || card.right > heroAnchor.right + 1),
+          cardBlocksHandOrActions: judgement.some((card) => overlaps(card, hand) || overlaps(card, actions)),
+          heroLowerHitTarget: Boolean(document.elementFromPoint(heroCard.left + heroCard.width / 2, heroCard.bottom - 8)?.closest(".local-hero-card")),
+          overflow: document.documentElement.scrollWidth > window.innerWidth,
+        };
+      });
+      expect(geometry.cardOutsideHeroAnchor, "overlay cards stay within the responsive Hero width").toBe(false);
+      expect(geometry.cardBlocksHandOrActions, "overlay cards do not cover Hand or action controls").toBe(false);
+      expect(geometry.heroLowerHitTarget, "the unobscured Hero remains a usable info target").toBe(true);
+      expect(geometry.overflow, "Hero overlay introduces no horizontal page overflow").toBe(false);
+      expect(geometry.judgement).toHaveLength(ids.length);
+
+      await hero.click({ position: { x: geometry.heroCard.width / 2, y: geometry.heroCard.height - 8 } });
+      await expect(page.getByRole("dialog").getByRole("heading", { name: "Cao Cao" })).toBeVisible();
+      await page.getByRole("button", { name: "Close hero information" }).click();
+    }
+  });
+}
+
 for (const { width, height, portraitSize } of [
   { width: 1440, height: 900, portraitSize: { width: 90, height: 113 } },
   { width: 650, height: 900, portraitSize: { width: 72, height: 90 } },

@@ -440,7 +440,6 @@
   --zone-card-width: clamp(28px, 7.6vw, 34px);
   --zone-card-height: calc(var(--zone-card-width) * 1.5);
   --zone-card-gap: clamp(3px, 1vw, 6px);
-  --judgement-panel-width: calc(var(--zone-card-width) + var(--zone-card-width) + var(--zone-card-gap) + 8px);
   --top-panel-gap: 3px;
   position: relative;
   display: grid;
@@ -465,7 +464,6 @@
 .local-dock-zones,
 .local-status-panel,
 .local-equipment-panel,
-.local-judgement-panel,
 .local-hand-section,
 .local-player-dock .console-guidance,
 .local-player-dock .turn-controls {
@@ -485,9 +483,18 @@
   overflow: visible;
 }
 
-.local-hero-card {
+.local-hero-anchor {
+  position: relative;
   flex: 0 0 auto;
   width: min(100%, 72px);
+  max-width: 72px;
+  overflow: visible;
+}
+
+.local-hero-card {
+  flex: 0 0 auto;
+  display: block;
+  width: 100%;
   height: auto;
   aspect-ratio: 2 / 3;
   padding: 0;
@@ -533,7 +540,7 @@
 .local-dock-zones {
   grid-area: zones;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content var(--judgement-panel-width);
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: stretch;
   gap: var(--top-panel-gap);
   min-width: 0;
@@ -544,8 +551,7 @@
 }
 
 .local-status-panel,
-.local-equipment-panel,
-.local-judgement-panel {
+.local-equipment-panel {
   height: 100%;
   min-width: 0;
   min-height: 0;
@@ -566,8 +572,7 @@
   text-transform: uppercase;
 }
 
-.local-equipment-panel,
-.local-judgement-panel {
+.local-equipment-panel {
   padding: 4px;
   background: #0e120dcc;
 }
@@ -577,8 +582,9 @@
 .local-equipment-slot,
 .local-judgement-card-slot { display: block; position: relative; flex: 0 0 var(--zone-card-width); width: var(--zone-card-width); height: var(--zone-card-height); min-width: 0; min-height: 0; }
 
-.local-judgement-panel { width: var(--judgement-panel-width); overflow: hidden; }
-.local-judgement-cards { display: flex; align-items: center; width: 100%; height: 100%; min-width: 0; overflow: visible; }
+.local-judgement-overlay { position: absolute; top: -10px; left: 0; z-index: 12; display: flex; align-items: flex-start; width: 100%; height: var(--zone-card-height); min-width: 0; overflow: visible; pointer-events: none; }
+.local-judgement-card-slot { pointer-events: none; }
+.local-judgement-card-slot .local-zone-card { pointer-events: auto; }
 .local-judgement-card-slot { flex-basis: var(--zone-card-width); width: var(--zone-card-width); height: var(--zone-card-height); }
 
 .local-zone-empty,
@@ -656,8 +662,7 @@
   .player-hero-card .player-square-target { padding-inline: 0; padding-right: 0; }
   .player-square-target strong { display: block; width: calc(100% + 4px); max-width: calc(100% + 4px); font-size: clamp(9px, 2.75vw, 11px); letter-spacing: -.02em; }
   .local-status-panel,
-  .local-equipment-panel,
-  .local-judgement-panel { padding: 3px; }
+  .local-equipment-panel { padding: 3px; }
   .local-player-dock .turn-controls { --action-slot-width: 78px; min-height: 48px; padding: 5px; gap: 4px; }
   .local-player-dock .turn-controls button { min-width: 78px; min-height: 32px; padding: 4px 5px; font-size: 7px; }
   .local-player-dock .turn-controls [data-action-slot] button { min-width: 0; }
@@ -668,8 +673,7 @@
 @media (max-width: 360px) {
   .local-player-dock { grid-template-columns: 64px minmax(0, 1fr); }
   .local-dock-zones { gap: 2px; }
-  .local-equipment-panel,
-  .local-judgement-panel { padding: 2px; }
+  .local-equipment-panel { padding: 2px; }
 }
 
 

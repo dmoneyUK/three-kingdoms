@@ -141,6 +141,9 @@ function currentActionFor(state, actorId, handCardId) {
 }
 
 function browserRoom({ state, count }) {
+  const hasLocalJudgementFixture = ["local-judgement-empty", "local-judgement-one", "local-judgement-two"].includes(state);
+  const localJudgementCount = state === "local-judgement-one" ? 1 : state === "local-judgement-two" ? 2 : 0;
+  if (hasLocalJudgementFixture) state = "normal";
   const denseGroup = state === "group-density";
   const unfocusedGroup = state === "group-unfocused";
   if (denseGroup) state = "group-observer";
@@ -174,7 +177,9 @@ function browserRoom({ state, count }) {
     alive: true,
     connected: true,
     handCount: id === meId ? hand.length : 2,
-    judgementCards: state === "rest" && id === "p3" ? [card("browser-lightning", "Lightning", "♥", "Q")] : [],
+    judgementCards: hasLocalJudgementFixture && id === meId
+      ? [card("browser-local-lightning", "Lightning", "♥", "Q"), card("browser-local-overindulgence", "Overindulgence", "♠", "7")].slice(0, localJudgementCount)
+      : state === "rest" && id === "p3" ? [card("browser-lightning", "Lightning", "♥", "Q")] : [],
     equipmentCards: state === "rest" && id === "p2" ? [card("browser-zhuge-crossbow", "ZhugeCrossbow", "♦", "A")] : [],
     attackRange: 1,
     distance: id === meId ? null : 1,
