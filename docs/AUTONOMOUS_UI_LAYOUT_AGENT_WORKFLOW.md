@@ -33,7 +33,14 @@ may accept, partially accept, reject, or redirect work.
 - Remote HANDOVER.md defines the current task and its current status, unless
   a newer direct user instruction changes that status or scope.
 - This file defines autonomous planning, validation, CI, and handoff cadence.
-- docs/UX_V2_INTERACTION_STAGE_DESIGN.md is the product/UI design authority.
+- The current remote
+  `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` is the reviewer-facing source for
+  UX proposals, recommendations, and reported issues, and is the product/UI
+  design authority. Review it from `origin/ux-v2` at every fresh/resumed task
+  and every next-task planning boundary.
+- `HANDOVER.md` is maintained by the Agent as the concise execution record
+  and current/next task handoff. Reviewer design feedback belongs in the
+  interaction design document; do not wait for the Reviewer to edit HANDOVER.
 - The former standalone Planner workflow has been retired. Until the Reviewer
   publishes its replacement, use AGENTS.md and the current HANDOVER.md for
   architecture constraints and task acceptance criteria.
@@ -59,8 +66,15 @@ At the start of a new conversation or when resuming after a pause:
    workflow file.
 4. Continue the current handover task; do not repeat tasks marked
    COMPLETED BY AGENT — CI GREEN and do not invent a replacement task.
-5. Read the current task's cited sections in
-   docs/UX_V2_INTERACTION_STAGE_DESIGN.md.
+5. Review the current remote
+   `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` from `origin/ux-v2` as a whole for
+   reviewer recommendations, reported issues, and changes to the overall UX
+   direction. Compare it with the design revision recorded in HANDOVER, inspect
+   all intervening changes, and read changed and task-cited sections in full.
+   If HANDOVER has no design revision, inspect the document's full heading map,
+   latest dated/open-review sections, and all task-cited sections. Record the
+   reviewed design revision in HANDOVER. Do not rely on the checkout copy
+   alone when it may be stale.
 6. Inspect only the relevant production and test code. Consult
    docs/AUTONOMOUS_UI_ROADMAP.md selectively for planning or historical
    evidence; do not read it in full by default.
@@ -384,9 +398,13 @@ repeat completed work without new regression evidence.
 Before planning every next task:
 
 1. Synchronize ux-v2 safely from origin (§2).
-2. Review the current docs/UX_V2_INTERACTION_STAGE_DESIGN.md and this
-   workflow for newly added/changed requirements or execution rules. Check the
-   candidate's cited design sections and any newly changed sections.
+2. Review the current remote
+   `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` from `origin/ux-v2` as a whole and
+   this workflow for reviewer recommendations, reported issues, changed UX
+   direction, and execution rules. Compare the remote design with the revision
+   recorded in HANDOVER; inspect every intervening design change and read the
+   candidate's cited sections in full before choosing the task. Update the
+   recorded design revision when the planning decision is written to HANDOVER.
 3. Inspect the actual current code and tests; consult the roadmap selectively
    only for history or broad candidate directions.
 4. Answer all five questions from evidence:

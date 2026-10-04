@@ -16,11 +16,14 @@ When autonomous mode is active, use this startup order:
 2. read `AGENTS.md`;
 3. read the complete current `HANDOVER.md` (it is intentionally short);
 4. read `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`;
-5. read only the design sections cited by the current task;
+5. review the current remote `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` as a
+   whole for reviewer feedback, reported issues, and changes to the overall UX
+   direction; compare it with the design revision recorded in HANDOVER, then
+   read all changed and task-cited sections in full;
 6. inspect only the source/tests relevant to the current task;
 7. consult `docs/AUTONOMOUS_UI_ROADMAP.md` only when next-task planning or older historical evidence is actually needed.
 
-`HANDOVER.md` is the current handoff authority. `docs/AUTONOMOUS_UI_ROADMAP.md` is the long-lived history/roadmap and is not read in full by default.
+`HANDOVER.md` is the current handoff authority. `docs/AUTONOMOUS_UI_ROADMAP.md` is the long-lived history/roadmap and is not read in full by default. The remote interaction design is the reviewer-facing source for UX proposals, recommendations, and reported issues. Review it at each fresh/resumed task and before every next-task plan, comparing against the last design revision recorded in HANDOVER. The Agent maintains HANDOVER as the concise execution record, design-review checkpoint, and current/next task handoff; it does not replace design review.
 
 While autonomous mode is active, the autonomous workflow may:
 

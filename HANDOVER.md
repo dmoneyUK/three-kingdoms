@@ -7,46 +7,55 @@ History: docs/AUTONOMOUS_UI_ROADMAP.md.
 
 ## Latest confirmed code/CI result
 
-The focused CI correction for UX2.0VIS-12M is commit
-b0ac80d682da631a66f2b628e77ea773cb2173d6; Actions run 37234054061 was
-observed successful. The later handover-only checkpoint commit
-a49d0f0cb3b45502264329307eeb1bbffe0aad31 had run 37234601498 in progress at
-the last observation. Its current status has not been checked during this
-user-requested pause. No later revision is claimed green.
+Commit `352f354c41e66228f56aad717bfad2b0409aaece` was checked at the task
+boundary. Actions run `37237657587` completed successfully; both
+`build-and-test` and `deploy` jobs passed. The preceding documentation commit
+`5f125b325f09caef674bb792c76e048ccf1d9293` had run `37237551736` cancelled;
+that revision is not claimed green. No local tests, build, or lint were run
+for those documentation commits.
 
-No full local test suite, build, or lint was run for that correction.
-The workflow-documentation update is not claimed CI-green; the next Agent must
-inspect the latest Actions status at the next task boundary before any source
-edit, as specified in the workflow.
+## Design review checkpoint
+
+Reviewed remote `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` from `origin/ux-v2`.
+Its latest design-changing commit is
+`43f282f494ee606e73347e3bb6a580b16024f65a` (`docs: integrate mobile visual
+composition contract`). Reviewed the full heading map and that commit's full
+design diff, including the added mobile proportions, Stage breathing/layering,
+compression order, opponent-seat composition, and clarified selection/action
+semantics. The current task uses §§0.91.1–0.91.5, 1.5.1–1.5.2, and 2.7.
+Record the design revision reviewed at each future task-planning boundary and
+compare the remote design against it.
 
 ## Current task — UX2.0VIS-12N: Four-Player Interaction Screenshot Matrix
 
-Status: PAUSED BY USER — workflow review/migration. Do not resume 12N source
-changes or tests until the user explicitly resumes work.
+Status: RESUMED BY USER — in progress.
 
 Purpose: complete the four-player visual-evidence slice prompted by the user's
 phone screenshot. Keep scope to four-player Top Row and existing typed browser
-fixtures. Design authority: docs/UX_V2_INTERACTION_STAGE_DESIGN.md
-§§0.91.2, 1.5.1–1.5.2, 2.7; process and planning gate:
-docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md §§4, 12, 19.
+fixtures. No gameplay or semantic changes.
 
-Task acceptance when resumed:
+Acceptance:
 - Capture and inspect 480×900 states: ordinary turn, single target,
   Group/AOE observer, Negation, Duel, Dying/Peach, and long guidance.
 - Capture 390×640 Group/AOE observer and Dying/Peach.
 - Use existing GameRoom typed fixtures/helpers; assert Stage/Safe Zone/Dock
   containment, opponent-seat separation, required semantic content, and
   action-target geometry where actions are present.
-- Record screenshots and focused geometry evidence. No gameplay/semantic
-  changes. Split any separate defect or undecided visual trade-off into a
-  separately planned task.
+- Record screenshots and focused geometry evidence. Split any separate defect
+  or undecided visual trade-off into a separately planned task.
 
-Uncommitted local work at pause: tests/browser/ui19.spec.mjs has an unvalidated
-12N screenshot/geometry matrix edit (480×900 states, 390×640 Group/Dying, and
-a saved 12J single-target screenshot). It was not run, committed, or pushed.
-Preserve it if resuming in the same worktree. It is not available from a fresh
-remote checkout; if absent there, reconstruct it from the acceptance scope
-above after the user resumes. Do not include this partial test work in the
-workflow-documentation change.
+Uncommitted local work at resume: `tests/browser/ui19.spec.mjs` contains an
+unvalidated 12N screenshot/geometry matrix and a 12J screenshot-output change.
+Preserve and finish this work in the existing checkout; it has not been run,
+committed, or pushed.
 
-No next task is planned while the user-requested pause is active.
+Process update requested by the user: `AGENTS.md` and
+`docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md` now require reviewing the remote
+overall design document at each resume/planning boundary and clarify that the
+Agent maintains HANDOVER. This documentation update is not yet committed or
+pushed and must remain separate from the uncommitted `ui19.spec.mjs` work.
+
+Before the first 12N source/test edit after that documentation push, inspect the
+latest push-triggered Actions run once. If queued/in progress, proceed without
+waiting; if failed, investigate the relevant failure first. No next UX task is
+planned until 12N closes and the §19 planning gate is applied.
