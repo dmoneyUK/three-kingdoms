@@ -461,3 +461,15 @@ CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37188237593 — 
 Jobs: `build-and-test` `111394726206` and `deploy` `111395564436`, both completed/success.
 CI fixes: none.
 Next-task rationale: VIS-08B closes the ambiguous-focus fallback. Next inspect the remaining Stage metadata against the already-rendered Hero Focus, Reaction Chain, and Dying panels; simplify only rows proven redundant while retaining unique public context.
+
+## TASK ID: UX2.0VIS-08C — Dying handoff metadata deduplication
+STATUS: PLANNED
+
+Objective: Remove repeated Dying source/focus/decision identities from the generic Stage metadata when the dedicated semantic panels already render them.
+Observed gap: Dying currently renders Medium Source, Hero Focus, and Dying/Rescue handoff, then repeats matching source/focus/decision text in `.interaction-stage-meta-region`.
+Design authority: AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md §§7.3, 19; UX_V2_INTERACTION_STAGE_DESIGN.md §§0.6.4, 3C, 10; retain only semantically useful context.
+Authority and boundary: compare existing proven player IDs in `InteractionStageView`, `HeroFocusView`, `MediumSourceView`, and `DyingHandoffView`; do not infer identity from names or legacy data. No gameplay, protocol, or control changes.
+Scope: `app/page.tsx`, focused `tests/browser/ui19.spec.mjs`, append-only `HANDOVER.md`.
+Requirements: suppress Dying source/focus summaries only when their exact identities are already rendered in Medium Source/Hero Focus; suppress decision/resolver rows only when the same IDs are shown by Dying Handoff. Preserve distinct source identity, changed original-target scope, and nested context; omit empty metadata wrappers. Leave non-Dying layouts unchanged.
+Validation: mounted Dying regression at representative desktop/mobile widths, retained VIS-05B Dying safe-zone/hit checks and VIS-08A open-shell checks, `git diff --check`. No local full suite/build/lint.
+Acceptance: Dying retains its semantic panels and any unique context but no longer repeats their proven identities in a redundant footer metadata block; no other state loses metadata.
