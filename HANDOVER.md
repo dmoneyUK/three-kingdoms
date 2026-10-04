@@ -7,7 +7,7 @@ History: `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
 ## Latest result — UX2.0VIS-12M: Deduplicate Proven Source Metadata
 
-Status: `CI CORRECTION IMPLEMENTED — CI PENDING`
+Status: `CI FAILURE CORRECTION IMPLEMENTED — CI PENDING`
 
 At `298a1ac15e0dc92d426f3423064feee852a46690`, non-Dying Stage omitted the
 generic SOURCE row only when typed `Stage.source.id` exactly matched the
@@ -18,13 +18,18 @@ extended the scope 1.89–5.14px below the Safe Zone. The correction gives the
 single remaining role row a full-width track; no content or gameplay semantics
 are removed.
 
-Focused correction validation: 26/26 (the two failed cases, four VIS-12M cases,
-and 20 short-portrait Stage cases); targeted ESLint passed. No full local
-test/build/lint. Correction commit and its exact Actions result are pending.
+The layout correction was pushed as `f3590080d47a2c669f83027a3fcf5b4aa04f0233`.
+Run `37232498163` then failed `npm test` only because
+`tests/room-safety-render.test.mjs:711` still asserted the superseded Dock row
+order (`auto` before the top panel). The accepted rows are top panel, Hand,
+Guidance, Actions; the source-shape assertion now checks that order without
+changing production code. The focused failing test passes 1/1 locally. No full
+test/build/lint. The test-only correction commit and its Actions result are
+pending.
 
 ## Current task — UX2.0VIS-12N: Four-Player Interaction Screenshot Matrix
 
-Status: `PLANNED — PAUSED UNTIL VIS-12M CI CORRECTION IS GREEN`
+Status: `PLANNED — AFTER CI-CORRECTION PUSH AND NEXT-TASK CHECKPOINT`
 
 Purpose: complete the four-player slice of the representative-interaction
 visual gate, prompted by the user's four-player phone screenshot and authorized
