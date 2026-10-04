@@ -356,3 +356,14 @@ Focused tests: 57/57 presentation-client + room-safety-render (one new pure proj
 Broader tests: Named bounded browser/semantic/render tests only; no local full build/test/lint. git diff --check passed.
 Known gaps: Public Group progress/order/outcomes remain explicitly deferred by user's option1 approval. Stage shell/duplicate metadata and final Dock/hand still intermediate, not final visual acceptance.
 CI pending: Push code and this ledger, wait exact run and repair only actual failures. Only then plan next bounded visual task.
+
+### VIS-07A STATUS: COMPLETED BY AGENT — CI GREEN
+
+Implementation SHA: `69e04cd`; tested result-ledger revision: `53406c95db001b62a53f07a1ffa5276674797094`.
+CI run: https://github.com/dmoneyUK/three-kingdoms/actions/runs/37184619061 — completed/success, confirmed earlier in this execution before the latest user-supplied workflow took effect. No new CI polling was performed for this closeout.
+CI job: build-and-test `111383853380` success; the whole run completed successfully, including deployment. No independent production health or visual certification is claimed.
+Final test status: Previously run focused semantic/render tests 57/57, bounded browser regressions 62/62, fresh VIS-07A browser rerun 9/9. No tests were rerun for this HANDOVER-only closeout. No CI fixes required.
+Files changed in this closeout: HANDOVER.md only, append-only. Implementation files and authority boundaries are recorded in the preceding result.
+Known remaining gaps: Group progress/order/outcomes remain deferred; open Stage shell/duplicate metadata and final Dock/hand composition remain unfinished. Agent completion is not reviewer acceptance.
+Recommended next bounded task: Reviewer-authored Side Column open Stage shell task, preserving semantic content, participant hierarchy, Reaction/Dying, accepted seats, Top Row and Dock controls.
+Workflow boundary: The latest user-supplied AGENTS.md requires reviewer-authored task authority and prohibits CI polling. The older autonomous planning/CI-loop instructions conflict with those rules. No new task was self-authored or implemented; await the reviewer's next bounded HANDOVER task or an explicit user clarification of this conflict.
