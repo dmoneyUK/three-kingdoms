@@ -1521,10 +1521,12 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
       return { dock: box(dock), parts, cards: [...dock.querySelectorAll(".local-hand-rail .game-card")].map(box), buttons: ["primary", "decline"].map((slot) => ({ slot, ...box(dock.querySelector(`[data-action-slot="${slot}"] button`)) })), pageWidth: document.documentElement.scrollWidth };
     });
     const layout = await measureDock();
-    const { hero, skills, equipment, hand: handArea, actions } = layout.parts;
+    const { hero, skills, equipment, hand: handArea, guidance, actions } = layout.parts;
     expect(hero.right).toBeLessThanOrEqual(handArea.left + 1);
     expect(skills.right).toBeLessThanOrEqual(equipment.left + 1);
     expect(handArea.top).toBeGreaterThanOrEqual(Math.max(skills.bottom, equipment.bottom) - 1);
+    expect(handArea.bottom, "guidance belongs below Hand").toBeLessThanOrEqual(guidance.top);
+    expect(guidance.bottom, "guidance stays above bottom actions").toBeLessThanOrEqual(actions.top);
     for (const [name, part] of Object.entries(layout.parts)) {
       expect(part.width, `${name} remains visible`).toBeGreaterThan(0);
       expect(part.left, `${name} stays in the Dock`).toBeGreaterThanOrEqual(layout.dock.left - 1);
@@ -2886,7 +2888,7 @@ test("UX2.0VIS-06A 480x900 shows long guidance and leaves raised hand cards clea
   await page.locator('[data-hand-card-id="browser-attack"] .game-card').click();
   const selectedCard = await page.locator('.card-slot.single-selected .game-card').boundingBox();
   const guidanceBox = await page.locator('[data-console-guidance="true"]').boundingBox();
-  expect(selectedCard.y).toBeGreaterThanOrEqual(guidanceBox.y + guidanceBox.height);
+  expect(selectedCard.y + selectedCard.height).toBeLessThanOrEqual(guidanceBox.y);
 });
 
 for (const width of [480, 1440]) {

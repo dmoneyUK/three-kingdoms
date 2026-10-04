@@ -23,6 +23,8 @@ Do not copy this entire roadmap into working context unless historical reconstru
 
 ## Current frontier
 
+VIS-12L delivery (2026-10-04): Dock guidance moved below Hand and immediately above actions by reordering the existing grid areas and row sizes across responsive breakpoints. Updated the contrary VIS-06A assertion and strengthened four-player 12K checks. Focused browser matrix 28/28 and targeted ESLint passed; 480px ordinary and 390×640 selected screenshots reviewed. CI pending. Pre-edit latest run `37230539712` on 12K revision `c58a080` was pending; 12J correction run `37230152044` was in progress. Next bounded concern: proven SOURCE metadata duplicated by a visible Hero Focus/Medium Source label; 12M requirements live in HANDOVER.
+
 VIS-12K delivery (2026-10-04): new typed REST ordinary-turn fixture with six mixed synthetic cards and active CurrentAction; extended existing four-player Hero-first checks to ordinary turns and added four complete Dock/selection cases at 390×844, 480×900, 650×900 and 390×640. Focused validation 7/7 and targeted ESLint passed; screenshots reviewed. CI pending. The visual gate identified guidance above Hand, contrary to design §§0.91 / 2.7; VIS-12L is the next bounded bottom-guidance correction in HANDOVER. VIS-12J correction `9a5a245` run `37230152044` was in progress at the 12K source-edit boundary.
 
 Latest completed milestone:

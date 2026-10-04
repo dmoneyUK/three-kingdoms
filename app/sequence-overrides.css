@@ -446,11 +446,11 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(198px, 253px) minmax(0, 1fr);
-  grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(65px, auto);
+  grid-template-rows: var(--top-panel-height) var(--hand-panel-height) auto minmax(65px, auto);
   grid-template-areas:
-    "guidance guidance"
     "identity zones"
     "identity hand"
+    "guidance guidance"
     "actions actions";
   gap: 4px;
   max-width: 1180px;
@@ -661,12 +661,12 @@
      still owns the centred piles and all four player slots; the lower empty
      track is simply smaller so the side seats do not float too far above the
      local dock. */
-  .local-player-dock { --top-panel-height: 116px; grid-template-columns: 121px minmax(0, 1fr); grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(62px, auto); }
+  .local-player-dock { --top-panel-height: 116px; grid-template-columns: 121px minmax(0, 1fr); grid-template-rows: var(--top-panel-height) var(--hand-panel-height) auto minmax(62px, auto); }
 }
 
 @media (max-width: 480px) {
   .game-shell .play-command { padding: 4px 6px 5px; }
-  .local-player-dock { --top-panel-height: 58px; grid-template-columns: 70px minmax(0, 1fr); grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(48px, auto); padding: 0; }
+  .local-player-dock { --top-panel-height: 58px; grid-template-columns: 70px minmax(0, 1fr); grid-template-rows: var(--top-panel-height) var(--hand-panel-height) auto minmax(48px, auto); padding: 0; }
   .local-dock-identity { align-items: stretch; }
   .local-hero-card { flex-basis: auto; width: 100%; max-width: 72px; height: auto; }
   .local-dock-identity { gap: 2px; padding: 3px; }
