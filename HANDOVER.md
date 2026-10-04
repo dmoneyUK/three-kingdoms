@@ -1,60 +1,213 @@
 # WTK UI / Layout — Current Task Handoff
 
-## Reviewer status — UX2.0VIS-04B ACCEPTED
+## REMOTE HANDOVER RULE
+Work only on `ux-v2`. Read this file and `docs/PLANNER_DEVELOPMENT_WORKFLOW.md`. Implement only the task below, validate, append this task's execution result, commit/push, verify remote HANDOVER, then STOP. Do not wait for or poll CI.
+
+## Reviewer status — UX2.0VIS-04B ACCEPTED, VIS-05A DEFERRED BEFORE START
 
 Reviewed implementation: `43b69730365281f26179759c22811a8841621125`.
 
-Accepted: only Top Row safe-zone TOP offsets changed; new values are 253px desktop, 245px at <=650 and 260px at <=480. Measured seat-to-safe-zone clearances are 13.5px / 15.75px / 16.5px. Dying at 650x900 is now fully contained without shrinking or clipping content. Focused VIS-04B tests reported 22/22 PASS and retained VIS-01/02/03/04A coverage reported 64/64 PASS. Preserve compact Top Row seats, Stage internals, LocalPlayerDock, Side Column behavior, gameplay and presentation authority.
+Accepted facts to preserve:
+- Top Row compact thumbnails remain 180x108 at 1440, 112x88 at 650, 100x78 at 480.
+- Top Row Safe Zone currently clears those seats by 13.5 / 15.75 / 16.5px at 1440 / 650 / 480.
+- Dying@650 is contained without shrinking/clipping content.
+- Hero Focus / Medium Source / Reaction / Dying / LocalPlayerDock / gameplay authority remain unchanged.
 
-# NEXT TASK — UX2.0VIS-05A: Correct 5–10 Player Side-Column Seat Topology
+New reviewer evidence from the real iPhone REST screenshot shows one remaining Top Row geometry defect:
+- the three opponent thumbnails are horizontally correct but visually float too far down from the top of the battlefield;
+- there is a large unused band above them;
+- code confirms why: Top Row still inherits `grid-template-rows:minmax(120px,1fr) auto minmax(120px,1fr)` and the opponent card uses `align-self:center`, so row 1 expands and centres the seat inside a tall track;
+- VIS-04B correctly moved the Safe Zone just below the seats, but it therefore followed the seats' unnecessarily-low Y position.
+
+The previously assigned VIS-05A Side Column task has not started and is deferred. Fix the visible Top Row vertical anchor first.
+
+# NEXT TASK — UX2.0VIS-04C: Anchor Compact Top-Row Seats to the Actual Top Band
 
 ## Objective
-For 5–10 total players, replace the current generic two-column auto-flow with deterministic LEFT/RIGHT vertical columns and a clear centre corridor. This task changes Side Column seat placement only. Do not compact the Side Column card contents and do not change Top Row or Interaction Stage geometry.
+In 2–4 player Top Row Mode, make the already-accepted compact opponent thumbnails sit at the actual top of the player-board area instead of being vertically centred inside a large flexible grid row.
 
-## Normative mapping
-The design prose and diagrams disagree on one left-column ordering detail. For this task use the published 5/7/10 diagrams plus the documented rule that the extra/exact-opposite seat belongs to the RIGHT column.
+Then retune only the Top Row Safe Zone top so it continues to begin 6–24px below the newly-anchored row.
 
-Let opponentCount = totalPlayers - 1; rightCount = ceil(opponentCount/2); leftCount = opponentCount - rightCount; rowCount = rightCount. RelativeIndex already runs clockwise from viewer as 1..N-1.
-
-RIGHT: if relativeIndex <= rightCount, row = rightCount - relativeIndex + 1.
-LEFT: otherwise leftOffset = relativeIndex - rightCount, row = leftCount - leftOffset + 1.
-
-Exact matrix:
-- 5: RI1 R2, RI2 R1, RI3 L2, RI4 L1.
-- 6: RI1 R3, RI2 R2, RI3 R1, RI4 L2, RI5 L1; L3 empty.
-- 7: RI1 R3, RI2 R2, RI3 R1, RI4 L3, RI5 L2, RI6 L1.
-- 8: RI1 R4, RI2 R3, RI3 R2, RI4 R1, RI5 L3, RI6 L2, RI7 L1; L4 empty.
-- 9: RI1 R4, RI2 R3, RI3 R2, RI4 R1, RI5 L4, RI6 L3, RI7 L2, RI8 L1.
-- 10: RI1 R5, RI2 R4, RI3 R3, RI4 R2, RI5 R1, RI6 L4, RI7 L3, RI8 L2, RI9 L1; L5 empty.
+This is a vertical-placement correction only.
 
 ## Production scope
-Expected: `app/page.tsx`, `app/sequence-overrides.css`. Tests: `tests/browser/ui19.spec.mjs`. A tiny pure presentation helper file is acceptable. No game/server/projector/legality changes.
+Expected:
+- `app/globals.css`
+
+Regression:
+- `tests/browser/ui19.spec.mjs`
+
+Do not modify `app/page.tsx`, `app/sequence-overrides.css`, game helpers, server/projector or fixtures unless strictly required by an existing test harness.
 
 ## Required implementation
-1. Add pure `projectSideColumnSeat(totalPlayers, relativeIndex)` (or equivalent) returning side, row and rowCount. Return null outside totalPlayers 5..10 or invalid relativeIndex. It must depend only on totalPlayers and relativeIndex.
-2. On Side Column opponent cards expose stable hooks `data-side-column="left|right"` and `data-side-row="1..5"`. Keep `data-player-anchor`, relativeIndex class, semantic role hooks and target/Inspect handlers. Top Row seats get no side-column hooks.
-3. Replace Side Column `grid-auto-flow` placement with a three-column board grid: LEFT seats column 1, empty flexible centre column 2, RIGHT seats column 3. Use the projected row for grid-row. Existing Side Column portrait/equipment/judgement/hand-footer density stays unchanged.
-4. Protect the centre: at 1440x900, 650x900 and 480x900, every LEFT seat right edge must be at or left of 30% of board width (+4px tolerance), and every RIGHT seat left edge must be at or right of 70% (-4px tolerance). If current card dimensions cannot satisfy this at 480 without redesign, stop and report measured blocker instead of shrinking cards.
-5. Every side seat must remain at least 6px above LocalPlayerDock, with no seat overlap and no page horizontal overflow.
-6. Counts 2/3/4 must keep current Top Row placement, VIS-04A dimensions and VIS-04B 6–24px safe-zone clearance.
 
-## Browser regression
-At 1440/650/480 and REST counts 5..10 assert exact side/row mapping, N-1 anchors, unchanged player identity/relativeIndex, one X column per side within 4px, row1 above row2 etc., no overlap, dock clearance >=6px and no horizontal overflow.
+### 1. Remove the legacy expanding first-row behaviour in Top Row mode
+Under:
 
-Add named example tests:
-- 5 players: LEFT top-to-bottom P5,P4; RIGHT P3,P2.
-- 7 players: LEFT P7,P6,P5; RIGHT P4,P3,P2.
-- 10 players: LEFT P10,P9,P8,P7 with lowest left slot empty; RIGHT P6,P5,P4,P3,P2.
+`.player-board[data-seat-topology="top-row"]`
 
-At count=6 and 480/1440, open/close existing opponent Inspect and prove the same anchor remains in the same side/row. At counts 2/3/4 and 480/1440, prove no side-column hooks and retained Top Row dimensions/clearance.
+the first grid row must size to the opponent thumbnail band rather than consuming `1fr`.
 
-## Forbidden
-Do not reorder room players, change relativeIndex, use per-player absolute coordinates or DOM measurement, compact/hide Side Column Equipment/Judgement, change Top Row, change InteractionStage/Safe Zone, move LocalPlayerDock, or change gameplay/presentation semantics.
+Preferred approach:
+- make row 1 content-sized / fixed to the existing thumbnail height;
+- keep the remaining unused board area flexible below it;
+- change top-row opponent alignment from vertical centring to top alignment.
 
-## Validation / result
-Run focused VIS-05A browser tests plus retained VIS-04A/VIS-04B and existing UI-19 Side Column containment tests. Run broader local checks only if allowed; do not claim unrun checks. Do not inspect or wait for CI.
+Equivalent CSS is acceptable if it produces the same geometry.
 
-Append execution result with SHA, files, helper formula, DOM hooks, measured geometry for counts 5–10 at 1440/650/480, proof 5/7/10 examples, proof Top Row unchanged, validation and any blocker. Do not self-accept. Push, verify remote HANDOVER, then STOP.
+Do not change the generic legacy `.player-board` row model globally.
+
+### 2. Keep the existing player-board outer top inset
+Preserve the accepted Top Row player-board top insets:
+- desktop: 68px;
+- <=700: 60px;
+- <=480: 55px.
+
+These offsets reserve space for existing battlefield chrome/controls.
+
+Do not move the whole player-board upward.
+
+### 3. Preserve all accepted seat X geometry and dimensions
+Do not change:
+- 2-player centre mapping;
+- 3-player left/right mapping;
+- 4-player left/centre/right mapping;
+- seat widths/heights;
+- hero-region height;
+- Hand footer height;
+- hidden top-row Equipment/Judgement treatment;
+- target/Inspect behaviour;
+- player identity / relativeIndex.
+
+The only seat change is Y anchoring within the existing player-board.
+
+### 4. Seat-top contract
+At 1440x900, 650x900 and 480x900, for counts 2/3/4:
+
+`seatTop - playerBoardTop`
+
+must be:
+- >= 0px;
+- <= 4px.
+
+All opponents in the same room must still share one row within the existing <=4px Y tolerance.
+
+This new regression must fail against the current pre-VIS-04C CSS where row 1 expands and centres the seats.
+
+### 5. Retune Safe Zone top after moving seats
+Because seats move upward, update only the Top Row `--interaction-safe-top` values / equivalent top geometry so:
+
+`safeZone.top - maxOpponentBottom`
+
+remains:
+- >= 6px;
+- <= 24px.
+
+Do not change:
+- safe-zone left/right/bottom;
+- play-table height;
+- Stage width or internals;
+- LocalPlayerDock.
+
+Do not leave the current 253/245/260 values if they create a large dead band after the seats move.
+
+### 6. Preserve all accepted active-state containment
+For count=4 at 1440/650/480, retain:
+- interaction;
+- negation;
+- dying;
+- group-observer.
+
+For each state assert:
+- max opponent bottom <= Stage top - 6px;
+- Stage fully inside Safe Zone;
+- Reaction Chain / Dying remains fully visible where applicable;
+- Hero Focus dimensions unchanged;
+- Medium Source dimensions unchanged where applicable;
+- Stage/Safe Zone do not overlap LocalPlayerDock;
+- no horizontal page overflow.
+
+Do not shrink or recompose Stage content.
+
+### 7. REST composition
+At REST:
+- no Interaction Stage is visible;
+- Safe Zone remains invisible geometry only;
+- deck/discard may remain in the central battlefield as today;
+- opponent thumbnails must visually read as a real top row, leaving the large open centre below them rather than a large empty band above them.
+
+### 8. Side Column remains untouched
+Counts 5–10 keep the current side-column behaviour exactly as-is in this task.
+
+Do not start the deferred VIS-05A implementation.
+
+## Required browser regression
+
+### A. Top-row anchor matrix
+REST, counts 2/3/4, widths 1440/650/480:
+- seat count N-1;
+- exact existing relativeIndex/X mapping;
+- exact existing VIS-04A seat width/height;
+- all seat tops within 0–4px of player-board top;
+- same-row Y spread <=4px;
+- Safe Zone clearance 6–24px below max seat bottom;
+- one LocalPlayerDock;
+- no overflow.
+
+### B. Active containment matrix
+Count=4, widths 1440/650/480, states:
+- interaction;
+- negation;
+- dying;
+- group-observer.
+
+Retain all VIS-04B containment and VIS-03 participant-size assertions.
+
+### C. Old-geometry negative proof
+Add one named 480x900 REST regression proving the pre-VIS-04C flexible-row/centre alignment would place the opponent row materially below the player-board top, while the new geometry satisfies the <=4px anchor contract.
+
+Do not implement this by testing source-code strings; use rendered geometry.
+
+### D. Side-column negative regression
+At count=6, widths 1440 and 480:
+- topology remains side-column;
+- no Side Column seat geometry/style changes caused by VIS-04C.
+
+## Forbidden shortcuts
+Do not:
+- change opponent widths/heights;
+- change player-board outer top inset;
+- use transform translate to fake the Y position;
+- use JS DOM measurements;
+- move Safe Zone bottom;
+- change LocalPlayerDock;
+- change Stage/Hero/Medium Source internals;
+- change deck/discard geometry;
+- change Side Column;
+- change gameplay/presentation semantics.
+
+## Validation
+Run and report:
+- focused VIS-04C top-anchor tests;
+- retained VIS-04A compact-seat tests;
+- retained VIS-04B containment tests;
+- retained VIS-03B/C/D/E presentation tests;
+- broader local checks only if allowed.
+
+Do not claim unrun checks. Do not inspect or wait for CI.
+
+## Execution result
+Append only:
+- implementation SHA;
+- files changed;
+- old vs new Top Row grid-row/alignment strategy;
+- measured playerBoardTop / seatTop / seatBottom / safeZoneTop at 1440/650/480;
+- proof widths/heights/X anchors stayed unchanged;
+- active-state containment results;
+- Side Column negative regression result;
+- any GAP.
+
+Do not self-accept. Push, verify remote HANDOVER, then STOP.
 
 ## Acceptance
-Pass only if 5–10 rooms use deterministic LEFT/RIGHT columns matching the published examples and extra-right rule, the middle 40% of the board is free of seat anchors, all seats stay above LocalPlayerDock with no overlap/overflow, and Top Row/gameplay/controls remain unchanged.
+Pass only if 2–4 player opponent thumbnails are actually anchored to the top of the existing player-board band, retain all accepted size/X/behaviour contracts, Safe Zone follows 6–24px below them, active states remain fully contained, and Side Column/gameplay are unchanged.
