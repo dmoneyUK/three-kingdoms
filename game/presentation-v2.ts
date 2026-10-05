@@ -66,6 +66,14 @@ export type PresentationInteractionScene = {
   activeTargetIds: readonly string[];
   participantIds: readonly string[];
   participantRoles: PresentationParticipantRoles;
+  /** Immutable root-frame origin for proven nested interactions. */
+  rootOrigin?: {
+    frameId: string;
+    stage: CausalFrame["stage"];
+    sourceId: string | null;
+    effect: string;
+    targetIds: readonly string[];
+  };
   continuity: InteractionSceneContinuity;
 };
 
@@ -421,6 +429,26 @@ function interactionSceneFor(
   const parentFrame = activeFrame?.parentFrameId
     ? envelope?.frames.find((frame) => frame.frameId === activeFrame.parentFrameId) ?? null
     : null;
+  const rootFrame = proven && activeFrame?.parentFrameId
+    ? envelope?.frames.find((frame) => frame.parentFrameId === null) ?? null
+    : null;
+  let rootAncestor = activeFrame;
+  const visitedFrames = new Set<string>();
+  while (rootAncestor?.parentFrameId && !visitedFrames.has(rootAncestor.frameId)) {
+    visitedFrames.add(rootAncestor.frameId);
+    rootAncestor = envelope?.frames.find((frame) => frame.frameId === rootAncestor?.parentFrameId) ?? null;
+  }
+  const rootOrigin = rootFrame
+    && rootAncestor?.frameId === rootFrame.frameId
+    && rootFrame.frameId !== activeFrame?.frameId
+    ? {
+      frameId: rootFrame.frameId,
+      stage: rootFrame.stage,
+      sourceId: rootFrame.origin.originSourceId,
+      effect: rootFrame.origin.originEffect,
+      targetIds: [...rootFrame.origin.originalTargetIds],
+    }
+    : null;
   const participantRoles: PresentationParticipantRoles = proven
     ? {
       sourceId,
@@ -463,6 +491,7 @@ function interactionSceneFor(
     activeTargetIds: activeCurrent?.currentTargetIds ?? [],
     participantIds: groupValues?.participantIds ?? [],
     participantRoles,
+    ...(rootOrigin ? { rootOrigin } : {}),
     continuity: { relation, parentFrameId: proven ? activeFrame?.parentFrameId ?? null : null },
   };
 }

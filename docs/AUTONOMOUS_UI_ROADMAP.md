@@ -550,6 +550,26 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Dock ownership, and missing/mismatched authority. Targeted ESLint on the
   production component and spec had 0 errors (`fixture.jsx` has no matching
   ESLint config); `git diff --check` passed.
+- Exact Actions run `37384283798` for `e80906d` was observed in progress at the
+  next planning boundary; no CI completion is claimed here.
+
+### UX2.3-ACTIVE-BORROWED-SWORD-CURRENT-EFFECT-01 — Three-role forced Attack context
+
+- The proven child scene now carries immutable root-frame source/effect/targets
+  from the public causal envelope through the typed snapshot and client
+  adapter. The Stage names the Borrowed Sword source, weapon holder and forced
+  Attack target only when the parent/root link, root target, active target and
+  current participant agree; otherwise it keeps neutral Attack-only copy.
+- The current `borrowed_sword_attack` effect is labelled as Attack. The
+  two-player case keeps the local source/target in the Dock without central
+  duplication, and a decision actor already represented by the semantic focus
+  is not repeated as separate metadata. No legality, gameplay, private-control
+  or protocol behavior changes.
+- Focused browser coverage passed 35/35, including missing/inconsistent root
+  authority, 2-player, 390/480/1440px and Top Row/Side Column layouts.
+  Engine-backed Presentation V2 API coverage passed 26/26; projector/client
+  Node coverage passed 75/75; targeted ESLint had 0 errors; `npm run build`
+  and `git diff --check` passed. `tests/browser/ui19.spec.mjs` is unchanged.
 
 ## Known deferred semantic gaps
 

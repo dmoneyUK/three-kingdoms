@@ -619,6 +619,26 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const localFocusPlayerId = inspectPlayer?.id ?? localPreviewPlayer?.id;
   const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId && !hasLocalInspect);
   const publicEffectLabel = stage.effect?.trim() || null;
+  const displayEffectLabel = stage.effect === "borrowed_sword_attack" ? "Attack" : publicEffectLabel;
+  const borrowedSwordForcedAttack = Boolean(display.visible
+    && stage.stage === "ATTACK_RESPONSE"
+    && stage.effect === "borrowed_sword_attack"
+    && stage.continuity.relation === "CHILD_FRAME"
+    && stage.rootOrigin
+    && stage.rootOrigin.frameId === stage.parentFrameId
+    && stage.rootOrigin.effect.trim().toLowerCase() === "borrowed sword"
+    && stage.rootOrigin.source.id
+    && stage.rootOrigin.source.known
+    && stage.rootOrigin.source.id !== stage.source.id
+    && stage.rootOrigin.targets.length === 1
+    && stage.rootOrigin.targets[0]?.id === stage.source.id
+    && stage.source.id
+    && stage.source.known
+    && stage.activeTargets.length === 1
+    && stage.activeTargets[0]?.id
+    && stage.activeTargets[0].id !== stage.source.id
+    && stage.activeTargets[0].known
+    && stage.currentParticipant.id === stage.activeTargets[0].id);
   const duelParticipantIsActive = Boolean(stage.currentParticipant.id
     && stage.activeTargets.some((target) => target.id === stage.currentParticipant.id));
   const hasSingleTargetCurrentEffect = (stage.stage === "ATTACK_RESPONSE" || stage.stage === "NEGATION")
@@ -637,8 +657,8 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && stage.activeTargets.length === 1
     && stage.activeTargets[0]?.id === dyingHandoff.dyingPlayer.id;
   const hasSupportedCurrentEffect = hasSingleTargetCurrentEffect || hasProvenDuelCurrentEffect || hasProvenJudgementCurrentEffect || hasProvenDyingCurrentEffect;
-  const currentEffect = display.visible && publicEffectLabel && hasSupportedCurrentEffect
-    ? stage.stage === "DUEL_EXCHANGE" ? "Duel" : publicEffectLabel
+  const currentEffect = display.visible && displayEffectLabel && hasSupportedCurrentEffect
+    ? stage.stage === "DUEL_EXCHANGE" ? "Duel" : displayEffectLabel
     : null;
   const judgementParticipantInDock = Boolean(currentEffect
     && stage.stage === "JUDGEMENT"
@@ -653,9 +673,9 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && heroFocus.primary?.id
     && stage.activeTargets.some((target) => target.id === heroFocus.primary?.id));
   const connectedCurrentEffectFocusIsVisible = currentEffectConnectsToFocus && heroFocus.visible;
-  const decisionActorAlreadyFocused = Boolean(connectedCurrentEffectFocusIsVisible
-    && display.decisionActor.id
-    && display.decisionActor.id === heroFocus.primary?.id);
+  const decisionActorAlreadyFocused = Boolean(display.decisionActor.id
+    && (heroFocus.visible && display.decisionActor.id === heroFocus.primary?.id
+      || showMediumSource && display.decisionActor.id === mediumSource?.player.id));
   const reactionDecisionActorAlreadyFocused = Boolean(connectedCurrentEffectFocusIsVisible
     && reactionChain.active?.decisionActor.id
     && reactionChain.active.decisionActor.id === heroFocus.primary?.id);
@@ -665,7 +685,9 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && stage.activeTargets.some((participant) => participant.id === stage.source.id)
     ? stage.activeTargets.find((participant) => participant.id !== stage.source.id) ?? null
     : null;
-  const currentEffectSummary = currentEffect === "Duel"
+  const currentEffectSummary = borrowedSwordForcedAttack
+    ? `${stage.rootOrigin!.source.name}'s Borrowed Sword forces ${stage.source.name} to Attack ${stage.activeTargets[0]!.name}.`
+    : currentEffect === "Duel"
     ? connectedCurrentEffectFocusIsVisible
       && stage.source.id
       && stage.source.known

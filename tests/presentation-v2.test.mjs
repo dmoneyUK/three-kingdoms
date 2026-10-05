@@ -171,6 +171,7 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
     activeTargetIds: ["B"],
     participantIds: ["C", "D"],
     participantRoles: { sourceId: "A", originalTargetIds: ["B", "C", "D"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "C", activeResolverId: "C", parentParticipantId: "B", participantIds: ["C", "D"] },
+    rootOrigin: { frameId: "group-frame", stage: "GROUP_RESOLUTION", sourceId: "A", effect: "Raining Arrows", targetIds: ["B", "C", "D"] },
     continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" },
   });
 

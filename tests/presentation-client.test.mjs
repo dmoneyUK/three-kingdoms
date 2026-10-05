@@ -572,6 +572,39 @@ test("Interaction Stage renders Group participants and child Damage/Dying contin
   assert.equal(dying.parentFrameId, "damage-frame");
 });
 
+test("Interaction Stage resolves immutable root-origin identities from a proven child frame", () => {
+  const rootOrigin = { frameId: "root-frame", stage: "NEGATION", sourceId: "A", effect: "Borrowed Sword", targetIds: ["B"] };
+  const input = snapshot({
+    interaction: scene({
+      sourceId: "B",
+      targetIds: ["C"],
+      currentParticipantId: "C",
+      decisionActorId: "B",
+      activeResolverId: "B",
+      participantRoles: { sourceId: "B", originalTargetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: "C", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: [] },
+      parentFrameId: "root-frame",
+      rootOrigin,
+      continuity: { relation: "CHILD_FRAME", parentFrameId: "root-frame" },
+    }),
+    stable: { ...snapshot().stable, decisionActorId: "B" },
+  });
+  const view = buildPresentationClientView(input, "D");
+  assert.deepEqual(view.rootOrigin, rootOrigin);
+  const stage = buildInteractionStageView(view, resolveDisplayName);
+  assert.deepEqual(stage.rootOrigin, {
+    frameId: "root-frame",
+    stage: "NEGATION",
+    source: { id: "A", name: "Ma Chao", known: true },
+    effect: "Borrowed Sword",
+    targets: [{ id: "B", name: "Zhao Yun", known: true }],
+  });
+
+  const incoherent = buildPresentationClientView(snapshot({
+    interaction: scene({ parentFrameId: "root-frame", rootOrigin: { ...rootOrigin, frameId: "other-frame" }, continuity: { relation: "CHILD_FRAME", parentFrameId: "root-frame" } }),
+  }), "B");
+  assert.equal(incoherent.hasInteraction, false, "a root-origin frame that disagrees with the typed root fails closed");
+});
+
 test("Interaction Stage public content is viewer-equal while only the local marker differs", () => {
   const acting = buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName);
   const uninvolved = buildInteractionStageView(buildPresentationClientView(snapshot({ localControl: { ...snapshot().localControl, actorId: null, entitled: false } }), "C"), resolveDisplayName);

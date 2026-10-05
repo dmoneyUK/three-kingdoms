@@ -21,6 +21,7 @@ export type PresentationClientView = {
   decisionActorId: string | null;
   activeResolverId: string | null;
   participantIds: readonly string[];
+  rootOrigin?: NonNullable<PresentationInteractionScene["rootOrigin"]>;
   continuity: InteractionSceneContinuity;
   parentFrameId: string | null;
   stableKind: PresentationStableBoundaryKind;
@@ -62,6 +63,13 @@ export type InteractionStageView = {
   currentParticipant: PresentationDisplayIdentity;
   decisionActor: PresentationDisplayIdentity;
   activeResolver: PresentationDisplayIdentity;
+  rootOrigin?: {
+    frameId: string;
+    stage: PresentationInteractionScene["stage"];
+    source: PresentationDisplayIdentity;
+    effect: string;
+    targets: readonly PresentationDisplayIdentity[];
+  };
   continuity: InteractionSceneContinuity;
   parentFrameId: string | null;
   stableKind: PresentationStableBoundaryKind;
@@ -194,6 +202,19 @@ function isContinuity(value: unknown): value is InteractionSceneContinuity {
     && (continuity.parentFrameId === null || isString(continuity.parentFrameId));
 }
 
+function isRootOrigin(value: unknown, scene: PresentationInteractionScene): value is NonNullable<PresentationInteractionScene["rootOrigin"]> {
+  if (!value || typeof value !== "object") return false;
+  const origin = value as Partial<NonNullable<PresentationInteractionScene["rootOrigin"]>>;
+  return scene.continuity.relation === "CHILD_FRAME"
+    && isString(scene.rootFrameId)
+    && origin.frameId === scene.rootFrameId
+    && origin.frameId !== scene.activeFrameId
+    && isString(origin.stage)
+    && (origin.sourceId === null || isString(origin.sourceId))
+    && isString(origin.effect)
+    && isStringArray(origin.targetIds);
+}
+
 /**
  * The adapter only consumes the typed snapshot authority. It deliberately
  * does not accept room compatibility fields, CurrentAction payloads, or
@@ -216,6 +237,7 @@ function isCoherentSnapshot(snapshot: PresentationSnapshot | null): snapshot is 
     || !isStringArray(scene.activeTargetIds)
     || !isStringArray(scene.participantIds)
     || !isContinuity(scene.continuity)) return false;
+  if (scene.rootOrigin !== undefined && scene.rootOrigin !== null && !isRootOrigin(scene.rootOrigin, scene)) return false;
   if (stable.kind === "REST" || stable.kind === "SETTLEMENT"
     || stable.interactionId !== identity.interactionId
     || stable.checkpointId !== identity.checkpointId
@@ -260,6 +282,7 @@ export function buildPresentationClientView(
     decisionActorId: snapshot.stable.decisionActorId,
     activeResolverId: roles.activeResolverId,
     participantIds: [...roles.participantIds],
+    ...(scene.rootOrigin ? { rootOrigin: { ...scene.rootOrigin, targetIds: [...scene.rootOrigin.targetIds] } } : {}),
     continuity: { ...scene.continuity },
     parentFrameId: scene.parentFrameId,
     stableKind: snapshot.stable.kind,
@@ -344,6 +367,15 @@ export function buildInteractionStageView(
     currentParticipant,
     decisionActor,
     activeResolver,
+    ...(view.rootOrigin ? {
+      rootOrigin: {
+        frameId: view.rootOrigin.frameId,
+        stage: view.rootOrigin.stage,
+        source: displayIdentity(view.rootOrigin.sourceId, "Unknown source", resolvePlayerName),
+        effect: view.rootOrigin.effect,
+        targets: view.rootOrigin.targetIds.map((id) => displayIdentity(id, "Unknown target", resolvePlayerName)),
+      },
+    } : {}),
     continuity: { ...view.continuity },
     parentFrameId: view.parentFrameId,
     stableKind: view.stableKind,

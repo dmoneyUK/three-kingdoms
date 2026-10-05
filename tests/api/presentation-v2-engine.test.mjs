@@ -122,6 +122,16 @@ test("engine-backed Borrowed Sword preserves forced Attack continuation and time
   assert.equal(view.presentationV2.interactionScene?.semantics, "PROVEN");
   assert.equal(view.presentationV2.interactionScene?.continuity.relation, "CHILD_FRAME");
   assert.ok(view.presentationV2.interactionScene?.parentFrameId, "the forced Attack is a child frame of Borrowed Sword");
+  const borrowedSwordRoot = view.causalEnvelope.frames.find((frame) => frame.frameId === view.presentationV2.interactionScene?.rootFrameId);
+  assert.ok(borrowedSwordRoot, "the root origin is backed by an envelope-owned frame");
+  assert.deepEqual(view.presentationV2.interactionScene?.rootOrigin, {
+    frameId: borrowedSwordRoot.frameId,
+    stage: borrowedSwordRoot.stage,
+    sourceId: scenario.source.id,
+    effect: "Borrowed Sword",
+    targetIds: [scenario.holder.id],
+  });
+  assert.deepEqual(view.presentationSnapshot.interaction?.rootOrigin, view.presentationV2.interactionScene?.rootOrigin);
   assert.equal(view.presentationV2.interactionScene?.participantRoles.sourceId, scenario.holder.id);
   assert.deepEqual(view.presentationV2.interactionScene?.participantRoles.originalTargetIds, [scenario.target.id]);
   assert.deepEqual(view.presentationV2.interactionScene?.participantRoles.activeTargetIds, [scenario.target.id]);

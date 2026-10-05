@@ -7,12 +7,14 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-`UX2.4-RANDOM-HAND-SELECTABLE-DETAIL-01` shipped at `16191de7aa01494860837d8263cef828161dc189`. Focused target-card browser checks passed 12/12, focused Retaliation/opaque-key/pendingTargetCard Node checks passed 4/4, and targeted ESLint plus `git diff --check` passed. Exact Actions run `37379800040` for `16191de` completed successfully, including `build-and-test` and `deploy`; current documentation-only HEAD `da47f82` has no separate Actions run observed. `tests/browser/ui19.spec.mjs` remains unchanged.
+`UX2.3-ACTIVE-JUDGEMENT-CURRENT-EFFECT-01` shipped at `e80906dd8630115b6c1dbcb53c853e643e225cbd`. Focused `active-current-effect.spec.mjs` passed 29/29, targeted ESLint and `git diff --check` passed. Exact Actions run `37384283798` for `e80906d` was observed `in progress` at this handoff update; no completion is claimed. `tests/browser/ui19.spec.mjs` remains unchanged.
 
 ## Design checkpoint
 
-Remote design blob `5157af29079cf03f86476b71bc58607a215d6b53` is unchanged. Re-reviewed §0.6.8, §§0.6.4–0.6.6, §§3–3C, §§4–11, §§12.0–12.9, and additions A–C. Proven Judgement scenes expose a public source/effect/current participant and active-target relationship; current UI composition currently supports Attack Response, Negation, Duel, and Dying only.
+Remote design blob `5157af29079cf03f86476b71bc58607a215d6b53` is unchanged. Re-reviewed §§0.6.3–0.6.4, §§0.94–0.105, §11, §§12.3–12.9, and the Borrowed Sword guidance. Proven nested Borrowed Sword Attack scenes expose the holder/current Attack roles and causal parent linkage; the typed client snapshot did not expose the immutable root-frame source/effect/target needed to name the full three-participant path.
 
-## Current task — UX2.3-ACTIVE-JUDGEMENT-CURRENT-EFFECT-01 (implementation complete locally; push/CI pending)
+## Current task — UX2.3-ACTIVE-BORROWED-SWORD-CURRENT-EFFECT-01 (implementation complete locally; push/CI pending)
 
-The Stage now shows Current Effect for `JUDGEMENT` only when the typed public scene proves its source/effect and one active target matching the current participant. Distinct Source → Effect → Target and same-participant cases use accurate public copy; the local participant stays in the Dock, and missing/mismatched proof keeps the existing fallback. The focused `active-current-effect.spec.mjs` passed 29/29; targeted ESLint on `app/page.tsx` and the spec passed with 0 errors (`fixture.jsx` has no matching ESLint config); `git diff --check` passed. Protocol/game rules/private controls and `tests/browser/ui19.spec.mjs` are unchanged. No CI has run for this local change yet.
+The typed public scene now carries root-frame origin only when the root is an ancestor of the proven child frame. The Stage labels `borrowed_sword_attack` as Attack and names the Borrowed Sword source, weapon holder, and forced target only when root-to-holder and active-target/current-participant proof agree; missing or inconsistent root proof retains neutral current-Attack copy. Two-player source/target overlap stays in the Local Dock, duplicate visible decision-owner copy is suppressed, legal controls and rules are unchanged, and `tests/browser/ui19.spec.mjs` is unchanged.
+
+Focused browser coverage passed 35/35 (including 2-player and 390/480/1440px), engine-backed Presentation V2 API coverage passed 26/26, focused projector/client Node coverage passed 75/75, `npm run build` passed, targeted ESLint passed with 0 errors, and `git diff --check` passed. Latest previous Actions run `37384283798` was observed in progress before this task's commit boundary; no CI completion has been observed for the current local change.

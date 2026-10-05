@@ -76,6 +76,83 @@ for (const viewport of [
   { count: 6, width: 480, height: 900, topology: "side-column" },
   { count: 4, width: 1440, height: 900, topology: "top-row" },
 ]) {
+  test(`Borrowed Sword forced Attack names its proven root source, holder, and target at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "borrowed-sword-active" });
+    const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
+    const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p2"]');
+    const effect = stage.locator('[aria-label="Current Effect"]');
+    const target = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p3"]');
+    const summary = stage.locator('[data-stage-event-summary="proven"]');
+
+    await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+    await expect(stage.locator(":scope > header strong")).toHaveText("Attack Response");
+    await expect(summary).toHaveText("Player 1's Borrowed Sword forces Player 2 to Attack Player 3.");
+    await expect(source).toContainText("Player 2");
+    await expect(effect.locator("strong")).toHaveText("Attack");
+    await expect(target).toContainText("Player 3");
+    await expect(stage.locator('[data-medium-participant-player-id="p1"]')).toHaveCount(0);
+    await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
+    await expect(page.locator('.local-player-dock[data-player-anchor="p4"]')).toBeVisible();
+    await expect(stage.locator('[data-hero-focus-player-id="p4"]')).toHaveCount(0);
+    await expect(stage.locator('[data-stage-meta-role="decision"]')).toHaveCount(0);
+
+    const projection = await page.evaluate(() => window.__browserRoom.presentationSnapshot.interaction);
+    expect(projection.rootOrigin).toEqual({
+      frameId: projection.rootFrameId,
+      stage: "NEGATION",
+      sourceId: "p1",
+      effect: "Borrowed Sword",
+      targetIds: ["p2"],
+    });
+    expect(projection.sourceId).toBe("p2");
+    expect(projection.activeTargetIds).toEqual(["p3"]);
+    expect(projection.currentParticipantId).toBe("p3");
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+    const sourceBox = await source.boundingBox();
+    const effectBox = await effect.boundingBox();
+    const targetBox = await target.boundingBox();
+    expect(sourceBox && effectBox && targetBox).toBeTruthy();
+    if (viewport.topology === "side-column") {
+      expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+    } else if (viewport.width <= 650) {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+    } else {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);
+    }
+  });
+}
+
+test("two-player Borrowed Sword keeps the viewer target in the Dock without duplicating it in the Stage", async ({ page }) => {
+  await loadFixture(page, { count: 2, width: 390, height: 844, state: "borrowed-sword-active-two-player" });
+  const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
+  await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+  await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 1's Borrowed Sword forces Player 2 to Attack Player 1.");
+  await expect(stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"] .hero-focus-heading strong')).toHaveText("SOURCE");
+  await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
+  await expect(page.locator('.local-player-dock[data-player-anchor="p1"]')).toBeVisible();
+  await expect(stage.locator('[data-stage-meta-role="decision"]')).toHaveCount(0);
+});
+
+for (const state of ["borrowed-sword-active-no-root", "borrowed-sword-active-mismatch-root"]) {
+  test(`Borrowed Sword forced Attack omits root-source copy when root proof is ${state.endsWith("no-root") ? "missing" : "inconsistent"}`, async ({ page }) => {
+    await loadFixture(page, { count: 4, width: 390, height: 844, state });
+    const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
+    await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+    await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 2 used Attack on Player 3.");
+    await expect(stage).not.toContainText("Borrowed Sword");
+    await expect(page.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
+  });
+}
+
+for (const viewport of [
+  { count: 4, width: 390, height: 844, topology: "top-row" },
+  { count: 6, width: 480, height: 900, topology: "side-column" },
+  { count: 4, width: 1440, height: 900, topology: "top-row" },
+]) {
   test(`proven Duel Current Effect fits ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
     await loadFixture(page, { ...viewport, state: "duel", duelObserver: true });
     const stage = page.locator('[aria-label="Interaction Stage"][data-stage="DUEL_EXCHANGE"]');
