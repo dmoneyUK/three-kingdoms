@@ -496,9 +496,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   constructed from `handCount` because no selectable-object / opaque-position
   projection exists. Keep this picker as the safe fallback until authority can
   support the §12.4 same-Hero-Focus migration.
-- Generic Retaliation does project a semantic `hand` key and public card IDs,
-  but its selector omits the hidden-Hand count and uses generic eligible-card
-  copy. This audit was read-only; no source or tests changed.
+- The original audit found that generic Retaliation omitted the hidden-Hand
+  count and used generic eligible-card copy. That presentation gap was closed
+  by `UX2.4-CONCEALED-HAND-ZONE-SELECTION-CLARITY-01` below; the same-Hero-Focus
+  migration remains open.
+
+### UX2.4-CONCEALED-HAND-ZONE-SELECTION-CLARITY-01 — Random Hand zone semantics
+
+- The shared `target_cards` picker presents the server-projected `hand` key as
+  one random-Hand zone, displays the public Hand count (with bounded backs and
+  overflow), and distinguishes individually selectable public Equipment and
+  Judgement cards. The existing action payload and server-side random card
+  choice remain unchanged; no concealed identity is projected.
+- Focused browser coverage passed 20/20 across the picker and existing UI19
+  cases (UI19 read-only); the two CI-exposed stale Node assertions were updated
+  to semantic zone/name contracts. Exact repair head `fa19635` passed Actions
+  run `37375430748` for both `build-and-test` and `deploy`.
 
 ### UX2.4-GENERIC-HERO-SKILL-ENTRY-01 — Ma Chao Cavalry Dock entry
 

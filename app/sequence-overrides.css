@@ -1810,6 +1810,29 @@
 .hero-focus-preview .hero-focus-heading strong,
 .hero-focus-preview .hero-focus-context { color: #efc36c; }
 
+.hero-focus-selectable-detail {
+  grid-column: 1 / -1;
+  min-width: 0;
+  max-width: 100%;
+  padding-top: 5px;
+  border-top: 1px solid #6f846f66;
+  pointer-events: auto;
+}
+.hero-focus-selectable-detail > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: #d9d0bb; }
+.hero-focus-selectable-detail > header strong { color: #a8c8b1; font: 700 7px/1.2 Arial, sans-serif; letter-spacing: .14em; }
+.hero-focus-selectable-detail > header span { color: #efc36c; font: 700 8px/1.2 Arial, sans-serif; }
+.hero-focus-selectable-detail > header small { color: #b7c6b1; font: 8px/1.2 Arial, sans-serif; }
+.hero-focus-selectable-detail-row { justify-content: flex-start; gap: 8px; width: 100%; box-sizing: border-box; overflow-x: auto; overscroll-behavior-x: contain; padding: 9px 4px 11px; touch-action: pan-x; }
+.hero-focus-selectable-detail-row .target-card-picker-card { pointer-events: auto; }
+.hero-focus-selectable-detail > .target-card-picker-count { padding: 0 3px; text-align: left; }
+@media (max-width: 480px) {
+  .hero-focus-selectable-detail > header { gap: 3px 6px; }
+  .hero-focus-selectable-detail > header small { flex-basis: 100%; }
+  .hero-focus-selectable-detail-row { gap: 6px; padding: 7px 3px 9px; }
+  .hero-focus-selectable-detail-row .target-card-picker-card { flex-basis: 76px; width: 76px; height: 108px; }
+  .hero-focus-selectable-detail-row .target-card-picker-card.random-hand-zone { flex-basis: 138px; width: 138px; padding: 7px; }
+}
+
 /* ACTIVE Attack Response/Negation and current-participant Duel present only
    effects and focus proven by the public Stage. Local Inspect/Preview stays unlinked. */
 .interaction-stage-current-effect-flow { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 4px; min-width: 0; }

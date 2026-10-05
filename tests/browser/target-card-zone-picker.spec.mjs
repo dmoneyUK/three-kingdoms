@@ -3,9 +3,9 @@ import { expect, test } from "@playwright/test";
 async function loadPicker(page, { width, height = 844, handCount = 4 }) {
   await page.setViewportSize({ width, height });
   await page.goto(`/tests/browser/fixture.html?state=picker-hand-zone&count=4&targetHandCount=${handCount}`);
-  const dialog = page.getByRole("dialog", { name: "Retaliation target card selection" });
-  await expect(dialog).toBeVisible();
-  return dialog;
+  const focus = page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]');
+  await expect(focus).toBeVisible();
+  return focus;
 }
 
 for (const viewport of [
@@ -13,12 +13,14 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`concealed Hand count and zone choice remain readable at ${viewport.width}px`, async ({ page }) => {
-    const dialog = await loadPicker(page, viewport);
-    const handZone = dialog.locator('[data-target-card-zone="hand"]');
-    const row = dialog.locator(".target-card-picker-card-row");
+  test(`Hero Focus selectable detail and concealed Hand remain readable at ${viewport.width}px`, async ({ page }) => {
+    const focus = await loadPicker(page, viewport);
+    const detail = focus.getByRole("group", { name: "Selectable Detail" });
+    const handZone = detail.locator('[data-target-card-zone="hand"]');
+    const row = detail.locator(".target-card-picker-card-row");
 
-    await expect(dialog.locator("header span")).toHaveText("Choose where to obtain 1 card");
+    await expect(detail.locator("header strong")).toHaveText("SELECTABLE DETAIL");
+    await expect(detail.locator("header small")).toHaveText("Choose where to obtain 1 card");
     await expect(handZone).toHaveCount(1);
     await expect(handZone).toHaveAccessibleName("Hand ×4 · Random card");
     await expect(handZone).toContainText("Hand ×4");
@@ -29,14 +31,14 @@ for (const viewport of [
     expect(targetProjection.handCount).toBe(4);
     expect(targetProjection.handCards ?? []).toEqual([]);
 
-    const publicEquipment = dialog.locator('[data-target-card-zone="equipment"]');
-    const publicJudgement = dialog.locator('[data-target-card-zone="judgement"]');
+    const publicEquipment = detail.locator('[data-target-card-zone="equipment"]');
+    const publicJudgement = detail.locator('[data-target-card-zone="judgement"]');
     await expect(publicEquipment).toHaveCount(1);
     await expect(publicEquipment).toHaveAttribute("aria-label", /^Equipment: /);
     await expect(publicJudgement).toHaveCount(1);
     await expect(publicJudgement).toHaveAttribute("aria-label", /^Judgement: /);
 
-    const bounds = await dialog.evaluate((element) => {
+    const bounds = await focus.evaluate((element) => {
       const box = element.getBoundingClientRect();
       return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
     });
@@ -53,28 +55,59 @@ for (const viewport of [
 }
 
 test("large concealed Hands keep the exact public count without expanding into many selectable cards", async ({ page }) => {
-  const dialog = await loadPicker(page, { width: 390, handCount: 10 });
-  const handZone = dialog.locator('[data-target-card-zone="hand"]');
+  const focus = await loadPicker(page, { width: 390, handCount: 10 });
+  const detail = focus.getByRole("group", { name: "Selectable Detail" });
+  const handZone = detail.locator('[data-target-card-zone="hand"]');
 
   await expect(handZone).toHaveAccessibleName("Hand ×10 · Random card");
   await expect(handZone).toContainText("Hand ×10");
   await expect(handZone.locator(".target-card-picker-hand-back")).toHaveCount(6);
   await expect(handZone.locator(".target-card-picker-hand-overflow")).toHaveText("+4");
-  await expect(dialog.locator('[data-target-card-zone="hand"]')).toHaveCount(1);
+  await expect(detail.locator('[data-target-card-zone="hand"]')).toHaveCount(1);
 });
 
-test("selecting the concealed Hand submits its one existing semantic key", async ({ page }) => {
-  const dialog = await loadPicker(page, { width: 390 });
-  const handZone = dialog.locator('[data-target-card-zone="hand"]');
+test("Local Dock Confirm submits the concealed Hand's existing semantic key exactly once", async ({ page }) => {
+  const focus = await loadPicker(page, { width: 390 });
+  const detail = focus.getByRole("group", { name: "Selectable Detail" });
+  const handZone = detail.locator('[data-target-card-zone="hand"]');
 
   await handZone.click();
   await expect(handZone).toHaveAttribute("aria-pressed", "true");
-  await expect(dialog.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
-  await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+  await expect(detail.locator(".target-card-picker-count")).toHaveText("1 / 1 selected");
+  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
 
   await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
     { action: "trigger", extra: { providerId: "browser_retaliation_zone", cardKeys: ["hand"] } },
   ]);
+});
+
+test("Local Dock Cancel clears only local detail while Skip remains authoritative", async ({ page }) => {
+  const focus = await loadPicker(page, { width: 390 });
+  const handZone = focus.locator('[data-target-card-zone="hand"]');
+  const dock = page.locator('[data-console-surface="local-operation"]');
+  const stage = page.locator(".interaction-stage");
+  const publicStageBefore = await stage.evaluate((element) => ({
+    revision: element.getAttribute("data-presentation-revision"),
+    interaction: element.getAttribute("data-interaction-id"),
+    stage: element.getAttribute("data-stage"),
+  }));
+
+  await expect(dock.getByRole("button", { name: "Cancel" })).toBeVisible();
+  await expect(dock.getByRole("button", { name: "Skip" })).toBeVisible();
+  await handZone.click();
+  expect(await stage.evaluate((element) => ({
+    revision: element.getAttribute("data-presentation-revision"),
+    interaction: element.getAttribute("data-interaction-id"),
+    stage: element.getAttribute("data-stage"),
+  }))).toEqual(publicStageBefore);
+  await dock.getByRole("button", { name: "Cancel" }).click();
+  await expect(handZone).toHaveAttribute("aria-pressed", "false");
+  expect(await page.evaluate(() => window.__browserActions.filter((entry) => ["trigger", "decline_trigger"].includes(entry.action)))).toEqual([]);
+
+  await dock.getByRole("button", { name: "Skip" }).click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "decline_trigger").map((entry) => entry.action))).toEqual(["decline_trigger"]);
 });
 
 for (const { zone, key } of [
@@ -82,20 +115,42 @@ for (const { zone, key } of [
   { zone: "judgement", key: "browser-public-judgement" },
 ]) {
   test(`public ${zone} remains an individually selectable physical card`, async ({ page }) => {
-    const dialog = await loadPicker(page, { width: 390 });
-    const publicCard = dialog.locator(`[data-target-card-zone="${zone}"]`);
-    const handZone = dialog.locator('[data-target-card-zone="hand"]');
+    const focus = await loadPicker(page, { width: 390 });
+    const detail = focus.getByRole("group", { name: "Selectable Detail" });
+    const publicCard = detail.locator(`[data-target-card-zone="${zone}"]`);
+    const handZone = detail.locator('[data-target-card-zone="hand"]');
 
     await publicCard.click();
     await expect(publicCard).toHaveAttribute("aria-pressed", "true");
     await expect(handZone).toHaveAttribute("aria-pressed", "false");
-    await dialog.getByRole("button", { name: "Use Retaliation" }).click();
+    await page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" }).click();
 
     await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
       { action: "trigger", extra: { providerId: "browser_retaliation_zone", cardKeys: [key] } },
     ]);
   });
 }
+
+test("a new action revision clears local selectable-detail input", async ({ page }) => {
+  const focus = await loadPicker(page, { width: 390 });
+  const handZone = focus.locator('[data-target-card-zone="hand"]');
+  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+
+  await handZone.click();
+  await expect(handZone).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.__setBrowserActionRevision("browser-picker-hand-zone-new-action"));
+  await expect(handZone).toHaveAttribute("aria-pressed", "false");
+  await expect(confirm).toBeDisabled();
+});
+
+test("opaque per-hand keys stay on the retained target-card picker", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/fixture.html?state=picker&count=4");
+
+  await expect(page.getByRole("dialog", { name: "Retaliation target card selection" })).toBeVisible();
+  await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Hidden hand card 1" })).toBeVisible();
+});
 
 test("picker fixture changes preserve baseline public Equipment for Inspect", async ({ page }) => {
   await page.setViewportSize({ width: 480, height: 900 });

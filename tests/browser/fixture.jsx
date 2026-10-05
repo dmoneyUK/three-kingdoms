@@ -404,4 +404,9 @@ window.__setBrowserHandIds = (ids) => {
   window.__browserRoom = fixtureRoom;
   renderFixture();
 };
+window.__setBrowserActionRevision = (actionRevision) => {
+  fixtureRoom = { ...fixtureRoom, actionRevision };
+  window.__browserRoom = fixtureRoom;
+  renderFixture();
+};
 renderFixture();
