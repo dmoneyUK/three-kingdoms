@@ -831,7 +831,7 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(picker().length, 1, "activating Retaliation opens the picker");
   assert.equal(actionCalls.filter(([actionName]) => actionName === "trigger").length, 0, "activation does not submit the trigger");
 
-  const eligibleCard = button(renderer, { "aria-label": "Hand" });
+  const eligibleCard = button(renderer, { "data-target-card-zone": "hand" });
   assert.equal(eligibleCard.props["aria-pressed"], false);
   await act(async () => { eligibleCard.props.onClick(); });
   assert.equal(button(renderer, { children: "Use Retaliation" }).props.disabled, false);
@@ -840,16 +840,16 @@ test("Sima Yi Retaliation activates before opening target-card selection", async
   assert.equal(picker().length, 0, "clicking active Retaliation cancels the picker");
   await act(async () => { skillButton().props.onClick(); });
   assert.equal(picker().length, 1);
-  assert.equal(button(renderer, { "aria-label": "Hand" }).props["aria-pressed"], false, "re-entry clears selected zones");
+  assert.equal(button(renderer, { "data-target-card-zone": "hand" }).props["aria-pressed"], false, "re-entry clears selected zones");
 
-  await act(async () => { button(renderer, { "aria-label": "Hand" }).props.onClick(); });
+  await act(async () => { button(renderer, { "data-target-card-zone": "hand" }).props.onClick(); });
   const revisedRoom = retaliationRoom("retaliation-ui-revision-2");
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room: revisedRoom, onRecover: () => {} }, React.createElement(GameRoom, { room: revisedRoom, busy: false, error: "", onAction: action, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(picker().length, 0, "a new action revision clears active Retaliation");
   await act(async () => { skillButton().props.onClick(); });
-  assert.equal(button(renderer, { "aria-label": "Hand" }).props["aria-pressed"], false, "a new action revision clears stale selection");
-  await act(async () => { button(renderer, { "aria-label": "Hand" }).props.onClick(); });
+  assert.equal(button(renderer, { "data-target-card-zone": "hand" }).props["aria-pressed"], false, "a new action revision clears stale selection");
+  await act(async () => { button(renderer, { "data-target-card-zone": "hand" }).props.onClick(); });
   await act(async () => { button(renderer, { children: "Use Retaliation" }).props.onClick(); });
   assert.deepEqual(actionCalls.at(-1), ["trigger", { providerId: "sima_yi_fankui", cardKeys: ["hand"] }]);
 
