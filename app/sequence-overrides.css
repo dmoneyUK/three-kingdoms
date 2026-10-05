@@ -2198,7 +2198,7 @@
    Equal tracks provide the 480px margins/gaps without clipping; seat order and
    vertical safe-zone geometry stay fixed while horizontal anchors adapt. */
 @media (max-width: 650px) {
-  .game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] {
+.game-shell .player-board[data-seat-topology="top-row"][data-player-count="4"] {
     inset-inline: clamp(8px, 2.5vw, 16px);
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 9px;
@@ -2479,5 +2479,23 @@
 @media (max-width: 650px) {
   .game-shell .player-board[data-seat-topology="top-row"] .opponent-hero-portrait .hero-art-image {
     object-position: center 20%;
+  }
+}
+
+/* UX2.3: keep the fixed top-right response timer above the 10-player Side
+   Column seats and Stage by reserving a lane only while that timer is present. */
+.game-shell .play-table[data-seat-topology="side-column"]:has(> .visible-countdown-response) > .player-board[data-player-count="10"] {
+  inset-block-start: 64px;
+}
+.game-shell .play-table[data-seat-topology="side-column"]:has(> .visible-countdown-response) > .interaction-safe-zone {
+  inset-block-start: 64px;
+}
+
+@media (max-width: 520px) {
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .visible-countdown-response) > .player-board[data-player-count="10"] {
+    inset-block-start: 50px;
+  }
+  .game-shell .play-table[data-seat-topology="side-column"]:has(> .visible-countdown-response) > .interaction-safe-zone {
+    inset-block-start: 50px;
   }
 }

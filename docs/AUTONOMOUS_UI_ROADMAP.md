@@ -393,8 +393,10 @@ than restart them.
   `Target` contract, without changing production or gameplay behavior. The
   local CI-equivalent `CI=1 npm test` completed successfully: build passed,
   fast tests 203/203, and API tests 248/248. Targeted ESLint and
-  `git diff --check` passed. GitHub Actions validation for this repair has not
-  yet been triggered; do not mark CI green until its exact pushed SHA passes.
+  `git diff --check` passed. The repair was pushed as `b666335`; exact Actions
+  run `37330805764` completed successfully on 2026-10-05, including the
+  build-and-test and deploy/smoke-test jobs. This closes the CI-recovery entry;
+  the successful result applies to that exact pushed revision.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

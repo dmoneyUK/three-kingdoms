@@ -53,6 +53,79 @@ test("UX2.3 response timer is glanceable, urgent near expiry, and stays top-righ
   expect(criticalBorder).not.toBe(urgentBorder);
 });
 
+test("UX2.3 response timer stays clear of 10-player Side Column content for an observer", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
+  await page.setViewportSize({ width: 480, height: 900 });
+  await page.goto("/tests/browser/fixture.html?state=negation&count=10&timedResponse=1&timedObserver=1");
+
+  const table = page.locator('.play-table[data-seat-topology="side-column"]');
+  const timer = table.locator(":scope > .visible-countdown-response");
+  const stage = table.locator('.interaction-stage[data-stage="NEGATION"]');
+  await expect(table.locator('.player-board[data-player-count="10"]')).toBeVisible();
+  await expect(timer).toBeVisible();
+  await expect(timer).toHaveAttribute("role", "timer");
+  await expect(timer).toHaveAttribute("aria-label", /^Response Time \d+ seconds$/);
+  await expect(timer).toContainText("Response Time");
+  await expect(timer).not.toContainText(/Player\s+\d/i);
+  await expect(stage).toBeVisible();
+  await expect(stage).not.toContainText("Player 4");
+  await expect(page.locator('[data-action-slot="primary"] button, [data-action-slot="decline"] button')).toHaveCount(0);
+
+  const observer = await page.evaluate(() => ({
+    actionPlayerId: window.__browserRoom.actionPlayerId,
+    currentAction: window.__browserRoom.currentAction,
+    handCount: window.__browserRoom.myHand.length,
+  }));
+  expect(observer.actionPlayerId).toBeNull();
+  expect(observer.currentAction.kind).toBe("response");
+  expect(observer.currentAction.actorId).toBeNull();
+  expect(observer.currentAction.deadline).toBeGreaterThan(0);
+  expect(observer.currentAction.legalActions).toEqual([]);
+  expect(observer.currentAction).not.toHaveProperty("options");
+  expect(observer.handCount).toBe(0);
+
+  const geometry = await page.evaluate(() => {
+    const bounds = (element) => {
+      const { left, right, top, bottom } = element.getBoundingClientRect();
+      return { left, right, top, bottom };
+    };
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && box.width > 0 && box.height > 0;
+    };
+    const table = document.querySelector('.play-table[data-seat-topology="side-column"]');
+    const timer = table.querySelector(":scope > .visible-countdown-response");
+    const dock = document.querySelector(".local-player-dock");
+    const stage = table.querySelector('.interaction-stage[data-stage="NEGATION"]');
+    const stageContent = [...stage.querySelectorAll(":scope > header, .interaction-stage-event-summary, .medium-participant-card, .interaction-stage-current-effect, .current-effect-arrow, .hero-focus, .reaction-chain")]
+      .filter(visible).map(bounds);
+    const overlaps = (left, right) => Math.min(left.right, right.right) > Math.max(left.left, right.left)
+      && Math.min(left.bottom, right.bottom) > Math.max(left.top, right.top);
+    return {
+      timer: bounds(timer), table: bounds(table), dock: bounds(dock),
+      seats: [...table.querySelectorAll('.player-board[data-player-count="10"] [data-player-anchor]')].map((seat) => ({ id: seat.dataset.playerAnchor, ...bounds(seat) })),
+      stageContent,
+      seatOverlaps: [...table.querySelectorAll('.player-board[data-player-count="10"] [data-player-anchor]')]
+        .flatMap((seat) => [seat, ...seat.querySelectorAll("*")]
+          .filter(visible)
+          .filter((element) => overlaps(bounds(timer), bounds(element)))
+          .map((element) => ({ id: seat.dataset.playerAnchor, className: typeof element.className === "string" ? element.className : element.tagName, bounds: bounds(element) }))),
+      stageOverlaps: stageContent.filter((content) => overlaps(bounds(timer), content)),
+    };
+  });
+  expect(geometry.timer.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.timer.right).toBeLessThanOrEqual(480);
+  expect(Math.abs(geometry.timer.right - geometry.table.right + 8)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.timer.top - geometry.table.top - 8)).toBeLessThanOrEqual(1);
+  expect(geometry.timer.bottom).toBeLessThanOrEqual(geometry.dock.top);
+  expect(geometry.seats).toHaveLength(9);
+  expect(Math.min(...geometry.seats.map((seat) => seat.top))).toBeGreaterThanOrEqual(geometry.timer.bottom);
+  expect(geometry.stageContent.length).toBeGreaterThan(0);
+  expect(geometry.seatOverlaps, JSON.stringify({ timer: geometry.timer, overlaps: geometry.seatOverlaps }, null, 2)).toEqual([]);
+  expect(geometry.stageOverlaps, JSON.stringify({ timer: geometry.timer, overlaps: geometry.stageOverlaps }, null, 2)).toEqual([]);
+});
+
 test("UX2.3 response timer describes the shared window without exposing its responder", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
   await page.setViewportSize({ width: 480, height: 900 });
