@@ -702,6 +702,16 @@ decision.actorId = B
 
 Never flash Waiting for C -> Waiting for D -> Waiting for B.
 
+The engine may still know an internal/private decision actor that must not be
+named in the shared public presentation. In an **open/non-directed response
+window** (for example a Negation opportunity where multiple players may be
+eligible), public UI must not reveal which specific player currently has a
+private response option or which private scan/decision slot is active. Public
+presentation uses a neutral waiting state such as `Waiting for response...`.
+A named decision actor is shown publicly only when the rules/state already make
+that actor public (for example a directed Dodge requirement, Duel responder, or
+explicit rescue actor).
+
 ### 0.9 CHOICE is viewer-projected
 
 One authoritative CHOICE checkpoint can look different by viewer.
@@ -715,12 +725,23 @@ Respond with Dodge
 [Dodge] [Skip]
 ~~~
 
-A/C/D see:
+A/C/D see, when B is already a **publicly designated** responder:
 
 ~~~text
 A -- Attack --> B
 Waiting for B...
 ~~~
+
+For an open/non-directed response window, every non-owning viewer instead sees
+the same neutral public state:
+
+~~~text
+Negation response window open
+Waiting for response...
+~~~
+
+The viewer who privately owns a legal response sees their own options only in
+the Local Player Dock. Public presentation must not reveal that eligibility.
 
 Do not create separate authoritative LOCAL_CHOICE and WAITING_FOR_OTHER_PLAYER states merely for viewer presentation.
 
@@ -3726,15 +3747,28 @@ What differs by viewer is only private/local presentation such as:
 - local Confirm / Cancel / Skip controls,
 - local guidance.
 
-A viewer who does not own the current decision must see only a public status such as:
+A viewer who does not own the current decision sees only information that is
+already public.
+
+For a **publicly directed** decision, a named status is allowed:
 
 ```text
 Waiting for C...
 ```
 
-They must not see C's private response options.
+For an **open/non-directed** response window, do not name the current private
+responder/scan actor:
 
-Only after C submits a public action does that action become a visible Reaction Chain node.
+```text
+Negation response window open
+Waiting for response...
+```
+
+They must not see another player's private response options or learn that a
+specific player has an eligible provider/card merely because the server is
+currently offering that private action.
+
+Only after a player submits a public action does that action become a visible Reaction Chain node.
 
 ### Root event must remain visible
 
@@ -3773,19 +3807,17 @@ and do not normally show aggregate noise such as:
 3 players passed
 ```
 
-Instead, while a response window is open, show only the current decision actor:
+Instead, while an open/non-directed response window is active, keep one neutral
+public pending node:
 
 ```text
-Waiting for D...
+Negation response window open
+Waiting for response...
 ```
 
-If D declines, advance directly to:
-
-```text
-Waiting for E...
-```
-
-without leaving a visible Pass node.
+Private scan/decision ownership may advance internally from D to E without
+changing that public text. Do not expose that movement unless the rules already
+make the responder identity public. No visible Pass node is left behind.
 
 Pass / decline state may still be retained internally by the engine because it is required to advance response windows correctly.
 
@@ -3819,7 +3851,7 @@ A · Attack → B
 ①–④ Earlier interaction ▸
 ⑤ B · Skill                   ✓
 ⑥ C · Negation                ✓
-⑦ D · deciding               ▶
+⑦ Waiting for response...     ▶
 ```
 
 ### Target redirection
@@ -4749,7 +4781,212 @@ position.
 Any required server/presentation projection is a separate semantic task from
 the visual consumer.
 
-### 12.7 Final UX2 visual gate
+### 12.7 Fast Response Interaction Stage — mobile decision clarity
+
+This is a Reviewer-approved visual/information contract for short timed
+response windows such as Negation, Dodge, Duel responses, rescue, and similar
+blocking choices.
+
+The visual reference is a design target, **not** a pixel-copy task. Preserve
+the repository's existing semantic architecture, artwork, topology and Local
+Dock contracts. The goal is to reduce cognitive load so that, during a roughly
+20–25 second response window, the viewer can answer within the first 1–2
+seconds:
+
+1. **What just happened?**
+2. **What is the game waiting for now?**
+3. **What can I do?**
+
+#### 12.7.1 Information ownership — one primary expression per fact
+
+Avoid repeating the same semantic fact in multiple boxes.
+
+~~~text
+Seat Thumbnail
+= who/where + lightweight public status
+
+Interaction Stage
+= what public event is happening now
+
+Reaction Chain
+= why the unresolved event reached the current public state
+
+Local Player Dock
+= what this viewer can privately do now
+
+Response Timer
+= how long the current timed window remains
+~~~
+
+The same Hero may appear both in a fixed Seat Thumbnail and as an event-focus
+Hero because those surfaces answer different questions. But do not additionally
+repeat that same identity as `FOCUS`, `CURRENT PARTICIPANT`, `SOURCE`,
+`DECISION`, and similar metadata when the visual relationship already makes
+the fact clear.
+
+#### 12.7.2 Player-facing vocabulary
+
+Internal component/type names may remain technical. Player-facing copy should
+use gameplay language.
+
+Do not normally expose these labels as UI chrome:
+
+- `INTERACTION STAGE`;
+- `HERO FOCUS`;
+- `CURRENT PARTICIPANT`;
+- `PUBLIC CAUSAL CONTEXT`;
+- `DECISION PlayerX` when the actor is not already public.
+
+Prefer short gameplay terms only when useful:
+
+- `Target`;
+- `Source`;
+- `Negation Response`;
+- `Waiting for response...`;
+- `Your response`;
+- `Play Negation or Skip.`
+
+Do not add a label merely because an internal field exists.
+
+#### 12.7.3 Element-by-element screen contract
+
+| Element | Screen position | Required design / modification | Intended effect |
+| --- | --- | --- | --- |
+| **Global top bar** | very top of game UI | Keep thin and quiet. Global/menu identity may remain at left; reserve the right side for the timed-window module. Do not repeat source/target/decision facts here. | Separates global chrome from the current event. |
+| **Response Timer Module** | fixed top-right, above opponent/event content | Use a compact **hourglass icon + short label + large numeric badge**, e.g. `⌛ Response Time 25s`. Show only for an authoritative timed decision/response window. | Time remaining is immediately discoverable without scanning the Stage. |
+| **Timer urgency** | inside the same top-right module | Strengthen urgency as time decreases using restrained contrast/glow/pulse. Keep normal time calm; near expiry becomes visibly urgent. Exact thresholds are implementation-tuned, not gameplay constants. | Player can sense urgency without repeatedly reading the number. |
+| **Timer privacy** | semantic rule for the timer | Timer represents the **window**, not a private responder. Never label an open response timer `Player3 time` or otherwise reveal hidden eligibility. | Prevents timer chrome from leaking private response information. |
+| **Opponent Seat Row / Columns** | above/around the Stage according to existing Top Row / Side Column topology | Keep established fixed seats. Show recognizable Hero art, identity, HP, Hand count, public Equipment/status. Do not add long source/target/decision text. | Seats stay a fast table/topology reference. |
+| **Seat event styling** | border/badge/glow on the existing seat | Preserve layered turn/target/decision/local-selection states through compact visual channels. Avoid new text panels. | Event state remains visible without crowding the centre. |
+| **Interaction Safe Zone** | large centre between Seats and Local Dock | Keep substantial breathing room. Prefer an open battlefield/event composition over a dashboard of nested metadata boxes. | The eye is drawn to the current event, not implementation data. |
+| **Event title** | top of the Stage | Use one large player-readable title such as **NEGATION RESPONSE**. Do not use architectural headings. | First glance answers “what phase/event is this?” |
+| **Event summary sentence** | directly under the title | One short natural-language line, e.g. `Player1 used Something Out of Nothing on Cao Cao.` Mildly emphasize source/effect/target if useful. | Second glance explains what happened without decoding labels. |
+| **Primary Target Hero** | central/upper Stage, dominant participant | Show the currently important external target/resolving Hero as the largest participant card. A small `Target` tag is enough when needed. Hero art, name and HP are primary. | Instantly communicates who the current effect concerns. |
+| **Target de-duplication** | around the primary Hero | If the large Hero already communicates Cao Cao as target/current participant, do not repeat `FOCUS Cao Cao` or `CURRENT PARTICIPANT Cao Cao` below it. | Removes the current screen's strongest duplication. |
+| **Source** | upstream/left in wide mode; above in narrow mode | Use a smaller Source chip/Medium Participant Card. It may include compact Hero art, but it is visually subordinate to the current target/resolving focus. | Preserves cause without creating two competing large Heroes. |
+| **Directional cue** | between Source / Effect / Target | Use one restrained arrow/energy line. Horizontal in wide Top Row geometry; vertical in narrow Side Column geometry. | Relationship is understood visually instead of through repeated prose. |
+| **Current Effect** | between Source and Target or as first Reaction step | Preserve the real card/skill/effect identity with its existing art/icon where practical. | Player sees “who used what on whom”. |
+| **Vertical Reaction Chain** | Stage middle/lower area | Mobile portrait defaults to a vertical flow. Avoid two dense side-by-side columns for Root/Active. | Matches temporal/causal reading order and narrow screens. |
+| **Reaction Step 1 — Root** | top of vertical chain | Show the meaningful root effect, e.g. `Original Effect · Something Out of Nothing`. Do not repeat all Source/Target metadata already shown above. | Root context remains visible with less noise. |
+| **Reaction Step 2 — Open Window** | below Root | Show the public state, e.g. `Negation Window · A Negation may be played now.` | Explains why resolution is paused. |
+| **Reaction Step 3 — Pending** | current/bottom node | Show a visibly current state such as `Waiting for response...`, optionally with a small hourglass/current marker. | A pending screen looks intentionally active, not frozen. |
+| **Open-window privacy** | all public Stage/Reaction surfaces | For an open/non-directed response window, do **not** show the specific private responder/scan actor. Use neutral waiting copy. Only directed/public responder identities may be named. | Does not leak who has Negation or another eligible private response. |
+| **Pass/decline visibility** | Reaction Chain | Ordinary private Pass/Skip/Decline that creates no independent public effect leaves no Reaction node. Internal scan progression must not create `Waiting for D -> Waiting for E` public churn. | Keeps the chain concise and privacy-safe. |
+| **Battlefield breathing space** | unused Stage area | Leave intentional empty/low-contrast battlefield space. Do not fill it with metadata simply because space is available. | Improves scan speed and visual hierarchy. |
+| **Local Player Dock boundary** | persistent bottom region | Keep a clear structural boundary: public event above, viewer-private operation below. | Public state and private control are immediately distinguishable. |
+| **Local Hero** | Dock left | Keep the existing viewer Hero, HP and Judgement ownership. Do not duplicate the local Hero in the Stage. | Stable “this is me” anchor. |
+| **Skills band** | Dock right-top, before Equipment | Keep skill names readable and actionable when legal; detailed rules stay in Inspect. | High-frequency skills remain discoverable. |
+| **Equipment band** | right of Skills | Preserve stable Weapon / Armour / +1 Horse / -1 Horse objects/slots with compact public/owned identity. | Equipment is quickly understood without consuming Hand space. |
+| **Hand** | Dock right-main | Preserve the completed one-row large-card Hand with overlap/pan. Eligibility comes from CurrentAction. Ineligible cards remain visible but subdued. | The viewer immediately finds usable cards without losing hand context. |
+| **Selected response card** | within Hand | Selected legal response lifts/highlights; the Primary action becomes enabled only when the authoritative selection contract is satisfied. | Clear select -> confirm feedback. |
+| **Private decision strip** | below Hand, above/with actions | Use concise private copy such as **Your response** / **Play Negation or Skip.** Add at most one short helper sentence when genuinely useful. | Directly answers “what can I do?” without duplicating the public Stage. |
+| **No central private-decision duplication** | Stage vs Dock boundary | When the Dock already says `Your response`, remove redundant central `YOUR DECISION`, private actor name, and duplicate response instructions. | Reduces timed-response cognitive load. |
+| **Primary action** | bottom centre-right thumb zone | Confirm/Play/Respond remains the main commit action, visually dominant when enabled. | Fast, repeatable right-thumb operation. |
+| **Authoritative Skip/Decline** | bottom far-right secondary zone | Keep clearly separated from Primary with a measurable gutter. | Reduces accidental irreversible Skip/Decline taps. |
+| **Contextual Cancel** | only where the existing pre-commit rules require it | Do not add a permanent third button to fill space. | Preserves the already-approved control semantics. |
+
+#### 12.7.4 Reference response composition
+
+A representative open Negation response should read approximately as:
+
+~~~text
+[global chrome]                         [⌛ Response Time | 25s]
+
+[Opponent]          [Opponent]          [Opponent]
+
+                 NEGATION RESPONSE
+     Player1 used Something Out of Nothing on Cao Cao.
+
+          [Source]
+         Player1  ----->   [TARGET: Cao Cao]
+                            HP 5/5
+
+                 1  Original Effect
+                    Something Out of Nothing
+                           |
+                           v
+                 2  Negation Window
+                    A Negation may be played now.
+                           |
+                           v
+                 3  Waiting for response...
+
+------------------------------------------------------------
+
+[LOCAL HERO]   [Skills] [Equipment]
+               [large single-row Hand]
+
+Your response
+Play Negation or Skip.
+
+                         [CONFIRM]     [SKIP]
+~~~
+
+This is a hierarchy/layout reference, not a requirement to hard-code names,
+Heroes, card kinds, text widths, or exact pixels.
+
+#### 12.7.5 Public versus private decision identity
+
+A response window must distinguish:
+
+~~~text
+PUBLICLY DIRECTED DECISION
+-> responder identity may be shown if the rules already make it public
+
+OPEN / NON-DIRECTED RESPONSE WINDOW
+-> public Stage shows only neutral waiting state
+-> each eligible viewer sees their own private options in their Local Dock
+-> no other viewer learns who currently has an eligible response/provider
+~~~
+
+Server internals may still use actor/scan ownership to advance the rules. That
+private implementation fact must not automatically become public presentation.
+
+For Negation specifically, the public screen may say:
+
+~~~text
+Negation response window open
+Waiting for response...
+~~~
+
+A viewer who can respond privately sees:
+
+~~~text
+Your response
+Play Negation or Skip.
+~~~
+
+Only when a Negation is actually submitted as a public action does that player's
+identity/action enter the public Reaction Chain.
+
+#### 12.7.6 Fast-response acceptance
+
+Representative browser/visual proof should demonstrate:
+
+- no duplicate Source/Target/Decision identity blocks when the same fact is
+  already expressed by the participant composition;
+- no player-facing `Hero Focus`, `Current Participant`, or
+  `Public Causal Context` chrome in the timed response state;
+- mobile Reaction Chain is vertically scannable and does not collide with the
+  primary Hero/effect;
+- an open Negation window displays a neutral pending state without naming the
+  private responder/scan actor;
+- another viewer cannot infer who has a legal Negation/provider from Stage,
+  timer, seat labels, pending copy, or Reaction Chain;
+- the eligible local viewer still receives their private response guidance and
+  controls in the Local Dock;
+- Response Timer remains clearly visible at the top-right while the Stage and
+  Dock remain usable;
+- timer urgency can strengthen near expiry without obscuring content or
+  interfering with controls;
+- selected response card, Confirm and Skip remain unambiguous in the existing
+  mobile thumb-zone layout;
+- 390px and 480px portrait widths remain the primary visual validation targets,
+  with at least one wider validation;
+- implementation reuses authoritative CurrentAction/Presentation data and does
+  not introduce client-side response legality or card-name special cases.
+
+### 12.8 Final UX2 visual gate
 
 After the bounded stages above, run one final representative UX2 review across:
 
