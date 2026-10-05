@@ -626,15 +626,28 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const hasProvenDuelCurrentEffect = stage.stage === "DUEL_EXCHANGE"
     && publicEffectLabel?.toLowerCase() === "duel"
     && duelParticipantIsActive;
+  const hasProvenJudgementCurrentEffect = stage.stage === "JUDGEMENT"
+    && Boolean(stage.source.id && publicEffectLabel)
+    && stage.activeTargets.length === 1
+    && Boolean(stage.currentParticipant.id)
+    && stage.currentParticipant.id === stage.activeTargets[0]?.id;
   const hasProvenDyingCurrentEffect = stage.stage === "DYING"
     && dyingHandoff.visible
     && Boolean(stage.source.id && publicEffectLabel)
     && stage.activeTargets.length === 1
     && stage.activeTargets[0]?.id === dyingHandoff.dyingPlayer.id;
-  const hasSupportedCurrentEffect = hasSingleTargetCurrentEffect || hasProvenDuelCurrentEffect || hasProvenDyingCurrentEffect;
+  const hasSupportedCurrentEffect = hasSingleTargetCurrentEffect || hasProvenDuelCurrentEffect || hasProvenJudgementCurrentEffect || hasProvenDyingCurrentEffect;
   const currentEffect = display.visible && publicEffectLabel && hasSupportedCurrentEffect
     ? stage.stage === "DUEL_EXCHANGE" ? "Duel" : publicEffectLabel
     : null;
+  const judgementParticipantInDock = Boolean(currentEffect
+    && stage.stage === "JUDGEMENT"
+    && stage.currentParticipant.id
+    && stage.currentParticipant.id === viewerId);
+  const judgementSourceAlreadyPresented = Boolean(currentEffect
+    && stage.stage === "JUDGEMENT"
+    && stage.source.id
+    && (stage.source.id === viewerId || stage.source.id === heroFocus.primary?.id));
   const currentEffectConnectsToFocus = Boolean(currentEffect
     && !hasLocalFocus
     && heroFocus.primary?.id
@@ -660,6 +673,10 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
       && duelSummaryParticipant.known
       ? `Duel between ${stage.source.name} and ${duelSummaryParticipant.name} is in progress.`
       : null
+    : currentEffect && stage.stage === "JUDGEMENT"
+      ? !hasLocalFocus && stage.currentParticipant.known
+        ? `Judgement for ${stage.currentParticipant.name} is resolving.`
+        : null
     : connectedCurrentEffectFocusIsVisible
       && stage.source.id
       && stage.source.known
@@ -676,9 +693,10 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     heroFocus.primary?.id === display.focusTarget.id
     || dyingHandoff.dyingPlayer.id === display.focusTarget.id
   ));
-  const showRoleSummary = display.visible && !isOpenNegationResponse && (hasLocalFocus || !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible));
+  const showRoleSummary = display.visible && !isOpenNegationResponse && !judgementParticipantInDock && (hasLocalFocus || !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible));
   const nonDyingSourceAlreadyVisible = Boolean(!hasLocalFocus && !dyingHandoff.visible && stage.source.id && (
-    showMediumSource && mediumSource?.player.id === stage.source.id
+    judgementSourceAlreadyPresented
+    || (showMediumSource && mediumSource?.player.id === stage.source.id)
     || (!mediumSource
       && heroFocus.visible
       && heroFocus.primary?.id
@@ -716,7 +734,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && !hasLocalFocus
     && display.isViewerDecisionActor
     && !currentEffect;
-  const hideStageArchitecturalChrome = isOpenNegationResponse || connectedCurrentEffectFocusIsVisible;
+  const hideStageArchitecturalChrome = isOpenNegationResponse || connectedCurrentEffectFocusIsVisible || judgementParticipantInDock;
   if (!display.visible && !hasLocalFocus) return null;
   return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
     <header>{!hideStageArchitecturalChrome

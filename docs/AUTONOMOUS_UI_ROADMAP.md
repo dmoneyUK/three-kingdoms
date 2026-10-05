@@ -537,6 +537,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Exact repair Actions run `37364054848` completed successfully for both
   `build-and-test` and `deploy`.
 
+### UX2.3-ACTIVE-JUDGEMENT-CURRENT-EFFECT-01 — Proven Judgement focus
+
+- The Stage consumer now renders Current Effect for a `JUDGEMENT` scene only
+  when public source/effect data and exactly one active target agree with the
+  current participant. Distinct source/subject roles use the established
+  Source → Effect → Target composition; a same-participant Judgement uses
+  neutral copy, avoids duplicate identity panels, and keeps the viewer Hero in
+  the Dock. Missing or mismatched proof remains unlinked/fail-closed.
+- Focused `active-current-effect.spec.mjs` browser coverage passed 29/29,
+  including 390/480/1440px, source-distinct and same-participant views, local
+  Dock ownership, and missing/mismatched authority. Targeted ESLint on the
+  production component and spec had 0 errors (`fixture.jsx` has no matching
+  ESLint config); `git diff --check` passed.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative

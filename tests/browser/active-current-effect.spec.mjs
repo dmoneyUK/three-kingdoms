@@ -1,13 +1,14 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null }) {
   await page.setViewportSize({ width, height });
   const effectQuery = effect ? `&effect=${encodeURIComponent(effect)}` : "";
   const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : "";
   const duelObserverQuery = duelObserver ? "&duelObserver=1" : "";
   const missingDuelParticipantQuery = duelParticipantMissing ? "&duelParticipant=missing" : "";
   const dyingParticipantQuery = dyingParticipant ? `&dyingParticipant=${encodeURIComponent(dyingParticipant)}` : "";
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}`);
+  const judgementParticipantQuery = judgementParticipant ? `&judgementParticipant=${encodeURIComponent(judgementParticipant)}` : "";
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -437,5 +438,93 @@ test("Dying Current Effect fails closed without source/effect/participant agreem
       await expect(stage.locator('[data-dying-handoff="proven"]')).toBeVisible();
     }
     await expect(page.locator('[data-console-surface="local-operation"] button')).toHaveText(["Peach", "Skip"]);
+  }
+});
+
+for (const viewport of [
+  { count: 4, width: 390, height: 844, topology: "top-row" },
+  { count: 6, width: 480, height: 900, topology: "side-column" },
+  { count: 4, width: 1440, height: 900, topology: "top-row" },
+]) {
+  test(`proven Judgement Current Effect fits ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "judgement" });
+    const stage = page.locator('.interaction-stage[data-stage="JUDGEMENT"]');
+    const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
+    const effect = stage.locator('[aria-label="Current Effect"]');
+    const target = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
+    const summary = stage.locator('[data-stage-event-summary="proven"]');
+    await expect(page.locator(".play-table")).toHaveAttribute("data-seat-topology", viewport.topology);
+    await expect(stage).toHaveAttribute("data-current-effect", "Overindulgence");
+    await expect(stage.locator(":scope > header strong")).toHaveText("Judgement");
+    await expect(summary).toHaveText("Judgement for Player 2 is resolving.");
+    await expect(effect.locator("strong")).toHaveText("Overindulgence");
+    await expect(source).toContainText("Player 1");
+    await expect(target).toBeVisible();
+    await expect(target.locator(".hero-focus-heading strong")).toHaveText("Target");
+    await expect(stage.locator(".medium-participant-card")).toHaveCount(1);
+    await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
+    await expect(stage.locator(".medium-participant-arrow")).toHaveCount(1);
+    await expect(stage.locator(".current-effect-arrow")).toHaveCount(1);
+    await expect(stage).not.toContainText("INTERACTION STAGE");
+    await expect(stage).not.toContainText("HERO FOCUS");
+    await expect(stage).not.toContainText("Player 4");
+    await expect(page.locator('.local-player-dock[data-player-anchor="p4"]')).toBeVisible();
+    await expect(stage.locator('[data-hero-focus-player-id="p4"]')).toHaveCount(0);
+    await expect(stage.locator("button")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__browserRoom.currentAction.options)).toBeUndefined();
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+    const [stageBox, sourceBox, effectBox, targetBox, dockBox] = await Promise.all([
+      stage.boundingBox(), source.boundingBox(), effect.boundingBox(), target.boundingBox(), page.locator(".local-player-dock").boundingBox(),
+    ]);
+    expect(stageBox && effectBox && targetBox && dockBox).toBeTruthy();
+    expect(stageBox.x).toBeGreaterThanOrEqual(0);
+    expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+    expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+    if (viewport.topology === "side-column") {
+      expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+    } else if (viewport.width <= 650) {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+    } else {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);
+    }
+  });
+}
+
+test("Judgement Current Effect keeps the local participant in the Dock", async ({ page }) => {
+  await loadFixture(page, { count: 4, width: 390, height: 844, state: "judgement-local" });
+  const stage = page.locator('.interaction-stage[data-stage="JUDGEMENT"]');
+  const localDock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+  await expect(stage).toHaveAttribute("data-current-effect", "Overindulgence");
+  await expect(stage.locator('[aria-label="Current Effect"] strong')).toHaveText("Overindulgence");
+  await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Judgement for Player 1 is resolving.");
+  await expect(localDock).toHaveAttribute("data-interaction-active-target", "true");
+  await expect(localDock).toHaveAttribute("data-interaction-current-participant", "true");
+  await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
+  await expect(stage.locator(".medium-participant-card")).toHaveCount(0);
+  await expect(stage.locator('[data-stage-meta-role="source"], [data-stage-meta-role="focus"]')).toHaveCount(0);
+  await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
+  await expect(stage).not.toContainText("INTERACTION STAGE");
+  await expect(stage).not.toContainText("HERO FOCUS");
+  await expect(page.locator('.player-board [data-player-anchor="p1"]')).toHaveCount(0);
+});
+
+test("Judgement Current Effect fails closed without source/effect/current-participant agreement", async ({ page }) => {
+  for (const missingAuthority of [
+    { source: "none" },
+    { effect: "none" },
+    { judgementParticipant: "missing" },
+    { judgementParticipant: "mismatch" },
+  ]) {
+    await loadFixture(page, { count: 4, width: 480, state: "judgement", ...missingAuthority });
+    const stage = page.locator('.interaction-stage[data-stage="JUDGEMENT"]');
+    await expect(stage).not.toHaveAttribute("data-current-effect");
+    await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+    await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
+    await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
   }
 });
