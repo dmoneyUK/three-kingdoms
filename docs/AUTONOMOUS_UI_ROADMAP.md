@@ -363,7 +363,20 @@ than restart them.
   player-facing `Attack Response` title and `Target` role, including the proven
   event summary. No production, gameplay, server, or protocol behavior changed.
 - The five affected browser cases passed 5/5; targeted ESLint and
-  `git diff --check` passed. CI for the correction is pending after push.
+  `git diff --check` passed. Exact push-triggered run `37325865676` for
+  `ae3f6b8` was observed `in_progress` at the 2026-10-05 planning boundary;
+  no conclusion is inferred.
+
+### UX2.3-FAST-RESPONSE-10P-NEGATION-01 — Ten-player Side Column proof
+
+- Extended the proven Negation Current Effect matrix with a 10-player,
+  480x900 Side Column case. Measured Stage, Source, Effect, Target, and Reaction
+  Chain bounds remain within the central safe zone; the Stage does not overlap
+  the Local Player Dock. Existing assertions retain source/effect/target order,
+  Root-before-Active order, neutral open-window copy, and responder privacy.
+- The Negation Current Effect matrix passed 4/4; targeted ESLint and
+  `git diff --check` passed. Existing responsive CSS met the measured contract,
+  so no production change was required. CI is pending after this task's push.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

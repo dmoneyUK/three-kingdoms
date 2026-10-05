@@ -172,8 +172,9 @@ for (const viewport of [
   { count: 4, width: 390, height: 844, topology: "top-row" },
   { count: 4, width: 1440, height: 900, topology: "top-row" },
   { count: 6, width: 480, height: 900, topology: "side-column" },
+  { count: 10, width: 480, height: 900, topology: "side-column" },
 ]) {
-  test(`proven NEGATION Current Effect fits ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
+  test(`proven NEGATION Current Effect fits ${viewport.count}-player ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
     await loadFixture(page, { ...viewport, state: "active-negation-observer" });
     const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
     const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
@@ -220,9 +221,10 @@ for (const viewport of [
     const sourceBox = await source.boundingBox();
     const effectBox = await effect.boundingBox();
     const targetBox = await target.boundingBox();
+    const chainBox = await chain.boundingBox();
     const stageBox = await stage.boundingBox();
     const dockBox = await page.locator(".local-player-dock").boundingBox();
-    expect(sourceBox && effectBox && targetBox && stageBox && dockBox).toBeTruthy();
+    expect(sourceBox && effectBox && targetBox && chainBox && stageBox && dockBox).toBeTruthy();
     if (viewport.topology === "side-column") {
       expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
       expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
@@ -234,6 +236,16 @@ for (const viewport of [
       expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);
     }
     expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+    if (viewport.count === 10) {
+      const safeZoneBox = await page.locator(".interaction-safe-zone").boundingBox();
+      expect(safeZoneBox).toBeTruthy();
+      for (const [label, box] of [["Stage", stageBox], ["Source", sourceBox], ["Effect", effectBox], ["Target", targetBox], ["Reaction Chain", chainBox]]) {
+        expect(box.x, `${label} left edge stays inside the central safe zone`).toBeGreaterThanOrEqual(safeZoneBox.x - 0.5);
+        expect(box.x + box.width, `${label} right edge stays inside the central safe zone`).toBeLessThanOrEqual(safeZoneBox.x + safeZoneBox.width + 0.5);
+        expect(box.y, `${label} top edge stays inside the central safe zone`).toBeGreaterThanOrEqual(safeZoneBox.y - 0.5);
+        expect(box.y + box.height, `${label} bottom edge stays inside the central safe zone`).toBeLessThanOrEqual(safeZoneBox.y + safeZoneBox.height + 0.5);
+      }
+    }
     const titleBox = await stage.locator(":scope > header").boundingBox();
     const summaryBox = await summary.boundingBox();
     expect(titleBox && summaryBox).toBeTruthy();
