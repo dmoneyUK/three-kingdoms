@@ -1906,8 +1906,18 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     ...(room.isMyTurn && canPlay && currentActionOwnedByViewer ? [{ id: "turn", label: serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play", enabled: (canUseAction(room.currentAction, "play_card") || canUseAction(room.currentAction, "serpent_spear_attack")) && (serpentMode ? canDeclareAttack && serpentSelected.length === 2 && attackTargetsValid : Boolean(card) && (!selectedCanPlayAsAttack || canDeclareAttack && attackTargetsValid) && !(["Dodge", "Negation"].includes(card?.kind ?? ""))), priority: 40 }] : []),
   ];
   const consoleIsDecisionActor = currentActionOwnedByViewer;
+  const negationResponseGuidance = Boolean(
+    consoleIsDecisionActor
+    && canRespond
+    && room.currentAction?.requirement === "negate"
+    && genericResponse
+    && responseDamageAction === "decline_response"
+    && semanticResponseOptions.some((option) => option.satisfies === "negate"),
+  );
   const consoleAuthoritativeDecision = Boolean(room.currentAction && room.currentAction.kind !== "none" && (consoleIsDecisionActor || room.isMyTurn && room.currentAction.kind === "turn" && currentActionOwnedByViewer));
-  const consoleInstruction = consoleIsDecisionActor
+  const consoleInstruction = negationResponseGuidance
+    ? "Play Negation or Skip."
+    : consoleIsDecisionActor
     ? room.currentAction?.kind === "trigger" ? decisionInstruction(room.currentAction, room.currentAction.reason) : decisionPresentation.primaryStatus
     : decisionPresentation.isWaiting
       ? decisionPresentation.supportingInstruction
@@ -1968,7 +1978,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         </section>
       } guidance={
         <div className="console-guidance" data-console-guidance="true">
-          <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>LOCAL CANCEL</b><span>Change your selection before submitting.</span></span>}</div>
+          <div className={`decision-status ${consoleDecision.controlsVisible ? "decision-status-active" : ""}`} data-console-decision-kind={consoleDecision.kind} data-console-coherent={consoleDecision.coherent ? "true" : "false"} data-console-primary={consoleDecision.primary?.label ?? "none"} data-console-primary-enabled={consoleDecision.primary?.enabled ? "true" : "false"} data-console-selection-count={consoleDecision.selectionCount ?? undefined} data-console-local-cancel={consoleDecision.localCancel.visible ? "true" : "false"} data-console-authoritative-decline={consoleDecision.authoritativeDecline ? "true" : "false"} role="status" aria-live="polite" aria-atomic="true"><small>{negationResponseGuidance ? "YOUR RESPONSE" : consoleDecision.controlsVisible ? "YOUR DECISION" : decisionPresentation.isWaiting ? decisionPresentation.primaryStatus : "GAME STATUS"}</small><strong>{consoleDecision.instruction}</strong>{!negationResponseGuidance && consoleDecision.selectionSummary && <em>{consoleDecision.selectionSummary}</em>}{consoleDecision.localCancel.visible && <span className="local-target-selection" data-local-target-selection="true"><b>LOCAL CANCEL</b><span>Change your selection before submitting.</span></span>}</div>
           {invalidResponseState && <p className="error" role="status">Waiting for the latest response state…</p>}
           {(activeSkillSelection || activeSkillTargetSelection) && activeSkillOption?.effectId === "diao_chan_lust" && activeSkillSelectedTargetIds.length > 1 && <small role="status">Lust order: {room.players.find((player) => player.id === activeSkillSelectedTargetIds[0])?.name} plays Attack first, then {room.players.find((player) => player.id === activeSkillSelectedTargetIds[1])?.name}.</small>}
         </div>

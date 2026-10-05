@@ -253,8 +253,8 @@ than restart them.
   deadline, privacy/action gating, fail-closed behavior without a deadline,
   urgency transitions, and 390px/480px/1440px containment. It passed 3/3;
   targeted ESLint and `git diff --check` passed. No full local suite/build/lint
-  was run. Pushed as `eb54f01`; Actions run `37312290991` was queued at the
-  one-time pre-task checkpoint. It remains CI pending; no conclusion is inferred.
+  was run. Pushed as `eb54f01`; Actions run `37312290991` completed
+  successfully (verified at the 2026-10-05 planning boundary).
 
 ### UX2.3-HF-DUEL-CURRENT-EFFECT-01 — Proven Duel Current Effect
 
@@ -268,7 +268,22 @@ than restart them.
   1440px Top Row plus missing-proof cases. The existing UI-19 Duel 650px
   breakpoint case passed 1/1; `ui19.spec.mjs` was not modified. Targeted ESLint
   and `git diff --check` passed. No full local suite/build/lint was run.
-  Push/CI checkpoint pending.
+  Pushed as `132f4cd`; exact Actions run `37313614735` was `in_progress` at
+  the 2026-10-05 planning checkpoint, so CI has no conclusion recorded yet.
+
+### UX2.3-FAST-RESPONSE-NEGATION-GUIDANCE-01 — Private Negation response guidance
+
+- The Local Player Dock now uses `YOUR RESPONSE` / `Play Negation or Skip.`
+  only when the viewer-owned `CurrentAction` is a Negation response with
+  authoritative `respond` and `decline_response` actions plus a Negation-
+  satisfying provider. The zero-card selection summary is omitted for this
+  concise guidance; selected-card gating and Confirm/Skip controls are unchanged.
+- The focused fixture separates private CurrentAction ownership from public
+  Stage decision/responder identity. Browser coverage passed 7/7 across
+  390px/480px/1440px plus missing-response, missing-decline, missing-provider,
+  and observer cases. The focused response-timer spec passed 3/3; targeted ESLint
+  and `git diff --check` passed. No full local suite/build/lint was run. Commit
+  and push are pending; CI has not run for this task yet.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
