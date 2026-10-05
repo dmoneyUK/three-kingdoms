@@ -1623,7 +1623,7 @@
    This uses geometry only; no gameplay or participant roles affect layout. */
 .game-shell .play-table[data-seat-topology="side-column"] {
   --side-safe-board-inset: clamp(10px, 4vw, 48px);
-  --side-safe-thumb-width: clamp(44px, 8vw, 86px);
+  --side-safe-thumb-width: clamp(74px, 13vw, 86px);
   --side-safe-edge: calc(15% + var(--side-safe-board-inset) * .7 + var(--side-safe-thumb-width) * .5 + 8px);
 }
 .game-shell .play-table[data-seat-topology="side-column"] > .interaction-safe-zone {
@@ -1648,6 +1648,7 @@
 @media (max-width: 650px) {
   .game-shell .play-table[data-seat-topology="side-column"] {
     --side-safe-board-inset: clamp(5px, 2.5vw, 18px);
+    --side-safe-thumb-width: clamp(56px, 15.5vw, 74px);
   }
 }
 @media (max-width: 480px) {
@@ -1875,7 +1876,7 @@
 .game-shell .player-board[data-seat-topology="side-column"] > .opponent-player-card {
   position: relative;
   inset: auto;
-  width: clamp(44px, 8vw, 86px);
+  width: var(--side-safe-thumb-width);
   height: min(128px, 100%);
   max-width: 100%;
   min-height: 0;

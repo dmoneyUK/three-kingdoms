@@ -462,6 +462,15 @@ than restart them.
 Later test/CI corrections for these implementations do not reopen the feature.
 Only a proven regression or new Reviewer-approved design requirement does.
 
+### UX2.3-LOCAL-SKILL-PEER-CONSISTENCY-01 — Comparable local Hero-skill controls
+
+- Peer skills now share the available band width instead of shrinking their
+  visual weight according to label length. The focused Zhou Yu regression and
+  existing UI19 Zhen Ji skill-readability matrix passed 10/10; targeted ESLint
+  and `git diff --check` passed. Exact pushed SHA `89efc45` passed Actions run
+  `37344999603`, including build-and-test and deploy/smoke-test jobs. The
+  user-owned `tests/browser/ui19.spec.mjs` remained unchanged.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative
