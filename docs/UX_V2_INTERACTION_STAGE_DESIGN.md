@@ -2480,26 +2480,38 @@ This vertical ownership rule does **not** redefine the internal Dock composition
 
 The Local Dock has a deliberately fixed composition. Do not reinterpret the size-priority list as a top-to-bottom ordering.
 
+Reviewer update: the viewer's **current guidance / requirement strip belongs at
+the top edge of the Local Player Dock**, directly adjacent to the Interaction
+Stage. This intentionally places the viewer's next-step instruction near the
+area where their visual attention already sits during combat. Action buttons
+remain in the protected bottom action row.
+
 ~~~text
-┌────────────────┬──────────────────────────────────────┐
-│ Judgement      │ SKILLS                 EQUIPMENT     │
-│ overlays       │ [Skill 1] [Skill 2]    ⚔  🛡  🐎    │
-│      ↓         │                                      │
-│ ┌────────────┐ │                                      │
-│ │            │ │          LARGE HAND AREA             │
-│ │ LARGE HERO │ │                                      │
-│ │    ART     │ │ [CARD][CARD][CARD][CARD][CARD]... →  │
-│ │            │ │                                      │
-│ │    HP      │ │                                      │
-│ └────────────┘ │                                      │
-├────────────────┴──────────────────────────────────────┤
-│ Guidance / current requirement          Action buttons│
-└───────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│ CURRENT GUIDANCE / REQUIREMENT                                │
+│ Your response · Play Negation or Skip.                        │
+├────────────────┬──────────────────────────────────────────────┤
+│ Judgement      │ SKILLS                       EQUIPMENT        │
+│ overlays       │ [Skill 1] [Skill 2]          ⚔  🛡  🐎      │
+│      ↓         │                                              │
+│ ┌────────────┐ │                                              │
+│ │            │ │             LARGE HAND AREA                  │
+│ │ LARGE HERO │ │                                              │
+│ │    ART     │ │ [CARD][CARD][CARD][CARD][CARD]... →         │
+│ │            │ │                                              │
+│ │    HP      │ │                                              │
+│ └────────────┘ │                                              │
+├────────────────┴──────────────────────────────────────────────┤
+│                                      Action buttons            │
+└───────────────────────────────────────────────────────────────┘
 ~~~
 
 The structural rule is:
 
 ~~~text
+TOP EDGE
+Current Guidance / current requirement
+
 LEFT
 Hero portrait + HP
 Judgement overlays on the Hero portrait
@@ -2511,12 +2523,14 @@ RIGHT MAIN
 Large single-layer Hand area
 
 BOTTOM
-Guidance / current requirement | Action controls
+Action controls only
 ~~~
 
 This composition remains stable as hand size and interaction complexity change.
 
-Do not move the Hero above the Hand, move the Hand above the Hero, create a separate Judgement row, or move Equipment beneath the Hero merely to handle responsive pressure.
+Do not move the Hero above the Hand, move the Hand above the Hero, create a
+separate Judgement row, move Equipment beneath the Hero, or push the current
+guidance back below the Hand merely to handle responsive pressure.
 
 ### 0.78 Size priority is not position priority
 
@@ -2527,7 +2541,7 @@ Use the section 2 priority:
 1. **Hand — highest priority and largest variable area.**
 2. **Hero art — second primary visual area; keep large for identity and immersion.**
 3. **Skills and frequent action controls — large, reliable interaction targets.**
-4. **Bottom guidance/action bar — compact but persistent and always readable/reachable.**
+4. **Current Guidance strip + bottom Action row — compact but persistent and always readable/reachable.**
 5. **Equipment — compact but individually inspectable/selectable.**
 6. **Judgement — compact overlay on the Hero rather than a permanent independent zone.**
 
@@ -2741,19 +2755,33 @@ When the server projects eligible card IDs:
 
 Inspection of an ineligible card may remain possible through a non-conflicting inspect affordance, but it must not appear gameplay-selected/actionable.
 
-### 0.89 Bottom Guidance / Action Bar
+### 0.89 Current Guidance Strip and bottom Action Row
 
-The bottom Guidance / Action Bar spans beneath both the left Hero area and the right Skills/Equipment/Hand area.
+The Local Player Dock uses two separate persistent control surfaces:
 
-It remains the smallest major visual region but is structurally protected:
+- **Current Guidance Strip:** spans the Dock's top edge, immediately below the
+  Interaction Stage;
+- **Action Row:** remains at the bottom of the Dock and owns commit/decline
+  controls.
+
+The Guidance Strip is intentionally close to the central battle area because
+that is where the player's attention is concentrated during an active
+interaction. It explains only the viewer's current requirement / next local
+step, for example `Your response · Play Negation or Skip.`.
+
+The Action Row remains thumb-reachable and contains the actual controls such as
+Confirm / Play / Respond / Skip / End / contextual Cancel.
+
+Both regions are structurally protected:
 
 - never covered by selected cards;
 - never covered by Hero art;
-- never covered by the Interaction Stage;
-- always respects the bottom safe area;
-- remains readable and reachable.
+- never covered by Interaction Stage content;
+- Guidance must remain visually adjacent to the Stage/Dock boundary;
+- Action Row must respect the bottom safe area;
+- both remain readable/reachable under responsive pressure.
 
-Its compact size must not be confused with low gameplay importance.
+Their compact size must not be confused with low gameplay importance.
 
 The semantic distinction remains strict: Confirm commits, Skip/Decline is authoritative gameplay, and Cancel is only a contextual reset for unsubmitted local input. Cancel is not a permanent third slot.
 
@@ -2786,9 +2814,10 @@ COMPOSITION
 2. Left = Hero + HP, with Judgement overlaid on Hero.
 3. Right Top = Skills, with Equipment to the right of Skills.
 4. Right Main = Large Hand Area.
-5. Bottom = Guidance / current requirement + Action controls.
-6. Size priority does not redefine these positions.
-7. Side Seat Columns stop above the Local Dock.
+5. Dock Top Edge = Guidance / current requirement, directly adjacent to the Interaction Stage.
+6. Dock Bottom = Action controls only.
+7. Size priority does not redefine these positions.
+8. Side Seat Columns stop above the Local Dock.
 
 HAND
 8. Hand is always a single horizontal layer.
@@ -3156,7 +3185,7 @@ Examples:
 └─────────────────────────────┘
 ```
 
-Side columns must remain entirely above the Local Player Dock. They must never intrude into the local hero, hand, skills, or bottom guidance/action bar.
+Side columns must remain entirely above the Local Player Dock. They must never intrude into the local Hero, top Guidance Strip, Hand, Skills, or bottom Action Row.
 
 ### 1.4 Central Interaction Safe Zone
 
@@ -3442,7 +3471,7 @@ Design rules:
 - Keep card faces as large as practical.
 - Prefer increasing overlap / fan density as hand size grows rather than continuously shrinking every card.
 - A selected card should rise upward from the hand.
-- Card selection must expand **upward only** and must never cover the bottom guidance/action bar.
+- Card selection may rise within the Hand interaction clearance but must never cover the top Guidance Strip or bottom Action Row.
 - Preserve enough visible card identity for scanning when cards overlap.
 - Large hands such as 10, 15, or 20 cards require an explicit overflow strategy; prefer large cards with overlap/fan and horizontal navigation over tiny cards.
 - The exact large-hand overflow interaction remains to be validated visually before implementation.
@@ -3474,11 +3503,42 @@ Core viewer-centric rule: **the local hero is never duplicated in the Interactio
 
 Skills are high-frequency gameplay controls and should use large, easy-to-hit interaction targets.
 
+The **Skills band is the primary entry surface for Hero skills**. A skill that
+is legally available to the viewer must become actionable from its Hero-adjacent
+skill control. The bottom Action Row must not become a substitute skill palette.
+
+Required behavior:
+
 - Active skills should look actionable when legal.
 - Disabled / unavailable skills should remain identifiable but clearly inactive.
+- Selecting/activating a skill should give that skill control a clear selected /
+  active treatment that stays synchronized with the current local flow.
+- The Guidance Strip may then explain the skill's current step and the Action
+  Row may expose Confirm / Skip / other authoritative continuation controls.
+- Do not require the player to ignore a disabled-looking skill button and
+  discover the real skill entry only in the bottom Action Row.
 - Skill names should remain readable without requiring hover.
 - Detailed skill rules may open through inspect/detail behaviour rather than permanently consuming dock space.
 - Do not reduce skills to tiny text links merely to save room.
+
+#### Skill-control consistency
+
+Within one Hero's Skills band, peer skill controls use one consistent component
+family and interaction footprint.
+
+- keep a common minimum height, padding, border/state treatment, and touch area;
+- short names must not collapse into visibly tiny label-like buttons while long
+  names become large controls;
+- width may flex within the available band, but peer skills should retain
+  comparable visual weight;
+- allow restrained wrapping (normally up to two lines) or truncation/detail
+  affordance before shrinking one skill into a materially smaller target;
+- availability, selected state, and disabled state must be visible on the skill
+  control itself.
+
+This rule is generic across all Heroes. Ma Chao's **Cavalry** and Zhou Yu's
+**Heroic / Sowing Distrust** are reference cases only; do not hard-code those
+Hero/skill names in layout logic.
 
 ### 2.5 Equipment
 
@@ -3517,21 +3577,35 @@ Therefore:
 
 Judgement overlays remain inspectable and, when authoritative legality requires it, selectable.
 
-### 2.7 Persistent bottom guidance/action bar
+### 2.7 Persistent top Guidance Strip + bottom Action Row
 
-The lowest part of the Local Player Dock is a fixed guidance/action bar.
+The viewer's current guidance lives in a dedicated strip at the **top edge of
+the Local Player Dock**, directly below the Interaction Stage. The actual
+commit/decline controls remain in a separate bottom Action Row.
 
-This bar is a stable UX anchor and must never be covered by the hand, selected cards, hero artwork, or Interaction Stage.
+This is a deliberate attention hierarchy: during combat, the player's eyes are
+already near the central Interaction Stage, so the next-step instruction must
+not be buried underneath the Hand and controls.
 
-It may show states such as:
+Representative states:
 
 ```text
-Your turn · Play Phase                                      End Turn
-Attack selected · Select 1 target                 Confirm          End
-Respond with Dodge                                 Respond         Skip
-Complex local picker                         Cancel      Confirm
+TOP GUIDANCE STRIP
+Your turn · Play Phase
+Attack selected · Select 1 target
+Respond with Dodge
+Use Cavalry · Enter Judgement
 Waiting for Zhao Yun...
+
+BOTTOM ACTION ROW
+                         Confirm          End
+                         Respond          Skip
+                  Cancel      Confirm
 ```
+
+The Guidance Strip is private/local when it describes the viewer's available
+action. It must not duplicate private guidance into the public Interaction
+Stage. The Action Row remains a stable thumb-reachable anchor.
 
 #### Mobile primary-action placement
 
@@ -3569,16 +3643,16 @@ must not displace the main horizontal anchors.
 
 Rules:
 
-- guidance stays at the bottom rather than above the hand;
-- selected hand cards rise away from it;
+- guidance stays at the Dock's top edge, adjacent to the Interaction Stage;
+- selected hand cards must not cover either the top Guidance Strip or bottom Action Row;
 - controls stay in predictable positions where practical;
 - Confirm remains disabled until the current local selection is valid;
 - Cancel, Skip / Decline and End Turn retain their distinct semantics defined later in this document;
-- the bar must remain readable during complex Reaction Chains;
+- the Guidance Strip and Action Row must remain readable during complex Reaction Chains;
 - phone validation must include right-thumb reachability and accidental-tap risk,
   not geometry alone.
 
-A player who is uncertain what the game currently expects should be able to look at the bottom of the screen and immediately understand the next local action.
+A player who is uncertain what the game currently expects should be able to glance immediately below the Interaction Stage and understand the next local action, then move to the bottom Action Row to commit or decline it.
 
 #### Action-placement validation
 
@@ -3620,7 +3694,8 @@ The exact dimensions remain subject to visual validation, but the intended hiera
 
 ```text
 ┌───────────────────────────────────────────────────────────────┐
-│                                                               │
+│ Guidance / current requirement                                │
+├───────────────────────────────────────────────────────────────┤
 │ ┌────────────────┐   ┌─────────────────────────────────────┐  │
 │ │ Judgement      │   │ LARGE SKILLS             EQUIPMENT │  │
 │ │ overlays       │   │ [Skill] [Skill] [Skill]   ⚔ 🛡 🐎 │  │
@@ -3631,11 +3706,15 @@ The exact dimensions remain subject to visual validation, but the intended hiera
 │ │      HP        │   │ overlap, then horizontal navigation │  │
 │ └────────────────┘   └─────────────────────────────────────┘  │
 ├───────────────────────────────────────────────────────────────┤
-│ Guidance / current requirement                 action buttons │
+│                                          action buttons       │
 └───────────────────────────────────────────────────────────────┘
 ```
 
-This composition is intentional: Hero remains on the left; Skills and Equipment share the right-top band with Equipment to the right of Skills; the large Hand occupies the right-main area; Judgement overlays the Hero; guidance/actions span the bottom. The size priority does not redefine these positions.
+This composition is intentional: Guidance spans the top edge of the Dock next
+to the Interaction Stage; Hero remains on the left; Skills and Equipment share
+the right-top band with Equipment to the right of Skills; the large Hand
+occupies the right-main area; Judgement overlays the Hero; Actions remain at
+the bottom. The size priority does not redefine these positions.
 
 This is a hierarchy, not a requirement to hard-code percentages.
 
@@ -3651,7 +3730,7 @@ When upper-screen content becomes complex:
 - use compact third-party reaction identities instead of adding unnecessary full hero panels,
 - preserve the large local hero where practical,
 - preserve large hand cards and skill touch targets,
-- never allow upper-stage expansion to cover the fixed bottom guidance/action bar.
+- never allow upper-stage expansion to cover the top Guidance Strip or bottom Action Row.
 
 
 ## 3. Interaction Stage
@@ -4757,10 +4836,12 @@ polish so the implemented hierarchy matches the established design:
 - Hand remains the largest flexible operational area;
 - local Hero remains the second major visual area and should not read as a tiny
   avatar inside a much wider reserved column;
-- Skills stay readable and easy to hit;
+- Skills stay readable and easy to hit, use consistent peer-button sizing, and
+  remain the primary activation surface for legal Hero skills;
 - Equipment stays compact and independently identifiable/selectable;
 - Judgement remains on the Hero;
-- Guidance and Actions remain protected at the bottom.
+- Current Guidance remains protected at the Dock's top edge adjacent to the Stage;
+- Actions remain protected in the bottom thumb-reachable row.
 
 Do not obtain a larger Hero by shrinking Hand usability or moving the approved
 Dock regions.
@@ -4875,12 +4956,12 @@ Do not add a label merely because an internal field exists.
 | **Battlefield breathing space** | unused Stage area | Leave intentional empty/low-contrast battlefield space. Do not fill it with metadata simply because space is available. | Improves scan speed and visual hierarchy. |
 | **Local Player Dock boundary** | persistent bottom region | Keep a clear structural boundary: public event above, viewer-private operation below. | Public state and private control are immediately distinguishable. |
 | **Local Hero** | Dock left | Keep the existing viewer Hero, HP and Judgement ownership. Do not duplicate the local Hero in the Stage. | Stable “this is me” anchor. |
-| **Skills band** | Dock right-top, before Equipment | Keep skill names readable and actionable when legal; detailed rules stay in Inspect. | High-frequency skills remain discoverable. |
+| **Skills band** | Dock right-top, before Equipment | This is the primary Hero-skill entry surface. Legal skills become actionable here; selected/disabled state is visible here. Peer skill buttons use consistent minimum height/padding/touch area and comparable visual weight regardless of name length. | Hero abilities are predictable, discoverable, and equally tappable. |
 | **Equipment band** | right of Skills | Preserve stable Weapon / Armour / +1 Horse / -1 Horse objects/slots with compact public/owned identity. | Equipment is quickly understood without consuming Hand space. |
 | **Hand** | Dock right-main | Preserve the completed one-row large-card Hand with overlap/pan. Eligibility comes from CurrentAction. Ineligible cards remain visible but subdued. | The viewer immediately finds usable cards without losing hand context. |
 | **Selected response card** | within Hand | Selected legal response lifts/highlights; the Primary action becomes enabled only when the authoritative selection contract is satisfied. | Clear select -> confirm feedback. |
-| **Private decision strip** | below Hand, above/with actions | Use concise private copy such as **Your response** / **Play Negation or Skip.** Add at most one short helper sentence when genuinely useful. | Directly answers “what can I do?” without duplicating the public Stage. |
-| **No central private-decision duplication** | Stage vs Dock boundary | When the Dock already says `Your response`, remove redundant central `YOUR DECISION`, private actor name, and duplicate response instructions. | Reduces timed-response cognitive load. |
+| **Private Guidance Strip** | full-width top edge of the Local Dock, directly below the Interaction Stage and above Hero/Skills/Equipment/Hand | Use concise private copy such as **Your response** / **Play Negation or Skip.** Add at most one short helper sentence when genuinely useful. Keep it visually distinct from the public Stage while spatially adjacent to it. | The viewer sees the next local step in the same attention zone as the battle instead of missing it below the Hand. |
+| **No central private-decision duplication** | Stage vs top Guidance Strip boundary | When the Guidance Strip already says `Your response`, remove redundant central `YOUR DECISION`, private actor name, and duplicate response instructions. | Reduces timed-response cognitive load. |
 | **Primary action** | bottom centre-right thumb zone | Confirm/Play/Respond remains the main commit action, visually dominant when enabled. | Fast, repeatable right-thumb operation. |
 | **Authoritative Skip/Decline** | bottom far-right secondary zone | Keep clearly separated from Primary with a measurable gutter. | Reduces accidental irreversible Skip/Decline taps. |
 | **Contextual Cancel** | only where the existing pre-commit rules require it | Do not add a permanent third button to fill space. | Preserves the already-approved control semantics. |
@@ -4912,12 +4993,11 @@ A representative open Negation response should read approximately as:
                  3  Waiting for response...
 
 ------------------------------------------------------------
+Your response · Play Negation or Skip.
+------------------------------------------------------------
 
 [LOCAL HERO]   [Skills] [Equipment]
                [large single-row Hand]
-
-Your response
-Play Negation or Skip.
 
                          [CONFIRM]     [SKIP]
 ~~~
@@ -4949,11 +5029,11 @@ Negation response window open
 Waiting for response...
 ~~~
 
-A viewer who can respond privately sees:
+A viewer who can respond privately sees this in the top Guidance Strip of the
+Local Player Dock:
 
 ~~~text
-Your response
-Play Negation or Skip.
+Your response · Play Negation or Skip.
 ~~~
 
 Only when a Negation is actually submitted as a public action does that player's
@@ -4975,6 +5055,12 @@ Representative browser/visual proof should demonstrate:
   timer, seat labels, pending copy, or Reaction Chain;
 - the eligible local viewer still receives their private response guidance and
   controls in the Local Dock;
+- private Guidance is directly adjacent to the Interaction Stage at the top of
+  the Dock, not buried below the Hand;
+- legal Hero skills are entered from the Skills band rather than appearing only
+  as bottom action buttons;
+- peer Hero-skill controls keep consistent touch size and comparable visual
+  weight even when skill-name lengths differ;
 - Response Timer remains clearly visible at the top-right while the Stage and
   Dock remain usable;
 - timer urgency can strengthen near expiry without obscuring content or
