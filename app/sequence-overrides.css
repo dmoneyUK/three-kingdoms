@@ -753,9 +753,10 @@
 
 @media (max-width: 480px) {
   .game-shell .play-command { padding: 4px 6px 5px; }
-  .local-player-dock { --top-panel-height: 58px; grid-template-columns: 70px minmax(0, 1fr); grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(48px, auto); padding: 0; }
+  .local-player-dock { --top-panel-height: 58px; grid-template-columns: 96px minmax(0, 1fr); grid-template-rows: auto var(--top-panel-height) var(--hand-panel-height) minmax(48px, auto); padding: 0; }
   .local-dock-identity { align-items: stretch; }
-  .local-hero-card { flex-basis: auto; width: 100%; max-width: 72px; height: auto; }
+  .local-hero-anchor { width: min(100%, 88px); max-width: 88px; }
+  .local-hero-card { flex-basis: auto; width: 100%; max-width: 88px; height: auto; }
   .local-dock-identity { gap: 2px; padding: 3px; }
   .local-hero-skills { gap: 3px; }
   .local-hero-skills .hero-skill-button { padding: 3px 1px; }

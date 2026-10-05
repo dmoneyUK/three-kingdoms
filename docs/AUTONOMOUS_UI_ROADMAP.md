@@ -410,6 +410,17 @@ than restart them.
   changed. Pushed as `b138959`; exact Actions run `37332560641` completed
   successfully on 2026-10-05, including build/test and deploy/smoke-test jobs.
 
+### UX2.3-FAST-RESPONSE-TIMER-EXIT-CLEARANCE-01 — Exit/timer separation
+
+- Moved only the visible Exit control when the response timer is present and
+  constrained the expanded mobile Game Messages panel only where needed. A
+  real-browser regression covers 390/480/1440px, collapsed/expanded messages,
+  at least 8px timer/Exit clearance, and a normal Exit click. Gameplay, timer
+  semantics, and action authority are unchanged.
+- The focused response-timer spec passed 5/5; targeted ESLint and
+  `git diff --check` passed. Pushed as `3294a4b`; exact Actions run
+  `37335513984` completed successfully on 2026-10-05.
+
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
 - **13A / Reviewer addition A — authoritative self-target symmetry:** a
