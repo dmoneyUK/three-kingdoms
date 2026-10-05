@@ -1791,6 +1791,13 @@
 .play-table[data-seat-topology="side-column"] .hero-focus-identity { grid-area: identity; }
 .play-table[data-seat-topology="side-column"] .hero-focus-source { grid-area: source; margin-left: 0; max-width: none; text-align: left; }
 .play-table[data-seat-topology="side-column"] .hero-focus-context { grid-area: context; }
+
+/* UX2.2-HF-PREVIEW-01: distinguish local, unsubmitted focus without changing
+   the shared Hero Focus geometry or implying an authoritative interaction. */
+.hero-focus-preview { outline: 1px dashed #d0a858; outline-offset: 4px; }
+.hero-focus-preview .hero-focus-heading strong,
+.hero-focus-preview .hero-focus-context { color: #efc36c; }
+
 .play-table[data-seat-topology="side-column"] .medium-participant-card {
   display: grid;
   width: 100%;

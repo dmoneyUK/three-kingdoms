@@ -5,22 +5,24 @@ Mode: `AUTONOMOUS UI RUN`
 
 This file contains only the current execution handoff. Product design is in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest task result — UX2.0VIS-13C-FIX1
+## Latest delivery / CI checkpoint — UX2.2-HF-PREVIEW-01
+
+Status: **IMPLEMENTED — CI PENDING**. Before this task, the latest observed green push run was `37282465720` for `de95e7a11e15e36072b7889b561cef4fd9deceeb`; no CI result for this implementation is claimed. No production verification is implied.
+
+Local validation: targeted browser selection passed 10/10, including ordinary Preview at 390/480/1440px, generic trigger replacement/cancel, multi-target latest focus, active-skill self-target Dock behavior, Borrowed Sword, and PREVIEW-to-authoritative Attack Response focus-node continuity. The real Draw Phase Assault browser file passed 4/4 at 390/480px, including submit/cancel. Targeted ESLint on `app/page.tsx` and the changed `.mjs` tests passed; `git diff --check` passed. No full local test/build/lint suite was run.
+
+The previous Inspect draft was not delivered: the reviewed design puts PREVIEW first, so that draft was reverted before this task began.
+
+## Design checkpoint
+
+Reviewed current remote design blob `7d460ad6e998ef6666cf6299a190b727e14bb768`. Its §12.0 lists the implemented baseline; §12.1 makes generic local target PREVIEW the first remaining direction and §12.2 places unified opponent INSPECT after PREVIEW is stable. Direct user authorization enables autonomous task decomposition; the design remains the product behavior authority.
+
+## Current task — UX2.2-HF-PREVIEW-01 Local target Preview in Hero Focus
 
 Status: **IMPLEMENTED — CI PENDING**.
 
-The 13C push-triggered run `37272804006` failed only in `npm test`: API shard 1 had one stale assertion in `tests/api/equipment.test.mjs`, expecting Attack damage immediately after failed Eight Trigrams. `npm run lint`, build, and browser validation succeeded. The production behavior was correct under Reviewer-approved design addition B: the Dodge requirement reopens, and damage occurs only after explicit `decline_response`.
+Bounded scope: project the currently selected legal external target into the Interaction Stage as a local-only PREVIEW Hero Focus, driven by the existing local target-selection contract. Keep the latest selected external target in focus for multi-target flows while all selected seat markers remain intact. Keep self-target projection Dock-only. Preserve any authoritative Stage identity/context; REST Preview must not create interaction/checkpoint/revision identity, Reaction Chain nodes, or gameplay actions. Preserve focus continuity through submit until the server-projected ACTIVE state takes over, and reconcile stale/rejected local state from current action authority. No client legality changes, gameplay/protocol edits, or server projection changes.
 
-Updated that integration test to assert the reopened Dodge decision, disabled Eight Trigrams provider, unchanged HP and causal Interaction/Frame; it then explicitly declines and verifies damage and the Xiahou Dun trigger. Focused `GAME_TEST_FILES=tests/api/equipment.test.mjs node tests/run-tests.mjs` passed 19/19; `git diff --check` passed. No production source or gameplay semantics changed, and no full local suite was run. The correction's CI is pending after push; no green result is claimed.
+Focused acceptance: ordinary card targeting, active-skill targeting, generic trigger targeting, Borrowed Sword target selection, and self-target; select/replace/cancel without submission; Preview-to-ACTIVE continuity; Top Row and Side Column at 390px/480px and a wider viewport; no viewer Hero duplication or private data in Stage.
 
-## Design review checkpoint
-
-Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; addition B requires provider failure to preserve the Dodge requirement until explicit decline. Additions A–C are implemented. The prior release-gate evidence supplement is recorded in `docs/UX_V2_RELEASE_GATE.md`.
-
-## Current task — successor design decision checkpoint
-
-Status: **BLOCKED — HUMAN REVIEW REQUIRED**.
-
-No further approved, bounded player-facing implementation task is identified after additions A–C. The larger Hero Focus redesign remains future work (§0.6.6), and §12 labels the UX2.1/UX2.2 implementation slices unapproved; the open design discussion lists unresolved responsive measurements and composition decisions. Do not turn those proposals into implementation scope or infer layout trade-offs.
-
-Smallest required Reviewer action: update the UX V2 design with one approved next slice and its responsive acceptance/validation criteria, or explicitly approve a specific bounded existing proposal. Resume planning from that revision; until then, make no new UI/gameplay source or test edits.
+Resume point: deliver this bounded change to `ux-v2`; after push, review the current design and workflow afresh before planning §12.2 INSPECT. Stop if current target ownership or continuity cannot be proven from existing local selection plus authoritative presentation, without guessing semantics.

@@ -23,6 +23,9 @@ test("Borrowed Sword target selection consumes only the CurrentAction projection
 
   await legalHolder.click();
   await expect(page.locator('.opponent-player-card[data-player-anchor="p2"]')).toHaveClass(/selected-target/);
+  const preview = page.locator('.interaction-stage[data-local-ui-mode="PREVIEW"]');
+  await expect(preview).toHaveAttribute("data-local-preview-player-id", "p2");
+  await expect(preview).toContainText("UNSUBMITTED TARGET · LOCAL PREVIEW");
   const confirm = page.locator('[data-console-surface="local-operation"] button.primary', { hasText: "Confirm" });
   await expect(confirm).toBeEnabled();
   await confirm.click();
@@ -30,6 +33,7 @@ test("Borrowed Sword target selection consumes only the CurrentAction projection
     action: "play_card",
     extra: { cardId: "browser-borrowed-sword", targetId: "p2" },
   });
+  await expect(preview).toHaveAttribute("data-local-preview-player-id", "p2");
 });
 
 test("Borrowed Sword does not invent a target when CurrentAction projects none", async ({ page }) => {

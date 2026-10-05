@@ -28,6 +28,8 @@ type CardEvent = PresentationEventMeta & { id: string; player: string; target: s
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
 type Player = { id: string; name: string; seat: number; hero: string | null; generalReady: boolean; ready: boolean; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; role: string | null };
+type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null };
+type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
 type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; choices: { cardId: string; playerId: string; playerName: string }[]; previewCardId: string | null; complete: boolean; countdownUntil: number } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
 export const HERO_ART_BY_ID: Record<string, string> = {
@@ -479,7 +481,44 @@ function OpponentInspectionOverlay({ player, playerHero, judgementInFlight, onCl
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
 
-function HeroFocus({ view, showSource = true }: { view: HeroFocusView; showSource?: boolean }) {
+function presentationViewKey(view: PresentationClientView) {
+  return JSON.stringify([
+    view.hasInteraction,
+    view.interactionId,
+    view.checkpointId,
+    view.presentationRevision,
+    view.rootFrameId,
+    view.activeFrameId,
+    view.parentFrameId,
+    view.stage,
+    view.stableKind,
+    view.effect,
+    view.sourceId,
+    view.originalTargetIds,
+    view.activeTargetIds,
+    view.currentParticipantId,
+    view.decisionActorId,
+    view.activeResolverId,
+    view.continuity.relation,
+  ]);
+}
+
+function currentActionViewKey(action: CurrentAction | null) {
+  return JSON.stringify(action);
+}
+
+function HeroFocus({ view, showSource = true, previewPlayer = null }: { view: HeroFocusView; showSource?: boolean; previewPlayer?: LocalTargetPreviewPresentation | null }) {
+  if (previewPlayer) {
+    const previewHeroName = previewPlayer.hero?.name ?? "Unknown Hero";
+    return <div className="hero-focus hero-focus-preview" aria-label={`Preview target ${previewPlayer.name}`} data-hero-focus-mode="PREVIEW" data-preview-player-id={previewPlayer.id}>
+      <div className="hero-focus-heading"><span>HERO FOCUS</span><strong>PREVIEW TARGET</strong></div>
+      <div className="hero-focus-body">
+        <span className={previewPlayer.hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={previewPlayer.hero?.id}>{previewPlayer.hero ? <HeroPortrait hero={previewPlayer.hero} /> : "?"}</span>
+        <div className="hero-focus-identity"><b>{previewPlayer.name}</b><span>{previewHeroName}</span><small>HP {previewPlayer.hp ?? "?"}/{previewPlayer.maxHp ?? "?"}</small></div>
+      </div>
+      <small className="hero-focus-context">UNSUBMITTED TARGET · LOCAL PREVIEW</small>
+    </div>;
+  }
   if (!view.visible || !view.primary) return null;
   const hero = heroDefinition(view.primary.heroId);
   const heroName = view.primary.heroName ?? hero?.name ?? null;
@@ -506,7 +545,7 @@ function MediumParticipantCard({ view }: { view: MediumParticipantView }) {
   </div>;
 }
 
-export function InteractionStage({ view, viewerId, transitionKind = "NONE", topRowMode = false, resolvePlayerName, resolvePlayerDisplay }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined }) {
+export function InteractionStage({ view, viewerId, transitionKind = "NONE", topRowMode = false, resolvePlayerName, resolvePlayerDisplay, previewPlayer = null, previewSubmission = null }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined; previewPlayer?: LocalTargetPreviewPresentation | null; previewSubmission?: LocalTargetPreviewSubmission | null }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const dyingHandoff = buildDyingHandoffView(stage);
   const reactionChain = buildReactionChainView(stage);
@@ -516,8 +555,16 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     stage,
     heroFocus.roleLabel === "CURRENT PARTICIPANT" ? heroFocus.primary?.id ?? null : null,
   );
+  const authoritativePreviewFocus = Boolean(previewPlayer
+    && previewSubmission?.targetId === previewPlayer.id
+    && previewSubmission.presentationKey !== presentationViewKey(view)
+    && display.visible
+    && (display.focusTarget.id === previewPlayer.id || heroFocus.primary?.id === previewPlayer.id));
+  const localPreviewPlayer = authoritativePreviewFocus ? null : previewPlayer;
+  const hasLocalPreview = localPreviewPlayer !== null;
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
+  const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localPreviewPlayer?.id);
   const dyingSourceAlreadyVisible = Boolean(dyingHandoff.visible && stage.source.id && (
     mediumSource?.player.id === stage.source.id
     || (heroFocus.primary?.id && heroFocus.primary.id !== stage.source.id && heroFocus.source.id === stage.source.id)
@@ -526,9 +573,9 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     heroFocus.primary?.id === display.focusTarget.id
     || dyingHandoff.dyingPlayer.id === display.focusTarget.id
   ));
-  const showRoleSummary = !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible);
-  const nonDyingSourceAlreadyVisible = Boolean(!dyingHandoff.visible && stage.source.id && (
-    mediumSource?.player.id === stage.source.id
+  const showRoleSummary = display.visible && (hasLocalPreview || !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible));
+  const nonDyingSourceAlreadyVisible = Boolean(!hasLocalPreview && !dyingHandoff.visible && stage.source.id && (
+    showMediumSource && mediumSource?.player.id === stage.source.id
     || (!mediumSource
       && heroFocus.visible
       && heroFocus.primary?.id
@@ -544,7 +591,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && dyingHandoff.activeResolver.id === display.activeResolver.id);
   const showNestedContextSummary = Boolean(display.nestedContext)
     && !(dyingHandoff.visible && heroFocus.primary && heroFocus.nestedContext === display.nestedContext);
-  const showFocusSummary = showRoleSummary && !display.currentParticipantPresentedInHeroFocus;
+  const showFocusSummary = showRoleSummary && (!display.currentParticipantPresentedInHeroFocus || hasLocalPreview);
   const showActiveScopeSummary = showRoleSummary
     && display.currentParticipantPresentedInHeroFocus
     && Boolean(display.activeScopeSummary);
@@ -556,14 +603,14 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     || display.showOriginalTargets
     || showNestedContextSummary;
   const showMetadataRegion = showRoleMetadata || showMetadataContext;
-  if (!display.visible) return null;
-  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined} data-presentation-transition={transitionKind}>
-    <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
+  if (!display.visible && !hasLocalPreview) return null;
+  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalPreview ? "PREVIEW" : undefined} data-local-preview-player-id={localPreviewPlayer?.id}>
+    <header><span>INTERACTION STAGE</span><strong>{hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : display.focusLabel}</strong>{!hasLocalPreview && display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
     <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
-        {mediumSource && <MediumParticipantCard view={mediumSource} />}
-        {mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
-        <HeroFocus view={heroFocus} showSource={!mediumSource} />
+        {showMediumSource && mediumSource && <MediumParticipantCard view={mediumSource} />}
+        {showMediumSource && mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
+        <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} />
         {groupTargetScope && <section className="group-target-scope" aria-label="Original target scope" data-group-target-scope="original" data-participant-density={groupTargetScope.density}>
           <header>ORIGINAL TARGET SCOPE</header>
           <div className="group-target-cards">
@@ -1067,6 +1114,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const [infoCard, setInfoCard] = useState<Card | null>(null);
   const [infoHero, setInfoHero] = useState<Hero | null>(null);
   const [expandedOpponentId, setExpandedOpponentId] = useState<string | null>(null);
+  const [submittedTargetPreview, setSubmittedTargetPreview] = useState<LocalTargetPreviewSubmission | null>(null);
   const automaticResponseTimeout = useRef("");
   const automaticRescueSkip = useRef("");
   const [turnNotice, setTurnNotice] = useState(""); const onActionRef = useRef(onAction);
@@ -1253,7 +1301,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       return;
     }
     if (triggerTargetMode && triggerTargetSelection) {
-      setTargetIds((ids) => ids.includes(playerId) ? ids.filter((id) => id !== playerId) : ids.length < triggerTargetMax ? [...ids, playerId] : ids);
+      setTargetIds((ids) => ids.includes(playerId)
+        ? ids.filter((id) => id !== playerId)
+        : triggerTargetMax === 1 ? [playerId] : ids.length < triggerTargetMax ? [...ids, playerId] : ids);
       return;
     }
     if (activeSkillStateIsCurrent) {
@@ -1373,6 +1423,34 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     canConfirm: localTargetCanConfirm,
     hasLocalInput: localSelectionHasInput,
   });
+  const selectedExternalPreviewId = localTargetSelection.selectionActive
+    ? [...localTargetSelection.selectedTargetIds].reverse().find((id) => id !== room.meId) ?? null
+    : null;
+  const previewTargetId = selectedExternalPreviewId ?? submittedTargetPreview?.targetId ?? null;
+  const previewTargetPlayer = previewTargetId
+    ? room.players.find((player) => player.id === previewTargetId && player.id !== room.meId)
+    : null;
+  const targetPreviewPresentation: LocalTargetPreviewPresentation | null = previewTargetPlayer ? {
+    id: previewTargetPlayer.id,
+    name: previewTargetPlayer.name,
+    hero: heroDefinition(previewTargetPlayer.hero),
+    hp: previewTargetPlayer.hp,
+    maxHp: previewTargetPlayer.maxHp,
+  } : null;
+  const submitWithLocalTargetPreview = async (submit: () => Promise<boolean>) => {
+    const targetId = [...localTargetSelection.selectedTargetIds].reverse().find((id) => id !== room.meId);
+    if (!targetId) return submit();
+    const submission: LocalTargetPreviewSubmission = {
+      targetId,
+      presentationKey: presentationViewKey(clientPresentation),
+      actionRevision: room.actionRevision ?? "",
+      currentActionKey: currentActionViewKey(room.currentAction),
+    };
+    setSubmittedTargetPreview(submission);
+    const accepted = await submit();
+    if (!accepted) setSubmittedTargetPreview((current) => current === submission ? null : current);
+    return accepted;
+  };
   const triggerHasProviderCancelSurface = Boolean(triggerTargetMode && selectedTriggerOption && !heroTriggerEffectIds.has(selectedTriggerOption.effectId));
   const normalHasProviderCancelSurface = wushengMode === "play" || longdanMode === "play";
   const resetLocalTargetFlow = (flow: LocalTargetFlow) => {
@@ -1595,6 +1673,17 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   // decision and prevents a previous provider/cost from leaking into it.
   useEffect(() => { const timer = setTimeout(() => { setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setResponseProviderId(""); setSelected(""); setTargetIds([]); setBorrowedSwordTargetId(""); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setSerpentSelected([]); setTriggerSelectedKeys([]); setTriggerChoice(""); targetCardSubmissionRef.current = ""; targetCardPickerSubmissionRef.current = ""; }, 0); return () => clearTimeout(timer); }, [room.actionRevision]);
   useEffect(() => {
+    if (!submittedTargetPreview) return;
+    const presentationUnchanged = presentationViewKey(clientPresentation) === submittedTargetPreview.presentationKey;
+    const actionUnchanged = (room.actionRevision ?? "") === submittedTargetPreview.actionRevision
+      && currentActionViewKey(room.currentAction) === submittedTargetPreview.currentActionKey;
+    if (presentationUnchanged && actionUnchanged) return;
+    const timer = setTimeout(() => {
+      setSubmittedTargetPreview((current) => current === submittedTargetPreview ? null : current);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [submittedTargetPreview, clientPresentation, room.actionRevision, room.currentAction]);
+  useEffect(() => {
     if (!canChooseTargetCard || !pickerTarget) return;
     const valid = targetCardZone === "hand"
       ? targetCardIndex !== null && targetCardIndex >= 0 && targetCardIndex < pickerTarget.handCount
@@ -1673,7 +1762,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     }
     const action = "serpent_spear_attack";
     setSerpentMode(false); setSerpentSelected([]); setSelected(""); setTargetIds([]);
-    const accepted = await onAction(action, { cardIds: materials.map((item) => item.id), targetId: target });
+    const accepted = await submitWithLocalTargetPreview(() => onAction(action, { cardIds: materials.map((item) => item.id), targetId: target }));
     if (!accepted && presentImmediately) {
       materials.forEach((item) => optimisticallyPresentedCards.current.delete(item.id));
       setOptimisticPlay(null); setResolutionEvents((events) => events.filter((event) => event.id !== optimisticEvent.id));
@@ -1684,9 +1773,43 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     if (!borrowedSwordTargetSelectionActive || !borrowedSwordTargetId || !borrowedSwordEligibleTargetIds.includes(borrowedSwordTargetId)) return;
     const targetId = borrowedSwordTargetId;
     setBorrowedSwordTargetId("");
-    await onAction("choose_borrowed_sword_target", { targetId });
+    await submitWithLocalTargetPreview(() => onAction("choose_borrowed_sword_target", { targetId }));
   };
-  const play = async () => { if (!card || !me || (selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid)) || card.kind === "BorrowedSword" && (!target || !borrowedSwordPlayTargetIds.includes(target))) return; const playedCard = card; const definition = cardDefinition(card.kind); const needsTarget = selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "Overindulgence" || card.kind === "RationsDepleted" || card.kind === "BorrowedSword"; const displayTarget = halberdAttack ? targetIds.map((id) => room.players.find((player) => player.id === id)?.name).filter(Boolean).join(", ") : targetPlayer?.name ?? (card.kind === "BumperHarvest" || card.kind === "Oath" ? "All living players" : card.kind === "BarbarianInvasion" || card.kind === "RainingArrows" ? "All other players" : me.name); const optimisticEvent: CardEvent & { type: "card" } = { id: `optimistic-${card.id}`, type: "card", player: me.name, target: displayTarget, card, action: definition.equipmentSlot && !selectedCanPlayAsAttack ? "equip" : "play", ...(selectedCanPlayAsAttack && !isAttackCard(card) ? { playedAs: "attack" } : {}) }; resolutionRevision.current += 1; optimisticallyPresentedCards.current.add(playedCard.id); setResolutionClosing(false); setResolutionEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []); setOptimisticPlay(optimisticEvent); setSelected(""); setTargetIds([]); const accepted = await onAction("play_card", { cardId: playedCard.id, ...(selectedCanPlayAsAttack ? { playAs: "attack" } : {}), ...(needsTarget ? { targetId: target, ...(halberdAttack ? { targetIds } : {}) } : {}) }); if (!accepted) { optimisticallyPresentedCards.current.delete(playedCard.id); setOptimisticPlay(null); setResolutionEvents([]); } };
+  const play = async () => {
+    if (!card || !me || (selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid)) || card.kind === "BorrowedSword" && (!target || !borrowedSwordPlayTargetIds.includes(target))) return;
+    const playedCard = card;
+    const definition = cardDefinition(card.kind);
+    const needsTarget = selectedCanPlayAsAttack || ["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind);
+    const displayTarget = halberdAttack
+      ? targetIds.map((id) => room.players.find((player) => player.id === id)?.name).filter(Boolean).join(", ")
+      : targetPlayer?.name ?? (card.kind === "BumperHarvest" || card.kind === "Oath" ? "All living players" : card.kind === "BarbarianInvasion" || card.kind === "RainingArrows" ? "All other players" : me.name);
+    const optimisticEvent: CardEvent & { type: "card" } = {
+      id: `optimistic-${card.id}`,
+      type: "card",
+      player: me.name,
+      target: displayTarget,
+      card,
+      action: definition.equipmentSlot && !selectedCanPlayAsAttack ? "equip" : "play",
+      ...(selectedCanPlayAsAttack && !isAttackCard(card) ? { playedAs: "attack" } : {}),
+    };
+    resolutionRevision.current += 1;
+    optimisticallyPresentedCards.current.add(playedCard.id);
+    setResolutionClosing(false);
+    setResolutionEvents(retainsAtPlayer(optimisticEvent) ? [optimisticEvent] : []);
+    setOptimisticPlay(optimisticEvent);
+    setSelected("");
+    setTargetIds([]);
+    const accepted = await submitWithLocalTargetPreview(() => onAction("play_card", {
+      cardId: playedCard.id,
+      ...(selectedCanPlayAsAttack ? { playAs: "attack" } : {}),
+      ...(needsTarget ? { targetId: target, ...(halberdAttack ? { targetIds } : {}) } : {}),
+    }));
+    if (!accepted) {
+      optimisticallyPresentedCards.current.delete(playedCard.id);
+      setOptimisticPlay(null);
+      setResolutionEvents([]);
+    }
+  };
   const decisionPresentation = buildDecisionPresentation(room, clientPresentation);
   const currentActionOwnedByViewer = Boolean(room.currentAction?.actorId === room.meId && room.isMyAction && room.currentAction.kind !== "none");
   const consoleKind: ConsoleDecisionKind = canChooseTargetCard || targetCardPickerOption ? "target-card"
@@ -1758,7 +1881,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         if (!player) return null;
         const hero = heroDefinition(player.hero);
         return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
-      }} /></div>
+      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} /></div>
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       <button type="button" className="game-exit" onClick={onLeave}>Exit</button>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
@@ -1813,9 +1936,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           <div data-action-slot="primary">
             {rescueDecisionReady && !canRespond && consolePrimaryId === "rescue" && <button className="primary" disabled={busy || card?.kind !== "Peach" || !consoleDecision.primary?.enabled} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button>}
             {borrowedSwordTargetSelectionActive && consolePrimaryId === "borrowed-sword" && <button className="primary" disabled={busy || presentationBusy || !localTargetSelection.canConfirm || !consoleDecision.primary?.enabled} onClick={() => void confirmBorrowedSwordTarget()}>{busy ? "Confirming…" : "Confirm"}</button>}
-            {triggerResponse && selectedTriggerOption?.selection?.type === "cards" && consolePrimaryId === "trigger-cards" && <button className="primary" disabled={responseControlsDisabled || !triggerSubmissionComplete || !consoleDecision.primary?.enabled} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, ...(triggerSelectedCardIds.length === 1 ? { cardId: triggerSelectedCardIds[0] } : { cardIds: triggerSelectedCardIds }), ...(triggerTargetSelection ? { targetId: targetIds[0] } : {}) })}>Confirm</button>}
-            {triggerResponse && selectedTriggerOption?.selection?.type === "target" && triggerTargetSelection && consolePrimaryId === "trigger-target" && <button className="primary" disabled={responseControlsDisabled || !localTargetSelection.canConfirm || !consoleDecision.primary?.enabled} onClick={() => onAction("trigger", { providerId: selectedTriggerOption.effectId, targetIds })}>Confirm</button>}
-            {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !localTargetSelection.canConfirm && Boolean(activeSkillTargetSelection || activeSkillSelection?.targetIds.length) || !activeSkillComplete || !activeSkillSubmission || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && onAction("trigger", activeSkillSubmission)}>Confirm</button>}
+            {triggerResponse && selectedTriggerOption?.selection?.type === "cards" && consolePrimaryId === "trigger-cards" && <button className="primary" disabled={responseControlsDisabled || !triggerSubmissionComplete || !consoleDecision.primary?.enabled} onClick={() => submitWithLocalTargetPreview(() => onAction("trigger", { providerId: selectedTriggerOption.effectId, ...(triggerSelectedCardIds.length === 1 ? { cardId: triggerSelectedCardIds[0] } : { cardIds: triggerSelectedCardIds }), ...(triggerTargetSelection ? { targetId: targetIds[0] } : {}) }))}>Confirm</button>}
+            {triggerResponse && selectedTriggerOption?.selection?.type === "target" && triggerTargetSelection && consolePrimaryId === "trigger-target" && <button className="primary" disabled={responseControlsDisabled || !localTargetSelection.canConfirm || !consoleDecision.primary?.enabled} onClick={() => submitWithLocalTargetPreview(() => onAction("trigger", { providerId: selectedTriggerOption.effectId, targetIds }))}>Confirm</button>}
+            {(activeSkillSelection || activeSkillTargetSelection) && consolePrimaryId === "active-skill" && <button className="primary" disabled={busy || !localTargetSelection.canConfirm && Boolean(activeSkillTargetSelection || activeSkillSelection?.targetIds.length) || !activeSkillComplete || !activeSkillSubmission || !consoleDecision.primary?.enabled} onClick={() => activeSkillSubmission && submitWithLocalTargetPreview(() => onAction("trigger", activeSkillSubmission))}>Confirm</button>}
             {canRespond && genericResponse && semanticResponseOptions.length > 0 && selectedResponseProvider && consolePrimaryId === "response" && <button className="primary" disabled={responseControlsDisabled || !responseSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => submitResponseProvider()}>{busy ? "Confirming…" : "Confirm"}</button>}
             {room.isMyTurn && room.phase === "discard" && consolePrimaryId === "discard" && <button className="primary" disabled={busy || discardSelected.length !== excessCards || !consoleDecision.primary?.enabled} onClick={() => onAction("discard_cards", { cardIds: discardSelected })}>{busy ? "Discarding…" : `Discard ${excessCards} selected`}</button>}
             {room.isMyTurn && canPlay && consoleKind === "turn" && consolePrimaryId === "turn" && <button className="primary" disabled={serpentMode ? busy || presentationBusy || !canDeclareAttack || serpentSelected.length !== 2 || !attackTargetsValid || !consoleDecision.primary?.enabled : busy || presentationBusy || !card || selectedCanPlayAsAttack && (!canDeclareAttack || !attackTargetsValid) || (["Dismantle", "Steal", "Duel", "Overindulgence", "RationsDepleted", "BorrowedSword"].includes(card.kind) && !target) || card?.kind === "BorrowedSword" && !borrowedSwordPlayTargetIds.includes(target) || !selectedCanPlayAsAttack && (card.kind === "Dodge" || card.kind === "Negation") || !consoleDecision.primary?.enabled} onClick={serpentMode ? playSerpentAttack : play}>{busy ? "Playing…" : serpentMode ? "Form Attack" : normalTargetSelectionActive ? "Confirm" : "Play"}</button>}

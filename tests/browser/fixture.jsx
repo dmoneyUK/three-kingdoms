@@ -70,7 +70,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
     stable: { kind: "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" ? "trigger" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" ? "response" : "turn", actorId: decisionActorId, entitled: viewerId === decisionActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" ? "trigger" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "preview-ack" ? "response" : "turn", actorId: decisionActorId, entitled: viewerId === decisionActorId },
     settlement: null,
     transitionEvents: [],
   };
@@ -83,7 +83,11 @@ function currentActionFor(state, actorId, handCardId) {
   };
   if (state === "self-target-trigger") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Choose one target for the projected trigger", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
-    triggerOptions: [{ effectId: "browser_projected_target", label: "Projected Target", selection: { type: "target", targetIds: ["p1", "p2"], min: 1, max: 1 } }],
+    triggerOptions: [{ effectId: "browser_projected_target", label: "Projected Target", selection: { type: "target", targetIds: ["p1", "p2", "p3"], min: 1, max: 1 } }],
+  };
+  if (state === "multi-target-trigger") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Choose up to three projected targets", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
+    triggerOptions: [{ effectId: "browser_multi_target", label: "Multi Target", selection: { type: "target", targetIds: ["p2", "p3", "p4"], min: 1, max: 3 } }],
   };
   if (state === "self-target-skill" || state === "self-target-skill-no-self") return {
     version: 3, kind: "turn", actorId, deadline: 0, reason: "Choose one legal target for Prodigal Healer", legalActions: ["trigger", "end_turn"],
@@ -172,8 +176,8 @@ function currentActionFor(state, actorId, handCardId) {
 function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride }) {
   const ordinaryTurn = state === "ordinary-turn";
   const borrowedSwordFixture = state === "borrowed-sword-play" || state === "borrowed-sword-no-target";
-  const selfTargetFixture = state === "self-target-skill" || state === "self-target-skill-no-self" || state === "self-target-trigger";
-  const selfTargetTriggerFixture = state === "self-target-trigger";
+  const selfTargetFixture = state === "self-target-skill" || state === "self-target-skill-no-self" || state === "self-target-trigger" || state === "multi-target-trigger";
+  const selfTargetTriggerFixture = state === "self-target-trigger" || state === "multi-target-trigger";
   if (ordinaryTurn) state = "normal";
   const hasLocalJudgementFixture = ["local-judgement-empty", "local-judgement-one", "local-judgement-two"].includes(state);
   const localJudgementCount = state === "local-judgement-one" ? 1 : state === "local-judgement-two" ? 2 : 0;
@@ -287,11 +291,33 @@ function readFixture() {
 }
 
 const { state, count, handSize, equipmentCase, heroOverride, sourceOverride } = readFixture();
+const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
 let fixtureRoom = browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride });
 window.__browserActions = [];
 window.__browserRoom = fixtureRoom;
-const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => { window.__browserActions.push({ action, extra }); return true; }} onLeave={() => {}} />);
+const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => {
+  window.__browserActions.push({ action, extra });
+  const targetId = typeof extra?.targetId === "string" ? extra.targetId : null;
+  if (acknowledgeLocalPreview && action === "play_card" && targetId) {
+    fixtureRoom = {
+      ...fixtureRoom,
+      phase: "response",
+      isMyTurn: false,
+      actionPlayerId: targetId,
+      actionReason: "Respond to Attack",
+      isMyAction: false,
+      actionRevision: `${fixtureRoom.actionRevision}-acknowledged`,
+      currentAction: { version: 3, kind: "response", actorId: targetId, deadline: 0, reason: "Respond to Attack", legalActions: ["respond", "decline_response"], requirement: "dodge", options: [] },
+      pending: { kind: "response" },
+      pendingAttack: { sourceId: fixtureRoom.meId, targetId },
+      presentationSnapshot: semanticSnapshot({ state: "preview-ack", playerIds: fixtureRoom.players.map((player) => player.id), stage: "ATTACK_RESPONSE", sourceId: fixtureRoom.meId, targetIds: [targetId], currentParticipantId: targetId, decisionActorId: targetId, activeResolverId: targetId, viewerId: fixtureRoom.meId }),
+    };
+    window.__browserRoom = fixtureRoom;
+    renderFixture();
+  }
+  return true;
+}} onLeave={() => {}} />);
 window.__setBrowserHandIds = (ids) => {
   const myHand = ids.map((id) => card(id, "Attack"));
   fixtureRoom = {
