@@ -12,7 +12,7 @@ It records durable UX2 UI/Layout implementation milestones and known implementat
 Current sources of authority are:
 
 - product/UI behavior: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`;
-- current task/status: `HANDOVER.md`;
+- current execution status: `HANDOVER.md`;
 - repository rules: `AGENTS.md`;
 - autonomous execution method: `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`.
 
@@ -21,53 +21,145 @@ If a historical statement conflicts with current design/code, treat it as histor
 Detailed older handoff evidence through VIS-12J is archived in:
 `docs/history/UX_V2_HANDOVER_THROUGH_VIS_12J.md`.
 
-## Durable milestone summary
+## Completion rule — do not repeat closed work
 
-- **UX2 presentation foundation:** causal context, presentation projection, stable snapshot/client adapters, scene continuity, fail-closed semantic presentation, browser regression harness.
-- **VIS-01 / VIS-04:** 2–4 player Top Row topology and compact top anchoring.
-- **VIS-05:** deterministic 5–10 player Side Column topology, containment/hit safety, central safe zone, participant hierarchy.
-- **VIS-06:** dedicated full-width Guidance, semantic action slots, mapped Hero Skills.
-- **VIS-07:** Group/AOE neutral target-scope density without invented progress/order.
-- **VIS-08:** open Side Column Stage shell, fail-closed focus, Dying metadata deduplication.
-- **VIS-09:** local Judgement Hero overlay, one-row large-Hand navigation, Hand viewport anchoring.
-- **VIS-10:** short-portrait Stage containment, action-zone separation, opponent Hero/public Equipment readability.
-- **VIS-11:** narrow short-portrait containment and mobile Primary action placement.
-- **VIS-12A–J:** mobile skill readability, Hero-first Top Row sizing/composition, pile de-emphasis, Hero crop/focal tuning across surfaces, narrow-width Hand validation, and centered mobile single-target Stage.
-- **VIS-12K:** added representative four-player ordinary-turn visual coverage and exposed the Guidance placement mismatch.
-- **VIS-12L:** corrected Guidance/action vertical composition so decision guidance remains above bottom actions without displacing the Hand.
-- **VIS-12M:** deduplicated already-proven non-Dying Stage source metadata and corrected resulting narrow metadata containment; follow-up stale Dock source-shape coverage was repaired.
-- **VIS-12N:** completed the four-player 480×900/390×640 screenshot and geometry matrix; extended the compact short-height Stage layout to fit Group observer and Dying content at 390×640. Focused browser coverage passed locally; exact-revision CI remains pending in HANDOVER.
-- **VIS-12O:** separated Deck/Discard from active four-player Top Row Stage content with lower-edge full-size piles at 480×900 and a compact top-edge pile row at 390×640. Six focused state/viewport cases and 19 related 12N/12J/12K/12C regressions passed locally; six screenshots were visually inspected. Exact-revision CI remains pending in HANDOVER.
-- **VIS-12P:** deduplicated Group current-participant metadata only when projected Hero Focus role and player ID match; preserved Active Scope, distinct DECISION, nonmatching target-owned metadata, and fail-closed ambiguous focus. Focused display-model tests passed 39/39; the 21-case 12P/12M/12N/12O/12J/12K browser selection passed. Exact-revision CI remains pending in HANDOVER.
-- **VIS-13B:** a failed Eight Trigrams Dodge Judgement preserves the Dodge requirement, actor, count, continuation, and causal interaction, then reopens only remaining legal providers; the failed provider stays identifiable across Judgement modifiers and is private to the initiating continuation. Focused API regressions passed 25/25. CI evidence is recorded in the contemporaneous HANDOVER.
-- **VIS-13C:** Borrowed Sword uses one server-owned complete-path legality result for primary holders and forced Attack targets, including its legal two-player source-target case; the acting viewer receives the target projection through `CurrentAction`, and deferred resolution settles paths that become impossible before opening a blocking choice. Focused API, room-safety, and browser regressions are recorded in HANDOVER.
+Anything listed under **Completed implementation inventory** is closed as an
+implementation objective. The Coding Agent must not select a task whose purpose
+is simply to recreate or redo that completed contract.
 
-## Durable implementation principles established by completed work
+A completed area may be reopened only when at least one is true:
 
-These are historical implementation outcomes, not a replacement design specification:
+- the Reviewer explicitly changes/extends the design contract;
+- a concrete regression proves the current implementation violates the
+  existing contract;
+- a new approved direction explicitly requires a bounded migration of the
+  existing implementation.
 
-- public interaction presentation uses authoritative projected identities and fails closed when semantic proof is missing;
-- viewer/local Hero remains in the Local Player Dock;
-- physical opponent seat DOM remains fixed;
-- 2–4 players use Top Row and 5–10 use Side Column;
-- Interaction Stage content stays within the protected safe zone and above the Local Dock;
-- local Guidance and action controls are separate stable surfaces;
-- local Hand remains one horizontal layer with responsive overlap/pan behavior;
-- persistent local Judgement is associated with the local Hero;
-- ambiguous Group/AOE progress/order/outcomes are not fabricated in the client.
+A stale test, CI repair, documentation update, or later visual polish does not
+by itself reopen the underlying feature.
 
-For exact current product behavior, always use the UX V2 design document.
+When planning new work, compare the current approved design direction against
+this inventory and inspect current code/tests before choosing a task.
+
+## Completed implementation inventory
+
+### Presentation / authority foundation — CLOSED
+
+- Stable/fail-closed PresentationSnapshot / PresentationClientView projection.
+- Causal Interaction / Frame / Checkpoint identity and presentation continuity.
+- CurrentAction-owned local legality; React does not own gameplay legality.
+- Viewer-private controls remain separate from public interaction facts.
+- actionRevision/state reconciliation and Quick Test viewer reprojection
+  foundations are implemented.
+
+### Seat topology / battlefield geometry — CLOSED
+
+- VIS-01 / VIS-04: 2–4 total players use Top Row topology and compact top
+  anchoring.
+- VIS-05: 5–10 total players use deterministic Side Column topology with
+  containment/hit safety, protected central safe zone, and participant
+  hierarchy.
+- Opponent physical seat DOM remains fixed while semantic participants are
+  projected into the Interaction Stage.
+- VIS-10A / VIS-11A: short/narrow portrait Interaction Stage containment.
+- VIS-12B / VIS-12I: four-player mobile Hero-first seat sizing and internal
+  composition.
+- VIS-12D / VIS-12H: mobile opponent Hero upper-body crop/focal treatment.
+
+### Local Player Dock / Hand / controls — CLOSED STRUCTURE
+
+The established Dock structure is implemented and must not be rebuilt:
+
+- viewer Hero remains in the Local Player Dock;
+- Skills and Equipment occupy the upper operational band;
+- Hand is one horizontal layer with overlap, pan, and stable viewport anchoring;
+- persistent Judgement is attached to the local Hero;
+- Guidance and Actions remain protected at the bottom;
+- semantic Primary / contextual Cancel / authoritative Skip-Decline / End are
+  separate;
+- mobile Primary action placement and safety gutter are implemented;
+- VIS-12A local skill readability and VIS-12F narrow-width Hand validation are
+  implemented;
+- VIS-12G local Hero upper-body crop is implemented.
+
+The current design may still approve **bounded visual hierarchy polish** (for
+example making the local Hero carry more visual weight). That is a delta, not a
+Dock rebuild.
+
+### Interaction Stage presentation work already implemented — CLOSED BASELINE
+
+- VIS-03 family: semantic Interaction Stage orientation, Hero Focus foundation,
+  open-shell treatment, viewer exclusion, and Medium Source.
+- VIS-06: full-width Guidance, semantic action slots, mapped Hero Skills.
+- VIS-07: neutral Group/AOE scope density without invented progress/order.
+- VIS-08: open Side Column Stage shell, fail-closed Stage focus, Dying metadata
+  deduplication.
+- VIS-09A: persistent local Judgement ownership moved to the local Hero.
+- VIS-10B / VIS-11B: action-zone separation and mobile thumb-zone placement.
+- VIS-10C: opponent Hero readability and public Equipment at a glance.
+- VIS-12C: ordinary mobile Deck/Discard de-emphasis.
+- VIS-12E: Interaction Stage Hero Focus upper-body focal treatment.
+- VIS-12J: centered mobile single-target Stage composition.
+- VIS-12K / VIS-12L: representative four-player ordinary-turn coverage and
+  corrected Guidance/action vertical composition.
+- VIS-12M: duplicate non-Dying Stage source metadata removal.
+- VIS-12N: four-player 480×900 / 390×640 interaction screenshot and geometry
+  matrix.
+- VIS-12O: Deck/Discard separation from active four-player Stage content.
+- VIS-12P: Group current-participant metadata deduplication while preserving
+  distinct authoritative scope/decision facts.
+
+These completed presentation slices remain valid foundations for the new §12
+Interaction Stage completion direction. New PREVIEW / INSPECT / ACTIVE /
+SELECTABLE DETAIL work must extend them rather than restart them.
+
+### Interaction-correctness additions — CLOSED IMPLEMENTATION
+
+- **13A / Reviewer addition A — authoritative self-target symmetry:** a
+  server-projected self target is selectable/submittable from the Local Player
+  Dock; the local Hero remains Dock-only.
+- **13B / Reviewer addition B — failed response provider is not a Pass:** a
+  failed Eight Trigrams attempt reopens the same Dodge requirement with the
+  failed provider disabled and does not consume the requirement.
+- **13C / Reviewer addition C — Borrowed Sword complete-path legality:** one
+  server-owned legality result covers primary-holder and downstream forced
+  Attack legality, including the legal two-player source-target case and
+  deferred-path revalidation.
+
+Later test/CI corrections for these implementations do not reopen the feature.
+Only a proven regression or new Reviewer-approved design requirement does.
 
 ## Known deferred semantic gaps
 
-The following remain historical known gaps unless current code/design has since resolved them:
+These are **not completed** and must remain fail-closed until authoritative
+projection exists:
 
-- Group/AOE per-participant resolved/pending/outcome/order requires explicit authoritative projection; do not infer it from remaining IDs, target-array order, timeline, HP, turn owner, or seat position.
-- Durable independently proven counter-history / settlement-transition history remains outside the established public UI contract unless authoritative projection support is added.
-- Real-device/touch certification, full WCAG audit, live multiplayer timing validation, and production-health certification are separate from browser-layout CI evidence.
+- Group/AOE per-participant resolved / current / pending / outcome / semantic
+  order.
+- Durable independently proven multi-node Reaction Chain history beyond the
+  currently authoritative bounded presentation.
+- Settlement/transition history that would require new authoritative public
+  projection.
+
+Never infer these from remaining IDs, target-array order, timeline order, HP
+changes, turn owner, seat position, or animation state.
+
+## External/manual validation not equivalent to feature implementation
+
+The following remain separate evidence/release concerns and are not reasons to
+redo completed UX implementation:
+
+- real-device/touch certification;
+- full WCAG audit;
+- live multiplayer timing validation;
+- production deployment/health verification;
+- subjective final pixel/art-direction review.
 
 ## Historical evidence policy
 
 Do not add active task instructions to this file.
 
-When a task closes, add only a short durable milestone/result when it is useful for future review. Keep detailed command sequences, temporary CI failures, and current resume instructions in HANDOVER while active, then archive or remove them when obsolete.
+When a task closes, add only a short durable milestone/result when it helps
+future planning. Keep temporary CI failures, exact resume instructions, and
+current task state in HANDOVER while active; do not leave stale "CI pending in
+HANDOVER" wording here after the handoff has moved on.
