@@ -318,7 +318,22 @@ than restart them.
   treatment remain unchanged; no eligibility or gameplay logic changed.
 - The Current Effect and semantic-response-heading browser specs passed 20/20;
   targeted ESLint and `git diff --check` passed. No full local suite/build/lint
-  was run. Commit/push and CI are pending.
+  was run. Pushed as `3a16740`; exact run `37321563100` was `in_progress` at the
+  2026-10-05 planning checkpoint, so no CI conclusion is recorded.
+
+### UX2.3-FAST-RESPONSE-EVENT-SUMMARY-01 — Proven Current Effect summary
+
+- Added a concise natural-language line below the event title only when a
+  connected Current Effect, public source, and visible active participant are
+  proven. Single-target effects use source/effect/target wording; Duel uses a
+  pair sentence only when its two known active participants include the source.
+- Missing source/effect/participant proof, unlinked Negation, local Inspect, and
+  local Preview remain summary-free. The public open-response copy does not name
+  the private responder/provider.
+- Focused browser specs passed 21/21 after correcting one new 390px Negation
+  geometry assertion to use the established narrow-flow branch; targeted ESLint
+  and `git diff --check` passed. No full local suite/build/lint was run.
+  Commit/push and CI are pending.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

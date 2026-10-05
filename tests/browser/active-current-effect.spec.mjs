@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, duelObserver = false, duelParticipantMissing = false }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false }) {
   await page.setViewportSize({ width, height });
   const effectQuery = effect ? `&effect=${encodeURIComponent(effect)}` : "";
+  const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : "";
   const duelObserverQuery = duelObserver ? "&duelObserver=1" : "";
   const missingDuelParticipantQuery = duelParticipantMissing ? "&duelParticipant=missing" : "";
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${duelObserverQuery}${missingDuelParticipantQuery}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -23,6 +24,8 @@ for (const viewport of [
     await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
     await expect(stage).toHaveAttribute("data-current-effect", "Attack");
     await expect(stage.locator(":scope > header strong")).toHaveText("Attack Response");
+    const summary = stage.locator('[data-stage-event-summary="proven"]');
+    await expect(summary).toHaveText("Player 1 used Attack on Player 2.");
     await expect(effect).toContainText("CURRENT EFFECT");
     await expect(effect.locator("strong")).toHaveText("Attack");
     await expect(stage).toHaveAttribute("data-interaction-id", "browser-active-attack-observer-interaction");
@@ -59,6 +62,10 @@ for (const viewport of [
     expect(stageBox.x).toBeGreaterThanOrEqual(0);
     expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width);
     expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+    const titleBox = await stage.locator(":scope > header").boundingBox();
+    const summaryBox = await summary.boundingBox();
+    expect(titleBox && summaryBox).toBeTruthy();
+    expect(summaryBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
   });
 }
 
@@ -75,6 +82,8 @@ for (const viewport of [
     const currentParticipant = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
     await expect(stage).toHaveAttribute("data-current-effect", "Duel");
     await expect(stage.locator(":scope > header strong")).toHaveText("Duel Exchange");
+    const summary = stage.locator('[data-stage-event-summary="proven"]');
+    await expect(summary).toHaveText("Duel between Player 1 and Player 2 is in progress.");
     await expect(effect.locator("strong")).toHaveText("Duel");
     await expect(source).toContainText("Player 1");
     await expect(currentParticipant).toContainText("Player 2");
@@ -101,7 +110,9 @@ for (const viewport of [
     const sourceBox = await source.boundingBox();
     const effectBox = await effect.boundingBox();
     const participantBox = await currentParticipant.boundingBox();
-    expect(sourceBox && effectBox && participantBox).toBeTruthy();
+    const stageBox = await stage.boundingBox();
+    const dockBox = await page.locator(".local-player-dock").boundingBox();
+    expect(sourceBox && effectBox && participantBox && stageBox && dockBox).toBeTruthy();
     if (viewport.topology === "side-column") {
       expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
       expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(participantBox.y + 2);
@@ -112,6 +123,11 @@ for (const viewport of [
       expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
       expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(participantBox.x + 2);
     }
+    expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+    const titleBox = await stage.locator(":scope > header").boundingBox();
+    const summaryBox = await summary.boundingBox();
+    expect(titleBox && summaryBox).toBeTruthy();
+    expect(summaryBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
   });
 }
 
@@ -120,6 +136,7 @@ test("Duel Current Effect fails closed without effect or current-participant pro
   let stage = page.locator('[data-stage="DUEL_EXCHANGE"]');
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+  await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
   await expect(stage).toContainText("INTERACTION STAGE");
 
   await loadFixture(page, { width: 480, count: 6, state: "duel", duelObserver: true, duelParticipantMissing: true });
@@ -127,6 +144,7 @@ test("Duel Current Effect fails closed without effect or current-participant pro
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
   await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
+  await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
   await expect(stage).toContainText("INTERACTION STAGE");
 });
 
@@ -140,6 +158,7 @@ test("Inspect preserves ACTIVE Current Effect without linking it to the inspecte
   const inspect = stage.locator('.hero-focus-inspect[data-inspect-player-id="p4"]');
   await expect(inspect).toBeVisible();
   await expect(stage.locator('[aria-label="Current Effect"] strong')).toHaveText("Attack");
+  await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
   await expect(stage.locator(".medium-participant-card, .medium-participant-arrow, .current-effect-arrow")).toHaveCount(0);
   await page.getByRole("button", { name: "Close Player 4 inspection", exact: true }).click();
   await expect(stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]')).toBeVisible();
@@ -150,6 +169,7 @@ test("Inspect preserves ACTIVE Current Effect without linking it to the inspecte
 });
 
 for (const viewport of [
+  { count: 4, width: 390, height: 844, topology: "top-row" },
   { count: 4, width: 1440, height: 900, topology: "top-row" },
   { count: 6, width: 480, height: 900, topology: "side-column" },
 ]) {
@@ -164,6 +184,8 @@ for (const viewport of [
     await expect(stage).toHaveAttribute("data-stage", "NEGATION");
     await expect(stage).toHaveAttribute("data-current-effect", "Dismantle");
     await expect(stage).toHaveAttribute("data-interaction-id", "browser-active-negation-observer-interaction");
+    const summary = stage.locator('[data-stage-event-summary="proven"]');
+    await expect(summary).toHaveText("Player 1 used Dismantle on Player 2.");
     await expect(source).toContainText("Player 1");
     await expect(effect.locator("strong")).toHaveText("Dismantle");
     await expect(target).toContainText("Player 2");
@@ -189,14 +211,24 @@ for (const viewport of [
     const sourceBox = await source.boundingBox();
     const effectBox = await effect.boundingBox();
     const targetBox = await target.boundingBox();
-    expect(sourceBox && effectBox && targetBox).toBeTruthy();
+    const stageBox = await stage.boundingBox();
+    const dockBox = await page.locator(".local-player-dock").boundingBox();
+    expect(sourceBox && effectBox && targetBox && stageBox && dockBox).toBeTruthy();
     if (viewport.topology === "side-column") {
       expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+    } else if (viewport.width <= 650) {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
       expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
     } else {
       expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
       expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);
     }
+    expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+    const titleBox = await stage.locator(":scope > header").boundingBox();
+    const summaryBox = await summary.boundingBox();
+    expect(titleBox && summaryBox).toBeTruthy();
+    expect(summaryBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
   });
 }
 
@@ -205,6 +237,7 @@ test("NEGATION effect stays unlinked without matching focus and fails closed for
   let stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
   await expect(stage).toHaveAttribute("data-current-effect", "Dismantle");
   await expect(stage.locator('[aria-label="Current Effect"]')).toBeVisible();
+  await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
   await expect(stage.locator(".current-effect-arrow, .medium-participant-arrow")).toHaveCount(0);
   await expect(stage.locator('[data-hero-focus="true"]')).toHaveCount(0);
   await expect(stage).not.toContainText("Player 3");
@@ -214,6 +247,7 @@ test("NEGATION effect stays unlinked without matching focus and fails closed for
   await expect(stage).toHaveAttribute("data-stage", "NEGATION");
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+  await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
   await expect(stage.locator('[data-reaction-chain="proven"]')).toHaveCount(0);
 
   await loadFixture(page, { width: 480, count: 6, state: "active-negation-multi-observer" });
@@ -221,22 +255,30 @@ test("NEGATION effect stays unlinked without matching focus and fails closed for
   await expect(stage).toHaveAttribute("data-stage", "NEGATION");
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+  await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
   await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
   await expect(stage.locator('[data-hero-focus="true"]')).toHaveCount(0);
 });
 
-test("missing public effect fails closed and local REST/Preview do not invent one", async ({ page }) => {
+test("missing public source/effect fails closed and local REST/Preview do not invent a summary", async ({ page }) => {
   await loadFixture(page, { width: 480, effect: "none" });
   let stage = page.locator('[aria-label="Interaction Stage"]');
   await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+  await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
   await expect(stage).toContainText("INTERACTION STAGE");
   await expect(stage).toContainText("HERO FOCUS");
+
+  await loadFixture(page, { width: 480, source: "none" });
+  stage = page.locator('[aria-label="Interaction Stage"]');
+  await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+  await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
 
   await loadFixture(page, { state: "rest", width: 390 });
   await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();
   await expect(page.locator('[aria-label="Interaction Stage"] .interaction-stage-current-effect')).toHaveCount(0);
+  await expect(page.locator('[aria-label="Interaction Stage"] [data-stage-event-summary]')).toHaveCount(0);
 
   await loadFixture(page, { state: "ordinary-turn", width: 480 });
   await page.locator('[data-hand-card-id="browser-ordinary-5"] .game-card').click();
@@ -244,4 +286,5 @@ test("missing public effect fails closed and local REST/Preview do not invent on
   stage = page.locator('[aria-label="Interaction Stage"]');
   await expect(stage).toHaveAttribute("data-local-ui-mode", "PREVIEW");
   await expect(stage.locator(".interaction-stage-current-effect")).toHaveCount(0);
+  await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
 });

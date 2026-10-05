@@ -1677,6 +1677,19 @@
   }
 }
 
+.interaction-stage-event-summary {
+  max-width: min(100%, 540px);
+  margin: 0 0 6px;
+  color: #c8bea8;
+  font: 9px/1.25 Arial, sans-serif;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .interaction-stage-event-summary {
+    font-size: 8px;
+  }
+}
+
 .game-shell .player-board[data-seat-topology="side-column"] {
   --seat-row-count: 2;
   display: grid;

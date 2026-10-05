@@ -593,6 +593,28 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const reactionDecisionActorAlreadyFocused = Boolean(connectedCurrentEffectFocusIsVisible
     && reactionChain.active?.decisionActor.id
     && reactionChain.active.decisionActor.id === heroFocus.primary?.id);
+  const duelSummaryParticipant = currentEffect === "Duel"
+    && stage.activeTargets.length === 2
+    && stage.source.id
+    && stage.activeTargets.some((participant) => participant.id === stage.source.id)
+    ? stage.activeTargets.find((participant) => participant.id !== stage.source.id) ?? null
+    : null;
+  const currentEffectSummary = currentEffect === "Duel"
+    ? connectedCurrentEffectFocusIsVisible
+      && stage.source.id
+      && stage.source.known
+      && duelSummaryParticipant?.id
+      && duelSummaryParticipant.known
+      ? `Duel between ${stage.source.name} and ${duelSummaryParticipant.name} is in progress.`
+      : null
+    : connectedCurrentEffectFocusIsVisible
+      && stage.source.id
+      && stage.source.known
+      && currentEffect
+      && heroFocus.primary?.id
+      && heroFocus.primary.known
+      ? `${stage.source.name} used ${currentEffect} on ${heroFocus.primary.name}.`
+      : null;
   const dyingSourceAlreadyVisible = Boolean(dyingHandoff.visible && stage.source.id && (
     mediumSource?.player.id === stage.source.id
     || (heroFocus.primary?.id && heroFocus.primary.id !== stage.source.id && heroFocus.source.id === stage.source.id)
@@ -645,6 +667,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   if (!display.visible && !hasLocalFocus) return null;
   return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
     <header>{!hideStageArchitecturalChrome && <span>INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>
+    {currentEffectSummary && <p className="interaction-stage-event-summary" data-stage-event-summary="proven">{currentEffectSummary}</p>}
     <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {showMediumSource && mediumSource && <MediumParticipantCard view={mediumSource} />}
