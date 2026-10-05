@@ -258,7 +258,7 @@ test("Legacy distribution keeps private cards static and labels recipients by he
   assert.doesNotMatch(gameRoomSource, /<option value=\{player\.id\} key=\{player\.id\}>\{player\.name\}<\/option>/, "Legacy does not expose player names in recipient choices");
 });
 
-test("Hero Focus renders the accepted public participant without becoming a control surface", () => {
+test("Interaction Stage presents the accepted public participant without becoming a control surface", () => {
   const createSnapshot = (sceneOverrides = {}, stableOverrides = {}, decisionActorId = "B") => {
     const interaction = {
       semantics: "PROVEN", interactionId: "focus-interaction", rootFrameId: "focus-root", activeFrameId: "focus-frame", parentFrameId: null,
@@ -290,7 +290,7 @@ test("Hero Focus renders the accepted public participant without becoming a cont
   }));
 
   const ordinaryHtml = renderStage(createSnapshot());
-  assert.match(ordinaryHtml, /class="hero-focus"[^>]*data-hero-focus-player-id="B"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
+  assert.match(ordinaryHtml, /class="hero-focus"[^>]*data-hero-focus-player-id="B"[^>]*data-hero-focus-role="Target"/);
   assert.match(ordinaryHtml, /class="hero-focus-identity"[^>]*><b>Zhao Yun<\/b><span>Zhao Yun<\/span><small>HP 3\/4<\/small>/);
   assert.match(ordinaryHtml, /class="hero-focus-portrait"[^>]*data-hero-id="zhao-yun"/);
   assert.doesNotMatch(ordinaryHtml, /button|data-hand|data-card|legalActions|providers/i, "Hero Focus renders no controls or private card data");
@@ -308,7 +308,7 @@ test("Hero Focus renders the accepted public participant without becoming a cont
   assert.doesNotMatch(ambiguousHtml, /data-hero-focus="true"/, "ambiguous multi-target state has no guessed Hero Focus");
 
   const soleTargetHtml = renderStage(createSnapshot({ targetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["C"], activeTargetIds: ["C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "C"] } }, { decisionActorId: "A" }, "A"));
-  assert.match(soleTargetHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="CURRENT TARGET"/);
+  assert.match(soleTargetHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="Target"/);
 
   const childHtml = renderStage(createSnapshot({ stage: "DAMAGE", parentFrameId: "group-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" }, decisionActorId: "B", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, {}, "B"));
   assert.match(childHtml, /data-hero-focus-player-id="B"/);
@@ -321,7 +321,7 @@ test("Hero Focus renders the accepted public participant without becoming a cont
   assert.match(dyingHtml, /Dying · Rescue/);
 
   const uninvolvedHtml = renderStage(createSnapshot(), "C");
-  assert.match(uninvolvedHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
+  assert.match(uninvolvedHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="Target"/);
   assert.doesNotMatch(ordinaryHtml, /YOUR DECISION/, "viewer decision guidance is owned by the Local Dock");
   assert.doesNotMatch(uninvolvedHtml, /YOUR DECISION/);
 

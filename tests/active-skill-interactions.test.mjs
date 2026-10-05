@@ -971,7 +971,7 @@ test("mounted Duel response follows the semantic actor for controls and Hero Foc
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2"], "Duel focus uses the existing stable seat anchors");
   assert.equal(renderer.root.findByProps({ "data-stage": "DUEL_EXCHANGE" }).props["data-continuity"], "ROOT_FRAME");
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT TARGET", "the local Duel actor stays in the dock while the unique external counterpart is focused");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target", "the local Duel actor stays in the dock while the unique external counterpart is focused");
   assert.equal(nodeWith(renderer, "data-player-anchor", "p2").props.className.includes("interaction-seat-decision-actor"), true);
   assert.equal(buttonsContaining(renderer, "Skip").length, 1, "the acting Duel seat receives one authoritative Skip");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Confirm waits for the local Attack selection");
@@ -988,7 +988,7 @@ test("mounted Duel response keeps private controls and public focus viewer-equal
   let renderer;
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p2" }).props["data-hero-focus-role"], "Target");
   assert.equal(buttonsContaining(renderer, "Confirm").length, 0, "a non-actor cannot see private response controls");
   assert.equal(buttonsContaining(renderer, "Skip").length, 0, "a non-actor cannot submit the authoritative decline");
   assert.equal(renderer.root.findAllByProps({ "data-hand-card-id": "duel-response-attack" }).length, 0, "the response hand remains private to the acting viewer");
@@ -1007,7 +1007,7 @@ test("mounted Duel response clears local selection when the server revision hand
   await act(async () => { renderer.update(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.deepEqual(seatAnchorIds(renderer), ["p1", "p2"], "responder handoff keeps seat order and count stable");
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT PARTICIPANT");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target");
   assert.equal(buttonsContaining(renderer, "Confirm").length, 0, "the previous local Confirm is removed after handoff");
   assert.equal(buttonsContaining(renderer, "Skip").length, 0, "the previous local Skip is removed after handoff");
   await act(async () => { renderer.unmount(); });
@@ -1020,7 +1020,7 @@ test("mounted Duel semantics ignore legacy action owner and turn fields", async 
   await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(renderer.root.findByProps({ "data-stage": "DUEL_EXCHANGE" }).props["data-presentation-revision"], 1);
-  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "CURRENT TARGET");
+  assert.equal(renderer.root.findByProps({ "data-hero-focus-player-id": "p1" }).props["data-hero-focus-role"], "Target");
   assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "CurrentAction still owns the local response console");
   assert.equal(buttonsContaining(renderer, "Skip").length, 1);
   await act(async () => { renderer.unmount(); });

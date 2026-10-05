@@ -363,9 +363,9 @@ than restart them.
   player-facing `Attack Response` title and `Target` role, including the proven
   event summary. No production, gameplay, server, or protocol behavior changed.
 - The five affected browser cases passed 5/5; targeted ESLint and
-  `git diff --check` passed. Exact push-triggered run `37325865676` for
-  `ae3f6b8` was observed `in_progress` at the 2026-10-05 planning boundary;
-  no conclusion is inferred.
+  `git diff --check` passed. In run `37325865676` for `ae3f6b8`, the browser
+  step passed, but the later `npm test` step failed on stale response-role
+  assertions; no overall CI success is inferred.
 
 ### UX2.3-FAST-RESPONSE-10P-NEGATION-01 — Ten-player Side Column proof
 
@@ -376,7 +376,25 @@ than restart them.
   Root-before-Active order, neutral open-window copy, and responder privacy.
 - The Negation Current Effect matrix passed 4/4; targeted ESLint and
   `git diff --check` passed. Existing responsive CSS met the measured contract,
-  so no production change was required. CI is pending after this task's push.
+  so no production change was required. Pushed as `34362d1`; the one-time
+  Actions run `37327380014` completed with failure at `Run npm test`. Its
+  lint, build, and browser steps passed; the failure repeated the stale
+  response-role test assertions recorded below.
+
+### CI recovery — stale fast-response role assertions
+
+- The three latest failed `ux-v2` runs were `37323822915` (`b4c0937`, browser
+  step), `37325865676` (`ae3f6b8`, `npm test` step), and `37327380014`
+  (`34362d1`, `npm test` step). The first browser failure was the old UI-19
+  vocabulary contract fixed in `ae3f6b8`; the later browser step passed, while
+  `npm test` still exposed stale `CURRENT PARTICIPANT` / `CURRENT TARGET`
+  assertions in fast-response rendering tests.
+- Updated those fast-response test expectations to the current player-facing
+  `Target` contract, without changing production or gameplay behavior. The
+  local CI-equivalent `CI=1 npm test` completed successfully: build passed,
+  fast tests 203/203, and API tests 248/248. Targeted ESLint and
+  `git diff --check` passed. GitHub Actions validation for this repair has not
+  yet been triggered; do not mark CI green until its exact pushed SHA passes.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
