@@ -7,7 +7,7 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest CI checkpoint
 
-Remote head `10398bf8db9dc73eda85ccb952ec4b68c786284f` push run `37368196967` attempt 2 failed in `build-and-test`: lint/build passed, browser reported 482 passed and 12 failed; `deploy` was skipped. Eleven failures were UI19 public-Equipment/Inspect checks caused by the new fixture omitting ZhugeCrossbow's `kind`; one response-timer test had a clock-step assertion failure. Attempt 1 had been cancelled before steps during the Actions incident. Prior head `ac54b2e` passed run `37364054848` in both jobs.
+Repair head `6d0f4e9d46e17f7c6839229b6cbf58438618fbb0` push run `37373094475` attempt 1 failed: lint/build passed, browser reported 494 passed and one response-timer failure, and `deploy` was skipped. The equipment/Inspect regressions from `10398bf` are fixed; CI showed that fake time continued advancing during suite scheduling, so exact 9s/4s assertions still drifted. The earlier `10398bf` run `37368196967` attempt 2 had 482 passed/12 failed; its attempt 1 was cancelled during the Actions incident. Prior head `ac54b2e` passed run `37364054848` in both jobs.
 
 ## Design checkpoint
 
@@ -15,8 +15,8 @@ Rechecked `origin/ux-v2` at `10398bf`; latest design blob `5157af29079cf03f86476
 
 ## Latest result
 
-`UX2.4-CONCEALED-HAND-ZONE-SELECTION-CLARITY-01` was pushed as `10398bf`; its attempt-2 browser suite failed as described above. The CI-only repair restores the REST fixture's `ZhugeCrossbow` kind, adds a focused public-Equipment/Inspect regression, and makes the timer test advance the mocked clock deterministically while asserting urgency colors without testing transition timing. The focused browser selection passed 20/20, including all 11 failed UI19 cases read-only; `tests/browser/ui19.spec.mjs` remains unchanged. No full suite/build was run. Repair is locally validated but not yet pushed.
+`UX2.4-CONCEALED-HAND-ZONE-SELECTION-CLARITY-01` was pushed as `10398bf`; CI-only repair `6d0f4e9` restored the REST fixture's `ZhugeCrossbow` kind and added a focused public-Equipment/Inspect regression. Its required Actions run fixed those failures but exposed timer drift under CI scheduling. A second CI-only timer-test repair now pauses the loaded page clock at a forward sample and derives the exact jump to the projected deadline; it keeps the exact 9s/4s and urgency-color checks. Focused browser validation passed 20/20 (including all 11 prior UI19 cases read-only), targeted ESLint had 0 errors (fixture JSX ignored), and `git diff --check` passed. `tests/browser/ui19.spec.mjs` remains unchanged. No full local suite/build was run; the second repair is not yet pushed.
 
-## Current task — CI REPAIR ONLY for UX2.4
+## Current task — CI REPAIR ONLY (timer determinism)
 
-Fix only the two browser failures on `10398bf`: restore the missing fixture `kind` behind the 11 public Equipment/Inspect failures, and make the response-timer fake-clock/color assertion deterministic without weakening its 9s/4s urgency checks. Focused validation is the relevant picker tests, the response-timer case, and the 11 UI19 cases run read-only. Commit/push only these repairs and this handoff update; do not plan a successor until required CI succeeds on the repair SHA. Preserve `tests/browser/ui19.spec.mjs` unchanged.
+Fix only response-timer clock drift on `6d0f4e9`. After the fixture loads, pause mocked time at a sampled future instant and advance relative to its authoritative deadline so the 9s/4s checks are stable under CI scheduling. Focused browser validation is 20/20 with two workers; keep `ui19.spec.mjs` read-only. Commit/push only the timer test and handoff update. Do not plan a successor until required CI succeeds on the next repair SHA.

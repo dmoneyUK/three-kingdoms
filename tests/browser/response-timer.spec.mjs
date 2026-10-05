@@ -16,6 +16,13 @@ test("UX2.3 response timer is glanceable, urgent near expiry, and stays top-righ
   await expect(timer).toContainText("25s");
   await expect(timer).not.toContainText(/Player\s+\d/i);
 
+  const clockState = await page.evaluate(() => ({
+    now: Date.now(),
+    deadline: window.__browserRoom.currentAction.deadline,
+  }));
+  const pauseAt = clockState.now + 5_000;
+  await page.clock.pauseAt(pauseAt);
+
   for (const { width, height, inset } of [
     { width: 390, height: 844, inset: 8 },
     { width: 480, height: 900, inset: 8 },
@@ -41,7 +48,9 @@ test("UX2.3 response timer is glanceable, urgent near expiry, and stays top-righ
   }
 
   const calmBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
-  await page.clock.fastForward(16_000);
+  const untilNineSeconds = clockState.deadline - pauseAt - 9_000;
+  expect(untilNineSeconds).toBeGreaterThan(0);
+  await page.clock.fastForward(untilNineSeconds);
   await expect(timer).toHaveAttribute("data-countdown-urgency", "urgent");
   await expect(timer).toHaveAttribute("aria-label", "Response Time 9 seconds");
   const urgentBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
