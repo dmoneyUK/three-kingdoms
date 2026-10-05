@@ -7,11 +7,11 @@ This file contains only the current execution handoff. Product design is in `doc
 
 ## Latest task result — UX2.0VIS-13C
 
-Status: **IMPLEMENTED — CI PENDING**.
+Status: **IMPLEMENTED — CI UNVERIFIED**.
 
 Borrowed Sword now uses one server-owned complete-path legality result for its primary Weapon-holder projection/validation and forced-Attack target projection/submission. The source may be the forced target when the holder can legally Attack them; no three-player minimum is imposed. Play-phase targets are exposed only in the acting viewer's `CurrentAction`, and React consumes that projection rather than rebuilding Borrowed Sword rules. Deferred resolution revalidates before opening its blocking target choice; an invalidated path settles without a zero-option Pending and preserves the causal continuation.
 
-Focused validation: `npm run build` succeeded; `GAME_TEST_FILES=tests/api/borrowed-sword.test.mjs node tests/run-tests.mjs` passed 7/7; `node --test tests/room-safety.test.mjs` passed 4/4; the focused Borrowed Sword Playwright spec passed 2/2; targeted ESLint and `git diff --check` passed. No full test suite was run. The 13C push-triggered CI run has not been checked; CI remains pending.
+Focused validation: `npm run build` succeeded; `GAME_TEST_FILES=tests/api/borrowed-sword.test.mjs node tests/run-tests.mjs` passed 7/7; `node --test tests/room-safety.test.mjs` passed 4/4; the focused Borrowed Sword Playwright spec passed 2/2; targeted ESLint and `git diff --check` passed. No full test suite was run. The exact 13C commit checks were inspected once; GitHub displayed the `build-and-test` job as loading/re-running without an observable conclusion. CI remains unverified; do not claim green.
 
 The 13B Actions run `37269808166` was observed **in progress** once before 13C source edits and has not been rechecked. Do not infer its result for 13C.
 
@@ -19,6 +19,10 @@ The 13B Actions run `37269808166` was observed **in progress** once before 13C s
 
 Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; 13C implements Reviewer-approved addition C.
 
-## Current task — UX2.0VIS-13C delivery checkpoint
+## Current task — successor planning checkpoint
 
-Commit and push only `HANDOVER.md`, `docs/AUTONOMOUS_UI_ROADMAP.md`, `app/api/rooms/route.ts`, `app/page.tsx`, `game/capabilities/borrowed-sword.ts`, `game/protocol.d.ts`, `game/room-safety.js`, `tests/api/borrowed-sword.test.mjs`, `tests/browser/borrowed-sword-targets.spec.mjs`, `tests/browser/fixture.jsx`, and `tests/room-safety.test.mjs`. Then fetch and verify the exact remote revision. Before any successor source edit, reread the complete current workflow and remote HANDOVER, compare the latest remote design against this checkpoint, inspect the relevant code/tests, and check the 13C push-triggered Actions run once. Do not wait or repeatedly poll; keep CI pending if queued/in progress or unavailable, and diagnose a relevant failure before new feature work.
+Status: **BLOCKED — HUMAN REVIEW REQUIRED**.
+
+The current design revision `f52b6134fd62696c71fc3cba86210319e454832b` contains Reviewer additions A–C; implementation and focused regressions for all three are present in `573ec3d`, `7dbf2bc`, and `4a9814b`. The design explicitly is not a task queue, and no further reviewer-approved bounded implementation requirement is identified. Choosing another UI/gameplay change would require guessing scope.
+
+Smallest required decision: Reviewer updates the design with a new approved requirement or explicitly authorizes one next bounded task. Until then, make no new source/test edits. The 13C CI status remains unverified as recorded above.
