@@ -471,6 +471,22 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `37344999603`, including build-and-test and deploy/smoke-test jobs. The
   user-owned `tests/browser/ui19.spec.mjs` remained unchanged.
 
+### UX2.3-SIDE-COLUMN-THUMBNAIL-RECOGNITION-01 — Mobile Hero-seat recognition
+
+- Side Column seat width now follows one responsive CSS contract shared with
+  the Interaction Safe Zone. Focused browser coverage passed 8/8 for 6/10-player
+  layouts at 320/390/480/650px; existing UI19 Equipment/crop checks passed
+  8/8; targeted ESLint and `git diff --check` passed. At 480/650px, the seat is
+  74px wide; the 10-player/650px row budget yields 100px seat height, while the
+  other checked cases remain at least 108px. `tests/browser/ui19.spec.mjs` was
+  preserved unchanged.
+- Feature SHA `40f26b0` initially failed CI only because a UI-11 test still
+  asserted the former literal seat width; lint, build, and browser steps passed
+  and deploy was skipped. CI-repair-only SHA `0283aa7` updated that assertion
+  to verify the shared width/safe-zone contract. Its exact Actions run
+  `37349152242` passed on 2026-10-05, including build-and-test and deploy. The
+  repair did not change production behavior.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative
