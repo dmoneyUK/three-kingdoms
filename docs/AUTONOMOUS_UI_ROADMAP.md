@@ -199,6 +199,23 @@ than restart them.
   containment. Targeted ESLint and `git diff --check` passed. No full local
   suite/build/lint was run; push-triggered CI remains to be checked.
 
+### UX2.2-CI-RECOVERY-01 — Dying fixture semantics and Stage assertion alignment
+
+- The browser Dying fixture now represents the dying/current participant (`p2`)
+  separately from the rescue decision actor/resolver (`p3`), matching the
+  public presentation contract and the existing Dying target fixture. This
+  keeps the local viewer's Hero in the Dock while allowing the external Dying
+  participant to remain the Stage Hero Focus.
+- Updated only the browser assertions implicated by CI: redundant role metadata
+  remains omitted when Hero Focus already communicates the identity, and an
+  open Negation response uses its player-facing `NEGATION RESPONSE` title.
+  No production UI, gameplay, or protocol behavior changed.
+- Focused CI-failure browser cases passed 41/41 and the short-portrait Top Row
+  matrix passed 20/20; targeted ESLint on `ui19.spec.mjs` and
+  `git diff --check` passed. The JSX fixture is excluded by the repository ESLint
+  configuration. No full local test/build/lint suite was run; CI status for the
+  repair is recorded in `HANDOVER.md`.
+
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
 - **13A / Reviewer addition A — authoritative self-target symmetry:** a

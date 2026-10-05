@@ -352,8 +352,9 @@ test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment",
           await expect(heroFocus.locator(".hero-focus-identity small")).toBeVisible();
         } else {
           const dyingHandoff = stage.locator('[data-dying-handoff="proven"]');
-          await expect(dyingHandoff).toHaveAttribute("data-dying-player-id", "p3");
-          await expect(stage.locator(".dying-handoff-grid")).toContainText("Player 3");
+          await expect(dyingHandoff).toHaveAttribute("data-dying-player-id", "p2");
+          await expect(stage.locator(".dying-handoff-grid")).toContainText("Player 2");
+          await expect(stage.locator('.hero-focus[data-hero-focus-role="DYING PLAYER"][data-hero-focus-player-id="p2"]')).toBeVisible();
           await expect(stage.locator('.hero-focus[data-hero-focus-player-id="p3"]')).toHaveCount(0);
           await expect(dock.locator(".local-hero-card")).toBeVisible();
         }
@@ -1669,12 +1670,12 @@ for (const width of [390, 480]) {
 }
 
 const VIS_12N_INTERACTION_STATES = [
-  { state: "interaction", required: [".hero-focus", ".interaction-stage-meta-region .interaction-stage-focus"] },
+  { state: "interaction", required: [".hero-focus", ".hero-focus-source", '.interaction-stage-current-effect[role="group"]'] },
   { state: "group-observer", required: [".hero-focus", ".medium-participant-card", '[data-group-target-scope="original"]'] },
   { state: "negation", required: [".hero-focus", '[data-reaction-chain="proven"]', '[data-reaction-node="root"]', '[data-reaction-node="active"]'] },
   { state: "duel", required: [".hero-focus", ".interaction-stage-meta-region"] },
   { state: "dying", required: [".hero-focus", '[data-dying-handoff="proven"]', ".dying-handoff-grid", ".dying-handoff-guidance"] },
-  { state: "long-guidance", required: [".hero-focus", ".interaction-stage-meta-region"] },
+  { state: "long-guidance", required: [".hero-focus", ".hero-focus-source", '.interaction-stage-current-effect[role="group"]'] },
 ];
 const VIS_12N_STAGE_SELECTOR = '.play-table[data-seat-topology="top-row"] .interaction-stage';
 
@@ -1746,6 +1747,9 @@ for (const { state, required } of VIS_12N_INTERACTION_STATES) {
     await loadFixture(page, { state, count: 4, width: 480, height: 900 });
     const stage = page.locator(VIS_12N_STAGE_SELECTOR);
     for (const selector of required) await expect(stage.locator(selector)).toBeVisible();
+    if (state === "interaction" || state === "long-guidance") {
+      await expect(stage.locator('[data-stage-meta-role="source"], [data-stage-meta-role="focus"]')).toHaveCount(0);
+    }
     if (state === "group-observer") {
       await expect(stage.locator('[data-group-target-scope="original"] .group-target-card')).toHaveCount(1);
       await expect(stage.locator(".medium-participant-identity b")).not.toHaveText("");
@@ -1756,6 +1760,7 @@ for (const { state, required } of VIS_12N_INTERACTION_STATES) {
       await expect(stage.locator('[data-reaction-node="active"] span')).toBeVisible();
     }
     if (state === "dying") {
+      await expect(stage.locator('.hero-focus[data-hero-focus-role="DYING PLAYER"]')).toHaveAttribute("data-hero-focus-player-id", "p2");
       await expect(stage.locator(".dying-handoff-grid > span")).toHaveCount(3);
       await expect(stage.locator(".dying-handoff-guidance")).not.toHaveText("");
     }
@@ -2215,7 +2220,15 @@ for (const width of [1440, 650, 480]) {
       expect(shell.headerDisplay).toBe("inline-flex");
       expect(shell.headerBorderWidth).toBe("0px");
       expect(shell.headerWidth).toBeLessThanOrEqual(shell.stageWidth + 0.5);
-      await expect(stage).toContainText("INTERACTION STAGE");
+      const stageTitle = stage.locator(":scope > header");
+      await expect(stageTitle).toBeVisible();
+      if (state === "negation") {
+        await expect(stage).toHaveAttribute("aria-label", "Negation Response");
+        await expect(stageTitle).toContainText("NEGATION RESPONSE");
+        await expect(stageTitle).not.toContainText("INTERACTION STAGE");
+      } else {
+        await expect(stage).toContainText("INTERACTION STAGE");
+      }
 
       const retainedPanel = state === "negation" ? page.locator(".reaction-chain")
         : state === "dying" ? page.locator(".dying-handoff")
@@ -2257,7 +2270,7 @@ for (const width of [1440, 480]) {
   });
 }
 
-test("UX2.0VIS-12M omits a source summary already named by Hero Focus", async ({ page }) => {
+test("UX2.0VIS-12M avoids duplicating source and target identity around Hero Focus", async ({ page }) => {
   await loadFixture(page, { state: "interaction", count: 4, width: 650, height: 900 });
   const stage = page.locator('[aria-label="Interaction Stage"]');
   const heroFocus = stage.locator(".hero-focus");
@@ -2266,9 +2279,7 @@ test("UX2.0VIS-12M omits a source summary already named by Hero Focus", async ({
   await expect(heroFocus).toHaveAttribute("data-hero-focus-player-id", "p2");
   await expect(stage.locator(".hero-focus-source")).toHaveText("SOURCE · Player 1");
   await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
-  await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("FOCUS");
-  await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("Current participant: Player 1");
-  await expect(stage.locator(".interaction-stage-context")).toContainText("DECISION");
+  await expect(stage.locator('[data-stage-meta-role="focus"]')).toHaveCount(0);
 });
 
 test("UX2.0VIS-12P Group observer omits current-participant metadata already in Hero Focus", async ({ page }, testInfo) => {

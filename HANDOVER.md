@@ -5,24 +5,22 @@ Mode: `AUTONOMOUS UI RUN`
 
 This file contains only the current execution handoff. Product design is in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest delivery / CI checkpoint — UX2.2-CI-REPAIR-01
+## Latest delivery / CI checkpoint — UX2.2-CI-RECOVERY-01
 
-Implementation pushed as `b91cbc5`. Actions run `37301912137` was **in progress** when checked; no green result is claimed. The repair compacts proven short Top Row Current Effect/Focus composition, removes only already-visible identity/viewer-decision duplication, keeps open Negation guidance in the neutral Reaction Chain, preserves local-Hero-in-Dock ownership, and replaces stale Inspect source-shape assertions with behavior coverage. No Reviewer acceptance, deployment, or production state is implied.
+Latest implementation is pushed as `4f50311`. Actions run `37302933217` was **cancelled** at browser test `[358/429]`; it emitted 19 numbered failures before cancellation, so it is not a pass. Lint and build succeeded; `npm test` was skipped. The failures group into a Dying fixture that conflated `currentParticipantId` with the rescue `decisionActorId`, plus stale assertions for deduplicated role metadata and the player-facing Negation title. The short-Stage overflow fix remains in `b91cbc5`. The current local repair is limited to browser fixture/tests; no gameplay or production UI code changed.
 
-Focused validation passed: short-portrait UI-19 matrix 20/20; Current Effect + Inspect browser suites 14/14; seat Hero-info behavior 1/1; `node --import tsx --test tests/room-safety-render.test.mjs` 19/19; targeted ESLint and `git diff --check`. No full local test/build/lint suite was run.
+Focused validation passed: CI-failure regressions 41/41; short-portrait Top Row containment matrix 20/20; `npx eslint tests/browser/ui19.spec.mjs` and `git diff --check` passed. Repository ESLint configuration ignores `tests/browser/fixture.jsx`. No full local suite/build/lint was run. CI for the local repair is pending push.
 
 ## Design checkpoint
 
-Reviewed remote design blob `45430bc62b7c50bcbeef40724408ead94ad27120` at `origin/ux-v2` commit `b91cbc5aaa5ceb130eb65534e5ddabad3ef66ac4`; it matches the previously recorded design revision. The next slice follows §§0.77, 0.89–0.90, 2.7, and 12.7: private Guidance at the Dock top edge below the Stage; Hand/operational regions retain their fixed composition; bottom actions remain separate and reachable.
+Reviewed remote design blob `45430bc62b7c50bcbeef40724408ead94ad27120` at `origin/ux-v2` commit `4f503116ffe9964c5970ff49e79d0c4e2882f6aa`; it matches the previously recorded design revision. No new product-design slice is authorized until this CI recovery task is closed and the latest workflow/design documents are re-read before planning.
 
-## Current task — UX2.2-DOCK-GUIDANCE-TOP-01
+## Current task — UX2.2-CI-RECOVERY-01
 
-Status: **IMPLEMENTED LOCALLY — READY FOR PUSH CI CHECKPOINT**.
+Status: **FOCUSED REPAIR IMPLEMENTED LOCALLY — READY TO COMMIT/PUSH FOR CI**.
 
-Bounded scope: move the existing private Local Dock Guidance Strip from below the Hand to a full-width top row directly below the Interaction Stage. Preserve the Hero/Skills/Equipment band, single-layer Hand, fixed bottom Action Row, guidance privacy, and current control semantics. Update contradictory browser geometry assertions and prove the strip/selected-card/action boundaries at representative phone and wide viewports. No legality, server/protocol, or gameplay changes.
+Bounded scope: correct the Dying browser fixture's separation of public subject versus rescue actor, and align only the CI-failing UI-19 assertions with the current design's identity deduplication and Negation title. Preserve the remaining VIS-12N screenshot/geometry work. Do not change production UI, game logic, or protocol, and do not begin another UX feature while CI is unresolved.
 
-Acceptance met: Guidance is above Hero/Skills/Equipment and Hand, appears first in Dock DOM order, remains below the Stage, is not covered by a raised/selected Hand card, and stays separated from bottom actions. Existing thumb-zone, button-order, and no-horizontal-overflow assertions continue to pass.
+Acceptance: Commit and push the scoped fixture/test correction; inspect the new Actions run and repair any additional observed failures until a completed successful CI run is recorded. Then re-read the current workflow and remote design document before planning the next bounded task. No gameplay or protocol changes.
 
-Focused validation: `npm run test:browser -- tests/browser/ui19.spec.mjs --grep 'VIS-12K|VIS-06A|VIS-06B'` passed 12/12; `npx eslint app/page.tsx tests/browser/ui19.spec.mjs` and `git diff --check` passed. No full local suite/build/lint was run. Roadmap updated; the current implementation has not yet been pushed.
-
-Resume point: inspect the final scoped diff, commit/push this task, then record the exact Actions result. If the run fails, repair that observed failure before planning another feature edit.
+Resume point: focused regressions pass locally. Review the final diff (including the roadmap note), commit only `HANDOVER.md`, `docs/AUTONOMOUS_UI_ROADMAP.md`, `tests/browser/fixture.jsx`, and `tests/browser/ui19.spec.mjs`, then push `ux-v2` to trigger CI.

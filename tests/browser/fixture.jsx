@@ -224,7 +224,7 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
     localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: selfTargetTriggerFixture ? "trigger" : "turn", actorId, entitled: true },
     settlement: null,
     transitionEvents: [],
-  } : state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: sourceOverride === "none" ? null : state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup || state === "active-negation-multi-observer" ? null : state === "active-negation-observer" ? "p2" : state === "active-negation-unfocused-observer" ? meId : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId, effectOverride });
+  } : state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: sourceOverride === "none" ? null : state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup || state === "active-negation-multi-observer" ? null : state === "active-negation-observer" ? "p2" : state === "active-negation-unfocused-observer" ? meId : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId, effectOverride });
   const players = playerIds.map((id, index) => ({
     id,
     name: `Player ${index + 1}`,
