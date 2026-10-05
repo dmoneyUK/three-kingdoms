@@ -991,6 +991,7 @@ export const HERO_SKILL_EFFECT_IDS: Record<string, Record<string, readonly strin
   "xiahou-dun": { Stauchness: ["xiahou_dun_ganglie"] },
   "zhang-liao": { Assault: ["zhang_liao_assault"] },
   "xu-chu": { "Bared Bodied": ["xu_chu_bared_bodied"] },
+  "ma-chao": { Cavalry: ["ma_chao_cavalry"] },
   "guo-jia": { "Jealousy of God": ["guo_jia_jealousy_of_god"], Legacy: ["guo_jia_legacy"] },
   "zhen-ji": { "Godess of Luo River": ["zhen_ji_luoshen"] },
   "liu-bei": { Benevolence: ["liu_bei_rende"], Influencing: ["liu_bei_jijiang"] },

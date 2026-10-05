@@ -68,3 +68,34 @@ for (const viewport of viewports) {
     }
   });
 }
+
+for (const width of [390, 1440]) {
+  test(`Projected Ma Chao Cavalry activates from the Skills band at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/tests/browser/fixture.html?state=ma-chao-cavalry&count=4&hero=ma-chao");
+
+    const skills = page.locator('.local-player-dock[data-player-anchor="p1"] .local-status-panel .local-hero-skills');
+    const horseRiding = skills.getByRole("button", { name: "Horse Riding", exact: true });
+    const cavalry = skills.getByRole("button", { name: "Cavalry", exact: true });
+    await expect(horseRiding).toBeDisabled();
+    await expect(cavalry).toBeEnabled();
+    await expect(page.locator('[data-action-extras="true"]')).not.toContainText("Cavalry");
+
+    await page.evaluate(() => { window.__browserActions = []; });
+    await cavalry.click();
+    await expect.poll(() => page.evaluate(() => window.__browserActions)).toEqual([
+      { action: "trigger", extra: { providerId: "ma_chao_cavalry" } },
+    ]);
+  });
+}
+
+test("Ma Chao passive and optional skill stay unavailable without a projected CurrentAction option", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/fixture.html?state=rest&count=4&hero=ma-chao");
+
+  const skills = page.locator('.local-player-dock[data-player-anchor="p1"] .local-status-panel .local-hero-skills');
+  await expect(skills.getByRole("button", { name: "Horse Riding", exact: true })).toBeDisabled();
+  await expect(skills.getByRole("button", { name: "Cavalry", exact: true })).toBeDisabled();
+  await expect(page.locator('[data-action-extras="true"]')).not.toContainText("Cavalry");
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});

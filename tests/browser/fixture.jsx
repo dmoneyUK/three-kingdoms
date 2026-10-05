@@ -103,6 +103,10 @@ function currentActionFor(state, actorId, handCardId) {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Draw two cards after losing equipment, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
     triggerOptions: [{ effectId: "sun_shangxiang_daredevil", label: "Daredevil", allowDecline: true }],
   };
+  if (state === "ma-chao-cavalry") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Ma Chao may use Cavalry, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
+    triggerOptions: [{ effectId: "ma_chao_cavalry", label: "Cavalry — enter Judgement", allowDecline: true }],
+  };
   if (state === "sun-shangxiang-inactive") return currentActionFor("normal", actorId, handCardId);
   if (state === "confirm-cancel") return { version: 3, kind: "borrowed_sword", actorId, deadline: 0, reason: "Choose a target for the forced Attack", legalActions: ["choose_borrowed_sword_target"] };
   if (state === "confirm-cancel-skip" || state === "long-guidance") return {
@@ -301,7 +305,7 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
     isMyAction: Boolean(currentAction?.actorId === meId),
     actionRevision: `browser-${state}-action`,
-    presentationSnapshot,
+    presentationSnapshot: state === "ma-chao-cavalry" ? null : presentationSnapshot,
     currentAction,
     pending: ordinaryTurn ? null : currentAction ? { kind: currentAction.kind } : null,
     pendingAttack: null,
