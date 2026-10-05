@@ -45,3 +45,25 @@ Feature Complete does not mean the whole WTK game/content is complete. Manual
 or non-blocking gaps remain: subjective pixel/art-direction approval,
 touch-device certification, full WCAG auditing, live multiplayer timing, and
 production deployment/health verification.
+
+## Post-UI-20 design additions — implementation evidence supplement
+
+Date: 2026-10-05
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`, Reviewer-approved
+interaction correctness additions A–C (2026-10-04).
+
+This supplement records follow-up implementation evidence for additions made
+after the UI-20 ledger above. It does not change the UI-20 contract tally,
+retroactively expand its validation, or declare a new release-gate pass.
+Implementation details and focused results below are transcribed from the
+corresponding task handovers and commits.
+
+| Design addition | Implementation | Retained focused proof and recorded validation | Boundary |
+| --- | --- | --- | --- |
+| A. Authoritative self-target symmetry | `app/page.tsx`; `tests/browser/local-self-target.spec.mjs` | Commit `573ec3d`; browser matrix 7/7, `tests/active-skill-interactions.test.mjs` 40/40, and `git diff --check` recorded in the 13A handover; selected-self-target screenshot inspected at 390×844. | Focused evidence recorded; no full suite, build, or lint claimed. CI result and implementation Reviewer acceptance are not verified here. |
+| B. Failed response provider is not a Pass | `app/api/rooms/route.ts`, `game/pending.ts`; `tests/api/eight-trigrams-failed-response.test.mjs`, `tests/api/lobby-heroes-wei.test.mjs` | Commit `7dbf2bc`; build succeeded, the two focused API files passed 25/25, targeted ESLint and `git diff --check` passed, as recorded in the 13B handover. | Focused evidence recorded; no full suite claimed. CI result and implementation Reviewer acceptance are not verified here. |
+| C. Borrowed Sword complete-path legality and two-player case | `app/api/rooms/route.ts`, `game/pending.ts`; `tests/api/borrowed-sword.test.mjs`, `tests/room-safety.test.mjs`, focused Borrowed Sword Playwright spec | Commit `4a9814b`; build succeeded, API 7/7, room-safety 4/4, browser 2/2, targeted ESLint and `git diff --check` passed, as recorded in the 13C handover. | Focused evidence recorded; no full suite claimed. The inspected CI check had no observable final result; CI remains unverified. Implementation Reviewer acceptance is not recorded. |
+
+The additions are documented as implemented with focused evidence, not as
+Reviewer-accepted closures. No Actions result is inferred from these local
+results or from a check page without a final conclusion.

@@ -19,10 +19,22 @@ The 13B Actions run `37269808166` was observed **in progress** once before 13C s
 
 Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; 13C implements Reviewer-approved addition C.
 
-## Current task — successor planning checkpoint
+## Latest task result — UX2.0VIS-13D
+
+Status: **IMPLEMENTED — CI PENDING**.
+
+Added a separate evidence supplement to `docs/UX_V2_RELEASE_GATE.md` for Reviewer-approved additions A–C, mapping each to its implementation and focused validation as recorded in the 13A–13C handovers. The original UI-20 tally and release boundary are unchanged. No source, test, gameplay, or design-authority files were changed.
+
+`git diff --check` passed. No local test/build/lint was run for this documentation-only task. CI is pending after push; no result is claimed. The 13C CI status remains unverified as recorded above.
+
+## Design review checkpoint
+
+Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; additions A–C are implemented. The larger UX2.1/UX2.2 proposals in §12 are explicitly not approved for implementation, and the current open design discussion requires resolving their responsive topology, geometry, Hero Focus, and Interaction Stage layout decisions before coding.
+
+## Current task — successor design decision checkpoint
 
 Status: **BLOCKED — HUMAN REVIEW REQUIRED**.
 
-The current design revision `f52b6134fd62696c71fc3cba86210319e454832b` contains Reviewer additions A–C; implementation and focused regressions for all three are present in `573ec3d`, `7dbf2bc`, and `4a9814b`. The design explicitly is not a task queue, and no further reviewer-approved bounded implementation requirement is identified. Choosing another UI/gameplay change would require guessing scope.
+No further approved, bounded player-facing implementation task is identified after additions A–C. The larger Hero Focus redesign remains future work (§0.6.6), and §12 labels the UX2.1/UX2.2 implementation slices unapproved; the open design discussion lists unresolved responsive measurements and composition decisions. Do not turn those proposals into implementation scope or infer layout trade-offs.
 
-Smallest required decision: Reviewer updates the design with a new approved requirement or explicitly authorizes one next bounded task. Until then, make no new source/test edits. The 13C CI status remains unverified as recorded above.
+Smallest required Reviewer action: update the UX V2 design with one approved next slice and its responsive acceptance/validation criteria, or explicitly approve a specific bounded existing proposal. Resume planning from that revision; until then, make no new UI/gameplay source or test edits.
