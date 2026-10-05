@@ -333,7 +333,19 @@ than restart them.
 - Focused browser specs passed 21/21 after correcting one new 390px Negation
   geometry assertion to use the established narrow-flow branch; targeted ESLint
   and `git diff --check` passed. No full local suite/build/lint was run.
-  Commit/push and CI are pending.
+  Pushed as `8de8445`; exact Actions run `37323057854` was `in_progress` at the
+  2026-10-05 planning checkpoint, so no CI conclusion is recorded.
+
+### UX2.3-FAST-RESPONSE-CHAIN-GEOMETRY-01 — Portrait Reaction Chain proof
+
+- Added measured browser assertions for the proven open Negation chain at
+  390px Top Row and 480px Side Column: the chain follows the Source/Effect/
+  Target composition and the Root node precedes the Active node vertically.
+  Existing Stage/Dock separation and neutral waiting-state assertions remain.
+- The three focused Negation Current Effect viewport cases passed 3/3;
+  targeted ESLint and `git diff --check` passed. Existing responsive CSS already
+  satisfied the measured contract, so no production stylesheet change was
+  needed. No full local suite/build/lint was run. Commit/push and CI are pending.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

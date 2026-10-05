@@ -207,6 +207,15 @@ for (const viewport of [
     await expect(hiddenResponderSeat).not.toHaveClass(/action-square|interaction-seat-decision-actor|interaction-seat-active-resolver/);
     await expect(hiddenResponderSeat).not.toHaveAttribute("data-interaction-decision-actor");
     await expect(hiddenResponderSeat).not.toHaveAttribute("data-interaction-active-resolver");
+    if (viewport.width <= 650) {
+      const heroRegionBox = await stage.locator(".interaction-stage-hero-region").boundingBox();
+      const chainBox = await chain.boundingBox();
+      const rootBox = await chain.locator('[data-reaction-node="root"]').boundingBox();
+      const activeBox = await chain.locator('[data-reaction-node="active"]').boundingBox();
+      expect(heroRegionBox && chainBox && rootBox && activeBox).toBeTruthy();
+      expect(chainBox.y).toBeGreaterThanOrEqual(heroRegionBox.y + heroRegionBox.height - 1);
+      expect(rootBox.y + rootBox.height).toBeLessThanOrEqual(activeBox.y + 2);
+    }
 
     const sourceBox = await source.boundingBox();
     const effectBox = await effect.boundingBox();
