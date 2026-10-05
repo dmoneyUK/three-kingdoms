@@ -4710,9 +4710,31 @@ feature.
 The directions below are **deltas on top of this baseline**, not permission to
 rebuild earlier UX2 slices.
 
-### 12.1 First approved direction — local target PREVIEW in Hero Focus
+### 12.0A Current implementation status snapshot — 2026-10-05
 
-This is the next approved UX direction.
+This status summary exists to prevent duplicate work. Exact implementation
+SHAs, CI evidence, and historical details belong in
+`docs/AUTONOMOUS_UI_ROADMAP.md`.
+
+| Design direction | Current status | Planning meaning |
+| --- | --- | --- |
+| Local target PREVIEW | **IMPLEMENTED / CLOSED BASELINE** | Preserve and regress only; do not rebuild. |
+| Public INSPECT in shared Hero Focus | **IMPLEMENTED / CLOSED BASELINE** | Preserve and regress only; do not restore the old blocking modal. |
+| ACTIVE Current Effect composition | **PARTIAL** | Attack Response, open Negation, and Duel are proven. Extend only to additional authoritative interaction families. |
+| Local Dock hierarchy / fast-response layout | **ADVANCED / PARTIAL** | Top Guidance, mobile Hero hierarchy, peer skill sizing, timer placement/privacy, and Side Column recognition are implemented. Remaining deltas must be bounded. |
+| SELECTABLE DETAIL | **OPEN** | Major remaining UX gap; migrate only when current authoritative selectable-object data supports it. |
+| Reaction Chain history / AOE participant progress | **OPEN — AUTHORITY DEPENDENT** | Requires explicit public semantic projection before richer UI. |
+| Final UX2 visual gate | **OPEN** | Run only after remaining approved deltas are closed. |
+
+A closed item may be reopened only for a concrete regression or an explicit
+Reviewer design change. A nearby test repair, visual polish request, or new
+interaction family does not authorize rebuilding the closed foundation.
+
+### 12.1 First approved direction — local target PREVIEW in Hero Focus — IMPLEMENTED
+
+**Implementation status: CLOSED BASELINE.** The shared local PREVIEW path is
+implemented. Keep the contract below as regression/extension authority; do not
+plan a task whose purpose is to recreate PREVIEW.
 
 When the viewer enters an unsubmitted local target-selection session, a legal
 external target selected from an opponent Seat Thumbnail should also appear in
@@ -4764,9 +4786,14 @@ authoritative self-target case to prove that self remains Dock-only. Validate
 at representative phone widths (including 390px and 480px) and at one wider
 layout without changing gameplay semantics.
 
-### 12.2 Second direction — unify public INSPECT with Hero Focus
+### 12.2 Second direction — unify public INSPECT with Hero Focus — IMPLEMENTED
 
-After PREVIEW is stable, move ordinary opponent public inspection toward the
+**Implementation status: CLOSED BASELINE.** Public opponent Inspect already
+uses the shared Interaction Stage / Hero Focus rather than the old blocking
+inspection overlay. Preserve the behavior below; future work may extend detail
+quality but must not rebuild the old modal flow.
+
+Ordinary opponent public inspection uses the
 same Hero Focus presentation instead of treating a separate full-screen modal
 as the primary UX.
 
@@ -4782,7 +4809,13 @@ INSPECT must:
 Do not combine this work into the PREVIEW implementation if doing so makes the
 change materially larger or harder to prove.
 
-### 12.3 Third direction — make Current Effect the centre of ACTIVE composition
+### 12.3 Third direction — make Current Effect the centre of ACTIVE composition — PARTIAL
+
+**Implementation status: PARTIAL.** Proven Current Effect composition now
+covers Attack Response, open Negation, and Duel. Those paths are closed
+baseline and should not be rebuilt. Remaining work is to extend the same
+semantic composition to additional interaction families only when the public
+projection proves source/effect/participant relationships.
 
 The ACTIVE Interaction Stage should visually explain the current semantic
 relationship rather than read primarily as a metadata panel.
@@ -4812,7 +4845,14 @@ The existing transition/resolution animation system may remain, but its job is
 to animate between stable semantic states. It must not become a competing
 second source of Current Effect truth.
 
-### 12.4 Fourth direction — SELECTABLE DETAIL inside the same Hero Focus
+### 12.4 Fourth direction — SELECTABLE DETAIL inside the same Hero Focus — OPEN
+
+**Implementation status: OPEN / major remaining UX gap.** The existing
+Steal/Dismantle target-card picker remains an acceptable temporary fallback.
+Before migrating a flow, audit its existing authoritative selectable-object
+projection, concealed-hand treatment, stale/replay behavior, and focused
+coverage. If authority is insufficient, keep the picker and identify the
+missing projection rather than inventing client legality.
 
 For multi-stage interactions such as Steal / Dismantle and other server-owned
 zone/card choices, evolve the focused participant from ACTIVE/PREVIEW into
@@ -4827,11 +4867,30 @@ This is a later bounded migration. Existing pickers may remain until each
 flow has authoritative data and focused regression coverage for the unified
 Hero Focus path.
 
-### 12.5 Fifth direction — finish Local Player Dock visual hierarchy
+### 12.5 Fifth direction — finish Local Player Dock visual hierarchy — PARTIAL
+
+**Implementation status: ADVANCED / PARTIAL.** The structural Dock redesign is
+closed: Current Guidance is already at the Dock top edge, the mobile local Hero
+has stronger visual weight, peer Hero-skill controls have comparable sizing,
+the Hand remains one layer, and Actions remain in the bottom row. Future work
+must be bounded refinements, not another Dock rebuild.
+
+One known implementation gap remains under the already-approved skill-entry
+contract:
+
+- passive skills such as Ma Chao's **Horse Riding** may remain informational /
+  non-activatable because they do not represent a voluntary action;
+- an **optional authoritative triggered skill** such as Ma Chao's **Cavalry**
+  must become actionable from the Hero-adjacent Skills band whenever the
+  server projects that option;
+- the bottom Action Row may describe/continue that skill flow, but it must not
+  be the skill's only usable entry point;
+- this is a generic capability-to-Skills-band rule, not a Ma Chao-specific UI
+  special case.
 
 The Local Player Dock structure is already approved and must not be redesigned.
-After the Interaction Stage state model is coherent, perform bounded visual
-polish so the implemented hierarchy matches the established design:
+Perform only bounded visual/interaction polish so the implemented hierarchy
+matches the established design:
 
 - Hand remains the largest flexible operational area;
 - local Hero remains the second major visual area and should not read as a tiny
@@ -4846,7 +4905,11 @@ polish so the implemented hierarchy matches the established design:
 Do not obtain a larger Hero by shrinking Hand usability or moving the approved
 Dock regions.
 
-### 12.6 Authority-dependent later work — Reaction Chain and AOE progress
+### 12.6 Authority-dependent later work — Reaction Chain and AOE progress — OPEN
+
+**Implementation status: OPEN / authority dependent.** The current fail-closed
+bounded Reaction Chain and neutral Group/AOE presentation are correct baseline.
+Do not treat missing richer history/progress as a CSS-only gap.
 
 Do not fabricate missing semantic history or participant progress to make the
 UI look complete.
@@ -4862,7 +4925,15 @@ position.
 Any required server/presentation projection is a separate semantic task from
 the visual consumer.
 
-### 12.7 Fast Response Interaction Stage — mobile decision clarity
+### 12.7 Fast Response Interaction Stage — mobile decision clarity — ADVANCED / PARTIAL
+
+**Implementation status: ADVANCED / PARTIAL.** The response timer, observer-safe
+timer privacy, neutral open-Negation waiting state, player-facing Negation
+title, proven event summary, vertical portrait chain geometry, top Guidance
+Strip, local semantic response heading, peer skill sizing, local-Hero mobile
+hierarchy, and timer/Exit/10-player clearance are implemented baseline. Do not
+redo those pieces. Extend this pattern only where remaining interaction
+families or concrete regressions require it.
 
 This is a Reviewer-approved visual/information contract for short timed
 response windows such as Negation, Dodge, Duel responses, rescue, and similar
@@ -5072,7 +5143,40 @@ Representative browser/visual proof should demonstrate:
 - implementation reuses authoritative CurrentAction/Presentation data and does
   not introduce client-side response legality or card-name special cases.
 
-### 12.8 Final UX2 visual gate
+### 12.8 Remaining approved work — planning priorities
+
+This section is **not a task queue**. At each planning boundary the Coding Agent
+must inspect current code/tests and choose one bounded task that is both
+authoritative and provable. The Agent owns HANDOVER and task decomposition.
+
+The remaining product gaps are:
+
+1. **Close bounded Dock interaction nonconformance.** Where an optional
+   server-authorized Hero skill is available, the Skills band must own the
+   activation entry. Ma Chao Cavalry is the current reference case; passive
+   skills are not forced into fake buttons.
+2. **Extend ACTIVE composition by semantic family.** Reuse the proven
+   Source/Effect/Target language for additional authoritative flows such as
+   Dying/Peach, Judgement, Borrowed Sword, Steal/Dismantle, target-shifting, or
+   Group/AOE current-participant presentation. Do one family at a time and do
+   not infer missing roles.
+3. **Migrate SELECTABLE DETAIL when authority supports it.** Prefer the shared
+   Hero Focus for server-owned zone/card choices; keep the existing picker when
+   current projection cannot safely support the migration.
+4. **Add missing public semantic projection before richer Reaction/AOE UI.**
+   Multi-node Reaction history and per-participant Group/AOE progress must be
+   server/projector-owned first, then consumed by React.
+5. **Run the final UX2 gate** only after the remaining bounded deltas are
+   complete.
+
+Small, proven design nonconformances may be fixed before a larger migration at
+a task boundary, but an already-running compatible bounded task does not need
+to be silently replaced.
+
+### 12.9 Final UX2 visual gate — OPEN
+
+**Implementation status: OPEN.** This is the final integration/reviewer gate,
+not permission to recreate earlier closed UX2 slices.
 
 After the bounded stages above, run one final representative UX2 review across:
 
@@ -5099,6 +5203,14 @@ Use representative mobile portrait widths/heights first, then a wider
 desktop/tablet check. Final completion means the player can understand
 **who is involved, what is happening, whose decision it is, and what they can
 do next** without the client inventing gameplay facts.
+
+## Historical UX2 verification record — reference only
+
+Everything below this heading preserves earlier verification/design-gate
+history. Its dated `PARTIAL`, `OPEN`, `NOT READY`, old task, and approval
+statements are **historical**, not current execution authority. They must not
+override the current §§0–12 contracts, the current implementation ledger, or
+the repository workflow, and must not cause completed UX2 work to be repeated.
 
 ### 0.92 UX2.0B Verification / Fix Gate
 
