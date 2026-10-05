@@ -369,7 +369,7 @@ test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment",
           await expect(stage.locator(".interaction-stage-meta-region .interaction-stage-focus")).toBeVisible();
           const sourceAlreadyVisible = await stage.locator(".medium-participant-card, .hero-focus-source").count() > 0;
           await expect(stage.locator(".interaction-stage-focus > [data-stage-meta-role]")).toHaveCount(sourceAlreadyVisible ? 1 : 2);
-          await expect(stage.locator('[data-stage-meta-role="focus"], [data-stage-meta-role="scope"]')).toBeVisible();
+          await expect(stage.locator('[data-stage-meta-role="focus"], [data-stage-meta-role="scope"], [data-stage-meta-role="active-scope"]')).toBeVisible();
         }
         for (const selector of [".local-hero-card", ".local-status-panel", ".local-equipment-panel", ".local-hand-rail", ".console-guidance", ".turn-controls"]) {
           await expect(dock.locator(selector), `the persistent Dock must retain ${selector}`).toBeVisible();
