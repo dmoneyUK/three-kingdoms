@@ -13,12 +13,16 @@ Separated persistent Deck/Discard piles from active four-player Top Row Stage co
 
 Focused validation: the six 12O state/viewport cases passed 6/6; a 19-case 12N/12J/12K/12C regression selection passed 19/19. All six 12O screenshots were visually inspected. Geometry assertions verify Stage-content, physical-seat, and Dock separation, table containment, and page-width bounds. `git diff --check` passed. No full suite, build, or lint was run locally.
 
-The last confirmed-green baseline is `8407c8dcf14444d107d348bfa43f473ac8331d2c` (Actions run `37240016937`, both required jobs successful). 12N and 12O are not claimed green; confirm only each exact implementation revision's Actions result.
+The last confirmed-green baseline is `8407c8dcf14444d107d348bfa43f473ac8331d2c` (Actions run `37240016937`, both required jobs successful). 12O's exact push run `37264564194` for `fb29061be7a45763839e666c728dbd3082a34078` was `in_progress` at the 12P planning checkpoint; it was not waited on. 12N/12O are not claimed green.
 
 ## Design review checkpoint
 
-Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; it matches the design revision reviewed for 12N. Task authority: §§0.91.3–0.91.4.
+Reviewed current remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; it matches the prior checkpoint. Rechecked the Reviewer additions A–C; they remain long-term design authority, not a task queue. Next-task authority: §§0.91.2 and 0.91.5.
 
-## Current task — UX2.0VIS-12O delivery closeout
+## Next task — UX2.0VIS-12P: Deduplicate proven current-participant metadata
 
-Implementation and focused validation are complete. Commit and push only `app/sequence-overrides.css`, `tests/browser/ui19.spec.mjs`, `HANDOVER.md`, and `docs/AUTONOMOUS_UI_ROADMAP.md` to `ux-v2`, then fetch and verify the exact remote revision. Keep its CI status pending unless that exact run is confirmed.
+When the Interaction Stage Hero Focus already presents the same projection-proven current participant, remove the redundant current-participant/focus identity summary. Preserve distinct active-scope, decision-actor, source, and other proven facts; ambiguous Group focus must remain fail-closed.
+
+Scope: presentation-only Stage metadata and focused browser/unit regressions. No gameplay semantics, protocol, legality, private data, Local Dock, or physical-seat changes.
+
+Acceptance: cover a current-participant Group composition and a target-owned CHOICE at compact portrait widths; prove duplicate identity prose is absent while multi-target active scope and distinct DECISION context remain. Keep the ambiguous Group `No proven focus` path unchanged. Before the first source edit, inspect the latest push-triggered Actions run for `fb29061be7a45763839e666c728dbd3082a34078` once; follow workflow §5 without waiting on an in-progress run.
