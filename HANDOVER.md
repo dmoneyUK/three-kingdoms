@@ -7,7 +7,7 @@ This file contains only the current execution handoff. Product design is in `doc
 
 ## Latest delivery / CI checkpoint — UX2.2-HF-ACTIVE-01
 
-Status: **IMPLEMENTED — CI PENDING** at source commit `e25b5240d7080538967895a3e168177ef0858a04`. CI for this delivery has not been observed; no production or Reviewer acceptance is implied. GitHub CLI was not authenticated at the prior one-time check, so do not infer a CI result.
+Status: **IMPLEMENTED — CI PENDING** at source commit `e25b5240d7080538967895a3e168177ef0858a04`. The one-time lookup for this push was unavailable because GitHub CLI requires authentication; the run/result was not observed. No production or Reviewer acceptance is implied.
 
 Local validation: Current Effect matrix passed 5/5 across 390px Top Row, 480px Side Column, and 1440px Top Row, including Inspect preservation and fail-closed absence. Combined Current Effect/Preview/Borrowed Sword/Inspect browser tests passed 20/20; six selected existing UI-19 active-stage/Inspect regressions passed. Targeted ESLint and `git diff --check` passed. No full local test/build/lint suite was run; `tests/browser/ui19.spec.mjs` was not modified.
 
@@ -15,14 +15,14 @@ Completed: local PREVIEW and public opponent INSPECT share Hero Focus. Proven si
 
 ## Design checkpoint
 
-Reviewed current remote design blob `7d460ad6e998ef6666cf6299a190b727e14bb768` (unchanged). The bounded §12.3 single-target Attack Response slice is implemented; the rest of §12.3 remains open. Direct user authorization enables autonomous task decomposition; the design remains the product behavior authority.
+Reviewed current remote design blob `7d460ad6e998ef6666cf6299a190b727e14bb768` (unchanged). The bounded §12.3 single-target Attack Response slice is implemented; the remaining active composition work is still open. Direct user authorization enables autonomous task decomposition; the design remains the product behavior authority.
 
-## Current task — UX2.2-HF-ACTIVE-01 Proven Current Effect in ACTIVE composition
+## Current task — UX2.2-HF-ACTIVE-NEGATION-01 Current Effect in proven NEGATION
 
-Status: **IMPLEMENTED — CI PENDING**.
+Status: **PLANNED — USER-AUTHORIZED AUTONOMOUS UI RUN**.
 
-Bounded scope delivered in `e25b524`: for the proven single-target ACTIVE Attack Response slice, make the existing public `stage.effect` an explicit Current Effect between the external source and focused target where those participants are shown. Use only the authoritative `PresentationClientView` effect and participant roles. Keep the viewer Hero Dock-only; preserve Stage identity, targets, Reaction Chain, and current decision context. Missing/empty effect renders no fabricated effect. No timeline/log/pending/turn inference, client legality changes, server/protocol changes, or gameplay changes.
+Bounded scope: extend the central Current Effect presentation to a single-target proven NEGATION stage. Use only non-empty public `stage.effect`, the sole projected active target, and Hero Focus identity to connect the external source → effect → target. Preserve the existing Attack Response treatment, authoritative Stage identity, Reaction Chain, decision context, and viewer-Hero-in-Dock rule. If effect/target/focus proof is missing or ambiguous, render no inferred connection. No timeline/log/Pending/CurrentAction inference, client legality changes, server/protocol changes, or gameplay changes.
 
-Focused acceptance: representative Top Row/Side Column phone and wide layouts; unchanged authoritative identity and target; no fabricated Current Effect in pure REST/PREVIEW; Inspect over ACTIVE preserves effect but never links it to the inspected Hero; missing effect fails closed. All focused criteria passed as listed above.
+Focused acceptance: representative Top Row wide and Side Column phone geometry for an authoritative single-target NEGATION; Dismantle Current Effect and existing Reaction Chain remain visible; source/effect/focus connect only for the proven active target; identity, target, decision context, and privacy remain unchanged; missing/ambiguous effect/focus fails closed; existing Attack Response tests remain green.
 
-Resume point: implementation and focused evidence are complete. At the next planning boundary, re-read the latest remote HANDOVER, autonomous workflow, and overall design before choosing one successor. Inspect the latest relevant push-triggered run once before that successor's first source edit; if GitHub status is unavailable, retain CI as unverified.
+Resume point: before the first source edit, the one-time CI lookup for `e25b524` was attempted but unavailable because `gh` is not authenticated. Keep that delivery CI-unverified; proceed without repeated polling. Stop if the authoritative NEGATION focus/effect relationship cannot be proven from the existing public projection.
