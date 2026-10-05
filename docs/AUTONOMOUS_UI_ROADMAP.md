@@ -282,8 +282,28 @@ than restart them.
   Stage decision/responder identity. Browser coverage passed 7/7 across
   390px/480px/1440px plus missing-response, missing-decline, missing-provider,
   and observer cases. The focused response-timer spec passed 3/3; targeted ESLint
-  and `git diff --check` passed. No full local suite/build/lint was run. Commit
-  and push are pending; CI has not run for this task yet.
+  and `git diff --check` passed. No full local suite/build/lint was run. Pushed
+  as `7533bec`; exact Actions run `37315901817` completed successfully for both
+  `build-and-test` and `deploy`, including the production smoke-test step. The
+  earlier repeated Stage-geometry and compact-Dock assertion failures are
+  closed by the CI test corrections recorded above; current CI is green.
+
+### UX2.3-FAST-RESPONSE-SEMANTIC-LABEL-01 — Local semantic response heading
+
+- Generalized the Local Player Dock's `YOUR RESPONSE` heading to viewer-owned
+  semantic `CurrentAction.kind=response` decisions only when `respond` is
+  authoritative and a response option satisfies the current requirement.
+  Negation's combined `Play Negation or Skip.` instruction retains its stricter
+  requirement for authoritative `decline_response`; no control, protocol, or
+  public Stage behavior changed.
+- Added focused local Duel/Dodge coverage at 390px, 480px, and 1440px, including
+  provider mismatch fail-closed behavior, observer privacy, selection-gated
+  Confirm, and preserved projected stage copy. The local Duel fixture explicitly
+  aligns source, active target, and responder identities. The Negation guidance
+  regression now distinguishes its general response heading from its stricter
+  combined instruction when Skip authority is absent.
+- Both focused browser specs passed 15/15; targeted ESLint and `git diff --check`
+  passed. No full local suite/build/lint was run. Commit/push and CI are pending.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

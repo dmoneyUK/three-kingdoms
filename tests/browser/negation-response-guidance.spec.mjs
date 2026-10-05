@@ -62,13 +62,18 @@ test("open Negation observer receives neutral Stage copy and no private response
   await expect(page.locator('[data-action-slot="decline"] button')).toHaveCount(0);
 });
 
-for (const authority of ["missing-response", "missing-decline", "missing-provider"]) {
+for (const { authority, hasResponseHeading } of [
+  { authority: "missing-response", hasResponseHeading: false },
+  { authority: "missing-decline", hasResponseHeading: true },
+  { authority: "missing-provider", hasResponseHeading: false },
+]) {
   test(`Negation guidance fails closed when CurrentAction is ${authority}`, async ({ page }) => {
     await page.setViewportSize({ width: 480, height: 900 });
     await page.goto(`/tests/browser/fixture.html?state=negation&privateNegationResponder=1&negationAuthority=${authority}`);
 
     const guidance = page.locator(".console-guidance .decision-status");
-    await expect(guidance.locator("small")).not.toHaveText("YOUR RESPONSE");
+    if (hasResponseHeading) await expect(guidance.locator("small")).toHaveText("YOUR RESPONSE");
+    else await expect(guidance.locator("small")).not.toHaveText("YOUR RESPONSE");
     await expect(guidance.locator("strong")).not.toHaveText("Play Negation or Skip.");
     await expect(page.locator('.interaction-stage[data-stage="NEGATION"]')).not.toContainText("Play Negation or Skip.");
   });

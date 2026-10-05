@@ -70,7 +70,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
     stable: { kind: "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" ? "trigger" : state === "duel" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
     settlement: null,
     transitionEvents: [],
   };
@@ -131,7 +131,7 @@ function currentActionFor(state, actorId, handCardId) {
       canDeclareAttack: true,
     };
   }
-  if (state === "duel") {
+  if (state === "duel" || state === "duel-response") {
     return {
       version: 3,
       kind: "response",
@@ -141,6 +141,18 @@ function currentActionFor(state, actorId, handCardId) {
       legalActions: ["respond", "decline_response"],
       requirement: "attack",
       options: [{ providerId: "attack_card", label: "Attack", satisfies: "attack", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }],
+    };
+  }
+  if (state === "dodge" || state === "dodge-mismatch") {
+    return {
+      version: 3,
+      kind: "response",
+      actorId,
+      deadline: 0,
+      reason: "Dodge the Attack",
+      legalActions: ["respond", "decline_response"],
+      requirement: "dodge",
+      options: [{ providerId: "dodge_card", label: "Dodge", satisfies: state === "dodge-mismatch" ? "attack" : "dodge", activation: "implicit", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId] } }],
     };
   }
   if (state === "negation" || state === "confirm-skip") {
@@ -195,7 +207,7 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
   if (denseGroup) state = "group-observer";
   const activeNegationObserver = state.startsWith("active-negation-");
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
-  const meId = activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup ? "p3" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
+  const meId = activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup ? "p3" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
   const actorId = timedNegationObserver || duelObserverView ? "p2" : state === "active-attack-observer" ? "p2" : activeNegationObserver ? "p3" : state === "group-observer" || unfocusedGroup ? "p1" : state === "dying" ? "p3" : meId;
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
   const hand = timedNegationObserver
@@ -208,8 +220,10 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
     ? Array.from({ length: handSize }, (_, index) => card(`browser-hand-${index + 1}`, "Attack"))
     : state === "group-observer" || unfocusedGroup
     ? []
-    : state === "duel"
+    : state === "duel" || state === "duel-response"
     ? [card("browser-attack", "Attack", "♠")]
+    : state === "dodge" || state === "dodge-mismatch"
+      ? [card("browser-dodge", "Dodge", "♣")]
     : state === "negation" || state === "confirm-skip"
       ? [card("browser-negation", "Negation", "♣")]
       : state === "dying"
@@ -218,7 +232,7 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
           ? [card("browser-raining-arrows", "RainingArrows", "♥")]
           : [card("browser-attack", "Attack", "♠"), card("browser-peach", "Peach", "♥")];
   const targets = denseGroup ? playerIds.filter((id) => id !== "p4") : unfocusedGroup ? ["p1", "p2"] : state === "active-negation-multi-observer" ? ["p2", "p5"] : activeNegationObserver ? ["p2"] : duelObserverView ? ["p2", "p1"] : state === "group-observer" ? ["p1", "p2", "p3"] : state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
-  const stage = state === "duel" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" || activeNegationObserver ? "NEGATION" : state === "dying" ? "DYING" : state === "group" || state === "group-observer" || unfocusedGroup ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
+  const stage = state === "duel" || state === "duel-response" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" || activeNegationObserver ? "NEGATION" : state === "dying" ? "DYING" : state === "group" || state === "group-observer" || unfocusedGroup ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
   const currentActionBase = state === "rest" ? null : currentActionFor(state, actorId, hand[0]?.id ?? "");
   const responseDeadline = timedResponse && state === "negation" ? Date.parse("2026-01-01T00:00:25.000Z") : 0;
   const resolvedCurrentAction = currentActionBase && duelObserverView
@@ -294,7 +308,7 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
     pendingGreenDragon: null,
     pendingRockCleaving: null,
     pendingFrostSword: null,
-    pendingDuel: state === "duel" ? { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", deadline: 0 } : null,
+    pendingDuel: state === "duel" || state === "duel-response" ? { kind: "duel", sourceId: "p1", targetId: "p2", actorId: "p2", opponentId: "p1", deadline: 0 } : null,
     pendingGroup: state === "group-observer" ? { kind: "group", cardKind: "RainingArrows", sourceId: "p4", requiredKind: "Dodge" } : state === "group" ? { kind: "group", cardKind: "RainingArrows", sourceId: "p1", requiredKind: "Dodge" } : null,
     pendingNegation: state === "negation" || state === "confirm-skip" || activeNegationObserver ? { kind: "negation", sourceId: "p1", actorId: timedNegationObserver || privateNegationResponder ? null : "p2", effectTargetId: "p1", cardName: "Dismantle", negated: false, deadline: responseDeadline } : null,
     pendingHarvest: null,
