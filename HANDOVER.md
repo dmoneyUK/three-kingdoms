@@ -5,24 +5,24 @@ Mode: `AUTONOMOUS UI RUN`
 
 This file contains only the current execution handoff. Product design is in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest delivery / CI checkpoint — UX2.2-HF-INSPECT-01
+## Latest delivery / CI checkpoint — UX2.2-HF-ACTIVE-01
 
-Status: **IMPLEMENTED — CI PENDING**. This handoff push contains the implementation; its CI result has not been observed. The previous PREVIEW push run `37289101441` was observed `in_progress` once before this task and was not polled again. No production or Reviewer acceptance is implied.
+Status: **IMPLEMENTED — CI PENDING** at source commit `e25b5240d7080538967895a3e168177ef0858a04`. CI for this delivery has not been observed; no production or Reviewer acceptance is implied. GitHub CLI was not authenticated at the prior one-time check, so do not infer a CI result.
 
-Local validation: new Inspect browser coverage passed 6/6 across 390/480/1440px Top Row, Side Column, target-selection independence, ACTIVE Stage restoration, public-only data, and Hero/Equipment/Judgement explanations. Five focused legacy Inspect/target-selection tests in `ui19.spec.mjs` passed; Preview and Borrowed Sword regressions passed 9/9. Targeted ESLint and `git diff --check` passed. No full local test/build/lint suite was run; `tests/browser/ui19.spec.mjs` was not modified.
+Local validation: Current Effect matrix passed 5/5 across 390px Top Row, 480px Side Column, and 1440px Top Row, including Inspect preservation and fail-closed absence. Combined Current Effect/Preview/Borrowed Sword/Inspect browser tests passed 20/20; six selected existing UI-19 active-stage/Inspect regressions passed. Targeted ESLint and `git diff --check` passed. No full local test/build/lint suite was run; `tests/browser/ui19.spec.mjs` was not modified.
 
-Completed: local target PREVIEW and public opponent INSPECT now use the shared Hero Focus structure. Inspect uses only public player projection fields, concealed Hand count/backs, and remains independent of selected targets and authoritative Stage identity.
+Completed: local PREVIEW and public opponent INSPECT share Hero Focus. Proven single-target Attack Response now presents its public `stage.effect` as Current Effect; connectors are shown only when the Hero Focus is the projected active target. Inspect over an ACTIVE Stage preserves effect context without a misleading participant link.
 
 ## Design checkpoint
 
-Reviewed current remote design blob `7d460ad6e998ef6666cf6299a190b727e14bb768` (unchanged). §12.1 PREVIEW and §12.2 public INSPECT are implemented; §12.3 is the next approved direction: make Current Effect the centre of ACTIVE composition. Direct user authorization enables autonomous task decomposition; the design remains the product behavior authority.
+Reviewed current remote design blob `7d460ad6e998ef6666cf6299a190b727e14bb768` (unchanged). The bounded §12.3 single-target Attack Response slice is implemented; the rest of §12.3 remains open. Direct user authorization enables autonomous task decomposition; the design remains the product behavior authority.
 
 ## Current task — UX2.2-HF-ACTIVE-01 Proven Current Effect in ACTIVE composition
 
-Status: **PLANNED — USER-AUTHORIZED AUTONOMOUS UI RUN**.
+Status: **IMPLEMENTED — CI PENDING**.
 
-Bounded scope: for the proven single-target ACTIVE Attack Response slice, make the existing public `stage.effect` an explicit Current Effect between the external source and focused target where those participants are shown. Use only the authoritative `PresentationClientView` effect and participant roles. Keep the viewer Hero Dock-only; preserve Stage identity, targets, Reaction Chain, and current decision context. Missing/empty effect renders no fabricated effect. No timeline/log/pending/turn inference, client legality changes, server/protocol changes, or gameplay changes.
+Bounded scope delivered in `e25b524`: for the proven single-target ACTIVE Attack Response slice, make the existing public `stage.effect` an explicit Current Effect between the external source and focused target where those participants are shown. Use only the authoritative `PresentationClientView` effect and participant roles. Keep the viewer Hero Dock-only; preserve Stage identity, targets, Reaction Chain, and current decision context. Missing/empty effect renders no fabricated effect. No timeline/log/pending/turn inference, client legality changes, server/protocol changes, or gameplay changes.
 
-Focused acceptance: representative authoritative Attack Response in Top Row and Side Column phone/wide layouts; explicit Current Effect relationship without viewer duplication; unchanged Stage identity/current target/decision context; no Current Effect for REST, PREVIEW, or INSPECT; absent effect fails closed; focused geometry and semantic regressions.
+Focused acceptance: representative Top Row/Side Column phone and wide layouts; unchanged authoritative identity and target; no fabricated Current Effect in pure REST/PREVIEW; Inspect over ACTIVE preserves effect but never links it to the inspected Hero; missing effect fails closed. All focused criteria passed as listed above.
 
-Resume point: before the first source edit, inspect the latest relevant push-triggered CI run once as required by the workflow. Stop or narrow further if public Current Effect/target authority cannot be demonstrated from the existing projection.
+Resume point: implementation and focused evidence are complete. At the next planning boundary, re-read the latest remote HANDOVER, autonomous workflow, and overall design before choosing one successor. Inspect the latest relevant push-triggered run once before that successor's first source edit; if GitHub status is unavailable, retain CI as unverified.
