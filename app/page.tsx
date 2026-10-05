@@ -568,7 +568,16 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
   const localFocusPlayerId = inspectPlayer?.id ?? localPreviewPlayer?.id;
-  const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId);
+  const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId && !hasLocalInspect);
+  const currentEffect = display.visible
+    && stage.stage === "ATTACK_RESPONSE"
+    && stage.activeTargets.length === 1
+    ? stage.effect?.trim() || null
+    : null;
+  const currentEffectConnectsToFocus = Boolean(currentEffect
+    && !hasLocalFocus
+    && heroFocus.primary?.id
+    && stage.activeTargets.some((target) => target.id === heroFocus.primary?.id));
   const dyingSourceAlreadyVisible = Boolean(dyingHandoff.visible && stage.source.id && (
     mediumSource?.player.id === stage.source.id
     || (heroFocus.primary?.id && heroFocus.primary.id !== stage.source.id && heroFocus.source.id === stage.source.id)
@@ -608,13 +617,17 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     || showNestedContextSummary;
   const showMetadataRegion = showRoleMetadata || showMetadataContext;
   if (!display.visible && !hasLocalFocus) return null;
-  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
-    <header><span>INTERACTION STAGE</span><strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : display.focusLabel}</strong>{!hasLocalFocus && display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
+  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
+    <header><span>INTERACTION STAGE</span><strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{!hasLocalFocus && display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
     <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {showMediumSource && mediumSource && <MediumParticipantCard view={mediumSource} />}
         {showMediumSource && mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
-        <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
+        <div className={`interaction-stage-current-effect-flow${currentEffect ? currentEffectConnectsToFocus ? " is-connected" : " is-unlinked" : " is-empty"}`}>
+          {currentEffect && <section className="interaction-stage-current-effect" role="group" aria-label="Current Effect" data-current-effect-label={currentEffect}><small>CURRENT EFFECT</small><strong>{currentEffect}</strong></section>}
+          {currentEffectConnectsToFocus && <span className={`current-effect-arrow${topRowMode ? " top-row-arrow" : " side-column-arrow"}`} aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
+          <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
+        </div>
         {groupTargetScope && <section className="group-target-scope" aria-label="Original target scope" data-group-target-scope="original" data-participant-density={groupTargetScope.density}>
           <header>ORIGINAL TARGET SCOPE</header>
           <div className="group-target-cards">

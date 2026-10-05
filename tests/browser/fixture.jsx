@@ -29,7 +29,7 @@ function fixtureSeatEquipment(playerId, equipmentCase) {
   return (SEAT_EQUIPMENT_CASES[scenario] ?? []).map(([kind, suit, rank], index) => card(`browser-${playerId}-seat-equipment-${index}`, kind, suit, rank));
 }
 
-function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisionActorId, currentParticipantId = decisionActorId, activeResolverId = decisionActorId, viewerId = decisionActorId }) {
+function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisionActorId, currentParticipantId = decisionActorId, activeResolverId = decisionActorId, viewerId = decisionActorId, effectOverride = null }) {
   const interactionId = `browser-${state}-interaction`;
   const rootFrameId = `browser-${state}-root`;
   const activeFrameId = `browser-${state}-active`;
@@ -45,7 +45,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
     presentationRevision: 1,
     stage,
     sourceId,
-    effect: stage === "NEGATION" ? "Dismantle" : stage === "DUEL_EXCHANGE" ? "Duel" : stage === "DYING" ? "Attack" : stage === "GROUP_RESOLUTION" ? "Raining Arrows" : "Attack",
+    effect: effectOverride === "none" ? null : effectOverride ?? (stage === "NEGATION" ? "Dismantle" : stage === "DUEL_EXCHANGE" ? "Duel" : stage === "DYING" ? "Attack" : stage === "GROUP_RESOLUTION" ? "Raining Arrows" : "Attack"),
     targetIds,
     currentParticipantId,
     decisionActorId,
@@ -77,6 +77,9 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
 }
 
 function currentActionFor(state, actorId, handCardId) {
+  if (state === "active-attack-observer") return {
+    version: 3, kind: "response", actorId, deadline: 0, reason: "Waiting for the current Attack response", legalActions: [],
+  };
   if (state === "borrowed-sword-play" || state === "borrowed-sword-no-target") return {
     version: 3, kind: "turn", actorId, deadline: 0, reason: "Choose a Borrowed Sword target", legalActions: ["play_card", "end_turn"], canDeclareAttack: true,
     borrowedSwordTargets: [{ cardId: handCardId, targetIds: state === "borrowed-sword-play" ? ["p2"] : [] }],
@@ -173,7 +176,7 @@ function currentActionFor(state, actorId, handCardId) {
   };
 }
 
-function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride }) {
+function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride, effectOverride }) {
   const ordinaryTurn = state === "ordinary-turn";
   const borrowedSwordFixture = state === "borrowed-sword-play" || state === "borrowed-sword-no-target";
   const selfTargetFixture = state === "self-target-skill" || state === "self-target-skill-no-self" || state === "self-target-trigger" || state === "multi-target-trigger";
@@ -186,8 +189,8 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
   const unfocusedGroup = state === "group-unfocused";
   if (denseGroup) state = "group-observer";
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
-  const meId = state === "group-observer" || unfocusedGroup ? "p3" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
-  const actorId = state === "group-observer" || unfocusedGroup ? "p1" : state === "dying" ? "p3" : meId;
+  const meId = state === "active-attack-observer" || state === "group-observer" || unfocusedGroup ? "p3" : state === "duel" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
+  const actorId = state === "active-attack-observer" ? "p2" : state === "group-observer" || unfocusedGroup ? "p1" : state === "dying" ? "p3" : meId;
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
   const hand = ordinaryTurn
     ? ["Shadowrunner", "Overindulgence", "Negation", "Dodge", "Attack", "Attack"].map((kind, index) => card(`browser-ordinary-${index + 1}`, kind))
@@ -217,7 +220,7 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
     localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: selfTargetTriggerFixture ? "trigger" : "turn", actorId, entitled: true },
     settlement: null,
     transitionEvents: [],
-  } : state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: sourceOverride === "none" ? null : state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup ? null : state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
+  } : state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: sourceOverride === "none" ? null : state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup ? null : state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId, effectOverride });
   const players = playerIds.map((id, index) => ({
     id,
     name: `Player ${index + 1}`,
@@ -287,13 +290,14 @@ function readFixture() {
   const equipmentCase = params.get("equipmentCase") || null;
   const heroOverride = params.get("hero") || null;
   const sourceOverride = params.get("source") || null;
-  return { state, count, handSize, equipmentCase, heroOverride, sourceOverride };
+  const effectOverride = params.get("effect");
+  return { state, count, handSize, equipmentCase, heroOverride, sourceOverride, effectOverride };
 }
 
-const { state, count, handSize, equipmentCase, heroOverride, sourceOverride } = readFixture();
+const { state, count, handSize, equipmentCase, heroOverride, sourceOverride, effectOverride } = readFixture();
 const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride });
+let fixtureRoom = browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride, effectOverride });
 window.__browserActions = [];
 window.__browserRoom = fixtureRoom;
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => {

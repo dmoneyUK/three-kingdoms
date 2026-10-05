@@ -140,6 +140,22 @@ than restart them.
   passed 9/9. Targeted ESLint and `git diff --check` passed. No full local suite,
   build, or lint was run; CI is pending after push.
 
+### UX2.2-HF-ACTIVE-01 — Proven Current Effect in ACTIVE composition
+
+- Added a central Current Effect panel for a proven, single-target Attack
+  Response using only the public `PresentationClientView.stage.effect` and
+  active-target identity. The source/effect/target path is linked only when the
+  projected Hero Focus is that active target.
+- Local REST/Preview does not invent an effect; Inspect over an active Stage
+  keeps the effect visible but removes participant connectors to the inspected
+  Hero. Empty/missing effect remains identity-free. The persistent focus wrapper
+  preserves Preview-to-ACTIVE DOM continuity.
+- Focused browser coverage passed 5/5 for 390px Top Row, 480px Side Column,
+  1440px Top Row, Inspect preservation, and fail-closed absence. The combined
+  Current Effect/Preview/Borrowed Sword/Inspect suite passed 20/20; six selected
+  existing UI-19 active-stage/Inspect regressions passed. Targeted ESLint and
+  `git diff --check` passed; no full local suite/build/lint was run.
+
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
 - **13A / Reviewer addition A — authoritative self-target symmetry:** a

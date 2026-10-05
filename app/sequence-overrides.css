@@ -1675,6 +1675,26 @@
 .hero-focus-preview .hero-focus-heading strong,
 .hero-focus-preview .hero-focus-context { color: #efc36c; }
 
+/* ACTIVE Attack Response presents only the effect and focus proven by the
+   public Stage. Local Inspect/Preview remains visibly unlinked to that target. */
+.interaction-stage-current-effect-flow { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 4px; min-width: 0; }
+.interaction-stage-current-effect-flow.is-empty { display: contents; }
+.interaction-stage-current-effect-flow.is-connected { grid-template-columns: minmax(0, 1fr); }
+.interaction-stage-current-effect { display: flex; min-width: 0; min-height: 44px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 8px; border: 1px solid #a58e5d99; background: linear-gradient(145deg, #242116e8, #10140fe8); box-shadow: inset 0 0 0 1px #45391f66; text-align: center; }
+.interaction-stage-current-effect small { color: #bca36d; font: 700 7px/1.1 Arial, sans-serif; letter-spacing: .14em; }
+.interaction-stage-current-effect strong { max-width: 100%; color: #f0d28c; font: 700 12px/1.15 Georgia, serif; overflow-wrap: anywhere; }
+.current-effect-arrow { justify-self: center; color: #d5bd7d; font: 700 13px/1 Arial, sans-serif; }
+.play-table[data-seat-topology="top-row"] .interaction-stage-current-effect-flow.is-connected { grid-template-columns: minmax(56px, .7fr) 14px minmax(0, 1.3fr); gap: 6px; }
+.play-table[data-seat-topology="top-row"] .interaction-stage-current-effect-flow > .hero-focus { width: 100%; min-width: 0; margin-top: 0; }
+
+@media (max-width: 650px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage-current-effect-flow.is-connected { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .current-effect-arrow.top-row-arrow { font-size: 0; }
+  .current-effect-arrow.top-row-arrow::before { content: "↓"; font: 700 12px/1 Arial, sans-serif; }
+  .interaction-stage-current-effect { min-height: 36px; padding: 4px 6px; }
+  .interaction-stage-current-effect strong { font-size: 10px; }
+}
+
 .play-table[data-seat-topology="side-column"] .medium-participant-card {
   display: grid;
   width: 100%;
