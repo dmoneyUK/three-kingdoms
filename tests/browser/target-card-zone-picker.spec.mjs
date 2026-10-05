@@ -15,12 +15,13 @@ for (const viewport of [
 ]) {
   test(`Hero Focus selectable detail and concealed Hand remain readable at ${viewport.width}px`, async ({ page }) => {
     const focus = await loadPicker(page, viewport);
-    const detail = focus.getByRole("group", { name: "Selectable Detail" });
+    const detail = focus.getByRole("group", { name: "Retaliation selection" });
     const handZone = detail.locator('[data-target-card-zone="hand"]');
     const row = detail.locator(".target-card-picker-card-row");
 
-    await expect(detail.locator("header strong")).toHaveText("SELECTABLE DETAIL");
+    await expect(detail.locator("header span")).toHaveText("Retaliation");
     await expect(detail.locator("header small")).toHaveText("Choose where to obtain 1 card");
+    await expect(detail).not.toContainText("SELECTABLE DETAIL");
     await expect(handZone).toHaveCount(1);
     await expect(handZone).toHaveAccessibleName("Hand ×4 · Random card");
     await expect(handZone).toContainText("Hand ×4");
@@ -56,7 +57,7 @@ for (const viewport of [
 
 test("large concealed Hands keep the exact public count without expanding into many selectable cards", async ({ page }) => {
   const focus = await loadPicker(page, { width: 390, handCount: 10 });
-  const detail = focus.getByRole("group", { name: "Selectable Detail" });
+  const detail = focus.getByRole("group", { name: "Retaliation selection" });
   const handZone = detail.locator('[data-target-card-zone="hand"]');
 
   await expect(handZone).toHaveAccessibleName("Hand ×10 · Random card");
@@ -68,7 +69,7 @@ test("large concealed Hands keep the exact public count without expanding into m
 
 test("Local Dock Confirm submits the concealed Hand's existing semantic key exactly once", async ({ page }) => {
   const focus = await loadPicker(page, { width: 390 });
-  const detail = focus.getByRole("group", { name: "Selectable Detail" });
+  const detail = focus.getByRole("group", { name: "Retaliation selection" });
   const handZone = detail.locator('[data-target-card-zone="hand"]');
 
   await handZone.click();
@@ -116,7 +117,7 @@ for (const { zone, key } of [
 ]) {
   test(`public ${zone} remains an individually selectable physical card`, async ({ page }) => {
     const focus = await loadPicker(page, { width: 390 });
-    const detail = focus.getByRole("group", { name: "Selectable Detail" });
+    const detail = focus.getByRole("group", { name: "Retaliation selection" });
     const publicCard = detail.locator(`[data-target-card-zone="${zone}"]`);
     const handZone = detail.locator('[data-target-card-zone="hand"]');
 

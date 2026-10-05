@@ -2312,8 +2312,8 @@ function TargetCardSelectableDetailView({ option, selection, target, selectedKey
   const subtitle = randomHandZone && selection.min === 1 && selection.max === 1
     ? "Choose where to obtain 1 card"
     : `Choose ${amount} eligible card${selection.max === 1 ? "" : "s"}`;
-  return <section className="hero-focus-selectable-detail" role="group" aria-label="Selectable Detail" data-selectable-detail="true">
-    <header><strong>SELECTABLE DETAIL</strong><span>{effectLabel}</span><small>{subtitle}</small></header>
+  return <section className="hero-focus-selectable-detail" role="group" aria-label={`${effectLabel} selection`} data-selectable-detail="true">
+    <header><span>{effectLabel}</span><small>{subtitle}</small></header>
     <div className="target-card-picker-card-row hero-focus-selectable-detail-row" aria-label="Eligible target objects">
       {items.map((item) => <button type="button" key={item.key} data-target-card-zone={item.zone} className={`target-card-picker-card ${item.hidden ? "concealed-card" : "equipment"} ${item.randomHandZone ? "random-hand-zone" : ""} ${validSelectedKeys.includes(item.key) ? "selected" : ""}`} disabled={disabled} aria-pressed={validSelectedKeys.includes(item.key)} aria-label={item.label} onClick={() => onToggle(item.key)}>{item.randomHandZone ? <span className="concealed-hand-zone-content"><span className="target-card-picker-hand-label">Hand ×{target.handCount}</span><span className="target-card-picker-hand-backs" aria-hidden="true">{Array.from({ length: Math.min(target.handCount, 6) }, (_, index) => <span className="target-card-picker-hand-back" key={index}>?</span>)}{target.handCount > 6 && <span className="target-card-picker-hand-overflow">+{target.handCount - 6}</span>}</span><span className="target-card-picker-hand-copy">Random card</span></span> : item.card && <CardFace card={item.card} />}{validSelectedKeys.includes(item.key) && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>)}
     </div>
