@@ -434,6 +434,18 @@ than restart them.
   build/test and deploy/smoke-test jobs. `tests/browser/ui19.spec.mjs` was
   preserved unchanged.
 
+### UX2.3-FAST-RESPONSE-TIMER-10P-390-01 — 390px 10-player timer coverage
+
+- Added a focused 390×844 observer regression for top-lane containment,
+  clearance from all nine fixed seats and visible Stage content, Dock
+  separation, neutral timer copy, and the absence of viewer-private options or
+  actions. The response-timer spec passed 6/6 serially; targeted ESLint and
+  `git diff --check` passed. No production CSS or timer semantics changed.
+- A four-worker run had one existing fake-clock urgency assertion fail under
+  parallel timing; its isolated reproduction passed, then the full focused
+  spec passed serially. Exact pushed SHA `bf20878` passed Actions run
+  `37342708163` on 2026-10-05, including build-and-test and deploy/smoke-test.
+
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
 - **13A / Reviewer addition A — authoritative self-target symmetry:** a
