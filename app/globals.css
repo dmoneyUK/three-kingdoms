@@ -1097,7 +1097,7 @@ input{font:inherit}.landing-shell,.lobby-shell{min-height:100vh;position:relativ
   .interaction-stage-body:has(.medium-participant-card) .interaction-stage-event-region:has(.dying-handoff) { grid-column: 4 / -1; grid-row: 1; }
   .interaction-stage-body:has(.medium-participant-card) > .interaction-stage-meta-region { grid-column: 3 / -1; grid-row: 2; }
 }
-@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 360px) {
+@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 480px) {
   .interaction-stage-body:has(.medium-participant-card) {
     grid-template-columns: 62px 12px minmax(0, 1fr) minmax(84px, .65fr);
     gap: 2px 4px;

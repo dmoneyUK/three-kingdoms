@@ -1635,13 +1635,137 @@ for (const width of [390, 480]) {
     expect(layout.scrollWidth).toBeLessThanOrEqual(width);
     await expect(page.locator(".hero-focus")).toBeVisible();
     if (width === 480 && count === 4) {
+      await testInfo.attach("vis-12j-four-player-single-target-480-geometry", {
+        body: JSON.stringify({ ...layout, stage }, null, 2),
+        contentType: "application/json",
+      });
+      const screenshot = await page.screenshot({ path: testInfo.outputPath("single-target-480x900.png"), animations: "disabled" });
       await testInfo.attach("vis-12j-four-player-single-target-480", {
-        body: await page.screenshot({ animations: "disabled" }),
+        body: screenshot,
         contentType: "image/png",
       });
     }
     });
   }
+}
+
+const VIS_12N_INTERACTION_STATES = [
+  { state: "interaction", required: [".hero-focus", ".interaction-stage-meta-region .interaction-stage-focus"] },
+  { state: "group-observer", required: [".hero-focus", ".medium-participant-card", '[data-group-target-scope="original"]'] },
+  { state: "negation", required: [".hero-focus", '[data-reaction-chain="proven"]', '[data-reaction-node="root"]', '[data-reaction-node="active"]'] },
+  { state: "duel", required: [".hero-focus", ".interaction-stage-meta-region"] },
+  { state: "dying", required: [".hero-focus", '[data-dying-handoff="proven"]', ".dying-handoff-grid", ".dying-handoff-guidance"] },
+  { state: "long-guidance", required: [".hero-focus", ".interaction-stage-meta-region"] },
+];
+const VIS_12N_STAGE_SELECTOR = '.play-table[data-seat-topology="top-row"] .interaction-stage';
+
+async function assertVis12nTopRowGeometry(page, width) {
+  const result = await interactionGeometry(page);
+  expect(result.viewportWidth).toBe(width);
+  expect(result.scrollWidth, "the document must not gain horizontal overflow").toBeLessThanOrEqual(width);
+  await expect(page.locator('.player-board[data-seat-topology="top-row"][data-player-count="4"]')).toHaveCount(1);
+  expect(result.opponents, "the four-player Top Row keeps exactly three opponent seats").toHaveLength(3);
+  const orderedOpponents = [...result.opponents].sort((left, right) => left.left - right.left);
+  for (let index = 1; index < orderedOpponents.length; index += 1) {
+    expect(orderedOpponents[index].left, "opponent seats remain horizontally separated").toBeGreaterThanOrEqual(orderedOpponents[index - 1].right);
+  }
+  expect(result.localDock).not.toBeNull();
+  expect(Math.max(...result.opponents.map(({ top }) => top)) - Math.min(...result.opponents.map(({ top }) => top))).toBeLessThanOrEqual(4);
+
+  const stage = page.locator(VIS_12N_STAGE_SELECTOR);
+  await expect(stage).toBeVisible();
+  expect(result.stage).not.toBeNull();
+  expect(result.safeZone).not.toBeNull();
+  expect(result.stage.left).toBeGreaterThanOrEqual(result.safeZone.left - 1);
+  expect(result.stage.right).toBeLessThanOrEqual(result.safeZone.right + 1);
+  expect(result.stage.top).toBeGreaterThanOrEqual(result.safeZone.top - 1);
+  expect(result.stage.bottom).toBeLessThanOrEqual(result.safeZone.bottom + 1);
+  expect(result.stage.bottom).toBeLessThanOrEqual(result.playTable.bottom + 1);
+  expect(result.stageDockOverlap).toBe(0);
+  expect(result.safeZoneDockOverlap).toBe(0);
+  expect(result.safeZoneOverflow).toEqual({ x: "visible", y: "visible" });
+  expect(result.stageOverflow).toEqual({ x: "visible", y: "visible" });
+  for (const seat of result.opponents) expect(seat.bottom).toBeLessThanOrEqual(result.stage.top - 6);
+  const visibleRegions = result.stageRegions.filter((region) => region.visible);
+  expect(visibleRegions.length).toBeGreaterThan(0);
+  for (const region of visibleRegions) {
+    expect(region.bounds.left, `${region.className} stays within Stage width`).toBeGreaterThanOrEqual(result.stage.left - 1);
+    expect(region.bounds.right, `${region.className} stays within Stage width`).toBeLessThanOrEqual(result.stage.right + 1);
+    expect(region.bounds.top, `${region.className} stays within Stage height`).toBeGreaterThanOrEqual(result.stage.top - 1);
+    expect(region.bounds.bottom, `${region.className} stays within Stage height`).toBeLessThanOrEqual(result.stage.bottom + 1);
+  }
+
+  for (const selector of [".local-hero-card", ".local-hand-rail", ".console-guidance", ".turn-controls"]) {
+    await expect(page.locator(`.local-player-dock ${selector}`), `the Dock retains ${selector}`).toBeVisible();
+  }
+  const actionButtons = await page.locator(".local-player-dock .turn-controls [data-action-slot]").evaluateAll((slots) => slots.flatMap((slot) => {
+    const button = slot.querySelector("button");
+    if (!button) return [];
+    const rect = button.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return [];
+    return [{ slot: slot.dataset.actionSlot, left: rect.left, right: rect.right, width: rect.width, height: rect.height }];
+  }));
+  for (const button of actionButtons) {
+    expect(button.width, `${button.slot} remains a usable target`).toBeGreaterThanOrEqual(78);
+    expect(button.height, `${button.slot} remains a usable target`).toBeGreaterThanOrEqual(32);
+  }
+  const primary = actionButtons.find(({ slot }) => slot === "primary");
+  const decline = actionButtons.find(({ slot }) => slot === "decline");
+  if (primary && decline) {
+    const primaryCenter = (primary.left + primary.right) / 2 / width;
+    expect(primaryCenter, "Primary remains in the centre-right thumb zone").toBeGreaterThanOrEqual(0.55);
+    expect(primaryCenter, "Primary remains in the centre-right thumb zone").toBeLessThanOrEqual(0.70);
+    expect(decline.right, "Decline remains in the far-right secondary zone").toBeGreaterThanOrEqual(width * 0.95);
+    expect(decline.right).toBeLessThanOrEqual(width - 8);
+    expect(decline.left - primary.right, "Primary and Decline keep a safety gutter").toBeGreaterThanOrEqual(32);
+  }
+  return { ...result, actionButtons };
+}
+
+for (const { state, required } of VIS_12N_INTERACTION_STATES) {
+  test(`UX2.0VIS-12N four-player ${state} at 480x900 preserves Stage, seats, and Dock`, async ({ page }, testInfo) => {
+    await loadFixture(page, { state, count: 4, width: 480, height: 900 });
+    const stage = page.locator(VIS_12N_STAGE_SELECTOR);
+    for (const selector of required) await expect(stage.locator(selector)).toBeVisible();
+    if (state === "group-observer") {
+      await expect(stage.locator('[data-group-target-scope="original"] .group-target-card')).toHaveCount(1);
+      await expect(stage.locator(".medium-participant-identity b")).not.toHaveText("");
+    }
+    if (state === "negation") {
+      await expect(stage.locator('[data-reaction-node="root"] b, [data-reaction-node="root"] span')).toHaveCount(2);
+      await expect(stage.locator('[data-reaction-node="active"] b')).toBeVisible();
+      await expect(stage.locator('[data-reaction-node="active"] span')).toBeVisible();
+    }
+    if (state === "dying") {
+      await expect(stage.locator(".dying-handoff-grid > span")).toHaveCount(3);
+      await expect(stage.locator(".dying-handoff-guidance")).not.toHaveText("");
+    }
+    if (state === "long-guidance") {
+      const guidance = page.locator(".local-player-dock .console-guidance .decision-status");
+      await expect(guidance).not.toHaveText("");
+      expect(await guidance.evaluate((element) => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+    }
+
+    const screenshot = await page.screenshot({ path: testInfo.outputPath(`${state}-480x900.png`), animations: "disabled" });
+    await testInfo.attach(`vis-12n-${state}-480x900`, { body: screenshot, contentType: "image/png" });
+    const layout = await assertVis12nTopRowGeometry(page, 480);
+    await testInfo.attach(`vis-12n-${state}-geometry`, { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
+  });
+}
+
+for (const state of ["group-observer", "dying"]) {
+  test(`UX2.0VIS-12N four-player ${state} at 390x640 preserves Stage, seats, and Dock`, async ({ page }, testInfo) => {
+    await loadFixture(page, { state, count: 4, width: 390, height: 640 });
+    const stage = page.locator(VIS_12N_STAGE_SELECTOR);
+    await expect(stage).toBeVisible();
+    if (state === "group-observer") await expect(stage.locator('[data-group-target-scope="original"] .group-target-card')).toHaveCount(1);
+    if (state === "dying") await expect(stage.locator('[data-dying-handoff="proven"] .dying-handoff-guidance')).not.toHaveText("");
+
+    const screenshot = await page.screenshot({ path: testInfo.outputPath(`${state}-390x640.png`), animations: "disabled" });
+    await testInfo.attach(`vis-12n-${state}-390x640`, { body: screenshot, contentType: "image/png" });
+    const layout = await assertVis12nTopRowGeometry(page, 390);
+    await testInfo.attach(`vis-12n-${state}-390x640-geometry`, { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
+  });
 }
 
 for (const width of [390, 480, 650]) {

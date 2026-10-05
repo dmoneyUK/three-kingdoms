@@ -5,36 +5,31 @@ Mode: `AUTONOMOUS UI RUN`
 
 This file contains only the current execution handoff. Product design is in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest confirmed remote baseline
+## Latest task result — UX2.0VIS-12N
 
-Revision `8407c8dcf14444d107d348bfa43f473ac8331d2c` was confirmed green in GitHub Actions run `37240016937`: both `build-and-test` and `deploy` succeeded.
+Status: **IMPLEMENTED — CI PENDING**.
 
-Later reviewer design/workflow documentation changes do **not** change the current VIS-12N task. This handoff does not claim CI-green status for documentation-only revisions after the confirmed baseline; apply the normal one-time CI checkpoint before the next source edit.
+Added the four-player screenshot/geometry matrix and corrected compact short-height Stage columns so Group observer and Dying content fit a 390×640 viewport. No gameplay or semantic behavior changed. The 12J single-target screenshot and geometry evidence are attached by the focused browser test; the existing 12K ordinary-turn screenshot/geometry are also included.
+
+Focused validation: the 10-case 12N/12J/12K browser matrix passed 10/10; the 390×640 pair passed 2/2 after the responsive fix; the 12J single-target geometry-attachment rerun passed 1/1. Ten relevant screenshots were visually inspected. No full suite, build, or lint was run locally.
+
+The last confirmed-green baseline is `8407c8dcf14444d107d348bfa43f473ac8331d2c` (Actions run `37240016937`, both required jobs successful). Later documentation revisions through `2af42f4` and the current 12N implementation revision are not claimed green; confirm only the exact implementation revision's Actions result.
 
 ## Design review checkpoint
 
-The current task was planned against Coding-Agent-reviewed design revision `43f282f494ee606e73347e3bb6a580b16024f65a`.
+Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`, introduced by `d3854354317111af3acb7d8cc7a70ee79392e496`. The full intervening design addition was reviewed: authoritative self-target symmetry, failed response provider distinct from Pass, and complete-path Borrowed Sword legality. Those additions did not change 12N and are not folded into the next visual task.
 
-The remote design now includes reviewer additions from `d3854354317111af3acb7d8cc7a70ee79392e496`. Do not insert those additions into the current VIS-12N scope. Before planning the next task, review all design changes since `43f282f4` and record the new reviewed design revision.
+## Deferred visual finding
 
-## Current task — UX2.0VIS-12N: Four-Player Interaction Screenshot Matrix
+The 12N screenshots show Deck/Discard intersecting or showing through active Stage content in Group, Negation, and Dying compositions. Keep this separate from 12N; the next task addresses it under design §0.91.4.
 
-Status: **IN PROGRESS**
+## Next task — UX2.0VIS-12O: Separate Deck/Discard from active Stage content
 
-Purpose: complete the four-player visual-evidence slice using existing typed browser fixtures. No gameplay or semantic changes.
+Scope: four-player Top Row only; responsive layout and focused browser evidence, with no gameplay, semantic, Dock, or seat-topology changes.
 
 Acceptance:
+- In Group observer, Negation, and Dying fixtures at 480×900 and 390×640, Deck/Discard remain visible and secondary without intersecting Hero Focus, Group target scope, Reaction Chain, or Dying handoff content.
+- Preserve Stage/Safe Zone/Dock containment and page-width bounds; retain screenshot and geometry attachments for each case.
+- Stop for human review if separation would require hiding persistent pile state or an unapproved Stage-composition trade-off.
 
-- 480×900: ordinary turn, single target, Group/AOE observer, Negation, Duel, Dying/Peach, and long guidance.
-- 390×640: Group/AOE observer and Dying/Peach.
-- Assert Stage/Safe Zone/Dock containment, opponent-seat separation, required semantic content, and action-target geometry where actions are present.
-- Inspect and record screenshots/geometry evidence.
-- If a separate defect or undecided visual trade-off appears, keep VIS-12N bounded and defer that issue to the next planning boundary unless it blocks this task.
-
-## Resume point
-
-The prior Agent reported uncommitted local work in `tests/browser/ui19.spec.mjs`: an unvalidated VIS-12N screenshot/geometry matrix plus a VIS-12J screenshot-output change.
-
-Preserve that work if it exists in the current worktree. Do not assume it exists in a fresh checkout because it has not been pushed.
-
-Before the next source edit, apply the workflow's one-time CI checkpoint. No next UX task is authorized until VIS-12N closes and the next-task planning gate is applied.
+Design authority: `docs/UX_V2_INTERACTION_STAGE_DESIGN.md` §§0.91.3–0.91.4. Before the first 12O source edit, perform the workflow's one-time Actions checkpoint for the latest pushed `ux-v2` revision; if it is queued/in progress proceed without waiting, and if failed fix the relevant failure first.

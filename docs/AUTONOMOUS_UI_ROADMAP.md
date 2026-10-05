@@ -36,7 +36,7 @@ Detailed older handoff evidence through VIS-12J is archived in:
 - **VIS-12K:** added representative four-player ordinary-turn visual coverage and exposed the Guidance placement mismatch.
 - **VIS-12L:** corrected Guidance/action vertical composition so decision guidance remains above bottom actions without displacing the Hand.
 - **VIS-12M:** deduplicated already-proven non-Dying Stage source metadata and corrected resulting narrow metadata containment; follow-up stale Dock source-shape coverage was repaired.
-- **VIS-12N:** current four-player interaction screenshot matrix is intentionally **not** recorded as completed here; its live status belongs only in HANDOVER.
+- **VIS-12N:** completed the four-player 480×900/390×640 screenshot and geometry matrix; extended the compact short-height Stage layout to fit Group observer and Dying content at 390×640. Focused browser coverage passed locally; exact-revision CI remains pending in HANDOVER. The screenshots exposed a separate Deck/Discard overlap with active Stage content, planned as VIS-12O.
 
 ## Durable implementation principles established by completed work
 
