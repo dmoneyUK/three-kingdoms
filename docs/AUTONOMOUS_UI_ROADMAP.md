@@ -156,6 +156,20 @@ than restart them.
   existing UI-19 active-stage/Inspect regressions passed. Targeted ESLint and
   `git diff --check` passed; no full local suite/build/lint was run.
 
+### UX2.2-HF-ACTIVE-NEGATION-01 — Proven Current Effect in open NEGATION
+
+- Extended the Current Effect composition to a proven single-target NEGATION
+  using only public `stage.effect`, the projected active target, and matching
+  Hero Focus identity. Missing or ambiguous authority stays unlinked/fail-closed.
+- Open-window Stage, Reaction Chain, and seat treatment use neutral waiting
+  language and do not reveal the private responder/scan actor. The viewer Hero
+  and legal controls remain in the Local Player Dock.
+- Focused browser regressions passed 10/10, including Top Row/Side Column,
+  missing/ambiguous proof, 480×640 containment, and semantic labels;
+  PresentationClient tests passed 40/40. Targeted ESLint reported no errors
+  (the JSX fixture is ignored by repository lint configuration), and
+  `git diff --check` passed. No full local suite/build/lint was run.
+
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
 - **13A / Reviewer addition A — authoritative self-target symmetry:** a

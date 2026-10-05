@@ -489,7 +489,7 @@ function currentActionViewKey(action: CurrentAction | null) {
   return JSON.stringify(action);
 }
 
-function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlayer = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: HeroFocusView; showSource?: boolean; previewPlayer?: LocalTargetPreviewPresentation | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
+function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlayer = null, hideArchitecturalLabel = false, roleLabelOverride = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: HeroFocusView; showSource?: boolean; previewPlayer?: LocalTargetPreviewPresentation | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; hideArchitecturalLabel?: boolean; roleLabelOverride?: string | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
   if (inspectPlayer) {
     const inspectedHero = inspectPlayer.hero;
     const publicSkills = inspectedHero?.skills ?? [];
@@ -524,8 +524,8 @@ function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlaye
   const hero = heroDefinition(view.primary.heroId);
   const heroName = view.primary.heroName ?? hero?.name ?? null;
   const hp = view.primary.hp !== null || view.primary.maxHp !== null ? `HP ${view.primary.hp ?? "?"}/${view.primary.maxHp ?? "?"}` : null;
-  return <div className="hero-focus" aria-label="Hero Focus" data-hero-focus="true" data-hero-focus-player-id={view.primary.id} data-hero-focus-role={view.roleLabel ?? undefined} data-hero-focus-source-id={view.source.id ?? undefined} data-hero-focus-known={view.primary.known ? "true" : "false"}>
-    <div className="hero-focus-heading"><span>HERO FOCUS</span><strong>{view.roleLabel}</strong></div>
+  return <div className="hero-focus" aria-label={hideArchitecturalLabel ? roleLabelOverride ?? "Target" : "Hero Focus"} data-hero-focus="true" data-hero-focus-player-id={view.primary.id} data-hero-focus-role={roleLabelOverride ?? view.roleLabel ?? undefined} data-hero-focus-source-id={view.source.id ?? undefined} data-hero-focus-known={view.primary.known ? "true" : "false"}>
+    <div className="hero-focus-heading">{!hideArchitecturalLabel && <span>HERO FOCUS</span>}<strong>{roleLabelOverride ?? view.roleLabel}</strong></div>
     <div className="hero-focus-body">
       <span className={hero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={view.primary.heroId ?? undefined}>{hero ? <HeroPortrait hero={hero} /> : "?"}</span>
       <div className="hero-focus-identity"><b>{view.primary.name}</b>{heroName && <span>{heroName}</span>}{hp && <small>{hp}</small>}</div>
@@ -565,12 +565,13 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const hasLocalPreview = localPreviewPlayer !== null;
   const hasLocalInspect = inspectPlayer !== null;
   const hasLocalFocus = hasLocalPreview || hasLocalInspect;
+  const isOpenNegationResponse = display.visible && stage.stage === "NEGATION";
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
   const localFocusPlayerId = inspectPlayer?.id ?? localPreviewPlayer?.id;
   const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId && !hasLocalInspect);
   const currentEffect = display.visible
-    && stage.stage === "ATTACK_RESPONSE"
+    && (stage.stage === "ATTACK_RESPONSE" || stage.stage === "NEGATION")
     && stage.activeTargets.length === 1
     ? stage.effect?.trim() || null
     : null;
@@ -586,7 +587,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     heroFocus.primary?.id === display.focusTarget.id
     || dyingHandoff.dyingPlayer.id === display.focusTarget.id
   ));
-  const showRoleSummary = display.visible && (hasLocalFocus || !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible));
+  const showRoleSummary = display.visible && !isOpenNegationResponse && (hasLocalFocus || !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible));
   const nonDyingSourceAlreadyVisible = Boolean(!hasLocalFocus && !dyingHandoff.visible && stage.source.id && (
     showMediumSource && mediumSource?.player.id === stage.source.id
     || (!mediumSource
@@ -596,10 +597,10 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
       && heroFocus.source.id === stage.source.id)
   ));
   const showSourceSummary = showRoleSummary && !nonDyingSourceAlreadyVisible;
-  const showDecisionSummary = display.showDecision && !(dyingHandoff.visible
+  const showDecisionSummary = display.showDecision && !isOpenNegationResponse && !(dyingHandoff.visible
     && display.decisionActor.id
     && dyingHandoff.decisionActor.id === display.decisionActor.id);
-  const showResolverSummary = display.showResolver && !(dyingHandoff.visible
+  const showResolverSummary = display.showResolver && !isOpenNegationResponse && !(dyingHandoff.visible
     && display.activeResolver.id
     && dyingHandoff.activeResolver.id === display.activeResolver.id);
   const showNestedContextSummary = Boolean(display.nestedContext)
@@ -610,23 +611,23 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && Boolean(display.activeScopeSummary);
   const showRoleMetadata = showSourceSummary || showFocusSummary || showActiveScopeSummary;
   const hasMultipleRoleSummaries = showSourceSummary && (showFocusSummary || showActiveScopeSummary);
-  const showMetadataContext = !dyingHandoff.visible
+  const showMetadataContext = !isOpenNegationResponse && (!dyingHandoff.visible
     || showDecisionSummary
     || showResolverSummary
     || display.showOriginalTargets
-    || showNestedContextSummary;
-  const showMetadataRegion = showRoleMetadata || showMetadataContext;
+    || showNestedContextSummary);
+  const showMetadataRegion = showRoleMetadata || showMetadataContext || isOpenNegationResponse;
   if (!display.visible && !hasLocalFocus) return null;
-  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
-    <header><span>INTERACTION STAGE</span><strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{!hasLocalFocus && display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
+  return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
+    <header>{!isOpenNegationResponse && <span>INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{!isOpenNegationResponse && !hasLocalFocus && display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
     <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {showMediumSource && mediumSource && <MediumParticipantCard view={mediumSource} />}
         {showMediumSource && mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
         <div className={`interaction-stage-current-effect-flow${currentEffect ? currentEffectConnectsToFocus ? " is-connected" : " is-unlinked" : " is-empty"}`}>
-          {currentEffect && <section className="interaction-stage-current-effect" role="group" aria-label="Current Effect" data-current-effect-label={currentEffect}><small>CURRENT EFFECT</small><strong>{currentEffect}</strong></section>}
+          {currentEffect && <section className="interaction-stage-current-effect" role="group" aria-label="Current Effect" data-current-effect-label={currentEffect}><small>{isOpenNegationResponse ? "EFFECT" : "CURRENT EFFECT"}</small><strong>{currentEffect}</strong></section>}
           {currentEffectConnectsToFocus && <span className={`current-effect-arrow${topRowMode ? " top-row-arrow" : " side-column-arrow"}`} aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
-          <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
+          <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} hideArchitecturalLabel={isOpenNegationResponse} roleLabelOverride={isOpenNegationResponse ? "Target" : null} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
         </div>
         {groupTargetScope && <section className="group-target-scope" aria-label="Original target scope" data-group-target-scope="original" data-participant-density={groupTargetScope.density}>
           <header>ORIGINAL TARGET SCOPE</header>
@@ -652,20 +653,23 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
           <small className="dying-handoff-guidance">{dyingHandoff.guidance}</small>
         </section>}
         {reactionChain.visible && reactionChain.root && reactionChain.active && <section className="reaction-chain" aria-label="Reaction Chain" data-reaction-chain="proven" data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
-          <header><span>REACTION CHAIN</span><small>PUBLIC CAUSAL CONTEXT</small></header>
+          <header><span>REACTION CHAIN</span></header>
           <ol>
-            <li data-reaction-node="root"><small>ROOT EFFECT</small><b>{reactionChain.root.effect}</b><span>{reactionChain.root.source.name} → {reactionChain.root.targets.length ? reactionChain.root.targets.map((target) => target.name).join(", ") : "No proven target"}</span></li>
-            <li data-reaction-node="active" data-reaction-relation={reactionChain.active.relation}><small>ACTIVE RESPONSE</small><b>{reactionChain.active.label}</b>{reactionChain.active.decisionActor.id && <span>DECISION · {reactionChain.active.decisionActor.name}</span>}</li>
+            <li data-reaction-node="root"><small>{isOpenNegationResponse ? "ORIGINAL EFFECT" : "ROOT EFFECT"}</small><b>{reactionChain.root.effect}</b><span>{reactionChain.root.source.name} → {reactionChain.root.targets.length ? reactionChain.root.targets.map((target) => target.name).join(", ") : "No proven target"}</span></li>
+            <li data-reaction-node="active" data-reaction-relation={reactionChain.active.relation}><small>{isOpenNegationResponse ? "NEGATION WINDOW" : "ACTIVE RESPONSE"}</small><b>{reactionChain.active.label}</b>{isOpenNegationResponse ? <span>Waiting for response...</span> : reactionChain.active.decisionActor.id && <span>DECISION · {reactionChain.active.decisionActor.name}</span>}</li>
           </ol>
         </section>}
       </div>
       {showMetadataRegion && <div className="interaction-stage-meta-region">
-        {showRoleMetadata && <div className={`interaction-stage-focus${hasMultipleRoleSummaries ? "" : " interaction-stage-focus--single"}`}>
+        {isOpenNegationResponse && <div className="interaction-stage-focus interaction-stage-focus--single" data-negation-window-state="open">
+          <div data-stage-meta-role="scope"><small>NEGATION WINDOW</small><b>A Negation may be played now.</b></div>
+        </div>}
+        {!isOpenNegationResponse && showRoleMetadata && <div className={`interaction-stage-focus${hasMultipleRoleSummaries ? "" : " interaction-stage-focus--single"}`}>
           {showSourceSummary && <div data-stage-meta-role="source"><small>SOURCE</small><b>{display.source.name}</b></div>}
           {showFocusSummary && <div data-stage-meta-role={display.focusTarget.id ? "focus" : "scope"}><small>{display.focusTarget.id ? "FOCUS" : "SCOPE"}</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>}
           {showActiveScopeSummary && <div data-stage-meta-role="active-scope"><small>ACTIVE SCOPE</small><em>{display.activeScopeSummary}</em></div>}
         </div>}
-        {showMetadataContext && <div className="interaction-stage-context">
+        {!isOpenNegationResponse && showMetadataContext && <div className="interaction-stage-context">
           {showDecisionSummary && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
           {showResolverSummary && <span><small>RESOLVER</small><b>{display.activeResolver.name}</b></span>}
           {display.showOriginalTargets && <span><small>ORIGINAL SCOPE</small><b>{display.originalTargetSummary}</b></span>}
@@ -1927,7 +1931,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={responseControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
       {groupScopePreview.active && <p className="group-scope-preview-label" data-group-scope-preview={groupScopePreview.cardKind ?? undefined} role="status">PREVIEW · {groupScopePreview.label}</p>}
-      <div className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>{room.players.filter((player) => player.id !== room.meId).map((player) => { const index = room.players.findIndex((candidate) => candidate.id === player.id); const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind; const cardTargetLegal = Boolean(card && (card.kind === "BorrowedSword" ? borrowedSwordPlayTargetIds.includes(player.id) : selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, targetHandCount: player.handCount, cardKind: selectedTargetCardKind }))); const targetablePlayer = Boolean((borrowedSwordTargetSelectionActive && borrowedSwordEligibleTargetIds.includes(player.id) && player.alive) || (activeSkillTargetMode && activeSkillTargetIds.includes(player.id) && player.alive) || (triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode) || (serpentMode && canPlay) || (card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"))); return <OpponentPlayerCard key={`square-${player.id}`} totalPlayers={room.players.length} player={player} viewerId={room.meId} playerHero={heroDefinition(player.hero)} relativeIndex={relativeIndex} isTurn={player.seat === room.turnSeat} isActionPlayer={player.id === room.actionPlayerId} isSelectedTarget={borrowedSwordTargetId === player.id || targetIds.includes(player.id)} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)} interactionRoles={projectInteractionSeatRoles(clientPresentation, player.id)} targetSelectionActive={targetSelectionActive} targetablePlayer={targetablePlayer} onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } }} onInspect={() => setExpandedOpponentId((currentId) => currentId === player.id ? null : player.id)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} judgementInFlight={judgementInFlight} serpentSelected={serpentSelected} triggerResponse={triggerResponse} triggerSelectionUsesCards={triggerSelectionUsesCards} responseDecisionReady={responseDecisionReady} triggerCardOption={triggerCardOption} onToggleEquipment={(cardId) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < (triggerResponse && triggerSelectionUsesCards ? triggerSelectionMax : 2) ? [...ids, cardId] : ids)} />; })}</div>
+      <div className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>{room.players.filter((player) => player.id !== room.meId).map((player) => { const index = room.players.findIndex((candidate) => candidate.id === player.id); const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind; const cardTargetLegal = Boolean(card && (card.kind === "BorrowedSword" ? borrowedSwordPlayTargetIds.includes(player.id) : selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, targetHandCount: player.handCount, cardKind: selectedTargetCardKind }))); const targetablePlayer = Boolean((borrowedSwordTargetSelectionActive && borrowedSwordEligibleTargetIds.includes(player.id) && player.alive) || (activeSkillTargetMode && activeSkillTargetIds.includes(player.id) && player.alive) || (triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode) || (serpentMode && canPlay) || (card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"))); return <OpponentPlayerCard key={`square-${player.id}`} totalPlayers={room.players.length} player={player} viewerId={room.meId} playerHero={heroDefinition(player.hero)} relativeIndex={relativeIndex} isTurn={player.seat === room.turnSeat} isActionPlayer={clientPresentation.stage !== "NEGATION" && player.id === room.actionPlayerId} isSelectedTarget={borrowedSwordTargetId === player.id || targetIds.includes(player.id)} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)} interactionRoles={projectInteractionSeatRoles(clientPresentation, player.id)} targetSelectionActive={targetSelectionActive} targetablePlayer={targetablePlayer} onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } }} onInspect={() => setExpandedOpponentId((currentId) => currentId === player.id ? null : player.id)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} judgementInFlight={judgementInFlight} serpentSelected={serpentSelected} triggerResponse={triggerResponse} triggerSelectionUsesCards={triggerSelectionUsesCards} responseDecisionReady={responseDecisionReady} triggerCardOption={triggerCardOption} onToggleEquipment={(cardId) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < (triggerResponse && triggerSelectionUsesCards ? triggerSelectionMax : 2) ? [...ids, cardId] : ids)} />; })}</div>
       {seatCountdown && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
     <footer className="play-command">

@@ -365,7 +365,12 @@ test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment",
           await expect(stage.locator('[data-group-target-scope="original"] .group-target-card')).toHaveCount(1);
           await expect(stage.locator('[data-group-target-scope="original"] .group-target-identity b')).not.toHaveText("");
         }
-        if (state !== "dying") {
+        if (state === "negation") {
+          const negationWindow = stage.locator('.interaction-stage-meta-region [data-negation-window-state="open"]');
+          await expect(negationWindow).toBeVisible();
+          await expect(negationWindow.locator('[data-stage-meta-role="scope"]')).toContainText("A Negation may be played now.");
+          await expect(negationWindow.locator("[data-stage-meta-role]")).toHaveCount(1);
+        } else if (state !== "dying") {
           await expect(stage.locator(".interaction-stage-meta-region .interaction-stage-focus")).toBeVisible();
           const sourceAlreadyVisible = await stage.locator(".medium-participant-card, .hero-focus-source").count() > 0;
           await expect(stage.locator(".interaction-stage-focus > [data-stage-meta-role]")).toHaveCount(sourceAlreadyVisible ? 1 : 2);

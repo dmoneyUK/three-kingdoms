@@ -328,6 +328,19 @@ test("semantic seat roles preserve ordinary target-owned and source-owned owners
   });
 });
 
+test("open Negation seat roles do not expose the private response actor or resolver", () => {
+  const negation = buildPresentationClientView(snapshot({
+    interaction: scene({ stage: "NEGATION", effect: "Dismantle", decisionActorId: "C", activeResolverId: "C", participantRoles: { ...scene().participantRoles, decisionActorId: "C", activeResolverId: "C" } }),
+    stable: { ...snapshot().stable, decisionActorId: "C" },
+    decision: { actorId: "C", stage: "NEGATION" },
+    localControl: { ...snapshot().localControl, actorId: null, entitled: false },
+  }), "A");
+  assert.equal(projectInteractionSeatRoles(negation, "C").isDecisionActor, false);
+  assert.equal(projectInteractionSeatRoles(negation, "C").isActiveResolver, false);
+  assert.equal(projectInteractionSeatRoles(negation, "C").isViewerDecisionActor, false);
+  assert.equal(projectInteractionSeatRoles(negation, "B").isActiveTarget, true);
+});
+
 test("semantic seat roles preserve Group/AOE, child-frame, Dying, and overlapping facts", () => {
   const group = buildPresentationClientView(snapshot({
     interaction: scene({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C", "A"], activeTargetIds: ["C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantRoles: { ...scene().participantRoles, originalTargetIds: ["B", "C", "A"], activeTargetIds: ["C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"] } }),

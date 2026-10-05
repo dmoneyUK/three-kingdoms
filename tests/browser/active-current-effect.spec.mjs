@@ -72,6 +72,82 @@ test("Inspect preserves ACTIVE Current Effect without linking it to the inspecte
   ))).toEqual(identity);
 });
 
+for (const viewport of [
+  { count: 4, width: 1440, height: 900, topology: "top-row" },
+  { count: 6, width: 480, height: 900, topology: "side-column" },
+]) {
+  test(`proven NEGATION Current Effect fits ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "active-negation-observer" });
+    const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+    const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
+    const effect = stage.locator('[aria-label="Current Effect"]');
+    const target = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
+    const chain = stage.locator('[data-reaction-chain="proven"]');
+    await expect(page.locator(".play-table")).toHaveAttribute("data-seat-topology", viewport.topology);
+    await expect(stage).toHaveAttribute("data-stage", "NEGATION");
+    await expect(stage).toHaveAttribute("data-current-effect", "Dismantle");
+    await expect(stage).toHaveAttribute("data-interaction-id", "browser-active-negation-observer-interaction");
+    await expect(source).toContainText("Player 1");
+    await expect(effect.locator("strong")).toHaveText("Dismantle");
+    await expect(target).toContainText("Player 2");
+    await expect(chain).toContainText("ORIGINAL EFFECT");
+    await expect(chain.locator('[data-reaction-node="root"]')).toContainText("Dismantle");
+    await expect(chain.locator('[data-reaction-node="active"]')).toContainText("NEGATION WINDOW");
+    await expect(chain.locator('[data-reaction-node="active"]')).toContainText("Waiting for response...");
+    await expect(chain).not.toContainText("Player 3");
+    await expect(stage).not.toContainText("Player 3");
+    await expect(stage).not.toContainText("INTERACTION STAGE");
+    await expect(stage).not.toContainText("HERO FOCUS");
+    await expect(stage.locator(".hero-focus-heading strong")).toHaveText("Target");
+    await expect(stage.locator('[data-negation-window-state="open"]')).toContainText("A Negation may be played now.");
+    await expect(stage.locator(".medium-participant-arrow")).toHaveCount(1);
+    await expect(stage.locator(".current-effect-arrow")).toHaveCount(1);
+    await expect(page.locator('.local-player-dock[data-player-anchor="p4"]')).toBeVisible();
+    await expect(stage.locator('[data-hero-focus-player-id="p4"]')).toHaveCount(0);
+    const hiddenResponderSeat = page.locator('.player-board [data-player-anchor="p3"]');
+    await expect(hiddenResponderSeat).not.toHaveClass(/action-square|interaction-seat-decision-actor|interaction-seat-active-resolver/);
+    await expect(hiddenResponderSeat).not.toHaveAttribute("data-interaction-decision-actor");
+    await expect(hiddenResponderSeat).not.toHaveAttribute("data-interaction-active-resolver");
+
+    const sourceBox = await source.boundingBox();
+    const effectBox = await effect.boundingBox();
+    const targetBox = await target.boundingBox();
+    expect(sourceBox && effectBox && targetBox).toBeTruthy();
+    if (viewport.topology === "side-column") {
+      expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+    } else {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);
+    }
+  });
+}
+
+test("NEGATION effect stays unlinked without matching focus and fails closed for absent or ambiguous proof", async ({ page }) => {
+  await loadFixture(page, { width: 1440, state: "active-negation-unfocused-observer" });
+  let stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+  await expect(stage).toHaveAttribute("data-current-effect", "Dismantle");
+  await expect(stage.locator('[aria-label="Current Effect"]')).toBeVisible();
+  await expect(stage.locator(".current-effect-arrow, .medium-participant-arrow")).toHaveCount(0);
+  await expect(stage.locator('[data-hero-focus="true"]')).toHaveCount(0);
+  await expect(stage).not.toContainText("Player 3");
+
+  await loadFixture(page, { width: 480, count: 6, state: "active-negation-observer", effect: "none" });
+  stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+  await expect(stage).toHaveAttribute("data-stage", "NEGATION");
+  await expect(stage).not.toHaveAttribute("data-current-effect");
+  await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+  await expect(stage.locator('[data-reaction-chain="proven"]')).toHaveCount(0);
+
+  await loadFixture(page, { width: 480, count: 6, state: "active-negation-multi-observer" });
+  stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+  await expect(stage).toHaveAttribute("data-stage", "NEGATION");
+  await expect(stage).not.toHaveAttribute("data-current-effect");
+  await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+  await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
+  await expect(stage.locator('[data-hero-focus="true"]')).toHaveCount(0);
+});
+
 test("missing public effect fails closed and local REST/Preview do not invent one", async ({ page }) => {
   await loadFixture(page, { width: 480, effect: "none" });
   let stage = page.locator('[aria-label="Interaction Stage"]');

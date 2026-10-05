@@ -5,24 +5,22 @@ Mode: `AUTONOMOUS UI RUN`
 
 This file contains only the current execution handoff. Product design is in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest delivery / CI checkpoint — UX2.2-HF-ACTIVE-01
+## Latest delivery / CI checkpoint — UX2.2-HF-ACTIVE-NEGATION-01
 
-Status: **IMPLEMENTED — CI PENDING** at source commit `e25b5240d7080538967895a3e168177ef0858a04`. The one-time lookup for this push was unavailable because GitHub CLI requires authentication; the run/result was not observed. No production or Reviewer acceptance is implied.
+Status: **IMPLEMENTED — CI PENDING**. The current bounded NEGATION Current Effect slice is ready for its push-triggered Actions checkpoint. The run has not yet been checked; no Reviewer acceptance, deployment, or production state is implied.
 
-Local validation: Current Effect matrix passed 5/5 across 390px Top Row, 480px Side Column, and 1440px Top Row, including Inspect preservation and fail-closed absence. Combined Current Effect/Preview/Borrowed Sword/Inspect browser tests passed 20/20; six selected existing UI-19 active-stage/Inspect regressions passed. Targeted ESLint and `git diff --check` passed. No full local test/build/lint suite was run; `tests/browser/ui19.spec.mjs` was not modified.
+Focused validation: browser Current Effect/Negation regressions passed 10/10, including Top Row/Side Column and fail-closed cases, the 480×640 Negation containment case, and the UI-19 semantic-label regression. `node --import tsx --test tests/presentation-client.test.mjs` passed 40/40. Targeted ESLint reported 0 errors and one warning that `tests/browser/fixture.jsx` is ignored by the repository configuration; `git diff --check` passed. No full local suite/build/lint was run.
 
-Completed: local PREVIEW and public opponent INSPECT share Hero Focus. Proven single-target Attack Response now presents its public `stage.effect` as Current Effect; connectors are shown only when the Hero Focus is the projected active target. Inspect over an ACTIVE Stage preserves effect context without a misleading participant link.
+Completed: the existing Current Effect presentation now also supports a proven single-target NEGATION using public `stage.effect` and the projected active target/Hero Focus relationship. Missing or ambiguous authority remains unlinked/fail-closed. Open-window Stage, Reaction Chain, and seat treatment use neutral waiting language and do not expose the private response actor. The viewer Hero and legal controls remain in the Dock.
 
 ## Design checkpoint
 
-Reviewed current remote design blob `7d460ad6e998ef6666cf6299a190b727e14bb768` (unchanged). The bounded §12.3 single-target Attack Response slice is implemented; the remaining active composition work is still open. Direct user authorization enables autonomous task decomposition; the design remains the product behavior authority.
+Reviewed remote design blob `45430bc62b7c50bcbeef40724408ead94ad27120` at `origin/ux-v2` commit `b15e9dea6b6f0a4ceeac2c2d8cc51476aed1aa6b`. New/updated requirements include open-window responder privacy, no repeated identity metadata, a mobile vertical Fast Response chain, a top-edge Local Dock Guidance Strip, and consistent Hero-skill controls. These do not change the completed scope above; they inform the next planning boundary.
 
-## Current task — UX2.2-HF-ACTIVE-NEGATION-01 Current Effect in proven NEGATION
+## Current task — close UX2.2-HF-ACTIVE-NEGATION-01
 
-Status: **PLANNED — USER-AUTHORIZED AUTONOMOUS UI RUN**.
+Status: **IMPLEMENTED — PUSHED CI CHECKPOINT REQUIRED**.
 
-Bounded scope: extend the central Current Effect presentation to a single-target proven NEGATION stage. Use only non-empty public `stage.effect`, the sole projected active target, and Hero Focus identity to connect the external source → effect → target. Preserve the existing Attack Response treatment, authoritative Stage identity, Reaction Chain, decision context, and viewer-Hero-in-Dock rule. If effect/target/focus proof is missing or ambiguous, render no inferred connection. No timeline/log/Pending/CurrentAction inference, client legality changes, server/protocol changes, or gameplay changes.
+Bounded scope: finish delivery of the proven single-target NEGATION Current Effect slice. Preserve authoritative public projection, fail-closed identity/focus behavior, privacy, the existing Attack Response composition, and viewer-Hero-in-Dock ownership. No client legality, server/protocol, or gameplay changes.
 
-Focused acceptance: representative Top Row wide and Side Column phone geometry for an authoritative single-target NEGATION; Dismantle Current Effect and existing Reaction Chain remain visible; source/effect/focus connect only for the proven active target; identity, target, decision context, and privacy remain unchanged; missing/ambiguous effect/focus fails closed; existing Attack Response tests remain green.
-
-Resume point: before the first source edit, the one-time CI lookup for `e25b524` was attempted but unavailable because `gh` is not authenticated. Keep that delivery CI-unverified; proceed without repeated polling. Stop if the authoritative NEGATION focus/effect relationship cannot be proven from the existing public projection.
+Resume point: inspect the latest relevant push-triggered GitHub Actions run once. If it failed, diagnose and repair the actual failing job before starting another feature task; do not claim CI green unless observed.

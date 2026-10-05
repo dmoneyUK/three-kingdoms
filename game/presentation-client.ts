@@ -300,14 +300,17 @@ export function projectInteractionSeatRoles(
   playerId: string,
 ): InteractionSeatSemanticRoles {
   const visible = view.hasInteraction && Boolean(playerId);
-  const isDecisionActor = visible && view.stableKind === "CHOICE" && view.decisionActorId === playerId;
+  // NEGATION is an open response window: the current private scan/response
+  // actor and resolver must not be disclosed through another player's seat.
+  const namesPublicDecisionActor = view.stage !== "NEGATION";
+  const isDecisionActor = visible && namesPublicDecisionActor && view.stableKind === "CHOICE" && view.decisionActorId === playerId;
   return {
     isInteractionSource: visible && view.sourceId === playerId,
     isOriginalTarget: visible && view.originalTargetIds.includes(playerId),
     isActiveTarget: visible && view.activeTargetIds.includes(playerId),
     isCurrentParticipant: visible && view.currentParticipantId === playerId,
     isDecisionActor,
-    isActiveResolver: visible && view.activeResolverId === playerId,
+    isActiveResolver: visible && namesPublicDecisionActor && view.activeResolverId === playerId,
     isViewerDecisionActor: isDecisionActor && view.isLocalDecisionActor,
   };
 }
