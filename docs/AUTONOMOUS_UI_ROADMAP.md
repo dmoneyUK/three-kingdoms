@@ -210,6 +210,10 @@ than restart them.
   remains omitted when Hero Focus already communicates the identity, and an
   open Negation response uses its player-facing `NEGATION RESPONSE` title.
   No production UI, gameplay, or protocol behavior changed.
+- The legacy VIS-02/03 geometry checks now treat the Meta region as conditional
+  on distinct facts instead of a mandatory empty column; dedicated semantic
+  cases still cover source/scope metadata when it is needed. The follow-up
+  Stage-geometry subset passed 21/21.
 - Focused CI-failure browser cases passed 41/41 and the short-portrait Top Row
   matrix passed 20/20; targeted ESLint on `ui19.spec.mjs` and
   `git diff --check` passed. The JSX fixture is excluded by the repository ESLint
