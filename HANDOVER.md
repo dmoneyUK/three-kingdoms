@@ -5,31 +5,17 @@ Mode: `AUTONOMOUS UI RUN`
 
 This file contains only the current execution handoff. Product design is in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest task result — UX2.0VIS-13C
-
-Status: **IMPLEMENTED — CI UNVERIFIED**.
-
-Borrowed Sword now uses one server-owned complete-path legality result for its primary Weapon-holder projection/validation and forced-Attack target projection/submission. The source may be the forced target when the holder can legally Attack them; no three-player minimum is imposed. Play-phase targets are exposed only in the acting viewer's `CurrentAction`, and React consumes that projection rather than rebuilding Borrowed Sword rules. Deferred resolution revalidates before opening its blocking target choice; an invalidated path settles without a zero-option Pending and preserves the causal continuation.
-
-Focused validation: `npm run build` succeeded; `GAME_TEST_FILES=tests/api/borrowed-sword.test.mjs node tests/run-tests.mjs` passed 7/7; `node --test tests/room-safety.test.mjs` passed 4/4; the focused Borrowed Sword Playwright spec passed 2/2; targeted ESLint and `git diff --check` passed. No full test suite was run. The exact 13C commit checks were inspected once; GitHub displayed the `build-and-test` job as loading/re-running without an observable conclusion. CI remains unverified; do not claim green.
-
-The 13B Actions run `37269808166` was observed **in progress** once before 13C source edits and has not been rechecked. Do not infer its result for 13C.
-
-## Design review checkpoint
-
-Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; 13C implements Reviewer-approved addition C.
-
-## Latest task result — UX2.0VIS-13D
+## Latest task result — UX2.0VIS-13C-FIX1
 
 Status: **IMPLEMENTED — CI PENDING**.
 
-Added a separate evidence supplement to `docs/UX_V2_RELEASE_GATE.md` for Reviewer-approved additions A–C, mapping each to its implementation and focused validation as recorded in the 13A–13C handovers. The original UI-20 tally and release boundary are unchanged. No source, test, gameplay, or design-authority files were changed.
+The 13C push-triggered run `37272804006` failed only in `npm test`: API shard 1 had one stale assertion in `tests/api/equipment.test.mjs`, expecting Attack damage immediately after failed Eight Trigrams. `npm run lint`, build, and browser validation succeeded. The production behavior was correct under Reviewer-approved design addition B: the Dodge requirement reopens, and damage occurs only after explicit `decline_response`.
 
-`git diff --check` passed. No local test/build/lint was run for this documentation-only task. CI is pending after push; no result is claimed. The 13C CI status remains unverified as recorded above.
+Updated that integration test to assert the reopened Dodge decision, disabled Eight Trigrams provider, unchanged HP and causal Interaction/Frame; it then explicitly declines and verifies damage and the Xiahou Dun trigger. Focused `GAME_TEST_FILES=tests/api/equipment.test.mjs node tests/run-tests.mjs` passed 19/19; `git diff --check` passed. No production source or gameplay semantics changed, and no full local suite was run. The correction's CI is pending after push; no green result is claimed.
 
 ## Design review checkpoint
 
-Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; additions A–C are implemented. The larger UX2.1/UX2.2 proposals in §12 are explicitly not approved for implementation, and the current open design discussion requires resolving their responsive topology, geometry, Hero Focus, and Interaction Stage layout decisions before coding.
+Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; addition B requires provider failure to preserve the Dodge requirement until explicit decline. Additions A–C are implemented. The prior release-gate evidence supplement is recorded in `docs/UX_V2_RELEASE_GATE.md`.
 
 ## Current task — successor design decision checkpoint
 

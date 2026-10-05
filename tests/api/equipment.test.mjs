@@ -623,11 +623,22 @@ test("Eight Trigrams offers optional red Judgement as Dodge and black Judgement 
   const blackAttack = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-trigrams-black", targetId: alicePlayer.id, preserveResponse: true });
   assert.equal(blackAttack.status, 200); const blackRoot = blackAttack.data.room.causalEnvelope; assert.ok(blackRoot);
   const blackResult = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "eight_trigrams_dodge", preserveResponse: true });
-  assert.equal(blackResult.status, 200); assert.equal(blackResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3); assert.ok(blackResult.data.room.log.some((entry) => /Eight Trigrams Formation/.test(entry)));
-  assert.equal(blackResult.data.room.currentAction.kind, "trigger");
-  assert.equal(blackResult.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(blackResult.status, 200); assert.ok(blackResult.data.room.log.some((entry) => /Eight Trigrams Formation/.test(entry)));
+  assert.equal(blackResult.data.room.currentAction.kind, "response");
+  assert.equal(blackResult.data.room.currentAction.requirement, "dodge");
+  assert.deepEqual(blackResult.data.room.currentAction.legalActions, ["decline_response"]);
+  assert.equal(blackResult.data.room.currentAction.options.some((option) => option.providerId === "eight_trigrams_dodge"), false);
+  assert.equal(blackResult.data.room.players.find((player) => player.id === alicePlayer.id).hp, 4, "failed Judgement keeps the Dodge requirement open without applying Attack damage");
   assert.equal(blackResult.data.room.causalEnvelope.interactionId, blackRoot.interactionId, "failed Judgement damage stays in the Attack Interaction");
   assert.equal(blackResult.data.room.causalEnvelope.activeFrameId, blackRoot.activeFrameId, "failed Judgement damage stays in the Attack Frame");
+
+  const blackDeclined = await requestAndSettle("decline_response", { code: game.code, token: alice.token });
+  assert.equal(blackDeclined.status, 200, JSON.stringify(blackDeclined.data));
+  assert.equal(blackDeclined.data.room.players.find((player) => player.id === alicePlayer.id).hp, 3, "Attack damage applies only after explicitly declining the still-open Dodge");
+  assert.equal(blackDeclined.data.room.currentAction.kind, "trigger");
+  assert.equal(blackDeclined.data.room.currentAction.triggerEvent, "damage_suffered");
+  assert.equal(blackDeclined.data.room.causalEnvelope.interactionId, blackRoot.interactionId);
+  assert.equal(blackDeclined.data.room.causalEnvelope.activeFrameId, blackRoot.activeFrameId);
   await requestAndSettle("decline_trigger", { code: game.code, token: alice.token });
 
   const simaMember = game.members.find((member) => member.name === "Bob"); const simaPlayer = game.room.players.find((player) => player.name === "Bob");
