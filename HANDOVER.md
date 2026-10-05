@@ -5,9 +5,9 @@ Mode: `AUTONOMOUS UI RUN`
 
 Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; durable history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest CI checkpoint — Exit/timer clearance
+## Latest CI checkpoint — Local Hero CI repair
 
-The latest pushed revision is `3294a4ba3b3a6640e1c8304dd6d218024abb360b`; exact push-triggered GitHub Actions run `37335513984` completed **success** on 2026-10-05. The previous exact head `b1389591235ac4140a8260e436a31cadbb2f16e1` also passed run `37332560641`. Before every commit, re-check the latest relevant run for the current remote `ux-v2` head; repair any failed run before a normal task commit.
+The latest pushed revision is `a551bd36980fcaceaf349ca22926eccfd6233946`; exact push-triggered Actions run `37339005768` **failed** in `npm test` (202/203 fast tests passed; deploy was skipped). Lint, build, and browser steps succeeded. The failure is a stale 480px source assertion expecting the former 70px Dock column; the implemented §12.5 layout uses 96px. Only the assertion and necessary handoff may enter the CI-repair commit. Do not make a normal task commit until the repair SHA's exact CI succeeds.
 
 ## Design checkpoint
 
@@ -19,7 +19,7 @@ Closed `UX2.3-FAST-RESPONSE-TIMER-EXIT-CLEARANCE-01`: Exit remains at least 8px 
 
 ## Current task — UX2.3-LOCAL-HERO-MOBILE-HIERARCHY-01
 
-Status: **IMPLEMENTED LOCALLY — READY TO COMMIT**. At 390–480px, the identity column is now 96px and the Hero can use an 88px-wide portrait (88x132px). The focused real-browser regression passed 6/6 across 390/414/480px and 5/25-card Hands; targeted ESLint and `git diff --check` passed. The latest exact remote-head CI before this change is SHA `3294a4ba3b3a6640e1c8304dd6d218024abb360b`, run `37335513984`, **success**.
+Status: **CI FAILED — REPAIR IN PROGRESS** for pushed SHA `a551bd36980fcaceaf349ca22926eccfd6233946`. At 390–480px, the identity column is 96px and the Hero uses an 88px-wide portrait (88x132px). The focused real-browser regression passed 6/6 across 390/414/480px and 5/25-card Hands; targeted ESLint and `git diff --check` passed. CI's only failing test expects the old 70px mobile Dock column in `tests/room-safety-render.test.mjs`; updating that contract to 96px and asserting the 88px Hero cap is the bounded repair. No next task until repair CI succeeds.
 
 Scope: adjust only narrow-mobile Local Hero/identity-column sizing at 390–480px. Preserve the approved left-Hero/right-Skills-and-Equipment/right-Hand/bottom-Actions composition, full-size Hand cards, and existing pan behavior. Do not move Dock regions, alter skill/equipment interaction, or change gameplay/action authority.
 

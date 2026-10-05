@@ -712,7 +712,11 @@ test("the local player dock replaces the self battlefield square and follows Qui
   const compactDockRule = [...sequenceStyleSource.matchAll(/@media \(max-width: 480px\) \{([\s\S]*?)\n\}/g)]
     .map(([, mediaRules]) => mediaRules.match(/\.local-player-dock\s*\{([^}]*)\}/)?.[1])
     .find(Boolean) ?? "";
-  assert.match(compactDockRule, /--top-panel-height: 58px;[^}]*grid-template-columns: 70px minmax\(0, 1fr\);[^}]*grid-template-rows: auto var\(--top-panel-height\) var\(--hand-panel-height\) minmax\(48px, auto\);/);
+  assert.match(compactDockRule, /--top-panel-height: 58px;[^}]*grid-template-columns: 96px minmax\(0, 1fr\);[^}]*grid-template-rows: auto var\(--top-panel-height\) var\(--hand-panel-height\) minmax\(48px, auto\);/);
+  const compactHeroAnchorRule = [...sequenceStyleSource.matchAll(/@media \(max-width: 480px\) \{([\s\S]*?)\n\}/g)]
+    .map(([, mediaRules]) => mediaRules.match(/\.local-hero-anchor\s*\{([^}]*)\}/)?.[1])
+    .find(Boolean) ?? "";
+  assert.match(compactHeroAnchorRule, /width: min\(100%, 88px\);[^}]*max-width: 88px;/);
   assert.match(sequenceStyleSource, /--top-panel-height: 124px[\s\S]*--zone-card-width: clamp\(28px, 7\.6vw, 34px\)/);
   const dockZonesRule = sequenceStyleSource.match(/\.local-dock-zones\s*\{([^}]*)\}/)?.[1] ?? "";
   assert.match(dockZonesRule, /grid-template-columns: minmax\(0, 1fr\) max-content;/, "Skills and Equipment keep the two-track top row");
