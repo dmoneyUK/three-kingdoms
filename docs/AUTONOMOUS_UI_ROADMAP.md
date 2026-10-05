@@ -228,6 +228,35 @@ than restart them.
   successfully, closing this CI recovery without a production UI/gameplay
   change.
 
+### UX2.3-FAST-RESPONSE-TIMER-01 — Glanceable response countdown
+
+- Refined only the existing authorized response countdown with an hourglass,
+  neutral `Response Time` label, accessible numeric timer name, and calm/urgent/
+  critical contrast states driven by remaining time. The authoritative deadline,
+  visibility threshold, action eligibility, and generic Harvest/rescue timers
+  remain unchanged.
+- A dedicated browser regression controls time through 25s, 9s, and 4s, rejects
+  responder names in timer copy, and checks top-right containment above the
+  player board at 390, 480, and 1440 CSS pixels. It passed 1/1; targeted ESLint
+  and `git diff --check` passed. Pushed as `f5217d2`; Actions run `37310264410`
+  reports both `build-and-test` and `deploy` jobs successful, but the workflow
+  run remained `in_progress` at the last check. No full local suite/build/lint
+  was run.
+
+### UX2.3-FAST-RESPONSE-TIMER-02 — Shared response-window timer
+
+- Extended the neutral timer to an observer view only when the shared viewer
+  projection explicitly reports a response phase, `CurrentAction.kind=response`,
+  and a positive deadline. The timer key is window/deadline-based; observer
+  actor identity, legal actions, private options and controls remain absent.
+  Existing eligible-viewer fallback behavior for response-ready legacy/trigger
+  windows is retained. No API, gameplay, or protocol changes.
+- The focused browser spec covers responder/observer parity against one shared
+  deadline, privacy/action gating, fail-closed behavior without a deadline,
+  urgency transitions, and 390px/480px/1440px containment. It passed 3/3;
+  targeted ESLint and `git diff --check` passed. No full local suite/build/lint
+  was run. Push/CI checkpoint pending.
+
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
 - **13A / Reviewer addition A — authoritative self-target symmetry:** a

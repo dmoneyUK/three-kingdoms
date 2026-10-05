@@ -52,3 +52,62 @@ test("UX2.3 response timer is glanceable, urgent near expiry, and stays top-righ
   const criticalBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
   expect(criticalBorder).not.toBe(urgentBorder);
 });
+
+test("UX2.3 response timer describes the shared window without exposing its responder", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
+  await page.setViewportSize({ width: 480, height: 900 });
+
+  let sharedDeadline;
+  for (const view of ["responder", "observer"]) {
+    const observerQuery = view === "observer" ? "&timedObserver=1" : "";
+    await page.goto(`/tests/browser/fixture.html?state=negation&timedResponse=1${observerQuery}`);
+
+    const timer = page.locator(".play-table > .visible-countdown-response");
+    await expect(timer).toBeVisible();
+    const visibleTimer = await timer.evaluate((element) => ({
+      label: element.querySelector(".countdown-label")?.textContent,
+      accessibleName: element.getAttribute("aria-label"),
+      value: element.querySelector("b")?.textContent,
+    }));
+    expect(visibleTimer.label).toContain("Response Time");
+    const seconds = visibleTimer.accessibleName?.match(/^Response Time (\d+) seconds$/)?.[1];
+    expect(seconds).toBeTruthy();
+    expect(visibleTimer.value).toBe(`${seconds}s`);
+    await expect(timer).not.toContainText(/Player\s+2/i);
+
+    const viewState = await page.evaluate(() => ({
+      meId: window.__browserRoom.meId,
+      actionPlayerId: window.__browserRoom.actionPlayerId,
+      currentAction: window.__browserRoom.currentAction,
+      handCount: window.__browserRoom.myHand.length,
+    }));
+    if (view === "observer") {
+      expect(viewState.currentAction.deadline).toBe(sharedDeadline);
+      expect(viewState.actionPlayerId).toBeNull();
+      expect(viewState.currentAction.actorId).toBeNull();
+      expect(viewState.currentAction.legalActions).toEqual([]);
+      expect(viewState.currentAction).not.toHaveProperty("options");
+      expect(viewState.handCount).toBe(0);
+      await expect(page.locator('[data-action-slot="primary"] button')).toHaveCount(0);
+      await expect(page.locator('[data-action-slot="decline"] button')).toHaveCount(0);
+    } else {
+      sharedDeadline = viewState.currentAction.deadline;
+      expect(viewState.actionPlayerId).toBe(viewState.meId);
+      expect(viewState.currentAction.legalActions).toContain("respond");
+      expect(viewState.handCount).toBeGreaterThan(0);
+      await expect(page.locator('[data-action-slot="primary"] button')).toHaveText("Confirm");
+      await expect(page.locator('[data-action-slot="decline"] button')).toHaveText("Skip");
+    }
+  }
+});
+
+test("UX2.3 response timer stays hidden when the authoritative response deadline is absent", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/fixture.html?state=negation&timedObserver=1");
+
+  await expect(page.locator(".play-table > .visible-countdown-response")).toHaveCount(0);
+  const currentAction = await page.evaluate(() => window.__browserRoom.currentAction);
+  expect(currentAction.kind).toBe("response");
+  expect(currentAction.actorId).toBeNull();
+  expect(currentAction.deadline).toBe(0);
+});
