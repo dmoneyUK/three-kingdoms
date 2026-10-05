@@ -239,9 +239,7 @@ than restart them.
   responder names in timer copy, and checks top-right containment above the
   player board at 390, 480, and 1440 CSS pixels. It passed 1/1; targeted ESLint
   and `git diff --check` passed. Pushed as `f5217d2`; Actions run `37310264410`
-  reports both `build-and-test` and `deploy` jobs successful, but the workflow
-  run remained `in_progress` at the last check. No full local suite/build/lint
-  was run.
+  completed successfully. No full local suite/build/lint was run.
 
 ### UX2.3-FAST-RESPONSE-TIMER-02 — Shared response-window timer
 
@@ -255,7 +253,22 @@ than restart them.
   deadline, privacy/action gating, fail-closed behavior without a deadline,
   urgency transitions, and 390px/480px/1440px containment. It passed 3/3;
   targeted ESLint and `git diff --check` passed. No full local suite/build/lint
-  was run. Push/CI checkpoint pending.
+  was run. Pushed as `eb54f01`; Actions run `37312290991` was queued at the
+  one-time pre-task checkpoint. It remains CI pending; no conclusion is inferred.
+
+### UX2.3-HF-DUEL-CURRENT-EFFECT-01 — Proven Duel Current Effect
+
+- Extended the ACTIVE Current Effect consumer to `DUEL_EXCHANGE` only when
+  the public effect is `duel` and the explicit current participant belongs to
+  the projected active-target set. The UI presents `Duel` and uses existing
+  Hero Focus/participant projection for any connector; missing effect or
+  participant proof fails closed. No server/API, gameplay, or protocol changes.
+- Active Current Effect browser coverage passed 12/12 across Attack, Negation,
+  and Duel, including Duel geometry at 390px Top Row, 480px Side Column, and
+  1440px Top Row plus missing-proof cases. The existing UI-19 Duel 650px
+  breakpoint case passed 1/1; `ui19.spec.mjs` was not modified. Targeted ESLint
+  and `git diff --check` passed. No full local suite/build/lint was run.
+  Push/CI checkpoint pending.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

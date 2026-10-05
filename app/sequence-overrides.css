@@ -1734,8 +1734,8 @@
 .hero-focus-preview .hero-focus-heading strong,
 .hero-focus-preview .hero-focus-context { color: #efc36c; }
 
-/* ACTIVE single-target Attack Response/Negation presents only the effect and
-   focus proven by the public Stage. Local Inspect/Preview stays unlinked. */
+/* ACTIVE Attack Response/Negation and current-participant Duel present only
+   effects and focus proven by the public Stage. Local Inspect/Preview stays unlinked. */
 .interaction-stage-current-effect-flow { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 4px; min-width: 0; }
 .interaction-stage-current-effect-flow.is-empty { display: contents; }
 .interaction-stage-current-effect-flow.is-connected { grid-template-columns: minmax(0, 1fr); }

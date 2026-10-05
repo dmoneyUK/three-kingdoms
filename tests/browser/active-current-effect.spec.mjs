@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, duelObserver = false, duelParticipantMissing = false }) {
   await page.setViewportSize({ width, height });
   const effectQuery = effect ? `&effect=${encodeURIComponent(effect)}` : "";
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}`);
+  const duelObserverQuery = duelObserver ? "&duelObserver=1" : "";
+  const missingDuelParticipantQuery = duelParticipantMissing ? "&duelParticipant=missing" : "";
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${duelObserverQuery}${missingDuelParticipantQuery}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -52,6 +54,66 @@ for (const viewport of [
     expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
   });
 }
+
+for (const viewport of [
+  { count: 4, width: 390, height: 844, topology: "top-row" },
+  { count: 6, width: 480, height: 900, topology: "side-column" },
+  { count: 4, width: 1440, height: 900, topology: "top-row" },
+]) {
+  test(`proven Duel Current Effect fits ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "duel", duelObserver: true });
+    const stage = page.locator('[aria-label="Interaction Stage"][data-stage="DUEL_EXCHANGE"]');
+    const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
+    const effect = stage.locator('[aria-label="Current Effect"]');
+    const currentParticipant = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
+    await expect(stage).toHaveAttribute("data-current-effect", "Duel");
+    await expect(effect.locator("strong")).toHaveText("Duel");
+    await expect(source).toContainText("Player 1");
+    await expect(currentParticipant).toContainText("Player 2");
+    await expect(stage.locator(".medium-participant-arrow, .current-effect-arrow")).toHaveCount(2);
+    await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
+    await expect(stage.locator('[data-hero-focus-player-id="p3"]')).toHaveCount(0);
+    await expect(stage).not.toContainText("Player 3");
+    await expect(page.locator('[data-action-slot="primary"] button')).toHaveCount(0);
+    await expect(page.locator('[data-action-slot="decline"] button')).toHaveCount(0);
+
+    const projection = await page.evaluate(() => window.__browserRoom.presentationSnapshot.interaction);
+    expect(projection.stage).toBe("DUEL_EXCHANGE");
+    expect(projection.effect.toLowerCase()).toBe("duel");
+    expect(projection.currentParticipantId).toBe("p2");
+    expect(projection.targetIds).toEqual(["p2", "p1"]);
+    expect(await page.evaluate(() => window.__browserRoom.currentAction.legalActions)).toEqual([]);
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+    const sourceBox = await source.boundingBox();
+    const effectBox = await effect.boundingBox();
+    const participantBox = await currentParticipant.boundingBox();
+    expect(sourceBox && effectBox && participantBox).toBeTruthy();
+    if (viewport.topology === "side-column") {
+      expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(participantBox.y + 2);
+    } else if (viewport.width <= 650) {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(participantBox.y + 2);
+    } else {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(participantBox.x + 2);
+    }
+  });
+}
+
+test("Duel Current Effect fails closed without effect or current-participant proof", async ({ page }) => {
+  await loadFixture(page, { width: 480, count: 6, state: "duel", duelObserver: true, effect: "none" });
+  let stage = page.locator('[data-stage="DUEL_EXCHANGE"]');
+  await expect(stage).not.toHaveAttribute("data-current-effect");
+  await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+
+  await loadFixture(page, { width: 480, count: 6, state: "duel", duelObserver: true, duelParticipantMissing: true });
+  stage = page.locator('[data-stage="DUEL_EXCHANGE"]');
+  await expect(stage).not.toHaveAttribute("data-current-effect");
+  await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+  await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
+});
 
 test("Inspect preserves ACTIVE Current Effect without linking it to the inspected opponent", async ({ page }) => {
   await loadFixture(page, { width: 1440, height: 900 });

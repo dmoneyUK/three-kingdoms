@@ -570,10 +570,17 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
   const localFocusPlayerId = inspectPlayer?.id ?? localPreviewPlayer?.id;
   const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId && !hasLocalInspect);
-  const currentEffect = display.visible
-    && (stage.stage === "ATTACK_RESPONSE" || stage.stage === "NEGATION")
-    && stage.activeTargets.length === 1
-    ? stage.effect?.trim() || null
+  const publicEffectLabel = stage.effect?.trim() || null;
+  const duelParticipantIsActive = Boolean(stage.currentParticipant.id
+    && stage.activeTargets.some((target) => target.id === stage.currentParticipant.id));
+  const hasSingleTargetCurrentEffect = (stage.stage === "ATTACK_RESPONSE" || stage.stage === "NEGATION")
+    && stage.activeTargets.length === 1;
+  const hasProvenDuelCurrentEffect = stage.stage === "DUEL_EXCHANGE"
+    && publicEffectLabel?.toLowerCase() === "duel"
+    && duelParticipantIsActive;
+  const hasSupportedCurrentEffect = hasSingleTargetCurrentEffect || hasProvenDuelCurrentEffect;
+  const currentEffect = display.visible && publicEffectLabel && hasSupportedCurrentEffect
+    ? stage.stage === "DUEL_EXCHANGE" ? "Duel" : publicEffectLabel
     : null;
   const currentEffectConnectsToFocus = Boolean(currentEffect
     && !hasLocalFocus
