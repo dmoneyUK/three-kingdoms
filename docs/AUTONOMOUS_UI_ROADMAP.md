@@ -421,6 +421,19 @@ than restart them.
   `git diff --check` passed. Pushed as `3294a4b`; exact Actions run
   `37335513984` completed successfully on 2026-10-05.
 
+### UX2.3-LOCAL-HERO-MOBILE-HIERARCHY-01 — Narrow mobile Hero visibility
+
+- Increased the narrow-mobile Local Hero identity column to 96px and portrait
+  cap to 88px, preserving the approved Dock composition, full-size Hand cards,
+  and horizontal pan. The focused real-browser regression passed 6/6 across
+  390/414/480px with 5/25-card Hands; targeted ESLint and `git diff --check`
+  passed.
+- Feature SHA `a551bd3` exposed a stale 70px source assertion in CI run
+  `37339005768`. A repair-only test-contract update was pushed as `4ff9fbd`;
+  its exact Actions run `37340057118` passed on 2026-10-05, including
+  build/test and deploy/smoke-test jobs. `tests/browser/ui19.spec.mjs` was
+  preserved unchanged.
+
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
 - **13A / Reviewer addition A — authoritative self-target symmetry:** a
