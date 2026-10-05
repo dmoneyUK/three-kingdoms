@@ -4854,14 +4854,126 @@ projection, concealed-hand treatment, stale/replay behavior, and focused
 coverage. If authority is insufficient, keep the picker and identify the
 missing projection rather than inventing client legality.
 
-For multi-stage interactions such as Steal / Dismantle and other server-owned
-zone/card choices, evolve the focused participant from ACTIVE/PREVIEW into
-SELECTABLE DETAIL instead of jumping to an unrelated generic selection
-surface when the authoritative projection can support an inline choice.
+For multi-stage interactions such as Steal / Dismantle, Sima Yi Retaliation,
+and other server-owned Playing Area / zone-card choices, evolve the focused
+participant from ACTIVE/PREVIEW into SELECTABLE DETAIL instead of jumping to
+an unrelated generic selection surface when the authoritative projection can
+support an inline choice.
 
 The server remains the sole authority for selectable objects. Concealed Hand
 positions stay concealed. Equipment and Judgement cards keep physical/public
 identity where already public.
+
+#### 12.4.1 Zone semantics must remain visually distinct
+
+SELECTABLE DETAIL must not render every selectable object as if it were the
+same kind of known physical card.
+
+Use three distinct semantic presentations:
+
+~~~text
+HAND
+= concealed zone
+= authoritative hand count is visible
+= card identities remain hidden
+= random-hand selection selects the zone, not a known individual card
+
+EQUIPMENT
+= public physical cards
+= each eligible card may be individually identified and selected
+
+JUDGEMENT
+= public physical cards
+= each eligible card may be individually identified and selected
+~~~
+
+A hidden Hand zone with four cards must not visually collapse into one lone
+`?` card in a way that implies the opponent has only one card.
+
+If the authoritative rule means "obtain a random card from that Hand", the UI
+should show the full concealed-zone count and make the **Hand zone** the
+selectable object. A recommended representation is:
+
+~~~text
+HAND ×4
+[?][?][?][?]
+Random card
+~~~
+
+The four backs/markers communicate count only. They are not four independently
+identifiable choices unless the server explicitly projects opaque per-position
+selection keys for a rule that truly allows choosing a concealed position.
+
+#### 12.4.2 Random Hand choice versus individual public-card choice
+
+For a flow such as Sima Yi **Retaliation**, where the authoritative selection
+may include one random card from the damage source's Hand or one specific
+public Equipment/Judgement card, the UI should read approximately:
+
+~~~text
+RETALIATION
+Choose where to obtain 1 card
+
+HAND ×4
+[?][?][?][?]
+Random card
+
+EQUIPMENT
+[Eight Trigrams]
+
+JUDGEMENT
+[Lightning]   // only if present and eligible
+~~~
+
+Interaction semantics:
+
+- tapping the Hand zone means "obtain one random card from this Hand";
+- the client must not reveal or infer concealed card identities;
+- Equipment/Judgement cards remain individually selectable because their
+  identities are already public;
+- the selected state must clearly distinguish "Hand zone selected" from
+  "specific public card selected";
+- confirmation submits the existing authoritative key/payload exactly once;
+- stale/replay/actionRevision changes must clear or reconcile the local
+  selection against current authoritative availability;
+- if the Hand becomes empty before settlement, stale handling must fail closed
+  rather than invent a replacement selection.
+
+Do not special-case the UI by Hero name. Retaliation is the current reference
+case for a generic **concealed-zone + public-card** selector contract.
+
+#### 12.4.3 Player-facing copy
+
+Avoid copy that incorrectly suggests the player is choosing a known card when
+the actual action is choosing a concealed zone for random resolution.
+
+Prefer wording such as:
+
+- `Choose where to obtain 1 card`;
+- `Hand ×4 · Random card`;
+- `Choose 1 card or the opponent's Hand`.
+
+Avoid relying only on:
+
+- `Choose 1 eligible card`
+
+when one selectable item actually represents an entire hidden Hand zone.
+
+#### 12.4.4 Acceptance for concealed-zone SELECTABLE DETAIL
+
+Focused regression/visual proof for a representative flow should show:
+
+- an opponent with N hidden Hand cards renders a concealed Hand zone that
+  communicates count N rather than one misleading lone unknown card;
+- hidden identities are never exposed to the selecting viewer;
+- a random-Hand zone is one semantic selection even when several card backs are
+  drawn for count;
+- public Equipment/Judgement cards remain individually identifiable/selectable;
+- Hand-zone selection and public-card selection use distinct selected styling;
+- the authoritative payload remains unchanged and server-owned;
+- stale availability/revision changes clear or reproject the selection safely;
+- mobile portrait layouts remain readable without turning the selector into a
+  full-screen wall of large card backs.
 
 This is a later bounded migration. Existing pickers may remain until each
 flow has authoritative data and focused regression coverage for the unified
