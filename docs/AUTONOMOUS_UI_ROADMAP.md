@@ -110,8 +110,35 @@ Dock rebuild.
   distinct authoritative scope/decision facts.
 
 These completed presentation slices remain valid foundations for the new §12
-Interaction Stage completion direction. New PREVIEW / INSPECT / ACTIVE /
-SELECTABLE DETAIL work must extend them rather than restart them.
+Interaction Stage completion direction. New ACTIVE / SELECTABLE DETAIL work
+must extend them and the completed PREVIEW / INSPECT implementations rather
+than restart them.
+
+### UX2.2-HF-PREVIEW-01 — Local target Preview in Hero Focus
+
+- Implemented in `5b1a317`: selected external targets use the shared Hero
+  Focus structure as a local-only PREVIEW; multi-target focus follows the most
+  recently selected external target, while self-target stays Dock-only.
+- PREVIEW creates no REST interaction identity or Reaction Chain node and
+  hands the same Hero Focus DOM node to a matching authoritative Attack
+  Response. Stale/current-action changes reconcile the local submission.
+- Focused browser coverage passed 10/10; real Draw Phase Assault browser
+  coverage passed 4/4; targeted ESLint and `git diff --check` passed. No full
+  local suite/build/lint was run.
+
+### UX2.2-HF-INSPECT-01 — Public opponent Inspect in shared Hero Focus
+
+- Replaced the blocking opponent-inspection overlay with a non-modal INSPECT
+  mode inside the shared Interaction Stage / Hero Focus.
+- Inspect exposes public Hero/HP/skills, Equipment/Judgement explanations, and
+  concealed Hand count/generic backs only. Its info affordance stays independent
+  from target selection; closing restores the existing Preview or authoritative
+  Hero Focus without a gameplay action or Stage-identity change.
+- Focused browser coverage passed 6/6 across 390/480/1440px Top Row, Side
+  Column, target-selection and authoritative-Stage cases; 5 focused existing
+  Inspect/target-selection regressions passed; Preview/Borrowed Sword regressions
+  passed 9/9. Targeted ESLint and `git diff --check` passed. No full local suite,
+  build, or lint was run; CI is pending after push.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

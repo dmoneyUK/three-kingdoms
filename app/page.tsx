@@ -30,6 +30,7 @@ type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEve
 type Player = { id: string; name: string; seat: number; hero: string | null; generalReady: boolean; ready: boolean; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; role: string | null };
 type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null };
 type LocalTargetPreviewSubmission = { targetId: string; presentationKey: string; actionRevision: string; currentActionKey: string };
+type LocalOpponentInspectionPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null; handCount: number; equipmentCards: Card[]; judgementCards: Card[] };
 type Room = { responseCountdownVisibleAt?: number; actionRevision?: string; code: string; status: "lobby" | "heroes" | "started" | "finished" | "playing"; maxPlayers: number; isHost: boolean; isTestController?: boolean; meId: string; myRole: string | null; myHeroOptions: Hero[]; players: Player[]; myHand: Card[]; turnSeat: number | null; phase: string | null; deckCount: number; discardTop: Card | null; log: string[]; timeline: GameEvent[]; isMyTurn: boolean; actionPlayerId: string | null; actionReason: string; isMyAction: boolean; presentationSnapshot: PresentationSnapshot | null; presentationV2?: PresentationV2 | null; pending: { kind: CurrentAction["kind"] } | null; currentAction: CurrentAction | null; pendingAttack: { sourceId: string; targetId: string; sequenceStartCardId?: string; deadline?: number } | null; pendingGreenDragon: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingRockCleaving: { sourceId: string; targetId: string; actorId: string; sequenceStartCardId: string; deadline?: number } | null; pendingFrostSword: { sourceId: string; targetId: string; actorId: string; deadline?: number } | null; pendingDuel: { sourceId: string; targetId: string; actorId: string; opponentId: string; deadline?: number } | null; pendingGroup: { cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; requiredKind: "Attack" | "Dodge" } | null; pendingNegation: { sourceId: string; actorId: string | null; effectTargetId: string; cardName: string; responseTarget?: string; latestNegationPlayerId?: string | null; latestNegationCardId?: string | null; chainDepth?: number; negated: boolean; deadline?: number } | null; pendingHarvest: { sourceId: string; actorId: string; revealed: Card[]; choices: { cardId: string; playerId: string; playerName: string }[]; previewCardId: string | null; complete: boolean; countdownUntil: number } | null; pendingTargetCard: { sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal" } | null; pendingBorrowedSword: { sourceId: string; targetId: string; actorId: string; holderId: string; stage: "choose_target" | "force_attack"; weaponId: string | null; eligibleTargetIds: string[] } | null; pendingDying: { sourceId: string; targetId: string; origin?: string | null; recoveryNeeded: number; deadline: number } | null };
 
 export const HERO_ART_BY_ID: Record<string, string> = {
@@ -445,7 +446,7 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
           </span>
         </button>
         {!fourPlayerTopRow && equipmentSummary.length > 0 && <div className="opponent-equipment-summary" role="group" aria-label="Public Equipment">{equipmentSummary}</div>}
-        {playerHero && <button type="button" className="hero-card-info-button" aria-label={`Explain ${playerHero.name}`} onClick={() => onHeroInfo(playerHero)}>i</button>}
+        {playerHero && <button type="button" className="hero-card-info-button" aria-label={targetSelectionActive ? `Inspect ${player.name}` : `Explain ${playerHero.name}`} onClick={() => targetSelectionActive ? onInspect() : onHeroInfo(playerHero)}>i</button>}
       </div>
       {player.judgementCards.length > 0 && <section className="opponent-judgement-zone" aria-label="Judgement Zone">
         <span className="opponent-zone-label">Judgement</span>
@@ -458,25 +459,6 @@ function OpponentPlayerCard({ totalPlayers, player, playerHero, relativeIndex, i
       <strong className="player-hand-count">{player.handCount}</strong>
     </div>
   </article>;
-}
-
-function OpponentInspectionOverlay({ player, playerHero, judgementInFlight, onClose, onHeroInfo, onInfoCard }: { player: Player; playerHero: Hero | null; judgementInFlight: ReadonlySet<string>; onClose: () => void; onHeroInfo: (hero: Hero) => void; onInfoCard: (card: Card) => void }) {
-  const renderInspectionCard = (card: Card, hidden = false) => <button key={card.id} type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard(card); }}><CardFace card={card} /></button>;
-  return <div className="opponent-inspection-layer" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="opponent-inspection-panel" role="dialog" aria-modal="true" aria-label={`${player.name} opponent inspection`}>
-      <div className="opponent-inspection-hero-shell">
-        <button type="button" className="opponent-inspection-hero" aria-label={`Close ${player.name} inspection`} onClick={onClose}>
-          {playerHero && <span className="opponent-inspection-portrait"><HeroPortrait hero={playerHero} /></span>}
-          <span className="opponent-inspection-hero-overlay"><span>{player.name}</span><strong>{playerHero?.name ?? heroName(player.hero)}</strong><small>HP {player.hp ?? 0}/{player.maxHp ?? 0}</small><b>{hpDisplay(player.hp)}</b></span>
-        </button>
-        {playerHero && <button type="button" className="hero-card-info-button opponent-inspection-info" aria-label={`Explain ${playerHero.name}`} onClick={(event) => { event.stopPropagation(); onHeroInfo(playerHero); }}>i</button>}
-      </div>
-      <div className="opponent-inspection-zones">
-        <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{player.equipmentCards.length ? player.equipmentCards.map((card) => renderInspectionCard(card)) : <span className="opponent-inspection-empty">None</span>}</div></section>
-        <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{player.judgementCards.length ? player.judgementCards.map((card) => renderInspectionCard(card, judgementInFlight.has(card.id))) : <span className="opponent-inspection-empty">None</span>}</div></section>
-      </div>
-    </section>
-  </div>;
 }
 
 function phaseName(phase?: string | null) { return phase?.startsWith("draw") ? "Draw Phase" : phase?.startsWith("play") ? "Play Phase" : phase === "discard" ? "Discard Phase" : phase === "response" ? "Response" : phase === "dying" ? "Dying Rescue" : phase === "resolving" ? "Resolving" : phase === "finished" ? "Finished" : ""; }
@@ -507,7 +489,26 @@ function currentActionViewKey(action: CurrentAction | null) {
   return JSON.stringify(action);
 }
 
-function HeroFocus({ view, showSource = true, previewPlayer = null }: { view: HeroFocusView; showSource?: boolean; previewPlayer?: LocalTargetPreviewPresentation | null }) {
+function HeroFocus({ view, showSource = true, previewPlayer = null, inspectPlayer = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: HeroFocusView; showSource?: boolean; previewPlayer?: LocalTargetPreviewPresentation | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
+  if (inspectPlayer) {
+    const inspectedHero = inspectPlayer.hero;
+    const publicSkills = inspectedHero?.skills ?? [];
+    const renderInspectionCard = (card: Card, hidden = false) => <button key={card.id} type="button" className="opponent-inspection-card" style={{ visibility: hidden ? "hidden" : "visible" }} aria-label={`Explain ${cardDefinition(card.kind).name}`} onClick={(event) => { event.stopPropagation(); onInfoCard?.(card); }}><CardFace card={card} /></button>;
+    const heroName = inspectedHero?.name ?? "Unknown Hero";
+    return <div className="hero-focus hero-focus-inspect opponent-inspection-panel" role="dialog" aria-label={`${inspectPlayer.name} opponent inspection`} data-hero-focus-mode="INSPECT" data-inspect-player-id={inspectPlayer.id}>
+      <div className="hero-focus-heading"><span>HERO FOCUS</span><strong>INSPECT</strong><button type="button" className="hero-focus-inspect-close" aria-label={`Close ${inspectPlayer.name} inspection`} onClick={onCloseInspect}>×</button></div>
+      <div className="hero-focus-body">
+        <span className={inspectedHero ? "hero-focus-portrait" : "hero-focus-portrait hero-focus-portrait-empty"} data-hero-id={inspectedHero?.id}>{inspectedHero ? <HeroPortrait hero={inspectedHero} /> : "?"}</span>
+        <div className="hero-focus-identity"><b>{inspectPlayer.name}</b><span>{heroName}</span><small>HP {inspectPlayer.hp ?? "?"}/{inspectPlayer.maxHp ?? "?"} · {hpDisplay(inspectPlayer.hp)}</small>{inspectedHero && <button type="button" className="hero-focus-inspect-explain" aria-label={`Explain ${inspectedHero.name}`} onClick={() => onHeroInfo?.(inspectedHero)}>Explain Hero</button>}</div>
+      </div>
+      <div className="hero-focus-inspect-details hero-focus-context">
+        <section className="opponent-inspection-zone" aria-label="Public Skills"><h3>Public Skills</h3><div className="hero-focus-inspect-skills">{publicSkills.length ? publicSkills.map((skill) => <button type="button" className="hero-focus-inspect-skill" key={skill.name} aria-label={`Explain ${skill.name}`} onClick={() => inspectedHero && onHeroInfo?.(inspectedHero)}>{skill.name}</button>) : <span className="opponent-inspection-empty">None</span>}</div></section>
+        <section className="opponent-inspection-zone" aria-label="Equipment"><h3>Equipment</h3><div className="opponent-inspection-card-row">{inspectPlayer.equipmentCards.length ? inspectPlayer.equipmentCards.map((card) => renderInspectionCard(card)) : <span className="opponent-inspection-empty">None</span>}</div></section>
+        <section className="opponent-inspection-zone" aria-label="Judgement Zone"><h3>Judgement Zone</h3><div className="opponent-inspection-card-row">{inspectPlayer.judgementCards.length ? inspectPlayer.judgementCards.map((card) => renderInspectionCard(card, judgementInFlight?.has(card.id))) : <span className="opponent-inspection-empty">None</span>}</div></section>
+        <section className="opponent-inspection-zone" aria-label="Concealed Hand" data-concealed-hand-count={inspectPlayer.handCount}><h3>Hand · {inspectPlayer.handCount}</h3><div className="hero-focus-inspect-hand" aria-label={`${inspectPlayer.handCount} concealed hand cards`}><span className="hero-focus-inspect-hand-backs" aria-hidden="true">{Array.from({ length: Math.min(3, inspectPlayer.handCount) }, (_, index) => <i key={index} />)}</span><strong>{inspectPlayer.handCount} {inspectPlayer.handCount === 1 ? "card" : "cards"}</strong></div></section>
+      </div>
+    </div>;
+  }
   if (previewPlayer) {
     const previewHeroName = previewPlayer.hero?.name ?? "Unknown Hero";
     return <div className="hero-focus hero-focus-preview" aria-label={`Preview target ${previewPlayer.name}`} data-hero-focus-mode="PREVIEW" data-preview-player-id={previewPlayer.id}>
@@ -545,7 +546,7 @@ function MediumParticipantCard({ view }: { view: MediumParticipantView }) {
   </div>;
 }
 
-export function InteractionStage({ view, viewerId, transitionKind = "NONE", topRowMode = false, resolvePlayerName, resolvePlayerDisplay, previewPlayer = null, previewSubmission = null }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined; previewPlayer?: LocalTargetPreviewPresentation | null; previewSubmission?: LocalTargetPreviewSubmission | null }) {
+export function InteractionStage({ view, viewerId, transitionKind = "NONE", topRowMode = false, resolvePlayerName, resolvePlayerDisplay, previewPlayer = null, previewSubmission = null, inspectPlayer = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined; previewPlayer?: LocalTargetPreviewPresentation | null; previewSubmission?: LocalTargetPreviewSubmission | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
   const dyingHandoff = buildDyingHandoffView(stage);
   const reactionChain = buildReactionChainView(stage);
@@ -562,9 +563,12 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && (display.focusTarget.id === previewPlayer.id || heroFocus.primary?.id === previewPlayer.id));
   const localPreviewPlayer = authoritativePreviewFocus ? null : previewPlayer;
   const hasLocalPreview = localPreviewPlayer !== null;
+  const hasLocalInspect = inspectPlayer !== null;
+  const hasLocalFocus = hasLocalPreview || hasLocalInspect;
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
-  const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localPreviewPlayer?.id);
+  const localFocusPlayerId = inspectPlayer?.id ?? localPreviewPlayer?.id;
+  const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId);
   const dyingSourceAlreadyVisible = Boolean(dyingHandoff.visible && stage.source.id && (
     mediumSource?.player.id === stage.source.id
     || (heroFocus.primary?.id && heroFocus.primary.id !== stage.source.id && heroFocus.source.id === stage.source.id)
@@ -573,8 +577,8 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     heroFocus.primary?.id === display.focusTarget.id
     || dyingHandoff.dyingPlayer.id === display.focusTarget.id
   ));
-  const showRoleSummary = display.visible && (hasLocalPreview || !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible));
-  const nonDyingSourceAlreadyVisible = Boolean(!hasLocalPreview && !dyingHandoff.visible && stage.source.id && (
+  const showRoleSummary = display.visible && (hasLocalFocus || !(dyingSourceAlreadyVisible && dyingFocusAlreadyVisible));
+  const nonDyingSourceAlreadyVisible = Boolean(!hasLocalFocus && !dyingHandoff.visible && stage.source.id && (
     showMediumSource && mediumSource?.player.id === stage.source.id
     || (!mediumSource
       && heroFocus.visible
@@ -591,7 +595,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && dyingHandoff.activeResolver.id === display.activeResolver.id);
   const showNestedContextSummary = Boolean(display.nestedContext)
     && !(dyingHandoff.visible && heroFocus.primary && heroFocus.nestedContext === display.nestedContext);
-  const showFocusSummary = showRoleSummary && (!display.currentParticipantPresentedInHeroFocus || hasLocalPreview);
+  const showFocusSummary = showRoleSummary && (!display.currentParticipantPresentedInHeroFocus || hasLocalFocus);
   const showActiveScopeSummary = showRoleSummary
     && display.currentParticipantPresentedInHeroFocus
     && Boolean(display.activeScopeSummary);
@@ -603,14 +607,14 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     || display.showOriginalTargets
     || showNestedContextSummary;
   const showMetadataRegion = showRoleMetadata || showMetadataContext;
-  if (!display.visible && !hasLocalPreview) return null;
-  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalPreview ? "PREVIEW" : undefined} data-local-preview-player-id={localPreviewPlayer?.id}>
-    <header><span>INTERACTION STAGE</span><strong>{hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : display.focusLabel}</strong>{!hasLocalPreview && display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
+  if (!display.visible && !hasLocalFocus) return null;
+  return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
+    <header><span>INTERACTION STAGE</span><strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : display.focusLabel}</strong>{!hasLocalFocus && display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
     <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {showMediumSource && mediumSource && <MediumParticipantCard view={mediumSource} />}
         {showMediumSource && mediumSource && <span className="medium-participant-arrow" data-medium-source-arrow="true" aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
-        <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} />
+        <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
         {groupTargetScope && <section className="group-target-scope" aria-label="Original target scope" data-group-target-scope="original" data-participant-density={groupTargetScope.density}>
           <header>ORIGINAL TARGET SCOPE</header>
           <div className="group-target-cards">
@@ -1437,15 +1441,32 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     hp: previewTargetPlayer.hp,
     maxHp: previewTargetPlayer.maxHp,
   } : null;
+  const inspectionPlayer = expandedOpponentId
+    ? room.players.find((player) => player.id === expandedOpponentId && player.id !== room.meId)
+    : null;
+  const opponentInspectionPresentation: LocalOpponentInspectionPresentation | null = inspectionPlayer ? {
+    id: inspectionPlayer.id,
+    name: inspectionPlayer.name,
+    hero: heroDefinition(inspectionPlayer.hero),
+    hp: inspectionPlayer.hp,
+    maxHp: inspectionPlayer.maxHp,
+    handCount: inspectionPlayer.handCount,
+    equipmentCards: inspectionPlayer.equipmentCards,
+    judgementCards: inspectionPlayer.judgementCards,
+  } : null;
   const submitWithLocalTargetPreview = async (submit: () => Promise<boolean>) => {
     const targetId = [...localTargetSelection.selectedTargetIds].reverse().find((id) => id !== room.meId);
-    if (!targetId) return submit();
+    if (!targetId) {
+      setExpandedOpponentId(null);
+      return submit();
+    }
     const submission: LocalTargetPreviewSubmission = {
       targetId,
       presentationKey: presentationViewKey(clientPresentation),
       actionRevision: room.actionRevision ?? "",
       currentActionKey: currentActionViewKey(room.currentAction),
     };
+    setExpandedOpponentId(null);
     setSubmittedTargetPreview(submission);
     const accepted = await submit();
     if (!accepted) setSubmittedTargetPreview((current) => current === submission ? null : current);
@@ -1504,11 +1525,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const canUseLongdanInResponse = Boolean(me?.hero === "zhao-yun" && responseDecisionReady && longdanResponseOptions.length > 0);
   const wushengButtonDisabled = busy || wushengMode === null && (!canUseWushengInPlay && !(responseDecisionReady && canUseWushengInResponse) || canUseWushengInPlay && presentationBusy);
   const longdanButtonDisabled = busy || longdanMode === null && (!canUseLongdanInPlay && !(responseDecisionReady && canUseLongdanInResponse) || canUseLongdanInPlay && presentationBusy);
-  useEffect(() => {
-    if (!targetSelectionActive) return;
-    const timer = setTimeout(() => setExpandedOpponentId(null), 0);
-    return () => clearTimeout(timer);
-  }, [targetSelectionActive]);
   const heroSkillButtons: HeroSkillButtonModel[] = (localHero?.skills ?? []).map((skill) => {
     if (me?.hero === "guan-yu" && skill.name === "God of War") return {
       name: skill.name,
@@ -1666,7 +1682,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   useEffect(() => { if (!resolutionClosing) return; const closingRevision = resolutionRevision.current; const timer = setTimeout(() => { if (resolutionRevision.current !== closingRevision) { setResolutionClosing(false); return; } setResolutionEvents([]); setSequenceScopeStartId(""); setResolutionClosing(false); }, UI_TIMING.sequenceDiscard); return () => clearTimeout(timer); }, [resolutionClosing]);
   useEffect(() => { const resolutionPending = room.phase === "response" || room.phase === "dying" || room.phase === "resolving"; if (sequenceEvents.length || optimisticPlay || activeEvent || eventQueue.length || hasUnseenPresentations || resolutionPending || resolutionClosing) return; const timer = setTimeout(() => setVisibleDiscardTop(room.discardTop), 0); return () => clearTimeout(timer); }, [room.discardTop, room.phase, sequenceEvents.length, optimisticPlay, activeEvent, eventQueue.length, hasUnseenPresentations, resolutionClosing]);
   useEffect(() => { if (!privateDrawCards.length || activeEvent || eventQueue.length) return; const timer = setTimeout(() => setPrivateDrawPresentation({ playerId: room.meId, cards: [] }), UI_TIMING.privateDraw); return () => clearTimeout(timer); }, [privateDrawCards, room.meId, activeEvent, eventQueue.length]);
-  useEffect(() => { if (!infoCard && !infoHero) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; setInfoCard(null); setInfoHero(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard, infoHero]);
+  useEffect(() => { if (!infoCard && !infoHero && !expandedOpponentId) return; const close = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (infoCard || infoHero) { setInfoCard(null); setInfoHero(null); return; } setExpandedOpponentId(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [infoCard, infoHero, expandedOpponentId]);
   useEffect(() => { const timer = setTimeout(() => { setSelected(""); setKingSkillId(""); setActiveSkillSelectionState(null); setWushengMode(null); setLongdanMode(null); setTargetIds([]); setTargetCardIndex(null); setTargetCardZone(""); setTargetCardId(""); setDiscardSelected([]); setSerpentMode(false); setSerpentSelected([]); setResponseProviderId(""); }, 0); return () => clearTimeout(timer); }, [room.turnSeat, room.phase, room.meId]);
   // A response may advance to another decision without changing the turn,
   // phase, or acting seat. The authoritative revision identifies that new
@@ -1881,7 +1897,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         if (!player) return null;
         const hero = heroDefinition(player.hero);
         return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
-      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} /></div>
+      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} /></div>
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       <button type="button" className="game-exit" onClick={onLeave}>Exit</button>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
@@ -1899,7 +1915,6 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
       {groupScopePreview.active && <p className="group-scope-preview-label" data-group-scope-preview={groupScopePreview.cardKind ?? undefined} role="status">PREVIEW · {groupScopePreview.label}</p>}
       <div className="player-board" aria-label="Players" data-player-count={room.players.length} data-seat-topology={room.players.length >= 5 ? "side-column" : "top-row"}>{room.players.filter((player) => player.id !== room.meId).map((player) => { const index = room.players.findIndex((candidate) => candidate.id === player.id); const relativeIndex = (index - myTableIndex + room.players.length) % room.players.length; const selectedTargetCardKind = selectedCanPlayAsAttack ? "Attack" : card?.kind; const cardTargetLegal = Boolean(card && (card.kind === "BorrowedSword" ? borrowedSwordPlayTargetIds.includes(player.id) : selectedTargetCardKind && canTargetCharacter({ sourceId: room.meId, targetId: player.id, targetHero: player.hero, targetHandCount: player.handCount, cardKind: selectedTargetCardKind }))); const targetablePlayer = Boolean((borrowedSwordTargetSelectionActive && borrowedSwordEligibleTargetIds.includes(player.id) && player.alive) || (activeSkillTargetMode && activeSkillTargetIds.includes(player.id) && player.alive) || (triggerTargetSelection?.targetIds.includes(player.id) && triggerTargetMode) || (serpentMode && canPlay) || (card && cardTargetLegal && (selectedCanPlayAsAttack || card.kind === "Dismantle" || card.kind === "Steal" || card.kind === "Duel" || card.kind === "BorrowedSword" || card.kind === "Overindulgence" || card.kind === "RationsDepleted"))); return <OpponentPlayerCard key={`square-${player.id}`} totalPlayers={room.players.length} player={player} viewerId={room.meId} playerHero={heroDefinition(player.hero)} relativeIndex={relativeIndex} isTurn={player.seat === room.turnSeat} isActionPlayer={player.id === room.actionPlayerId} isSelectedTarget={borrowedSwordTargetId === player.id || targetIds.includes(player.id)} isGroupPreview={groupScopePreview.affectedPlayerIds.includes(player.id)} interactionRoles={projectInteractionSeatRoles(clientPresentation, player.id)} targetSelectionActive={targetSelectionActive} targetablePlayer={targetablePlayer} onTarget={() => { if (borrowedSwordTargetSelectionActive) chooseBorrowedSwordTarget(player.id); else { setTarget(player.id); setTargetCardIndex(null); } }} onInspect={() => setExpandedOpponentId((currentId) => currentId === player.id ? null : player.id)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} judgementInFlight={judgementInFlight} serpentSelected={serpentSelected} triggerResponse={triggerResponse} triggerSelectionUsesCards={triggerSelectionUsesCards} responseDecisionReady={responseDecisionReady} triggerCardOption={triggerCardOption} onToggleEquipment={(cardId) => setSerpentSelected((ids) => ids.includes(cardId) ? ids.filter((id) => id !== cardId) : ids.length < (triggerResponse && triggerSelectionUsesCards ? triggerSelectionMax : 2) ? [...ids, cardId] : ids)} />; })}</div>
-      {!targetSelectionActive && expandedOpponentId && (() => { const expandedOpponent = room.players.find((player) => player.id === expandedOpponentId && player.id !== room.meId); if (!expandedOpponent) return null; return <OpponentInspectionOverlay player={expandedOpponent} playerHero={heroDefinition(expandedOpponent.hero)} judgementInFlight={judgementInFlight} onClose={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} />; })()}
       {seatCountdown && <Countdown key={seatCountdown.key} visibleAt={room.phase === "response" ? room.responseCountdownVisibleAt : 0} durationMs={seatCountdown.durationMs} deadline={seatCountdown.deadline} label={seatCountdown.label} />}
     </section>
     <footer className="play-command">

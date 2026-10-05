@@ -1459,134 +1459,26 @@
 .opponent-judgement-zone,
 .opponent-judgement-cards { overflow: visible; }
 
-/* Presentation-only opponent inspection. It is bounded to the battlefield,
-   so it cannot cover the local hand/action dock or create page scrolling. */
-.opponent-inspection-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 60;
-  display: grid;
-  place-items: center;
-  padding: clamp(8px, 2vw, 20px);
-  background: #050704b8;
-  backdrop-filter: blur(2px);
-}
+/* Public INSPECT stays inside the shared Hero Focus, leaving the Stage open
+   and the Local Player Dock / target seats independently interactive. */
+.hero-focus-inspect { min-width: 0; max-height: 100%; }
+.hero-focus-inspect .hero-focus-heading { align-items: center; }
+.hero-focus-inspect .hero-focus-heading strong { margin-left: auto; color: #efc36c; }
+.hero-focus-inspect-close { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid #a58e5d; border-radius: 50%; background: #11140f; color: #f0d28c; font: 16px/18px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
+.hero-focus-inspect-explain { width: fit-content; padding: 2px 5px; border: 1px solid #7b704c; background: #171a13; color: #d9c28b; font: 700 7px Arial, sans-serif; cursor: pointer; pointer-events: auto; }
+.hero-focus-inspect-details { grid-area: context; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 5px; max-height: min(30vh, 240px); overflow: auto; padding: 0 2px 2px 0; pointer-events: auto; }
+.hero-focus-inspect-details .opponent-inspection-zone { min-width: 0; padding: 4px 5px; }
+.hero-focus-inspect-details .opponent-inspection-zone h3 { margin-bottom: 4px; font-size: 7px; }
+.hero-focus-inspect-skills { display: flex; flex-wrap: wrap; gap: 4px; }
+.hero-focus-inspect-skill { max-width: 100%; padding: 3px 5px; border: 1px solid #6f846f99; background: #17231d; color: #d9d0bb; font: 700 8px/1.1 Arial, sans-serif; overflow-wrap: anywhere; cursor: pointer; pointer-events: auto; }
+.hero-focus-inspect-hand { display: flex; align-items: center; gap: 7px; color: #d9d0bb; font: 8px Arial, sans-serif; }
+.hero-focus-inspect-hand-backs { display: flex; align-items: center; padding-left: 4px; }
+.hero-focus-inspect-hand-backs i { width: 15px; height: 20px; margin-left: -4px; border: 1px solid #aa925b; border-radius: 2px; background: repeating-linear-gradient(135deg, #25352c 0 2px, #17231d 2px 4px); box-shadow: 0 1px 2px #0008; }
+.hero-focus-inspect-hand strong { color: #f0d28c; }
+.hero-focus-inspect .opponent-inspection-card { width: clamp(42px, 12vw, 60px); flex-basis: clamp(42px, 12vw, 60px); pointer-events: auto; }
 
-.opponent-inspection-panel {
-  width: min(94vw, 620px);
-  max-height: calc(100% - 12px);
-  display: grid;
-  grid-template-columns: minmax(130px, .8fr) minmax(0, 1fr);
-  gap: clamp(8px, 2vw, 18px);
-  overflow-y: auto;
-  padding: clamp(8px, 2vw, 16px);
-  border: 1px solid #c5a15b;
-  border-radius: 10px;
-  background: #11150ff5;
-  box-shadow: 0 18px 60px #000d;
-}
-
-.opponent-inspection-hero-shell {
-  position: relative;
-  min-width: 0;
-  align-self: start;
-}
-
-.opponent-inspection-hero {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  display: block;
-  overflow: hidden;
-  padding: 0;
-  border: 1px solid #c19d5c;
-  border-radius: 8px;
-  background: #1c2119;
-  color: #f0e1bd;
-  cursor: pointer;
-}
-
-.opponent-inspection-portrait,
-.opponent-inspection-portrait > .hero-art-image,
-.opponent-inspection-portrait > .hero-art-fallback {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.opponent-inspection-portrait > .hero-art-image {
-  display: block;
-  object-fit: contain;
-  object-position: center top;
-}
-
-.opponent-inspection-portrait > .hero-art-fallback {
-  display: grid;
-  place-items: center;
-  color: #e0c98e;
-  font: 700 clamp(24px, 8vw, 48px) Georgia, serif;
-}
-
-.opponent-inspection-hero-overlay {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 34px 8px 10px;
-  background: linear-gradient(180deg, transparent, #080a08ef 72%);
-  color: #f5e3b4;
-  text-align: center;
-  pointer-events: none;
-}
-
-.opponent-inspection-hero-overlay span,
-.opponent-inspection-hero-overlay strong {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.opponent-inspection-hero-overlay span {
-  color: #d0c09c;
-  font: 600 9px/1.1 Arial, sans-serif;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-
-.opponent-inspection-hero-overlay strong {
-  color: #f5d991;
-  font: 700 clamp(15px, 4vw, 23px)/1.05 Georgia, serif;
-}
-
-.opponent-inspection-hero-overlay small {
-  margin-top: 7px;
-  font: 700 10px Arial, sans-serif;
-}
-
-.opponent-inspection-hero-overlay b {
-  margin-top: 4px;
-  color: #f4cb78;
-  font: clamp(15px, 4vw, 22px)/1 Arial, sans-serif;
-  letter-spacing: .04em;
-}
-
-.opponent-inspection-info {
-  right: 7px;
-  top: 7px;
-  z-index: 3;
-}
-
-.opponent-inspection-zones {
-  min-width: 0;
-  display: grid;
-  align-content: start;
-  gap: 8px;
+@media (max-width: 520px) {
+  .hero-focus-inspect-details { grid-template-columns: minmax(0, 1fr); max-height: min(28vh, 220px); }
 }
 
 .opponent-inspection-zone {
@@ -1640,17 +1532,6 @@
   font: 10px Arial, sans-serif;
 }
 
-@media (max-width: 700px) {
-  .game-shell .player-board > .opponent-player-card {
-    width: clamp(88px, 25vw, 112px);
-    max-width: 112px;
-  }
-
-  .opponent-inspection-panel {
-    width: min(94vw, 520px);
-  }
-}
-
 @media (max-width: 520px) {
   .game-shell .player-board {
     --opponent-seat-x: clamp(3px, 2.5vw, 12px);
@@ -1662,19 +1543,15 @@
     top: clamp(270px, 66%, 460px);
   }
 
-  .opponent-inspection-panel {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
-    max-height: calc(100% - 8px);
-  }
-
-  .opponent-inspection-hero-shell {
-    width: min(54vw, 210px);
-    justify-self: center;
-  }
-
   .opponent-inspection-zone {
     padding: 6px;
+  }
+}
+
+@media (max-width: 700px) {
+  .game-shell .player-board > .opponent-player-card {
+    width: clamp(88px, 25vw, 112px);
+    max-width: 112px;
   }
 }
 
