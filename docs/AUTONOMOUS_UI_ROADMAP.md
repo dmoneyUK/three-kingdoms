@@ -571,6 +571,16 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Node coverage passed 75/75; targeted ESLint had 0 errors; `npm run build`
   and `git diff --check` passed. `tests/browser/ui19.spec.mjs` is unchanged.
 
+### UX2.3-ACTIVE-GROUP-CURRENT-EFFECT-01 — Proven Group participant focus
+
+- Group/AOE Current Effect now connects the known public source/effect and
+  current participant only when that participant belongs to the typed active
+  target scope. Original scope stays neutral; no per-participant progress,
+  order, or Stage controls are inferred or added.
+- Focused Current Effect browser coverage passed 40/40; the two stale UI-19
+  Group contract repairs passed 2/2. Targeted ESLint and `git diff --check`
+  passed. No full local suite/build/lint was run.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative

@@ -7,12 +7,14 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-`UX2.3-ACTIVE-BORROWED-SWORD-CURRENT-EFFECT-01` was pushed as `751ff2f17a6e0bd0fa3070775942989a92522fa7`. Focused browser coverage passed 35/35, engine-backed Presentation V2 API coverage 26/26, projector/client Node coverage 75/75, `npm run build`, targeted ESLint (0 errors), and `git diff --check`. Exact Actions run `37386622775` for `751ff2f` was observed **in progress** at the last check; no completion is claimed. `tests/browser/ui19.spec.mjs` remains unchanged.
+`UX2.3-ACTIVE-GROUP-CURRENT-EFFECT-01` is implemented locally, not yet pushed. It renders the typed, proven Group source/effect/current participant and keeps original scope neutral without inventing progress. Focused Current Effect browser coverage passed 40/40; the two UI-19 Group contract repairs passed 2/2; targeted ESLint and `git diff --check` passed. No full local suite/build/lint was run.
+
+The prior Actions run `37387292028` for `0b4b01d6457082f9fef44b12200e3e23f1e74f27` failed in `npm run test:browser`; its two stale Group metadata assertions are repaired in this task and will be committed with the feature. No result is claimed for the next Actions run before it is observed.
 
 ## Design checkpoint
 
-Remote design blob `5157af29079cf03f86476b71bc58607a215d6b53` is unchanged. Re-reviewed UI-09 and §§12.4–12.9: SELECTABLE DETAIL renders the server-projected random Hand zone and eligible public cards inside proven Hero Focus, but its visible internal label conflicts with §12.7's player-facing vocabulary requirement. This task changes copy/accessibility naming only; selection authority and payload are unchanged.
+Remote design blob `5157af29079cf03f86476b71bc58607a215d6b53` is unchanged. Re-reviewed the complete autonomous workflow and §§0.35, 12.3, 12.6–12.9. Group Current Effect consumes existing proven source/effect/current-participant projection; it does not infer per-participant progress/order from target order or remaining IDs.
 
-## Current task — UX2.4-SELECTABLE-DETAIL-PLAYER-COPY-01 (implementation complete locally; pre-commit CI check pending)
+## Current task — UX2.3-ACTIVE-TARGET-SHIFT-CURRENT-EFFECT-01
 
-Hero Focus selectable detail now identifies the `Retaliation` effect and its choice in visible and accessible copy instead of showing `SELECTABLE DETAIL`. Focused `target-card-zone-picker.spec.mjs` passed 11/11 at 390/480/1440px; targeted ESLint and `git diff --check` passed. Picker objects, concealed Hand projection, selection state, Local Dock controls, and server payload are unchanged. `tests/browser/ui19.spec.mjs` remains unchanged.
+Prove redirected Attack presentation using typed public Stage facts: Current Effect follows the proven active target while the original target remains a neutral original scope. Missing or inconsistent proof stays fail-closed; do not invent a redirect actor or Reaction Chain event that the public projection does not provide. Add focused browser coverage for mobile Top Row, Side Column, wide layout, and viewer-in-Dock behavior. No server, gameplay, privacy, or action-payload change.

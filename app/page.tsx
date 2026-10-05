@@ -26,6 +26,14 @@ type PresentationImportance = "essential" | "informational";
 type PresentationEventMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean };
 type CardEvent = PresentationEventMeta & { id: string; player: string; target: string; card: Card; action?: "play" | "equip" | "activate" | "discard" | "gain" | "reveal" | "draw"; drawPlayerId?: string; presentation?: boolean };
 type CardGroupEvent = PresentationEventMeta & { id: string; type: "cards"; player: string; target: string; cards: Card[]; action: "discard" | "reveal" | "play"; presentation?: boolean; message?: string };
+
+const GROUP_CURRENT_EFFECT_LABELS: Readonly<Record<string, string>> = {
+  BarbarianInvasion: cardDefinition("BarbarianInvasion").name,
+  "Barbarian Invasion": cardDefinition("BarbarianInvasion").name,
+  RainingArrows: cardDefinition("RainingArrows").name,
+  "Raining Arrows": cardDefinition("RainingArrows").name,
+  SkyPiercingHalberdAttack: "Attack",
+};
 type GameEvent = (CardEvent & { type: "card"; message?: string }) | CardGroupEvent | ({ type: "message"; id: string; message: string; drawPlayerId?: string; presentation?: boolean } & PresentationEventMeta);
 type Player = { id: string; name: string; seat: number; hero: string | null; generalReady: boolean; ready: boolean; hp: number | null; maxHp: number | null; alive: boolean; connected: boolean; handCount: number; judgementCards: Card[]; equipmentCards: Card[]; attackRange: number; distance: number | null; isHost: boolean; role: string | null };
 type LocalTargetPreviewPresentation = { id: string; name: string; hero: Hero | null; hp: number | null; maxHp: number | null };
@@ -619,7 +627,10 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const localFocusPlayerId = inspectPlayer?.id ?? localPreviewPlayer?.id;
   const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId && !hasLocalInspect);
   const publicEffectLabel = stage.effect?.trim() || null;
-  const displayEffectLabel = stage.effect === "borrowed_sword_attack" ? "Attack" : publicEffectLabel;
+  const groupCurrentEffectLabel = publicEffectLabel ? GROUP_CURRENT_EFFECT_LABELS[publicEffectLabel] ?? null : null;
+  const displayEffectLabel = stage.stage === "GROUP_RESOLUTION"
+    ? groupCurrentEffectLabel
+    : stage.effect === "borrowed_sword_attack" ? "Attack" : publicEffectLabel;
   const borrowedSwordForcedAttack = Boolean(display.visible
     && stage.stage === "ATTACK_RESPONSE"
     && stage.effect === "borrowed_sword_attack"
@@ -656,7 +667,11 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && Boolean(stage.source.id && publicEffectLabel)
     && stage.activeTargets.length === 1
     && stage.activeTargets[0]?.id === dyingHandoff.dyingPlayer.id;
-  const hasSupportedCurrentEffect = hasSingleTargetCurrentEffect || hasProvenDuelCurrentEffect || hasProvenJudgementCurrentEffect || hasProvenDyingCurrentEffect;
+  const hasProvenGroupCurrentEffect = stage.stage === "GROUP_RESOLUTION"
+    && Boolean(groupCurrentEffectLabel && stage.source.id && stage.source.known)
+    && Boolean(stage.currentParticipant.id && stage.currentParticipant.known)
+    && stage.activeTargets.some((target) => target.id === stage.currentParticipant.id);
+  const hasSupportedCurrentEffect = hasSingleTargetCurrentEffect || hasProvenDuelCurrentEffect || hasProvenJudgementCurrentEffect || hasProvenDyingCurrentEffect || hasProvenGroupCurrentEffect;
   const currentEffect = display.visible && displayEffectLabel && hasSupportedCurrentEffect
     ? stage.stage === "DUEL_EXCHANGE" ? "Duel" : displayEffectLabel
     : null;
@@ -695,6 +710,16 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
       && duelSummaryParticipant.known
       ? `Duel between ${stage.source.name} and ${duelSummaryParticipant.name} is in progress.`
       : null
+    : currentEffect && stage.stage === "GROUP_RESOLUTION"
+      ? stage.source.id
+        && stage.source.known
+        && stage.currentParticipant.id
+        && stage.currentParticipant.known
+        && (stage.currentParticipant.id === viewerId
+          ? !hasLocalFocus
+          : connectedCurrentEffectFocusIsVisible && heroFocus.primary?.id === stage.currentParticipant.id)
+        ? `${stage.source.name} used ${currentEffect}. It is now resolving for ${stage.currentParticipant.id === viewerId ? "you" : stage.currentParticipant.name}.`
+        : null
     : currentEffect && stage.stage === "JUDGEMENT"
       ? !hasLocalFocus && stage.currentParticipant.known
         ? `Judgement for ${stage.currentParticipant.name} is resolving.`
@@ -744,6 +769,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && !focusIdentityAlreadyVisible;
   const showActiveScopeSummary = showRoleSummary
     && display.currentParticipantPresentedInHeroFocus
+    && !(currentEffect && stage.stage === "GROUP_RESOLUTION")
     && Boolean(display.activeScopeSummary);
   const showRoleMetadata = showSourceSummary || showFocusSummary || showActiveScopeSummary;
   const hasMultipleRoleSummaries = showSourceSummary && (showFocusSummary || showActiveScopeSummary);

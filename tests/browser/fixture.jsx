@@ -211,7 +211,7 @@ function currentActionFor(state, actorId, handCardId) {
   };
 }
 
-function browserRoom({ state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority }) {
+function browserRoom({ state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority }) {
   const judgementStage = state === "judgement" || state === "judgement-local";
   const ordinaryTurn = state === "ordinary-turn";
   const borrowedSwordFixture = state === "borrowed-sword-play" || state === "borrowed-sword-no-target";
@@ -265,6 +265,8 @@ function browserRoom({ state, count, handSize, targetHandCount, equipmentCase, h
     ? null
     : judgementStage && judgementParticipantCase === "missing" ? null
       : judgementStage && judgementParticipantCase === "mismatch" ? "p4"
+    : state === "group-observer" && groupParticipantOverride === "none" ? null
+      : state === "group-observer" && groupParticipantOverride ? groupParticipantOverride
     : borrowedSwordActiveFixture ? count === 2 ? "p1" : "p3"
     : privateNegationResponder ? "p1"
       : (duelObserverView && duelParticipantMissing) || timedNegationObserver || unfocusedGroup || state === "active-negation-multi-observer" ? null
@@ -370,6 +372,7 @@ function readFixture() {
   const heroOverride = params.get("hero") || null;
   const sourceOverride = params.get("source") || null;
   const effectOverride = params.get("effect");
+  const groupParticipantOverride = params.get("groupParticipant");
   const timedResponse = params.get("timedResponse") === "1";
   const timedObserver = params.get("timedObserver") === "1";
   const privateNegationResponder = params.get("privateNegationResponder") === "1";
@@ -378,13 +381,13 @@ function readFixture() {
   const duelParticipantMissing = params.get("duelParticipant") === "missing";
   const dyingParticipantCase = params.get("dyingParticipant") || "";
   const judgementParticipantCase = params.get("judgementParticipant") || "";
-  return { state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority };
+  return { state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority };
 }
 
-const { state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority } = readFixture();
+const { state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority } = readFixture();
 const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority });
+let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, groupParticipantOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, judgementParticipantCase, privateNegationResponder, negationAuthority });
 window.__browserActions = [];
 window.__browserRoom = fixtureRoom;
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => {

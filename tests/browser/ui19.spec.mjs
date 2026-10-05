@@ -567,7 +567,7 @@ async function interactionGeometry(page) {
     const reactionChain = document.querySelector('[data-reaction-chain="proven"]');
     const dyingHandoff = document.querySelector('[data-dying-handoff="proven"]');
     const stageBody = document.querySelector(".interaction-stage-body");
-    const stageRegions = [...document.querySelectorAll(".interaction-stage-hero-region, .interaction-stage-event-region, .interaction-stage-meta-region")].map((element) => {
+    const stageRegions = [...document.querySelectorAll(".interaction-stage-hero-region, .interaction-stage-event-region, .interaction-stage-meta-region, .group-target-scope")].map((element) => {
       const style = getComputedStyle(element);
       const bounds = rect(element);
       return {
@@ -2293,14 +2293,14 @@ test("UX2.0VIS-12P Group observer omits current-participant metadata already in 
   await expect(source).toBeVisible();
   await expect(source).toHaveAttribute("data-medium-participant-player-id", "p4");
   await expect(source.locator(".medium-participant-role")).toHaveText("SOURCE");
-  await expect(stage.locator(".hero-focus")).toHaveAttribute("data-hero-focus-role", "CURRENT PARTICIPANT");
+  await expect(stage.locator(".hero-focus")).toHaveAttribute("data-hero-focus-role", "Target");
   await expect(stage.locator(".hero-focus")).toHaveAttribute("data-hero-focus-player-id", "p1");
   await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
   await expect(stage.locator('[data-stage-meta-role="focus"]')).toHaveCount(0);
-  const activeScope = stage.locator('[data-stage-meta-role="active-scope"]');
-  await expect(activeScope).toContainText("Active scope: Player 1, Player 2, Player 3");
-  await expect(stage.locator(".interaction-stage-meta-region")).not.toContainText("Current participant: Player 1");
-  await expect(stage.locator(".interaction-stage-context")).toContainText("DECISION");
+  await expect(stage.locator('[data-stage-meta-role="active-scope"]')).toHaveCount(0);
+  await expect(stage.locator('[data-group-target-scope="original"] .group-target-card')).toHaveCount(1);
+  await expect(stage.locator(".interaction-stage-meta-region")).toHaveCount(0);
+  await expect(stage.locator('[data-stage-meta-role="decision"]')).toHaveCount(0);
   const screenshot = await page.screenshot({ path: testInfo.outputPath("group-observer-480x900-current-participant-dedup.png"), animations: "disabled" });
   await testInfo.attach("vis-12p-group-observer-480x900", { body: screenshot, contentType: "image/png" });
   const layout = await assertVis12nTopRowGeometry(page, 480);
@@ -2311,12 +2311,13 @@ test("UX2.0VIS-12P compact Group Stage deduplicates only its proven Hero Focus i
   await loadFixture(page, { state: "group-observer", count: 4, width: 390, height: 640 });
   const stage = page.locator('[aria-label="Interaction Stage"]');
   const heroFocus = stage.locator(".hero-focus");
-  await expect(heroFocus).toHaveAttribute("data-hero-focus-role", "CURRENT PARTICIPANT");
+  await expect(heroFocus).toHaveAttribute("data-hero-focus-role", "Target");
   await expect(heroFocus).toHaveAttribute("data-hero-focus-player-id", "p1");
   await expect(stage.locator('[data-stage-meta-role="focus"]')).toHaveCount(0);
-  await expect(stage.locator('[data-stage-meta-role="active-scope"]')).toContainText("Active scope: Player 1, Player 2, Player 3");
-  await expect(stage.locator(".interaction-stage-meta-region")).not.toContainText("Current participant: Player 1");
-  await expect(stage.locator(".interaction-stage-context")).toContainText("DECISION");
+  await expect(stage.locator('[data-stage-meta-role="active-scope"]')).toHaveCount(0);
+  await expect(stage.locator('[data-group-target-scope="original"] .group-target-card')).toHaveCount(1);
+  await expect(stage.locator(".interaction-stage-meta-region")).toHaveCount(0);
+  await expect(stage.locator('[data-stage-meta-role="decision"]')).toHaveCount(0);
   const screenshot = await page.screenshot({ path: testInfo.outputPath("group-observer-390x640-current-participant-dedup.png"), animations: "disabled" });
   await testInfo.attach("vis-12p-group-observer-390x640", { body: screenshot, contentType: "image/png" });
   const layout = await assertVis12nTopRowGeometry(page, 390);

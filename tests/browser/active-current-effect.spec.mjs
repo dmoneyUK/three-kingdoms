@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null }) {
   await page.setViewportSize({ width, height });
   const effectQuery = effect ? `&effect=${encodeURIComponent(effect)}` : "";
   const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : "";
@@ -8,7 +8,8 @@ async function loadFixture(page, { count = 4, width, height = 900, state = "acti
   const missingDuelParticipantQuery = duelParticipantMissing ? "&duelParticipant=missing" : "";
   const dyingParticipantQuery = dyingParticipant ? `&dyingParticipant=${encodeURIComponent(dyingParticipant)}` : "";
   const judgementParticipantQuery = judgementParticipant ? `&judgementParticipant=${encodeURIComponent(judgementParticipant)}` : "";
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}`);
+  const groupParticipantQuery = groupParticipant ? `&groupParticipant=${encodeURIComponent(groupParticipant)}` : "";
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -70,6 +71,80 @@ for (const viewport of [
     expect(summaryBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
   });
 }
+
+for (const viewport of [
+  { count: 4, width: 390, height: 640, topology: "top-row" },
+  { count: 4, width: 390, height: 844, topology: "top-row" },
+  { count: 6, width: 480, height: 900, topology: "side-column" },
+  { count: 4, width: 1440, height: 900, topology: "top-row" },
+]) {
+  test(`proven Group Current Effect fits ${viewport.topology} at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "group-observer", effect: "RainingArrows" });
+    const stage = page.locator('[aria-label="Interaction Stage"][data-stage="GROUP_RESOLUTION"]');
+    const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p4"]');
+    const effect = stage.locator('[aria-label="Current Effect"]');
+    const participant = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p1"]');
+    const scope = stage.locator('[data-group-target-scope="original"]');
+
+    await expect(stage).toHaveAttribute("data-current-effect", "Raining Arrows");
+    await expect(stage.locator(":scope > header strong")).toHaveText("Group Resolution");
+    await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 4 used Raining Arrows. It is now resolving for Player 1.");
+    await expect(source).toContainText("Player 4");
+    await expect(effect.locator("strong")).toHaveText("Raining Arrows");
+    await expect(participant).toContainText("Player 1");
+    await expect(participant.locator(".hero-focus-heading strong")).toHaveText("Target");
+    await expect(stage.locator(".current-effect-arrow")).toBeVisible();
+    await expect(scope.locator(":scope > header")).toHaveText("ORIGINAL TARGET SCOPE");
+    await expect(scope.locator(".group-target-card[data-group-target-id=\"p2\"]")).toBeVisible();
+    await expect(scope).not.toContainText(/resolved|pending|waiting|✓|▶|○/i);
+    await expect(stage.locator('[data-stage-meta-role="active-scope"]')).toHaveCount(0);
+    await expect(stage.locator("button")).toHaveCount(0);
+    await expect(page.locator(`.local-player-dock[data-player-anchor="p3"]`)).toBeVisible();
+    await expect(stage.locator('[data-hero-focus-player-id="p3"]')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+    const [sourceBox, effectBox, participantBox, stageBox, dockBox] = await Promise.all([
+      source.boundingBox(), effect.boundingBox(), participant.boundingBox(), stage.boundingBox(), page.locator(".local-player-dock").boundingBox(),
+    ]);
+    expect(sourceBox && effectBox && participantBox && stageBox && dockBox).toBeTruthy();
+    if (viewport.height <= 640) {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(participantBox.x + 2);
+      const sourceArrowBox = await stage.locator(".medium-participant-arrow").boundingBox();
+      expect(sourceArrowBox).toBeTruthy();
+      expect(Math.abs((sourceArrowBox.y + sourceArrowBox.height / 2) - (effectBox.y + effectBox.height / 2))).toBeLessThanOrEqual(8);
+    } else if (viewport.topology === "side-column") {
+      expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(participantBox.y + 2);
+    } else if (viewport.width <= 650) {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(participantBox.y + 2);
+    } else {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(participantBox.x + 2);
+    }
+    expect(stageBox.x).toBeGreaterThanOrEqual(0);
+    expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+  });
+}
+
+test("Group Current Effect fails closed without a known source, effect, or active current participant", async ({ page }) => {
+  for (const missingAuthority of [
+    { source: "none" },
+    { effect: "none" },
+    { effect: "unknown-group-effect" },
+    { groupParticipant: "none" },
+    { groupParticipant: "p4" },
+  ]) {
+    await loadFixture(page, { count: 6, width: 480, state: "group-observer", ...missingAuthority });
+    const stage = page.locator('[data-stage="GROUP_RESOLUTION"]');
+    await expect(stage).not.toHaveAttribute("data-current-effect");
+    await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+    await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
+    await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveCount(0);
+  }
+});
 
 for (const viewport of [
   { count: 4, width: 390, height: 844, topology: "top-row" },

@@ -2743,3 +2743,146 @@
     font-size: 8px;
   }
 }
+
+/* Keep Group's proven Source -> Effect -> current participant in one compact
+   row; the original target scope remains a neutral, separate row below it. */
+@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 700px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-body {
+    display: grid;
+    grid-template-columns: minmax(56px, 68px) 10px minmax(0, 1fr);
+    align-items: start;
+    gap: 3px 5px;
+    padding-top: 0;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-hero-region {
+    display: contents;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .medium-participant-card {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .medium-participant-arrow {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    margin-top: 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-current-effect-flow {
+    grid-column: 3;
+    grid-row: 1;
+    grid-template-columns: minmax(58px, .6fr) 10px minmax(0, 1fr);
+    gap: 3px;
+    align-items: start;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .group-target-scope {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .group-target-scope > header {
+    flex: none;
+    margin: 0;
+    font-size: 6px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .group-target-cards {
+    display: flex;
+    min-width: 0;
+    gap: 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .group-target-card {
+    flex: 0 1 150px;
+    gap: 4px;
+    padding: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .group-target-portrait {
+    width: 22px;
+    height: 28px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .group-target-identity {
+    gap: 1px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .group-target-identity b {
+    font-size: 7px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .group-target-identity small {
+    font-size: 6px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-current-effect {
+    min-height: 0;
+    gap: 1px;
+    padding: 3px 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-current-effect small {
+    display: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-current-effect strong {
+    font-size: 9px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .current-effect-arrow.top-row-arrow {
+    font-size: 11px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .current-effect-arrow.top-row-arrow::before {
+    content: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .hero-focus {
+    grid-template-columns: 58px minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr auto;
+    column-gap: 6px;
+    row-gap: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .hero-focus-portrait {
+    width: 58px;
+    height: 73px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-event-region {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+}
+
+@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 480px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-body {
+    grid-template-columns: minmax(44px, 50px) 7px minmax(0, 1fr);
+    gap: 2px 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .medium-participant-card {
+    width: 50px;
+    gap: 2px;
+    padding: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .medium-participant-role {
+    font-size: 6px;
+    letter-spacing: .08em;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .medium-participant-portrait {
+    width: 34px;
+    height: 43px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-current-effect-flow {
+    grid-template-columns: minmax(38px, .38fr) 7px minmax(0, 1fr);
+    gap: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .hero-focus {
+    grid-template-columns: 48px minmax(0, 1fr);
+    column-gap: 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .hero-focus-portrait {
+    width: 48px;
+    height: 60px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .hero-focus-heading strong {
+    font-size: 6px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .hero-focus-identity b {
+    font-size: 9px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-current-effect {
+    padding: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"][data-current-effect] .interaction-stage-current-effect strong {
+    font-size: 8px;
+  }
+}
