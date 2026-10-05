@@ -303,7 +303,22 @@ than restart them.
   regression now distinguishes its general response heading from its stricter
   combined instruction when Skip authority is absent.
 - Both focused browser specs passed 15/15; targeted ESLint and `git diff --check`
-  passed. No full local suite/build/lint was run. Commit/push and CI are pending.
+  passed. No full local suite/build/lint was run. Pushed as `4995e23`; exact
+  Actions run `37319031950` was `in_progress` at the 2026-10-05 planning
+  checkpoint, so no CI conclusion is recorded.
+
+### UX2.3-FAST-RESPONSE-STAGE-CHROME-01 — Proven Current Effect vocabulary
+
+- In a connected, visible Current Effect composition, removed the visible
+  `INTERACTION STAGE` / `HERO FOCUS` labels and named the focused participant
+  `Target`; retained the stage's accessible section name and event title.
+- Suppressed decision-actor text only when its public actor ID matches the
+  proven focused target, for both Stage context and the active Reaction Chain.
+  Missing-effect / missing-Duel-participant fallbacks and existing Negation
+  treatment remain unchanged; no eligibility or gameplay logic changed.
+- The Current Effect and semantic-response-heading browser specs passed 20/20;
+  targeted ESLint and `git diff --check` passed. No full local suite/build/lint
+  was run. Commit/push and CI are pending.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

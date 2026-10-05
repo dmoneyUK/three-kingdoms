@@ -22,11 +22,18 @@ for (const viewport of [
     const target = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
     await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
     await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+    await expect(stage.locator(":scope > header strong")).toHaveText("Attack Response");
     await expect(effect).toContainText("CURRENT EFFECT");
     await expect(effect.locator("strong")).toHaveText("Attack");
     await expect(stage).toHaveAttribute("data-interaction-id", "browser-active-attack-observer-interaction");
     await expect(source).toContainText("Player 1");
     await expect(target).toContainText("Player 2");
+    await expect(stage).not.toContainText("INTERACTION STAGE");
+    await expect(stage).not.toContainText("HERO FOCUS");
+    await expect(target.locator(".hero-focus-heading strong")).toHaveText("Target");
+    const publicInteraction = await page.evaluate(() => window.__browserRoom.presentationSnapshot.interaction);
+    expect(publicInteraction.decisionActorId).toBe("p2");
+    await expect(stage.locator('[data-stage-meta-role="decision"]')).toHaveCount(0);
     await expect(stage).not.toContainText("Player 3");
     await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
     await expect(page.locator(".local-player-dock")).toContainText("Sun Quan");
@@ -67,9 +74,14 @@ for (const viewport of [
     const effect = stage.locator('[aria-label="Current Effect"]');
     const currentParticipant = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
     await expect(stage).toHaveAttribute("data-current-effect", "Duel");
+    await expect(stage.locator(":scope > header strong")).toHaveText("Duel Exchange");
     await expect(effect.locator("strong")).toHaveText("Duel");
     await expect(source).toContainText("Player 1");
     await expect(currentParticipant).toContainText("Player 2");
+    await expect(stage).not.toContainText("INTERACTION STAGE");
+    await expect(stage).not.toContainText("HERO FOCUS");
+    await expect(currentParticipant.locator(".hero-focus-heading strong")).toHaveText("Target");
+    await expect(stage.locator('[data-stage-meta-role="decision"]')).toHaveCount(0);
     await expect(stage.locator(".medium-participant-arrow, .current-effect-arrow")).toHaveCount(2);
     await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
     await expect(stage.locator('[data-hero-focus-player-id="p3"]')).toHaveCount(0);
@@ -81,6 +93,7 @@ for (const viewport of [
     expect(projection.stage).toBe("DUEL_EXCHANGE");
     expect(projection.effect.toLowerCase()).toBe("duel");
     expect(projection.currentParticipantId).toBe("p2");
+    expect(projection.decisionActorId).toBe("p2");
     expect(projection.targetIds).toEqual(["p2", "p1"]);
     expect(await page.evaluate(() => window.__browserRoom.currentAction.legalActions)).toEqual([]);
     expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
@@ -107,12 +120,14 @@ test("Duel Current Effect fails closed without effect or current-participant pro
   let stage = page.locator('[data-stage="DUEL_EXCHANGE"]');
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+  await expect(stage).toContainText("INTERACTION STAGE");
 
   await loadFixture(page, { width: 480, count: 6, state: "duel", duelObserver: true, duelParticipantMissing: true });
   stage = page.locator('[data-stage="DUEL_EXCHANGE"]');
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
   await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
+  await expect(stage).toContainText("INTERACTION STAGE");
 });
 
 test("Inspect preserves ACTIVE Current Effect without linking it to the inspected opponent", async ({ page }) => {
@@ -216,6 +231,8 @@ test("missing public effect fails closed and local REST/Preview do not invent on
   await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+  await expect(stage).toContainText("INTERACTION STAGE");
+  await expect(stage).toContainText("HERO FOCUS");
 
   await loadFixture(page, { state: "rest", width: 390 });
   await page.locator('[data-player-anchor="p2"] .opponent-hero-target').click();

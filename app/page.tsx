@@ -586,6 +586,13 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && !hasLocalFocus
     && heroFocus.primary?.id
     && stage.activeTargets.some((target) => target.id === heroFocus.primary?.id));
+  const connectedCurrentEffectFocusIsVisible = currentEffectConnectsToFocus && heroFocus.visible;
+  const decisionActorAlreadyFocused = Boolean(connectedCurrentEffectFocusIsVisible
+    && display.decisionActor.id
+    && display.decisionActor.id === heroFocus.primary?.id);
+  const reactionDecisionActorAlreadyFocused = Boolean(connectedCurrentEffectFocusIsVisible
+    && reactionChain.active?.decisionActor.id
+    && reactionChain.active.decisionActor.id === heroFocus.primary?.id);
   const dyingSourceAlreadyVisible = Boolean(dyingHandoff.visible && stage.source.id && (
     mediumSource?.player.id === stage.source.id
     || (heroFocus.primary?.id && heroFocus.primary.id !== stage.source.id && heroFocus.source.id === stage.source.id)
@@ -609,7 +616,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     || (showMediumSource && mediumSource?.player.id === display.focusTarget.id)
     || (!showMediumSource && heroFocus.visible && heroFocus.source.id === display.focusTarget.id)
   ));
-  const showDecisionSummary = display.showDecision && !isOpenNegationResponse && !(currentEffect && display.isViewerDecisionActor) && !(dyingHandoff.visible
+  const showDecisionSummary = display.showDecision && !isOpenNegationResponse && !decisionActorAlreadyFocused && !(currentEffect && display.isViewerDecisionActor) && !(dyingHandoff.visible
     && display.decisionActor.id
     && dyingHandoff.decisionActor.id === display.decisionActor.id);
   const showResolverSummary = display.showResolver && !isOpenNegationResponse && !(dyingHandoff.visible
@@ -634,9 +641,10 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && !hasLocalFocus
     && display.isViewerDecisionActor
     && !currentEffect;
+  const hideStageArchitecturalChrome = isOpenNegationResponse || connectedCurrentEffectFocusIsVisible;
   if (!display.visible && !hasLocalFocus) return null;
   return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
-    <header>{!isOpenNegationResponse && <span>INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>
+    <header>{!hideStageArchitecturalChrome && <span>INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>
     <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
         {showMediumSource && mediumSource && <MediumParticipantCard view={mediumSource} />}
@@ -644,7 +652,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         <div className={`interaction-stage-current-effect-flow${currentEffect ? currentEffectConnectsToFocus ? " is-connected" : " is-unlinked" : " is-empty"}`}>
           {currentEffect && <section className="interaction-stage-current-effect" role="group" aria-label="Current Effect" data-current-effect-label={currentEffect}><small>{isOpenNegationResponse ? "EFFECT" : "CURRENT EFFECT"}</small><strong>{currentEffect}</strong></section>}
           {currentEffectConnectsToFocus && <span className={`current-effect-arrow${topRowMode ? " top-row-arrow" : " side-column-arrow"}`} aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
-          <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} hideArchitecturalLabel={isOpenNegationResponse} roleLabelOverride={isOpenNegationResponse ? "Target" : null} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
+          <HeroFocus view={heroFocus} showSource={!showMediumSource} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome ? "Target" : null} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
         </div>
         {groupTargetScope && <section className="group-target-scope" aria-label="Original target scope" data-group-target-scope="original" data-participant-density={groupTargetScope.density}>
           <header>ORIGINAL TARGET SCOPE</header>
@@ -677,7 +685,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
               <small>{isOpenNegationResponse ? "NEGATION WINDOW" : "ACTIVE RESPONSE"}</small>
               {isOpenNegationResponse
                 ? <><b data-stage-meta-role="scope">A Negation may be played now.</b><span>Waiting for response...</span></>
-                : <><b>{reactionChain.active.label}</b>{reactionChain.active.decisionActor.id && <span>DECISION · {reactionChain.active.decisionActor.name}</span>}</>}
+                : <><b>{reactionChain.active.label}</b>{reactionChain.active.decisionActor.id && !reactionDecisionActorAlreadyFocused && <span data-stage-meta-role="decision">DECISION · {reactionChain.active.decisionActor.name}</span>}</>}
             </li>
           </ol>
         </section>}
@@ -689,7 +697,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
           {showActiveScopeSummary && <div data-stage-meta-role="active-scope"><small>ACTIVE SCOPE</small><em>{display.activeScopeSummary}</em></div>}
         </div>}
         {!isOpenNegationResponse && showMetadataContext && <div className="interaction-stage-context">
-          {showDecisionSummary && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
+          {showDecisionSummary && <span data-stage-meta-role="decision"><small>DECISION</small><b>{display.decisionActor.name}</b></span>}
           {showResolverSummary && <span><small>RESOLVER</small><b>{display.activeResolver.name}</b></span>}
           {display.showOriginalTargets && <span><small>ORIGINAL SCOPE</small><b>{display.originalTargetSummary}</b></span>}
           {showNestedContextSummary && <span><small>CONTEXT</small><b>{display.nestedContext}</b></span>}
