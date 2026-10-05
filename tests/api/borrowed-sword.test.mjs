@@ -81,7 +81,93 @@ test("Borrowed Sword transfer never follows a stale or replaced Weapon", { timeo
   setHand(impossibleSource.id, [impossibleBorrowed], 4, 5); setHand(impossibleHolder.id, [], 4, 4); setEquipment(impossibleSource.id, { defensiveHorse: card("DefensiveHorse", "borrowed-out-of-range") }); setEquipment(impossibleHolder.id, { weapon: card("ZhugeCrossbow", "borrowed-range-one") });
   sql(`UPDATE players SET alive=0,hp=0,hand_json='[]',equipment_json='{}' WHERE id IN (${quote(deadNear.id)},${quote(deadFar.id)})`); setTurn(impossible.code, impossibleSource.seat);
   const rejected = await requestAndSettle("play_card", { code: impossible.code, token: impossibleHost.token, cardId: impossibleBorrowed.id, targetId: impossibleHolder.id });
-  assert.equal(rejected.status, 409); assert.match(rejected.data.error, /no legal target/); assert.equal((await state(impossible.code, impossibleHost.token)).data.pendingBorrowedSword, null);
+  const impossibleProjection = (await state(impossible.code, impossibleHost.token)).data.currentAction.borrowedSwordTargets;
+  assert.deepEqual(impossibleProjection, [{ cardId: impossibleBorrowed.id, targetIds: [] }], "CurrentAction omits a holder with no complete forced-Attack path");
+  assert.equal(rejected.status, 409); assert.match(rejected.data.error, /no complete legal path/); assert.equal((await state(impossible.code, impossibleHost.token)).data.pendingBorrowedSword, null);
+});
+
+test("Borrowed Sword projects and resolves its source as the forced target in a two-character match", { timeout: 60_000 }, async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const [source, holder, deadNear, deadFar] = game.room.players;
+  const borrowed = card("BorrowedSword", "borrowed-two-player"); const weapon = card("ZhugeCrossbow", "borrowed-two-player-weapon"); const attack = card("Attack", "borrowed-two-player-attack");
+  sql(`UPDATE players SET hero='zhang-fei' WHERE id IN (${quote(source.id)},${quote(holder.id)})`);
+  setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [attack], 4, 4); setEquipment(holder.id, { weapon });
+  sql(`UPDATE players SET alive=0,hp=0,hand_json='[]',equipment_json='{}' WHERE id IN (${quote(deadNear.id)},${quote(deadFar.id)})`);
+  setTurn(game.code, source.seat, "play");
+
+  const projected = (await state(game.code, host.token)).data;
+  assert.deepEqual(projected.currentAction.borrowedSwordTargets, [{ cardId: borrowed.id, targetIds: [holder.id] }]);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.deepEqual(opened.data.room.pendingBorrowedSword.eligibleTargetIds, [source.id]);
+
+  const invalid = await requestAndSettle("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: holder.id });
+  assert.equal(invalid.status, 400, "the holder cannot choose themself as the forced Attack target");
+  const chosen = await requestAndSettle("choose_borrowed_sword_target", { code: game.code, token: host.token, targetId: source.id });
+  assert.equal(chosen.status, 200, JSON.stringify(chosen.data));
+  const holderView = (await state(game.code, alice.token)).data;
+  assert.equal(holderView.currentAction.actorId, holder.id);
+  assert.equal(holderView.currentAction.requirement, "attack");
+  assert.equal(chosen.data.room.pendingBorrowedSword.targetId, source.id);
+
+  const attackResult = await requestAndSettle("respond", { code: game.code, token: alice.token, providerId: "card", cardId: attack.id });
+  assert.equal(attackResult.status, 200, JSON.stringify(attackResult.data));
+  const settled = (await state(game.code, host.token)).data;
+  assert.equal(settled.players.find((player) => player.id === source.id).hp, 3, "the holder can carry out the forced Attack against the source");
+  assert.equal(settled.phase, "play");
+  assert.equal(settled.pendingBorrowedSword, null);
+  assert.equal(discardIds(game.code).filter((id) => id === borrowed.id).length, 1);
+  assert.equal(discardIds(game.code).filter((id) => id === attack.id).length, 1);
+  assert.equal(roomCardCount(game.code, borrowed.id), 1);
+  assert.equal(roomCardCount(game.code, attack.id), 1);
+});
+
+test("Borrowed Sword evaluates Empty Fortress after consuming its own card", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame(); const [host] = game.members;
+  const [source, holder, deadNear, deadFar] = game.room.players;
+  const borrowed = card("BorrowedSword", "borrowed-empty-fortress"); const weapon = card("ZhugeCrossbow", "borrowed-empty-fortress-weapon");
+  sql(`UPDATE players SET hero='zhuge-liang' WHERE id=${quote(source.id)}`);
+  setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [], 4, 4); setEquipment(holder.id, { weapon });
+  sql(`UPDATE players SET alive=0,hp=0,hand_json='[]',equipment_json='{}' WHERE id IN (${quote(deadNear.id)},${quote(deadFar.id)})`);
+  setTurn(game.code, source.seat, "play");
+
+  const projected = (await state(game.code, host.token)).data;
+  assert.deepEqual(projected.currentAction.borrowedSwordTargets, [{ cardId: borrowed.id, targetIds: [] }], "Empty Fortress applies to the source's post-cost empty hand");
+  const rejected = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id });
+  assert.equal(rejected.status, 409);
+  assert.match(rejected.data.error, /no complete legal path/);
+  assert.equal(rejected.data.room.pendingBorrowedSword, null);
+  assert.equal((await state(game.code, host.token)).data.myHand.some((card) => card.id === borrowed.id), true, "an invalid complete path does not consume the physical card");
+});
+
+test("Borrowed Sword revalidates the complete path after Negation before opening its target decision", { timeout: 60_000 }, async () => {
+  const game = await createHumanGame(); const [host, alice] = game.members;
+  const [source, holder, otherTarget, lastTarget] = game.room.players;
+  const borrowed = card("BorrowedSword", "borrowed-path-negation"); const weapon = card("ZhugeCrossbow", "borrowed-path-negation-weapon");
+  const attack = card("Attack", "borrowed-path-negation-attack"); const negation = card("Negation", "borrowed-path-negation-card");
+  sql(`UPDATE players SET hero='zhang-fei' WHERE id IN (${quote(source.id)},${quote(holder.id)})`);
+  setHand(source.id, [borrowed], 4, 5); setHand(holder.id, [attack, negation], 4, 4);
+  setHand(otherTarget.id, [card("Peach", "borrowed-path-other-target")], 4, 4); setHand(lastTarget.id, [], 4, 4);
+  setEquipment(source.id, { defensiveHorse: card("DefensiveHorse", "borrowed-path-source-horse") }); setEquipment(holder.id, { weapon });
+  setTurn(game.code, source.seat, "play");
+
+  const before = (await state(game.code, host.token)).data;
+  assert.deepEqual(before.currentAction.borrowedSwordTargets, [{ cardId: borrowed.id, targetIds: [holder.id] }]);
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: borrowed.id, targetId: holder.id, preserveResponse: true });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const holderView = (await state(game.code, alice.token)).data;
+  assert.equal(holderView.currentAction.actorId, holder.id);
+  assert.equal(holderView.currentAction.requirement, "negate");
+
+  sql(`UPDATE players SET alive=0,hp=0,hand_json='[]',equipment_json='{}' WHERE id IN (${quote(otherTarget.id)},${quote(lastTarget.id)})`);
+  const passed = await requestAndSettle("decline_response", { code: game.code, token: alice.token });
+  assert.equal(passed.status, 200, JSON.stringify(passed.data));
+  assert.equal(passed.data.room.phase, "play");
+  assert.equal(passed.data.room.pendingBorrowedSword, null, "no blocking forced-target Pending opens with an empty legal target set");
+  assert.equal(passed.data.room.players.find((player) => player.id === holder.id).equipmentCards.find((item) => item.id === weapon.id)?.id, weapon.id, "a path that became impossible does not transfer the Weapon");
+  assert.equal(discardIds(game.code).filter((id) => id === borrowed.id).length, 1);
+  assert.ok(passed.data.room.log.some((entry) => entry.includes("no legal forced Attack target remaining")));
+  assert.equal(roomCardCount(game.code, borrowed.id), 1);
 });
 
 test("Borrowed Sword forced Attacks re-enter Dodge and attack-targeted continuations", { timeout: 60_000 }, async () => {

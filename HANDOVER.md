@@ -5,20 +5,20 @@ Mode: `AUTONOMOUS UI RUN`
 
 This file contains only the current execution handoff. Product design is in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest task result — UX2.0VIS-13B
+## Latest task result — UX2.0VIS-13C
 
 Status: **IMPLEMENTED — CI PENDING**.
 
-For failed `eight_trigrams_dodge` Judgements, the server now retains the original Dodge pending, actor, count, continuation and causal interaction; filters only the failed provider and reopens legal choices. Damage occurs only if the player explicitly declines. The initiating provider ID remains internal to the Judgement continuation across Guicai, and is not projected to other viewers. Applies only to ordinary Attack and Group/AOE Dodge responses; other response families are unchanged.
+Borrowed Sword now uses one server-owned complete-path legality result for its primary Weapon-holder projection/validation and forced-Attack target projection/submission. The source may be the forced target when the holder can legally Attack them; no three-player minimum is imposed. Play-phase targets are exposed only in the acting viewer's `CurrentAction`, and React consumes that projection rather than rebuilding Borrowed Sword rules. Deferred resolution revalidates before opening its blocking target choice; an invalidated path settles without a zero-option Pending and preserves the causal continuation.
 
-Focused validation: `npm run build` succeeded; the new Eight Trigrams API regressions plus the relevant Wei hero API file passed 25/25; targeted ESLint on the five changed source/test files passed; `git diff --check` passed. The regressions cover Sima Yi's replacement, unchanged two-Dodge count, Group/AOE cursor/causal continuity, explicit Pass, provider privacy, and card conservation. No full suite was run.
+Focused validation: `npm run build` succeeded; `GAME_TEST_FILES=tests/api/borrowed-sword.test.mjs node tests/run-tests.mjs` passed 7/7; `node --test tests/room-safety.test.mjs` passed 4/4; the focused Borrowed Sword Playwright spec passed 2/2; targeted ESLint and `git diff --check` passed. No full test suite was run. The 13C push-triggered CI run has not been checked; CI remains pending.
 
-13A revision `573ec3d56e8d7acd098673f6b9a3a13552b145ae` Actions run `37268528873` was observed **in progress** once before 13B source edits; it has not been rechecked.
+The 13B Actions run `37269808166` was observed **in progress** once before 13C source edits and has not been rechecked. Do not infer its result for 13C.
 
 ## Design review checkpoint
 
-Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`. 13B follows Reviewer addition B. Additions A–C remain design authority, not a task queue.
+Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; 13C implements Reviewer-approved addition C.
 
-## Current task — UX2.0VIS-13B delivery checkpoint
+## Current task — UX2.0VIS-13C delivery checkpoint
 
-Commit and push only `app/api/rooms/route.ts`, `game/pending.ts`, `tests/api/eight-trigrams-failed-response.test.mjs`, `tests/api/lobby-heroes-wei.test.mjs`, `tests/run-api-suite.mjs`, and this handover. Fetch and verify the exact remote revision. Before any successor source edit, reread the complete current workflow, compare the latest remote design with this checkpoint, read the full remote handover, and inspect the 13B push-triggered Actions run once. Do not wait or repeatedly poll; diagnose a relevant failure before starting new feature work.
+Commit and push only `HANDOVER.md`, `docs/AUTONOMOUS_UI_ROADMAP.md`, `app/api/rooms/route.ts`, `app/page.tsx`, `game/capabilities/borrowed-sword.ts`, `game/protocol.d.ts`, `game/room-safety.js`, `tests/api/borrowed-sword.test.mjs`, `tests/browser/borrowed-sword-targets.spec.mjs`, `tests/browser/fixture.jsx`, and `tests/room-safety.test.mjs`. Then fetch and verify the exact remote revision. Before any successor source edit, reread the complete current workflow and remote HANDOVER, compare the latest remote design against this checkpoint, inspect the relevant code/tests, and check the 13C push-triggered Actions run once. Do not wait or repeatedly poll; keep CI pending if queued/in progress or unavailable, and diagnose a relevant failure before new feature work.

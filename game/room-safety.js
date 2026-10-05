@@ -91,6 +91,7 @@ function normalizeCurrentAction(value) {
     return [{ effectId: option.effectId, label: option.label, ...(typeof option.description === "string" ? { description: option.description } : {}), ...(option.allowDecline === false ? { allowDecline: false } : {}), ...(typeof option.timeoutChoiceId === "string" ? { timeoutChoiceId: option.timeoutChoiceId } : {}), selection }];
   }) : [];
   const playPhaseActions = Array.isArray(value.playPhaseActions) ? value.playPhaseActions.filter(isRecord).flatMap((action) => typeof action.cardId === "string" && action.canPlayAs === "attack" ? [{ cardId: action.cardId, canPlayAs: "attack" }] : []).filter((action, index, all) => all.findIndex((candidate) => candidate.cardId === action.cardId) === index) : [];
+  const borrowedSwordTargets = Array.isArray(value.borrowedSwordTargets) ? value.borrowedSwordTargets.filter(isRecord).flatMap((target) => typeof target.cardId === "string" && Array.isArray(target.targetIds) ? [{ cardId: target.cardId, targetIds: target.targetIds.filter((id) => typeof id === "string") }] : []).filter((target, index, all) => all.findIndex((candidate) => candidate.cardId === target.cardId) === index) : [];
   return {
     version: value.version,
     kind: value.kind,
@@ -100,6 +101,7 @@ function normalizeCurrentAction(value) {
     legalActions: Array.isArray(value.legalActions) ? value.legalActions.filter((action) => typeof action === "string" && GAMEPLAY_ACTION_SET.has(action)) : [],
     ...(typeof value.canDeclareAttack === "boolean" ? { canDeclareAttack: value.canDeclareAttack } : {}),
     ...(playPhaseActions.length ? { playPhaseActions } : {}),
+    ...(borrowedSwordTargets.length ? { borrowedSwordTargets } : {}),
     ...(requirement ? { requirement, options, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : {}),
     ...(value.triggerEvent === "turn_start" || value.triggerEvent === "turn_end" || value.triggerEvent === "draw_phase" || value.triggerEvent === "discard_phase" || value.triggerEvent === "judgement_revealed" || value.triggerEvent === "judgement_effective" || value.triggerEvent === "attack_targeted" || value.triggerEvent === "attack_dodged" || value.triggerEvent === "damage_about_to_apply" || value.triggerEvent === "damage_suffered" || value.triggerEvent === "hero_choice" || value.triggerEvent === "hand_lost" ? { triggerEvent: value.triggerEvent, triggerOptions, declineAction: typeof value.declineAction === "string" && GAMEPLAY_ACTION_SET.has(value.declineAction) ? value.declineAction : undefined } : triggerOptions.length ? { triggerOptions } : {}),
     ...(value.kind === "card_distribution" && isRecord(value.distribution) && Array.isArray(value.distribution.cards) ? { distribution: { cards: normalizeCards(value.distribution.cards), eligibleRecipientIds: Array.isArray(value.distribution.eligibleRecipientIds) ? value.distribution.eligibleRecipientIds.filter((id) => typeof id === "string") : [] } } : {}),
