@@ -2499,3 +2499,21 @@
     inset-block-start: 50px;
   }
 }
+
+/* UX2.3: reserve a clear slot for the global Exit control beside the timer. */
+.game-shell .play-table:has(> .visible-countdown-response) > .game-exit {
+  inset-inline-end: 160px;
+}
+
+@media (max-width: 520px) {
+  .game-shell .play-table:has(> .visible-countdown-response) > .game-exit {
+    inset-block-start: 8px;
+    inset-inline-end: 148px;
+  }
+}
+
+@media (max-width: 420px) {
+  .game-shell .play-table:has(> .visible-countdown-response) > .game-messages:not(.collapsed) {
+    width: min(52vw, calc(100vw - 214px));
+  }
+}

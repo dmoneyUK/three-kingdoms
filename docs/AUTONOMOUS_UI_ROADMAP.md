@@ -398,6 +398,18 @@ than restart them.
   build-and-test and deploy/smoke-test jobs. This closes the CI-recovery entry;
   the successful result applies to that exact pushed revision.
 
+### UX2.3-FAST-RESPONSE-TIMER-10P-01 — 10-player timer clearance
+
+- Reserved a conditional top lane for the response timer in 10-player Side
+  Column mode so fixed opponent seats and Interaction Stage content stay below
+  the timer. The focused 480x900 observer regression checks timer bounds,
+  seat/Stage non-overlap, Dock separation, neutral public copy, and absence of
+  viewer-private options/actions.
+- The complete response-timer browser spec passed 4/4; targeted ESLint and
+  `git diff --check` passed. No gameplay, timer semantics, or action authority
+  changed. Pushed as `b138959`; exact Actions run `37332560641` completed
+  successfully on 2026-10-05, including build/test and deploy/smoke-test jobs.
+
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
 - **13A / Reviewer addition A — authoritative self-target symmetry:** a

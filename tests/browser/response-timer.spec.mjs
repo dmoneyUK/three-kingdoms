@@ -53,6 +53,70 @@ test("UX2.3 response timer is glanceable, urgent near expiry, and stays top-righ
   expect(criticalBorder).not.toBe(urgentBorder);
 });
 
+test("UX2.3 response timer keeps the visible Exit control clear across viewport widths", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/tests/browser/fixture.html?state=negation&count=10&timedResponse=1&timedObserver=1");
+
+    const timer = page.locator('.play-table > .visible-countdown-response');
+    const exit = page.locator('.play-table > .game-exit');
+    const messages = page.locator(".play-table > .game-messages");
+    await expect(timer).toBeVisible();
+    await expect(exit).toBeVisible();
+    await expect(exit).toBeEnabled();
+    await expect(messages).toBeVisible();
+
+    const geometry = await page.evaluate(() => {
+      const rect = (element) => {
+        const { left, right, top, bottom, width, height } = element.getBoundingClientRect();
+        return { left, right, top, bottom, width, height };
+      };
+      const intersects = (left, right) => Math.min(left.right, right.right) > Math.max(left.left, right.left)
+        && Math.min(left.bottom, right.bottom) > Math.max(left.top, right.top);
+      const table = document.querySelector(".play-table");
+      const timer = rect(table.querySelector(":scope > .visible-countdown-response"));
+      const exit = rect(table.querySelector(":scope > .game-exit"));
+      const messages = rect(table.querySelector(":scope > .game-messages"));
+      const statusElement = table.querySelector(":scope > .player-board-status");
+      const status = statusElement ? rect(statusElement) : null;
+      return {
+        viewport: { width: innerWidth, height: innerHeight },
+        timer,
+        exit,
+        messages,
+        status,
+        timerExitOverlap: intersects(timer, exit),
+        timerExitClearance: Math.max(timer.left - exit.right, exit.left - timer.right),
+        exitMessagesOverlap: intersects(exit, messages),
+        exitStatusOverlap: status ? intersects(exit, status) : false,
+      };
+    });
+
+    expect(geometry.exit.width, JSON.stringify(geometry)).toBeGreaterThan(0);
+    expect(geometry.exit.height, JSON.stringify(geometry)).toBeGreaterThan(0);
+    expect(geometry.timerExitOverlap, JSON.stringify(geometry)).toBe(false);
+    expect(geometry.timerExitClearance, JSON.stringify(geometry)).toBeGreaterThanOrEqual(8);
+    expect(geometry.exitMessagesOverlap, JSON.stringify(geometry)).toBe(false);
+    expect(geometry.exit.left, JSON.stringify(geometry)).toBeGreaterThanOrEqual(0);
+    expect(geometry.exit.right, JSON.stringify(geometry)).toBeLessThanOrEqual(viewport.width);
+
+    await exit.click();
+    await messages.getByRole("button", { name: "Expand game messages" }).click();
+    await expect(messages.locator(":scope > div")).toBeVisible();
+    await expect(exit).toBeVisible();
+    const expandedMessages = await messages.boundingBox();
+    const expandedExit = await exit.boundingBox();
+    expect(expandedMessages).not.toBeNull();
+    expect(expandedExit).not.toBeNull();
+    expect(Math.min(expandedMessages.x + expandedMessages.width, expandedExit.x + expandedExit.width)
+      > Math.max(expandedMessages.x, expandedExit.x)
+      && Math.min(expandedMessages.y + expandedMessages.height, expandedExit.y + expandedExit.height)
+      > Math.max(expandedMessages.y, expandedExit.y), JSON.stringify({ viewport, expandedMessages, expandedExit })).toBe(false);
+  }
+});
+
 test("UX2.3 response timer stays clear of 10-player Side Column content for an observer", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
   await page.setViewportSize({ width: 480, height: 900 });
