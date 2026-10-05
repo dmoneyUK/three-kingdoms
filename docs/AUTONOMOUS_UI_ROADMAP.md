@@ -219,6 +219,12 @@ than restart them.
   `git diff --check` passed. The JSX fixture is excluded by the repository ESLint
   configuration. No full local test/build/lint suite was run; CI status for the
   repair is recorded in `HANDOVER.md`.
+- The subsequent CI run passed its browser job but failed one Node assertion in
+  the Quick Test / Local Player Dock regression: its source matcher required an
+  obsolete compact-grid row and brittle selector adjacency. Updated the test to
+  inspect the actual 480px Dock rule (`auto` identity row plus the measured
+  top/hand/action rows); the exact Node test passed locally 1/1. No product CSS
+  changed; the corrective push's CI result is tracked in `HANDOVER.md`.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

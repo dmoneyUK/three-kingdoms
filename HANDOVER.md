@@ -7,9 +7,9 @@ This file contains only the current execution handoff. Product design is in `doc
 
 ## Latest delivery / CI checkpoint — UX2.2-CI-RECOVERY-01
 
-The follow-up assertion repair is pushed as `faaad5d`. Actions run `37306689005` is **in progress**; no green result is claimed. It validates the conditional Meta-region expectations. The prior repair commit `8892dff` run `37305536459` passed lint/build but browser tests ended **415 passed / 14 failed**, so `npm test` was skipped; all 14 were stale VIS-02/03 expectations that a Meta region is always mounted. The earlier run `37302933217` on `4f50311` was cancelled at browser test `[358/429]` after emitting 19 failures. No gameplay or production UI code changed.
+The latest run `37306689005` for `faaad5d` completed **failure**: the browser job passed, but `npm test` had one failure (202/203 passed) at `tests/room-safety-render.test.mjs:712`. Its compact Dock regex expected an obsolete first grid row and brittle selector adjacency. The test now extracts the actual 480px Dock rule and checks its `auto` identity row; the exact test passed locally 1/1. No production UI, gameplay, or protocol code changed. Corrective push/CI is pending.
 
-Focused validation passed: CI-failure regressions 41/41; short-portrait Top Row containment matrix 20/20; VIS-02/03 Stage geometry cases 21/21; targeted `npx eslint tests/browser/ui19.spec.mjs` and `git diff --check` passed. Repository ESLint configuration ignores `tests/browser/fixture.jsx`. No full local suite/build/lint was run. Actions run `37306689005` validates the pushed assertion repair.
+Earlier focused validations passed: CI-failure browser cases 41/41; short-portrait Top Row matrix 20/20; VIS-02/03 Stage geometry 21/21; targeted ESLint and `git diff --check`. Current correction: exact Node regression 1/1 and `git diff --check` passed. No full local suite/build/lint was run.
 
 ## Design checkpoint
 
@@ -17,10 +17,10 @@ Reviewed remote design blob `45430bc62b7c50bcbeef40724408ead94ad27120` at `origi
 
 ## Current task — UX2.2-CI-RECOVERY-01
 
-Status: **PUSHED — WAIT FOR CI RUN `37306689005`**.
+Status: **LOCAL TEST-ONLY CORRECTION — FOCUSED PASS; CORRECTIVE CI PENDING**.
 
-Bounded scope: finish correcting only the UI-19 tests that still assume an Interaction Stage Meta region is always mounted. Preserve geometry checks for mounted regions and all VIS-12N screenshot/geometry work. Do not change production UI, game logic, or protocol, and do not begin another UX feature while CI is unresolved.
+Bounded scope: repair only failures observed in the current CI recovery. Preserve all VIS-12N screenshot/geometry work. Do not change production UI, game logic, or protocol, and do not begin another UX feature while CI is unresolved.
 
-Acceptance: Inspect run `37306689005` and repair any additional observed failures until a completed successful CI run is recorded. Then re-read the current workflow and remote design document before planning the next bounded task. No gameplay or protocol changes.
+Acceptance: push this test-only correction, inspect its Actions run, and repair additional observed failures until a completed successful CI run is recorded. Then re-read the current workflow and latest remote design before planning the next bounded task. No gameplay or protocol changes.
 
-Resume point: repair commit `faaad5d` is on `origin/ux-v2`; Actions run `37306689005` is in progress. Check its conclusion and logs before any further edits.
+Resume point: the local change is limited to `tests/room-safety-render.test.mjs` and `docs/AUTONOMOUS_UI_ROADMAP.md`; focused test passed 1/1. Commit/push the correction, then record and inspect the resulting run before any next-task source edit.
