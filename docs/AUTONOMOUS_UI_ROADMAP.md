@@ -487,6 +487,30 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `37349152242` passed on 2026-10-05, including build-and-test and deploy. The
   repair did not change production behavior.
 
+### UX2.4-SELECTABLE-DETAIL-AUTHORITY-AUDIT-01 — Existing target-card flows
+
+- The existing `pendingTargetCard` / `CurrentAction` continuation and local
+  action-revision reconciliation support the retained picker; server settlement
+  revalidates the live target and zone. Public Equipment/Judgement identities
+  come from the player projection, while hidden-Hand position choices are
+  constructed from `handCount` because no selectable-object / opaque-position
+  projection exists. Keep this picker as the safe fallback until authority can
+  support the §12.4 same-Hero-Focus migration.
+- Generic Retaliation does project a semantic `hand` key and public card IDs,
+  but its selector omits the hidden-Hand count and uses generic eligible-card
+  copy. This audit was read-only; no source or tests changed.
+
+### UX2.4-GENERIC-HERO-SKILL-ENTRY-01 — Ma Chao Cavalry Dock entry
+
+- Added Ma Chao Cavalry to the shared Hero-skill capability map so its
+  server-projected `CurrentAction.triggerOptions` enables the existing Skills
+  band and removes the duplicate Action Row fallback. Horse Riding remains
+  passive; there is no hero-specific render path or server/gameplay change.
+- Focused browser coverage passed 3/3 at 390px/1440px and with no projected
+  option; targeted ESLint had 0 errors (fixture JSX ignored by config) and
+  `git diff --check` passed. Exact pushed SHA `1dab785` passed Actions run
+  `37358008000`, including `build-and-test` and `deploy`.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative
