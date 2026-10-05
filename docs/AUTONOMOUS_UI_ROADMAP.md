@@ -224,7 +224,9 @@ than restart them.
   obsolete compact-grid row and brittle selector adjacency. Updated the test to
   inspect the actual 480px Dock rule (`auto` identity row plus the measured
   top/hand/action rows); the exact Node test passed locally 1/1. No product CSS
-  changed; the corrective push's CI result is tracked in `HANDOVER.md`.
+  changed. Corrective commit `18fff19` completed Actions run `37307938922`
+  successfully, closing this CI recovery without a production UI/gameplay
+  change.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
