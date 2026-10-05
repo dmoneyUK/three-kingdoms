@@ -277,12 +277,24 @@ test("Eight Trigrams uses the final card colour before and after Jealousy", { ti
     assert.equal(judged.status, 200, JSON.stringify(judged.data));
     assert.equal(judged.data.room.currentAction.triggerEvent, "judgement_effective");
     assert.deepEqual(judged.data.room.currentAction.triggerOptions.map((option) => option.label), ["Jealousy of God"]);
-    const obtained = await requestAndSettle("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
+    const obtained = await request("trigger", { code: game.code, token: guoMember.token, providerId: "guo_jia_jealousy_of_god" });
     assert.equal(obtained.status, 200, JSON.stringify(obtained.data));
     assert.ok(obtained.data.room.myHand.some((held) => held.id === judgement.id));
     assert.equal(roomCardCount(game.code, judgement.id), 1);
     assert.equal(discardIds(game.code).includes(judgement.id), false);
-    assert.equal(obtained.data.room.players.find((player) => player.id === guo.id).hp, succeeds ? 4 : 3);
+    assert.equal(obtained.data.room.players.find((player) => player.id === guo.id).hp, 4);
+    if (succeeds) {
+      assert.notEqual(obtained.data.room.currentAction.kind, "response");
+    } else {
+      assert.equal(obtained.data.room.currentAction.kind, "response");
+      assert.equal(obtained.data.room.currentAction.actorId, guo.id);
+      assert.equal(obtained.data.room.currentAction.requirement, "dodge");
+      assert.deepEqual(obtained.data.room.currentAction.options, []);
+      assert.deepEqual(obtained.data.room.currentAction.legalActions, ["decline_response"]);
+      const declined = await request("decline_response", { code: game.code, token: guoMember.token });
+      assert.equal(declined.status, 200, JSON.stringify(declined.data));
+      assert.equal((await state(game.code, guoMember.token)).data.players.find((player) => player.id === guo.id).hp, 3);
+    }
   }
 });
 

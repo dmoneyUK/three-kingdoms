@@ -1179,7 +1179,7 @@ async function resolveJudgementContinuation(room: RoomRow, judgement: JudgementC
   if (!responseResume) return [];
   const resumedContinuation = judgement.causal && !responseResume.continuation.causal ? { ...responseResume.continuation, causal: judgement.causal } : responseResume.continuation;
   const response: ResponsePending = { kind: "response", actorId: responseResume.actorId, requirement: responseResume.requirement, reason: responseResume.reason, ...(responseResume.resolutionId ? { resolutionId: responseResume.resolutionId } : {}), ...(responseResume.disabledProviderIds ? { disabledProviderIds: responseResume.disabledProviderIds } : {}), ...(responseResume.delegation ? { delegation: responseResume.delegation } : {}), ...(judgement.causal ? { causal: judgement.causal } : {}), continuation: resumedContinuation };
-  const judged = { deck, discard, judged: finalCard, log, result: resolveResponseJudgement(finalCard, rule) };
+  const judged = { deck, discard, judged: finalCard, providerId: responseResume.providerId, log, result: resolveResponseJudgement(finalCard, rule) };
   const sourceId = "sourceId" in response.continuation ? response.continuation.sourceId : "";
   const source = players.find((player) => player.id === sourceId) ?? null;
   const actor = players.find((player) => player.id === response.actorId);
@@ -1681,6 +1681,14 @@ function reopenSemanticResponse(response: ResponsePending, actor: PlayerRow, log
   if (!next) return null;
   const presentation = addLogWithId(log, message);
   return { pending: withPresentationBarrier({ ...next, actorId: actor.id, deadline: nextResponseDeadline(actor) }, presentation.log, presentation.eventId), log: presentation.log };
+}
+
+function reopenFailedEightTrigramsResponse(response: ResponsePending, actor: PlayerRow, providerId: string | undefined, log: string[]) {
+  if (providerId !== "eight_trigrams_dodge" || response.requirement.kind !== "dodge") return null;
+  const disabledProviderIds = [...new Set([...(response.disabledProviderIds ?? []), providerId])];
+  const presentation = addLogWithId(log, `${actor.name}'s Eight Trigrams fails; the Dodge requirement remains. Choose another legal response or decline.`, undefined, { resolutionId: response.resolutionId });
+  const pending = withPresentationBarrier({ ...response, actorId: actor.id, deadline: nextResponseDeadline(actor), disabledProviderIds }, presentation.log, presentation.eventId);
+  return { pending, log: presentation.log };
 }
 
 function duelResponse(pending: ResponsePending | null | undefined) {
@@ -2492,7 +2500,7 @@ async function resolveTurnStartLuoshen(room: RoomRow, player: PlayerRow, inherit
  * A provider asks for Judgement; the response continuation decides what is
  * resumed.  This deliberately has no equipment or hero identity knowledge.
  */
-type ResponseJudgementOutcome = { deck: Card[]; discard: Card[]; judged?: Card; log: string[]; result: ReturnType<typeof resolveResponseJudgement> };
+type ResponseJudgementOutcome = { deck: Card[]; discard: Card[]; judged?: Card; providerId?: string; log: string[]; result: ReturnType<typeof resolveResponseJudgement> };
 
 async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePending, continuation: AttackContinuation, actor: PlayerRow, source: PlayerRow | null, judged: ResponseJudgementOutcome) {
   const nextRoom = { ...room, deck_json: JSON.stringify(judged.deck) };
@@ -2516,6 +2524,17 @@ async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePendi
     return;
   }
   judged.log = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}. ${resolution.failureText}`);
+  const retry = reopenFailedEightTrigramsResponse(response, actor, judged.providerId, judged.log);
+  if (retry) {
+    const causalEnvelope = causalEnvelopeAtStage(nextRoom, response.causal, "ATTACK_RESPONSE", {
+      currentSourceId: continuation.sourceId,
+      currentEffect: continuation.origin ?? "attack",
+      currentTargetIds: [actor.id],
+      resolvingPlayerId: actor.id,
+    });
+    await causalRoomStateWrite(room.id, { phase: "response", pending: retry.pending, deck: judged.deck, discard: judged.discard, log: retry.log, causalEnvelope }).run();
+    return;
+  }
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>();
   await resolveSourcedDamage({
     room: nextRoom,
@@ -2541,8 +2560,25 @@ async function applyAttackResponseOutcome(room: RoomRow, response: ResponsePendi
 async function applyGroupResponseOutcome(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, actor: PlayerRow, source: PlayerRow, players: PlayerRow[], judged: ResponseJudgementOutcome) {
   const resolution = judged.result.rule;
   const judgedResult = judged.result;
-  await db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id).run();
   const nextRoom = { ...room, deck_json: JSON.stringify(judged.deck) };
+  if (judgedResult.status !== "satisfied") {
+    const nextLog = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}. ${resolution.failureText}`);
+    const retry = reopenFailedEightTrigramsResponse(response, actor, judged.providerId, nextLog);
+    if (retry) {
+      const causalEnvelope = causalEnvelopeAtStage(room, response.causal, "GROUP_RESOLUTION", {
+        currentSourceId: continuation.sourceId,
+        currentEffect: continuation.cardKind,
+        currentTargetIds: continuation.remainingIds,
+        resolvingPlayerId: actor.id,
+      });
+      await causalRoomStateWrite(room.id, { phase: "response", pending: retry.pending, deck: judged.deck, discard: judged.discard, log: retry.log, causalEnvelope }).run();
+      return;
+    }
+    await db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id).run();
+    await resolveGroupDamage(nextRoom, response, continuation, actor, source, players, judged.discard, nextLog);
+    return;
+  }
+  await db().prepare("UPDATE rooms SET deck_json = ? WHERE id = ?").bind(JSON.stringify(judged.deck), room.id).run();
   if (judgedResult.status === "satisfied") {
     const nextLog = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}. ${resolution.successText}`);
     const remaining = responseAfterSemanticSuccess(response);
@@ -2556,10 +2592,7 @@ async function applyGroupResponseOutcome(room: RoomRow, response: ResponsePendin
       return;
     }
     await finishGroupStep(nextRoom, response, continuation, players, judged.discard, nextLog);
-    return;
   }
-  const nextLog = addLog(judged.log, `${actor.name} judges ${judged.judged ? `${judged.judged.rank}${judged.judged.suit}` : "nothing"} with ${resolution.label}. ${resolution.failureText}`);
-  await resolveGroupDamage(nextRoom, response, continuation, actor, source, players, judged.discard, nextLog);
 }
 
 function nextDuelResponse(response: ResponsePending, continuation: DuelContinuation, actorId: string, opponentId: string, deadline?: number) {
@@ -2642,14 +2675,14 @@ async function applyNegationResponseOutcome(room: RoomRow, pending: { response: 
   }
 }
 
-async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: PlayerRow, source: PlayerRow | null, players: PlayerRow[], discard: Card[], log: string[], resolution: JudgementResolution) {
+async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: PlayerRow, source: PlayerRow | null, players: PlayerRow[], discard: Card[], log: string[], providerId: string, resolution: JudgementResolution) {
   const response = pending.kind === "response" ? pending : null;
   const continuation = response?.continuation;
   if (!response || !continuation) throw new Error("Response Judgement continuation is no longer valid");
   const draw = drawJudgementCard(parse<Card[]>(room.deck_json, []), discard);
   if (draw.reshuffled) log = addLog(log, "The discard pile is shuffled into a new draw deck.");
   if (!draw.card) {
-    const outcome: ResponseJudgementOutcome = { deck: draw.deck, discard: draw.discard, log, result: resolveResponseJudgement(undefined, resolution) };
+    const outcome: ResponseJudgementOutcome = { deck: draw.deck, discard: draw.discard, providerId, log, result: resolveResponseJudgement(undefined, resolution) };
     const attack = attackResponse(response);
     if (attack) return applyAttackResponseOutcome(room, attack.response, attack.continuation, actor, source, outcome);
     const group = groupResponse(response);
@@ -2671,7 +2704,7 @@ async function applyResponseOutcome(room: RoomRow, pending: Pending, actor: Play
     revealedEventId: presentation.eventId,
     resolutionId: response.resolutionId,
     ...(continuation.causal ? { causal: continuation.causal } : {}),
-    resume: { kind: "response", actorId: response.actorId, requirement: response.requirement, reason: response.reason, ...(response.resolutionId ? { resolutionId: response.resolutionId } : {}), ...(response.disabledProviderIds ? { disabledProviderIds: response.disabledProviderIds } : {}), ...(response.delegation ? { delegation: response.delegation } : {}), continuation },
+    resume: { kind: "response", actorId: response.actorId, requirement: response.requirement, reason: response.reason, providerId, ...(response.resolutionId ? { resolutionId: response.resolutionId } : {}), ...(response.disabledProviderIds ? { disabledProviderIds: response.disabledProviderIds } : {}), ...(response.delegation ? { delegation: response.delegation } : {}), continuation },
   };
   await beginJudgementResolution(room, actor, players, judgement, draw.deck, draw.discard, presentation.log);
 }
@@ -4982,7 +5015,7 @@ export async function POST(request: Request) {
     }
     const claim = await db.prepare("UPDATE rooms SET phase = 'resolving' WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(room.id, liveRoom.pending_json).run();
     if ((claim.meta.changes ?? 0) <= 0) return json({ error: "That response has already been resolved.", stale: true, room: await roomState(code, token) }, 409);
-    await applyResponseOutcome(liveRoom, pending, me, source, players, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []), responseExecution.resolution);
+    await applyResponseOutcome(liveRoom, pending, me, source, players, parse<Card[]>(liveRoom.discard_json, []), parse<string[]>(liveRoom.log_json, []), responseExecution.providerId, responseExecution.resolution);
     return json({ room: await roomState(code, token) });
   }
 

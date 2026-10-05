@@ -158,6 +158,7 @@ export type JudgementResponseResume = {
   actorId: string;
   requirement: ActionRequirement;
   reason: string;
+  providerId?: string;
   resolutionId?: string;
   disabledProviderIds?: string[];
   delegation?: ResponsePending["delegation"];
