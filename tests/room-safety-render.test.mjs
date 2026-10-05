@@ -567,7 +567,9 @@ test("UI-11 keeps one local dock and stable opponent anchors across supported pl
   for (const [playerCount, rows] of [[5, 2], [6, 3], [8, 4], [10, 5]]) {
     assert.match(sequenceStyleSource, new RegExp(`data-player-count="${playerCount}"[\\s\\S]*--seat-row-count: ${rows}`), `${playerCount}-player topology declares its side-column row budget`);
   }
-  assert.match(sequenceStyleSource, /\.game-shell \.player-board\[data-seat-topology="side-column"\] > \.opponent-player-card\s*\{[^}]*width: clamp\(44px, 8vw, 86px\);[^}]*height: min\(128px, 100%\);[^}]*min-height: 0;/);
+  assert.match(sequenceStyleSource, /\.game-shell \.play-table\[data-seat-topology="side-column"\]\s*\{[^}]*--side-safe-thumb-width: clamp\(74px, 13vw, 86px\);[^}]*--side-safe-edge: calc\([^\n]*var\(--side-safe-thumb-width\)/, "desktop seat sizing reserves the same width in the Interaction Safe Zone");
+  assert.match(sequenceStyleSource, /@media \(max-width: 650px\)\s*\{\s*\.game-shell \.play-table\[data-seat-topology="side-column"\]\s*\{[^}]*--side-safe-thumb-width: clamp\(56px, 15\.5vw, 74px\);/, "mobile Side Column keeps a bounded responsive seat width");
+  assert.match(sequenceStyleSource, /\.game-shell \.player-board\[data-seat-topology="side-column"\] > \.opponent-player-card\s*\{[^}]*width: var\(--side-safe-thumb-width\);[^}]*height: min\(128px, 100%\);[^}]*min-height: 0;/, "side seats use the width included in safe-zone geometry");
 });
 
 test("UI-11 preserves hand rail and one footer console for one, five, and ten cards", () => {
