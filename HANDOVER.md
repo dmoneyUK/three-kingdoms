@@ -7,9 +7,9 @@ This file contains only the current execution handoff. Product design is in `doc
 
 ## Latest delivery / CI checkpoint — UX2.2-CI-RECOVERY-01
 
-Latest implementation is pushed as `4f50311`. Actions run `37302933217` was **cancelled** at browser test `[358/429]`; it emitted 19 numbered failures before cancellation, so it is not a pass. Lint and build succeeded; `npm test` was skipped. The failures group into a Dying fixture that conflated `currentParticipantId` with the rescue `decisionActorId`, plus stale assertions for deduplicated role metadata and the player-facing Negation title. The short-Stage overflow fix remains in `b91cbc5`. The current local repair is limited to browser fixture/tests; no gameplay or production UI code changed.
+The CI repair is pushed as `8892dff`. Actions run `37305536459` is **in progress**; no green result is claimed yet. It validates the Dying-fixture semantic separation and the corrected browser assertions. The prior run `37302933217` on `4f50311` was cancelled at browser test `[358/429]` after emitting 19 numbered failures; lint/build had succeeded and `npm test` was skipped. The short-Stage overflow fix remains in `b91cbc5`. No gameplay or production UI code changed.
 
-Focused validation passed: CI-failure regressions 41/41; short-portrait Top Row containment matrix 20/20; `npx eslint tests/browser/ui19.spec.mjs` and `git diff --check` passed. Repository ESLint configuration ignores `tests/browser/fixture.jsx`. No full local suite/build/lint was run. CI for the local repair is pending push.
+Focused validation passed: CI-failure regressions 41/41; short-portrait Top Row containment matrix 20/20; `npx eslint tests/browser/ui19.spec.mjs` and `git diff --check` passed. Repository ESLint configuration ignores `tests/browser/fixture.jsx`. No full local suite/build/lint was run. Actions run `37305536459` is validating the repair.
 
 ## Design checkpoint
 
@@ -17,10 +17,10 @@ Reviewed remote design blob `45430bc62b7c50bcbeef40724408ead94ad27120` at `origi
 
 ## Current task — UX2.2-CI-RECOVERY-01
 
-Status: **FOCUSED REPAIR IMPLEMENTED LOCALLY — READY TO COMMIT/PUSH FOR CI**.
+Status: **PUSHED — WAIT FOR CI RUN `37305536459`**.
 
 Bounded scope: correct the Dying browser fixture's separation of public subject versus rescue actor, and align only the CI-failing UI-19 assertions with the current design's identity deduplication and Negation title. Preserve the remaining VIS-12N screenshot/geometry work. Do not change production UI, game logic, or protocol, and do not begin another UX feature while CI is unresolved.
 
-Acceptance: Commit and push the scoped fixture/test correction; inspect the new Actions run and repair any additional observed failures until a completed successful CI run is recorded. Then re-read the current workflow and remote design document before planning the next bounded task. No gameplay or protocol changes.
+Acceptance: Inspect run `37305536459` and repair any additional observed failures until a completed successful CI run is recorded. Then re-read the current workflow and remote design document before planning the next bounded task. No gameplay or protocol changes.
 
-Resume point: focused regressions pass locally. Review the final diff (including the roadmap note), commit only `HANDOVER.md`, `docs/AUTONOMOUS_UI_ROADMAP.md`, `tests/browser/fixture.jsx`, and `tests/browser/ui19.spec.mjs`, then push `ux-v2` to trigger CI.
+Resume point: repair commit `8892dff` is on `origin/ux-v2`; run `37305536459` is in progress. Check its conclusion and logs before planning or editing another task.
