@@ -74,7 +74,8 @@ The established Dock structure is implemented and must not be rebuilt:
 - Skills and Equipment occupy the upper operational band;
 - Hand is one horizontal layer with overlap, pan, and stable viewport anchoring;
 - persistent Judgement is attached to the local Hero;
-- Guidance and Actions remain protected at the bottom;
+- Current Guidance occupies the full-width Dock top edge; Actions remain
+  protected in the bottom row;
 - semantic Primary / contextual Cancel / authoritative Skip-Decline / End are
   separate;
 - mobile Primary action placement and safety gutter are implemented;
@@ -185,6 +186,18 @@ than restart them.
   browser 14/14 plus seat Hero-info 1/1, and `room-safety-render` 19/19;
   targeted ESLint and `git diff --check` passed. CI is pending after push; the
   prior Negation delivery run was cancelled during browser validation.
+
+### UX2.2-DOCK-GUIDANCE-TOP-01 — Guidance adjacent to the Interaction Stage
+
+- Moved the existing private Guidance strip to the first Dock grid row and DOM
+  order, directly below the Stage and above Hero/Skills/Equipment/Hand. The
+  single-layer Hand and bottom Action Row retain their existing semantics and
+  placement; guidance remains viewer-private.
+- Updated Dock geometry/action-flow regressions and the raised-card check.
+  Focused UI-19 browser selection passed 12/12 across 390/480/650/1440px Dock
+  geometry, 360/480/1440px action layouts, and long-guidance/selected-card
+  containment. Targeted ESLint and `git diff --check` passed. No full local
+  suite/build/lint was run; push-triggered CI remains to be checked.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 

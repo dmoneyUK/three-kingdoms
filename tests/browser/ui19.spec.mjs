@@ -1545,7 +1545,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }
     expect(hero.right).toBeLessThanOrEqual(handArea.left + 1);
     expect(skills.right).toBeLessThanOrEqual(equipment.left + 1);
     expect(handArea.top).toBeGreaterThanOrEqual(Math.max(skills.bottom, equipment.bottom) - 1);
-    expect(handArea.bottom, "guidance belongs below Hand").toBeLessThanOrEqual(guidance.top);
+    expect(Math.abs(guidance.top - layout.dock.top), "Guidance begins at the top of the Dock").toBeLessThanOrEqual(1);
+    expect(guidance.bottom, "Guidance stays above Hero, Skills, Equipment, and Hand").toBeLessThanOrEqual(Math.min(hero.top, skills.top, equipment.top, handArea.top) + 1);
     expect(guidance.bottom, "guidance stays above bottom actions").toBeLessThanOrEqual(actions.top);
     for (const [name, part] of Object.entries(layout.parts)) {
       expect(part.width, `${name} remains visible`).toBeGreaterThan(0);
@@ -3098,6 +3099,12 @@ for (const width of [360, 480, 1440]) {
       const dockBox = await dock.boundingBox();
       const guidanceBox = await guidance.boundingBox();
       const controlBox = await controls.boundingBox();
+      const dockChildOrder = await dock.evaluate((element) => [...element.children].map((child) => child.className));
+      expect(dockChildOrder[0], `${state} exposes private Guidance before operational regions in DOM order`).toBe("console-guidance");
+      const stageBox = await page.locator(".interaction-stage").boundingBox();
+      if (stageBox) expect(guidanceBox.y).toBeGreaterThanOrEqual(stageBox.y + stageBox.height - 1);
+      const upperDockContent = await Promise.all([".local-hero-card", ".local-status-panel", ".local-equipment-panel", ".local-hand"].map((selector) => dock.locator(selector).boundingBox()));
+      expect(guidanceBox.y + guidanceBox.height, `${state} keeps Guidance above Hero, Skills, Equipment, and Hand`).toBeLessThanOrEqual(Math.min(...upperDockContent.map((box) => box.y)) + 1);
       const actionGeometry = await controls.evaluate((element) => {
         const rect = (name) => {
           const button = element.querySelector(`[data-action-slot="${name}"] button`);
@@ -3201,7 +3208,7 @@ test("UX2.0VIS-06A 480x900 shows long guidance and leaves raised hand cards clea
   await page.locator('[data-hand-card-id="browser-attack"] .game-card').click();
   const selectedCard = await page.locator('.card-slot.single-selected .game-card').boundingBox();
   const guidanceBox = await page.locator('[data-console-guidance="true"]').boundingBox();
-  expect(selectedCard.y + selectedCard.height).toBeLessThanOrEqual(guidanceBox.y);
+  expect(guidanceBox.y + guidanceBox.height).toBeLessThanOrEqual(selectedCard.y);
 });
 
 for (const width of [480, 1440]) {

@@ -5,22 +5,24 @@ Mode: `AUTONOMOUS UI RUN`
 
 This file contains only the current execution handoff. Product design is in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest delivery / CI checkpoint — UX2.2-HF-ACTIVE-NEGATION-01
+## Latest delivery / CI checkpoint — UX2.2-CI-REPAIR-01
 
-Implementation pushed as `393a3df`. Actions run `37297723040` had a successful build step but was **cancelled** during browser validation; it is not a green result. Earlier relevant runs exposed eight short-portrait Stage containment failures (`37296756538`) and a stale `OpponentInspectionOverlay` source assertion (`37291702120`). No Reviewer acceptance, deployment, or production state is implied.
+Implementation pushed as `b91cbc5`. Actions run `37301912137` was **in progress** when checked; no green result is claimed. The repair compacts proven short Top Row Current Effect/Focus composition, removes only already-visible identity/viewer-decision duplication, keeps open Negation guidance in the neutral Reaction Chain, preserves local-Hero-in-Dock ownership, and replaces stale Inspect source-shape assertions with behavior coverage. No Reviewer acceptance, deployment, or production state is implied.
 
-The local CI repair now compacts proven short Top Row Current Effect/Focus composition, removes only already-present identity/viewer-decision duplication, and places the open Negation explanation in the active Reaction Chain node. Unique public context, neutral responder privacy, and the local-Hero-in-Dock boundary remain intact. The stale Inspect source-shape expectations now defer to browser behavior coverage.
-
-Focused validation: short-portrait UI-19 matrix 20/20; Current Effect + Inspect browser suites 14/14; seat Hero-info behavior 1/1; `node --import tsx --test tests/room-safety-render.test.mjs` 19/19; targeted ESLint and `git diff --check` passed. No full local test/build/lint suite was run. The repair has not yet been pushed; its Actions result is pending.
+Focused validation passed: short-portrait UI-19 matrix 20/20; Current Effect + Inspect browser suites 14/14; seat Hero-info behavior 1/1; `node --import tsx --test tests/room-safety-render.test.mjs` 19/19; targeted ESLint and `git diff --check`. No full local test/build/lint suite was run.
 
 ## Design checkpoint
 
-Reviewed remote design blob `45430bc62b7c50bcbeef40724408ead94ad27120` at `origin/ux-v2` commit `b15e9dea6b6f0a4ceeac2c2d8cc51476aed1aa6b`. Relevant requirements include open-window responder privacy, no repeated identity metadata, responsive Stage pressure, a mobile vertical Fast Response chain, and a top-edge Local Dock Guidance Strip.
+Reviewed remote design blob `45430bc62b7c50bcbeef40724408ead94ad27120` at `origin/ux-v2` commit `b91cbc5aaa5ceb130eb65534e5ddabad3ef66ac4`; it matches the previously recorded design revision. The next slice follows §§0.77, 0.89–0.90, 2.7, and 12.7: private Guidance at the Dock top edge below the Stage; Hand/operational regions retain their fixed composition; bottom actions remain separate and reachable.
 
-## Current task — deliver the CI repair
+## Current task — UX2.2-DOCK-GUIDANCE-TOP-01
 
-Status: **IMPLEMENTED LOCALLY — READY TO PUSH**.
+Status: **IMPLEMENTED LOCALLY — READY FOR PUSH CI CHECKPOINT**.
 
-Bounded scope: deliver the measured short Top Row Stage containment repair and behavior-based replacement of stale Inspect assertions. Keep the Attack Response effect/target relationship, Negation's vertical causal chain, public responder privacy, exact semantic authority, and all 20 geometry checks. No client legality, server/protocol, or gameplay changes.
+Bounded scope: move the existing private Local Dock Guidance Strip from below the Hand to a full-width top row directly below the Interaction Stage. Preserve the Hero/Skills/Equipment band, single-layer Hand, fixed bottom Action Row, guidance privacy, and current control semantics. Update contradictory browser geometry assertions and prove the strip/selected-card/action boundaries at representative phone and wide viewports. No legality, server/protocol, or gameplay changes.
 
-Resume point: commit and push the validated repair, then record its exact Actions status. If the new run fails, repair that observed failure before new feature source edits. If queued/in progress, follow workflow §5 and review the latest design before planning the next bounded task.
+Acceptance met: Guidance is above Hero/Skills/Equipment and Hand, appears first in Dock DOM order, remains below the Stage, is not covered by a raised/selected Hand card, and stays separated from bottom actions. Existing thumb-zone, button-order, and no-horizontal-overflow assertions continue to pass.
+
+Focused validation: `npm run test:browser -- tests/browser/ui19.spec.mjs --grep 'VIS-12K|VIS-06A|VIS-06B'` passed 12/12; `npx eslint app/page.tsx tests/browser/ui19.spec.mjs` and `git diff --check` passed. No full local suite/build/lint was run. Roadmap updated; the current implementation has not yet been pushed.
+
+Resume point: inspect the final scoped diff, commit/push this task, then record the exact Actions result. If the run fails, repair that observed failure before planning another feature edit.
