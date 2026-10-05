@@ -330,13 +330,14 @@ for (const viewport of [
     await expect(source).toContainText("Player 1");
     await expect(effect.locator("strong")).toHaveText("Attack");
     await expect(dyingPlayer).toContainText("Player 2");
-    await expect(dyingPlayer.locator(".hero-focus-heading strong")).toHaveText("Target");
+    await expect(dyingPlayer.locator(".hero-focus-heading strong")).toHaveText("DYING PLAYER");
     await expect(handoff).toHaveAttribute("data-dying-player-id", "p2");
     await expect(handoff).toHaveAttribute("data-dying-decision-actor-id", "p3");
     await expect(handoff).toContainText("Rescue controls stay in the local console.");
     await expect(stage.locator("button")).toHaveCount(0);
     await expect(stage).not.toContainText("Peach");
-    await expect(stage).not.toContainText("INTERACTION STAGE");
+    await expect(stage.locator(":scope > header strong")).toHaveText("Dying · Rescue");
+    await expect(stage.locator(".interaction-stage-visually-hidden")).toHaveCSS("clip", "rect(0px, 0px, 0px, 0px)");
     await expect(stage).not.toContainText("HERO FOCUS");
     await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
     await expect(stage.locator('[data-hero-focus-player-id="p3"]')).toHaveCount(0);
@@ -363,6 +364,56 @@ for (const viewport of [
     expect(stageBox.x).toBeGreaterThanOrEqual(0);
     expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width);
     expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+  });
+}
+
+for (const viewport of [
+  { width: 320, height: 640 },
+  { width: 360, height: 640 },
+  { width: 390, height: 640 },
+  { width: 480, height: 640 },
+  { width: 650, height: 700 },
+  { width: 650, height: 900, safeTop: "319px" },
+]) {
+  test(`Dying Current Effect and rescue handoff stay inside the ${viewport.width}x${viewport.height} safe zone`, async ({ page }) => {
+    await loadFixture(page, { count: 4, state: "dying", ...viewport });
+    const playTable = page.locator(".play-table");
+    if (viewport.safeTop) await playTable.evaluate((element, safeTop) => element.style.setProperty("--interaction-safe-top", safeTop), viewport.safeTop);
+
+    const stage = page.locator('.play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"]');
+    const safeZone = page.locator(".interaction-safe-zone");
+    const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
+    const effect = stage.locator('[aria-label="Current Effect"]');
+    const dyingPlayer = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
+    const handoff = stage.locator('[data-dying-handoff="proven"]');
+    await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+    await expect(source).toBeVisible();
+    await expect(effect).toBeVisible();
+    await expect(dyingPlayer).toBeVisible();
+    await expect(dyingPlayer.locator(".hero-focus-heading strong")).toHaveText("DYING PLAYER");
+    await expect(handoff).toBeVisible();
+
+    const [safeBox, stageBox, sourceBox, effectBox, dyingBox, handoffBox, dockBox] = await Promise.all([
+      safeZone.boundingBox(),
+      stage.boundingBox(),
+      source.boundingBox(),
+      effect.boundingBox(),
+      dyingPlayer.boundingBox(),
+      handoff.boundingBox(),
+      page.locator(".local-player-dock").boundingBox(),
+    ]);
+    expect(safeBox && stageBox && sourceBox && effectBox && dyingBox && handoffBox && dockBox).toBeTruthy();
+    expect(stageBox.y).toBeGreaterThanOrEqual(safeBox.y - 1);
+    expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(safeBox.y + safeBox.height + 1);
+    expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+    for (const box of [sourceBox, effectBox, dyingBox, handoffBox]) {
+      expect(box.y).toBeGreaterThanOrEqual(stageBox.y - 1);
+      expect(box.y + box.height).toBeLessThanOrEqual(stageBox.y + stageBox.height + 1);
+    }
+    if (safeBox.height <= 330) {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(dyingBox.x + 2);
+    }
   });
 }
 

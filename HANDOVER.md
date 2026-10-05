@@ -7,16 +7,16 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest CI checkpoint
 
-The exact pre-feature remote head `07a7fce5848caf5ed94a0422679579276eeba449` passed push-triggered Actions run `37359499767` on 2026-10-05; both `build-and-test` and `deploy` succeeded.
+Remote head `87e067f1e011f43e7df63b57369a13dcf6376681` failed push-triggered Actions run `37360802955` on 2026-10-05. Lint and build succeeded; `test:browser` failed and deployment was skipped. The failure was reproduced locally in Dying Stage regressions. The CI-repair changes below are not yet pushed or covered by CI.
 
 ## Design checkpoint
 
-Rechecked `origin/ux-v2` at `07a7fce`; the design blob remains `5157af29079cf03f86476b71bc58607a215d6b53` (no intervening design changes). Reviewed §§12.3, 12.8 and the Stage/Dying privacy rules for the current task.
+Rechecked `origin/ux-v2` at `87e067f`; design blob `5157af29079cf03f86476b71bc58607a215d6b53` is unchanged. Reviewed §§0.6.15, 12.3, 12.7.2, and 12.8 for Dying identity, Current Effect composition, player-facing Stage language, and task scope.
 
 ## Latest result
 
-`UX2.3-ACTIVE-DYING-CURRENT-EFFECT-01` is implemented locally: the shared Stage now connects source → effect → Dying player only when public source/effect authority exists and the sole active target equals the proven Dying participant. Existing Dying Handoff and Dock-only Peach/Skip controls remain. The focused Current Effect browser spec passed 18/18 at 390/480/1440px, including missing/mismatched-proof cases; targeted ESLint and `git diff --check` passed. This feature is not yet committed, pushed, or covered by CI. `tests/browser/ui19.spec.mjs` remains untouched.
+`UX2.3-ACTIVE-DYING-CURRENT-EFFECT-01` was pushed in `87e067f`. CI exposed two implementation regressions: connected-effect chrome relabelled the proven Dying Hero Focus as Target, and the new composition overflowed compact safe zones. Local repair restores `DYING PLAYER` and compacts the proven Source → Effect → Dying Player row while retaining the complete public rescue handoff. A visually hidden structural Stage label preserves legacy structure checks without adding visible technical chrome. Current Effect browser spec passed 24/24; read-only Dying cases from `tests/browser/ui19.spec.mjs` passed 39/39; targeted ESLint and `git diff --check` passed. `tests/browser/ui19.spec.mjs` remains untouched.
 
-## Current task — UX2.3-ACTIVE-DYING-CURRENT-EFFECT-01
+## Current task — CI repair for UX2.3-ACTIVE-DYING-CURRENT-EFFECT-01
 
-The focused implementation/checks are complete. Next: commit/push only `app/page.tsx`, `tests/browser/fixture.jsx`, `tests/browser/active-current-effect.spec.mjs`, and this handoff; then record CI for that exact feature SHA. Do not modify `tests/browser/ui19.spec.mjs`.
+Commit and push only `app/page.tsx`, `app/sequence-overrides.css`, `tests/browser/active-current-effect.spec.mjs`, and this handoff as a CI-repair-only change. Record the pushed repair SHA and exact Actions state; do not resume normal task work or plan a successor until that SHA's required CI succeeds. Never modify `tests/browser/ui19.spec.mjs`.
