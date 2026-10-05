@@ -4567,6 +4567,38 @@ defines approved product direction only. A design update here does not silently
 replace an already-running bounded task; apply it at the next planning boundary
 unless the current task directly conflicts with it.
 
+### 12.0 Implemented baseline — do not rebuild
+
+The following foundation is already implemented and is **not** a future task
+queue. Do not select work whose purpose is simply to recreate these contracts:
+
+- stable/fail-closed PresentationSnapshot / PresentationClientView architecture;
+- CurrentAction-owned local legality and actionRevision reconciliation;
+- 2–4 player Top Row and 5–10 player Side Column topology;
+- protected Interaction Safe Zone and fixed opponent-seat DOM;
+- persistent Local Player Dock structure;
+- single-layer Hand with overlap/pan and viewport anchoring;
+- persistent local Judgement on the Hero and active Judgement in the Stage;
+- semantic Confirm / contextual Cancel / authoritative Skip-Decline / End
+  separation and mobile Primary-action placement;
+- opponent Hero-first thumbnails, public Equipment summary, upper-body crop,
+  and established mobile containment work;
+- four-player interaction screenshot/geometry coverage and the subsequent pile
+  separation / duplicate-metadata corrections;
+- authoritative self-target selection from the Local Player Dock;
+- failed response-provider continuation (Eight Trigrams reference behavior);
+- Borrowed Sword complete-path legality, including the legal two-player case.
+
+The durable implementation ledger is
+`docs/AUTONOMOUS_UI_ROADMAP.md`. A completed baseline item may be revisited
+only when the Reviewer changes the design contract or a concrete regression
+shows that the existing implementation no longer satisfies it. CI/test repair
+for an existing implementation does not by itself authorize reimplementing the
+feature.
+
+The directions below are **deltas on top of this baseline**, not permission to
+rebuild earlier UX2 slices.
+
 ### 12.1 First approved direction — local target PREVIEW in Hero Focus
 
 This is the next approved UX direction.
