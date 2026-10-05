@@ -2226,6 +2226,10 @@ for (const width of [1440, 650, 480]) {
         await expect(stage).toHaveAttribute("aria-label", "Negation Response");
         await expect(stageTitle).toContainText("NEGATION RESPONSE");
         await expect(stageTitle).not.toContainText("INTERACTION STAGE");
+      } else if (state === "interaction") {
+        await expect(stage).toHaveAttribute("aria-label", "Interaction Stage");
+        await expect(stageTitle.locator("strong")).toHaveText("Attack Response");
+        await expect(stageTitle).not.toContainText("INTERACTION STAGE");
       } else {
         await expect(stage).toContainText("INTERACTION STAGE");
       }
@@ -2275,7 +2279,7 @@ test("UX2.0VIS-12M avoids duplicating source and target identity around Hero Foc
   const stage = page.locator('[aria-label="Interaction Stage"]');
   const heroFocus = stage.locator(".hero-focus");
   await expect(heroFocus).toHaveAttribute("data-hero-focus-source-id", "p1");
-  await expect(heroFocus).toHaveAttribute("data-hero-focus-role", "CURRENT TARGET");
+  await expect(heroFocus).toHaveAttribute("data-hero-focus-role", "Target");
   await expect(heroFocus).toHaveAttribute("data-hero-focus-player-id", "p2");
   await expect(stage.locator(".hero-focus-source")).toHaveText("SOURCE · Player 1");
   await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
@@ -2982,10 +2986,14 @@ test("UX2.0VIS-02 keeps an empty safe-zone hook in REST", async ({ page }) => {
 
 test("UI-19 semantic Interaction Stage and Hero Focus remain viewer-visible", async ({ page }) => {
   await loadFixture(page, { state: "interaction", count: 4, width: 1440, height: 900 });
-  await expect(page.locator('[data-stage="ATTACK_RESPONSE"]')).toBeVisible();
+  const stage = page.locator('[aria-label="Interaction Stage"]');
+  await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
   await expect(page.locator('.interaction-stage[data-presentation-transition="INTERACTION_TRANSITION"]')).toBeVisible();
   await expect(page.locator('[data-hero-focus="true"]')).toBeVisible();
-  await expect(page.locator('[aria-label="Interaction Stage"]')).toContainText("INTERACTION STAGE");
+  await expect(stage.locator(":scope > header strong")).toHaveText("Attack Response");
+  await expect(stage).not.toContainText("INTERACTION STAGE");
+  await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 1 used Attack on Player 2.");
+  await expect(stage.locator('.hero-focus[data-hero-focus-role="Target"]')).toBeVisible();
   await expect(page.locator('[data-interaction-decision-actor="true"]')).toHaveCount(1);
 });
 

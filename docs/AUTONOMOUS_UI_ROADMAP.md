@@ -318,8 +318,9 @@ than restart them.
   treatment remain unchanged; no eligibility or gameplay logic changed.
 - The Current Effect and semantic-response-heading browser specs passed 20/20;
   targeted ESLint and `git diff --check` passed. No full local suite/build/lint
-  was run. Pushed as `3a16740`; exact run `37321563100` was `in_progress` at the
-  2026-10-05 planning checkpoint, so no CI conclusion is recorded.
+  was run. Pushed as `3a16740`; exact run `37321563100` later completed with
+  failure in the browser-test step (run 701); the stale UI-19 assertions are
+  documented in the CI recovery entry below.
 
 ### UX2.3-FAST-RESPONSE-EVENT-SUMMARY-01 — Proven Current Effect summary
 
@@ -333,8 +334,9 @@ than restart them.
 - Focused browser specs passed 21/21 after correcting one new 390px Negation
   geometry assertion to use the established narrow-flow branch; targeted ESLint
   and `git diff --check` passed. No full local suite/build/lint was run.
-  Pushed as `8de8445`; exact Actions run `37323057854` was `in_progress` at the
-  2026-10-05 planning checkpoint, so no CI conclusion is recorded.
+  Pushed as `8de8445`; exact Actions run `37323057854` later completed with
+  failure in the browser-test step (run 702); the stale UI-19 assertions are
+  documented in the CI recovery entry below.
 
 ### UX2.3-FAST-RESPONSE-CHAIN-GEOMETRY-01 — Portrait Reaction Chain proof
 
@@ -345,7 +347,23 @@ than restart them.
 - The three focused Negation Current Effect viewport cases passed 3/3;
   targeted ESLint and `git diff --check` passed. Existing responsive CSS already
   satisfied the measured contract, so no production stylesheet change was
-  needed. No full local suite/build/lint was run. Commit/push and CI are pending.
+  needed. No full local suite/build/lint was run. Pushed as `b4c0937`; exact
+  push-triggered Actions run `37323822915` was `in_progress` at the 2026-10-05
+  checkpoint; no conclusion is inferred.
+
+### CI-RECOVERY-UX23-UI19-ASSERTIONS-01 — Fast-response semantic assertion alignment
+
+- Runs `37321563100` and `37323057854` failed in `npm run test:browser`. A
+  CI-mode local reproduction completed with 447 passed and 5 failed, all in
+  `tests/browser/ui19.spec.mjs`: three 08A viewport cases expected the removed
+  architectural `INTERACTION STAGE` label, 12M expected `CURRENT TARGET` rather
+  than the player-facing `Target`, and the UI-19 semantic Stage test expected
+  the same obsolete architecture label.
+- Updated those assertions to preserve and verify the accessible Stage name,
+  player-facing `Attack Response` title and `Target` role, including the proven
+  event summary. No production, gameplay, server, or protocol behavior changed.
+- The five affected browser cases passed 5/5; targeted ESLint and
+  `git diff --check` passed. CI for the correction is pending after push.
 
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
