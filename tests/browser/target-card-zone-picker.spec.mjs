@@ -96,3 +96,15 @@ for (const { zone, key } of [
     ]);
   });
 }
+
+test("picker fixture changes preserve baseline public Equipment for Inspect", async ({ page }) => {
+  await page.setViewportSize({ width: 480, height: 900 });
+  await page.goto("/tests/browser/fixture.html?state=rest&count=6");
+
+  const seat = page.locator('[data-player-anchor="p2"]');
+  await expect(seat.locator('.opponent-equipment-summary [data-slot="weapon"][data-card-kind="ZhugeCrossbow"]')).toHaveCount(1);
+  await seat.locator(".opponent-hero-target").click();
+
+  const inspection = page.getByRole("dialog", { name: "Player 2 opponent inspection" });
+  await expect(inspection.locator('[aria-label="Equipment"] .opponent-inspection-card[aria-label="Explain Zhuge Crossbow"]')).toHaveCount(1);
+});

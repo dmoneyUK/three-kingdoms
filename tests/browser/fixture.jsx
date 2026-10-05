@@ -300,7 +300,7 @@ function browserRoom({ state, count, handSize, targetHandCount, equipmentCase, h
       : state === "rest" && id === "p3" ? [card("browser-lightning", "Lightning", "♥", "Q")] : [],
     equipmentCards: state === "picker-hand-zone" && id === "p1"
       ? [card("browser-public-equipment", "NioShield", "♣", "2")]
-      : equipmentCase ? fixtureSeatEquipment(id, equipmentCase) : (state === "rest" || borrowedSwordFixture) && id === "p2" ? [card("browser-zhuge-crossbow", "♦", "A")] : [],
+      : equipmentCase ? fixtureSeatEquipment(id, equipmentCase) : (state === "rest" || borrowedSwordFixture) && id === "p2" ? [card("browser-zhuge-crossbow", "ZhugeCrossbow", "♦", "A")] : [],
     attackRange: 1,
     distance: id === meId ? null : 1,
     isHost: index === 0,

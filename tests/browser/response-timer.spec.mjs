@@ -4,6 +4,7 @@ test("UX2.3 response timer is glanceable, urgent near expiry, and stays top-righ
   await page.clock.install({ time: new Date("2026-01-01T00:00:00.000Z") });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/tests/browser/fixture.html?state=negation&timedResponse=1");
+  await page.addStyleTag({ content: ".visible-countdown-response { transition: none !important; }" });
 
   const timer = page.locator(".play-table > .visible-countdown-response");
   await expect(timer).toBeVisible();
@@ -40,13 +41,13 @@ test("UX2.3 response timer is glanceable, urgent near expiry, and stays top-righ
   }
 
   const calmBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
-  await page.clock.runFor(16_000);
+  await page.clock.fastForward(16_000);
   await expect(timer).toHaveAttribute("data-countdown-urgency", "urgent");
   await expect(timer).toHaveAttribute("aria-label", "Response Time 9 seconds");
   const urgentBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
   expect(urgentBorder).not.toBe(calmBorder);
 
-  await page.clock.runFor(5_000);
+  await page.clock.fastForward(5_000);
   await expect(timer).toHaveAttribute("data-countdown-urgency", "critical");
   await expect(timer).toHaveAttribute("aria-label", "Response Time 4 seconds");
   const criticalBorder = await timer.evaluate((element) => getComputedStyle(element).borderTopColor);
