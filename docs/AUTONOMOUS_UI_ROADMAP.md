@@ -170,6 +170,22 @@ than restart them.
   (the JSX fixture is ignored by repository lint configuration), and
   `git diff --check` passed. No full local suite/build/lint was run.
 
+### UX2.2-CI-REPAIR-01 — Short Top Row Stage pressure and current test contracts
+
+- Under short Safe Zone pressure, a proven Current Effect and Hero Focus use a
+  compact connected row. The Stage omits focus/source and local decision
+  summaries only when those identities are already present in the authoritative
+  participant composition / local viewer state; unique public context remains.
+- Open Negation window guidance is part of the active Reaction Chain node, not a
+  second metadata panel. The chain remains vertical and neutral about private
+  responders. Dying geometry coverage preserves the viewer-Hero-in-Dock rule.
+- Replaced the stale `OpponentInspectionOverlay` implementation assertion with
+  shared-Stage browser behavior coverage, including the seat Hero-info affordance.
+  Focused validation passed: short-portrait UI-19 20/20, Current Effect/Inspect
+  browser 14/14 plus seat Hero-info 1/1, and `room-safety-render` 19/19;
+  targeted ESLint and `git diff --check` passed. CI is pending after push; the
+  prior Negation delivery run was cancelled during browser validation.
+
 ### Interaction-correctness additions — CLOSED IMPLEMENTATION
 
 - **13A / Reviewer addition A — authoritative self-target symmetry:** a

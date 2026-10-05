@@ -331,11 +331,11 @@ test.describe("UX2.0VIS-09C preserve the Hand viewport across membership changes
 
 test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment", () => {
   const states = [
-    { state: "interaction", required: [".hero-focus", ".interaction-stage-meta-region"] },
-    { state: "negation", required: [".hero-focus", '[data-reaction-chain="proven"]', '[data-reaction-node="root"]', '[data-reaction-node="active"]', ".interaction-stage-meta-region"] },
-    { state: "dying", required: [".hero-focus", '[data-dying-handoff="proven"]', ".dying-handoff-grid", ".dying-handoff-guidance"] },
+    { state: "interaction", required: [".hero-focus", ".hero-focus-source", '.interaction-stage-current-effect[role="group"]'] },
+    { state: "negation", required: [".hero-focus", '[data-reaction-chain="proven"]', '[data-reaction-node="root"]', '[data-reaction-node="active"]', '[data-negation-window-state="open"]'] },
+    { state: "dying", required: ['[data-dying-handoff="proven"]', ".dying-handoff-grid", ".dying-handoff-guidance"] },
     { state: "group-observer", required: [".hero-focus", ".medium-participant-card", '[data-group-target-scope="original"]', ".interaction-stage-meta-region"] },
-    { state: "long-guidance", required: [".hero-focus", ".interaction-stage-meta-region"] },
+    { state: "long-guidance", required: [".hero-focus", ".hero-focus-source", '.interaction-stage-current-effect[role="group"]'] },
   ];
   for (const viewport of [{ width: 480, height: 640 }, { width: 650, height: 700 }, { width: 320, height: 640 }, { width: 360, height: 640 }]) {
     for (const { state, required } of states) {
@@ -345,10 +345,18 @@ test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment",
         const dock = page.locator(".local-player-dock");
         await expect(stage).toBeVisible();
         for (const selector of required) await expect(stage.locator(selector)).toBeVisible();
-        const heroFocus = stage.locator(".hero-focus");
-        await expect(heroFocus.locator(".hero-focus-identity b")).not.toHaveText("");
-        await expect(heroFocus.locator(".hero-focus-identity span")).toBeVisible();
-        await expect(heroFocus.locator(".hero-focus-identity small")).toBeVisible();
+        if (state !== "dying") {
+          const heroFocus = stage.locator(".hero-focus");
+          await expect(heroFocus.locator(".hero-focus-identity b")).not.toHaveText("");
+          await expect(heroFocus.locator(".hero-focus-identity span")).toBeVisible();
+          await expect(heroFocus.locator(".hero-focus-identity small")).toBeVisible();
+        } else {
+          const dyingHandoff = stage.locator('[data-dying-handoff="proven"]');
+          await expect(dyingHandoff).toHaveAttribute("data-dying-player-id", "p3");
+          await expect(stage.locator(".dying-handoff-grid")).toContainText("Player 3");
+          await expect(stage.locator('.hero-focus[data-hero-focus-player-id="p3"]')).toHaveCount(0);
+          await expect(dock.locator(".local-hero-card")).toBeVisible();
+        }
         if (state === "negation") {
           await expect(stage.locator('[data-reaction-node="root"] b, [data-reaction-node="root"] span')).toHaveCount(2);
           await expect(stage.locator('[data-reaction-node="active"] b')).toBeVisible();
@@ -366,10 +374,15 @@ test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment",
           await expect(stage.locator('[data-group-target-scope="original"] .group-target-identity b')).not.toHaveText("");
         }
         if (state === "negation") {
-          const negationWindow = stage.locator('.interaction-stage-meta-region [data-negation-window-state="open"]');
+          const negationWindow = stage.locator('[data-negation-window-state="open"]');
           await expect(negationWindow).toBeVisible();
           await expect(negationWindow.locator('[data-stage-meta-role="scope"]')).toContainText("A Negation may be played now.");
           await expect(negationWindow.locator("[data-stage-meta-role]")).toHaveCount(1);
+          await expect(stage.locator(".interaction-stage-meta-region")).toHaveCount(0);
+        } else if (state === "interaction" || state === "long-guidance") {
+          await expect(stage.locator(".hero-focus-source")).not.toHaveText("");
+          await expect(stage.locator(".interaction-stage-meta-region")).toHaveCount(0);
+          await expect(stage.locator(":scope > header em")).toHaveCount(0);
         } else if (state !== "dying") {
           await expect(stage.locator(".interaction-stage-meta-region .interaction-stage-focus")).toBeVisible();
           const sourceAlreadyVisible = await stage.locator(".medium-participant-card, .hero-focus-source").count() > 0;
@@ -407,10 +420,10 @@ test.describe("UX2.0VIS-10A / VIS-11A short-portrait Top Row Stage containment",
           };
           return {
             stage: rect('.play-table[data-seat-topology="top-row"] .interaction-stage'),
-            stageContent: [...stage.querySelectorAll(':scope > header, .interaction-stage-body, .hero-focus, .interaction-stage-meta-region, .interaction-stage-focus, .interaction-stage-context, .dying-handoff, .dying-handoff-grid, .dying-handoff-guidance')]
+            stageContent: [...stage.querySelectorAll(':scope > header, .interaction-stage-body, .interaction-stage-current-effect-flow, .interaction-stage-current-effect, .current-effect-arrow, .hero-focus, .interaction-stage-meta-region, .interaction-stage-focus, .interaction-stage-context, .dying-handoff, .dying-handoff-grid, .dying-handoff-guidance')]
               .filter((element) => { const box = element.getBoundingClientRect(); return box.width > 0 && box.height > 0; })
               .map((element) => ({ selector: element.className || element.tagName, ...bounds(element) })),
-            stageTextMetrics: [...stage.querySelectorAll(':scope > header, .hero-focus-identity, .medium-participant-identity, .interaction-stage-focus, .interaction-stage-context, .group-target-identity, .dying-handoff-grid, .dying-handoff-guidance')]
+            stageTextMetrics: [...stage.querySelectorAll(':scope > header, .interaction-stage-current-effect strong, .hero-focus-identity, .medium-participant-identity, .interaction-stage-focus, .interaction-stage-context, .group-target-identity, .dying-handoff-grid, .dying-handoff-guidance')]
               .filter((element) => { const box = element.getBoundingClientRect(); return box.width > 0 && box.height > 0; })
               .map((element) => ({ selector: element.className || element.tagName, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth })),
             safeZone: rect('.play-table[data-seat-topology="top-row"] > .interaction-safe-zone'),

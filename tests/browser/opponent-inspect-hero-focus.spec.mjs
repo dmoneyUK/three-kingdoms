@@ -13,6 +13,25 @@ async function seatGeometry(page) {
   }));
 }
 
+test("opponent Hero info opens without replacing the authoritative Stage with Inspect", async ({ page }) => {
+  await loadFixture(page, { state: "interaction", width: 480, height: 900 });
+  const stage = page.locator('.play-table[data-seat-topology="top-row"] .interaction-stage');
+  await expect(stage).toHaveAttribute("data-stage", "ATTACK_RESPONSE");
+  const stageIdentity = await stage.evaluate((element) => Object.fromEntries(
+    ["data-interaction-id", "data-checkpoint-id", "data-presentation-revision", "data-stage"].map((name) => [name, element.getAttribute(name)]),
+  ));
+
+  await page.locator('[data-player-anchor="p2"] .hero-card-info-button').click();
+  await expect(page.getByRole("dialog", { name: "Liu Bei" })).toBeVisible();
+  await expect(stage).not.toHaveAttribute("data-local-ui-mode");
+  expect(await stage.evaluate((element) => Object.fromEntries(
+    ["data-interaction-id", "data-checkpoint-id", "data-presentation-revision", "data-stage"].map((name) => [name, element.getAttribute(name)]),
+  ))).toEqual(stageIdentity);
+
+  await page.getByRole("button", { name: "Close hero information" }).click();
+  await expect(stage).toBeVisible();
+});
+
 for (const viewport of [{ width: 390, height: 844 }, { width: 480, height: 900 }, { width: 1440, height: 900 }]) {
   test(`opponent Inspect uses Hero Focus public details at ${viewport.width}px without moving seats`, async ({ page }) => {
     await loadFixture(page, viewport);

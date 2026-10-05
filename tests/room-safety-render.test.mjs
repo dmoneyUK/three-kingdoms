@@ -123,9 +123,10 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   assert.equal((html.match(/class="local-player-dock/g) ?? []).length, 1, "Interaction Stage insertion keeps one local dock");
   assert.equal((html.match(/data-console-surface="local-operation"/g) ?? []).length, 1, "Interaction Stage insertion keeps one footer console");
   assert.match(html, /INTERACTION STAGE/);
-  assert.match(html, /Attack · Attack Response/);
+  assert.match(html, /<strong>Attack Response<\/strong>/);
+  assert.match(html, /<small>CURRENT EFFECT<\/small><strong>Attack<\/strong>/);
   assert.match(html, /data-continuity="ROOT_FRAME"/);
-  assert.match(html, /<small>DECISION<\/small><b>Lü Bu<\/b>/);
+  assert.doesNotMatch(html, /<small>DECISION<\/small><b>Lü Bu<\/b>/, "viewer decision identity is not repeated in the Stage");
   assert.doesNotMatch(html, /<small>PROGRESS<\/small>|Target \d+ of \d+/, "Interaction Stage does not infer ordinal target progress");
   assert.doesNotMatch(html, />interaction-ui</, "causal IDs remain diagnostics in data attributes");
   assert.match(html, /data-presentation-kind="CHOICE"/);
@@ -297,7 +298,7 @@ test("Hero Focus renders the accepted public participant without becoming a cont
   const sourceOwnedHtml = renderStage(createSnapshot({ currentParticipantId: "B", decisionActorId: "A", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "A", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, { decisionActorId: "A" }, "A"), "A");
   assert.match(sourceOwnedHtml, /data-hero-focus-player-id="B"/);
   assert.match(sourceOwnedHtml, /data-hero-focus-source-id="A"/);
-  assert.match(sourceOwnedHtml, /<small>DECISION<\/small><b>Ma Chao<\/b>/);
+  assert.doesNotMatch(sourceOwnedHtml, /<small>DECISION<\/small><b>Ma Chao<\/b>/, "viewer-owned decision identity stays out of the Stage");
   assert.doesNotMatch(sourceOwnedHtml, /class="hero-focus"[^>]*data-hero-focus-player-id="A"/, "source-owned decision does not move Hero Focus to the decision source");
 
   const groupHtml = renderStage(createSnapshot({ stage: "GROUP_RESOLUTION", targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: "C", decisionActorId: "C", activeResolverId: "C", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "C" }, "C"));
@@ -321,7 +322,7 @@ test("Hero Focus renders the accepted public participant without becoming a cont
 
   const uninvolvedHtml = renderStage(createSnapshot(), "C");
   assert.match(uninvolvedHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="CURRENT PARTICIPANT"/);
-  assert.match(ordinaryHtml, /YOUR DECISION/);
+  assert.doesNotMatch(ordinaryHtml, /YOUR DECISION/, "viewer decision guidance is owned by the Local Dock");
   assert.doesNotMatch(uninvolvedHtml, /YOUR DECISION/);
 
   const missingHtml = renderStage(createSnapshot({ currentParticipantId: "missing", targetIds: ["missing"], activeTargetIds: ["missing"], decisionActorId: "missing", participantRoles: { sourceId: "A", originalTargetIds: ["missing"], activeTargetIds: ["missing"], currentParticipantId: "missing", decisionActorId: "missing", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "missing"] } }, { decisionActorId: "missing" }, "missing"), "missing", () => null);
@@ -770,8 +771,8 @@ test("the local player dock replaces the self battlefield square and follows Qui
   assert.match(sequenceStyleSource, /\.opponent-judgement-cards \.mini-zone-card \+ \.mini-zone-card \{[\s\S]*margin-left: -45%/i, "multiple Judgement cards use controlled overlap");
   assert.match(gameRoomSource, /const \[expandedOpponentId, setExpandedOpponentId\] = useState<string \| null>\(null\)/, "inspection is presentation-local state");
   assert.match(gameRoomSource, /targetSelectionActive \? onTarget : onInspect/, "target selection takes priority over inspection");
-  assert.match(gameRoomSource, /expandedOpponentId && \(\(\) => \{[\s\S]*OpponentInspectionOverlay/, "expanded inspection reuses projected opponent data");
-  assert.match(gameRoomSource, /onClick=\{\(event\) => \{ event\.stopPropagation\(\); onHeroInfo\(playerHero\); \}\}/, "inspection info buttons do not toggle inspection");
+  // Inspect placement, projected public details, and concealed-hand redaction are behavior-tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
+  // The seat Hero-info click behavior is also tested in tests/browser/opponent-inspect-hero-focus.spec.mjs.
   assert.match(sequenceStyleSource, /\.opponent-inspection-card \{[\s\S]*aspect-ratio: 2 \/ 3;/, "expanded public cards preserve aspect ratio");
   assert.match(sequenceStyleSource, /\.opponent-inspection-card-row \{[\s\S]*flex-wrap: wrap;/, "expanded public cards wrap instead of overlapping");
 

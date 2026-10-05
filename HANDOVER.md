@@ -7,20 +7,20 @@ This file contains only the current execution handoff. Product design is in `doc
 
 ## Latest delivery / CI checkpoint — UX2.2-HF-ACTIVE-NEGATION-01
 
-Status: **IMPLEMENTED — CI PENDING**. The current bounded NEGATION Current Effect slice is ready for its push-triggered Actions checkpoint. The run has not yet been checked; no Reviewer acceptance, deployment, or production state is implied.
+Implementation pushed as `393a3df`. Actions run `37297723040` had a successful build step but was **cancelled** during browser validation; it is not a green result. Earlier relevant runs exposed eight short-portrait Stage containment failures (`37296756538`) and a stale `OpponentInspectionOverlay` source assertion (`37291702120`). No Reviewer acceptance, deployment, or production state is implied.
 
-Focused validation: browser Current Effect/Negation regressions passed 10/10, including Top Row/Side Column and fail-closed cases, the 480×640 Negation containment case, and the UI-19 semantic-label regression. `node --import tsx --test tests/presentation-client.test.mjs` passed 40/40. Targeted ESLint reported 0 errors and one warning that `tests/browser/fixture.jsx` is ignored by the repository configuration; `git diff --check` passed. No full local suite/build/lint was run.
+The local CI repair now compacts proven short Top Row Current Effect/Focus composition, removes only already-present identity/viewer-decision duplication, and places the open Negation explanation in the active Reaction Chain node. Unique public context, neutral responder privacy, and the local-Hero-in-Dock boundary remain intact. The stale Inspect source-shape expectations now defer to browser behavior coverage.
 
-Completed: the existing Current Effect presentation now also supports a proven single-target NEGATION using public `stage.effect` and the projected active target/Hero Focus relationship. Missing or ambiguous authority remains unlinked/fail-closed. Open-window Stage, Reaction Chain, and seat treatment use neutral waiting language and do not expose the private response actor. The viewer Hero and legal controls remain in the Dock.
+Focused validation: short-portrait UI-19 matrix 20/20; Current Effect + Inspect browser suites 14/14; seat Hero-info behavior 1/1; `node --import tsx --test tests/room-safety-render.test.mjs` 19/19; targeted ESLint and `git diff --check` passed. No full local test/build/lint suite was run. The repair has not yet been pushed; its Actions result is pending.
 
 ## Design checkpoint
 
-Reviewed remote design blob `45430bc62b7c50bcbeef40724408ead94ad27120` at `origin/ux-v2` commit `b15e9dea6b6f0a4ceeac2c2d8cc51476aed1aa6b`. New/updated requirements include open-window responder privacy, no repeated identity metadata, a mobile vertical Fast Response chain, a top-edge Local Dock Guidance Strip, and consistent Hero-skill controls. These do not change the completed scope above; they inform the next planning boundary.
+Reviewed remote design blob `45430bc62b7c50bcbeef40724408ead94ad27120` at `origin/ux-v2` commit `b15e9dea6b6f0a4ceeac2c2d8cc51476aed1aa6b`. Relevant requirements include open-window responder privacy, no repeated identity metadata, responsive Stage pressure, a mobile vertical Fast Response chain, and a top-edge Local Dock Guidance Strip.
 
-## Current task — close UX2.2-HF-ACTIVE-NEGATION-01
+## Current task — deliver the CI repair
 
-Status: **IMPLEMENTED — PUSHED CI CHECKPOINT REQUIRED**.
+Status: **IMPLEMENTED LOCALLY — READY TO PUSH**.
 
-Bounded scope: finish delivery of the proven single-target NEGATION Current Effect slice. Preserve authoritative public projection, fail-closed identity/focus behavior, privacy, the existing Attack Response composition, and viewer-Hero-in-Dock ownership. No client legality, server/protocol, or gameplay changes.
+Bounded scope: deliver the measured short Top Row Stage containment repair and behavior-based replacement of stale Inspect assertions. Keep the Attack Response effect/target relationship, Negation's vertical causal chain, public responder privacy, exact semantic authority, and all 20 geometry checks. No client legality, server/protocol, or gameplay changes.
 
-Resume point: inspect the latest relevant push-triggered GitHub Actions run once. If it failed, diagnose and repair the actual failing job before starting another feature task; do not claim CI green unless observed.
+Resume point: commit and push the validated repair, then record its exact Actions status. If the new run fails, repair that observed failure before new feature source edits. If queued/in progress, follow workflow §5 and review the latest design before planning the next bounded task.
