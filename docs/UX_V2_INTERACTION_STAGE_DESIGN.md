@@ -4547,43 +4547,203 @@ For future Play-phase targeting, prefer server-projected information such as:
 
 React should primarily render projected legality and public interaction state rather than learn more card-specific rules or infer chain history from animations.
 
-## 12. Proposed implementation slices — not approved for implementation yet
+## 12. UX V2 completion direction — current reviewer-approved plan
 
-When implementation is approved, split it into reviewable steps:
+The former UX2.0–UX2.10 list was an early implementation roadmap. It is no
+longer an approval gate or a task queue: implementation has progressed beyond
+those planning labels. Keep the established design contracts in this document,
+and use the current code/tests plus the repository workflow to determine the
+smallest bounded implementation task.
 
-1. **UX2.0 — Stable Presentation Contract:** implement the server-side Presentation Projector contract and validate semantic boundaries, interaction/checkpoint identity, blocking decisions, Transition Events, and Reaction Chain projection before relying on it for visual UX.
-2. **UX2.1 — Mobile-first seat topology:** implement Top Row Mode for 2–4 total players and Side Column Mode for 5–10, including responsive thumbnail variants, protected central safe zone, projected distance, layered seat states, and Quick Test perspective remapping.
-3. **UX2.2 — Local Dock + responsive Hero Focus:** establish the large-hand / large-hero dock hierarchy and fixed bottom guidance bar; add INSPECT / PREVIEW / ACTIVE / SELECTABLE DETAIL Hero Focus states; use wide horizontal event presentation for Top Row Mode and narrow vertical presentation for Side Column Mode; preserve self-projection and Preview → authoritative-event continuity.
-4. **UX2.3 — Selection controls:** Direct-Reversal-First local selection, contextual pre-commit Cancel, explicit Confirm boundary, and separate authoritative Skip/Decline/End semantics.
-5. **UX2.4 — Multi-target:** projected min/max, deselection, max feedback, ordered-target markers.
-6. **UX2.5 — AOE:** automatic participants plus resolved/current/pending state.
-7. **UX2.6 — Other-player actions:** source/target/current-actor presentation.
-8. **UX2.7 — Local incoming effects:** persistent local red-target state and response controls.
-9. **UX2.8 — Special flows:** Negation, Duel, Dying, Judgement, Steal/Dismantle, Borrowed Sword, target shifting.
-10. **UX2.9 — Mobile and 7–10 player compaction.**
-11. **UX2.10 — Quick Test perspective switching and regression coverage.**
+The remaining UX2 completion work is now organized around one product goal:
 
-Do not implement all slices in one change. Review the real screen after UX2.1–UX2.3 before committing to later layout details.
+> **Make the Interaction Stage the single coherent place for local Preview,
+> public Inspect, authoritative Active interaction, and server-driven
+> Selectable Detail, while preserving the Local Player Dock as the viewer's
+> operational surface.**
 
-## Current open design discussion
+The Coding Agent owns task decomposition and HANDOVER maintenance. This section
+defines approved product direction only. A design update here does not silently
+replace an already-running bounded task; apply it at the next planning boundary
+unless the current task directly conflicts with it.
 
-The next design discussion should settle **UX2.1 + UX2.2** before coding:
+### 12.1 First approved direction — local target PREVIEW in Hero Focus
 
-- validate Top Row Mode (2–4) and Side Column Mode (5–10) on real portrait-phone widths,
-- validate deterministic odd-seat assignment / exact-opposite placement in Side Column Mode,
-- validate top-row versus side-column thumbnail dimensions, labels, HP, hand count, distance, and status density,
-- validate the minimum protected Interaction Safe Zone width / height without hard-coding desktop assumptions,
-- validate battlefield height above the persistent Local Player Dock,
-- validate Large / Medium / Compact participant dimensions in both wide-centre and narrow-centre geometry,
-- validate how much hero art can remain visible while public skills/equipment/hand count remain readable,
-- validate PREVIEW → ACTIVE transition without unnecessary hero repositioning,
-- validate SELECTABLE DETAIL for Steal / Dismantle without a separate modal or hidden-information leak,
-- how Current Effect, Reaction Chain, and Current Decision are arranged inside the Interaction Stage,
-- where the Reaction Chain sits relative to enlarged hero panels,
-- how the Interaction Stage coexists with draw / discard / resolution animation,
-- how long Reaction Chains collapse / expand on constrained layouts,
-- mobile layout for the same state,
-- whether defeated players remain as a separate compact history strip.
+This is the next approved UX direction.
+
+When the viewer enters an unsubmitted local target-selection session, a legal
+external target selected from an opponent Seat Thumbnail should also appear in
+the Interaction Stage using the same Hero Focus structure that will later
+become ACTIVE.
+
+Conceptually:
+
+~~~text
+select card / skill
+-> choose legal target
+-> Seat Thumbnail = locally selected
+-> Interaction Stage = PREVIEW Hero Focus
+-> Confirm
+-> submitting
+-> authoritative acknowledgement
+-> same visual focus becomes ACTIVE
+~~~
+
+PREVIEW remains local UI state. It must not create a public interaction,
+PresentationSnapshot checkpoint, Reaction Chain node, or server event.
+
+Required behavior:
+
+- use authoritative target legality already projected to the viewer; React must
+  not invent target rules;
+- selected Seat Thumbnail and PREVIEW Hero Focus stay synchronized;
+- selecting a different legal target replaces the prior preview cleanly;
+- deselecting/cancelling the unsubmitted local operation clears PREVIEW;
+- local target selection, Inspect, and Hero-info affordances remain independent;
+- Confirm removes the pre-commit Cancel boundary but should preserve visual
+  continuity while the command is in flight;
+- when the authoritative event arrives, reuse the same participant focus and
+  move from PREVIEW styling to ACTIVE styling without an unnecessary blank
+  centre or unrelated remount/reposition;
+- a rejected/stale submission or relevant actionRevision/currentAction change
+  reconciles the local selection and clears/rebuilds PREVIEW from current
+  authoritative state;
+- a self-target never duplicates the viewer's Hero in the Interaction Stage;
+  the viewer's selected/target role remains projected onto the Local Player
+  Dock under the self-projection rule;
+- PREVIEW must work through the generic local target-selection contract rather
+  than card/hero-name checks.
+
+Representative validation should include Top Row and Side Column geometry and
+at least the existing generic paths for ordinary card targeting, active-skill
+targeting, trigger targeting, and Borrowed Sword target selection. Include the
+authoritative self-target case to prove that self remains Dock-only. Validate
+at representative phone widths (including 390px and 480px) and at one wider
+layout without changing gameplay semantics.
+
+### 12.2 Second direction — unify public INSPECT with Hero Focus
+
+After PREVIEW is stable, move ordinary opponent public inspection toward the
+same Hero Focus presentation instead of treating a separate full-screen modal
+as the primary UX.
+
+INSPECT must:
+
+- show public Hero identity, HP, public skills, Equipment, Judgement state, and
+  concealed Hand count/backs;
+- never expose private Hand identities or viewer-private legality;
+- remain independent from targeting;
+- preserve a selected target when the user opens/closes Inspect;
+- reuse the same Hero Focus spatial language as PREVIEW and ACTIVE.
+
+Do not combine this work into the PREVIEW implementation if doing so makes the
+change materially larger or harder to prove.
+
+### 12.3 Third direction — make Current Effect the centre of ACTIVE composition
+
+The ACTIVE Interaction Stage should visually explain the current semantic
+relationship rather than read primarily as a metadata panel.
+
+Top Row / wide centre should prefer:
+
+~~~text
+[SOURCE] -> [CARD / SKILL / EFFECT] -> [TARGET]
+~~~
+
+Side Column / narrow centre should prefer:
+
+~~~text
+      [SOURCE]
+          |
+   [CARD / EFFECT]
+          |
+          v
+      [TARGET]
+~~~
+
+The viewer is never duplicated centrally. If the viewer is source, target,
+decision actor, or resolver, project that role into the Local Player Dock and
+show only external participants centrally.
+
+The existing transition/resolution animation system may remain, but its job is
+to animate between stable semantic states. It must not become a competing
+second source of Current Effect truth.
+
+### 12.4 Fourth direction — SELECTABLE DETAIL inside the same Hero Focus
+
+For multi-stage interactions such as Steal / Dismantle and other server-owned
+zone/card choices, evolve the focused participant from ACTIVE/PREVIEW into
+SELECTABLE DETAIL instead of jumping to an unrelated generic selection
+surface when the authoritative projection can support an inline choice.
+
+The server remains the sole authority for selectable objects. Concealed Hand
+positions stay concealed. Equipment and Judgement cards keep physical/public
+identity where already public.
+
+This is a later bounded migration. Existing pickers may remain until each
+flow has authoritative data and focused regression coverage for the unified
+Hero Focus path.
+
+### 12.5 Fifth direction — finish Local Player Dock visual hierarchy
+
+The Local Player Dock structure is already approved and must not be redesigned.
+After the Interaction Stage state model is coherent, perform bounded visual
+polish so the implemented hierarchy matches the established design:
+
+- Hand remains the largest flexible operational area;
+- local Hero remains the second major visual area and should not read as a tiny
+  avatar inside a much wider reserved column;
+- Skills stay readable and easy to hit;
+- Equipment stays compact and independently identifiable/selectable;
+- Judgement remains on the Hero;
+- Guidance and Actions remain protected at the bottom.
+
+Do not obtain a larger Hero by shrinking Hand usability or moving the approved
+Dock regions.
+
+### 12.6 Authority-dependent later work — Reaction Chain and AOE progress
+
+Do not fabricate missing semantic history or participant progress to make the
+UI look complete.
+
+Reaction Chain may expand beyond the currently proven root/active information
+only when authoritative public chain data exists.
+
+AOE/Group may show per-participant resolved/current/pending state only when
+that state is explicitly projected by the server. Never infer it from
+remaining IDs, target order, timeline order, HP changes, turn owner, or seat
+position.
+
+Any required server/presentation projection is a separate semantic task from
+the visual consumer.
+
+### 12.7 Final UX2 visual gate
+
+After the bounded stages above, run one final representative UX2 review across:
+
+- 2, 4, 6, and 10-player topology;
+- REST / ordinary turn;
+- INSPECT;
+- local PREVIEW and PREVIEW -> ACTIVE;
+- single-target and multi-target;
+- AOE / Group;
+- Attack / Dodge;
+- Duel;
+- Negation;
+- Dying / Peach;
+- Judgement;
+- Steal / Dismantle;
+- Borrowed Sword;
+- Hero-skill targeting;
+- self-target;
+- long guidance;
+- large Hand;
+- Quick Test viewer switching.
+
+Use representative mobile portrait widths/heights first, then a wider
+desktop/tablet check. Final completion means the player can understand
+**who is involved, what is happening, whose decision it is, and what they can
+do next** without the client inventing gameplay facts.
 
 ### 0.92 UX2.0B Verification / Fix Gate
 
