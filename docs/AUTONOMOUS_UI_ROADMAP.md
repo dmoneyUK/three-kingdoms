@@ -511,6 +511,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `git diff --check` passed. Exact pushed SHA `1dab785` passed Actions run
   `37358008000`, including `build-and-test` and `deploy`.
 
+### UX2.3-ACTIVE-DYING-CURRENT-EFFECT-01 — Dying public rescue handoff
+
+- Added the proven Source → Effect → Dying Player composition while preserving
+  the public rescue handoff and Dying identity. The first feature SHA
+  `87e067f` failed its browser job: connected-effect chrome relabelled Dying as
+  Target and the composition overflowed short safe zones. CI-repair-only SHA
+  `ac54b2e` restored `DYING PLAYER` and compacted the proven row; the user-owned
+  `tests/browser/ui19.spec.mjs` stayed unchanged.
+- Focused Current Effect browser coverage passed 24/24, read-only Dying cases
+  from UI19 passed 39/39, and targeted ESLint plus `git diff --check` passed.
+  Exact repair Actions run `37364054848` completed successfully for both
+  `build-and-test` and `deploy`.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative

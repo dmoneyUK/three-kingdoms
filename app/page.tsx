@@ -2134,20 +2134,25 @@ function TargetCardPicker({ option, selection, target, selectedKeys, disabled, c
     .filter((key) => /^hand:\d+$/.test(key))
     .sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)));
   const eligiblePublicKeys = new Set(selection.eligibleKeys.filter((key) => key !== "hand" && !/^hand:\d+$/.test(key)));
-  const publicCards = [...target.equipmentCards, ...target.judgementCards].filter((item) => eligiblePublicKeys.has(item.id));
+  const publicCards = [
+    ...target.equipmentCards.filter((item) => eligiblePublicKeys.has(item.id)).map((card) => ({ card, zone: "equipment" as const })),
+    ...target.judgementCards.filter((item) => eligiblePublicKeys.has(item.id)).map((card) => ({ card, zone: "judgement" as const })),
+  ];
   const items = [
-    ...(randomHandZone ? [{ key: "hand", label: "Hand", hidden: true, card: null }] : []),
-    ...handKeys.map((key) => ({ key, label: `Hidden hand card ${Number(key.slice(5)) + 1}`, hidden: true, card: null })),
-    ...publicCards.map((item) => ({ key: item.id, label: cardDefinition(item.kind).name, hidden: false, card: item })),
+    ...(randomHandZone ? [{ key: "hand", label: `Hand ×${target.handCount} · Random card`, hidden: true, randomHandZone: true, zone: "hand" as const, card: null }] : []),
+    ...handKeys.map((key) => ({ key, label: `Hidden hand card ${Number(key.slice(5)) + 1}`, hidden: true, randomHandZone: false, zone: "hand-position" as const, card: null })),
+    ...publicCards.map(({ card, zone }) => ({ key: card.id, label: `${zone === "equipment" ? "Equipment" : "Judgement"}: ${cardDefinition(card.kind).name}`, hidden: false, randomHandZone: false, zone, card })),
   ];
   const effectLabel = option.label.replace(/^Use\s+/i, "");
   const amount = selection.min === selection.max ? `${selection.min}` : `${selection.min}–${selection.max}`;
-  const subtitle = `Choose ${amount} eligible card${selection.max === 1 ? "" : "s"}`;
+  const subtitle = randomHandZone && selection.min === 1 && selection.max === 1
+    ? "Choose where to obtain 1 card"
+    : `Choose ${amount} eligible card${selection.max === 1 ? "" : "s"}`;
   const complete = validSelectedKeys.length >= selection.min && validSelectedKeys.length <= selection.max;
   return <div className="target-card-picker-overlay" role="presentation"><section className="target-card-picker-panel" role="dialog" aria-modal="true" aria-label={`${effectLabel} target card selection`}>
     <header><strong>{effectLabel.toUpperCase()}</strong><span>{subtitle}</span></header>
     <div className="target-card-picker-card-row" aria-label="Eligible cards">
-      {items.map((item) => <button type="button" key={item.key} className={`target-card-picker-card ${item.hidden ? "concealed-card" : "equipment"} ${validSelectedKeys.includes(item.key) ? "selected" : ""}`} disabled={disabled} aria-pressed={validSelectedKeys.includes(item.key)} aria-label={item.label} onClick={() => onToggle(item.key)}>{item.hidden ? <span aria-hidden="true">?</span> : item.card && <CardFace card={item.card} />}{validSelectedKeys.includes(item.key) && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>)}
+      {items.map((item) => <button type="button" key={item.key} data-target-card-zone={item.zone} className={`target-card-picker-card ${item.hidden ? "concealed-card" : "equipment"} ${item.randomHandZone ? "random-hand-zone" : ""} ${validSelectedKeys.includes(item.key) ? "selected" : ""}`} disabled={disabled} aria-pressed={validSelectedKeys.includes(item.key)} aria-label={item.label} onClick={() => onToggle(item.key)}>{item.randomHandZone ? <span className="concealed-hand-zone-content"><span className="target-card-picker-hand-label">Hand ×{target.handCount}</span><span className="target-card-picker-hand-backs" aria-hidden="true">{Array.from({ length: Math.min(target.handCount, 6) }, (_, index) => <span className="target-card-picker-hand-back" key={index}>?</span>)}{target.handCount > 6 && <span className="target-card-picker-hand-overflow">+{target.handCount - 6}</span>}</span><span className="target-card-picker-hand-copy">Random card</span></span> : item.hidden ? <span className="target-card-picker-hidden-glyph" aria-hidden="true">?</span> : item.card && <CardFace card={item.card} />}{validSelectedKeys.includes(item.key) && <span className="target-card-picker-check" aria-hidden="true">✓</span>}</button>)}
     </div>
     <div className="target-card-picker-count" aria-live="polite">{validSelectedKeys.length} / {selection.max} selected</div>
     <div className="target-card-picker-actions">

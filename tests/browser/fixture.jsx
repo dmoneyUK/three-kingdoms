@@ -70,7 +70,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
     stable: { kind: "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "picker" || state === "picker-hand-zone" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
     settlement: null,
     transitionEvents: [],
   };
@@ -183,6 +183,18 @@ function currentActionFor(state, actorId, handCardId) {
       declineAction: "decline_trigger",
     };
   }
+  if (state === "picker-hand-zone") {
+    return {
+      version: 3,
+      kind: "trigger",
+      actorId,
+      deadline: 0,
+      reason: "Choose where to obtain a card",
+      legalActions: ["trigger", "decline_trigger"],
+      triggerOptions: [{ effectId: "browser_retaliation_zone", label: "Retaliation", selection: { type: "target_cards", targetId: "p1", min: 1, max: 1, eligibleKeys: ["hand", "browser-public-equipment", "browser-public-judgement"] } }],
+      declineAction: "decline_trigger",
+    };
+  }
   return {
     version: 3,
     kind: "dying",
@@ -195,7 +207,7 @@ function currentActionFor(state, actorId, handCardId) {
   };
 }
 
-function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, privateNegationResponder, negationAuthority }) {
+function browserRoom({ state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, privateNegationResponder, negationAuthority }) {
   const ordinaryTurn = state === "ordinary-turn";
   const borrowedSwordFixture = state === "borrowed-sword-play" || state === "borrowed-sword-no-target";
   const selfTargetFixture = state === "self-target-skill" || state === "self-target-skill-no-self" || state === "self-target-trigger" || state === "multi-target-trigger";
@@ -211,7 +223,7 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
   if (denseGroup) state = "group-observer";
   const activeNegationObserver = state.startsWith("active-negation-");
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
-  const meId = activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup ? "p3" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state === "picker" ? "p2" : state === "dying" ? "p3" : "p1";
+  const meId = activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup ? "p3" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state === "picker" || state === "picker-hand-zone" ? "p2" : state === "dying" ? "p3" : "p1";
   const actorId = timedNegationObserver || duelObserverView ? "p2" : state === "active-attack-observer" ? "p2" : activeNegationObserver ? "p3" : state === "group-observer" || unfocusedGroup ? "p1" : state === "dying" ? "p3" : meId;
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
   const hand = timedNegationObserver
@@ -280,11 +292,15 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
     maxHp: 4,
     alive: true,
     connected: true,
-    handCount: id === meId ? hand.length : 2,
-    judgementCards: hasLocalJudgementFixture && id === meId
+    handCount: state === "picker-hand-zone" && id === "p1" ? targetHandCount : id === meId ? hand.length : 2,
+    judgementCards: state === "picker-hand-zone" && id === "p1"
+      ? [card("browser-public-judgement", "Lightning", "♥", "Q")]
+      : hasLocalJudgementFixture && id === meId
       ? [card("browser-local-lightning", "Lightning", "♥", "Q"), card("browser-local-overindulgence", "Overindulgence", "♠", "7")].slice(0, localJudgementCount)
       : state === "rest" && id === "p3" ? [card("browser-lightning", "Lightning", "♥", "Q")] : [],
-    equipmentCards: equipmentCase ? fixtureSeatEquipment(id, equipmentCase) : (state === "rest" || borrowedSwordFixture) && id === "p2" ? [card("browser-zhuge-crossbow", "ZhugeCrossbow", "♦", "A")] : [],
+    equipmentCards: state === "picker-hand-zone" && id === "p1"
+      ? [card("browser-public-equipment", "NioShield", "♣", "2")]
+      : equipmentCase ? fixtureSeatEquipment(id, equipmentCase) : (state === "rest" || borrowedSwordFixture) && id === "p2" ? [card("browser-zhuge-crossbow", "♦", "A")] : [],
     attackRange: 1,
     distance: id === meId ? null : 1,
     isHost: index === 0,
@@ -335,6 +351,7 @@ function readFixture() {
   const state = params.get("state") || "normal";
   const count = Math.min(10, Math.max(2, Number(params.get("count") || 4)));
   const handSize = params.has("handSize") ? Math.min(30, Math.max(1, Number(params.get("handSize")))) : null;
+  const targetHandCount = Math.min(30, Math.max(1, Number(params.get("targetHandCount") || 4)));
   const equipmentCase = params.get("equipmentCase") || null;
   const heroOverride = params.get("hero") || null;
   const sourceOverride = params.get("source") || null;
@@ -346,13 +363,13 @@ function readFixture() {
   const duelObserver = params.get("duelObserver") === "1";
   const duelParticipantMissing = params.get("duelParticipant") === "missing";
   const dyingParticipantCase = params.get("dyingParticipant") || "";
-  return { state, count, handSize, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, privateNegationResponder, negationAuthority };
+  return { state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, privateNegationResponder, negationAuthority };
 }
 
-const { state, count, handSize, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, privateNegationResponder, negationAuthority } = readFixture();
+const { state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, privateNegationResponder, negationAuthority } = readFixture();
 const acknowledgeLocalPreview = new URLSearchParams(window.location.search).get("ackPreview") === "1";
 const root = createRoot(document.getElementById("root"));
-let fixtureRoom = browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, privateNegationResponder, negationAuthority });
+let fixtureRoom = browserRoom({ state, count, handSize, targetHandCount, equipmentCase, heroOverride, sourceOverride, effectOverride, timedResponse, timedObserver, duelObserver, duelParticipantMissing, dyingParticipantCase, privateNegationResponder, negationAuthority });
 window.__browserActions = [];
 window.__browserRoom = fixtureRoom;
 const renderFixture = () => root.render(<GameRoom room={fixtureRoom} busy={false} error="" onAction={async (action, extra) => {
