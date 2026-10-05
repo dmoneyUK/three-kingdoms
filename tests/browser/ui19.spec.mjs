@@ -1768,6 +1768,114 @@ for (const state of ["group-observer", "dying"]) {
   });
 }
 
+const VIS_12O_STATES = [
+  { state: "group-observer", required: [".hero-focus", ".group-target-scope"] },
+  { state: "negation", required: [".hero-focus", '[data-reaction-chain="proven"]'] },
+  { state: "dying", required: [".hero-focus", '[data-dying-handoff="proven"]'] },
+];
+
+async function readVis12oPileGeometry(page) {
+  return page.evaluate(() => {
+    const rect = (element) => {
+      const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+      return { left, top, right, bottom, width, height };
+    };
+    const visible = (element) => {
+      const bounds = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return bounds.width > 0 && bounds.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    };
+    const table = document.querySelector(".play-table");
+    const stage = document.querySelector(".interaction-stage");
+    const safeZone = document.querySelector(".interaction-safe-zone");
+    const dock = document.querySelector(".local-player-dock");
+    const seats = [...document.querySelectorAll('.player-board[data-seat-topology="top-row"] > .opponent-player-card')]
+      .filter(visible)
+      .map((element) => ({ name: element.dataset.playerAnchor, bounds: rect(element) }));
+    const piles = [
+      ["deck", document.querySelector(".draw-stack")],
+      ["discard", document.querySelector(".discard-stack")],
+    ].filter(([, element]) => element && visible(element)).map(([name, element]) => ({ name, bounds: rect(element) }));
+    const contentSelectors = [
+      ".interaction-stage .hero-focus",
+      ".interaction-stage .group-target-scope",
+      '.interaction-stage [data-reaction-chain="proven"]',
+      '.interaction-stage [data-dying-handoff="proven"]',
+    ];
+    const content = contentSelectors.flatMap((selector) => [...document.querySelectorAll(selector)]
+      .filter(visible)
+      .map((element) => ({ selector, bounds: rect(element) })));
+    const overlaps = piles.flatMap((pile) => content.flatMap((item) => {
+      const width = Math.max(0, Math.min(pile.bounds.right, item.bounds.right) - Math.max(pile.bounds.left, item.bounds.left));
+      const height = Math.max(0, Math.min(pile.bounds.bottom, item.bounds.bottom) - Math.max(pile.bounds.top, item.bounds.top));
+      return width > 0 && height > 0 ? [{ pile: pile.name, content: item.selector, width, height }] : [];
+    }));
+    const seatOverlaps = piles.flatMap((pile) => seats.flatMap((seat) => {
+      const width = Math.max(0, Math.min(pile.bounds.right, seat.bounds.right) - Math.max(pile.bounds.left, seat.bounds.left));
+      const height = Math.max(0, Math.min(pile.bounds.bottom, seat.bounds.bottom) - Math.max(pile.bounds.top, seat.bounds.top));
+      return width > 0 && height > 0 ? [{ pile: pile.name, seat: seat.name, width, height }] : [];
+    }));
+    const dockBounds = dock && visible(dock) ? rect(dock) : null;
+    const dockOverlaps = piles.flatMap((pile) => {
+      if (!dockBounds) return [];
+      const width = Math.max(0, Math.min(pile.bounds.right, dockBounds.right) - Math.max(pile.bounds.left, dockBounds.left));
+      const height = Math.max(0, Math.min(pile.bounds.bottom, dockBounds.bottom) - Math.max(pile.bounds.top, dockBounds.top));
+      return width > 0 && height > 0 ? [{ pile: pile.name, width, height }] : [];
+    });
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight, scrollWidth: document.documentElement.scrollWidth },
+      table: rect(table),
+      stage: stage && visible(stage) ? rect(stage) : null,
+      safeZone: safeZone && visible(safeZone) ? rect(safeZone) : null,
+      dock: dock && visible(dock) ? rect(dock) : null,
+      seats,
+      piles,
+      content,
+      overlaps,
+      seatOverlaps,
+      dockOverlaps,
+    };
+  });
+}
+
+for (const { state, required } of VIS_12O_STATES) {
+  for (const viewport of [{ width: 480, height: 900 }, { width: 390, height: 640 }]) {
+    test(`UX2.0VIS-12O ${state} keeps Deck/Discard clear of Stage at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
+      await loadFixture(page, { state, count: 4, ...viewport });
+      const stage = page.locator(VIS_12N_STAGE_SELECTOR);
+      for (const selector of required) await expect(stage.locator(selector)).toBeVisible();
+
+      const screenshot = await page.screenshot({ path: testInfo.outputPath(`${state}-${viewport.width}x${viewport.height}-piles.png`), animations: "disabled" });
+      await testInfo.attach(`vis-12o-${state}-${viewport.width}x${viewport.height}`, { body: screenshot, contentType: "image/png" });
+      const layout = await assertVis12nTopRowGeometry(page, viewport.width);
+      const piles = await readVis12oPileGeometry(page);
+      expect(piles.viewport).toEqual({ width: viewport.width, height: viewport.height, scrollWidth: viewport.width });
+      expect(piles.piles).toHaveLength(2);
+      await testInfo.attach(`vis-12o-${state}-${viewport.width}x${viewport.height}-geometry`, {
+        body: JSON.stringify({ ...layout, pileLayout: piles }, null, 2),
+        contentType: "application/json",
+      });
+      for (const pile of piles.piles) {
+        expect(pile.bounds.width, `${pile.name} remains visible`).toBeGreaterThan(0);
+        expect(pile.bounds.height, `${pile.name} remains visible`).toBeGreaterThan(0);
+        expect(pile.bounds.left, `${pile.name} remains within the table`).toBeGreaterThanOrEqual(piles.table.left);
+        expect(pile.bounds.right, `${pile.name} remains within the table`).toBeLessThanOrEqual(piles.table.right);
+        expect(pile.bounds.top, `${pile.name} remains within the table`).toBeGreaterThanOrEqual(piles.table.top);
+        expect(pile.bounds.bottom, `${pile.name} remains within the table`).toBeLessThanOrEqual(piles.table.bottom);
+      }
+      if (viewport.width <= 400 && viewport.height <= 700) {
+        expect(Math.max(...piles.piles.map(({ bounds }) => bounds.bottom)), "compact piles stay in the top-edge strip").toBeLessThanOrEqual(piles.table.top + 48);
+      } else {
+        expect(Math.min(...piles.piles.map(({ bounds }) => bounds.top)), "full-size piles stay in the bottom-edge zone").toBeGreaterThanOrEqual(piles.table.bottom - 86);
+      }
+      expect(piles.overlaps, "Deck/Discard must not obscure active Stage participants or event panels").toEqual([]);
+      expect(piles.seats).toHaveLength(3);
+      expect(piles.seatOverlaps, "Deck/Discard must not cover physical opponent seats").toEqual([]);
+      expect(piles.dockOverlaps, "Deck/Discard must remain outside the Local Player Dock").toEqual([]);
+    });
+  }
+}
+
 for (const width of [390, 480, 650]) {
   for (const state of ["rest", "interaction"]) {
     test(`UX2.0VIS-12C ${state} keeps mobile card piles secondary at ${width}px`, async ({ page }, testInfo) => {

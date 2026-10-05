@@ -2322,6 +2322,81 @@
   }
 }
 
+/* UX2.0VIS-12O: keep persistent piles outside the active four-player Stage.
+   Taller mobile boards have a clear bottom edge; compact short boards reserve
+   the narrow strip above the opponent row for readable pile summaries. */
+@media (min-width: 401px) and (max-width: 650px) and (min-height: 700px) {
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center {
+    top: auto;
+    bottom: 8px;
+    translate: -50% 0;
+  }
+}
+
+@media (max-width: 400px) and (max-height: 700px) {
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center {
+    top: 6px;
+    left: 50%;
+    gap: 6px;
+    align-items: center;
+    translate: -50% 0;
+  }
+
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center > .draw-stack,
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center > .discard-stack {
+    display: flex;
+    width: 58px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 2px;
+    border-radius: 3px;
+  }
+
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .draw-stack b,
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack b {
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .draw-stack span,
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack span {
+    margin-top: 0;
+    font-size: 6px;
+    letter-spacing: .04em;
+    line-height: 1;
+  }
+
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card {
+    width: 26px;
+    height: 36px;
+    border-radius: 2px;
+    box-shadow: none;
+  }
+
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card > i {
+    width: 13px;
+    min-height: 18px;
+    font-size: 6px;
+  }
+
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card > i small {
+    font-size: 4px;
+  }
+
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card > b {
+    font-size: 5px;
+    line-height: 1;
+  }
+
+  .game-shell .play-table[data-seat-topology="top-row"] > .play-center .discard-stack .played-card > strong {
+    margin-top: 1px;
+    font-size: 3px;
+    line-height: 1;
+  }
+}
+
 /* UX2.0VIS-12D: mobile opponent seats should frame the Hero's upper body,
    trimming some source-image headroom while keeping each original asset. */
 @media (max-width: 650px) {
