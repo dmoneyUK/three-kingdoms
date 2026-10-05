@@ -508,11 +508,14 @@ function MediumParticipantCard({ view }: { view: MediumParticipantView }) {
 
 export function InteractionStage({ view, viewerId, transitionKind = "NONE", topRowMode = false, resolvePlayerName, resolvePlayerDisplay }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
-  const display = buildInteractionStageDisplayModel(stage);
   const dyingHandoff = buildDyingHandoffView(stage);
   const reactionChain = buildReactionChainView(stage);
   const publicHeroFocus = buildHeroFocusView(stage, resolvePlayerDisplay);
   const heroFocus = projectHeroFocusForViewer(stage, publicHeroFocus, viewerId, resolvePlayerDisplay);
+  const display = buildInteractionStageDisplayModel(
+    stage,
+    heroFocus.roleLabel === "CURRENT PARTICIPANT" ? heroFocus.primary?.id ?? null : null,
+  );
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
   const dyingSourceAlreadyVisible = Boolean(dyingHandoff.visible && stage.source.id && (
@@ -541,12 +544,18 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && dyingHandoff.activeResolver.id === display.activeResolver.id);
   const showNestedContextSummary = Boolean(display.nestedContext)
     && !(dyingHandoff.visible && heroFocus.primary && heroFocus.nestedContext === display.nestedContext);
+  const showFocusSummary = showRoleSummary && !display.currentParticipantPresentedInHeroFocus;
+  const showActiveScopeSummary = showRoleSummary
+    && display.currentParticipantPresentedInHeroFocus
+    && Boolean(display.activeScopeSummary);
+  const showRoleMetadata = showSourceSummary || showFocusSummary || showActiveScopeSummary;
+  const hasMultipleRoleSummaries = showSourceSummary && (showFocusSummary || showActiveScopeSummary);
   const showMetadataContext = !dyingHandoff.visible
     || showDecisionSummary
     || showResolverSummary
     || display.showOriginalTargets
     || showNestedContextSummary;
-  const showMetadataRegion = showRoleSummary || showMetadataContext;
+  const showMetadataRegion = showRoleMetadata || showMetadataContext;
   if (!display.visible) return null;
   return <section className="interaction-stage" aria-label="Interaction Stage" data-interaction-id={stage.interactionId ?? undefined} data-checkpoint-id={stage.checkpointId ?? undefined} data-presentation-revision={stage.presentationRevision ?? undefined} data-stage={stage.stage ?? undefined} data-stable-kind={stage.stableKind} data-continuity={stage.continuity.relation} data-parent-frame-id={stage.parentFrameId ?? undefined} data-presentation-transition={transitionKind}>
     <header><span>INTERACTION STAGE</span><strong>{display.focusLabel}</strong>{display.isViewerDecisionActor && <em>YOUR DECISION</em>}</header>
@@ -587,9 +596,10 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         </section>}
       </div>
       {showMetadataRegion && <div className="interaction-stage-meta-region">
-        {showRoleSummary && <div className={`interaction-stage-focus${showSourceSummary ? "" : " interaction-stage-focus--single"}`}>
+        {showRoleMetadata && <div className={`interaction-stage-focus${hasMultipleRoleSummaries ? "" : " interaction-stage-focus--single"}`}>
           {showSourceSummary && <div data-stage-meta-role="source"><small>SOURCE</small><b>{display.source.name}</b></div>}
-          <div data-stage-meta-role={display.focusTarget.id ? "focus" : "scope"}><small>{display.focusTarget.id ? "FOCUS" : "SCOPE"}</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>
+          {showFocusSummary && <div data-stage-meta-role={display.focusTarget.id ? "focus" : "scope"}><small>{display.focusTarget.id ? "FOCUS" : "SCOPE"}</small><b>{display.focusTarget.name}</b><em>{display.targetSummary}</em></div>}
+          {showActiveScopeSummary && <div data-stage-meta-role="active-scope"><small>ACTIVE SCOPE</small><em>{display.activeScopeSummary}</em></div>}
         </div>}
         {showMetadataContext && <div className="interaction-stage-context">
           {showDecisionSummary && <span><small>DECISION</small><b>{display.decisionActor.name}</b></span>}

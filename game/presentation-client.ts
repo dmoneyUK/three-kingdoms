@@ -73,7 +73,9 @@ export type InteractionStageDisplayModel = {
   focusLabel: string;
   source: PresentationDisplayIdentity;
   focusTarget: PresentationDisplayIdentity;
+  currentParticipantPresentedInHeroFocus: boolean;
   targetSummary: string;
+  activeScopeSummary: string | null;
   showDecision: boolean;
   decisionActor: PresentationDisplayIdentity;
   isViewerDecisionActor: boolean;
@@ -420,7 +422,7 @@ function displayNames(identities: readonly PresentationDisplayIdentity[], emptyL
  * Establish the player-facing hierarchy without changing the underlying
  * semantic fields retained by InteractionStageView.
  */
-export function buildInteractionStageDisplayModel(stage: InteractionStageView): InteractionStageDisplayModel {
+export function buildInteractionStageDisplayModel(stage: InteractionStageView, presentedCurrentParticipantId: string | null = null): InteractionStageDisplayModel {
   const currentParticipant = stage.currentParticipant.id ? stage.currentParticipant : null;
   const soleActiveTarget = stage.stage !== "DYING"
     && !currentParticipant
@@ -442,6 +444,11 @@ export function buildInteractionStageDisplayModel(stage: InteractionStageView): 
       ? ` · Active scope: ${displayNames(stage.activeTargets, "No active target")}`
       : ""}`
     : `Active scope: ${displayNames(stage.activeTargets, "No active target")}`;
+  const currentParticipantPresentedInHeroFocus = Boolean(stage.currentParticipant.id
+    && stage.currentParticipant.id === presentedCurrentParticipantId);
+  const activeScopeSummary = stage.activeTargets.length > 1
+    ? `Active scope: ${displayNames(stage.activeTargets, "No active target")}`
+    : null;
   const showOriginalTargets = !sameIds(stage.originalTargets, stage.activeTargets);
   const nestedContext = stage.continuity.relation === "CHILD_FRAME"
     ? `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`
@@ -453,7 +460,9 @@ export function buildInteractionStageDisplayModel(stage: InteractionStageView): 
       : stage.effect ? `${stage.effect} · ${stage.stageLabel}` : stage.stageLabel,
     source: stage.source,
     focusTarget: activeTarget,
+    currentParticipantPresentedInHeroFocus,
     targetSummary,
+    activeScopeSummary,
     showDecision: stage.stableKind === "CHOICE" && Boolean(stage.decisionActor.id),
     decisionActor: stage.decisionActor,
     isViewerDecisionActor: stage.isViewerDecisionActor,

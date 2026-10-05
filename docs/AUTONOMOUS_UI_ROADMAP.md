@@ -38,6 +38,7 @@ Detailed older handoff evidence through VIS-12J is archived in:
 - **VIS-12M:** deduplicated already-proven non-Dying Stage source metadata and corrected resulting narrow metadata containment; follow-up stale Dock source-shape coverage was repaired.
 - **VIS-12N:** completed the four-player 480×900/390×640 screenshot and geometry matrix; extended the compact short-height Stage layout to fit Group observer and Dying content at 390×640. Focused browser coverage passed locally; exact-revision CI remains pending in HANDOVER.
 - **VIS-12O:** separated Deck/Discard from active four-player Top Row Stage content with lower-edge full-size piles at 480×900 and a compact top-edge pile row at 390×640. Six focused state/viewport cases and 19 related 12N/12J/12K/12C regressions passed locally; six screenshots were visually inspected. Exact-revision CI remains pending in HANDOVER.
+- **VIS-12P:** deduplicated Group current-participant metadata only when projected Hero Focus role and player ID match; preserved Active Scope, distinct DECISION, nonmatching target-owned metadata, and fail-closed ambiguous focus. Focused display-model tests passed 39/39; the 21-case 12P/12M/12N/12O/12J/12K browser selection passed. Exact-revision CI remains pending in HANDOVER.
 
 ## Durable implementation principles established by completed work
 

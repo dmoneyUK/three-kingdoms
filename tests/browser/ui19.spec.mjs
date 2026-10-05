@@ -2241,24 +2241,52 @@ for (const width of [1440, 480]) {
 test("UX2.0VIS-12M omits a source summary already named by Hero Focus", async ({ page }) => {
   await loadFixture(page, { state: "interaction", count: 4, width: 650, height: 900 });
   const stage = page.locator('[aria-label="Interaction Stage"]');
-  await expect(stage.locator(".hero-focus")).toHaveAttribute("data-hero-focus-source-id", "p1");
+  const heroFocus = stage.locator(".hero-focus");
+  await expect(heroFocus).toHaveAttribute("data-hero-focus-source-id", "p1");
+  await expect(heroFocus).toHaveAttribute("data-hero-focus-role", "CURRENT TARGET");
+  await expect(heroFocus).toHaveAttribute("data-hero-focus-player-id", "p2");
   await expect(stage.locator(".hero-focus-source")).toHaveText("SOURCE · Player 1");
   await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
-  await expect(stage.locator(".interaction-stage-focus")).toHaveClass(/interaction-stage-focus--single/);
   await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("FOCUS");
   await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("Current participant: Player 1");
+  await expect(stage.locator(".interaction-stage-context")).toContainText("DECISION");
 });
 
-test("UX2.0VIS-12M omits a source summary already named by Medium Source", async ({ page }) => {
+test("UX2.0VIS-12P Group observer omits current-participant metadata already in Hero Focus", async ({ page }, testInfo) => {
   await loadFixture(page, { state: "group-observer", count: 4, width: 480, height: 900 });
   const stage = page.locator('[aria-label="Interaction Stage"]');
   const source = stage.locator('[data-medium-participant="source"]');
   await expect(source).toBeVisible();
   await expect(source).toHaveAttribute("data-medium-participant-player-id", "p4");
   await expect(source.locator(".medium-participant-role")).toHaveText("SOURCE");
+  await expect(stage.locator(".hero-focus")).toHaveAttribute("data-hero-focus-role", "CURRENT PARTICIPANT");
+  await expect(stage.locator(".hero-focus")).toHaveAttribute("data-hero-focus-player-id", "p1");
   await expect(stage.locator('[data-stage-meta-role="source"]')).toHaveCount(0);
-  await expect(stage.locator(".interaction-stage-focus")).toHaveClass(/interaction-stage-focus--single/);
-  await expect(stage.locator('[data-stage-meta-role="focus"]')).toContainText("FOCUS");
+  await expect(stage.locator('[data-stage-meta-role="focus"]')).toHaveCount(0);
+  const activeScope = stage.locator('[data-stage-meta-role="active-scope"]');
+  await expect(activeScope).toContainText("Active scope: Player 1, Player 2, Player 3");
+  await expect(stage.locator(".interaction-stage-meta-region")).not.toContainText("Current participant: Player 1");
+  await expect(stage.locator(".interaction-stage-context")).toContainText("DECISION");
+  const screenshot = await page.screenshot({ path: testInfo.outputPath("group-observer-480x900-current-participant-dedup.png"), animations: "disabled" });
+  await testInfo.attach("vis-12p-group-observer-480x900", { body: screenshot, contentType: "image/png" });
+  const layout = await assertVis12nTopRowGeometry(page, 480);
+  await testInfo.attach("vis-12p-group-observer-480x900-geometry", { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
+});
+
+test("UX2.0VIS-12P compact Group Stage deduplicates only its proven Hero Focus identity", async ({ page }, testInfo) => {
+  await loadFixture(page, { state: "group-observer", count: 4, width: 390, height: 640 });
+  const stage = page.locator('[aria-label="Interaction Stage"]');
+  const heroFocus = stage.locator(".hero-focus");
+  await expect(heroFocus).toHaveAttribute("data-hero-focus-role", "CURRENT PARTICIPANT");
+  await expect(heroFocus).toHaveAttribute("data-hero-focus-player-id", "p1");
+  await expect(stage.locator('[data-stage-meta-role="focus"]')).toHaveCount(0);
+  await expect(stage.locator('[data-stage-meta-role="active-scope"]')).toContainText("Active scope: Player 1, Player 2, Player 3");
+  await expect(stage.locator(".interaction-stage-meta-region")).not.toContainText("Current participant: Player 1");
+  await expect(stage.locator(".interaction-stage-context")).toContainText("DECISION");
+  const screenshot = await page.screenshot({ path: testInfo.outputPath("group-observer-390x640-current-participant-dedup.png"), animations: "disabled" });
+  await testInfo.attach("vis-12p-group-observer-390x640", { body: screenshot, contentType: "image/png" });
+  const layout = await assertVis12nTopRowGeometry(page, 390);
+  await testInfo.attach("vis-12p-group-observer-390x640-geometry", { body: JSON.stringify(layout, null, 2), contentType: "application/json" });
 });
 
 test("UX2.0VIS-12M keeps source and scope metadata when no source presentation is rendered", async ({ page }) => {

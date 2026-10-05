@@ -591,14 +591,18 @@ test("Interaction Stage is hidden for REST and independent of legacy room fields
 });
 
 test("Interaction Stage display hierarchy keeps ordinary target-owned CHOICE concise", () => {
-  const model = buildInteractionStageDisplayModel(buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName));
+  const stage = buildInteractionStageView(buildPresentationClientView(snapshot(), "B"), resolveDisplayName);
+  const model = buildInteractionStageDisplayModel(stage, stage.currentParticipant.id);
   assert.equal(model.focusLabel, "Attack · Attack Response");
   assert.equal(model.focusTarget.name, "Zhao Yun");
+  assert.equal(model.currentParticipantPresentedInHeroFocus, true);
   assert.equal(model.targetSummary, "Current participant: Zhao Yun");
+  assert.equal(model.activeScopeSummary, null);
   assert.equal(model.showDecision, true);
   assert.equal(model.decisionActor.name, "Zhao Yun");
   assert.equal(model.showResolver, false, "ordinary target-owned CHOICE hides redundant resolver detail");
   assert.equal(model.showOriginalTargets, false);
+  assert.equal(buildInteractionStageDisplayModel(stage, "another-player-id").currentParticipantPresentedInHeroFocus, false);
 });
 
 test("Interaction Stage display hierarchy preserves the source-owned resolver distinction", () => {
@@ -622,13 +626,17 @@ test("Interaction Stage display hierarchy keeps Group/AOE scope facts without or
     stable: { ...snapshot().stable, decisionActorId: "C" },
     decision: { actorId: "C", stage: "GROUP_RESOLUTION" },
   }), "A");
-  const model = buildInteractionStageDisplayModel(buildInteractionStageView(view, resolveDisplayName));
+  const stage = buildInteractionStageView(view, resolveDisplayName);
+  const model = buildInteractionStageDisplayModel(stage, stage.currentParticipant.id);
   assert.equal(model.focusTarget.name, "Cao Cao");
+  assert.equal(model.currentParticipantPresentedInHeroFocus, true);
+  assert.equal(model.activeScopeSummary, "Active scope: Zhao Yun, Cao Cao");
   assert.match(model.targetSummary, /Current participant: Cao Cao/);
   assert.match(model.targetSummary, /Active scope: Zhao Yun, Cao Cao/);
   assert.doesNotMatch(model.targetSummary, /Target \d+ of \d+/);
   assert.equal(model.showOriginalTargets, true);
   assert.match(model.originalTargetSummary, /Zhao Yun, Cao Cao, Ma Chao/);
+  assert.equal(buildInteractionStageDisplayModel(stage, "another-player-id").currentParticipantPresentedInHeroFocus, false);
 });
 
 test("Interaction Stage metadata fails closed when no unique primary focus is proven", () => {
