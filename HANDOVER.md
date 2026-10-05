@@ -7,7 +7,7 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest CI checkpoint
 
-Exact remote head `fa196351fea35ad66b162b88bdbcf6b4b4b28743`, Actions run `37375430748`, completed successfully: `build-and-test` and `deploy` passed. It closes the CI repair for two stale target-card picker assertions; `tests/browser/ui19.spec.mjs` remains unchanged.
+Pushed task head `16191de7aa01494860837d8263cef828161dc189`, Actions run `37379800040`, is currently in progress. The previous exact head `fa196351fea35ad66b162b88bdbcf6b4b4b28743` passed run `37375430748` in both `build-and-test` and `deploy`; `tests/browser/ui19.spec.mjs` remains unchanged.
 
 ## Design checkpoint
 
@@ -21,4 +21,4 @@ Remote design blob `5157af29079cf03f86476b71bc58607a215d6b53` is unchanged. Re-r
 
 For a generic server-projected `target_cards` choice whose eligible keys include the random `hand` zone and whose target matches the proven external Hero Focus, render Hand ×N plus individually public Equipment/Judgement choices as local SELECTABLE DETAIL within that focus. Keep legality in `CurrentAction`, selection state viewer-local, and Confirm / Skip / contextual Cancel in the Local Player Dock; preserve the trigger payload exactly once. Retain the picker fallback for opaque `hand:<index>` and `pendingTargetCard` Steal/Dismantle flows. Add focused 390/480/1440px and large-Hand proof plus submission, privacy, stale-reset, and fallback checks. Do not modify `tests/browser/ui19.spec.mjs`.
 
-Implementation and focused validation are complete locally: the target-card browser cases plus the unchanged UI-19 retained-picker geometry case passed 12/12; the focused Retaliation, generic opaque-key, and `pendingTargetCard` Node tests passed 4/4; targeted ESLint and `git diff --check` passed. `tests/browser/ui19.spec.mjs` is unchanged. Before commit, remote `ux-v2` head `fa196351fea35ad66b162b88bdbcf6b4b4b28743` was confirmed green in Actions run `37375430748`. The implementation commit is created locally and pending push; its required Actions validation is pending.
+Implementation and focused validation are complete locally: the target-card browser cases plus the unchanged UI-19 retained-picker geometry case passed 12/12; the focused Retaliation, generic opaque-key, and `pendingTargetCard` Node tests passed 4/4; targeted ESLint and `git diff --check` passed. `tests/browser/ui19.spec.mjs` is unchanged. The task commit is pushed as `16191de7aa01494860837d8263cef828161dc189`; exact-SHA Actions validation is pending in run `37379800040`.
