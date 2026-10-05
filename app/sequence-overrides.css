@@ -507,6 +507,34 @@
   overflow: hidden;
 }
 
+.local-hero-card.targetable-target {
+  border-color: #9bd8cd;
+  box-shadow: 0 0 0 2px #78cabe99, 0 0 16px #66c1b688, 0 5px 14px #0009;
+  cursor: pointer;
+}
+
+.local-hero-card.targetable-target:hover { filter: brightness(1.08); }
+
+.local-hero-card.selected-target {
+  border-color: #ffe28a !important;
+  outline: 3px solid #ffe28a;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px #ffdc6b66, 0 0 28px #ffd15faa, 0 12px 28px #000d;
+}
+
+.local-hero-card.selected-target:focus-visible {
+  outline: 4px solid #fff6c7;
+  outline-offset: 4px;
+}
+
+.local-hero-anchor .local-hero-info-button {
+  top: 3px;
+  right: 3px;
+  width: 23px;
+  height: 23px;
+  font-size: 12px;
+}
+
 .local-hero-card-empty { cursor: default; }
 
 .local-hero-portrait {

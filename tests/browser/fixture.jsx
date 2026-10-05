@@ -77,6 +77,14 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, decisi
 }
 
 function currentActionFor(state, actorId, handCardId) {
+  if (state === "self-target-trigger") return {
+    version: 3, kind: "trigger", actorId, deadline: 0, reason: "Choose one target for the projected trigger", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
+    triggerOptions: [{ effectId: "browser_projected_target", label: "Projected Target", selection: { type: "target", targetIds: ["p1", "p2"], min: 1, max: 1 } }],
+  };
+  if (state === "self-target-skill" || state === "self-target-skill-no-self") return {
+    version: 3, kind: "turn", actorId, deadline: 0, reason: "Choose one legal target for Prodigal Healer", legalActions: ["trigger", "end_turn"],
+    triggerOptions: [{ effectId: "hua_tuo_prodigal_healer", label: "Prodigal Healer", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: [handCardId], targetIds: state === "self-target-skill" ? ["p1", "p2"] : ["p2"], targetMin: 1, targetMax: 1 } }],
+  };
   if (state === "sun-shangxiang-daredevil") return {
     version: 3, kind: "trigger", actorId, deadline: 0, reason: "Draw two cards after losing equipment, or skip", legalActions: ["trigger", "decline_trigger"], declineAction: "decline_trigger",
     triggerOptions: [{ effectId: "sun_shangxiang_daredevil", label: "Daredevil", allowDecline: true }],
@@ -159,6 +167,8 @@ function currentActionFor(state, actorId, handCardId) {
 
 function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sourceOverride }) {
   const ordinaryTurn = state === "ordinary-turn";
+  const selfTargetFixture = state === "self-target-skill" || state === "self-target-skill-no-self" || state === "self-target-trigger";
+  const selfTargetTriggerFixture = state === "self-target-trigger";
   if (ordinaryTurn) state = "normal";
   const hasLocalJudgementFixture = ["local-judgement-empty", "local-judgement-one", "local-judgement-two"].includes(state);
   const localJudgementCount = state === "local-judgement-one" ? 1 : state === "local-judgement-two" ? 2 : 0;
@@ -188,12 +198,12 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
   const targets = denseGroup ? playerIds.filter((id) => id !== "p4") : unfocusedGroup ? ["p1", "p2"] : state === "group-observer" ? ["p1", "p2", "p3"] : state === "dying" ? ["p2"] : state === "group" ? playerIds.filter((id) => id !== "p1") : [state === "duel" || state === "negation" || state === "confirm-skip" ? "p1" : "p2"];
   const stage = state === "duel" ? "DUEL_EXCHANGE" : state === "negation" || state === "confirm-skip" ? "NEGATION" : state === "dying" ? "DYING" : state === "group" || state === "group-observer" || unfocusedGroup ? "GROUP_RESOLUTION" : "ATTACK_RESPONSE";
   const currentAction = state === "rest" ? null : currentActionFor(state, actorId, hand[0]?.id ?? "");
-  const presentationSnapshot = ordinaryTurn ? {
+  const presentationSnapshot = ordinaryTurn || selfTargetFixture ? {
     identity: null,
     stable: { kind: "REST", interactionId: null, checkpointId: null, presentationRevision: null, decisionActorId: null },
     interaction: null,
     decision: null,
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: "turn", actorId, entitled: true },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: selfTargetTriggerFixture ? "trigger" : "turn", actorId, entitled: true },
     settlement: null,
     transitionEvents: [],
   } : state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: sourceOverride === "none" ? null : state === "group-observer" || unfocusedGroup ? "p4" : "p1", targetIds: targets, currentParticipantId: unfocusedGroup ? null : state === "group-observer" ? "p1" : state === "dying" ? "p2" : actorId, decisionActorId: actorId, activeResolverId: actorId, viewerId: meId });
@@ -231,12 +241,12 @@ function browserRoom({ state, count, handSize, equipmentCase, heroOverride, sour
     players,
     myHand: hand,
     turnSeat: state === "group-observer" ? 3 : state === "dying" ? 1 : 0,
-    phase: state === "dying" ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" ? "play" : "response",
+    phase: state === "dying" ? "dying" : state === "rest" || state === "group" || state === "normal" || state === "interaction" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self" ? "play" : "response",
     deckCount: 20,
     discardTop: null,
     log: [],
     timeline: [],
-    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive",
+    isMyTurn: state === "normal" || state === "interaction" || state === "group" || state === "turn-play-end" || state === "sun-shangxiang-inactive" || state === "self-target-skill" || state === "self-target-skill-no-self",
     actionPlayerId: currentAction?.actorId ?? null,
     actionReason: currentAction?.reason ?? "Waiting for the next legal action",
     isMyAction: Boolean(currentAction?.actorId === meId),

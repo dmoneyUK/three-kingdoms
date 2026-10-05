@@ -5,22 +5,22 @@ Mode: `AUTONOMOUS UI RUN`
 
 This file contains only the current execution handoff. Product design is in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; execution rules are in `AGENTS.md` and `docs/AUTONOMOUS_UI_LAYOUT_AGENT_WORKFLOW.md`; history is in `docs/AUTONOMOUS_UI_ROADMAP.md`.
 
-## Latest task result — UX2.0VIS-12P
+## Latest task result — UX2.0VIS-13A
 
-Status: **IMPLEMENTED — CI PENDING on the corrective revision**.
+Status: **IMPLEMENTED — CI PENDING**.
 
-Removed repeated current-participant/focus metadata only when the projected Hero Focus has role `CURRENT PARTICIPANT` and the same authoritative player ID. Group Active Scope remains visible without dropping the distinct DECISION fact; a different `CURRENT TARGET` does not suppress the current-participant summary. No gameplay semantics, protocol, legality, private data, Dock, or physical seats changed.
+The Local Player Dock Hero is now selectable only when the active `CurrentAction` skill/trigger selection's typed `targetIds` includes the viewer. It uses the shared `setTarget` path; a separate Hero Info affordance remains available during selection. Added active-skill, generic-trigger, and absent-self-target browser fixtures/tests. The viewer Hero remains absent from the central Interaction Stage. No gameplay rules, routes, protocol, or private presentation data changed.
 
-Focused validation: `node --import tsx --test tests/presentation-client.test.mjs` passed 39/39. The selected 21-case 12P/12M/12N/12O/12J/12K browser matrix passed 21/21; two 12P screenshots were visually inspected and Stage geometry assertions passed. After a local build, the full browser suite reproduced only four short-portrait group-observer failures (398/402 passed): the visible `ACTIVE SCOPE` role was omitted from a legacy selector. The selector was updated to include `active-scope`; the four affected cases plus both 12P browser cases then passed 6/6. `git diff --check` passed. The full browser suite was not rerun after this assertion-only correction.
+Focused validation: selected browser matrix passed 7/7 (three self-target cases, two existing opponent-target cases, and two 12P cases); `node --import tsx --test tests/active-skill-interactions.test.mjs` passed 40/40; `git diff --check` passed. Visually inspected the attached 390×844 selected-self-target screenshot; target and independent info affordances are visible in the Dock. No full local suite/build/lint was run.
 
-12N Actions run `37250607906` for `e7def50e71f4abb0b53d2e16f6ebd9e35cbc873a` completed successfully. 12O Actions run `37264564194` for `fb29061be7a45763839e666c728dbd3082a34078` completed with both `build-and-test` and `deploy` jobs successful. These are Actions results only, not production-health verification. 12P Actions run `37265642914` for `8aac37ac7a7f1764bd0528367893016740b0b8df` failed at `test:browser`; `lint` and `build` succeeded, and deploy was skipped.
+The preceding 12P corrective revision is `1223eb208cae9dffc00070814be690499312ef14`. Its push-triggered Actions run `37266845020` was observed **in progress** once before 13A source edits; it has not been rechecked. The earlier 12P run `37265642914` failed in `test:browser`; the correction is the `active-scope` selector assertion update.
 
 ## Design review checkpoint
 
-Reviewed current remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`; it matches the prior checkpoint. 12P remains governed by §§0.91.2 and 0.91.5; the Reviewer additions A–C remain long-term design authority, not a task queue.
+Reviewed remote design blob `f52b6134fd62696c71fc3cba86210319e454832b`. 13A follows Reviewer addition A and §§1.7, 2.3, 3C, 4, and 8. The next task is based on Reviewer addition B; additions remain design authority, not a task queue.
 
-## Current task — UX2.0VIS-12P CI correction
+## Next task — UX2.0VIS-13B: Preserve Dodge after a failed Eight Trigrams response
 
-The stale short-portrait browser assertion now accepts the visible `active-scope` role as Stage scope metadata. Preserve the approved Stage behavior and all other `ui19.spec.mjs` coverage; no game or UI semantics changed.
+For ordinary Attack and Group/AOE Dodge responses, distinguish a failed Eight Trigrams attempt from Pass: after the final Judgement result (including a modifier window), keep the same actor and unchanged required Dodge count, exclude only `eight_trigrams_dodge`, and reopen the server-projected remaining response choices. Do not apply damage until the player explicitly declines. Preserve the response initiator across Judgement modifiers and existing causal continuation; do not change unrelated response families or client-side legality.
 
-Acceptance: all four compact group-observer cases recognize the rendered `active-scope` role while preserving existing geometry/content checks. Commit and push only `tests/browser/ui19.spec.mjs` and `HANDOVER.md`, then fetch and verify the exact revision; inspect its push-triggered Actions result before beginning any next-task source edit.
+Acceptance: focused API/decision regressions prove success still satisfies one Dodge, failure keeps the full requirement and reoffers other legal providers while disabling Eight Trigrams, explicit decline then resolves the failure, and the behavior is correct for Attack and Group/AOE. Include a final Judgement-modifier case and exact card-conservation/continuation assertions. Inspect the push-triggered Actions run for the 13A revision once before the first 13B source edit; follow workflow §§5–9 and stop if a relevant CI failure or authority gap requires diagnosis/review.
