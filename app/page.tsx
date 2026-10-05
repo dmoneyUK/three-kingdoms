@@ -578,7 +578,12 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const hasProvenDuelCurrentEffect = stage.stage === "DUEL_EXCHANGE"
     && publicEffectLabel?.toLowerCase() === "duel"
     && duelParticipantIsActive;
-  const hasSupportedCurrentEffect = hasSingleTargetCurrentEffect || hasProvenDuelCurrentEffect;
+  const hasProvenDyingCurrentEffect = stage.stage === "DYING"
+    && dyingHandoff.visible
+    && Boolean(stage.source.id && publicEffectLabel)
+    && stage.activeTargets.length === 1
+    && stage.activeTargets[0]?.id === dyingHandoff.dyingPlayer.id;
+  const hasSupportedCurrentEffect = hasSingleTargetCurrentEffect || hasProvenDuelCurrentEffect || hasProvenDyingCurrentEffect;
   const currentEffect = display.visible && publicEffectLabel && hasSupportedCurrentEffect
     ? stage.stage === "DUEL_EXCHANGE" ? "Duel" : publicEffectLabel
     : null;
@@ -666,7 +671,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const hideStageArchitecturalChrome = isOpenNegationResponse || connectedCurrentEffectFocusIsVisible;
   if (!display.visible && !hasLocalFocus) return null;
   return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
-    <header>{!hideStageArchitecturalChrome && <span>INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>
+    <header>{!hideStageArchitecturalChrome && <span>INTERACTION STAGE</span>}<strong>{hasLocalInspect ? `INSPECT · ${inspectPlayer.name}` : hasLocalPreview ? `PREVIEW · ${localPreviewPlayer.name}` : currentEffect && isOpenNegationResponse ? "NEGATION RESPONSE" : currentEffect && stage.stage === "DYING" ? display.focusLabel : currentEffect ? stage.stageLabel : display.focusLabel}</strong>{showViewerDecisionMarker && <em>YOUR DECISION</em>}</header>
     {currentEffectSummary && <p className="interaction-stage-event-summary" data-stage-event-summary="proven">{currentEffectSummary}</p>}
     <div className="interaction-stage-body">
       <div className="interaction-stage-hero-region">
