@@ -608,8 +608,8 @@ function groupParticipantProgress(
     const status = stored?.status;
     if (playerId !== targetIds[index] || typeof status !== "string" || !validStatuses.has(status as GroupParticipantProgressStatus)) return null;
     const outcome = stored?.outcome;
-    if (outcome !== undefined && (outcome !== "AVOIDED" || values.cardKind !== "RainingArrows" || resolutionSemantics !== "GROUP" || status !== "RESOLVED")) return null;
-    participants.push({ playerId, order: index + 1, status: status as GroupParticipantProgressStatus, ...(outcome === "AVOIDED" ? { outcome } : {}) });
+    if (outcome !== undefined && ((outcome !== "AVOIDED" && outcome !== "DAMAGED") || values.cardKind !== "RainingArrows" || resolutionSemantics !== "GROUP" || status !== "RESOLVED")) return null;
+    participants.push({ playerId, order: index + 1, status: status as GroupParticipantProgressStatus, ...(outcome === "AVOIDED" || outcome === "DAMAGED" ? { outcome } : {}) });
   }
 
   const activeParticipants = participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");

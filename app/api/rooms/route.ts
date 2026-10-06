@@ -445,11 +445,14 @@ async function recoverClaimedHeroSkill(room: RoomRow, player: PlayerRow, hand: C
   ]);
 }
 async function actionRevisionFor(room: RoomRow, players: PlayerRow[], projectedActionPlayerId: string | null) {
-  // The revision changes when a relevant hand changes without disclosing card
-  // identities. This keeps opaque-position decisions from surviving a stale
-  // hand mutation while remaining safe to expose in the public projection.
-  const handRevision = await hash(players.map((player) => `${player.id}:${player.hand_json ?? "[]"}`).join("|"));
-  return [room.status, room.phase ?? "", projectedActionPlayerId ?? "", room.pending_json ?? "", room.skill_state_json ?? "", handRevision].join("|");
+  // Keep the revision sensitive to private continuation/state changes without
+  // placing their serialized contents in a value returned to every viewer.
+  const [pendingRevision, skillStateRevision, handRevision] = await Promise.all([
+    hash(room.pending_json ?? ""),
+    hash(room.skill_state_json ?? ""),
+    hash(players.map((player) => `${player.id}:${player.hand_json ?? "[]"}`).join("|")),
+  ]);
+  return [room.status, room.phase ?? "", projectedActionPlayerId ?? "", pendingRevision, skillStateRevision, handRevision].join("|");
 }
 function attackRangeFor(player?: PlayerRow | null) { const weapon = weaponCard(player); return weapon ? cardDefinition(weapon.kind).attackRange ?? 1 : 1; }
 function attackDistance(players: PlayerRow[], sourceId: string, targetId: string) {
@@ -1780,6 +1783,7 @@ function finishGroupParticipant(continuation: GroupContinuation, actorId: string
   const aliveIds = new Set(players.filter((player) => player.alive).map((player) => player.id));
   return {
     ...continuation,
+    ...(continuation.pendingDamageParticipantId === actorId ? { pendingDamageParticipantId: undefined } : {}),
     participantProgress: {
       ...progress,
       participants: progress.participants.map((participant) => {
@@ -1799,16 +1803,42 @@ function satisfiedGroupParticipantOutcome(continuation: GroupContinuation): Grou
   return continuation.cardKind === "RainingArrows" && continuation.requiredKind === "Dodge" ? "AVOIDED" : undefined;
 }
 
+function withPendingGroupDamageOutcome(response: GroupResponsePending | undefined, participantId: string): GroupResponsePending | undefined {
+  const group = groupResponse(response);
+  const continuation = group?.continuation;
+  const progress = continuation?.participantProgress;
+  const participant = progress?.participants.find(({ playerId }) => playerId === participantId);
+  if (!group || continuation.cardKind !== "RainingArrows" || continuation.requiredKind !== "Dodge"
+    || progress?.resolutionSemantics !== "GROUP" || participant?.status !== "PAUSED"
+    || !continuation.causal || continuation.causal.interactionId !== progress.interactionId
+    || continuation.causal.frameId !== progress.groupFrameId) return response;
+  return { ...group.response, continuation: { ...continuation, pendingDamageParticipantId: participantId } };
+}
+
+function pendingGroupDamageOutcomeFor(continuation: GroupContinuation, participantId: string): GroupParticipantProgressOutcome | undefined {
+  const progress = continuation.participantProgress;
+  return continuation.pendingDamageParticipantId === participantId
+    && continuation.cardKind === "RainingArrows"
+    && continuation.requiredKind === "Dodge"
+    && progress?.resolutionSemantics === "GROUP"
+    && progress.participants.some((participant) => participant.playerId === participantId && participant.status === "PAUSED")
+    ? "DAMAGED"
+    : undefined;
+}
+
 function resumeGroupParticipantAfterDying(continuation: GroupContinuation, nextActorId: string, players: PlayerRow[]): GroupContinuation {
   const progress = continuation.participantProgress;
   if (!progress) return continuation;
   const aliveIds = new Set(players.filter((player) => player.alive).map((player) => player.id));
+  const damageOutcome = pendingGroupDamageOutcomeFor(continuation, continuation.pendingDamageParticipantId ?? "");
+  const damageOutcomeResolved = Boolean(damageOutcome && progress.participants.some((participant) => participant.playerId === continuation.pendingDamageParticipantId && participant.status === "PAUSED"));
   return {
     ...continuation,
+    ...(damageOutcomeResolved ? { pendingDamageParticipantId: undefined } : {}),
     participantProgress: {
       ...progress,
       participants: progress.participants.map((participant) => {
-        if (participant.status === "PAUSED") return { ...participant, status: "RESOLVED" };
+        if (participant.status === "PAUSED") return { ...participant, status: "RESOLVED", ...(participant.playerId === continuation.pendingDamageParticipantId && damageOutcome ? { outcome: damageOutcome } : {}) };
         if (participant.playerId === nextActorId && participant.status === "PENDING" && aliveIds.has(nextActorId)) return { ...participant, status: "CURRENT" };
         if (participant.status === "PENDING" && !aliveIds.has(participant.playerId)) return { ...participant, status: "NO_LONGER_APPLICABLE" };
         return participant;
@@ -2949,6 +2979,8 @@ type SourcedDamageTransition = {
 async function resolveSourcedDamage({ room, source, target, players, amount, deck = parse<Card[]>(room.deck_json, []), discard, log, resumePhase, resumePlayerId, sequenceStartCardId, damageCards = [], physicalSuit, origin, causal, cause = "other", label = "Damage", damageDescription, writes = [], resumeGroup, resumeChildCausal, resumePending, resumeDamageSuffered, resumeTurnEnd, onDamageApplied }: SourcedDamageTransition): Promise<AttackDamageResult> {
   const inheritedCausal = causal ?? resumeGroup?.causal ?? resumePending?.causal ?? resumeDamageSuffered?.causal ?? resumeTurnEnd?.causal;
   const finalAmount = resolveDamageModifiers({ sourceId: source?.id, sourceHero: source?.hero, cause, baseAmount: amount, turnState: parse<KingSkillState>(room.skill_state_json, {}) });
+  const effectiveResumeGroup = finalAmount > 0 ? withPendingGroupDamageOutcome(resumeGroup, target.id) : resumeGroup;
+  const effectiveResumePending = finalAmount > 0 ? withPendingGroupDamageOutcome(resumePending, target.id) : resumePending;
   const skillState = parse<KingSkillState>(room.skill_state_json, {});
   const playPhase = resumePhase.startsWith("play");
   const hp = applyDamage(target.hp ?? 1, finalAmount);
@@ -2971,7 +3003,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     stage: "reaction",
     resolvedEffectIds: [],
     resolvedDamagePointEffectIds: [],
-    ...(resumeGroup ? { resumeGroup } : {}),
+    ...(effectiveResumeGroup ? { resumeGroup: effectiveResumeGroup } : {}),
     ...(resumeDamageSuffered ? { resumeDamageSuffered } : {}),
     ...(resumeTurnEnd ? { resumeTurnEnd } : {}),
     ...(inheritedCausal ? { causal: inheritedCausal } : {}),
@@ -2983,8 +3015,8 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     const pendingPostDamageOptions = target.alive
       ? damageSufferedTriggerOptions(dyingSource?.alive ? dyingSource : null, dyingTarget, finalAmount, undefined, [], damageCards, [], cause, physicalSuit, skillState, playPhase)
       : [];
-    const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(resumeGroup || resumeDamageSuffered || resumeTurnEnd);
-    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, resumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal);
+    const needsPostDamageResume = pendingPostDamageOptions.length > 0 || Boolean(effectiveResumeGroup || resumeDamageSuffered || resumeTurnEnd);
+    await startDyingRescue(room, source, dyingTarget, players, deck, discard, damageLog, writes, resumePlayer, resumePhase, effectiveResumePending, hp, origin, needsPostDamageResume ? damageContinuation : undefined, undefined, inheritedCausal);
     return { kind: "dying" };
   }
 
@@ -3006,7 +3038,7 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     const actorId = damageSufferedActorId(updatedSource?.alive ? updatedSource : null, updatedTarget, finalAmount, damageCards, [], [], cause, physicalSuit, skillState, playPhase) ?? updatedTarget.id;
     const actor = players.find((player) => player.id === actorId && player.alive) ?? updatedTarget;
     const presentation = addLogWithId(damageLog, `${actor.name} may use a post-damage reaction, or skip.`);
-    const pendingResult = damageSufferedTriggerPending(source, updatedTarget, finalAmount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, resumeGroup, resumeDamageSuffered, damageCards, resumeTurnEnd, cause, physicalSuit, actor.id, inheritedCausal);
+    const pendingResult = damageSufferedTriggerPending(source, updatedTarget, finalAmount, resumePhase, sequenceStartCardId, presentation.eventId, origin, resumePlayerId, effectiveResumeGroup, resumeDamageSuffered, damageCards, resumeTurnEnd, cause, physicalSuit, actor.id, inheritedCausal);
     const pending = pendingResult.value;
     const causalEnvelope = pendingResult.createdEnvelope ?? causalEnvelopeAtStage(room, inheritedCausal, "DAMAGE", { currentSourceId: source?.id ?? null, currentEffect: label, currentTargetIds: [target.id], resolvingPlayerId: actor.id });
     await db().batch([
@@ -3028,9 +3060,9 @@ async function resolveSourcedDamage({ room, source, target, players, amount, dec
     await continueTurnEndEvent({ ...room, phase: "resolving", pending_json: null }, resumeTurnEnd, updatedPlayers, deck, discard, damageLog);
     return { kind: "damage_applied", hp, log: damageLog };
   }
-  if (resumeGroup) {
+  if (effectiveResumeGroup) {
     const resumedRoom = resumeGroupCausalRoom(room, resumeChildCausal);
-    await finishGroupStep(resumedRoom, resumeGroup, resumeGroup.continuation, updatedPlayers, discard, damageLog, [...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id)]);
+    await finishGroupStep(resumedRoom, effectiveResumeGroup, effectiveResumeGroup.continuation, updatedPlayers, discard, damageLog, [...writes, db().prepare("UPDATE players SET hp = ? WHERE id = ?").bind(hp, target.id)]);
     return { kind: "damage_applied", hp, log: damageLog };
   }
   if (resumePhase.startsWith("draw")) {
@@ -3426,7 +3458,8 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
 }
 
 async function finishGroupStep(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, players: PlayerRow[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], outcome?: GroupParticipantProgressOutcome) {
-  const completedContinuation = finishGroupParticipant(continuation, response.actorId, players, outcome);
+  const participantOutcome = outcome ?? pendingGroupDamageOutcomeFor(continuation, response.actorId);
+  const completedContinuation = finishGroupParticipant(continuation, response.actorId, players, participantOutcome);
   const next = nextGroupResponse(response, completedContinuation, players);
   if (next) {
     const presentation = addLogWithId(log, `${groupCardName(continuation.cardKind)} advances to the next target.`);

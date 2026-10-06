@@ -277,10 +277,27 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
     { playerId: "C", order: 2, status: "PENDING" },
     { playerId: "D", order: 3, status: "RESOLVED", outcome: "AVOIDED" },
   ]);
+  const damaged = {
+    ...pending,
+    continuation: {
+      ...pending.continuation,
+      participantProgress: {
+        ...progress,
+        participants: [progress.participants[0], progress.participants[1], { playerId: "D", status: "RESOLVED", outcome: "DAMAGED" }],
+      },
+    },
+  };
+  assert.deepEqual(project(damaged).groupResolution?.participantProgress, [
+    { playerId: "B", order: 1, status: "CURRENT" },
+    { playerId: "C", order: 2, status: "PENDING" },
+    { playerId: "D", order: 3, status: "RESOLVED", outcome: "DAMAGED" },
+  ]);
   assert.equal(project(pending).groupResolution?.resolutionSemantics, "GROUP");
   for (const invalidParticipant of [
     { playerId: "B", status: "CURRENT", outcome: "AVOIDED" },
+    { playerId: "B", status: "CURRENT", outcome: "DAMAGED" },
     { playerId: "C", status: "PENDING", outcome: "AVOIDED" },
+    { playerId: "C", status: "PENDING", outcome: "DAMAGED" },
   ]) {
     const participants = [progress.participants[0], progress.participants[1], progress.participants[2]];
     participants[invalidParticipant.playerId === "B" ? 0 : 1] = invalidParticipant;

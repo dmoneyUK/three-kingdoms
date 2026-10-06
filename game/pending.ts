@@ -27,7 +27,7 @@ export type JudgementNegationCausalResume =
 export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string } & CausalFields;
 export type InfluencingAttackContinuation = { kind: "influencing_attack"; sourceId: string; targetId: string; resumePhase: string; sequenceStartCardId: string; origin: "triggered" } & CausalFields;
 export type GroupParticipantProgressStatus = "PENDING" | "CURRENT" | "PAUSED" | "RESOLVED" | "NO_LONGER_APPLICABLE";
-export type GroupParticipantProgressOutcome = "AVOIDED";
+export type GroupParticipantProgressOutcome = "AVOIDED" | "DAMAGED";
 export type GroupResolutionSemantics = "GROUP" | "ORDERED";
 export type GroupParticipantProgress = {
   version: 1;
@@ -36,7 +36,22 @@ export type GroupParticipantProgress = {
   resolutionSemantics: GroupResolutionSemantics;
   participants: Array<{ playerId: string; status: GroupParticipantProgressStatus; outcome?: GroupParticipantProgressOutcome }>;
 };
-export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; damageCards?: Card[]; physicalSuit?: Card["suit"]; sequenceStartCardId?: string; resolutionId?: string; participantProgress?: GroupParticipantProgress } & CausalFields;
+export type GroupContinuation = {
+  kind: "group";
+  cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack";
+  sourceId: string;
+  remainingIds: string[];
+  requiredKind: "Attack" | "Dodge";
+  resumePhase: string;
+  heldCards?: Card[];
+  damageCards?: Card[];
+  physicalSuit?: Card["suit"];
+  sequenceStartCardId?: string;
+  resolutionId?: string;
+  participantProgress?: GroupParticipantProgress;
+  /** Server-only marker consumed when the matching paused participant resolves. */
+  pendingDamageParticipantId?: string;
+} & CausalFields;
 export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string } & CausalFields;
 export type NegationHistoryRecord = {
   nodeId: string;

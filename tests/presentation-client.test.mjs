@@ -53,7 +53,7 @@ function snapshot(overrides = {}) {
   };
 }
 
-function groupProgressSnapshot({ child = false, avoided = false } = {}) {
+function groupProgressSnapshot({ child = false, outcome = null } = {}) {
   const targetIds = ["C", "B", "E", "D"];
   const sceneValue = scene({
     rootFrameId: "group-frame",
@@ -86,7 +86,7 @@ function groupProgressSnapshot({ child = false, avoided = false } = {}) {
       targetIds,
       currentParticipantId: "B",
       participants: [
-        { playerId: "C", order: 1, status: "RESOLVED", ...(avoided ? { outcome: "AVOIDED" } : {}) },
+        { playerId: "C", order: 1, status: "RESOLVED", ...(outcome ? { outcome } : {}) },
         { playerId: "B", order: 2, status: child ? "PAUSED" : "CURRENT" },
         { playerId: "E", order: 3, status: "PENDING" },
         { playerId: "D", order: 4, status: "PENDING" },
@@ -232,7 +232,7 @@ test("adapter carries validated ordered Standard AOE progress through root and c
 });
 
 test("adapter carries only a proven Raining Arrows Avoided outcome to the public participant scope", () => {
-  const view = buildPresentationClientView(groupProgressSnapshot({ avoided: true }), "D");
+  const view = buildPresentationClientView(groupProgressSnapshot({ outcome: "AVOIDED" }), "D");
   assert.equal(view.groupParticipantProgress[0].outcome, "AVOIDED");
   const stage = buildInteractionStageView(view, resolveDisplayName);
   const focus = projectHeroFocusForViewer(stage, buildHeroFocusView(stage), "D");
@@ -245,6 +245,28 @@ test("adapter carries only a proven Raining Arrows Avoided outcome to the public
     groupParticipantProgress: { ...view.groupResolution, participants: [currentOutcome, ...view.groupParticipantProgress.slice(1)] },
   }), "D");
   assert.deepEqual(malformed.groupParticipantProgress, [], "an active participant cannot already have a completed outcome");
+});
+
+test("adapter carries only a proven resolved Raining Arrows Damaged outcome", () => {
+  const view = buildPresentationClientView(groupProgressSnapshot({ outcome: "DAMAGED" }), "D");
+  assert.equal(view.groupParticipantProgress[0].outcome, "DAMAGED");
+  const stage = buildInteractionStageView(view, resolveDisplayName);
+  const focus = projectHeroFocusForViewer(stage, buildHeroFocusView(stage), "D");
+  const source = projectMediumSourceForViewer(stage, focus, "D");
+  assert.equal(projectGroupTargetScopeForViewer(stage, focus, source, "D")?.players[0].outcome, "DAMAGED");
+
+  const wrongCard = buildPresentationClientView(snapshot({
+    groupParticipantProgress: { ...view.groupResolution, cardKind: "BarbarianInvasion" },
+  }), "D");
+  assert.deepEqual(wrongCard.groupParticipantProgress, [], "damage outcomes are limited to the proven Raining Arrows Group");
+
+  const activeOutcome = buildPresentationClientView(snapshot({
+    groupParticipantProgress: {
+      ...view.groupResolution,
+      participants: [{ ...view.groupParticipantProgress[0], status: "PAUSED" }, ...view.groupParticipantProgress.slice(1)],
+    },
+  }), "D");
+  assert.deepEqual(activeOutcome.groupParticipantProgress, [], "a paused participant cannot publish a completed damage outcome");
 });
 
 test("adapter carries explicit ORDERED Halberd progress without deriving it from seats", () => {

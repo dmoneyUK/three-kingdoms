@@ -670,7 +670,23 @@ Only a proven regression or new Reviewer-approved design requirement does.
 - Local validation passed: build; focused PresentationV2/Snapshot/client/render
   tests 108/108; engine-backed API tests 49/49; targeted ESLint; and
   `git diff --check`. The pre-change remote head `ceca3dc` passed Actions run
-  `37427033710`; no result for this change's push is claimed.
+  `37427033710`; the push of `3409723` passed Actions run #756
+  (`37430172672`).
+
+### UX2.7-AOE-RAINING-ARROWS-DAMAGE-OUTCOME-01 — Proven AOE damage
+
+- The public Stage now shows `Damaged` only after the server proves positive
+  effective damage and the matching Raining Arrows Group participant resolves.
+  The proof survives post-damage triggers and Dying rescue, then is consumed at
+  the resolved boundary; pending/prevented damage remains outcome-free. Private
+  continuation and hand state are hashed in `actionRevision` rather than
+  serialized into a public value, retaining stale-change sensitivity without
+  disclosing private data.
+- Local validation passed: build; focused PresentationV2/Snapshot/client/render
+  tests 110/110; engine-backed API tests 27/27; targeted ESLint; and
+  `git diff --check`. The exact pre-change remote head `3409723` passed Actions
+  run #756 (`37430172672`); this task's push-triggered result is not yet
+  observed.
 
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
@@ -788,8 +804,8 @@ Only a proven regression or new Reviewer-approved design requirement does.
 These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
-- Public AOE outcome summaries other than the resolved Raining Arrows
-  `Avoided` result, and unrelated Group semantics, remain deferred.
+- Additional public AOE outcomes beyond the proven Raining Arrows `Avoided` and
+  `Damaged` results, and unrelated Group semantics, remain deferred.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public

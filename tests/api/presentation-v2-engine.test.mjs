@@ -360,7 +360,7 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(next.data.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
   assert.equal(next.data.presentationV2.groupResolution?.currentParticipantId, opened.bob.id);
   assert.deepEqual(next.data.presentationV2.groupResolution?.participantProgress, [
-    { playerId: opened.target.id, order: 1, status: "RESOLVED" },
+    { playerId: opened.target.id, order: 1, status: "RESOLVED", outcome: "DAMAGED" },
     { playerId: opened.bob.id, order: 2, status: "CURRENT" },
     { playerId: opened.carol.id, order: 3, status: "PENDING" },
   ]);
@@ -378,8 +378,8 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(finalView.data.currentAction.actorId, opened.carol.id);
   assert.equal(finalView.data.presentationV2.groupResolution?.currentParticipantId, opened.carol.id);
   assert.deepEqual(finalView.data.presentationV2.groupResolution?.participantProgress, [
-    { playerId: opened.target.id, order: 1, status: "RESOLVED" },
-    { playerId: opened.bob.id, order: 2, status: "RESOLVED" },
+    { playerId: opened.target.id, order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+    { playerId: opened.bob.id, order: 2, status: "RESOLVED", outcome: "DAMAGED" },
     { playerId: opened.carol.id, order: 3, status: "CURRENT" },
   ]);
   assert.deepEqual(finalView.data.presentationV2.groupResolution?.targetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
@@ -469,6 +469,15 @@ test("FIX14 Group failure Damage uses one child frame and resumes the next parti
   assert.equal(damageOpened.data.room.currentAction.kind, "trigger", JSON.stringify(damageOpened.data));
   assert.equal(damageOpened.data.room.currentAction.triggerEvent, "damage_suffered");
   assert.equal(damageOpened.data.room.currentAction.actorId, damageTarget.id);
+  assert.deepEqual(damageOpened.data.room.presentationV2.groupResolution?.participantProgress.find(({ playerId }) => playerId === damageTarget.id), {
+    playerId: damageTarget.id, order: 2, status: "PAUSED",
+  }, "damage stays outcome-free while the sourced post-damage continuation is open");
+  const storedDamage = authoritativePending(game.code);
+  assert.equal(storedDamage.continuation.resumeGroup.continuation.pendingDamageParticipantId, damageTarget.id);
+  assert.equal(JSON.stringify(damageOpened.data.room.presentationV2).includes("pendingDamageParticipantId"), false, "private continuation proof is not projected to clients");
+  assert.equal(damageOpened.data.room.actionRevision.includes("pendingDamageParticipantId"), false, "opaque revisions do not serialize private continuation fields");
+  assert.equal(damageOpened.data.room.actionRevision.includes(group.id), false, "opaque revisions do not expose held physical card IDs");
+  assert.equal(damageOpened.data.room.actionRevision.includes(targetDodge.id), false, "opaque revisions do not expose completed response-card IDs");
   const damageEnvelope = damageOpened.data.room.causalEnvelope;
   assert.ok(damageEnvelope);
   assert.equal(damageEnvelope.interactionId, groupRoot.interactionId);
@@ -528,6 +537,9 @@ test("FIX14 Group failure Damage uses one child frame and resumes the next parti
   assert.equal(resumedEnvelope.presentationRevision, damageEnvelope.presentationRevision + 2);
   assert.equal(resumedEnvelope.checkpoint.frameId, groupFrame.frameId);
   assert.deepEqual(resumedEnvelope.frames.find((frame) => frame.frameId === groupFrame.frameId)?.current.currentTargetIds, [finalTarget.id]);
+  assert.deepEqual(damageResolved.data.room.presentationV2.groupResolution?.participantProgress.find(({ playerId }) => playerId === damageTarget.id), {
+    playerId: damageTarget.id, order: 2, status: "RESOLVED", outcome: "DAMAGED",
+  }, "positive damage is published only after the post-damage continuation settles");
   assert.equal(damageResolved.data.room.players.find((player) => player.id === target.id).handCards.length, 0);
   assert.equal(damageResolved.data.room.players.find((player) => player.id === damageTarget.id).hp, 3);
 
@@ -577,6 +589,7 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   assert.equal(dyingSourceView.currentAction.actorId, source.id);
   const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   assert.equal(dyingPending.resumePending.continuation.kind, "group");
+  assert.equal(dyingPending.resumePending.continuation.pendingDamageParticipantId, damageTarget.id);
   assert.notEqual(dyingPending.causal.frameId, groupRoot.activeFrameId);
   assert.equal(dying.data.room.causalEnvelope.activeFrameId, dyingPending.causal.frameId);
   assert.equal(dyingSourceView.presentationV2.groupResolution?.semantics, "PROVEN");
@@ -585,8 +598,11 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   assert.equal(dyingSourceView.presentationV2.groupResolution?.activeFrameId, dyingPending.causal.frameId);
   assert.equal(dyingSourceView.presentationV2.groupResolution?.stage, "DYING");
   assert.equal(dyingSourceView.presentationV2.groupResolution?.currentParticipantId, damageTarget.id);
+  assert.deepEqual(dyingSourceView.presentationV2.groupResolution?.participantProgress.find(({ playerId }) => playerId === damageTarget.id), {
+    playerId: damageTarget.id, order: 2, status: "PAUSED",
+  }, "lethal damage stays outcome-free during Dying rescue");
   assert.deepEqual(dyingSourceView.presentationV2.groupResolution?.participantProgress, [
-    { playerId: target.id, order: 1, status: "RESOLVED" },
+    { playerId: target.id, order: 1, status: "RESOLVED", outcome: "DAMAGED" },
     { playerId: damageTarget.id, order: 2, status: "PAUSED" },
     { playerId: finalTarget.id, order: 3, status: "PENDING" },
   ]);
@@ -627,9 +643,10 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   assert.ok(rescued.data.room.causalEnvelope.frames.some((frame) => frame.frameId === groupRoot.activeFrameId && frame.stage === "GROUP_RESOLUTION"));
   const resumedPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   assert.equal(resumedPending.continuation.kind, "group");
+  assert.equal(resumedPending.continuation.pendingDamageParticipantId, undefined, "the private damage marker is consumed at the resolved boundary");
   assert.deepEqual(rescued.data.room.presentationV2.groupResolution?.participantProgress, [
-    { playerId: target.id, order: 1, status: "RESOLVED" },
-    { playerId: damageTarget.id, order: 2, status: "RESOLVED" },
+    { playerId: target.id, order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+    { playerId: damageTarget.id, order: 2, status: "RESOLVED", outcome: "DAMAGED" },
     { playerId: finalTarget.id, order: 3, status: "CURRENT" },
   ]);
 

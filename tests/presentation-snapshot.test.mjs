@@ -36,7 +36,7 @@ function scene(overrides = {}) {
   };
 }
 
-function groupScene({ child = false } = {}) {
+function groupScene({ child = false, currentParticipantId = "B" } = {}) {
   const targetIds = ["B", "C", "D"];
   return scene({
     rootFrameId: "group-frame",
@@ -44,11 +44,11 @@ function groupScene({ child = false } = {}) {
     parentFrameId: child ? "group-frame" : null,
     stage: child ? "DAMAGE" : "GROUP_RESOLUTION",
     targetIds,
-    currentParticipantId: "B",
-    activeTargetIds: ["B"],
+    currentParticipantId,
+    activeTargetIds: [currentParticipantId],
     participantRoles: {
-      sourceId: "A", originalTargetIds: targetIds, activeTargetIds: ["B"], currentParticipantId: "B",
-      decisionActorId: "C", activeResolverId: "C", parentParticipantId: "B", participantIds: targetIds,
+      sourceId: "A", originalTargetIds: targetIds, activeTargetIds: [currentParticipantId], currentParticipantId,
+      decisionActorId: "C", activeResolverId: "C", parentParticipantId: currentParticipantId, participantIds: targetIds,
     },
     continuity: child ? { relation: "CHILD_FRAME", parentFrameId: "group-frame" } : { relation: "ROOT_FRAME", parentFrameId: null },
   });
@@ -182,7 +182,9 @@ test("snapshot drops AOE progress on root identity, order, participant, or statu
     { ...base, participantProgress: [...base.participantProgress].reverse() },
     { ...base, participantProgress: [{ ...base.participantProgress[0], status: "INVALID" }, ...base.participantProgress.slice(1)] },
     { ...base, participantProgress: [{ ...base.participantProgress[0], outcome: "AVOIDED" }, ...base.participantProgress.slice(1)] },
+    { ...base, participantProgress: [{ ...base.participantProgress[0], outcome: "DAMAGED" }, ...base.participantProgress.slice(1)] },
     { ...base, participantProgress: [...base.participantProgress.slice(0, 1), { ...base.participantProgress[1], outcome: "AVOIDED" }, ...base.participantProgress.slice(2)] },
+    { ...base, participantProgress: [...base.participantProgress.slice(0, 1), { ...base.participantProgress[1], outcome: "DAMAGED" }, ...base.participantProgress.slice(2)] },
     { ...base, currentParticipantId: "C" },
   ];
   for (const group of malformed) {
@@ -195,6 +197,30 @@ test("snapshot drops AOE progress on root identity, order, participant, or statu
     assert.equal(snapshot.identity?.interactionId, interaction.interactionId, "unrelated public scene remains usable");
     assert.equal(snapshot.groupParticipantProgress, null);
   }
+});
+
+test("snapshot preserves only a resolved Raining Arrows Damaged outcome", () => {
+  const interaction = groupScene({ currentParticipantId: "C" });
+  const base = groupResolution(interaction, { currentParticipantId: "C", participantProgress: [
+    { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+    { playerId: "C", order: 2, status: "CURRENT" },
+    { playerId: "D", order: 3, status: "PENDING" },
+  ] });
+  const projected = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: base },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "resolved-damage-outcome",
+    viewerId: "C",
+  });
+  assert.equal(projected.groupParticipantProgress?.participants[0].outcome, "DAMAGED");
+
+  const malformed = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [{ ...base.participantProgress[0], status: "PAUSED" }, ...base.participantProgress.slice(1)] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "unresolved-damage-outcome",
+    viewerId: "C",
+  });
+  assert.equal(malformed.groupParticipantProgress, null, "unresolved damage is not a public outcome");
 });
 
 test("snapshot fails closed for malformed or absent public causal proof", () => {
