@@ -5,12 +5,13 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-`UX2.18-AOE-STRUCTURAL-COMPOSITION-01` was pushed as `21ca89d741d2f0aa7cbd604b148b92d8f04f866a`. Actions run `37471054417` failed only at `npm test`: `tests/room-safety-render.test.mjs` still required a Group participant to render in the removed duplicate Hero Focus. Build, lint, and the full browser job succeeded; deploy was skipped. Failure class: stale assertion against the approved §12.6 composition, not a production regression. CI repair is in progress.
+`UX2.19-OATH-AUTHORITATIVE-RECIPIENT-SCOPE-01` is locally complete: Presentation/API regressions, targeted ESLint, and `git diff --check` pass; build passed before the final test-only assertion. Pre-commit remote head `673efcf132e74c4280ef46c81d62a4d553e7e2d6` passed push-triggered Actions run `37472484337` (**success**). This change's push CI is pending; no Reviewer acceptance is claimed.
 
 ## Design checkpoint
 
-Reviewed latest remote Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a`; unchanged. UX2.18 implements the existing typed Group structural composition. Oath/Bumper remain separate authority gaps.
+Reviewed latest remote Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a` at the UX2.19 close/planning boundary; unchanged. UX2.18 closes the approved Group structural-composition delta. UX2.19 adds Oath's separate simultaneous recipient scope; Bumper Harvest remains unprojected.
 
-## Current task — CI-REPAIR-UX218-GROUP-RENDER-ASSERTION-01 (IN PROGRESS)
+## Next task — UX2.20-OATH-NEGATION-STAGE-COMPOSITION-01
 
-Repair only the stale SSR assertion: verify Group Source/root/Target Strip, current-member status in the strip, and absence of duplicate Hero Focus; retain all unrelated single-target, privacy, and control-surface assertions. Run the named focused test and `git diff --check`. No production changes or Oath/Bumper work in this repair. Once pushed, record its exact SHA as `CI REPAIR PUSHED — VALIDATION PENDING`; resume feature work only after the repair SHA's CI succeeds.
+
+Consume only the proven Oath recipient scope to render Oath NEGATION as compact Source → root Oath card → recipient strip, with public Negation cards branching from the root only after submission. Do not render duplicate HeroFocus/Current Effect/Reaction Chain panels, infer recipient eligibility or sequential progress, or expose private response identity/controls. Keep local response actions in the Dock. Add semantic render and mobile/wide geometry regressions; leave Group behavior and Bumper Harvest unchanged.

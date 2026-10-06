@@ -876,10 +876,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   overlap, and root/strip geometry stability within 1 CSS px as the public
   Negation branch grew. Targeted ESLint and `git diff --check` passed. The
   pre-commit remote SHA `c9f6afe25867e9d849aa8f8d33833370ece5e86d` had Actions
-  run `37462834224` **success**. Pushed SHA `21ca89d741d2f0aa7cbd604b148b92d8f04f866a`
-  had Actions run `37471054417` fail at `npm test`: one stale SSR assertion
-  expected a duplicate Group Hero Focus. The build, lint, and browser steps
-  passed; deploy was skipped. A test-only CI repair is in progress.
+  run `37462834224` **success**. The feature push `21ca89d741d2f0aa7cbd604b148b92d8f04f866a`
+  exposed one stale SSR assertion; test-only repair `673efcf132e74c4280ef46c81d62a4d553e7e2d6`
+  passed complete Actions run `37472484337` (**success**), including deploy and
+  production smoke test. Reviewer acceptance remains unclaimed.
+
+### UX2.19-OATH-AUTHORITATIVE-RECIPIENT-SCOPE-01 — Simultaneous Oath recipients
+
+- Added one shared domain rule for living, wounded Oath recipients and exposed
+  its result through a typed, identity-bound public scope in PresentationV2,
+  PresentationSnapshot, and PresentationClientView. The scope remains distinct
+  from Oath's causal self-target and intentionally has no sequential current
+  participant. Viewer equality, privacy, typed-continuation, and mismatch
+  fail-closed behavior are covered; Group/Negation behavior and Bumper Harvest
+  are unchanged.
+- Focused PresentationV2/Snapshot/client tests passed 94/94; engine-backed API
+  tests passed 31/31; targeted ESLint, `git diff --check`, and build passed.
+  Pre-commit remote `ux-v2` SHA `673efcf132e74c4280ef46c81d62a4d553e7e2d6`
+  passed Actions run `37472484337`. Reviewer acceptance remains unclaimed.
 
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 

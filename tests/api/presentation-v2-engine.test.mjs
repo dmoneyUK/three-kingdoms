@@ -1,6 +1,7 @@
 import test from "node:test";
 import { projectPresentationV2 } from "../../game/presentation-v2.ts";
 import { composePresentationSnapshot } from "../../game/presentation-snapshot.ts";
+import { oathRecipientIds } from "../../game/oath.ts";
 import {
   assert, card, createHumanGame, openBorrowedSwordScenario, openGanglieGroup, passNegationWindows, prepareGuoJudgement, query, quote, request, requestAndSettle, setDeck, setEquipment, setHand, setTurn, sql, state, waitForState,
 } from "./test-support.mjs";
@@ -27,7 +28,14 @@ function assertStableDyingPersistence(code) {
 
 function assertProjectionMatchesEngine(code, token) {
   return state(code, token).then(({ data: view }) => {
-    const expected = projectPresentationV2({ pending: authoritativePending(code), currentAction: view.currentAction, actionRevision: view.actionRevision, timeline: view.timeline, causalEnvelope: view.causalEnvelope });
+    const expected = projectPresentationV2({
+      pending: authoritativePending(code),
+      currentAction: view.currentAction,
+      actionRevision: view.actionRevision,
+      timeline: view.timeline,
+      causalEnvelope: view.causalEnvelope,
+      oathRecipientIds: oathRecipientIds(view.players.map((player) => ({ id: player.id, alive: player.alive, hp: player.hp, maxHp: player.maxHp }))),
+    });
     assert.deepEqual(view.presentationV2, expected, "route presentationV2 is projected from the persisted engine state");
     const expectedSnapshot = composePresentationSnapshot({ presentationV2: view.presentationV2, currentAction: view.currentAction, actionRevision: view.actionRevision, viewerId: view.meId });
     assert.deepEqual(view.presentationSnapshot, expectedSnapshot, "route PresentationSnapshot is composed from the persisted engine projection");
@@ -1653,4 +1661,73 @@ test("malformed Judgement envelope stays non-authoritative through legacy resume
   assert.equal(declined.status, 200, JSON.stringify(declined.data));
   assert.equal(declined.data.room.causalEnvelope, null, "malformed authority is not reconstructed from Judgement continuation data");
   assert.notEqual(declined.data.room.phase, "response", "legacy delayed Judgement resumes without a stranded decision");
+});
+
+test("engine-backed Oath exposes a viewer-equal living wounded recipient scope and fails closed on mismatches", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [source, wounded, healthy, defeated] = game.room.players;
+  const [sourceMember, woundedMember] = game.members;
+  const oath = card("Oath", "oath-scope-source");
+  const negation = card("Negation", "oath-scope-negation");
+  setHand(source.id, [oath], 2, 4);
+  setHand(wounded.id, [negation], 1, 4);
+  setHand(healthy.id, [], 4, 4);
+  setHand(defeated.id, [], 0, 4);
+  sql(`UPDATE players SET alive=0,hp=0 WHERE id=${quote(defeated.id)}`);
+  setTurn(game.code, source.seat);
+
+  const opened = await request("play_card", { code: game.code, token: sourceMember.token, cardId: oath.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const pending = authoritativePending(game.code);
+  assert.equal(pending?.kind, "response");
+  assert.equal(pending?.continuation?.kind, "negation");
+  assert.equal(pending?.continuation?.effect?.kind, "oath");
+
+  const responderView = await assertProjectionMatchesEngine(game.code, woundedMember.token);
+  const scope = responderView.presentationV2.oathRecipientScope;
+  assert.deepEqual(scope, {
+    semantics: "PROVEN",
+    cardKind: "Oath",
+    interactionId: responderView.causalEnvelope.interactionId,
+    rootFrameId: responderView.causalEnvelope.frames[0].frameId,
+    activeFrameId: responderView.causalEnvelope.activeFrameId,
+    checkpointId: responderView.causalEnvelope.checkpoint.checkpointId,
+    presentationRevision: responderView.causalEnvelope.presentationRevision,
+    sourceId: source.id,
+    recipientIds: [source.id, wounded.id],
+  });
+  assert.deepEqual(responderView.presentationSnapshot.oathRecipientScope, scope);
+  assert.deepEqual(responderView.presentationSnapshot.oathRecipientScope.recipientIds, [source.id, wounded.id], "the wounded source participates while full-health and defeated characters do not");
+  assert.deepEqual(responderView.presentationV2.interactionScene.targetIds, [source.id], "the causal root's self-target does not replace Oath's separate all-wounded recipient scope");
+  assert.equal("currentParticipantId" in scope, false, "simultaneous Oath recovery does not invent sequential progress");
+  assert.equal("participantProgress" in scope, false);
+  assert.equal(JSON.stringify(scope).includes("oath-scope-negation"), false, "private physical response-card identity is absent");
+
+  const sourceView = await assertProjectionMatchesEngine(game.code, sourceMember.token);
+  assert.deepEqual(publicSnapshot(sourceView.presentationSnapshot), publicSnapshot(responderView.presentationSnapshot), "Oath scope is identical across viewers");
+  assert.equal(sourceView.currentAction.options, undefined, "another viewer receives no private Negation options");
+
+  const envelopeJson = query(`SELECT causal_envelope_json FROM rooms WHERE code=${quote(game.code)}`);
+  const originalEnvelope = JSON.parse(envelopeJson);
+  sql(`UPDATE rooms SET causal_envelope_json=${quote(JSON.stringify({ ...originalEnvelope, interactionId: "mismatched-oath-interaction" }))} WHERE code=${quote(game.code)}`);
+  const mismatchedEnvelope = (await state(game.code, sourceMember.token)).data;
+  assert.equal(mismatchedEnvelope.presentationV2.oathRecipientScope, null, "the persisted Oath continuation cannot attach to a different public Interaction ID");
+  assert.equal(mismatchedEnvelope.presentationSnapshot.oathRecipientScope, null);
+  sql(`UPDATE rooms SET causal_envelope_json=${quote(envelopeJson)} WHERE code=${quote(game.code)}`);
+
+  const pendingJson = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
+  const wrongEffectPending = JSON.parse(pendingJson);
+  wrongEffectPending.continuation.effect = { kind: "draw_two", cardId: oath.id };
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(wrongEffectPending))} WHERE code=${quote(game.code)}`);
+  const wrongEffect = (await state(game.code, sourceMember.token)).data;
+  assert.equal(wrongEffect.presentationV2.oathRecipientScope, null, "another Stratagem discriminator cannot claim the Oath scope");
+  assert.equal(wrongEffect.presentationSnapshot.oathRecipientScope, null);
+  sql(`UPDATE rooms SET pending_json=${quote(pendingJson)} WHERE code=${quote(game.code)}`);
+
+  const resolved = await requestAndSettle("decline_response", { code: game.code, token: woundedMember.token });
+  assert.equal(resolved.status, 200, JSON.stringify(resolved.data));
+  assert.equal(resolved.data.room.players.find((player) => player.id === source.id)?.hp, 3, "the wounded source receives the same recovery selected for public scope");
+  assert.equal(resolved.data.room.players.find((player) => player.id === wounded.id)?.hp, 2);
+  assert.equal(resolved.data.room.players.find((player) => player.id === healthy.id)?.hp, 4);
+  assert.equal(resolved.data.room.players.find((player) => player.id === defeated.id)?.hp, 0);
 });

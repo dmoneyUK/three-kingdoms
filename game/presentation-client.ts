@@ -1,6 +1,6 @@
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus } from "./pending";
 import { CARD_DEFINITIONS } from "./cards";
-import type { PresentationSnapshot, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress } from "./presentation-snapshot";
+import type { PresentationSnapshot, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress, PresentationSnapshotOathRecipientScope } from "./presentation-snapshot";
 import type {
   InteractionSceneContinuity,
   PresentationInteractionScene,
@@ -25,6 +25,7 @@ export type PresentationClientView = {
   participantIds: readonly string[];
   groupResolution: PresentationSnapshotGroupProgress | null;
   groupParticipantProgress: readonly PresentationSnapshotGroupParticipantProgress[];
+  oathRecipientScope: PresentationSnapshotOathRecipientScope | null;
   reactionChain: PresentationSnapshot["reactionChain"];
   rootOrigin?: NonNullable<PresentationInteractionScene["rootOrigin"]>;
   continuity: InteractionSceneContinuity;
@@ -174,6 +175,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     participantIds: [],
     groupResolution: null,
     groupParticipantProgress: [],
+    oathRecipientScope: null,
     reactionChain: null,
     continuity: REST_CONTINUITY,
     parentFrameId: null,
@@ -272,6 +274,27 @@ function groupProgressForSnapshot(
   return { ...progress, targetIds: [...progress.targetIds], participants };
 }
 
+function oathRecipientScopeForSnapshot(
+  snapshot: PresentationSnapshot,
+  scene: PresentationInteractionScene,
+): PresentationSnapshotOathRecipientScope | null {
+  const scope = snapshot.oathRecipientScope;
+  const identity = snapshot.identity;
+  if (!scope || !identity || scope.semantics !== "PROVEN" || scope.cardKind !== "Oath"
+    || scene.stage !== "NEGATION" || !isString(scene.sourceId)
+    || scope.interactionId !== identity.interactionId || scope.interactionId !== scene.interactionId
+    || scope.rootFrameId !== scene.rootFrameId || scope.activeFrameId !== scene.activeFrameId
+    || scope.checkpointId !== identity.checkpointId || scope.presentationRevision !== identity.presentationRevision
+    || scope.sourceId !== scene.sourceId || scope.sourceId !== scene.participantRoles.sourceId
+    || !Array.isArray(scope.recipientIds)) return null;
+  const seen = new Set<string>();
+  for (const recipientId of scope.recipientIds) {
+    if (!isString(recipientId) || seen.has(recipientId)) return null;
+    seen.add(recipientId);
+  }
+  return { ...scope, recipientIds: [...scope.recipientIds] };
+}
+
 function sameStringIds(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
@@ -365,6 +388,7 @@ export function buildPresentationClientView(
     && snapshot.localControl.actorId
     && snapshot.localControl.actorId === meId);
   const groupProgress = groupProgressForSnapshot(snapshot, scene);
+  const oathScope = oathRecipientScopeForSnapshot(snapshot, scene);
   return {
     hasInteraction: true,
     interactionId: snapshot.identity?.interactionId ?? null,
@@ -383,6 +407,7 @@ export function buildPresentationClientView(
     participantIds: [...roles.participantIds],
     groupResolution: groupProgress,
     groupParticipantProgress: groupProgress?.resolutionSemantics === "GROUP" ? groupProgress.participants : [],
+    oathRecipientScope: oathScope,
     reactionChain: reactionChainForSnapshot(snapshot, scene),
     ...(scene.rootOrigin ? { rootOrigin: { ...scene.rootOrigin, targetIds: [...scene.rootOrigin.targetIds] } } : {}),
     continuity: { ...scene.continuity },

@@ -22,6 +22,8 @@ export type PresentationV2Input = {
   currentAction: Pick<CurrentAction, "kind" | "actorId" | "reason" | "deadline" | "declineAction" | "presentation"> | null;
   actionRevision: string;
   timeline: readonly PresentationV2Event[];
+  /** Engine-derived public Oath recipients; never reconstructed from client state. */
+  oathRecipientIds?: readonly string[] | null;
   /** The parsed server-owned causal envelope; never reconstructed by this projector. */
   causalEnvelope?: CausalEnvelope | null;
 };
@@ -110,6 +112,19 @@ export type PresentationReactionChain = {
   nodes: readonly PresentationReactionChainNode[];
 };
 
+/** Simultaneous Oath recovery scope; intentionally has no sequential current participant. */
+export type PresentationOathRecipientScope = {
+  semantics: "PROVEN";
+  cardKind: "Oath";
+  interactionId: string;
+  rootFrameId: string;
+  activeFrameId: string;
+  checkpointId: string;
+  presentationRevision: number;
+  sourceId: string;
+  recipientIds: readonly string[];
+};
+
 export type PresentationStableBoundaryKind = "REST" | "CHOICE" | "SETTLEMENT" | "SPECIAL";
 
 export type PresentationStableBoundary = {
@@ -128,6 +143,7 @@ export type PresentationV2 = {
   interactionScene: PresentationInteractionScene | null;
   dyingBarrier: PresentationDyingBarrier | null;
   reactionChain: PresentationReactionChain | null;
+  oathRecipientScope: PresentationOathRecipientScope | null;
   groupResolution: {
     semantics: "PROVEN" | "UNPROVEN";
     resolutionSemantics: GroupResolutionSemantics | null;
@@ -573,6 +589,62 @@ function groupPresentation(
   };
 }
 
+function oathRecipientScopeFor(
+  pending: unknown,
+  envelope: CausalEnvelope | null,
+  scene: PresentationInteractionScene | null,
+  recipientIds: readonly string[] | null | undefined,
+): PresentationOathRecipientScope | null {
+  const response = record(pending);
+  const continuation = record(response?.continuation);
+  const effect = record(continuation?.effect);
+  if (response?.kind !== "response" || continuation?.kind !== "negation" || effect?.kind !== "oath"
+    || !scene || scene.semantics !== "PROVEN" || scene.stage !== "NEGATION"
+    || !envelope || !Array.isArray(recipientIds)) return null;
+
+  const sourceId = stringValue(continuation.sourceId);
+  const responseCausal = record(response.causal);
+  const continuationCausal = record(continuation.causal);
+  const activeFrame = envelope.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+  const rootFrames = envelope.frames.filter((frame) => frame.parentFrameId === null || frame.parentFrameId === undefined);
+  const rootFrame = rootFrames.length === 1 ? rootFrames[0] : null;
+  if (!sourceId || !activeFrame || !rootFrame || rootFrame.frameId !== activeFrame.frameId
+    || activeFrame.stage !== "NEGATION" || activeFrame.parentFrameId != null
+    || envelope.checkpoint.frameId !== activeFrame.frameId || envelope.checkpoint.stage !== "NEGATION"
+    || responseCausal?.interactionId !== envelope.interactionId || responseCausal.frameId !== activeFrame.frameId
+    || continuationCausal?.interactionId !== envelope.interactionId || continuationCausal.frameId !== activeFrame.frameId
+    || continuation.effectTargetId !== sourceId
+    || scene.interactionId !== envelope.interactionId || scene.rootFrameId !== rootFrame.frameId
+    || scene.activeFrameId !== activeFrame.frameId || scene.checkpointId !== envelope.checkpoint.checkpointId
+    || scene.presentationRevision !== envelope.presentationRevision || scene.sourceId !== sourceId
+    || scene.participantRoles.sourceId !== sourceId
+    || rootFrame.origin.originSourceId !== sourceId || rootFrame.origin.originalTargetIds.length !== 1
+    || rootFrame.origin.originalTargetIds[0] !== sourceId
+    || rootFrame.current.currentTargetIds.length !== 1 || rootFrame.current.currentTargetIds[0] !== sourceId
+    || rootFrame.current.currentSourceId !== sourceId
+    || rootFrame.current.currentEffect !== rootFrame.origin.originEffect
+    || scene.effect !== rootFrame.origin.originEffect) return null;
+
+  const recipients: string[] = [];
+  const seen = new Set<string>();
+  for (const recipientId of recipientIds) {
+    if (typeof recipientId !== "string" || recipientId.length === 0 || seen.has(recipientId)) return null;
+    seen.add(recipientId);
+    recipients.push(recipientId);
+  }
+  return {
+    semantics: "PROVEN",
+    cardKind: "Oath",
+    interactionId: envelope.interactionId,
+    rootFrameId: rootFrame.frameId,
+    activeFrameId: activeFrame.frameId,
+    checkpointId: envelope.checkpoint.checkpointId,
+    presentationRevision: envelope.presentationRevision,
+    sourceId,
+    recipientIds: recipients,
+  };
+}
+
 function groupParticipantProgress(
   envelope: CausalEnvelope | null,
   group: RecordLike | null,
@@ -777,6 +849,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
+  const oathRecipientScope = oathRecipientScopeFor(input.pending, envelope, interactionScene, input.oathRecipientIds);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
   const reactionChain = reactionChainFor(envelope, input.pending, interactionScene);
@@ -807,6 +880,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     interactionScene,
     dyingBarrier,
     reactionChain,
+    oathRecipientScope,
     groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress) : null,
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,

@@ -46,6 +46,7 @@ function snapshot(overrides = {}) {
     interaction: scene(),
     decision: { actorId: "B", stage: "ATTACK_RESPONSE" },
     localControl: { source: "CurrentAction", actionRevision: "action-1", kind: "response", actorId: "B", entitled: true },
+    oathRecipientScope: null,
     reactionChain: null,
     settlement: null,
     transitionEvents: [],
@@ -152,6 +153,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     participantIds: ["A", "B"],
     groupResolution: null,
     groupParticipantProgress: [],
+    oathRecipientScope: null,
     reactionChain: null,
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },
     parentFrameId: null,
@@ -344,6 +346,31 @@ test("adapter drops AOE progress when its frame, identity, scope, order, or stat
     assert.equal(view.hasInteraction, true, "unrelated public Stage remains available");
     assert.deepEqual(view.groupParticipantProgress, []);
   }
+});
+
+test("adapter exposes only identity-coherent Oath recipient scope and no invented participant progress", () => {
+  const oathInteraction = scene({
+    rootFrameId: "oath-frame",
+    activeFrameId: "oath-frame",
+    stage: "NEGATION",
+    effect: "Oath of the Peach Garden",
+  });
+  const oathRecipientScope = {
+    semantics: "PROVEN",
+    cardKind: "Oath",
+    interactionId: oathInteraction.interactionId,
+    rootFrameId: oathInteraction.rootFrameId,
+    activeFrameId: oathInteraction.activeFrameId,
+    checkpointId: oathInteraction.checkpointId,
+    presentationRevision: oathInteraction.presentationRevision,
+    sourceId: oathInteraction.sourceId,
+    recipientIds: ["A", "C"],
+  };
+  const projected = buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope }), "B");
+  assert.deepEqual(projected.oathRecipientScope, oathRecipientScope);
+  assert.equal("currentParticipantId" in projected.oathRecipientScope, false);
+  assert.deepEqual(buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope: { ...oathRecipientScope, interactionId: "stale" } }), "B").oathRecipientScope, null);
+  assert.deepEqual(buildPresentationClientView(snapshot({ interaction: oathInteraction, oathRecipientScope: { ...oathRecipientScope, recipientIds: ["A", "A"] } }), "B").oathRecipientScope, null);
 });
 
 test("adapter keeps the public scene viewer-equal while local entitlement changes", () => {

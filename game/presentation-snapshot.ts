@@ -2,6 +2,7 @@ import type { CurrentAction } from "./protocol";
 import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics } from "./pending";
 import type {
   PresentationInteractionScene,
+  PresentationOathRecipientScope,
   PresentationReactionChain,
   PresentationReactionChainNode,
   PresentationStableBoundary,
@@ -52,11 +53,14 @@ export type PresentationSnapshotGroupProgress = {
   participants: readonly PresentationSnapshotGroupParticipantProgress[];
 };
 
+export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientScope;
+
 export type PresentationSnapshot = {
   identity: PresentationSnapshotIdentity | null;
   stable: PresentationStableBoundary;
   interaction: PresentationSnapshotInteraction | null;
   groupParticipantProgress: PresentationSnapshotGroupProgress | null;
+  oathRecipientScope: PresentationSnapshotOathRecipientScope | null;
   reactionChain: PresentationReactionChain | null;
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
@@ -179,6 +183,30 @@ function groupParticipantProgressFor(
   };
 }
 
+function oathRecipientScopeFor(
+  presentationV2: PresentationV2,
+  scene: PresentationInteractionScene,
+  identity: PresentationSnapshotIdentity,
+): PresentationSnapshotOathRecipientScope | null {
+  const scope = presentationV2.oathRecipientScope;
+  if (!scope || scope.semantics !== "PROVEN" || scope.cardKind !== "Oath"
+    || scene.stage !== "NEGATION" || !scene.sourceId
+    || scope.interactionId !== identity.interactionId
+    || scope.interactionId !== scene.interactionId
+    || scope.rootFrameId !== scene.rootFrameId
+    || scope.activeFrameId !== scene.activeFrameId
+    || scope.checkpointId !== identity.checkpointId
+    || scope.presentationRevision !== identity.presentationRevision
+    || scope.sourceId !== scene.sourceId || scope.sourceId !== scene.participantRoles.sourceId
+    || !Array.isArray(scope.recipientIds)) return null;
+  const seen = new Set<string>();
+  for (const recipientId of scope.recipientIds) {
+    if (typeof recipientId !== "string" || recipientId.length === 0 || seen.has(recipientId)) return null;
+    seen.add(recipientId);
+  }
+  return { ...scope, recipientIds: [...scope.recipientIds] };
+}
+
 function reactionChainFor(
   presentationV2: PresentationV2,
   scene: PresentationInteractionScene,
@@ -252,6 +280,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     stable: authority?.stable ?? REST_BOUNDARY,
     interaction: authority?.scene ?? null,
     groupParticipantProgress: authority ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity) : null,
+    oathRecipientScope: authority ? oathRecipientScopeFor(input.presentationV2, authority.scene, authority.identity) : null,
     reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity) : null,
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }

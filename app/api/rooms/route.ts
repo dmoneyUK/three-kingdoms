@@ -26,6 +26,7 @@ import { resolveDamageModifiers, type DamageCause } from "../../../game/capabili
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
 import { projectPresentationV2 } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
+import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
 import { childCausalFrame, createCausalRoot, resumeCausalFrame, type CausalContext } from "../../../game/causal-context";
 import { advanceCausalSemanticCheckpoint } from "../causal-envelope";
@@ -2454,7 +2455,8 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     if (source) await continueAfterDying(roomId, source.id);
     return draw.drawn;
   } else if (pending.effect.kind === "oath") {
-    const wounded = players.filter((player) => player.alive && (player.hp ?? 0) < (player.max_hp ?? 0));
+    const woundedIds = new Set(oathRecipientIds(players.map((player) => ({ id: player.id, alive: Boolean(player.alive), hp: player.hp, maxHp: player.max_hp }))));
+    const wounded = players.filter((player) => woundedIds.has(player.id));
     log = addFinalResult(log, wounded.length ? `${wounded.map((player) => player.name).join(", ")} recover 1 HP.` : "No character is wounded, so nobody recovers HP.", undefined, pending.resolutionId);
     const recoveries: RecoveryRecord[] = wounded.map((player) => {
       const before = player.hp ?? 0;
@@ -3812,7 +3814,14 @@ async function roomState(code: string, token?: string) {
     ...(presentation ? { presentation } : {}),
   };
   const projectedTimeline = gameTimeline(rawLog, me?.id);
-  const presentationV2 = projectPresentationV2({ pending, currentAction, actionRevision, timeline: projectedTimeline, causalEnvelope });
+  const presentationV2 = projectPresentationV2({
+    pending,
+    currentAction,
+    actionRevision,
+    timeline: projectedTimeline,
+    causalEnvelope,
+    oathRecipientIds: oathRecipientIds(players.map((player) => ({ id: player.id, alive: Boolean(player.alive), hp: player.hp, maxHp: player.max_hp }))),
+  });
   const presentationSnapshot = composePresentationSnapshot({ presentationV2, currentAction, actionRevision, viewerId: me?.id ?? null });
   return {
     code: room.code, status: room.status, maxPlayers: room.max_players, isTestController, responseCountdownVisibleAt, actionRevision, causalEnvelope, pending: pending ? { kind: responsePending ? "response" : triggerPending ? "trigger" : pending.kind } : null, currentAction, presentationSnapshot,

@@ -152,6 +152,42 @@ test("snapshot forwards only identity- and ordered-scope-coherent Standard AOE p
   }
 });
 
+test("snapshot admits only identity-coherent simultaneous Oath recipient scope", () => {
+  const interaction = scene({
+    rootFrameId: "oath-frame",
+    activeFrameId: "oath-frame",
+    stage: "NEGATION",
+    effect: "Oath of the Peach Garden",
+  });
+  const oathRecipientScope = {
+    semantics: "PROVEN",
+    cardKind: "Oath",
+    interactionId: interaction.interactionId,
+    rootFrameId: interaction.rootFrameId,
+    activeFrameId: interaction.activeFrameId,
+    checkpointId: interaction.checkpointId,
+    presentationRevision: interaction.presentationRevision,
+    sourceId: interaction.sourceId,
+    recipientIds: ["A", "C"],
+  };
+  const accepted = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), oathRecipientScope },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "oath-1",
+    viewerId: "B",
+  });
+  assert.deepEqual(accepted.oathRecipientScope, oathRecipientScope);
+
+  const mismatched = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), oathRecipientScope: { ...oathRecipientScope, activeFrameId: "other-frame" } },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "oath-2",
+    viewerId: "B",
+  });
+  assert.equal(mismatched.oathRecipientScope, null, "a scope from another frame fails closed without discarding unrelated proven authority");
+  assert.equal(mismatched.interaction?.semantics, "PROVEN");
+});
+
 test("snapshot preserves explicit ORDERED Halberd semantics and target order", () => {
   const interaction = groupScene();
   const orderedGroup = groupResolution(interaction, {
