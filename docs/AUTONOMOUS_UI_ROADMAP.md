@@ -1241,10 +1241,10 @@ Only a proven regression or new Reviewer-approved design requirement does.
 ### UX2.34-CI-REPAIR-DYING-MOBILE-SAFE-ZONE-01 — Restore Dying containment
 
 - The failed browser run `37516354859` on `b6a25e2` exposed eight Dying
-  geometry regressions: the 650×900 safe-zone boundary overflowed by 28.375px,
-  and the 480×900 handoff overlapped the Deck/Discard region by 18.171875px.
-  The compact row now activates for the measured short safe zone while keeping
-  the primary portrait sizing. Focused regressions passed 19/19. Repair commit
+  geometry regressions: the 650×900 scene escaped its short safe zone, and the
+  480×900 handoff overlapped the Deck/Discard region. The compact row now
+  activates for the measured short safe zone while keeping the primary portrait
+  sizing. Focused regressions passed 19/19. Repair commit
   `ef57d59515974af5521ad619f9ee7fcb3282995d` passed exact Actions run
   `37530273503` (`build-and-test`, `deploy`).
 
