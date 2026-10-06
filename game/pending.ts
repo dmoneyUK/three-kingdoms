@@ -26,7 +26,14 @@ export type JudgementNegationCausalResume =
 /** Only effect-resumption data belongs in a canonical response continuation. */
 export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string } & CausalFields;
 export type InfluencingAttackContinuation = { kind: "influencing_attack"; sourceId: string; targetId: string; resumePhase: string; sequenceStartCardId: string; origin: "triggered" } & CausalFields;
-export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; damageCards?: Card[]; physicalSuit?: Card["suit"]; sequenceStartCardId?: string; resolutionId?: string } & CausalFields;
+export type GroupParticipantProgressStatus = "PENDING" | "CURRENT" | "PAUSED" | "RESOLVED" | "NO_LONGER_APPLICABLE";
+export type GroupParticipantProgress = {
+  version: 1;
+  interactionId: string;
+  groupFrameId: string;
+  participants: Array<{ playerId: string; status: GroupParticipantProgressStatus }>;
+};
+export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; damageCards?: Card[]; physicalSuit?: Card["suit"]; sequenceStartCardId?: string; resolutionId?: string; participantProgress?: GroupParticipantProgress } & CausalFields;
 export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string } & CausalFields;
 export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string } & CausalFields;
 export type ResponseContinuation = AttackContinuation | InfluencingAttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;

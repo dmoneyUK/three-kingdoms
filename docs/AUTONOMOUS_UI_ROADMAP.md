@@ -668,17 +668,31 @@ Only a proven regression or new Reviewer-approved design requirement does.
   participant through Negation, retry, Damage/Dying, and Halberd paths without
   deriving progress from the continuation tail.
 - Local build passed; the focused engine-backed API set passed 48/48; targeted
-  ESLint and `git diff --check` passed. The feature push-triggered Actions result
-  was run `37408039555` and was `in_progress` immediately after push; the current
-  CI state is recorded in `HANDOVER.md`.
+  ESLint and `git diff --check` passed. The feature push-triggered Actions run
+  `37408039555` completed `cancelled`; the later documentation-only remote head
+  `ceb5c6b` passed Actions run `37408137461`.
+
+### UX2.6-AOE-EXPLICIT-PARTICIPANT-PROGRESS-01 — Authoritative AOE statuses
+
+- Standard Barbarian Invasion and Raining Arrows persist ordered participant
+  statuses across response, advancement, nested Damage/Dying, rescue resume,
+  and no-longer-applicable transitions. `PresentationV2.groupResolution`
+  exposes the list only when participant identity/order, complete root scope,
+  interaction/frame identity, and active causal state agree; malformed or
+  incomplete proof fails closed. Halberd, legal actions, and gameplay rules are
+  unchanged; no player-facing UI, outcomes, or Reaction Chain history is added.
+- Local build passed; focused Presentation V2 tests passed 35/35; focused
+  Worker/D1 API tests passed 30/30; targeted ESLint and `git diff --check`
+  passed. The feature change is not yet pushed, so no CI result is claimed.
 
 ## Known deferred semantic gaps
 
-These are **not completed** and must remain fail-closed until authoritative
-projection exists:
+These remain incomplete; where authoritative projection does not exist,
+behavior must continue to fail closed:
 
-- Group/AOE per-participant resolved / current / pending / outcome / semantic
-  order.
+- Consuming the newly projected Standard AOE participant statuses in the
+  PresentationSnapshot/client adapter and Stage UI; public outcome summaries,
+  Halberd progress, and unrelated Group semantics remain deferred.
 - Durable independently proven multi-node Reaction Chain history beyond the
   currently authoritative bounded presentation.
 - Settlement/transition history that would require new authoritative public

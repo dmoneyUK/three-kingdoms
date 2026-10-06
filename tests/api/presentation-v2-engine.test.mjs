@@ -303,6 +303,11 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(nestedView.presentationV2.groupResolution?.activeFrameId, nestedView.causalEnvelope.activeFrameId);
   assert.equal(nestedView.presentationV2.groupResolution?.parentFrameId, nestedGroupFrame?.frameId);
   assert.equal(nestedView.presentationV2.groupResolution?.stage, "DAMAGE");
+  assert.deepEqual(nestedView.presentationV2.groupResolution?.participantProgress, [
+    { playerId: opened.target.id, order: 1, status: "PAUSED" },
+    { playerId: opened.bob.id, order: 2, status: "PENDING" },
+    { playerId: opened.carol.id, order: 3, status: "PENDING" },
+  ]);
   assert.deepEqual(nestedGroupFrame?.origin.originalTargetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
   assert.deepEqual(nestedGroupFrame?.current.currentTargetIds, [opened.target.id]);
   assert.equal(nestedView.presentationV2.groupResolution?.currentParticipantId, nestedPending.continuation.resumeGroup.actorId);
@@ -354,6 +359,11 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   assert.equal(next.data.presentationV2.groupResolution?.activeFrameId, next.data.causalEnvelope.activeFrameId);
   assert.equal(next.data.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
   assert.equal(next.data.presentationV2.groupResolution?.currentParticipantId, opened.bob.id);
+  assert.deepEqual(next.data.presentationV2.groupResolution?.participantProgress, [
+    { playerId: opened.target.id, order: 1, status: "RESOLVED" },
+    { playerId: opened.bob.id, order: 2, status: "CURRENT" },
+    { playerId: opened.carol.id, order: 3, status: "PENDING" },
+  ]);
   assert.deepEqual(next.data.causalEnvelope.frames[0].origin.originalTargetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
   assert.deepEqual(next.data.causalEnvelope.frames[0].current.currentTargetIds, [opened.bob.id]);
   assert.deepEqual(next.data.presentationV2.groupResolution?.participantIds, nextPending.continuation.remainingIds);
@@ -367,11 +377,55 @@ test("engine-backed Group damage trigger resumes the Group parent and next parti
   const finalView = await state(opened.code, opened.carolMember.token);
   assert.equal(finalView.data.currentAction.actorId, opened.carol.id);
   assert.equal(finalView.data.presentationV2.groupResolution?.currentParticipantId, opened.carol.id);
+  assert.deepEqual(finalView.data.presentationV2.groupResolution?.participantProgress, [
+    { playerId: opened.target.id, order: 1, status: "RESOLVED" },
+    { playerId: opened.bob.id, order: 2, status: "RESOLVED" },
+    { playerId: opened.carol.id, order: 3, status: "CURRENT" },
+  ]);
   assert.deepEqual(finalView.data.presentationV2.groupResolution?.targetIds, [opened.target.id, opened.bob.id, opened.carol.id]);
   assert.equal(finalView.data.presentationV2.groupResolution?.interactionId, next.data.presentationV2.groupResolution?.interactionId);
   assert.equal(finalView.data.presentationV2.groupResolution?.groupFrameId, next.data.presentationV2.groupResolution?.groupFrameId);
   assert.equal(finalView.data.presentationV2.interactionScene?.interactionId, next.data.presentationV2.interactionScene?.interactionId);
   assert.equal(finalView.data.presentationV2.interactionScene?.rootFrameId, next.data.presentationV2.interactionScene?.rootFrameId);
+});
+
+test("Group progress marks a no-longer-living ordered target without inferring from the remaining list", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, firstMember, , finalMember] = game.members;
+  const [source, first, skipped, final] = game.room.players;
+  const group = card("RainingArrows", "group-progress-skipped");
+  const dodge = card("Dodge", "group-progress-first-dodge");
+  setHand(source.id, [group], 4, 4);
+  setHand(first.id, [dodge], 4, 4);
+  setHand(skipped.id, [], 4, 4);
+  setHand(final.id, [], 4, 4);
+  setTurn(game.code, source.seat);
+
+  const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: group.id, preserveResponse: true });
+  assert.equal(started.status, 200, JSON.stringify(started.data));
+  await passNegationWindows(game.code, game.members);
+  const firstResponse = await state(game.code, firstMember.token);
+  assert.equal(firstResponse.data.currentAction.kind, "response", JSON.stringify(firstResponse.data));
+  assert.equal(firstResponse.data.currentAction.actorId, first.id);
+
+  sql(`UPDATE players SET alive=0 WHERE id=${quote(skipped.id)}`);
+  const answered = await requestAndSettle("respond", { code: game.code, token: firstMember.token, cardId: dodge.id, preserveResponse: true });
+  assert.equal(answered.status, 200, JSON.stringify(answered.data));
+  const finalView = (await state(game.code, finalMember.token)).data;
+  assert.equal(finalView.currentAction.kind, "response", JSON.stringify(finalView));
+  assert.equal(finalView.currentAction.actorId, final.id);
+  assert.deepEqual(finalView.presentationV2.groupResolution?.targetIds, [first.id, skipped.id, final.id]);
+  assert.deepEqual(finalView.presentationV2.groupResolution?.participantProgress, [
+    { playerId: first.id, order: 1, status: "RESOLVED" },
+    { playerId: skipped.id, order: 2, status: "NO_LONGER_APPLICABLE" },
+    { playerId: final.id, order: 3, status: "CURRENT" },
+  ]);
+  const pending = authoritativePending(game.code);
+  assert.deepEqual(pending.continuation.participantProgress.participants.map(({ playerId, status }) => ({ playerId, status })), [
+    { playerId: first.id, status: "RESOLVED" },
+    { playerId: skipped.id, status: "NO_LONGER_APPLICABLE" },
+    { playerId: final.id, status: "CURRENT" },
+  ]);
 });
 
 test("FIX14 Group failure Damage uses one child frame and resumes the next participant", { timeout: 30_000 }, async () => {
@@ -531,6 +585,11 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   assert.equal(dyingSourceView.presentationV2.groupResolution?.activeFrameId, dyingPending.causal.frameId);
   assert.equal(dyingSourceView.presentationV2.groupResolution?.stage, "DYING");
   assert.equal(dyingSourceView.presentationV2.groupResolution?.currentParticipantId, damageTarget.id);
+  assert.deepEqual(dyingSourceView.presentationV2.groupResolution?.participantProgress, [
+    { playerId: target.id, order: 1, status: "RESOLVED" },
+    { playerId: damageTarget.id, order: 2, status: "PAUSED" },
+    { playerId: finalTarget.id, order: 3, status: "PENDING" },
+  ]);
   assert.equal(dyingSourceView.presentationV2.groupResolution?.decisionActorId, source.id);
   assert.notEqual(dyingSourceView.presentationV2.groupResolution?.currentParticipantId, dyingSourceView.presentationV2.groupResolution?.decisionActorId);
   assert.equal(dyingSourceView.presentationV2.interactionScene?.continuity.relation, "CHILD_FRAME");
@@ -568,6 +627,11 @@ test("FIX15 lethal Group Damage survives Peach rescue with the parent frame avai
   assert.ok(rescued.data.room.causalEnvelope.frames.some((frame) => frame.frameId === groupRoot.activeFrameId && frame.stage === "GROUP_RESOLUTION"));
   const resumedPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
   assert.equal(resumedPending.continuation.kind, "group");
+  assert.deepEqual(rescued.data.room.presentationV2.groupResolution?.participantProgress, [
+    { playerId: target.id, order: 1, status: "RESOLVED" },
+    { playerId: damageTarget.id, order: 2, status: "RESOLVED" },
+    { playerId: finalTarget.id, order: 3, status: "CURRENT" },
+  ]);
 
   const finished = await requestAndSettle("decline_response", { code: game.code, token: finalMember.token, preserveResponse: true });
   assert.equal(finished.status, 200, JSON.stringify(finished.data));
@@ -682,10 +746,22 @@ test("FIX9 persists the Group root and keeps nested Negation in the same Frame",
   assert.deepEqual(frame.current.currentTargetIds, [target.id]);
   assert.deepEqual(initial.presentationV2.groupResolution?.targetIds, [target.id, bob.id, carol.id]);
   assert.equal(initial.presentationV2.groupResolution?.currentParticipantId, target.id);
+  assert.deepEqual(initial.presentationV2.groupResolution?.participantProgress, [
+    { playerId: target.id, order: 1, status: "CURRENT" },
+    { playerId: bob.id, order: 2, status: "PENDING" },
+    { playerId: carol.id, order: 3, status: "PENDING" },
+  ]);
   const pending = authoritativePending(game.code);
-  assert.equal(pending.causal.interactionId, root.interactionId);
-  assert.equal(pending.causal.frameId, frame.frameId);
-  assert.equal(pending.continuation.causal.frameId, frame.frameId);
+  const groupPending = pending.continuation.effect.pending;
+  assert.equal(groupPending.causal.interactionId, root.interactionId);
+  assert.equal(groupPending.causal.frameId, frame.frameId);
+  assert.equal(groupPending.continuation.causal.frameId, frame.frameId);
+  assert.equal(groupPending.continuation.participantProgress.groupFrameId, frame.frameId);
+  assert.deepEqual(groupPending.continuation.participantProgress.participants.map(({ playerId, status }) => ({ playerId, status })), [
+    { playerId: target.id, status: "CURRENT" },
+    { playerId: bob.id, status: "PENDING" },
+    { playerId: carol.id, status: "PENDING" },
+  ]);
   const repeat = (await state(game.code, sourceMember.token)).data;
   assert.equal(repeat.causalEnvelope.interactionId, root.interactionId);
   assert.equal(repeat.causalEnvelope.checkpoint.checkpointId, root.checkpoint.checkpointId);
@@ -703,6 +779,11 @@ test("FIX9 persists the Group root and keeps nested Negation in the same Frame",
   assert.equal(settled.data.room.presentationV2.groupResolution?.groupFrameId, frame.frameId);
   assert.equal(settled.data.room.presentationV2.groupResolution?.activeFrameId, frame.frameId);
   assert.equal(settled.data.room.presentationV2.groupResolution?.stage, "GROUP_RESOLUTION");
+  assert.deepEqual(settled.data.room.presentationV2.groupResolution?.participantProgress, [
+    { playerId: target.id, order: 1, status: "CURRENT" },
+    { playerId: bob.id, order: 2, status: "PENDING" },
+    { playerId: carol.id, order: 3, status: "PENDING" },
+  ]);
   let completedGroup = settled.data.room;
   for (let guard = 0; guard < 8 && completedGroup.causalEnvelope; guard++) {
     const pending = authoritativePending(game.code);

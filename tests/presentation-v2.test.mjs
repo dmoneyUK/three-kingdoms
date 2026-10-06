@@ -123,13 +123,26 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   const groupPending = {
     ...flows[3].points[0].pending,
     causal: { interactionId: "group-interaction", frameId: "group-frame" },
-    continuation: { ...flows[3].points[0].pending.continuation, causal: { interactionId: "group-interaction", frameId: "group-frame" } },
+    continuation: {
+      ...flows[3].points[0].pending.continuation,
+      causal: { interactionId: "group-interaction", frameId: "group-frame" },
+      participantProgress: {
+        version: 1,
+        interactionId: "group-interaction",
+        groupFrameId: "group-frame",
+        participants: [
+          { playerId: "B", status: "PAUSED" },
+          { playerId: "C", status: "PENDING" },
+          { playerId: "D", status: "PENDING" },
+        ],
+      },
+    },
   };
   const groupFrame = {
     frameId: "group-frame",
     parentFrameId: null,
     stage: "GROUP_RESOLUTION",
-    origin: { originSourceId: "A", originEffect: "Raining Arrows", originalTargetIds: ["B", "C", "D"] },
+    origin: { originSourceId: "A", originEffect: "RainingArrows", originalTargetIds: ["B", "C", "D"] },
     current: { currentSourceId: "A", currentEffect: "Raining Arrows", currentTargetIds: ["B"], resolvingPlayerId: "B" },
   };
   const damageFrame = {
@@ -148,6 +161,11 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   assert.equal(child.groupResolution?.parentFrameId, "group-frame");
   assert.equal(child.groupResolution?.stage, "DAMAGE");
   assert.deepEqual(child.groupResolution?.targetIds, ["B", "C", "D"]);
+  assert.deepEqual(child.groupResolution?.participantProgress, [
+    { playerId: "B", order: 1, status: "PAUSED" },
+    { playerId: "C", order: 2, status: "PENDING" },
+    { playerId: "D", order: 3, status: "PENDING" },
+  ]);
   assert.equal(child.groupResolution?.currentParticipantId, "B");
   assert.equal(child.groupResolution?.decisionActorId, "C");
   assert.equal(child.groupResolution?.activeResolverId, "C");
@@ -162,7 +180,7 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
     presentationRevision: 4,
     stage: "DAMAGE",
     sourceId: "A",
-    effect: "Raining Arrows",
+    effect: "RainingArrows",
     targetIds: ["B", "C", "D"],
     currentParticipantId: "B",
     decisionActorId: "C",
@@ -171,12 +189,26 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
     activeTargetIds: ["B"],
     participantIds: ["C", "D"],
     participantRoles: { sourceId: "A", originalTargetIds: ["B", "C", "D"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "C", activeResolverId: "C", parentParticipantId: "B", participantIds: ["C", "D"] },
-    rootOrigin: { frameId: "group-frame", stage: "GROUP_RESOLUTION", sourceId: "A", effect: "Raining Arrows", targetIds: ["B", "C", "D"] },
+    rootOrigin: { frameId: "group-frame", stage: "GROUP_RESOLUTION", sourceId: "A", effect: "RainingArrows", targetIds: ["B", "C", "D"] },
     continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" },
   });
 
   const resumedEnvelope = { ...childEnvelope, activeFrameId: "group-frame", checkpoint: { checkpointId: "checkpoint-group", frameId: "group-frame", stage: "GROUP_RESOLUTION" }, presentationRevision: 5 };
-  const resumed = projectPresentationV2({ pending: groupPending, currentAction: action({ actorId: "C" }), actionRevision: "action-next", timeline: [], causalEnvelope: resumedEnvelope });
+  const resumedPending = {
+    ...groupPending,
+    continuation: {
+      ...groupPending.continuation,
+      participantProgress: {
+        ...groupPending.continuation.participantProgress,
+        participants: [
+          { playerId: "B", status: "CURRENT" },
+          { playerId: "C", status: "PENDING" },
+          { playerId: "D", status: "PENDING" },
+        ],
+      },
+    },
+  };
+  const resumed = projectPresentationV2({ pending: resumedPending, currentAction: action({ actorId: "C" }), actionRevision: "action-next", timeline: [], causalEnvelope: resumedEnvelope });
   assert.equal(resumed.groupResolution?.interactionId, child.groupResolution?.interactionId);
   assert.equal(resumed.groupResolution?.groupFrameId, child.groupResolution?.groupFrameId);
   assert.equal(resumed.groupResolution?.activeFrameId, "group-frame");
@@ -185,8 +217,53 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   assert.equal(resumed.groupResolution?.currentParticipantId, "B");
   assert.equal(resumed.groupResolution?.decisionActorId, "B");
   assert.equal(resumed.groupResolution?.activeResolverId, "B");
+  assert.deepEqual(resumed.groupResolution?.participantProgress, [
+    { playerId: "B", order: 1, status: "CURRENT" },
+    { playerId: "C", order: 2, status: "PENDING" },
+    { playerId: "D", order: 3, status: "PENDING" },
+  ]);
   assert.equal(resumed.interactionScene?.continuity.relation, "ROOT_FRAME");
   assert.equal(resumed.interactionScene?.activeFrameId, "group-frame");
+});
+
+test("AOE participant progress fails closed on scope, identity, ordering, or status mismatch", () => {
+  const point = flows[3].points[0];
+  const causal = { interactionId: "progress-interaction", frameId: "progress-group-frame" };
+  const progress = {
+    version: 1,
+    interactionId: causal.interactionId,
+    groupFrameId: causal.frameId,
+    participants: [
+      { playerId: "B", status: "CURRENT" },
+      { playerId: "C", status: "PENDING" },
+      { playerId: "D", status: "PENDING" },
+    ],
+  };
+  const pending = {
+    ...point.pending,
+    causal,
+    continuation: { ...point.pending.continuation, causal, participantProgress: progress },
+  };
+  const frame = {
+    frameId: causal.frameId,
+    parentFrameId: null,
+    stage: "GROUP_RESOLUTION",
+    origin: { originSourceId: "A", originEffect: "RainingArrows", originalTargetIds: ["B", "C", "D"] },
+    current: { currentSourceId: "A", currentEffect: "RainingArrows", currentTargetIds: ["B"], resolvingPlayerId: "B" },
+  };
+  const causalEnvelope = { version: 1, interactionId: causal.interactionId, frames: [frame], activeFrameId: frame.frameId, checkpoint: { checkpointId: "progress-checkpoint", frameId: frame.frameId, stage: frame.stage }, presentationRevision: 1 };
+  const project = (candidate, envelope = causalEnvelope) => projectPresentationV2({ pending: candidate, currentAction: point.currentAction, actionRevision: "progress", timeline: [], causalEnvelope: envelope });
+  assert.deepEqual(project(pending).groupResolution?.participantProgress, [
+    { playerId: "B", order: 1, status: "CURRENT" },
+    { playerId: "C", order: 2, status: "PENDING" },
+    { playerId: "D", order: 3, status: "PENDING" },
+  ]);
+  assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, groupFrameId: "other-frame" } } }).groupResolution?.participantProgress, null);
+  assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, participants: [...progress.participants].reverse() } } }).groupResolution?.participantProgress, null);
+  assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, participants: progress.participants.slice(0, 2) } } }).groupResolution?.participantProgress, null);
+  assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, participants: [{ playerId: "B", status: "CURRENT" }, { playerId: "C", status: "BOGUS" }, progress.participants[2]] } } }).groupResolution?.participantProgress, null);
+  assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: undefined } }).groupResolution?.participantProgress, null);
+  assert.equal(project(pending, { ...causalEnvelope, interactionId: "different-interaction" }).groupResolution?.participantProgress, null);
 });
 
 test("C5 does not infer Group authority from arbitrary nested data or frame stage", () => {

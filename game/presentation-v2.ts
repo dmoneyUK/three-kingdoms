@@ -1,5 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
+import type { GroupParticipantProgressStatus } from "./pending";
 
 export type PresentationV2Event = {
   id: string;
@@ -129,6 +130,7 @@ export type PresentationV2 = {
     activeTargetIds: readonly string[];
     participantIds: readonly string[];
     activeParticipantId: string | null;
+    participantProgress: readonly { playerId: string; order: number; status: GroupParticipantProgressStatus }[] | null;
   } | null;
   decision: { kind: CurrentAction["kind"] | null; actorId: string | null; actionRevision: string; resolutionId: string | null; readyAfterEventId: string | null; deadline: number } | null;
   settlement: { eventId: string; resolutionId: string | null } | null;
@@ -518,7 +520,11 @@ function dyingBarrierFor(envelope: CausalEnvelope | null, pending: unknown): Pre
   };
 }
 
-function groupPresentation(scene: PresentationInteractionScene | null, groupValues: GroupProjectionValues | null) {
+function groupPresentation(
+  scene: PresentationInteractionScene | null,
+  groupValues: GroupProjectionValues | null,
+  participantProgress: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }> | null,
+) {
   if (!scene || !groupValues) return null;
   return {
     semantics: scene.semantics,
@@ -540,7 +546,58 @@ function groupPresentation(scene: PresentationInteractionScene | null, groupValu
     activeTargetIds: scene.activeTargetIds,
     participantIds: scene.participantIds,
     activeParticipantId: groupValues.activeParticipantId,
+    participantProgress,
   };
+}
+
+function groupParticipantProgress(
+  envelope: CausalEnvelope | null,
+  group: RecordLike | null,
+  values: GroupProjectionValues | null,
+  scene: PresentationInteractionScene | null,
+): Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }> | null {
+  if (!envelope || !group || !values || scene?.semantics !== "PROVEN"
+    || !["BarbarianInvasion", "RainingArrows"].includes(values.cardKind)) return null;
+  const progress = record(group.participantProgress);
+  const causal = record(group.causal);
+  const root = values.groupFrame;
+  const active = values.activeFrame;
+  const storedParticipants = progress?.participants;
+  const targetIds = root?.origin.originalTargetIds;
+  if (!progress || progress.version !== 1 || !causal || !root || !active || !Array.isArray(storedParticipants) || !targetIds?.length
+    || root.parentFrameId !== null || !["GROUP_RESOLUTION", "NEGATION"].includes(root.stage)
+    || root.origin.originEffect !== values.cardKind
+    || causal.interactionId !== envelope.interactionId || causal.frameId !== root.frameId
+    || progress.interactionId !== envelope.interactionId || progress.groupFrameId !== root.frameId
+    || values.targetIds.length !== targetIds.length || values.targetIds.some((id, index) => id !== targetIds[index])) return null;
+  if (new Set(targetIds).size !== targetIds.length || storedParticipants.length !== targetIds.length) return null;
+
+  const validStatuses = new Set<GroupParticipantProgressStatus>(["PENDING", "CURRENT", "PAUSED", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+  const participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }> = [];
+  for (let index = 0; index < targetIds.length; index++) {
+    const stored = record(storedParticipants[index]);
+    const playerId = stringValue(stored?.playerId);
+    const status = stored?.status;
+    if (playerId !== targetIds[index] || typeof status !== "string" || !validStatuses.has(status as GroupParticipantProgressStatus)) return null;
+    participants.push({ playerId, order: index + 1, status: status as GroupParticipantProgressStatus });
+  }
+
+  const activeParticipants = participants.filter(({ status }) => status === "CURRENT" || status === "PAUSED");
+  const currentParticipantId = values.currentParticipantId;
+  if (activeParticipants.length !== 1 || !currentParticipantId || activeParticipants[0].playerId !== currentParticipantId
+    || root.current.currentTargetIds.length !== 1 || root.current.currentTargetIds[0] !== currentParticipantId) return null;
+  if (active.frameId === root.frameId) {
+    if (!["GROUP_RESOLUTION", "NEGATION"].includes(active.stage) || activeParticipants[0].status !== "CURRENT") return null;
+  } else {
+    let ancestor: CausalFrame | null = active;
+    const visited = new Set<string>();
+    while (ancestor && ancestor.frameId !== root.frameId && !visited.has(ancestor.frameId)) {
+      visited.add(ancestor.frameId);
+      ancestor = ancestor.parentFrameId ? envelope.frames.find((frame) => frame.frameId === ancestor?.parentFrameId) ?? null : null;
+    }
+    if (ancestor?.frameId !== root.frameId || activeParticipants[0].status !== "PAUSED") return null;
+  }
+  return participants;
 }
 
 function pendingCausalMatchesScene(scene: PresentationInteractionScene | null, pending: unknown): boolean {
@@ -634,6 +691,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupCardKind = group ? firstString(group.cardKind, group.kind === "group" ? "group" : null) : null;
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
+  const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
   // The typed interactionScene below is the causal authority. These legacy
   // context objects intentionally retain Pending-first kind/target shapes for
@@ -661,7 +719,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     participants: interactionScene?.semantics === "PROVEN" ? participantsFromScene(interactionScene) : participants(active, group),
     interactionScene,
     dyingBarrier,
-    groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues) : null,
+    groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress) : null,
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),
