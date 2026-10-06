@@ -922,6 +922,41 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `37488197985` completed **success** at the UX2.22 planning boundary.
   Reviewer acceptance remains unclaimed.
 
+### UX2.22-BUMPER-HARVEST-MOBILE-STAGE-COMPOSITION-01 — Compact public causal spine
+
+- Bumper Harvest now uses proven ordered progress to render one compact Source
+  → root card → participant strip; public submitted Negation nodes branch from
+  the root. Duplicate Hero Focus, Current Effect, event summary, and standalone
+  Reaction Chain are omitted; private response controls remain in the Dock.
+- Presentation/render tests passed 70/70; focused browser geometry/privacy
+  tests passed 9/9 across 390×640, 390×844, 480×900, and 1440×900. Build,
+  targeted ESLint, and `git diff --check` passed. Pushed as
+  `732da3771f94948989ea0845a452b63ebc934975`; exact Actions run `37491852275`
+  completed **success**. Reviewer acceptance remains unclaimed.
+
+### UX2.23-UX2-FINAL-RESPONSIVE-VISUAL-GATE-01 — Representative final gate
+
+- Captured and inspected fresh fixtures for 2/4/6/10-player layouts at
+  390×844, 480×900, and 1440×900. All nine captures had no document-level
+  horizontal overflow; top-row and side-column topologies were represented.
+- Focused coverage across 16 browser specs passed 200/200, spanning REST,
+  Inspect, Preview/ACTIVE, single/multi-target, Group/AOE, Attack/Dodge, Duel,
+  Negation, Dying/Peach, Judgement, Steal/Dismantle, Borrowed Sword,
+  skill/self-target, long guidance, large Hand, Dock, timer, and viewer switch.
+- The 10-player Group child-Damage capture still showed a separate current
+  Hero Focus, `AOE PARTICIPANTS`, and repeated `ACTIVE SCOPE`, contrary to
+  §§12.6.4 and 12.6.10. The existing engine/PresentationSnapshot Group proof
+  retains the root card kind, root frame/source, full target order, and paused
+  child participant, so the next bounded UI task can consume existing authority
+  without a new protocol. UX2.24 is the sole follow-up task.
+- At 1440×900, the Bumper Harvest root card visually overlays the empty
+  discard-pile slot. §12.6 does not specify whether this layering is prohibited;
+  recorded as an evidence limit, not authorized as a second task.
+- UX2.22 Actions run `37491852275` was rechecked and completed **success**.
+  UX2.23 screenshots were saved under `/tmp/ux2-final-gate-20261006/` and are
+  review evidence only, not repository artifacts. Reviewer acceptance remains
+  unclaimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
