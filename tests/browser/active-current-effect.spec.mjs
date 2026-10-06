@@ -94,7 +94,7 @@ for (const viewport of [
   { count: 6, width: 480, height: 900 },
   { count: 6, width: 1440, height: 900 },
 ]) {
-  test(`Group child Damage preserves the root causal spine at ${viewport.count} players / ${viewport.width}px`, async ({ page }) => {
+  test(`Group child Damage preserves the root causal spine at ${viewport.count} players / ${viewport.width}px`, async ({ page }, testInfo) => {
     const measure = async (state) => {
       await loadFixture(page, { ...viewport, state: "group-observer", groupProgress: state });
       const stage = page.locator(".interaction-stage");
@@ -208,6 +208,13 @@ for (const viewport of [
     expect(stripGeometry.scrollWidth).toBeGreaterThanOrEqual(stripGeometry.clientWidth);
     expect(stripGeometry.right).toBeLessThanOrEqual(viewport.width);
     expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+    const screenshotPath = testInfo.outputPath(`group-child-damage-${viewport.count}p-${viewport.width}px.png`);
+    await page.screenshot({ path: screenshotPath, animations: "disabled" });
+    await testInfo.attach(`group-child-damage-${viewport.count}p-${viewport.width}px`, { path: screenshotPath });
+    await testInfo.attach(`group-child-damage-${viewport.count}p-${viewport.width}px-geometry`, {
+      body: JSON.stringify({ rootGeometry, pausedGeometry, compositionGeometry }, null, 2),
+      contentType: "application/json",
+    });
   });
 }
 

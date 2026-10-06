@@ -13,7 +13,7 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`Bumper Harvest causal geometry stays stable as public Negation branches grow at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`Bumper Harvest causal geometry stays stable as public Negation branches grow at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
     const measure = async (history) => {
       await loadBumperHarvest(page, { ...viewport, history });
       const stage = page.locator('.interaction-stage[data-bumper-harvest-composition="true"]');
@@ -68,6 +68,15 @@ for (const viewport of [
       const stage = page.locator('.interaction-stage[data-bumper-harvest-composition="true"]');
       await expect(stage.locator('[data-bumper-harvest-root-action="BumperHarvest"]')).toHaveAttribute("data-active-head", "false");
       await expect(stage.locator("[data-bumper-harvest-negation-node]").last()).toHaveAttribute("data-active-head", "true");
+      if (history === "double" && ((viewport.width === 390 && viewport.height === 844) || viewport.width === 1440)) {
+        const screenshotPath = testInfo.outputPath(`bumper-harvest-double-negation-${viewport.width}x${viewport.height}.png`);
+        await page.screenshot({ path: screenshotPath, animations: "disabled" });
+        await testInfo.attach(`bumper-harvest-double-negation-${viewport.width}x${viewport.height}`, { path: screenshotPath });
+        await testInfo.attach(`bumper-harvest-double-negation-${viewport.width}x${viewport.height}-geometry`, {
+          body: JSON.stringify({ viewport, open, submitted }, null, 2),
+          contentType: "application/json",
+        });
+      }
     }
   });
 }

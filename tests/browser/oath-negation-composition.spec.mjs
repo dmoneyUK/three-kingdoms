@@ -13,7 +13,7 @@ for (const viewport of [
   { width: 480, height: 900 },
   { width: 1440, height: 900 },
 ]) {
-  test(`Oath recipient scope and root branch remain stable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`Oath recipient scope and root branch remain stable at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
     const measure = async (history) => {
       await loadOath(page, { ...viewport, history });
       const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
@@ -67,6 +67,15 @@ for (const viewport of [
         for (const edge of ["x", "y", "width", "height"]) {
           expect(Math.abs(submitted[region][edge] - open[region][edge]), `${history} ${region}.${edge}`).toBeLessThanOrEqual(1);
         }
+      }
+      if (history === "double" && ((viewport.width === 390 && viewport.height === 844) || viewport.width === 1440)) {
+        const screenshotPath = testInfo.outputPath(`oath-double-negation-${viewport.width}x${viewport.height}.png`);
+        await page.screenshot({ path: screenshotPath, animations: "disabled" });
+        await testInfo.attach(`oath-double-negation-${viewport.width}x${viewport.height}`, { path: screenshotPath });
+        await testInfo.attach(`oath-double-negation-${viewport.width}x${viewport.height}-geometry`, {
+          body: JSON.stringify({ viewport, open, submitted }, null, 2),
+          contentType: "application/json",
+        });
       }
     }
   });

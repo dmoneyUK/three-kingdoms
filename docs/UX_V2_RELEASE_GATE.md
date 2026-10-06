@@ -67,3 +67,20 @@ corresponding task handovers and commits.
 The additions are documented as implemented with focused evidence, not as
 Reviewer-accepted closures. No Actions result is inferred from these local
 results or from a check page without a final conclusion.
+
+## UX2.27 representative responsive audit — follow-up required
+
+Date: 2026-10-06. The §12.9 review passed 209 cases in 16 focused interaction
+specs and 37 selected `ui19.spec.mjs` topology/safe-zone checks (246 distinct
+cases). Eleven Group, Oath, and Bumper Harvest geometry cases were rerun;
+screenshot/geometry attachments cover seven representative scenes. Those
+screenshots were visually inspected and the existing geometry assertions
+passed. Group child Damage retained its Source → root action → single Target
+Strip order at 10p/390px, 6p/480px, and 6p/1440px. The Oath and Bumper Harvest
+views at 390×844 and 1440×900 visibly
+overlap the persistent Deck/Discard region, conflicting with Design §0.91.4.
+Therefore this is **not a final gate pass**; UX2.28 is the bounded clearance
+follow-up. The local audit changes have not run in CI. The preceding remote SHA
+`592d2d460aaef2a29b6fac2c36e749f81443080c` had Actions run `37501361734`
+complete successfully for `build-and-test` and `deploy`. Reviewer acceptance
+and external-device validation remain unclaimed.
