@@ -92,6 +92,7 @@ for (const viewport of [
 for (const viewport of [
   { count: 10, width: 390, height: 844 },
   { count: 6, width: 480, height: 900 },
+  { count: 6, width: 1440, height: 900 },
 ]) {
   test(`Group child Damage preserves the root causal spine at ${viewport.count} players / ${viewport.width}px`, async ({ page }) => {
     const measure = async (state) => {
@@ -139,6 +140,57 @@ for (const viewport of [
     await expect(cards.nth(2)).toHaveAttribute("data-participant-status", "PENDING");
     await expect(root).toHaveAttribute("data-active-head", "true");
     await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
+
+    const compositionGeometry = await stage.evaluate((element) => {
+      const rect = (node) => {
+        const bounds = node?.getBoundingClientRect();
+        return bounds ? { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom, width: bounds.width, height: bounds.height } : null;
+      };
+      const source = rect(element.querySelector('[data-group-source="proven"]'));
+      const root = rect(element.querySelector('[data-group-root-action="RainingArrows"]'));
+      const strip = rect(element.querySelector('[aria-label="Group Target Strip"]'));
+      const stage = rect(element);
+      const dock = rect(document.querySelector(".local-player-dock"));
+      const guidance = rect(document.querySelector('.local-player-dock [data-console-guidance="true"]'));
+      const hand = rect(document.querySelector(".local-player-dock .local-hand"));
+      const actionRow = rect(document.querySelector(".local-player-dock .turn-controls"));
+      const verticalOrder = Boolean(source && root && strip && source.bottom <= root.top + 1 && root.bottom <= strip.top + 1);
+      const horizontalOrder = Boolean(source && root && strip && source.right <= root.left + 1 && root.right <= strip.left + 1);
+      return {
+        source, root, strip, stage, dock, guidance, hand, actionRow,
+        ordered: verticalOrder || horizontalOrder,
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      };
+    });
+    expect(compositionGeometry.source).not.toBeNull();
+    expect(compositionGeometry.root).not.toBeNull();
+    expect(compositionGeometry.strip).not.toBeNull();
+    expect(compositionGeometry.ordered, "the causal Source → root action → Group Target order is preserved").toBe(true);
+    expect(compositionGeometry.source.left).toBeGreaterThanOrEqual(compositionGeometry.stage.left - 1);
+    expect(compositionGeometry.source.right).toBeLessThanOrEqual(compositionGeometry.stage.right + 1);
+    expect(compositionGeometry.root.left).toBeGreaterThanOrEqual(compositionGeometry.stage.left - 1);
+    expect(compositionGeometry.root.right).toBeLessThanOrEqual(compositionGeometry.stage.right + 1);
+    expect(compositionGeometry.strip.left).toBeGreaterThanOrEqual(compositionGeometry.stage.left - 1);
+    expect(compositionGeometry.strip.right).toBeLessThanOrEqual(compositionGeometry.stage.right + 1);
+    expect(compositionGeometry.guidance).not.toBeNull();
+    expect(compositionGeometry.guidance.top).toBeGreaterThanOrEqual(compositionGeometry.dock.top - 1);
+    expect(compositionGeometry.guidance.bottom).toBeLessThanOrEqual(compositionGeometry.dock.bottom + 1);
+    expect(compositionGeometry.guidance.left).toBeGreaterThanOrEqual(compositionGeometry.dock.left - 1);
+    expect(compositionGeometry.guidance.right).toBeLessThanOrEqual(compositionGeometry.dock.right + 1);
+    expect(compositionGeometry.hand).not.toBeNull();
+    expect(compositionGeometry.hand.width).toBeGreaterThan(0);
+    expect(compositionGeometry.hand.height).toBeGreaterThan(0);
+    expect(compositionGeometry.hand.left).toBeGreaterThanOrEqual(compositionGeometry.dock.left - 1);
+    expect(compositionGeometry.hand.right).toBeLessThanOrEqual(compositionGeometry.dock.right + 1);
+    expect(compositionGeometry.actionRow).not.toBeNull();
+    expect(compositionGeometry.hand.bottom).toBeLessThanOrEqual(compositionGeometry.actionRow.top + 1);
+    expect(compositionGeometry.actionRow.left).toBeGreaterThanOrEqual(compositionGeometry.dock.left - 1);
+    expect(compositionGeometry.actionRow.right).toBeLessThanOrEqual(compositionGeometry.dock.right + 1);
+    expect(compositionGeometry.actionRow.bottom).toBeLessThanOrEqual(compositionGeometry.dock.bottom + 1);
+    expect(compositionGeometry.dock.bottom).toBeLessThanOrEqual(compositionGeometry.viewportHeight);
+    expect(compositionGeometry.documentWidth).toBeLessThanOrEqual(compositionGeometry.viewportWidth);
 
     for (let index = 0; index < rootGeometry.boxes.length; index++) {
       for (const edge of ["x", "y", "width", "height"]) {

@@ -977,6 +977,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   semantic projection is authorized. UX2.25 is the sole next task: wide-screen
   geometry proof for the corrected Group child-Damage composition.
 
+### UX2.25-GROUP-CHILD-DAMAGE-WIDE-GEOMETRY-01 — Wide composition evidence
+
+- Added a 6-player/1440×900 regression alongside the existing 10-player/390px
+  and 6-player/480px cases. It proves Source/root-card/Target-Strip semantic
+  order, root composition geometry stability into child Damage, viewport and
+  Stage/Dock containment, readable Dock Guidance, and usable Hand/Action Row.
+- Focused Group child-Damage browser coverage passed 4/4; targeted ESLint and
+  `git diff --check` passed. The inspected screenshot is
+  `/tmp/ux2-25-group-child-wide-20261006.png`; measured Source y=8–46, root
+  card y=64–182, Target Strip y=200–247, Stage bottom 247, Dock top 546, Hand
+  bottom 813, Action Row top 828, and document width 1440. No UI correction was
+  needed. The exact prior remote-head run `37497635783` was
+  `build-and-test: in_progress` at pre-commit; per direct user instruction the
+  Agent did not wait. Reviewer acceptance remains unclaimed.
+- UX2.26 is the sole next task: move the self-owned public-Equipment
+  `target_cards` choice to the Local Dock only when CurrentAction keys prove
+  that exact supported zone; preserve the current modal fallback otherwise.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
