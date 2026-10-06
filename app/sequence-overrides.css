@@ -3629,3 +3629,55 @@
     bottom: auto;
   }
 }
+
+/* UX2.34: keep a proven mobile Dying handoff on one causal spine while its
+   rescue details and viewer-private controls retain their existing owners. */
+@media (max-width: 650px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-hero-region:has(> .medium-participant-card):has(> .interaction-stage-current-effect-flow.is-connected) {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 3px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-arrow {
+    grid-column: 1;
+    font-size: 0;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-arrow::before {
+    content: "↓";
+    font: 700 13px/1 Arial, sans-serif;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect-flow.is-connected {
+    grid-column: 1;
+    width: 100%;
+    max-width: 360px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+}
+
+@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 700px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-arrow {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 12px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .medium-participant-arrow::before {
+    content: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect-flow.is-connected {
+    grid-column: 3;
+    grid-row: 1;
+    width: auto;
+    max-width: none;
+    grid-template-columns: minmax(58px, .6fr) 10px minmax(0, 1fr);
+    align-items: start;
+    gap: 3px;
+  }
+}
+
+@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 480px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="DYING"][data-current-effect] .interaction-stage-current-effect-flow.is-connected {
+    grid-template-columns: minmax(38px, .38fr) 7px minmax(0, 1fr);
+    gap: 2px;
+  }
+}

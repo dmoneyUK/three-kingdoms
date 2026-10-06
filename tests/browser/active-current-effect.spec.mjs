@@ -1237,15 +1237,19 @@ test("missing public source/effect fails closed and local REST/Preview do not in
 
 for (const viewport of [
   { count: 4, width: 390, height: 844, topology: "top-row" },
+  { count: 4, width: 390, height: 640, topology: "top-row" },
+  { count: 4, width: 480, height: 900, topology: "top-row" },
   { count: 6, width: 480, height: 900, topology: "side-column" },
   { count: 4, width: 1440, height: 900, topology: "top-row" },
 ]) {
-  test(`proven Dying Current Effect fits ${viewport.topology} at ${viewport.width}px`, async ({ page }) => {
+  test(`proven Dying Current Effect fits ${viewport.topology} at ${viewport.width}×${viewport.height}`, async ({ page }) => {
     await loadFixture(page, { ...viewport, state: "dying" });
 
     const stage = page.locator('.interaction-stage[data-stage="DYING"]');
     const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
+    const sourceArrow = stage.locator(".medium-participant-arrow");
     const effect = stage.locator('[aria-label="Current Effect"]');
+    const effectArrow = stage.locator(".current-effect-arrow");
     const dyingPlayer = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"]');
     const handoff = stage.locator('[data-dying-handoff="proven"]');
     await expect(stage).toHaveAttribute("data-current-effect", "Attack");
@@ -1269,18 +1273,38 @@ for (const viewport of [
     await expect(page.locator('[data-console-surface="local-operation"] button')).toHaveText(["Peach", "Skip"]);
     expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 
-    const sourceBox = await source.boundingBox();
-    const effectBox = await effect.boundingBox();
-    const targetBox = await dyingPlayer.boundingBox();
-    const stageBox = await stage.boundingBox();
+    const [safeBox, sourceBox, sourceArrowBox, effectBox, effectArrowBox, targetBox, stageBox] = await Promise.all([
+      page.locator(".interaction-safe-zone").boundingBox(),
+      source.boundingBox(),
+      sourceArrow.boundingBox(),
+      effect.boundingBox(),
+      effectArrow.boundingBox(),
+      dyingPlayer.boundingBox(),
+      stage.boundingBox(),
+    ]);
     const dockBox = await page.locator(".local-player-dock").boundingBox();
-    expect(sourceBox && effectBox && targetBox && stageBox && dockBox).toBeTruthy();
+    expect(safeBox && sourceBox && sourceArrowBox && effectBox && effectArrowBox && targetBox && stageBox && dockBox).toBeTruthy();
+    expect(stageBox.y).toBeGreaterThanOrEqual(safeBox.y - 1);
+    expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(safeBox.y + safeBox.height + 1);
     if (viewport.topology === "side-column") {
       expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
       expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
     } else if (viewport.width <= 650) {
-      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
-      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+      if (safeBox.height <= 330) {
+        expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(sourceArrowBox.x + sourceArrowBox.width + 2);
+        expect(sourceArrowBox.x + sourceArrowBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+        expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(effectArrowBox.x + effectArrowBox.width + 2);
+        expect(effectArrowBox.x + effectArrowBox.width).toBeLessThanOrEqual(targetBox.x + 2);
+      } else {
+        const causalSpine = [sourceBox, sourceArrowBox, effectBox, effectArrowBox, targetBox];
+        for (let index = 0; index < causalSpine.length - 1; index += 1) {
+          expect(causalSpine[index].y + causalSpine[index].height).toBeLessThanOrEqual(causalSpine[index + 1].y + 2);
+        }
+        const targetCenterX = targetBox.x + targetBox.width / 2;
+        for (const elementBox of causalSpine) {
+          expect(Math.abs(elementBox.x + elementBox.width / 2 - targetCenterX)).toBeLessThanOrEqual(8);
+        }
+      }
     } else {
       expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
       expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);

@@ -1113,6 +1113,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   or projection changes. Pre-commit remote SHA `aef8473` passed Actions run
   `37512146457`. Reviewer acceptance remains unclaimed.
 
+### UX2.34-DYING-MOBILE-CAUSAL-SPINE-01 — Portrait Dying / Peach flow
+
+- Proven external-participant Dying/Peach ACTIVE scenes now read Source →
+  Current Effect → dying player vertically and centered on portrait Top Row
+  when safe-zone height permits. Short safe zones retain the compact causal
+  row; Side Column, wide Top Row, fail-closed semantic gates, rescue handoff,
+  and private Dock controls remain unchanged.
+- The focused geometry slice passed 5/5 at 390×844, 390×640, 480×900 Top Row,
+  480×900 Side Column, and 1440×900; Dying/rescue safe-zone checks passed 6/6.
+  Targeted ESLint and `git diff --check` passed. No gameplay/projection change.
+  Pre-commit SHA `9631b6bd16d1e858eaaa19cd1099660fd37dd200` passed Actions run
+  `37514429249` (`build-and-test`, `deploy`). Reviewer acceptance remains
+  unclaimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
