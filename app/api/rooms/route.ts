@@ -18,7 +18,7 @@ import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
-import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestPending, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
+import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupParticipantProgressOutcome, type GroupResolutionSemantics, type GroupResponsePending, type HarvestParticipantProgress, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type HarvestPending, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
@@ -2308,6 +2308,11 @@ function playersInNegationOrder(players: PlayerRow[], startSeat: number) {
 function negationRequirement(pending: NegationContinuation, targetId = pending.effectTargetId) {
   return { kind: "negate" as const, sourceId: pending.latestNegationPlayerId ?? pending.sourceId, targetId };
 }
+function negationSemanticEffect(pending: NegationContinuation) {
+  return pending.effect.kind === "harvest" || pending.effect.kind === "harvest_target"
+    ? "BumperHarvest"
+    : pending.cardName;
+}
 function canPlayerRespondWithNegation(player: PlayerRow | null | undefined, continuation: NegationContinuation, players: PlayerRow[]) {
   return Boolean(player?.alive && canRespondWithNegation(responseContext(player, players), negationRequirement(continuation)));
 }
@@ -2331,7 +2336,7 @@ async function advanceNegationDecision(room: RoomRow, pending: { response: Respo
   const next: ResponsePending = { ...response, actorId: actor.id, deadline: 0, readyAfterEventId: undefined, ...(causal ? { causal } : {}), continuation: nextContinuation };
   const envelope = parseCausalEnvelope(room.causal_envelope_json);
   const nextEnvelope = envelope && causal && envelope.interactionId === causal.interactionId && envelope.activeFrameId === causal.frameId && envelope.frames.some((frame) => frame.frameId === causal.frameId)
-    ? advanceCausalSemanticCheckpoint(envelope, causal.frameId, { stage: "NEGATION", current: { currentSourceId: continuation.sourceId, currentEffect: continuation.cardName, currentTargetIds: [continuation.effectTargetId], resolvingPlayerId: actor.id } })
+    ? advanceCausalSemanticCheckpoint(envelope, causal.frameId, { stage: "NEGATION", current: { currentSourceId: continuation.sourceId, currentEffect: negationSemanticEffect(continuation), currentTargetIds: [continuation.effectTargetId], resolvingPlayerId: actor.id } })
     : envelope;
   const moved = await causalRoomStateWrite(room.id, { phase: "response", pending: next, log: parse<string[]>(room.log_json, []), causalEnvelope: nextEnvelope }, room.pending_json).run();
   return (moved.meta.changes ?? 0) > 0;
@@ -2395,10 +2400,11 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     const target = players.find((player) => player.id === pending.effectTargetId);
     if (pending.effect.kind !== "judgement") log = addLog(log, `${pending.cardName}'s effect on ${target?.name ?? "its target"} is cancelled by Negation.`);
     if (pending.effect.kind === "harvest_target") {
-      const harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies HarvestPending;
-      const next = nextHarvestPending(harvest, players);
-      if (next) await beginHarvestTarget(room, next, players, deck, discard, log);
-      else await queueHarvestCompletion(room, harvest, deck, discard, log);
+      let harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies HarvestPending;
+      harvest = updateHarvestParticipant(harvest, pending.effectTargetId, "RESOLVED", "NEGATED");
+      const advanced = advanceHarvestPending(harvest, players);
+      if (advanced.next) await beginHarvestTarget(room, advanced.next, players, deck, discard, log);
+      else await queueHarvestCompletion(room, advanced.pending, deck, discard, log);
       return [];
     }
     if (pending.effect.kind === "judgement") {
@@ -2442,7 +2448,8 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
   }
   if (pending.effect.kind === "harvest_target") {
     const harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies HarvestPending;
-    await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(harvest), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
+    const causalEnvelope = harvestChoiceEnvelope(resumedRoom, harvest, harvest.actorId);
+    await causalRoomStateWrite(roomId, { phase: "response", pending: harvest, deck, discard, log, causalEnvelope }).run();
     await advanceHarvest(roomId);
     return [];
   }
@@ -2534,8 +2541,11 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
     log = addHistory(log, `${source.name} reveals ${draw.drawn.length} card${draw.drawn.length === 1 ? "" : "s"} for Bumper Harvest. ${choosers[0]?.name ?? "No player"} chooses first.`);
     if (!choosers.length || !draw.drawn.length) await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(pending.resumePhase, JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run();
     else {
-      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, availableIds: draw.drawn.map((card) => card.id), choices: [], resumePhase: pending.resumePhase, reason: "Choose 1 revealed card from Bumper Harvest", ...(pending.heldCards?.length ? { heldCards: pending.heldCards } : {}) };
-      await db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(harvest), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), roomId).run(); await advanceHarvest(roomId); return [];
+      const participantIds = choosers.map((player) => player.id);
+      const progress = initialHarvestProgress(source.id, participantIds);
+      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, availableIds: draw.drawn.map((card) => card.id), choices: [], resumePhase: pending.resumePhase, reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, ...(pending.heldCards?.length ? { heldCards: pending.heldCards } : {}) };
+      await beginHarvestTarget({ ...room, causal_envelope_json: JSON.stringify(progress.causalEnvelope) }, harvest, players, deck, discard, log, [], progress.causalEnvelope);
+      return [];
     }
   }
   if (source) await continueAfterDying(roomId, source.id);
@@ -2653,8 +2663,10 @@ async function resumeNormalStratagemUse(room: RoomRow, source: PlayerRow, player
       await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?")
         .bind(room.phase, JSON.stringify(nextDeck), JSON.stringify(nextDiscard), JSON.stringify(nextLog), room.id).run();
     } else {
-      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: choosers.slice(1).map((player) => player.id), revealed: draw.drawn, availableIds: draw.drawn.map((revealed) => revealed.id), choices: [], resumePhase: room.phase ?? "play", reason: "Choose 1 revealed card from Bumper Harvest", heldCards: [card] };
-      await beginHarvestTarget(room, harvest, players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(hand) } : player), nextDeck, nextDiscard, nextLog, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id)]);
+      const participantIds = choosers.map((player) => player.id);
+      const progress = initialHarvestProgress(source.id, participantIds);
+      const harvest: HarvestPending = { kind: "harvest", sourceId: source.id, actorId: choosers[0].id, remainingIds: participantIds.slice(1), revealed: draw.drawn, availableIds: draw.drawn.map((revealed) => revealed.id), choices: [], resumePhase: room.phase ?? "play", reason: "Choose 1 revealed card from Bumper Harvest", causal: progress.causal, participantProgress: progress.participantProgress, heldCards: [card] };
+      await beginHarvestTarget({ ...room, causal_envelope_json: JSON.stringify(progress.causalEnvelope) }, harvest, players.map((player) => player.id === source.id ? { ...player, hand_json: JSON.stringify(hand) } : player), nextDeck, nextDiscard, nextLog, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), source.id)], progress.causalEnvelope);
     }
     return [];
   }
@@ -2914,7 +2926,7 @@ async function applyNegationResponseOutcome(room: RoomRow, pending: { response: 
     const nextCausal = transitioned.causal ?? response.causal;
     const envelope = parseCausalEnvelope(room.causal_envelope_json);
     const nextEnvelope = envelope && nextCausal && envelope.interactionId === nextCausal.interactionId && envelope.activeFrameId === nextCausal.frameId
-      ? advanceCausalSemanticCheckpoint(envelope, nextCausal.frameId, { stage: "NEGATION", current: { currentSourceId: transitioned.sourceId, currentEffect: transitioned.cardName, currentTargetIds: [transitioned.effectTargetId], resolvingPlayerId: next.actor.id } })
+      ? advanceCausalSemanticCheckpoint(envelope, nextCausal.frameId, { stage: "NEGATION", current: { currentSourceId: transitioned.sourceId, currentEffect: negationSemanticEffect(transitioned), currentTargetIds: [transitioned.effectTargetId], resolvingPlayerId: next.actor.id } })
       : envelope;
     const nextPending: ResponsePending = { kind: "response", actorId: next.actor.id, requirement: negationRequirement(transitioned), reason: success ? `Play Negation on ${actor.name}'s Negation, or pass` : response.reason, deadline: 0, resolutionId: response.resolutionId, ...(nextCausal ? { causal: nextCausal } : {}), continuation: { ...transitioned, remainingIds: next.remainingIds, ...(nextCausal ? { causal: nextCausal } : {}) } };
     await causalRoomStateWrite(room.id, { phase: "response", pending: nextPending, deck: judged.deck, discard: judged.discard, log: nextLog, causalEnvelope: nextEnvelope }).run();
@@ -3573,11 +3585,90 @@ async function advanceGroup(roomId: string) {
   }
 }
 
-function nextHarvestPending(pending: HarvestPending, players: PlayerRow[]) {
-  const nextIds = pending.remainingIds.filter((id) => players.some((player) => player.id === id && player.alive));
-  if (!nextIds.length || !harvestAvailableIds(pending).length) return null;
-  const actorId = nextIds[0];
-  return { ...pending, actorId, remainingIds: nextIds.slice(1), previewCardId: undefined, completeAt: undefined, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
+function initialHarvestProgress(sourceId: string, participantIds: readonly string[]) {
+  const firstId = participantIds[0] ?? null;
+  const root = createCausalRoot({
+    stage: "SEQUENTIAL_CHOICE",
+    origin: { originSourceId: sourceId, originEffect: "BumperHarvest", originalTargetIds: [...participantIds] },
+    current: { currentSourceId: sourceId, currentEffect: "BumperHarvest", currentTargetIds: firstId ? [firstId] : [], resolvingPlayerId: firstId },
+  });
+  return {
+    causal: root.context,
+    causalEnvelope: root.envelope,
+    participantProgress: {
+      version: 1 as const,
+      interactionId: root.context.interactionId,
+      rootFrameId: root.context.frameId,
+      currentParticipantId: firstId,
+      participants: participantIds.map((playerId, index) => ({ playerId, status: index === 0 ? "CURRENT" as const : "PENDING" as const })),
+    } satisfies HarvestParticipantProgress,
+  };
+}
+
+function updateHarvestParticipant(
+  pending: HarvestPending,
+  playerId: string,
+  status: HarvestParticipantProgressStatus,
+  outcome?: HarvestParticipantProgressOutcome,
+): HarvestPending {
+  const progress = pending.participantProgress;
+  if (!progress) return pending;
+  let found = false;
+  const participants = progress.participants.map((participant) => {
+    if (participant.playerId !== playerId) return participant;
+    found = true;
+    return { playerId, status, ...(outcome ? { outcome } : {}) };
+  });
+  if (!found) return pending;
+  return {
+    ...pending,
+    participantProgress: {
+      ...progress,
+      currentParticipantId: status === "CURRENT" ? playerId : progress.currentParticipantId === playerId ? null : progress.currentParticipantId,
+      participants,
+    },
+  };
+}
+
+function advanceHarvestPending(pending: HarvestPending, players: PlayerRow[]) {
+  let updated = pending;
+  const current = players.find((player) => player.id === pending.actorId);
+  const currentProgress = updated.participantProgress?.participants.find((participant) => participant.playerId === pending.actorId);
+  if ((!current || !current.alive) && currentProgress?.status === "CURRENT") {
+    updated = updateHarvestParticipant(updated, pending.actorId, "NO_LONGER_APPLICABLE");
+  }
+  const aliveIds: string[] = [];
+  for (const id of pending.remainingIds) {
+    const player = players.find((candidate) => candidate.id === id);
+    if (player?.alive) aliveIds.push(id);
+    else updated = updateHarvestParticipant(updated, id, "NO_LONGER_APPLICABLE");
+  }
+  if (!harvestAvailableIds(updated).length) {
+    for (const id of aliveIds) updated = updateHarvestParticipant(updated, id, "NO_LONGER_APPLICABLE");
+    return { pending: { ...updated, participantProgress: updated.participantProgress ? { ...updated.participantProgress, currentParticipantId: null } : undefined }, next: null };
+  }
+  const actorId = aliveIds[0];
+  if (!actorId) return { pending: { ...updated, participantProgress: updated.participantProgress ? { ...updated.participantProgress, currentParticipantId: null } : undefined }, next: null };
+  updated = updateHarvestParticipant(updated, actorId, "CURRENT");
+  const next = { ...updated, actorId, remainingIds: aliveIds.slice(1), previewCardId: undefined, completeAt: undefined, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
+  return { pending: next, next };
+}
+
+function harvestChoiceEnvelope(room: RoomRow, pending: HarvestPending, participantId: string | null, createdEnvelope: CausalEnvelope | null = null): CausalEnvelope | null {
+  const causal = pending.causal;
+  let envelope = createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json);
+  if (!causal || !envelope || envelope.interactionId !== causal.interactionId) return null;
+  if (envelope.activeFrameId !== causal.frameId) {
+    const active = envelope.frames.find((frame) => frame.frameId === envelope?.activeFrameId);
+    if (!active || active.parentFrameId !== causal.frameId) return null;
+    envelope = resumeCausalFrame(envelope, { interactionId: causal.interactionId, frameId: active.frameId, parentFrameId: causal.frameId }).envelope;
+  }
+  const root = envelope.frames.find((frame) => frame.frameId === causal.frameId);
+  if (!root || root.parentFrameId != null || root.origin.originEffect !== "BumperHarvest" || root.origin.originSourceId !== pending.sourceId) return null;
+  return advanceCausalSemanticCheckpoint(envelope, root.frameId, {
+    stage: "SEQUENTIAL_CHOICE",
+    current: { currentSourceId: pending.sourceId, currentEffect: "BumperHarvest", currentTargetIds: participantId ? [participantId] : [], resolvingPlayerId: participantId },
+  });
 }
 
 function harvestChoices(pending: HarvestPending) { return pending.choices ?? []; }
@@ -3593,32 +3684,51 @@ function commitHeldHarvestCards(discard: Card[], pending: HarvestPending) {
   return [...discard, ...finishing.filter((card) => !existing.has(card.id))];
 }
 
-async function queueHarvestCompletion(room: RoomRow, pending: HarvestPending, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
-  const complete = { ...pending, previewCardId: undefined, completeAt: Date.now() + HARVEST_CHOICE_HOLD_MS, reason: "Showing the final Bumper Harvest result" } satisfies HarvestPending;
-  writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(complete), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+async function queueHarvestCompletion(room: RoomRow, pending: HarvestPending, deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], createdEnvelope: CausalEnvelope | null = null) {
+  let terminal = pending;
+  for (const participant of pending.participantProgress?.participants ?? []) {
+    if (participant.status === "CURRENT" || participant.status === "PENDING") terminal = updateHarvestParticipant(terminal, participant.playerId, "NO_LONGER_APPLICABLE");
+  }
+  if (terminal.participantProgress) terminal = { ...terminal, participantProgress: { ...terminal.participantProgress, currentParticipantId: null } };
+  const complete = { ...terminal, remainingIds: [], previewCardId: undefined, completeAt: Date.now() + HARVEST_CHOICE_HOLD_MS, reason: "Showing the final Bumper Harvest result" } satisfies HarvestPending;
+  const causalEnvelope = harvestChoiceEnvelope(room, complete, null, createdEnvelope);
+  writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: complete, deck, discard, log, causalEnvelope }));
   if (writes.length) await db().batch(writes);
 }
 
-async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = []) {
+async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, players: PlayerRow[], deck: Card[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], createdEnvelope: CausalEnvelope | null = null) {
   if (!harvestAvailableIds(pending).length) {
-    await queueHarvestCompletion(room, pending, deck, discard, log, writes);
+    await queueHarvestCompletion(room, pending, deck, discard, log, writes, createdEnvelope);
     return;
   }
   const actor = players.find((player) => player.id === pending.actorId && player.alive);
   const source = players.find((player) => player.id === pending.sourceId);
   if (!actor || !source) {
-    const next = nextHarvestPending(pending, players);
-    if (next) return beginHarvestTarget(room, next, players, deck, discard, log, writes);
-    await queueHarvestCompletion(room, pending, deck, discard, log, writes);
+    const advanced = advanceHarvestPending(pending, players);
+    if (advanced.next) return beginHarvestTarget(room, advanced.next, players, deck, discard, log, writes, createdEnvelope);
+    await queueHarvestCompletion(room, advanced.pending, deck, discard, log, writes, createdEnvelope);
     return;
   }
+  const rootChoiceEnvelope = harvestChoiceEnvelope(room, pending, actor.id, createdEnvelope);
   const responders = playersInNegationOrder(players, actor.seat);
   if (!responders.length) {
     const ready = { ...pending, reason: "Choose 1 revealed card from Bumper Harvest" } satisfies HarvestPending;
-    writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(ready), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+    writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: ready, deck, discard, log, causalEnvelope: rootChoiceEnvelope }));
     if (writes.length) await db().batch(writes);
     await advanceHarvest(room.id);
     return;
+  }
+
+  let causalEnvelope = rootChoiceEnvelope;
+  let negationCausal: CausalContext | undefined;
+  if (rootChoiceEnvelope && pending.causal) {
+    const child = childCausalFrame(rootChoiceEnvelope, {
+      stage: "NEGATION",
+      origin: { originSourceId: source.id, originEffect: "BumperHarvest", originalTargetIds: [actor.id] },
+      current: { currentSourceId: source.id, currentEffect: "BumperHarvest", currentTargetIds: [actor.id], resolvingPlayerId: responders[0].id },
+    });
+    causalEnvelope = child.envelope;
+    negationCausal = child.context;
   }
   const negationContinuation: NegationContinuation = {
     kind: "negation",
@@ -3632,6 +3742,7 @@ async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, player
     resumePhase: pending.resumePhase,
     effect: { kind: "harvest_target", pending },
     heldCards: pending.heldCards,
+    ...(negationCausal ? { causal: negationCausal } : {}),
   };
   const negation: ResponsePending = {
     kind: "response",
@@ -3640,9 +3751,10 @@ async function beginHarvestTarget(room: RoomRow, pending: HarvestPending, player
     reason: `Play Negation to cancel Bumper Harvest's effect on ${actor.name}, or pass`,
     deadline: nextResponseDeadline(responders[0]),
     readyAfterEventId: pending.readyAfterEventId,
+    ...(negationCausal ? { causal: negationCausal } : {}),
     continuation: negationContinuation,
   };
-  writes.push(db().prepare("UPDATE rooms SET phase = 'response', pending_json = ?, deck_json = ?, discard_json = ?, log_json = ? WHERE id = ?").bind(serializePending(negation), JSON.stringify(deck), JSON.stringify(discard), JSON.stringify(log), room.id));
+  writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: negation, deck, discard, log, causalEnvelope }));
   if (writes.length) await db().batch(writes);
   await advanceNegation(room.id);
 }
@@ -3652,18 +3764,19 @@ async function resolveHarvestChoice(room: RoomRow, pending: HarvestPending, acto
   let log = parse<string[]>(room.log_json, []);
   log = addCardEvent(log, actor.name, chosen, actor.name, "gain", false);
   log = addHistory(log, `${actor.name} chooses ${chosen.rank}${chosen.suit} ${cardDefinition(chosen.kind).name} from Bumper Harvest.`);
-  const remainingPending: HarvestPending = {
+  let remainingPending: HarvestPending = {
     ...pending,
     availableIds: harvestAvailableIds(pending).filter((id) => id !== chosen.id),
     choices: [...harvestChoices(pending), { cardId: chosen.id, playerId: actor.id, playerName: actor.name }],
     previewCardId: undefined,
       };
-  const next = nextHarvestPending(remainingPending, players);
-  if (next) {
-    await beginHarvestTarget(room, next, players.map((player) => player.id === actor.id ? { ...player, hand_json: JSON.stringify(hand) } : player), parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
+  remainingPending = updateHarvestParticipant(remainingPending, actor.id, "RESOLVED", "CHOSE_CARD");
+  const advanced = advanceHarvestPending(remainingPending, players);
+  if (advanced.next) {
+    await beginHarvestTarget(room, advanced.next, players.map((player) => player.id === actor.id ? { ...player, hand_json: JSON.stringify(hand) } : player), parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
     return;
   }
-  await queueHarvestCompletion(room, remainingPending, parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
+  await queueHarvestCompletion(room, advanced.pending, parse<Card[]>(room.deck_json, []), parse<Card[]>(room.discard_json, []), log, [db().prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), actor.id)]);
 }
 
 async function advanceHarvest(roomId: string) {
@@ -3672,7 +3785,13 @@ async function advanceHarvest(roomId: string) {
   if (!room || room.phase !== "response" || pending?.kind !== "harvest" || !pending.completeAt || Date.now() < pending.completeAt) return;
   const log = addHistory(parse<string[]>(room.log_json, []), "Bumper Harvest finishes resolving.");
   const discard = commitHeldHarvestCards(parse<Card[]>(room.discard_json, []), pending);
-  const claim = await db().prepare("UPDATE rooms SET phase = ?, pending_json = NULL, discard_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?").bind(pending.resumePhase, JSON.stringify(discard), JSON.stringify(log), roomId, room.pending_json).run();
+  const claim = await causalRoomStateWrite(roomId, {
+    phase: pending.resumePhase,
+    pending: null,
+    discard,
+    log,
+    causalEnvelope: null,
+  }, room.pending_json).run();
   if ((claim.meta.changes ?? 0) > 0) await continueAfterDying(roomId, pending.sourceId);
 }
 
@@ -5404,7 +5523,7 @@ export async function POST(request: Request) {
       const nextActor = next.actor ?? me;
       const nextCausal = transitioned.causal ?? response.causal;
       const nextEnvelope = next.actor && storedEnvelope && nextCausal && storedEnvelope.interactionId === nextCausal.interactionId && storedEnvelope.activeFrameId === nextCausal.frameId
-        ? advanceCausalSemanticCheckpoint(storedEnvelope, nextCausal.frameId, { stage: "NEGATION", current: { currentSourceId: transitioned.sourceId, currentEffect: transitioned.cardName, currentTargetIds: [transitioned.effectTargetId], resolvingPlayerId: nextActor.id } })
+        ? advanceCausalSemanticCheckpoint(storedEnvelope, nextCausal.frameId, { stage: "NEGATION", current: { currentSourceId: transitioned.sourceId, currentEffect: negationSemanticEffect(transitioned), currentTargetIds: [transitioned.effectTargetId], resolvingPlayerId: nextActor.id } })
         : storedEnvelope;
       const nextPending: ResponsePending = { kind: "response", actorId: nextActor.id, requirement: negationRequirement(transitioned), reason: `Play Negation on ${me.name}'s Negation, or pass`, deadline: nextResponseDeadline(nextActor), resolutionId: response.resolutionId, ...(nextCausal ? { causal: nextCausal } : {}), continuation: { ...transitioned, remainingIds: next.remainingIds, ...(nextCausal ? { causal: nextCausal } : {}) } };
       const presentation = addLogWithId(log, `New Negation window opens for ${transitioned.responseTarget}.`);

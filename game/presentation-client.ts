@@ -1,6 +1,6 @@
-import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus } from "./pending";
+import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus, type HarvestParticipantProgressStatus } from "./pending";
 import { CARD_DEFINITIONS } from "./cards";
-import type { PresentationSnapshot, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress, PresentationSnapshotOathRecipientScope } from "./presentation-snapshot";
+import type { PresentationSnapshot, PresentationSnapshotBumperHarvestProgress, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress, PresentationSnapshotOathRecipientScope } from "./presentation-snapshot";
 import type {
   InteractionSceneContinuity,
   PresentationInteractionScene,
@@ -26,6 +26,7 @@ export type PresentationClientView = {
   groupResolution: PresentationSnapshotGroupProgress | null;
   groupParticipantProgress: readonly PresentationSnapshotGroupParticipantProgress[];
   oathRecipientScope: PresentationSnapshotOathRecipientScope | null;
+  bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationSnapshot["reactionChain"];
   rootOrigin?: NonNullable<PresentationInteractionScene["rootOrigin"]>;
   continuity: InteractionSceneContinuity;
@@ -72,6 +73,7 @@ export type InteractionStageView = {
   groupCardKind: PresentationSnapshotGroupProgress["cardKind"] | null;
   groupParticipantProgress: readonly PresentationSnapshotGroupParticipantProgress[];
   orderedTargetProgress: readonly PresentationSnapshotGroupParticipantProgress[];
+  bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChainNegationNodes: readonly ReactionChainNegationNodeView[];
   rootOrigin?: {
     frameId: string;
@@ -176,6 +178,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     groupResolution: null,
     groupParticipantProgress: [],
     oathRecipientScope: null,
+    bumperHarvestProgress: null,
     reactionChain: null,
     continuity: REST_CONTINUITY,
     parentFrameId: null,
@@ -295,6 +298,51 @@ function oathRecipientScopeForSnapshot(
   return { ...scope, recipientIds: [...scope.recipientIds] };
 }
 
+function bumperHarvestProgressForSnapshot(
+  snapshot: PresentationSnapshot,
+  scene: PresentationInteractionScene,
+): PresentationSnapshotBumperHarvestProgress | null {
+  const progress = snapshot.bumperHarvestProgress;
+  const identity = snapshot.identity;
+  if (!progress || !identity || progress.semantics !== "PROVEN"
+    || !isStringArray(progress.targetIds) || !Array.isArray(progress.participants)
+    || progress.interactionId !== identity.interactionId || progress.interactionId !== scene.interactionId
+    || progress.rootFrameId !== scene.rootFrameId || progress.activeFrameId !== scene.activeFrameId
+    || progress.checkpointId !== identity.checkpointId || progress.presentationRevision !== identity.presentationRevision
+    || progress.sourceId !== scene.sourceId || !progress.targetIds.length
+    || new Set(progress.targetIds).size !== progress.targetIds.length
+    || progress.participants.length !== progress.targetIds.length) return null;
+  const rootRelation = scene.continuity.relation === "ROOT_FRAME" && progress.activeFrameId === progress.rootFrameId;
+  const childRelation = scene.continuity.relation === "CHILD_FRAME" && progress.activeFrameId !== progress.rootFrameId;
+  const semanticTargets = rootRelation ? scene.targetIds : scene.rootOrigin?.targetIds;
+  if ((!rootRelation && !childRelation) || !semanticTargets || !sameStringIds(progress.targetIds, semanticTargets)) return null;
+  if (rootRelation && scene.stage !== "SEQUENTIAL_CHOICE"
+    || childRelation && (scene.stage !== "NEGATION" || !scene.rootOrigin
+      || scene.rootOrigin.frameId !== progress.rootFrameId || scene.rootOrigin.effect !== "BumperHarvest"
+      || scene.decisionActorId !== null || scene.activeResolverId !== null)) return null;
+
+  const validStatuses = new Set<HarvestParticipantProgressStatus>(["PENDING", "CURRENT", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+  const participants: PresentationSnapshotBumperHarvestProgress["participants"][number][] = [];
+  for (let index = 0; index < progress.targetIds.length; index++) {
+    const participant = progress.participants[index];
+    if (!participant || participant.playerId !== progress.targetIds[index] || participant.order !== index + 1
+      || !validStatuses.has(participant.status)) return null;
+    if (participant.status === "RESOLVED") {
+      if (participant.outcome !== "CHOSE_CARD" && participant.outcome !== "NEGATED") return null;
+    } else if (participant.outcome !== undefined) return null;
+    participants.push({ playerId: participant.playerId, order: index + 1, status: participant.status, ...(participant.outcome === "CHOSE_CARD" || participant.outcome === "NEGATED" ? { outcome: participant.outcome } : {}) });
+  }
+  const current = participants.filter(({ status }) => status === "CURRENT");
+  if (progress.currentParticipantId === null) {
+    if (current.length || snapshot.stable.kind !== "SPECIAL" || childRelation || scene.currentParticipantId !== null) return null;
+  } else if (current.length !== 1 || current[0].playerId !== progress.currentParticipantId
+    || scene.currentParticipantId !== progress.currentParticipantId) return null;
+  if (rootRelation && progress.currentParticipantId
+    && (snapshot.stable.kind !== "CHOICE" || snapshot.stable.decisionActorId !== progress.currentParticipantId)) return null;
+  if (childRelation && snapshot.stable.kind !== "SPECIAL") return null;
+  return { ...progress, targetIds: [...progress.targetIds], participants };
+}
+
 function sameStringIds(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
@@ -389,6 +437,7 @@ export function buildPresentationClientView(
     && snapshot.localControl.actorId === meId);
   const groupProgress = groupProgressForSnapshot(snapshot, scene);
   const oathScope = oathRecipientScopeForSnapshot(snapshot, scene);
+  const bumperHarvestProgress = bumperHarvestProgressForSnapshot(snapshot, scene);
   return {
     hasInteraction: true,
     interactionId: snapshot.identity?.interactionId ?? null,
@@ -408,6 +457,7 @@ export function buildPresentationClientView(
     groupResolution: groupProgress,
     groupParticipantProgress: groupProgress?.resolutionSemantics === "GROUP" ? groupProgress.participants : [],
     oathRecipientScope: oathScope,
+    bumperHarvestProgress,
     reactionChain: reactionChainForSnapshot(snapshot, scene),
     ...(scene.rootOrigin ? { rootOrigin: { ...scene.rootOrigin, targetIds: [...scene.rootOrigin.targetIds] } } : {}),
     continuity: { ...scene.continuity },
@@ -500,6 +550,11 @@ export function buildInteractionStageView(
       && view.groupResolution.resolutionSemantics === "ORDERED"
       ? view.groupResolution.participants.map((participant) => ({ ...participant }))
       : [],
+    bumperHarvestProgress: view.bumperHarvestProgress ? {
+      ...view.bumperHarvestProgress,
+      targetIds: [...view.bumperHarvestProgress.targetIds],
+      participants: view.bumperHarvestProgress.participants.map((participant) => ({ ...participant })),
+    } : null,
     reactionChainNegationNodes: view.stage === "NEGATION"
       ? (view.reactionChain?.nodes ?? []).map((node) => ({
         actor: displayIdentity(node.actorId, "Unknown player", resolvePlayerName),

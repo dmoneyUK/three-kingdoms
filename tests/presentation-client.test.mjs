@@ -154,6 +154,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     groupResolution: null,
     groupParticipantProgress: [],
     oathRecipientScope: null,
+    bumperHarvestProgress: null,
     reactionChain: null,
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },
     parentFrameId: null,
@@ -165,6 +166,80 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
   assert.equal("options" in view, false);
   assert.equal("legalActions" in view, false);
   assert.equal("providers" in view, false);
+});
+
+test("adapter carries ordered Bumper Harvest progress without exposing the private Negation scanner", () => {
+  const targetIds = ["A", "B", "C"];
+  const child = scene({
+    rootFrameId: "harvest-root",
+    activeFrameId: "harvest-negation",
+    parentFrameId: "harvest-root",
+    stage: "NEGATION",
+    effect: "BumperHarvest",
+    sourceId: "A",
+    targetIds: ["B"],
+    currentParticipantId: "B",
+    decisionActorId: null,
+    activeResolverId: null,
+    activeSourceId: "A",
+    activeTargetIds: ["B"],
+    participantIds: [],
+    participantRoles: {
+      sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B",
+      decisionActorId: null, activeResolverId: null, parentParticipantId: null, participantIds: [],
+    },
+    rootOrigin: { frameId: "harvest-root", stage: "SEQUENTIAL_CHOICE", sourceId: "A", effect: "BumperHarvest", targetIds },
+    continuity: { relation: "CHILD_FRAME", parentFrameId: "harvest-root" },
+  });
+  const progress = {
+    semantics: "PROVEN",
+    interactionId: "interaction-1",
+    rootFrameId: "harvest-root",
+    activeFrameId: "harvest-negation",
+    checkpointId: "checkpoint-1",
+    presentationRevision: 3,
+    sourceId: "A",
+    targetIds,
+    currentParticipantId: "B",
+    participants: [
+      { playerId: "A", order: 1, status: "RESOLVED", outcome: "NEGATED" },
+      { playerId: "B", order: 2, status: "CURRENT" },
+      { playerId: "C", order: 3, status: "PENDING" },
+    ],
+  };
+  const client = buildPresentationClientView(snapshot({
+    interaction: child,
+    stable: { kind: "SPECIAL", interactionId: "interaction-1", checkpointId: "checkpoint-1", presentationRevision: 3, decisionActorId: null },
+    decision: null,
+    localControl: { source: "CurrentAction", actionRevision: "action-private", kind: "response", actorId: "C", entitled: true },
+    bumperHarvestProgress: progress,
+    reactionChain: {
+      semantics: "PROVEN", interactionId: "interaction-1", frameId: "harvest-negation",
+      nodes: [{ nodeId: "submitted-negation", interactionId: "interaction-1", frameId: "harvest-negation", causedByNodeId: null, actorId: "A", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } }],
+    },
+  }), "C");
+  assert.equal(client.activeResolverId, null);
+  assert.equal(client.decisionActorId, null);
+  assert.equal(buildPresentationDecisionStatus(client).isLocalDecisionActor, false);
+  assert.equal(client.hasLocalControl, true, "private control entitlement stays separate from public Stage roles");
+  assert.deepEqual(client.bumperHarvestProgress?.participants.map(({ playerId, status, outcome }) => ({ playerId, status, outcome: outcome ?? null })), [
+    { playerId: "A", status: "RESOLVED", outcome: "NEGATED" },
+    { playerId: "B", status: "CURRENT", outcome: null },
+    { playerId: "C", status: "PENDING", outcome: null },
+  ]);
+  const stage = buildInteractionStageView(client, (id) => id);
+  assert.equal(stage.currentParticipant.id, "B");
+  assert.equal(stage.decisionActor.id, null);
+  assert.equal(stage.activeResolver.id, null);
+  assert.equal(stage.bumperHarvestProgress?.currentParticipantId, "B");
+  assert.deepEqual(stage.reactionChainNegationNodes.map(({ actor }) => actor.id), ["A"], "only the actually submitted public Negation node is displayed");
+
+  const mismatched = buildPresentationClientView(snapshot({
+    interaction: child,
+    stable: { kind: "SPECIAL", interactionId: "interaction-1", checkpointId: "checkpoint-1", presentationRevision: 3, decisionActorId: null },
+    bumperHarvestProgress: { ...progress, targetIds: ["C", "B", "A"] },
+  }), "C");
+  assert.equal(mismatched.bumperHarvestProgress, null, "a reordered participant list fails closed in the client adapter");
 });
 
 test("adapter carries only a proven, linked Negation history without adding UI controls", () => {

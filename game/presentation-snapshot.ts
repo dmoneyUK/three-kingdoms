@@ -1,6 +1,7 @@
 import type { CurrentAction } from "./protocol";
-import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics } from "./pending";
+import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressStatus } from "./pending";
 import type {
+  PresentationBumperHarvestProgress,
   PresentationInteractionScene,
   PresentationOathRecipientScope,
   PresentationReactionChain,
@@ -54,6 +55,7 @@ export type PresentationSnapshotGroupProgress = {
 };
 
 export type PresentationSnapshotOathRecipientScope = PresentationOathRecipientScope;
+export type PresentationSnapshotBumperHarvestProgress = PresentationBumperHarvestProgress;
 
 export type PresentationSnapshot = {
   identity: PresentationSnapshotIdentity | null;
@@ -61,6 +63,7 @@ export type PresentationSnapshot = {
   interaction: PresentationSnapshotInteraction | null;
   groupParticipantProgress: PresentationSnapshotGroupProgress | null;
   oathRecipientScope: PresentationSnapshotOathRecipientScope | null;
+  bumperHarvestProgress: PresentationSnapshotBumperHarvestProgress | null;
   reactionChain: PresentationReactionChain | null;
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
@@ -207,6 +210,58 @@ function oathRecipientScopeFor(
   return { ...scope, recipientIds: [...scope.recipientIds] };
 }
 
+function bumperHarvestProgressFor(
+  presentationV2: PresentationV2,
+  scene: PresentationInteractionScene,
+  identity: PresentationSnapshotIdentity,
+  stable: PresentationStableBoundary,
+): PresentationSnapshotBumperHarvestProgress | null {
+  const progress = presentationV2.bumperHarvestProgress;
+  if (!progress || progress.semantics !== "PROVEN" || !Array.isArray(progress.targetIds) || !Array.isArray(progress.participants)
+    || !progress.interactionId || !progress.rootFrameId || !progress.activeFrameId || !progress.checkpointId
+    || progress.interactionId !== identity.interactionId || progress.interactionId !== scene.interactionId
+    || progress.rootFrameId !== scene.rootFrameId || progress.activeFrameId !== scene.activeFrameId
+    || progress.checkpointId !== identity.checkpointId || progress.presentationRevision !== identity.presentationRevision
+    || progress.sourceId !== scene.sourceId || !progress.targetIds.length
+    || new Set(progress.targetIds).size !== progress.targetIds.length
+    || progress.participants.length !== progress.targetIds.length) return null;
+
+  const rootRelation = scene.continuity.relation === "ROOT_FRAME" && progress.activeFrameId === progress.rootFrameId;
+  const childRelation = scene.continuity.relation === "CHILD_FRAME" && progress.activeFrameId !== progress.rootFrameId;
+  if (!rootRelation && !childRelation) return null;
+  const semanticTargets = rootRelation ? scene.targetIds : scene.rootOrigin?.targetIds;
+  if (!semanticTargets || !sameIds(progress.targetIds, semanticTargets)
+    || !sameIds(scene.participantRoles.originalTargetIds, scene.targetIds)) return null;
+  if (rootRelation && scene.stage !== "SEQUENTIAL_CHOICE"
+    || childRelation && (scene.stage !== "NEGATION" || !scene.rootOrigin
+      || scene.rootOrigin.frameId !== progress.rootFrameId || scene.rootOrigin.effect !== "BumperHarvest"
+      || !sameIds(progress.targetIds, scene.rootOrigin.targetIds)
+      || scene.decisionActorId !== null || scene.activeResolverId !== null)) return null;
+
+  const validStatuses = new Set<HarvestParticipantProgressStatus>(["PENDING", "CURRENT", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+  const participants: PresentationSnapshotBumperHarvestProgress["participants"][number][] = [];
+  for (let index = 0; index < progress.targetIds.length; index++) {
+    const participant = progress.participants[index];
+    if (!participant || participant.playerId !== progress.targetIds[index] || participant.order !== index + 1
+      || !validStatuses.has(participant.status)) return null;
+    if (participant.status === "RESOLVED") {
+      if (participant.outcome !== "CHOSE_CARD" && participant.outcome !== "NEGATED") return null;
+    } else if (participant.outcome !== undefined) return null;
+    participants.push({ playerId: participant.playerId, order: index + 1, status: participant.status, ...(participant.outcome === "CHOSE_CARD" || participant.outcome === "NEGATED" ? { outcome: participant.outcome } : {}) });
+  }
+
+  const current = participants.filter(({ status }) => status === "CURRENT");
+  if (progress.currentParticipantId === null) {
+    if (current.length || stable.kind !== "SPECIAL" || childRelation || scene.currentParticipantId !== null) return null;
+  } else if (current.length !== 1 || current[0].playerId !== progress.currentParticipantId
+    || scene.currentParticipantId !== progress.currentParticipantId) return null;
+  if (rootRelation && progress.currentParticipantId
+    && (stable.kind !== "CHOICE" || stable.decisionActorId !== progress.currentParticipantId)) return null;
+  if (childRelation && stable.kind !== "SPECIAL") return null;
+
+  return { ...progress, targetIds: [...progress.targetIds], participants };
+}
+
 function reactionChainFor(
   presentationV2: PresentationV2,
   scene: PresentationInteractionScene,
@@ -281,6 +336,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     interaction: authority?.scene ?? null,
     groupParticipantProgress: authority ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity) : null,
     oathRecipientScope: authority ? oathRecipientScopeFor(input.presentationV2, authority.scene, authority.identity) : null,
+    bumperHarvestProgress: authority ? bumperHarvestProgressFor(input.presentationV2, authority.scene, authority.identity, authority.stable) : null,
     reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity) : null,
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }

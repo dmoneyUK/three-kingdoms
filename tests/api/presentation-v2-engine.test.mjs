@@ -1454,6 +1454,131 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
 });
 
+test("engine-backed Bumper Harvest publishes ordered progress and keeps the Negation scan actor private", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [host, alice, bob] = game.members;
+  const [source, first, second, third] = game.room.players;
+  const harvest = card("BumperHarvest", "progress-root");
+  const aliceNegation = card("Negation", "progress-alice-negation");
+  const bobNegation = card("Negation", "progress-bob-negation");
+  setHand(source.id, [harvest], 4, 4);
+  setHand(first.id, [aliceNegation], 4, 4);
+  setHand(second.id, [bobNegation], 4, 4);
+  setHand(third.id, [], 4, 4);
+  setDeck(game.code, [
+    card("Attack", "progress-reveal-1"),
+    card("Dodge", "progress-reveal-2"),
+    card("Peach", "progress-reveal-3"),
+    card("Strike", "progress-reveal-4"),
+  ]);
+  setTurn(game.code, source.seat);
+
+  const opened = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: harvest.id });
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  const firstWindow = await assertProjectionMatchesEngine(game.code, alice.token);
+  assert.equal(firstWindow.currentAction.actorId, first.id);
+  const initialProgress = firstWindow.presentationSnapshot.bumperHarvestProgress;
+  assert.ok(initialProgress, JSON.stringify({ envelope: { activeFrameId: firstWindow.causalEnvelope?.activeFrameId, checkpoint: firstWindow.causalEnvelope?.checkpoint, frames: firstWindow.causalEnvelope?.frames }, scene: firstWindow.presentationV2.interactionScene, stable: firstWindow.presentationV2.stableBoundary, progress: firstWindow.presentationV2.bumperHarvestProgress }));
+  assert.deepEqual(initialProgress?.targetIds, game.room.players.map(({ id }) => id), "the server's turn-order declaration defines the participant sequence");
+  assert.deepEqual(initialProgress?.participants.map(({ status }) => status), ["CURRENT", "PENDING", "PENDING", "PENDING"]);
+  assert.equal(initialProgress?.currentParticipantId, source.id);
+  assert.equal(firstWindow.presentationV2.interactionScene?.stage, "NEGATION");
+  assert.equal(firstWindow.presentationV2.interactionScene?.currentParticipantId, source.id);
+  assert.equal(firstWindow.presentationV2.interactionScene?.decisionActorId, null);
+  assert.equal(firstWindow.presentationV2.interactionScene?.activeResolverId, null);
+  assert.equal(firstWindow.presentationV2.decision?.actorId, null, "the private scan actor is not copied into PresentationV2 decision metadata");
+  assert.deepEqual(firstWindow.presentationSnapshot.reactionChain?.nodes, [], "a pass or open response is not a submitted public Negation node");
+
+  const observer = await assertProjectionMatchesEngine(game.code, host.token);
+  assert.equal(observer.pendingNegation.actorId, null, "the observer DTO does not identify the current scan actor");
+  assert.deepEqual(publicSnapshot(observer.presentationSnapshot), publicSnapshot(firstWindow.presentationSnapshot), "public Bumper Harvest authority is viewer-equal");
+  assert.equal(observer.currentAction.options, undefined, "private response providers remain on the acting viewer only");
+
+  const submitted = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: aliceNegation.id, preserveResponse: true });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  const counterWindow = await assertProjectionMatchesEngine(game.code, bob.token);
+  assert.equal(counterWindow.currentAction.actorId, second.id);
+  assert.equal(counterWindow.presentationSnapshot.bumperHarvestProgress?.currentParticipantId, source.id, "the affected chooser remains the participant through counter-Negation");
+  assert.deepEqual(counterWindow.presentationSnapshot.reactionChain?.nodes.map(({ actorId }) => actorId), [first.id], "only the submitted Negation appears in public history");
+  assert.equal("physicalCardId" in counterWindow.presentationSnapshot.reactionChain.nodes[0], false);
+  assert.equal(counterWindow.presentationV2.interactionScene?.decisionActorId, null);
+  assert.equal(counterWindow.presentationV2.interactionScene?.activeResolverId, null);
+  const counterObserver = await assertProjectionMatchesEngine(game.code, host.token);
+  assert.deepEqual(publicSnapshot(counterObserver.presentationSnapshot), publicSnapshot(counterWindow.presentationSnapshot));
+  assert.equal(counterObserver.pendingNegation.actorId, null);
+
+  sql(`UPDATE players SET alive=0,hp=0 WHERE id=${quote(third.id)}`);
+  const counterPassed = await request("decline_response", { code: game.code, token: bob.token });
+  assert.equal(counterPassed.status, 200, JSON.stringify(counterPassed.data));
+  let nextWindow = await assertProjectionMatchesEngine(game.code, bob.token);
+  let progress = nextWindow.presentationSnapshot.bumperHarvestProgress;
+  assert.equal(progress?.currentParticipantId, first.id, "the following participant becomes current after the preceding choice is negated");
+  assert.deepEqual(progress?.participants.map(({ status, outcome }) => ({ status, outcome: outcome ?? null })), [
+    { status: "RESOLVED", outcome: "NEGATED" },
+    { status: "CURRENT", outcome: null },
+    { status: "PENDING", outcome: null },
+    { status: "NO_LONGER_APPLICABLE", outcome: null },
+  ]);
+  assert.equal(nextWindow.presentationV2.interactionScene?.decisionActorId, null);
+  assert.equal(nextWindow.presentationV2.interactionScene?.activeResolverId, null);
+  assert.equal(nextWindow.presentationV2.stableBoundary.kind, "SPECIAL");
+
+  const storedPending = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
+  const malformedPending = JSON.parse(storedPending);
+  malformedPending.continuation.effect.pending.participantProgress.participants[0].playerId = "forged-participant";
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(malformedPending))} WHERE code=${quote(game.code)}`);
+  const malformed = (await state(game.code, host.token)).data;
+  assert.equal(malformed.presentationV2.bumperHarvestProgress, null, "progress whose order no longer matches the causal root fails closed");
+  assert.equal(malformed.presentationSnapshot.bumperHarvestProgress, null);
+  sql(`UPDATE rooms SET pending_json=${quote(storedPending)} WHERE code=${quote(game.code)}`);
+
+  const currentWindowPassed = await request("decline_response", { code: game.code, token: bob.token });
+  assert.equal(currentWindowPassed.status, 200, JSON.stringify(currentWindowPassed.data));
+  const choice = await assertProjectionMatchesEngine(game.code, alice.token);
+  assert.equal(choice.currentAction.actorId, first.id);
+  assert.equal(choice.presentationV2.interactionScene?.stage, "SEQUENTIAL_CHOICE");
+  assert.equal(choice.presentationV2.stableBoundary.kind, "CHOICE");
+  assert.equal(choice.presentationSnapshot.bumperHarvestProgress?.participants[0].outcome, "NEGATED");
+
+  const chosen = authoritativePending(game.code).availableIds[0];
+  const picked = await requestAndSettle("choose_harvest", { code: game.code, token: alice.token, cardId: chosen });
+  assert.equal(picked.status, 200, JSON.stringify(picked.data));
+  nextWindow = await assertProjectionMatchesEngine(game.code, bob.token);
+  progress = nextWindow.presentationSnapshot.bumperHarvestProgress;
+  assert.equal(progress?.participants[1].status, "RESOLVED");
+  assert.equal(progress?.participants[1].outcome, "CHOSE_CARD");
+  assert.equal(progress?.participants[2].status, "CURRENT");
+  assert.equal(progress?.currentParticipantId, second.id);
+
+  const finalNegationPassed = await request("decline_response", { code: game.code, token: bob.token });
+  assert.equal(finalNegationPassed.status, 200, JSON.stringify(finalNegationPassed.data));
+  const finalChoice = await assertProjectionMatchesEngine(game.code, bob.token);
+  assert.equal(finalChoice.currentAction.actorId, second.id);
+  const finalCardId = authoritativePending(game.code).availableIds[0];
+  const finalPicked = await requestAndSettle("choose_harvest", { code: game.code, token: bob.token, cardId: finalCardId });
+  assert.equal(finalPicked.status, 200, JSON.stringify(finalPicked.data));
+  const complete = await assertProjectionMatchesEngine(game.code, host.token);
+  const terminalProgress = complete.presentationSnapshot.bumperHarvestProgress;
+  assert.equal(terminalProgress?.currentParticipantId, null);
+  assert.deepEqual(terminalProgress?.participants.map(({ status, outcome }) => ({ status, outcome: outcome ?? null })), [
+    { status: "RESOLVED", outcome: "NEGATED" },
+    { status: "RESOLVED", outcome: "CHOSE_CARD" },
+    { status: "RESOLVED", outcome: "CHOSE_CARD" },
+    { status: "NO_LONGER_APPLICABLE", outcome: null },
+  ]);
+  assert.equal(complete.presentationV2.stableBoundary.kind, "SPECIAL");
+  const completedPending = authoritativePending(game.code);
+  assert.equal(completedPending.completeAt > 0, true);
+  assert.deepEqual(completedPending.remainingIds, [], "the terminal public checkpoint has no unresolved remaining actors");
+
+  const duePending = { ...completedPending, completeAt: Date.now() - 1 };
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(duePending))} WHERE code=${quote(game.code)}`);
+  const closed = await request("advance_timers", { code: game.code, token: host.token });
+  assert.equal(closed.status, 200, JSON.stringify(closed.data));
+  assert.equal(closed.data.room.pending, null);
+  assert.equal(closed.data.room.causalEnvelope, null, "the completed Bumper Harvest causal identity is cleared atomically");
+});
+
 test("FIX10 initial Negation skips ineligible seats without a fake blocker checkpoint", { timeout: 30_000 }, async () => {
   const game = await createHumanGame();
   const [sourceMember, , blockerMember] = game.members;

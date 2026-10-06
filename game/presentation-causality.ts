@@ -7,7 +7,7 @@ export type CauseNodeId = string;
 
 export type PresentationStage =
   | "ATTACK_RESPONSE" | "DUEL_EXCHANGE" | "GROUP_RESOLUTION" | "DAMAGE"
-  | "DYING" | "JUDGEMENT" | "NEGATION" | "FORCED_ACTION" | "SETTLEMENT";
+  | "DYING" | "JUDGEMENT" | "NEGATION" | "FORCED_ACTION" | "SEQUENTIAL_CHOICE" | "SETTLEMENT";
 export type ResolutionSemantics = "SEQUENTIAL" | "ORDERED" | "GROUP";
 
 export type CausalOriginRef = { interactionId?: InteractionId; frameId?: FrameId; causeNodeId?: CauseNodeId };
@@ -33,7 +33,7 @@ export type CausalEnvelope = {
 
 const STAGES = new Set<PresentationStage>([
   "ATTACK_RESPONSE", "DUEL_EXCHANGE", "GROUP_RESOLUTION", "DAMAGE", "DYING",
-  "JUDGEMENT", "NEGATION", "FORCED_ACTION", "SETTLEMENT",
+  "JUDGEMENT", "NEGATION", "FORCED_ACTION", "SEQUENTIAL_CHOICE", "SETTLEMENT",
 ]);
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const stringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");

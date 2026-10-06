@@ -12,7 +12,16 @@ export type CausalFields = { causal?: CausalContext };
 export type AttackOrigin = "card" | "serpent_spear" | "green_dragon" | "halberd" | "duel" | "triggered" | "borrowed_sword";
 export type AttackDeclaration = { sourceId: string; targetId: string; origin: AttackOrigin; physicalCards: Card[]; attackCard?: Card; ignoresArmor?: boolean; requiredDodgeCount?: number; dodgeSuppressed?: boolean; sequenceStartCardId: string; resumePhase: string; resumePlayerId?: string; resolutionId?: string } & CausalFields;
 export type HarvestChoice = { cardId: string; playerId: string; playerName: string };
-export type HarvestPending = { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; previewCardId?: string; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
+export type HarvestParticipantProgressStatus = "PENDING" | "CURRENT" | "RESOLVED" | "NO_LONGER_APPLICABLE";
+export type HarvestParticipantProgressOutcome = "CHOSE_CARD" | "NEGATED";
+export type HarvestParticipantProgress = {
+  version: 1;
+  interactionId: string;
+  rootFrameId: string;
+  currentParticipantId: string | null;
+  participants: Array<{ playerId: string; status: HarvestParticipantProgressStatus; outcome?: HarvestParticipantProgressOutcome }>;
+};
+export type HarvestPending = CausalFields & { kind: "harvest"; sourceId: string; actorId: string; remainingIds: string[]; revealed: Card[]; availableIds?: string[]; choices?: HarvestChoice[]; participantProgress?: HarvestParticipantProgress; previewCardId?: string; completeAt?: number; resumePhase: string; reason: string; heldCards?: Card[] };
 export type TargetCardPending = { kind: "target_card"; sourceId: string; actorId: string; targetId: string; cardKind: "Dismantle" | "Steal"; resumePhase: string; reason: string; heldCards?: Card[] };
 export type BorrowedSwordPending = CausalFields & { kind: "borrowed_sword"; sourceId: string; actorId: string; targetId: string; holderId: string; resumePhase: string; reason: string; deadline?: number; weaponId?: string; stage: "choose_target" | "force_attack" };
 export type BorrowedSwordAttackContinuation = CausalFields & { kind: "borrowed_sword_attack"; sourceId: string; holderId: string; targetId: string; resumePhase: string; resumePlayerId: string; weaponId: string; origin: "borrowed_sword" };

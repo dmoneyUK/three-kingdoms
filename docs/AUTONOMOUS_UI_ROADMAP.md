@@ -905,7 +905,9 @@ Only a proven regression or new Reviewer-approved design requirement does.
 - Presentation/render regressions passed 68/68; focused Oath browser semantic
   and geometry tests passed 9/9, including ten-player mobile scrolling and
   Stage/Dock separation. Build, targeted ESLint, and `git diff --check` passed.
-  Ready to push; Reviewer acceptance remains unclaimed.
+  Pushed as `8fdb0cfcbaed9dbe8679310c7606ae7d1af8ca9d`; exact Actions run
+  `37480885665` completed **success** (`build-and-test`, `deploy`). Reviewer
+  acceptance remains unclaimed.
 
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 

@@ -1,6 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
-import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type NegationHistoryRecord } from "./pending";
+import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type HarvestParticipantProgressOutcome, type HarvestParticipantProgressStatus, type NegationHistoryRecord } from "./pending";
 
 export type PresentationV2Event = {
   id: string;
@@ -125,6 +125,19 @@ export type PresentationOathRecipientScope = {
   recipientIds: readonly string[];
 };
 
+export type PresentationBumperHarvestProgress = {
+  semantics: "PROVEN";
+  interactionId: string;
+  rootFrameId: string;
+  activeFrameId: string;
+  checkpointId: string;
+  presentationRevision: number;
+  sourceId: string;
+  targetIds: readonly string[];
+  currentParticipantId: string | null;
+  participants: readonly { playerId: string; order: number; status: HarvestParticipantProgressStatus; outcome?: HarvestParticipantProgressOutcome }[];
+};
+
 export type PresentationStableBoundaryKind = "REST" | "CHOICE" | "SETTLEMENT" | "SPECIAL";
 
 export type PresentationStableBoundary = {
@@ -144,6 +157,7 @@ export type PresentationV2 = {
   dyingBarrier: PresentationDyingBarrier | null;
   reactionChain: PresentationReactionChain | null;
   oathRecipientScope: PresentationOathRecipientScope | null;
+  bumperHarvestProgress: PresentationBumperHarvestProgress | null;
   groupResolution: {
     semantics: "PROVEN" | "UNPROVEN";
     resolutionSemantics: GroupResolutionSemantics | null;
@@ -252,6 +266,25 @@ function pendingContexts(pending: unknown) {
   return { active, parent, group, root: pendingContext };
 }
 
+function bumperHarvestPendingFrom(pending: unknown): RecordLike | null {
+  const item = record(pending);
+  if (item?.kind === "harvest") return item;
+  const continuation = record(item?.continuation);
+  const effect = record(continuation?.effect);
+  const harvest = record(effect?.pending);
+  return item?.kind === "response" && continuation?.kind === "negation" && effect?.kind === "harvest_target" && harvest?.kind === "harvest"
+    ? harvest
+    : null;
+}
+
+function isBumperHarvestNegationPending(pending: unknown): boolean {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const effect = record(continuation?.effect);
+  return item?.kind === "response" && continuation?.kind === "negation" && effect?.kind === "harvest_target"
+    && record(effect.pending)?.kind === "harvest";
+}
+
 type DyingDecisionProof = {
   pending: RecordLike;
   activeFrame: CausalFrame;
@@ -340,6 +373,26 @@ function semanticDecisionActorId(envelope: CausalEnvelope | null, pending: unkno
   const causal = record(item?.causal);
   const continuation = record(item?.continuation);
   const continuationKind = stringValue(continuation?.kind);
+  // The responder currently scanned in a Bumper Harvest Negation window is
+  // private. The affected chooser is projected separately as the participant.
+  if (isBumperHarvestNegationPending(pending)) return null;
+  if (item?.kind === "harvest" && envelope && activeFrame && actorId) {
+    const progress = record(item.participantProgress);
+    const harvestCausal = record(item.causal);
+    const participant = Array.isArray(progress?.participants)
+      ? progress.participants.map(record).find((candidate) => candidate?.playerId === actorId)
+      : null;
+    if (progress?.version === 1 && progress.interactionId === envelope.interactionId
+      && progress.rootFrameId === activeFrame.frameId
+      && harvestCausal?.interactionId === envelope.interactionId && harvestCausal.frameId === activeFrame.frameId
+      && envelope.activeFrameId === activeFrame.frameId && envelope.checkpoint.frameId === activeFrame.frameId
+      && envelope.checkpoint.stage === "SEQUENTIAL_CHOICE" && activeFrame.stage === "SEQUENTIAL_CHOICE"
+      && activeFrame.parentFrameId == null && activeFrame.origin.originEffect === "BumperHarvest"
+      && activeFrame.origin.originSourceId === item.sourceId
+      && activeFrame.current.currentTargetIds.length === 1 && activeFrame.current.currentTargetIds[0] === actorId
+      && activeFrame.current.resolvingPlayerId === actorId
+      && progress.currentParticipantId === actorId && participant?.status === "CURRENT") return actorId;
+  }
   if (!envelope || !activeFrame || !item || !actorId || !causal || causal.interactionId !== envelope.interactionId
     || causal.frameId !== activeFrame.frameId) return null;
   if (item.kind === "response" && RESPONSE_DECISION_CONTINUATIONS.has(continuationKind ?? "")) return activeFrame.current.resolvingPlayerId === actorId ? actorId : null;
@@ -456,6 +509,7 @@ function interactionSceneFor(
   const currentParticipantId = groupValues?.currentParticipantId ?? firstString(activeCurrent?.currentTargetIds[0]);
   const dyingProof = dyingDecisionProof(envelope, pending);
   const semanticDecisionActor = semanticDecisionActorId(envelope, pending, activeFrame, dyingProof);
+  const publicActiveResolverId = isBumperHarvestNegationPending(pending) ? null : activeCurrent?.resolvingPlayerId ?? null;
   const relation: InteractionSceneContinuity["relation"] = !proven
     ? "UNPROVEN"
     : activeFrame?.parentFrameId
@@ -493,7 +547,7 @@ function interactionSceneFor(
       activeTargetIds: activeCurrent?.currentTargetIds ?? [],
       currentParticipantId,
       decisionActorId: semanticDecisionActor,
-      activeResolverId: activeCurrent?.resolvingPlayerId ?? null,
+      activeResolverId: publicActiveResolverId,
       parentParticipantId: groupValues && activeFrame?.frameId !== groupValues.groupFrame?.frameId
         ? firstString(parentFrame?.current.currentTargetIds.length === 1 ? parentFrame.current.currentTargetIds[0] : null, groupValues.parentParticipantId)
         : null,
@@ -523,7 +577,7 @@ function interactionSceneFor(
     targetIds,
     currentParticipantId,
     decisionActorId: semanticDecisionActor,
-    activeResolverId: activeCurrent?.resolvingPlayerId ?? null,
+    activeResolverId: publicActiveResolverId,
     activeSourceId: activeCurrent?.currentSourceId ?? null,
     activeTargetIds: activeCurrent?.currentTargetIds ?? [],
     participantIds: groupValues?.participantIds ?? [],
@@ -645,6 +699,106 @@ function oathRecipientScopeFor(
   };
 }
 
+function bumperHarvestProgressFor(
+  envelope: CausalEnvelope | null,
+  pending: unknown,
+  scene: PresentationInteractionScene | null,
+): PresentationBumperHarvestProgress | null {
+  const item = record(pending);
+  const harvest = bumperHarvestPendingFrom(pending);
+  const progress = record(harvest?.participantProgress);
+  const causal = record(harvest?.causal);
+  const rootFrameId = stringValue(progress?.rootFrameId);
+  const sourceId = stringValue(harvest?.sourceId);
+  const root = envelope?.frames.find((frame) => frame.frameId === rootFrameId) ?? null;
+  const active = envelope?.frames.find((frame) => frame.frameId === envelope.activeFrameId) ?? null;
+  const storedParticipants = progress?.participants;
+  if (!item || !harvest || !progress || progress.version !== 1 || !rootFrameId || !sourceId
+    || !envelope || !root || !active || !Array.isArray(storedParticipants) || !storedParticipants.length
+    || root.parentFrameId != null || root.stage !== "SEQUENTIAL_CHOICE"
+    || root.origin.originEffect !== "BumperHarvest" || root.origin.originSourceId !== sourceId
+    || root.current.currentSourceId !== sourceId || root.current.currentEffect !== "BumperHarvest"
+    || progress.interactionId !== envelope.interactionId || causal?.interactionId !== envelope.interactionId
+    || causal.frameId !== root.frameId || rootFrameId !== root.frameId
+    || root.origin.originalTargetIds.length !== storedParticipants.length
+    || new Set(root.origin.originalTargetIds).size !== root.origin.originalTargetIds.length) return null;
+
+  const participants: Array<{ playerId: string; order: number; status: HarvestParticipantProgressStatus; outcome?: HarvestParticipantProgressOutcome }> = [];
+  const validStatuses = new Set<HarvestParticipantProgressStatus>(["PENDING", "CURRENT", "RESOLVED", "NO_LONGER_APPLICABLE"]);
+  for (let index = 0; index < storedParticipants.length; index++) {
+    const stored = record(storedParticipants[index]);
+    const playerId = stringValue(stored?.playerId);
+    const status = stored?.status;
+    const outcome = stored?.outcome;
+    if (!playerId || playerId !== root.origin.originalTargetIds[index]
+      || typeof status !== "string" || !validStatuses.has(status as HarvestParticipantProgressStatus)) return null;
+    if (status === "RESOLVED") {
+      if (outcome !== "CHOSE_CARD" && outcome !== "NEGATED") return null;
+    } else if (outcome !== undefined) return null;
+    participants.push({ playerId, order: index + 1, status: status as HarvestParticipantProgressStatus, ...(outcome === "CHOSE_CARD" || outcome === "NEGATED" ? { outcome } : {}) });
+  }
+  const current = participants.filter(({ status }) => status === "CURRENT");
+  const currentParticipantId = typeof progress.currentParticipantId === "string" && progress.currentParticipantId.length
+    ? progress.currentParticipantId
+    : null;
+  const complete = Boolean(harvest.completeAt);
+  if (complete) {
+    if (current.length || currentParticipantId || root.current.currentTargetIds.length || root.current.resolvingPlayerId !== null
+      || strings(harvest.remainingIds).length) return null;
+  } else if (current.length !== 1 || current[0].playerId !== currentParticipantId || harvest.actorId !== currentParticipantId
+    || root.current.currentTargetIds.length !== 1 || root.current.currentTargetIds[0] !== currentParticipantId
+    || root.current.resolvingPlayerId !== currentParticipantId) return null;
+
+  const isChoice = item.kind === "harvest";
+  if (isChoice) {
+    if (active.frameId !== root.frameId || active.stage !== "SEQUENTIAL_CHOICE"
+      || envelope.checkpoint.frameId !== root.frameId || envelope.checkpoint.stage !== "SEQUENTIAL_CHOICE"
+      || causal.frameId !== active.frameId
+      || (!complete && item.actorId !== currentParticipantId)) return null;
+  } else {
+    const continuation = record(item.continuation);
+    const effect = record(continuation?.effect);
+    const responseCausal = record(item.causal);
+    const continuationCausal = record(continuation?.causal);
+    if (item.kind !== "response" || continuation?.kind !== "negation" || effect?.kind !== "harvest_target"
+      || effect.pending !== harvest || active.frameId === root.frameId || active.parentFrameId !== root.frameId
+      || active.stage !== "NEGATION" || envelope.checkpoint.frameId !== active.frameId || envelope.checkpoint.stage !== "NEGATION"
+      || responseCausal?.interactionId !== envelope.interactionId || responseCausal.frameId !== active.frameId
+      || continuationCausal?.interactionId !== envelope.interactionId || continuationCausal.frameId !== active.frameId
+      || continuation.effectTargetId !== currentParticipantId || item.actorId !== active.current.resolvingPlayerId
+      || active.origin.originEffect !== "BumperHarvest" || active.origin.originSourceId !== sourceId
+      || active.origin.originalTargetIds.length !== 1 || active.origin.originalTargetIds[0] !== currentParticipantId
+      || active.current.currentSourceId !== sourceId || active.current.currentEffect !== "BumperHarvest"
+      || active.current.currentTargetIds.length !== 1 || active.current.currentTargetIds[0] !== currentParticipantId
+      || complete) return null;
+  }
+
+  if (!scene || scene.semantics !== "PROVEN" || scene.interactionId !== envelope.interactionId
+    || scene.rootFrameId !== root.frameId || scene.activeFrameId !== active.frameId
+    || scene.checkpointId !== envelope.checkpoint.checkpointId || scene.presentationRevision !== envelope.presentationRevision
+    || scene.stage !== active.stage || scene.sourceId !== sourceId || scene.effect !== "BumperHarvest"
+    || scene.currentParticipantId !== currentParticipantId || scene.participantRoles.sourceId !== sourceId
+    || (active.frameId === root.frameId
+      ? scene.continuity.relation !== "ROOT_FRAME"
+      : !scene.rootOrigin || scene.rootOrigin.frameId !== root.frameId || scene.rootOrigin.effect !== "BumperHarvest"
+        || scene.rootOrigin.sourceId !== sourceId || scene.rootOrigin.targetIds.length !== root.origin.originalTargetIds.length
+        || scene.rootOrigin.targetIds.some((id, index) => id !== root.origin.originalTargetIds[index])
+        || scene.continuity.relation !== "CHILD_FRAME" || scene.decisionActorId !== null || scene.activeResolverId !== null)) return null;
+
+  return {
+    semantics: "PROVEN",
+    interactionId: envelope.interactionId,
+    rootFrameId: root.frameId,
+    activeFrameId: active.frameId,
+    checkpointId: envelope.checkpoint.checkpointId,
+    presentationRevision: envelope.presentationRevision,
+    sourceId,
+    targetIds: [...root.origin.originalTargetIds],
+    currentParticipantId,
+    participants,
+  };
+}
+
 function groupParticipantProgress(
   envelope: CausalEnvelope | null,
   group: RecordLike | null,
@@ -707,11 +861,14 @@ function reactionChainFor(
   envelope: CausalEnvelope | null,
   pending: unknown,
   scene: PresentationInteractionScene | null,
+  bumperProgress: PresentationBumperHarvestProgress | null,
 ): PresentationReactionChain | null {
   const item = record(pending);
   const continuation = record(item?.continuation);
+  const effect = record(continuation?.effect);
   const responseCausal = record(item?.causal);
   const continuationCausal = record(continuation?.causal);
+  const bumperWindow = isBumperHarvestNegationPending(pending);
   if (item?.kind !== "response" || continuation?.kind !== "negation"
     || scene?.semantics !== "PROVEN" || scene.stage !== "NEGATION"
     || typeof scene.interactionId !== "string" || !scene.interactionId
@@ -720,11 +877,16 @@ function reactionChainFor(
     || scene.activeFrameId !== envelope.activeFrameId
     || envelope.checkpoint.frameId !== scene.activeFrameId || envelope.checkpoint.stage !== "NEGATION"
     || responseCausal?.interactionId !== scene.interactionId || responseCausal.frameId !== scene.activeFrameId
-    || continuationCausal?.interactionId !== scene.interactionId || continuationCausal.frameId !== scene.activeFrameId
-    || !stringValue(scene.decisionActorId) || item.actorId !== scene.decisionActorId) return null;
+    || continuationCausal?.interactionId !== scene.interactionId || continuationCausal.frameId !== scene.activeFrameId) return null;
 
   const frame = envelope.frames.find(({ frameId }) => frameId === scene.activeFrameId);
   if (!frame || frame.stage !== "NEGATION" || frame.current.resolvingPlayerId !== item.actorId) return null;
+  if (bumperWindow) {
+    if (!bumperProgress || effect?.kind !== "harvest_target"
+      || effect.pending?.actorId !== bumperProgress.currentParticipantId
+      || bumperProgress.activeFrameId !== frame.frameId
+      || scene.decisionActorId !== null || scene.activeResolverId !== null) return null;
+  } else if (!stringValue(scene.decisionActorId) || item.actorId !== scene.decisionActorId) return null;
   const rawHistory: unknown = continuation.negationHistory;
   if (rawHistory !== undefined && !Array.isArray(rawHistory)) return null;
   const history = (rawHistory ?? []) as unknown[];
@@ -766,7 +928,11 @@ function pendingCausalMatchesScene(scene: PresentationInteractionScene | null, p
     && causal?.frameId === scene.activeFrameId;
 }
 
-function stableBoundaryFor(scene: PresentationInteractionScene | null, pending: unknown): PresentationStableBoundary {
+function stableBoundaryFor(
+  scene: PresentationInteractionScene | null,
+  pending: unknown,
+  bumperHarvestProgress: PresentationBumperHarvestProgress | null,
+): PresentationStableBoundary {
   const proven = scene?.semantics === "PROVEN";
   const identity = {
     interactionId: proven ? scene?.interactionId ?? null : null,
@@ -775,6 +941,9 @@ function stableBoundaryFor(scene: PresentationInteractionScene | null, pending: 
   };
   const decisionActorId = proven ? scene?.decisionActorId ?? null : null;
   if (decisionActorId) return { kind: "CHOICE", ...identity, decisionActorId };
+  if (bumperHarvestProgress && (scene?.stage === "NEGATION" || bumperHarvestProgress.currentParticipantId === null)) {
+    return { kind: "SPECIAL", ...identity, decisionActorId: null };
+  }
 
   const item = record(pending);
   const continuation = record(item?.continuation);
@@ -850,9 +1019,10 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const groupValues = groupProjectionValues(envelope, input.pending, group);
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
   const oathRecipientScope = oathRecipientScopeFor(input.pending, envelope, interactionScene, input.oathRecipientIds);
+  const projectedBumperHarvestProgress = bumperHarvestProgressFor(envelope, input.pending, interactionScene);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
-  const reactionChain = reactionChainFor(envelope, input.pending, interactionScene);
+  const reactionChain = reactionChainFor(envelope, input.pending, interactionScene, projectedBumperHarvestProgress);
   // The typed interactionScene below is the causal authority. These legacy
   // context objects intentionally retain Pending-first kind/target shapes for
   // existing consumers; they are descriptive compatibility data and must not
@@ -881,11 +1051,12 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     dyingBarrier,
     reactionChain,
     oathRecipientScope,
+    bumperHarvestProgress: projectedBumperHarvestProgress,
     groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress) : null,
-    decision: input.currentAction ? { kind: input.currentAction.kind, actorId: input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
+    decision: input.currentAction ? { kind: input.currentAction.kind, actorId: isBumperHarvestNegationPending(input.pending) ? null : input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,
     transitionEvents: input.timeline.filter((event) => event.presentation !== false && relevantIds.includes(event.id)).map((event) => ({ eventId: event.id, type: event.type, resolutionId: event.resolutionId ?? null })),
-    stableBoundary: stableBoundaryFor(interactionScene, input.pending),
+    stableBoundary: stableBoundaryFor(interactionScene, input.pending, projectedBumperHarvestProgress),
   };
 }
 
