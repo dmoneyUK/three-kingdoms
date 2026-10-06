@@ -46,6 +46,7 @@ function snapshot(overrides = {}) {
     interaction: scene(),
     decision: { actorId: "B", stage: "ATTACK_RESPONSE" },
     localControl: { source: "CurrentAction", actionRevision: "action-1", kind: "response", actorId: "B", entitled: true },
+    reactionChain: null,
     settlement: null,
     transitionEvents: [],
     ...overrides,
@@ -148,6 +149,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     activeResolverId: "A",
     participantIds: ["A", "B"],
     groupParticipantProgress: [],
+    reactionChain: null,
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },
     parentFrameId: null,
     stableKind: "CHOICE",
@@ -158,6 +160,33 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
   assert.equal("options" in view, false);
   assert.equal("legalActions" in view, false);
   assert.equal("providers" in view, false);
+});
+
+test("adapter carries only a proven, linked Negation history without adding UI controls", () => {
+  const rootFrameId = "negation-frame";
+  const interaction = scene({ stage: "NEGATION", rootFrameId, activeFrameId: rootFrameId, effect: "Dismantle" });
+  const reactionChain = {
+    semantics: "PROVEN",
+    interactionId: interaction.interactionId,
+    frameId: rootFrameId,
+    nodes: [
+      { nodeId: "negation-1", interactionId: interaction.interactionId, frameId: rootFrameId, causedByNodeId: null, actorId: "B", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } },
+      { nodeId: "negation-2", interactionId: interaction.interactionId, frameId: rootFrameId, causedByNodeId: "negation-1", actorId: "A", kind: "CARD_PLAY", object: { type: "card", cardKind: "Negation" } },
+    ],
+  };
+  const snapshotValue = snapshot({ interaction, reactionChain, decision: { actorId: "B", stage: "NEGATION" } });
+  const acting = buildPresentationClientView(snapshotValue, "B");
+  const observer = buildPresentationClientView({ ...snapshotValue, localControl: { ...snapshotValue.localControl, actorId: null, entitled: false } }, "C");
+  assert.deepEqual(acting.reactionChain, reactionChain);
+  assert.deepEqual(observer.reactionChain, acting.reactionChain, "public submitted actions stay viewer-equal");
+  assert.equal("options" in acting, false);
+  assert.equal("legalActions" in acting, false);
+
+  const malformed = buildPresentationClientView({
+    ...snapshotValue,
+    reactionChain: { ...reactionChain, nodes: [{ ...reactionChain.nodes[1], causedByNodeId: "missing-predecessor" }] },
+  }, "B");
+  assert.equal(malformed.reactionChain, null, "a broken predecessor link fails closed");
 });
 
 test("adapter carries validated ordered Standard AOE progress through root and child frames", () => {

@@ -35,7 +35,16 @@ export type GroupParticipantProgress = {
 };
 export type GroupContinuation = { kind: "group"; cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack"; sourceId: string; remainingIds: string[]; requiredKind: "Attack" | "Dodge"; resumePhase: string; heldCards?: Card[]; damageCards?: Card[]; physicalSuit?: Card["suit"]; sequenceStartCardId?: string; resolutionId?: string; participantProgress?: GroupParticipantProgress } & CausalFields;
 export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string } & CausalFields;
-export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string } & CausalFields;
+export type NegationHistoryRecord = {
+  nodeId: string;
+  interactionId: string;
+  frameId: string;
+  causedByNodeId: string | null;
+  actorId: string;
+  physicalCardId: string;
+  kind: "NEGATION_CARD";
+};
+export type NegationContinuation = { kind: "negation"; sourceId: string; remainingIds: string[]; negated: boolean; cardName: string; effectTargetId: string; resumePhase: string; effect: DeferredStratagem; heldCards?: Card[]; responseTarget?: string; latestNegationPlayerId?: string; latestNegationCardId?: string; chainDepth?: number; resolutionId?: string; negationHistory?: NegationHistoryRecord[] } & CausalFields;
 export type ResponseContinuation = AttackContinuation | InfluencingAttackContinuation | GroupContinuation | DuelContinuation | NegationContinuation | BorrowedSwordAttackContinuation;
 
 /**

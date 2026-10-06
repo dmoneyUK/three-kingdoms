@@ -23,6 +23,7 @@ export type PresentationClientView = {
   activeResolverId: string | null;
   participantIds: readonly string[];
   groupParticipantProgress: readonly PresentationSnapshotGroupParticipantProgress[];
+  reactionChain: PresentationSnapshot["reactionChain"];
   rootOrigin?: NonNullable<PresentationInteractionScene["rootOrigin"]>;
   continuity: InteractionSceneContinuity;
   parentFrameId: string | null;
@@ -161,6 +162,7 @@ function restView(snapshot: PresentationSnapshot | null, meId: string | null): P
     activeResolverId: null,
     participantIds: [],
     groupParticipantProgress: [],
+    reactionChain: null,
     continuity: REST_CONTINUITY,
     parentFrameId: null,
     stableKind: "REST",
@@ -180,6 +182,41 @@ function isInteger(value: unknown): value is number {
 
 function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every(isString);
+}
+
+function reactionChainForSnapshot(
+  snapshot: PresentationSnapshot,
+  scene: PresentationInteractionScene,
+): PresentationSnapshot["reactionChain"] {
+  const chain = snapshot.reactionChain;
+  const identity = snapshot.identity;
+  if (!chain || !identity || scene.stage !== "NEGATION" || chain.semantics !== "PROVEN"
+    || chain.interactionId !== identity.interactionId || chain.interactionId !== scene.interactionId
+    || chain.frameId !== scene.activeFrameId || !Array.isArray(chain.nodes)) return null;
+
+  const nodes: NonNullable<PresentationSnapshot["reactionChain"]>["nodes"][number][] = [];
+  const nodeIds = new Set<string>();
+  let previousNodeId: string | null = null;
+  for (const value of chain.nodes) {
+    if (!value || typeof value !== "object") return null;
+    const node = value as NonNullable<PresentationSnapshot["reactionChain"]>["nodes"][number];
+    if (!isString(node.nodeId) || node.interactionId !== identity.interactionId || node.frameId !== scene.activeFrameId
+      || node.causedByNodeId !== previousNodeId || !isString(node.actorId)
+      || node.kind !== "CARD_PLAY" || node.object?.type !== "card" || node.object.cardKind !== "Negation"
+      || nodeIds.has(node.nodeId)) return null;
+    nodeIds.add(node.nodeId);
+    previousNodeId = node.nodeId;
+    nodes.push({
+      nodeId: node.nodeId,
+      interactionId: node.interactionId,
+      frameId: node.frameId,
+      causedByNodeId: node.causedByNodeId,
+      actorId: node.actorId,
+      kind: "CARD_PLAY",
+      object: { type: "card", cardKind: "Negation" },
+    });
+  }
+  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, nodes };
 }
 
 function groupProgressForSnapshot(
@@ -329,6 +366,7 @@ export function buildPresentationClientView(
     activeResolverId: roles.activeResolverId,
     participantIds: [...roles.participantIds],
     groupParticipantProgress: groupProgressForSnapshot(snapshot, scene),
+    reactionChain: reactionChainForSnapshot(snapshot, scene),
     ...(scene.rootOrigin ? { rootOrigin: { ...scene.rootOrigin, targetIds: [...scene.rootOrigin.targetIds] } } : {}),
     continuity: { ...scene.continuity },
     parentFrameId: scene.parentFrameId,

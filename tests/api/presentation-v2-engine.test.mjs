@@ -1077,6 +1077,24 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(first.status, 200, JSON.stringify(first.data));
   const counter = await state(opened.code, opened.targetMember.token);
   assert.equal(counter.data.currentAction.actorId, opened.target.id);
+  assert.deepEqual(counter.data.presentationV2.reactionChain, {
+    semantics: "PROVEN",
+    interactionId: root.interactionId,
+    frameId: root.activeFrameId,
+    nodes: [{
+      nodeId: `${root.interactionId}:${root.activeFrameId}:negation:1`,
+      interactionId: root.interactionId,
+      frameId: root.activeFrameId,
+      causedByNodeId: null,
+      actorId: opened.source.id,
+      kind: "CARD_PLAY",
+      object: { type: "card", cardKind: "Negation" },
+    }],
+  }, "a submitted Negation in the Group continuation is bound to its proven Group frame");
+  const counterOtherViewer = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
+  assert.deepEqual(publicSnapshot(counterOtherViewer.presentationSnapshot), publicSnapshot(counter.data.presentationSnapshot), "the nested Group Negation history is viewer-equal");
+  assert.equal(counter.data.currentAction.options?.some((option) => option.providerId === "negation_card"), true);
+  assert.equal(counterOtherViewer.currentAction.options, undefined, "the non-acting Group viewer receives no private Negation options");
   const pending = authoritativePending(opened.code);
   assert.equal(pending.continuation.kind, "negation");
   assert.equal(pending.causal.interactionId, root.interactionId);
@@ -1098,6 +1116,8 @@ test("FIX9 Group counter-Negation stays in one frame and restores Group resoluti
   assert.equal(counter.data.presentationV2.stableBoundary.decisionActorId, opened.target.id);
   const restored = await requestAndSettle("respond", { code: opened.code, token: opened.targetMember.token, cardId: counterNegation.id, preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
+  assert.equal(restored.data.room.presentationV2.reactionChain, null, "history remains scoped to the active Negation continuation");
+  assert.equal(restored.data.room.presentationSnapshot.reactionChain, null);
   assert.equal(restored.data.room.causalEnvelope.interactionId, root.interactionId);
   assert.equal(restored.data.room.causalEnvelope.activeFrameId, root.activeFrameId);
   assert.equal(restored.data.room.causalEnvelope.frames.length, 1);
@@ -1144,8 +1164,12 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   const game = await createHumanGame();
   const [host, alice] = game.members;
   const [source, target] = game.room.players;
-  setHand(source.id, [card("Dismantle", "projector-negation-root"), card("Negation", "projector-negation-counter")], 5, 5);
-  setHand(target.id, [card("Attack", "projector-negation-target"), card("Negation", "projector-negation-first")], 4, 4);
+  const sourceCounter = card("Negation", "projector-negation-counter");
+  const sourceCounterAgain = card("Negation", "projector-negation-counter-again");
+  const firstCard = card("Negation", "projector-negation-first");
+  const secondCard = card("Negation", "projector-negation-second");
+  setHand(source.id, [card("Dismantle", "projector-negation-root"), sourceCounter, sourceCounterAgain], 5, 5);
+  setHand(target.id, [card("Attack", "projector-negation-target"), firstCard, secondCard], 4, 4);
   setTurn(game.code, source.seat);
   const opened = await request("play_card", { code: game.code, token: host.token, cardId: "dismantle-projector-negation-root", targetId: target.id, targetCardIndex: 0 });
   assert.equal(opened.status, 200, JSON.stringify(opened.data));
@@ -1162,6 +1186,11 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(sourceWindowTargetView.causalEnvelope.presentationRevision, sourceRoot.presentationRevision + 1);
   const first = await assertProjectionMatchesEngine(game.code, alice.token);
   const root = first.presentationV2.rootContext;
+  assert.deepEqual(first.presentationV2.reactionChain, {
+    semantics: "PROVEN", interactionId: first.causalEnvelope.interactionId,
+    frameId: first.causalEnvelope.activeFrameId, nodes: [],
+  }, "a pass opens no public Reaction Chain card node");
+  assert.equal(authoritativePending(game.code).continuation.negationHistory, undefined, "decline/pass is not persisted as a public reaction");
   assert.equal(authoritativePending(game.code).continuation.kind, "negation");
   assert.equal(first.causalEnvelope.frames.length, 1, "independent top-level Negation has one root frame");
   assert.equal(first.causalEnvelope.frames[0].stage, "NEGATION");
@@ -1195,6 +1224,13 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(firstNegation.status, 200, JSON.stringify(firstNegation.data));
   const counter = await assertProjectionMatchesEngine(game.code, host.token);
   assert.equal(counter.currentAction.actorId, source.id);
+  assert.equal(counter.presentationSnapshot.reactionChain.nodes.length, 1);
+  assert.equal(counter.presentationSnapshot.reactionChain.nodes[0].actorId, target.id);
+  assert.equal(counter.presentationSnapshot.reactionChain.nodes[0].causedByNodeId, null);
+  assert.equal("physicalCardId" in counter.presentationSnapshot.reactionChain.nodes[0], false, "opaque physical card IDs stay server-side");
+  const counterOtherViewer = await assertProjectionMatchesEngine(game.code, alice.token);
+  assert.deepEqual(publicSnapshot(counterOtherViewer.presentationSnapshot), publicSnapshot(counter.presentationSnapshot), "submitted card history is viewer-equal");
+  assert.equal(counterOtherViewer.currentAction.options, undefined, "observer receives no local response options");
   assert.equal(counter.presentationV2.rootContext?.sourceId, root?.sourceId);
   assert.equal(counter.presentationV2.rootContext?.kind, root?.kind);
   assert.deepEqual(counter.presentationV2.rootContext?.originalTargetIds, root?.originalTargetIds);
@@ -1220,7 +1256,43 @@ test("engine-backed Negation/counter-Negation keeps the original effect recovera
   assert.equal(authoritativePending(game.code).causal.frameId, counter.causalEnvelope.activeFrameId);
   assert.equal(authoritativePending(game.code).continuation.causal.frameId, counter.causalEnvelope.activeFrameId);
   assert.equal(counter.presentationV2.parentContext, null, "engine exposes the negation effect descriptor but not a typed pending parent");
-  const restored = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: "negation-projector-negation-counter", preserveResponse: true });
+
+  const secondNegation = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: sourceCounter.id, preserveResponse: true });
+  assert.equal(secondNegation.status, 200, JSON.stringify(secondNegation.data));
+  const thirdCounter = await assertProjectionMatchesEngine(game.code, alice.token);
+  assert.equal(thirdCounter.currentAction.actorId, target.id);
+  assert.equal(thirdCounter.presentationSnapshot.reactionChain.nodes.length, 2);
+  assert.equal(thirdCounter.presentationSnapshot.reactionChain.nodes[1].causedByNodeId, thirdCounter.presentationSnapshot.reactionChain.nodes[0].nodeId);
+  const thirdNegation = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: secondCard.id, preserveResponse: true });
+  assert.equal(thirdNegation.status, 200, JSON.stringify(thirdNegation.data));
+  const fourthCounter = await assertProjectionMatchesEngine(game.code, host.token);
+  const nodes = fourthCounter.presentationSnapshot.reactionChain.nodes;
+  assert.equal(fourthCounter.currentAction.actorId, source.id);
+  assert.equal(nodes.length, 3);
+  assert.deepEqual(nodes.map(({ causedByNodeId }) => causedByNodeId), [null, nodes[0].nodeId, nodes[1].nodeId], "each counter links to the preceding submitted Negation");
+
+  const mismatchedEnvelope = { ...fourthCounter.causalEnvelope, interactionId: "stale-negation-interaction" };
+  sql(`UPDATE rooms SET causal_envelope_json=${quote(JSON.stringify(mismatchedEnvelope))} WHERE code=${quote(game.code)}`);
+  const mismatch = (await state(game.code, host.token)).data;
+  assert.equal(mismatch.presentationV2.reactionChain, null);
+  assert.equal(mismatch.presentationSnapshot.reactionChain, null, "history fails closed when its proven interaction identity no longer matches");
+  sql(`UPDATE rooms SET causal_envelope_json=${quote(JSON.stringify(fourthCounter.causalEnvelope))} WHERE code=${quote(game.code)}`);
+
+  const pendingWithHistory = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
+  const wrongFramePending = JSON.parse(pendingWithHistory);
+  wrongFramePending.continuation.negationHistory[1].frameId = "different-frame";
+  sql(`UPDATE rooms SET pending_json=${quote(JSON.stringify(wrongFramePending))} WHERE code=${quote(game.code)}`);
+  const frameMismatch = (await state(game.code, host.token)).data;
+  assert.equal(frameMismatch.presentationV2.reactionChain, null);
+  assert.equal(frameMismatch.presentationSnapshot.reactionChain, null, "a node from a different frame fails closed");
+  sql(`UPDATE rooms SET pending_json=${quote(pendingWithHistory)} WHERE code=${quote(game.code)}`);
+
+  const pendingBeforeStaleReplay = query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`);
+  const staleReplay = await request("respond", { code: game.code, token: alice.token, cardId: secondCard.id });
+  assert.equal(staleReplay.status, 409, JSON.stringify(staleReplay.data));
+  assert.equal(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`), pendingBeforeStaleReplay, "a stale replay cannot append another public node");
+
+  const restored = await requestAndSettle("respond", { code: game.code, token: host.token, cardId: sourceCounterAgain.id, preserveResponse: true });
   assert.equal(restored.status, 200, JSON.stringify(restored.data));
 });
 

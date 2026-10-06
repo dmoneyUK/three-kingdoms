@@ -5292,12 +5292,12 @@ export async function POST(request: Request) {
       const negationAction = responseExecution?.providerId === "negation_card" ? "plays Negation" : `uses ${responseExecution?.providerId ?? "a Negation provider"}`;
       log = addLog(log, `${me.name} ${negationAction} ${continuation.negated ? "to restore" : "to cancel"} ${continuation.cardName}'s effect.`);
       const rows = await db.prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(room.id).all<PlayerRow>(); const updatedPlayers = (rows.results ?? []).map((player) => player.id === me.id ? { ...player, hand_json: JSON.stringify(hand) } : player);
-      const transitioned = applySuccessfulNegation(continuation, me, consumedCards);
+      const storedEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json);
+      const transitioned = applySuccessfulNegation(continuation, me, consumedCards, storedEnvelope);
       const candidateIds = playersInNegationOrder(updatedPlayers, nextAliveSeat(updatedPlayers, me.seat)).map((player) => player.id);
       const next = nextEligibleNegationResponder(updatedPlayers, candidateIds, transitioned);
       const nextActor = next.actor ?? me;
       const nextCausal = transitioned.causal ?? response.causal;
-      const storedEnvelope = parseCausalEnvelope(liveRoom.causal_envelope_json);
       const nextEnvelope = next.actor && storedEnvelope && nextCausal && storedEnvelope.interactionId === nextCausal.interactionId && storedEnvelope.activeFrameId === nextCausal.frameId
         ? advanceCausalSemanticCheckpoint(storedEnvelope, nextCausal.frameId, { stage: "NEGATION", current: { currentSourceId: transitioned.sourceId, currentEffect: transitioned.cardName, currentTargetIds: [transitioned.effectTargetId], resolvingPlayerId: nextActor.id } })
         : storedEnvelope;

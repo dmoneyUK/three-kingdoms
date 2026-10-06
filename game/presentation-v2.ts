@@ -1,6 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
-import type { GroupParticipantProgressStatus } from "./pending";
+import type { GroupParticipantProgressStatus, NegationHistoryRecord } from "./pending";
 
 export type PresentationV2Event = {
   id: string;
@@ -93,6 +93,23 @@ export type PresentationDyingBarrier = {
   state: "RESCUE_CHOICE" | "UNPROVEN";
 };
 
+export type PresentationReactionChainNode = {
+  nodeId: string;
+  interactionId: string;
+  frameId: string;
+  causedByNodeId: string | null;
+  actorId: string;
+  kind: "CARD_PLAY";
+  object: { type: "card"; cardKind: "Negation" };
+};
+
+export type PresentationReactionChain = {
+  semantics: "PROVEN";
+  interactionId: string;
+  frameId: string;
+  nodes: readonly PresentationReactionChainNode[];
+};
+
 export type PresentationStableBoundaryKind = "REST" | "CHOICE" | "SETTLEMENT" | "SPECIAL";
 
 export type PresentationStableBoundary = {
@@ -110,6 +127,7 @@ export type PresentationV2 = {
   participants: readonly PresentationParticipant[];
   interactionScene: PresentationInteractionScene | null;
   dyingBarrier: PresentationDyingBarrier | null;
+  reactionChain: PresentationReactionChain | null;
   groupResolution: {
     semantics: "PROVEN" | "UNPROVEN";
     interactionId: string | null;
@@ -600,6 +618,61 @@ function groupParticipantProgress(
   return participants;
 }
 
+function reactionChainFor(
+  envelope: CausalEnvelope | null,
+  pending: unknown,
+  scene: PresentationInteractionScene | null,
+): PresentationReactionChain | null {
+  const item = record(pending);
+  const continuation = record(item?.continuation);
+  const responseCausal = record(item?.causal);
+  const continuationCausal = record(continuation?.causal);
+  if (item?.kind !== "response" || continuation?.kind !== "negation"
+    || scene?.semantics !== "PROVEN" || scene.stage !== "NEGATION"
+    || typeof scene.interactionId !== "string" || !scene.interactionId
+    || typeof scene.activeFrameId !== "string" || !scene.activeFrameId
+    || !envelope || scene.interactionId !== envelope.interactionId
+    || scene.activeFrameId !== envelope.activeFrameId
+    || envelope.checkpoint.frameId !== scene.activeFrameId || envelope.checkpoint.stage !== "NEGATION"
+    || responseCausal?.interactionId !== scene.interactionId || responseCausal.frameId !== scene.activeFrameId
+    || continuationCausal?.interactionId !== scene.interactionId || continuationCausal.frameId !== scene.activeFrameId
+    || !stringValue(scene.decisionActorId) || item.actorId !== scene.decisionActorId) return null;
+
+  const frame = envelope.frames.find(({ frameId }) => frameId === scene.activeFrameId);
+  if (!frame || frame.stage !== "NEGATION" || frame.current.resolvingPlayerId !== item.actorId) return null;
+  const rawHistory: unknown = continuation.negationHistory;
+  if (rawHistory !== undefined && !Array.isArray(rawHistory)) return null;
+  const history = (rawHistory ?? []) as unknown[];
+  const nodeIds = new Set<string>();
+  const physicalCardIds = new Set<string>();
+  let previousNodeId: string | null = null;
+  const nodes: PresentationReactionChainNode[] = [];
+  for (const value of history) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const stored = value as Partial<NegationHistoryRecord>;
+    if (typeof stored.nodeId !== "string" || !stored.nodeId
+      || stored.interactionId !== scene.interactionId || stored.frameId !== scene.activeFrameId
+      || stored.causedByNodeId !== previousNodeId
+      || typeof stored.actorId !== "string" || !stored.actorId
+      || typeof stored.physicalCardId !== "string" || !stored.physicalCardId
+      || stored.kind !== "NEGATION_CARD"
+      || nodeIds.has(stored.nodeId) || physicalCardIds.has(stored.physicalCardId)) return null;
+    nodeIds.add(stored.nodeId);
+    physicalCardIds.add(stored.physicalCardId);
+    previousNodeId = stored.nodeId;
+    nodes.push({
+      nodeId: stored.nodeId,
+      interactionId: stored.interactionId,
+      frameId: stored.frameId,
+      causedByNodeId: stored.causedByNodeId,
+      actorId: stored.actorId,
+      kind: "CARD_PLAY",
+      object: { type: "card", cardKind: "Negation" },
+    });
+  }
+  return { semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, nodes };
+}
+
 function pendingCausalMatchesScene(scene: PresentationInteractionScene | null, pending: unknown): boolean {
   const item = record(pending);
   const causal = record(item?.causal);
@@ -693,6 +766,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const interactionScene = interactionSceneFor(envelope, groupValues, input.pending);
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
+  const reactionChain = reactionChainFor(envelope, input.pending, interactionScene);
   // The typed interactionScene below is the causal authority. These legacy
   // context objects intentionally retain Pending-first kind/target shapes for
   // existing consumers; they are descriptive compatibility data and must not
@@ -719,6 +793,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     participants: interactionScene?.semantics === "PROVEN" ? participantsFromScene(interactionScene) : participants(active, group),
     interactionScene,
     dyingBarrier,
+    reactionChain,
     groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress) : null,
     decision: input.currentAction ? { kind: input.currentAction.kind, actorId: input.currentAction.actorId, actionRevision: input.actionRevision, resolutionId: input.currentAction.presentation?.resolutionId ?? null, readyAfterEventId: barrierId, deadline: input.currentAction.deadline } : null,
     settlement: settlementEvent ? { eventId: settlementEvent.id, resolutionId: settlementEvent.resolutionId ?? null } : null,

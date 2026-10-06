@@ -7,12 +7,16 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-Remote head `527e7fe` failed run `37411200534` at `npm test` due to the AOE failure-damage helper; the repair was pushed with the AOE Stage task as `f98ba4c`, and local `npm test` passed build, fast 213/213, and API 250/250. Run `37414138268` for `f98ba4c` was cancelled after a docs push. Remote head `45b7ce3` then failed run `37414234939` at `npm run test:browser`: compact Group cards scroll horizontally, but three geometry cases counted clipped children as visible Stage overflow; browser assertions now validate the scroll viewport and last-card reachability, and Hero-art fixtures wait for successful image load. The full local browser step passed 539/539 and targeted ESLint passed. Repair commit `bdd039a` is on `origin/ux-v2`; Actions run `37416789582` is `in_progress`. No CI pass is claimed.
+The browser CI failures on `45b7ce3` were repaired in `bdd039a`; Actions run `37416789582` completed **Success** (build-and-test and deploy). The latest remote commit `2d3dcc` only changed this handover and was excluded by `paths-ignore: HANDOVER.md`, so it did not trigger another run. Earlier AOE failures and the browser assertion/image-load failures are closed; do not report them as current failures.
 
 ## Design checkpoint
 
-Reviewed the current remote design blob `5157af29079cf03f86476b71bc58607a215d6b53` (unchanged since the prior checkpoint), including §§0.35–0.36, 0.51–0.52, 3B, and 12.3–12.9. Public Reaction Chain history must be explicitly structured and server-projected; never derive nodes from logs, timeline ordering, private response scans, or animation state.
+Reviewed remote design blob `5157af29079cf03f86476b71bc58607a215d6b53`, including §§0.35–0.36, 0.51–0.52, 3B, 12.6, and 12.8–12.9. Public Reaction Chain history must be structured and server-projected; never derive nodes from logs, timeline ordering, private response scans, or animation state.
 
-## Next task — UX2.6-REACTION-CHAIN-NEGATION-HISTORY-01
+## Latest implementation — UX2.6-REACTION-CHAIN-NEGATION-HISTORY-01
 
-Persist and project an ordered, viewer-equal public history of actually submitted Negation cards in the active Negation continuation, including counter-Negation links. Omit private responder scans and pass/decline actions; bind nodes to proven interaction/frame identity and fail closed on mismatch. Keep private CurrentAction controls unchanged, do not add UI rendering in this task, and do not infer from logs or timeline. Cover ordinary and nested Group Negation, multiple counters, observer/actor projection equality, and pass/stale cases with focused engine-backed tests.
+Completed locally: the active Negation continuation records actually submitted physical Negation cards in order and the public PresentationV2/Snapshot/client path exposes linked, viewer-equal nodes only when the interaction/frame proof is coherent. Physical card IDs and private controls remain server/viewer-private; passes create no node; the chain clears when the continuation settles. No React rendering was added. `npm run build`, focused fast tests (117/117), engine-backed API tests (27/27), targeted ESLint, and `git diff --check` passed.
+
+## Next task — UX2.6-HALBERD-ORDERED-PARTICIPANT-PROJECTION-01
+
+Add server-owned `ORDERED` participant status for the existing Sky Piercing Halberd target sequence and project its complete ordered scope through PresentationV2, Snapshot, and client view, including child Damage/Dying pause and resume. Use only the route's existing authoritative ordered target IDs and continuation transitions; do not change target ordering, Attack legality, weapon behavior, or gameplay rules. Keep this task projection-only (no Stage rendering), fail closed on incomplete/mismatched scope or identity, and cover response, nested continuation, viewer equality, and malformed/stale cases with focused engine-backed tests.

@@ -709,8 +709,23 @@ Only a proven regression or new Reviewer-approved design requirement does.
   now measure the track viewport and last-card reachability. The same browser
   run also exposed Hero-art image-load races, so the relevant fixtures wait for
   successful image loading instead of sampling immediately. The exact local
-  browser step passed 539/539 and targeted ESLint passed; no CI pass is claimed
-  for this repair yet.
+  browser step passed 539/539 and targeted ESLint passed. At the original
+  handoff the repair was still pending; pushed commit `bdd039a` was later
+  verified by Actions run `37416789582` as **Success** (build-and-test and
+  deploy).
+
+### UX2.6-REACTION-CHAIN-NEGATION-HISTORY-01 — Active Negation history
+
+- The active Negation continuation records each actually submitted physical
+  Negation card with interaction/frame identity and an explicit predecessor
+  link. PresentationV2, PresentationSnapshot, and PresentationClientView expose
+  only the public actor/card kind and linked order; physical card IDs and
+  private CurrentAction options remain private. Passes add no node, malformed
+  or mismatched history fails closed, and the projection ends with the active
+  continuation. No React rendering or gameplay behavior changed.
+- Local validation passed: build; focused fast tests 117/117; engine-backed API
+  tests 27/27; targeted ESLint; and `git diff --check`. The local feature change
+  has not yet been pushed, so no Actions run exists for it at handoff.
 
 ## Known deferred semantic gaps
 
@@ -719,8 +734,8 @@ behavior must continue to fail closed:
 
 - Public AOE outcome summaries, Halberd progress, and unrelated Group
   semantics remain deferred.
-- Durable independently proven multi-node Reaction Chain history beyond the
-  currently authoritative bounded presentation.
+- Cross-frame and post-settlement Reaction Chain history beyond the active
+  Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public
   projection.
 

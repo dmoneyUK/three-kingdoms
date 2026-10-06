@@ -2,6 +2,8 @@ import type { CurrentAction } from "./protocol";
 import type { GroupParticipantProgressStatus } from "./pending";
 import type {
   PresentationInteractionScene,
+  PresentationReactionChain,
+  PresentationReactionChainNode,
   PresentationStableBoundary,
   PresentationV2,
 } from "./presentation-v2";
@@ -53,6 +55,7 @@ export type PresentationSnapshot = {
   stable: PresentationStableBoundary;
   interaction: PresentationSnapshotInteraction | null;
   groupParticipantProgress: PresentationSnapshotGroupProgress | null;
+  reactionChain: PresentationReactionChain | null;
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
   /** Reserved until a durable public settlement occurrence is accepted. */
@@ -170,6 +173,44 @@ function groupParticipantProgressFor(
   };
 }
 
+function reactionChainFor(
+  presentationV2: PresentationV2,
+  scene: PresentationInteractionScene,
+  identity: PresentationSnapshotIdentity,
+): PresentationReactionChain | null {
+  const chain = presentationV2.reactionChain;
+  if (scene.stage !== "NEGATION" || !chain || chain.semantics !== "PROVEN"
+    || chain.interactionId !== identity.interactionId || chain.interactionId !== scene.interactionId
+    || chain.frameId !== scene.activeFrameId
+    || !Array.isArray(chain.nodes)) return null;
+
+  const nodes: PresentationReactionChainNode[] = [];
+  const nodeIds = new Set<string>();
+  let previousNodeId: string | null = null;
+  for (const value of chain.nodes) {
+    if (!value || typeof value !== "object") return null;
+    const node = value as PresentationReactionChainNode;
+    if (typeof node.nodeId !== "string" || !node.nodeId
+      || node.interactionId !== identity.interactionId || node.frameId !== scene.activeFrameId
+      || node.causedByNodeId !== previousNodeId
+      || typeof node.actorId !== "string" || !node.actorId
+      || node.kind !== "CARD_PLAY" || node.object?.type !== "card" || node.object.cardKind !== "Negation"
+      || nodeIds.has(node.nodeId)) return null;
+    nodeIds.add(node.nodeId);
+    previousNodeId = node.nodeId;
+    nodes.push({
+      nodeId: node.nodeId,
+      interactionId: node.interactionId,
+      frameId: node.frameId,
+      causedByNodeId: node.causedByNodeId,
+      actorId: node.actorId,
+      kind: "CARD_PLAY",
+      object: { type: "card", cardKind: "Negation" },
+    });
+  }
+  return { semantics: "PROVEN", interactionId: identity.interactionId, frameId: scene.activeFrameId, nodes };
+}
+
 function sameIds(left: readonly string[], right: readonly string[]) {
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
@@ -205,6 +246,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
     stable: authority?.stable ?? REST_BOUNDARY,
     interaction: authority?.scene ?? null,
     groupParticipantProgress: authority ? groupParticipantProgressFor(input.presentationV2, authority.scene, authority.identity) : null,
+    reactionChain: authority ? reactionChainFor(input.presentationV2, authority.scene, authority.identity) : null,
     decision: authority && authority.stable.kind === "CHOICE"
       ? { actorId: authority.scene.decisionActorId, stage: authority.scene.stage }
       : null,
