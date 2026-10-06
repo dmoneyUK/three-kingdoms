@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-UX2.27's responsive matrix passed 246 distinct focused cases and exposed Deck/Discard overlap in Oath and Bumper Harvest. UX2.28 moves those visible piles into the edge lane (preserving the short-phone compact top placement) and adds bounding-box non-overlap checks. Both composition specs passed 18/18; targeted ESLint, `git diff --check`, and mobile/desktop screenshot inspection passed. No gameplay or projection changes. The preceding remote SHA `7779022483f51da5053cd63bc844e7989e68fa6e` Actions run `37504313777` completed successfully for `build-and-test` and `deploy`; CI for the UX2.28 commit is not yet observed. Reviewer acceptance is not claimed.
+UX2.29 audited the `CurrentAction.targetCardSelection` consumer and all five `target_cards` producers (Retaliation, Frost Sword, Kirin Bow, Fanjian, and Yue Jin) against §12.4. No confirmed authoritative external flow is forced into the generic picker: focused targets use shared Selectable Detail, while missing target/zone/focus proof and unsupported self-zone mixtures retain fail-closed fallback. The target-card browser spec passed 34/34. UX2.28 Actions run `37507015662` for exact SHA `f47a9f9cf4548b64281e4e62706a36eaf9d5aafc` is `in_progress`; lint, build, and browser steps succeeded, while `npm test` was still running at last check. Reviewer acceptance is not claimed.
 
 ## Design checkpoint
 
-Remote Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a` is unchanged. §§12.0–12.9 and §0.91.4 were reviewed. Proven Group/AOE, Oath, Bumper Harvest, and Group child-Damage causal compositions are already implemented; §12.4 Selectable Detail remains marked open.
+Remote Design blob `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a` is unchanged. §§12.0–12.9 and mobile invariants were reviewed. §12.6 compositions and §12.4 supported paths are implemented; §12.9 final integration gate remains open after the UX2.28 pile-clearance correction.
 
-## Current task — UX2.29-SELECTABLE-DETAIL-REMAINDER-AUDIT-01
+## Current task — UX2.30-UX2-FINAL-INTEGRATION-RECHECK-01
 
-Audit only existing `CurrentAction.targetCardSelection` consumers and retained picker fallbacks against §12.4. Identify whether any live flow has sufficient authoritative target/zone keys, public identity, and revision safety but still falls back instead of using the shared Selectable Detail surface. Run the focused selector tests and record a small evidence matrix. Do not change gameplay or invent projection authority; retain fail-closed fallbacks where proof is insufficient. If a migration needs new semantic/server authority, stop and report the precise gap.
+Re-run the representative §12.9 browser matrix against current `ux-v2` after UX2.28. Verify the covered interaction families/topologies and re-measure Oath/Bumper Harvest pile clearance at mobile and wide viewports. Use existing authoritative fixtures; do not broaden into a redesign or change gameplay/projection semantics. If a concrete regression remains, record the smallest blocking gap and stop for a separately bounded repair task.

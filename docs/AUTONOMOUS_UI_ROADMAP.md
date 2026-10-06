@@ -1036,6 +1036,26 @@ Only a proven regression or new Reviewer-approved design requirement does.
   completed successfully for `build-and-test` and `deploy`; the UX2.28 push
   result is tracked in HANDOVER. Reviewer acceptance remains unclaimed.
 
+### UX2.29-SELECTABLE-DETAIL-REMAINDER-AUDIT-01 — Existing selectable-card paths
+
+- Audited the `CurrentAction.targetCardSelection` consumer for Steal/Dismantle
+  Pending and all five `target_cards` producers: Retaliation, Frost Sword,
+  Kirin Bow, Fanjian, and Yue Jin's self-Equipment path. Proven
+  external targets with supported server keys/public identities use the shared
+  Hero Focus Selectable Detail path. Fallback remains when target, zone, or
+  focus proof is unavailable; Local Dock inline selection remains limited to
+  all-public Equipment keys. No gameplay/projection change was indicated.
+- `tests/browser/target-card-zone-picker.spec.mjs` passed 34/34 across the
+  tested 390px, 480px, 1440px, and reduced-height cases, including payload,
+  privacy, revision reset, and fail-closed fallback assertions. This audit did
+  not directly exercise live Fanjian/Kirin Bow browser sessions. UX2.30 is the
+  sole next task: re-run the §12.9 representative integration gate after the
+  UX2.28 pile-clearance correction.
+- Exact pre-commit remote SHA `f47a9f9cf4548b64281e4e62706a36eaf9d5aafc`
+  Actions run `37507015662` was `in_progress`; lint, build, and browser steps
+  were successful and `npm test` was still running. Reviewer acceptance is not
+  claimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
