@@ -854,6 +854,43 @@ for (const viewport of [
   });
 }
 
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`authorized Group Negation responder gets private Dock guidance at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "group-negation-local" });
+    const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+    const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
+    const dock = page.locator('.local-player-dock[data-player-anchor="p1"]');
+    const guidance = dock.locator(".console-guidance .decision-status");
+    const action = await page.evaluate(() => window.__browserRoom.currentAction);
+    const publicScene = await page.evaluate(() => window.__browserRoom.presentationSnapshot.interaction);
+
+    expect(await page.evaluate(() => window.__browserRoom.meId)).toBe("p1");
+    expect(action.actorId).toBe("p1");
+    expect(action.requirement).toBe("negate");
+    expect(action.legalActions).toEqual(["respond", "decline_response"]);
+    expect(action.options.some((option) => option.satisfies === "negate")).toBe(true);
+    expect(publicScene.decisionActorId).toBeNull();
+    expect(publicScene.activeResolverId).toBeNull();
+    expect(publicScene.currentParticipantId).toBe("p1");
+
+    await expect(scope.locator(".group-target-card")).toHaveCount(3);
+    await expect(dock).toBeVisible();
+    await expect(guidance.locator("small")).toHaveText("YOUR RESPONSE");
+    await expect(guidance.locator("strong")).toHaveText("Play Negation or Skip.");
+    await expect(guidance.locator("em")).toHaveCount(0);
+    await expect(stage).not.toContainText("YOUR RESPONSE");
+    await expect(stage).not.toContainText("Play Negation or Skip.");
+    await expect(stage).not.toContainText("played this card.");
+    await expect(stage.locator("button")).toHaveCount(0);
+    await expect(page.locator('[data-hand-card-id="browser-group-negation"] .game-card')).toBeVisible();
+    expect(await page.evaluate(() => window.__browserActions.filter(({ action }) => action !== "start_response_timer"))).toEqual([]);
+  });
+}
+
 test("Reaction Chain shows one proven Negation node and omits absent or malformed history", async ({ page }) => {
   await loadFixture(page, { count: 4, width: 480, height: 900, state: "active-negation-observer", negationHistory: "single" });
   let chain = page.locator('[data-reaction-chain="proven"]');

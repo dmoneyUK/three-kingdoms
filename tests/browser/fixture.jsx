@@ -83,7 +83,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
     stable: { kind: "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "frost-sword-selectable" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "frost-sword-selectable" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "group-negation-local" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
     groupParticipantProgress: progressCase && orderedProgressCase !== "missing" ? {
       cardKind: orderedProgressCase ? "SkyPiercingHalberdAttack" : "RainingArrows",
       resolutionSemantics: orderedProgressCase ? "ORDERED" : "GROUP",
@@ -302,13 +302,14 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
   if (hasLocalJudgementFixture) state = "normal";
   const denseGroup = state === "group-density";
   const unfocusedGroup = state === "group-unfocused";
-  const groupNegationFixture = state === "group-negation";
+  const groupNegationLocalFixture = state === "group-negation-local";
+  const groupNegationFixture = state === "group-negation" || groupNegationLocalFixture;
   if (denseGroup) state = "group-observer";
   const activeNegationObserver = state.startsWith("active-negation-");
   const targetShiftFixture = state === "target-shift-attack";
   const frostSwordSelectionFixture = state === "frost-sword-selectable";
   const playerIds = Array.from({ length: count }, (_, index) => `p${index + 1}`);
-  const meId = activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : judgementStage ? state === "judgement-local" ? "p1" : "p4" : borrowedSwordActiveFixture ? count === 2 ? "p1" : "p4" : targetShiftFixture ? count >= 5 ? "p5" : "p3" : frostSwordSelectionFixture ? "p2" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup || groupNegationFixture ? "p3" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state === "picker" || state === "picker-hand-zone" ? "p2" : state === "dying" ? "p3" : "p1";
+  const meId = groupNegationLocalFixture ? "p1" : activeNegationObserver || timedNegationObserver ? "p4" : duelObserverView ? "p3" : judgementStage ? state === "judgement-local" ? "p1" : "p4" : borrowedSwordActiveFixture ? count === 2 ? "p1" : "p4" : targetShiftFixture ? count >= 5 ? "p5" : "p3" : frostSwordSelectionFixture ? "p2" : state === "active-attack-observer" || state === "group-observer" || unfocusedGroup || groupNegationFixture ? "p3" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state === "picker" || state === "picker-hand-zone" ? "p2" : state === "dying" ? "p3" : "p1";
   const actorId = timedNegationObserver || duelObserverView ? "p2" : judgementStage ? state === "judgement" ? "p3" : "p2" : borrowedSwordActiveFixture ? "p2" : targetShiftFixture ? "p4" : state === "active-attack-observer" ? "p2" : activeNegationObserver ? "p3" : state === "group-observer" || unfocusedGroup || groupNegationFixture ? "p1" : state === "dying" ? "p3" : meId;
   // Geometry-only large-hand fixture; IDs are synthetic, not a dealt deck.
   const hand = timedNegationObserver
@@ -319,8 +320,10 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
       ? [card("browser-borrowed-sword", "BorrowedSword", "♣", "Q")]
     : state === "normal" && handSize !== null
     ? Array.from({ length: handSize }, (_, index) => card(`browser-hand-${index + 1}`, "Attack"))
-    : state === "group-observer" || unfocusedGroup || groupNegationFixture
+    : state === "group-observer" || unfocusedGroup || groupNegationFixture && !groupNegationLocalFixture
     ? []
+    : groupNegationLocalFixture
+      ? [card("browser-group-negation", "Negation", "♣")]
     : state === "duel" || state === "duel-response"
     ? [card("browser-attack", "Attack", "♠")]
     : state === "dodge" || state === "dodge-mismatch"
@@ -359,7 +362,7 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
         : state === "active-negation-observer" ? "p2"
           : state === "active-negation-unfocused-observer" ? meId
           : state === "dying" ? "p2" : judgementStage ? state === "judgement" ? "p2" : "p1" : actorId;
-  const currentActionBase = state === "rest" ? null : currentActionFor(groupNegationFixture ? "active-negation-observer" : state, actorId, hand[0]?.id ?? "", { targetHandCount, targetCardCase, targetCardKind });
+  const currentActionBase = state === "rest" ? null : currentActionFor(groupNegationLocalFixture ? "negation" : groupNegationFixture ? "active-negation-observer" : state, actorId, hand[0]?.id ?? "", { targetHandCount, targetCardCase, targetCardKind });
   const responseDeadline = timedResponse && state === "negation" ? Date.parse("2026-01-01T00:00:25.000Z") : 0;
   const resolvedCurrentAction = currentActionBase && duelObserverView
     ? { version: 3, kind: "response", actorId, deadline: 0, reason: "Waiting for the current Duel participant", legalActions: [] }
@@ -386,6 +389,14 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
     settlement: null,
     transitionEvents: [],
   } : state === "rest" ? null : semanticSnapshot({ state, playerIds, stage, sourceId: sourceOverride === "none" ? null : borrowedSwordActiveFixture || frostSwordSelectionFixture ? "p2" : state === "group-observer" || unfocusedGroup || groupNegationFixture ? "p4" : "p1", targetIds: projectedStageTargets, activeTargetIds: projectedActiveTargets, currentParticipantId: projectedCurrentParticipantId, decisionActorId: timedNegationObserver || privateNegationResponder ? null : actorId, activeResolverId: timedNegationObserver || privateNegationResponder ? null : actorId, viewerId: meId, localControlActorId: privateNegationResponder ? actorId : undefined, effectOverride: borrowedSwordActiveFixture ? "borrowed_sword_attack" : orderedProgressCase ? "Attack" : groupNegationFixture ? "Raining Arrows" : effectOverride, childFrame: borrowedSwordActiveFixture || resolvedGroupProgressCase === "paused" || orderedProgressCase === "paused", rootOrigin: borrowedSwordRootOrigin, groupProgressCase: resolvedGroupProgressCase, orderedProgressCase, negationHistoryCase });
+  if (groupNegationLocalFixture && presentationSnapshot) {
+    presentationSnapshot.stable.decisionActorId = null;
+    presentationSnapshot.interaction.decisionActorId = null;
+    presentationSnapshot.interaction.activeResolverId = null;
+    presentationSnapshot.interaction.participantRoles.decisionActorId = null;
+    presentationSnapshot.interaction.participantRoles.activeResolverId = null;
+    presentationSnapshot.decision.actorId = null;
+  }
   const players = playerIds.map((id, index) => ({
     id,
     name: `Player ${index + 1}`,
