@@ -808,6 +808,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Actions run `37457613604` **pending**; no result for this feature push is
   claimed.
 
+### UX2.14-AOE-MOBILE-NEGATION-ADVANCE-01 — Authoritative next participant
+
+- Added measured Group/AOE coverage proving that a settled Negated participant
+  keeps its `⊘` marker while the explicitly projected next participant owns
+  the single CURRENT highlight. The root effect remains active, no stale public
+  Negation branch appears, and the test does not derive order from DOM or
+  target-array position.
+- Local validation passed: focused next-participant/return/public Negation
+  browser coverage 13/13; build; the focused active-current-effect plus
+  protected `ui19.spec.mjs` Group/AOE slice 73/73; targeted ESLint; and
+  `git diff --check`. The pre-commit remote SHA `cb668a2` had push-triggered
+  Actions run `37457731412` **pending**; no result for this feature push is
+  claimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
