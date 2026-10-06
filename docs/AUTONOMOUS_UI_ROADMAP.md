@@ -836,6 +836,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `5443a33` had push-triggered Actions run `37457833613`
   **in_progress**; no result for this feature push is claimed.
 
+### UX2.16-AOE-MOBILE-GROUP-NEGATION-GUIDANCE-01 — Private responder guidance
+
+- Added a Group/AOE browser fixture where the viewer is the server-authorized
+  Negation responder. CurrentAction remains the source of `negate`, legal
+  response/decline actions, and the private Negation provider; the public
+  snapshot redacts decision/resolver identity while the Stage keeps the root
+  Raining Arrows effect and authoritative Target Strip. The public Stage has
+  no private `Play Negation or Skip.` copy or fabricated Negation branch.
+- Local validation passed: focused Group/AOE plus Negation-guidance browser
+  coverage 28/28; protected `ui19.spec.mjs` Group/AOE geometry/Stage slice
+  37/37; build; targeted ESLint; and `git diff --check`. Pushed as `6baec5f`;
+  its exact push-triggered Actions run `37458837327` is **in_progress**.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
