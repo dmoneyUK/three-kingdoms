@@ -1021,6 +1021,21 @@ Only a proven regression or new Reviewer-approved design requirement does.
 - Eleven composition geometry cases were rerun; screenshot/geometry attachments cover seven representative scenes. Fresh Group child-Damage screenshots were inspected at 10p/390px, 6p/480px, and 6p/1440px; geometry asserts Source → root action → single Target Strip, stable root/strip coordinates across the child transition (≤1px), Stage/Dock separation, Guidance/Hand/Action Row containment, and no horizontal overflow. Fresh Oath and Bumper Harvest double-Negation screenshots at 390×844 and 1440×900 exposed the public composition overlapping the persistent Deck/Discard area. This violates the general pile hierarchy in Design §0.91.4, so §12.9 is **not closed**.
 - Targeted ESLint for the three screenshot-evidence specs and `git diff --check` passed. The exact previous remote SHA `592d2d460aaef2a29b6fac2c36e749f81443080c` Actions run `37501361734` completed success for `build-and-test` and `deploy`; the UX2.27 local edits themselves have not yet run in CI. Reviewer acceptance remains unclaimed. UX2.28 is the sole follow-up: keep Deck/Discard visible but clear of the Oath and Bumper Harvest Source/root/participant/Negation composition, with focused non-overlap geometry proof.
 
+### UX2.28-ACTIVE-STRATAGEM-PILE-CLEARANCE-01 — Oath and Bumper Harvest pile clearance
+
+- Oath and Bumper Harvest keep persistent Draw/Discard piles visible in an edge
+  lane, clear of the proven Source, root action card, recipient/participant
+  strip, and public Negation branch. Short compact phones retain the established
+  top-edge pile placement; no gameplay or projection authority changed.
+- Added bounding-box non-overlap assertions to the Oath and Bumper Harvest
+  composition specs, including their ten-player mobile fixtures. The complete
+  two-spec browser run passed 18/18 across 390×640, 390×844, 480×900, and
+  1440×900; targeted ESLint and `git diff --check` passed. The retained
+  390×844 and 1440×900 screenshots were inspected. The preceding remote SHA
+  `7779022483f51da5053cd63bc844e7989e68fa6e` Actions run `37504313777`
+  completed successfully for `build-and-test` and `deploy`; the UX2.28 push
+  result is tracked in HANDOVER. Reviewer acceptance remains unclaimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

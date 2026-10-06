@@ -1,5 +1,45 @@
 import { expect, test } from "@playwright/test";
 
+function boxesOverlap(left, right) {
+  return left.x < right.x + right.width && left.x + left.width > right.x &&
+    left.y < right.y + right.height && left.y + left.height > right.y;
+}
+
+function expectCompositionClearOfPiles(snapshot, label) {
+  for (const pile of snapshot.piles) expect(pile.box, `${label}: ${pile.label} pile is measurable`).not.toBeNull();
+  for (const region of snapshot.composition) {
+    if (!region.box) continue;
+    for (const pile of snapshot.piles) {
+      expect(boxesOverlap(region.box, pile.box), `${label}: ${region.label} overlaps ${pile.label}`).toBe(false);
+    }
+  }
+}
+
+async function measureOathPileClearance(page, stage) {
+  const source = stage.locator('[data-oath-source="proven"]');
+  const root = stage.locator('[data-oath-root-action="Oath"]');
+  const recipients = stage.locator("[data-oath-recipient-id]");
+  const negationNodes = stage.locator("[data-oath-negation-node]");
+  const rects = (locator) => locator.evaluateAll((nodes) => nodes.map((node) => {
+    const { x, y, width, height } = node.getBoundingClientRect();
+    return { x, y, width, height };
+  }));
+  const [sourceBox, rootBox, recipientBoxes, branchBoxes, drawBox, discardBox] = await Promise.all([
+    source.boundingBox(), root.boundingBox(), rects(recipients), rects(negationNodes),
+    page.locator('[data-draw-anchor="true"]').boundingBox(),
+    page.locator('[data-discard-anchor="true"]').boundingBox(),
+  ]);
+  return {
+    composition: [
+      { label: "Source", box: sourceBox },
+      { label: "Oath root card", box: rootBox },
+      ...recipientBoxes.map((box, index) => ({ label: `recipient ${index + 1}`, box })),
+      ...branchBoxes.map((box, index) => ({ label: `Negation ${index + 1}`, box })),
+    ],
+    piles: [{ label: "Draw", box: drawBox }, { label: "Discard", box: discardBox }],
+  };
+}
+
 async function loadOath(page, { width, height, state = "oath-negation", count = 4, history = null }) {
   await page.setViewportSize({ width, height });
   const historyQuery = history ? `&negationHistory=${encodeURIComponent(history)}` : "";
@@ -29,6 +69,7 @@ for (const viewport of [
         scope: await scope.boundingBox(),
         branchCount: await stage.locator("[data-oath-negation-node]").count(),
         branchPresent: await stage.locator("[data-oath-negation-branch]").count() > 0,
+        pileClearance: await measureOathPileClearance(page, stage),
         geometry: await stage.evaluate((element) => {
           const stageRect = element.getBoundingClientRect();
           const dockRect = document.querySelector(".local-player-dock")?.getBoundingClientRect();
@@ -47,6 +88,7 @@ for (const viewport of [
     };
 
     const open = await measure(null);
+    expectCompositionClearOfPiles(open.pileClearance, `Oath ${viewport.width}x${viewport.height} open`);
     expect(open.branchPresent).toBe(false);
     expect(open.branchCount).toBe(0);
     expect(open.root).not.toBeNull();
@@ -60,6 +102,7 @@ for (const viewport of [
 
     for (const [history, expectedNodes] of [["single", 1], ["double", 2]]) {
       const submitted = await measure(history);
+      expectCompositionClearOfPiles(submitted.pileClearance, `Oath ${viewport.width}x${viewport.height} ${history}`);
       expect(submitted.branchPresent).toBe(true);
       expect(submitted.branchCount).toBe(expectedNodes);
       expect(submitted.source).not.toBeNull();
@@ -143,6 +186,7 @@ test("compact Oath scope preserves and exposes every proven recipient in a ten-p
   expect(room.presentationSnapshot.oathRecipientScope.recipientIds).toHaveLength(8);
   expect(room.players.find(({ id }) => id === "p3")).toMatchObject({ hp: 4, alive: true });
   expect(room.players.find(({ id }) => id === "p4")).toMatchObject({ hp: 0, alive: false });
+  expectCompositionClearOfPiles(await measureOathPileClearance(page, stage), "Oath 10-player/390px dense");
   const geometry = await page.evaluate(() => {
     const stageElement = document.querySelector('.interaction-stage[data-oath-composition="true"]');
     const dockElement = document.querySelector(".local-player-dock");

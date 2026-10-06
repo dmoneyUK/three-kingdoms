@@ -84,3 +84,17 @@ follow-up. The local audit changes have not run in CI. The preceding remote SHA
 `592d2d460aaef2a29b6fac2c36e749f81443080c` had Actions run `37501361734`
 complete successfully for `build-and-test` and `deploy`. Reviewer acceptance
 and external-device validation remain unclaimed.
+
+### UX2.28 pile-clearance follow-up — local proof recorded
+
+Date: 2026-10-06. Oath and Bumper Harvest now keep persistent Draw/Discard
+piles visible in an edge lane without overlap with their proven Source, root
+action, recipient/participant strip, or public Negation branch. The short
+390×640 layout retains its compact top-edge pile placement. Focused geometry
+assertions were added to both composition specs, including ten-player mobile
+fixtures. The complete two-spec run passed 18/18 across 390×640, 390×844,
+480×900, and 1440×900; targeted ESLint, `git diff --check`, and inspection of
+retained 390×844 / 1440×900 screenshots passed. This is local evidence for the
+UX2.28 change; its push-triggered CI result is not yet recorded here. The
+§12.9 final UX2 gate remains open pending the other approved deltas and human
+review. Reviewer acceptance and external-device validation are not claimed.

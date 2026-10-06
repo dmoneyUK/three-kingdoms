@@ -1,5 +1,45 @@
 import { expect, test } from "@playwright/test";
 
+function boxesOverlap(left, right) {
+  return left.x < right.x + right.width && left.x + left.width > right.x &&
+    left.y < right.y + right.height && left.y + left.height > right.y;
+}
+
+function expectCompositionClearOfPiles(snapshot, label) {
+  for (const pile of snapshot.piles) expect(pile.box, `${label}: ${pile.label} pile is measurable`).not.toBeNull();
+  for (const region of snapshot.composition) {
+    if (!region.box) continue;
+    for (const pile of snapshot.piles) {
+      expect(boxesOverlap(region.box, pile.box), `${label}: ${region.label} overlaps ${pile.label}`).toBe(false);
+    }
+  }
+}
+
+async function measureBumperPileClearance(page, stage) {
+  const source = stage.locator('[data-bumper-harvest-source="proven"]');
+  const root = stage.locator('[data-bumper-harvest-root-action="BumperHarvest"]');
+  const participants = stage.locator("[data-bumper-harvest-participant-id]");
+  const negationNodes = stage.locator("[data-bumper-harvest-negation-node]");
+  const rects = (locator) => locator.evaluateAll((nodes) => nodes.map((node) => {
+    const { x, y, width, height } = node.getBoundingClientRect();
+    return { x, y, width, height };
+  }));
+  const [sourceBox, rootBox, participantBoxes, branchBoxes, drawBox, discardBox] = await Promise.all([
+    source.boundingBox(), root.boundingBox(), rects(participants), rects(negationNodes),
+    page.locator('[data-draw-anchor="true"]').boundingBox(),
+    page.locator('[data-discard-anchor="true"]').boundingBox(),
+  ]);
+  return {
+    composition: [
+      { label: "Source", box: sourceBox },
+      { label: "Bumper Harvest root card", box: rootBox },
+      ...participantBoxes.map((box, index) => ({ label: `participant ${index + 1}`, box })),
+      ...branchBoxes.map((box, index) => ({ label: `Negation ${index + 1}`, box })),
+    ],
+    piles: [{ label: "Draw", box: drawBox }, { label: "Discard", box: discardBox }],
+  };
+}
+
 async function loadBumperHarvest(page, { width = 390, height = 844, state = "bumper-harvest-open", count = 4, history = null } = {}) {
   await page.setViewportSize({ width, height });
   const historyQuery = history ? `&negationHistory=${encodeURIComponent(history)}` : "";
@@ -29,6 +69,7 @@ for (const viewport of [
         participants: await participants.boundingBox(),
         branchCount: await stage.locator("[data-bumper-harvest-negation-node]").count(),
         branchPresent: await stage.locator("[data-bumper-harvest-negation-branch]").count() > 0,
+        pileClearance: await measureBumperPileClearance(page, stage),
         geometry: await stage.evaluate((element) => {
           const stageRect = element.getBoundingClientRect();
           const dockRect = document.querySelector(".local-player-dock")?.getBoundingClientRect();
@@ -47,6 +88,7 @@ for (const viewport of [
     };
 
     const open = await measure(null);
+    expectCompositionClearOfPiles(open.pileClearance, `Bumper Harvest ${viewport.width}x${viewport.height} open`);
     expect(open.branchPresent).toBe(false);
     expect(open.branchCount).toBe(0);
     expect(open.source).not.toBeNull();
@@ -58,6 +100,7 @@ for (const viewport of [
 
     for (const [history, expectedNodes] of [["single", 1], ["double", 2]]) {
       const submitted = await measure(history);
+      expectCompositionClearOfPiles(submitted.pileClearance, `Bumper Harvest ${viewport.width}x${viewport.height} ${history}`);
       expect(submitted.branchPresent).toBe(true);
       expect(submitted.branchCount).toBe(expectedNodes);
       for (const region of ["source", "root", "participants"]) {
@@ -145,6 +188,7 @@ test("dense Bumper Harvest keeps every ordered participant scrollable and the cu
   const strip = stage.locator('[data-bumper-harvest-participants="proven"]');
   const ids = await strip.locator("[data-bumper-harvest-participant-id]").evaluateAll((nodes) => nodes.map((node) => node.dataset.bumperHarvestParticipantId));
   expect(ids).toEqual(Array.from({ length: 10 }, (_, index) => `p${index + 1}`));
+  expectCompositionClearOfPiles(await measureBumperPileClearance(page, stage), "Bumper Harvest 10-player/390px dense");
   const geometry = await page.evaluate(() => {
     const stageElement = document.querySelector('.interaction-stage[data-bumper-harvest-composition="true"]');
     const dockElement = document.querySelector(".local-player-dock");

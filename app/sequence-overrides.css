@@ -3496,3 +3496,22 @@
   .interaction-stage[data-bumper-harvest-composition="true"] .bumper-harvest-root-row { min-height: 102px; }
   .interaction-stage[data-bumper-harvest-composition="true"] .bumper-harvest-stage-card { height: 100px; }
 }
+
+/* UX2.28: keep persistent piles in the edge lane while Oath and Bumper Harvest
+   occupy the central causal Stage. Their public composition owns the center;
+   short compact phones retain the established top-edge pile treatment. */
+.game-shell .play-table:has(> .interaction-safe-zone > .interaction-stage[data-oath-composition="true"]) > .play-center,
+.game-shell .play-table:has(> .interaction-safe-zone > .interaction-stage[data-bumper-harvest-composition="true"]) > .play-center {
+  top: auto;
+  bottom: 8px;
+  left: 50%;
+  translate: -50% 0;
+}
+
+@media (max-width: 400px) and (max-height: 700px) {
+  .game-shell .play-table:has(> .interaction-safe-zone > .interaction-stage[data-oath-composition="true"]) > .play-center,
+  .game-shell .play-table:has(> .interaction-safe-zone > .interaction-stage[data-bumper-harvest-composition="true"]) > .play-center {
+    top: 6px;
+    bottom: auto;
+  }
+}
