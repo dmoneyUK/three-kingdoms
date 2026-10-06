@@ -88,16 +88,33 @@ function borrowedSwordTargetRoom() {
   });
 }
 
-function pendingTargetCardRoom(actionRevision = "target-card-revision", { handCount = 2 } = {}) {
+function pendingTargetCardRoom(actionRevision = "target-card-revision", { handCount = 2, cardKind = "Dismantle", withFocusProjection = false, focusTarget = true, eligibleKeys } = {}) {
+  const handKeys = Array.from({ length: handCount }, (_, index) => `hand:${index}`);
+  const projectedKeys = eligibleKeys ?? [...handKeys, "target-armor", "target-judgement"];
+  const activeTargetIds = focusTarget ? ["p2"] : [];
+  const interaction = {
+    semantics: "PROVEN", interactionId: "target-card-interaction", rootFrameId: "target-card-frame", activeFrameId: "target-card-frame", parentFrameId: null,
+    checkpointId: `target-card-checkpoint-${actionRevision}`, presentationRevision: 1, stage: "ATTACK_RESPONSE", sourceId: "p1", effect: cardKind,
+    targetIds: ["p2"], currentParticipantId: focusTarget ? "p2" : "p1", decisionActorId: "p1", activeResolverId: "p1", activeSourceId: "p1", activeTargetIds, participantIds: ["p1", "p2"],
+    participantRoles: { sourceId: "p1", originalTargetIds: ["p2"], activeTargetIds, currentParticipantId: focusTarget ? "p2" : "p1", decisionActorId: "p1", activeResolverId: "p1", parentParticipantId: null, participantIds: ["p1", "p2"] },
+    continuity: { relation: "ROOT_FRAME", parentFrameId: null },
+  };
+  const presentationSnapshot = {
+    identity: { interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: 1 },
+    stable: { kind: "CHOICE", interactionId: interaction.interactionId, checkpointId: interaction.checkpointId, presentationRevision: 1, decisionActorId: "p1" },
+    interaction, decision: { actorId: "p1", stage: "ATTACK_RESPONSE" },
+    localControl: { source: "CurrentAction", actionRevision, kind: "target_card", actorId: "p1", entitled: true },
+    settlement: null, transitionEvents: [],
+  };
   return normalizeRoomData({
     code: "TARGET-CARD-CONTINUATION-UI", status: "playing", maxPlayers: 2, isHost: true, isTestController: true, meId: "p1", myRole: "Lord", myHeroOptions: [],
     players: [
       { id: "p1", name: "SOURCE", seat: 0, hero: "gan-ning", hp: 4, maxHp: 4, alive: true, connected: true, handCount: 1, equipmentCards: [], judgementCards: [], attackRange: 1, distance: null, isHost: true, role: "Lord" },
-      { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 4, maxHp: 4, alive: true, connected: true, handCount, equipmentCards: [{ id: "target-armor", kind: "NioShield", suit: "♣", rank: "2" }], judgementCards: [], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
+      { id: "p2", name: "TARGET", seat: 1, hero: "liu-bei", hp: 4, maxHp: 4, alive: true, connected: true, handCount, equipmentCards: [{ id: "target-armor", kind: "NioShield", suit: "♣", rank: "2" }], judgementCards: [card("target-judgement", "Lightning", "♥")], attackRange: 1, distance: 1, isHost: false, role: "Rebel" },
     ],
-    myHand: [card("source-card", "Dismantle")], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Choose a target card", isMyAction: true,
-    actionRevision, phase: "response", pending: { kind: "target_card" }, currentAction: { version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose a target card", legalActions: ["choose_target_card"] },
-    pendingTargetCard: { kind: "target_card", sourceId: "p1", actorId: "p1", targetId: "p2", cardKind: "Dismantle" },
+    myHand: [card("source-card", cardKind)], turnSeat: 0, deckCount: 20, discardTop: null, log: [], timeline: [], isMyTurn: false, actionPlayerId: "p1", actionReason: "Choose a target card", isMyAction: true,
+    actionRevision, phase: "response", presentationSnapshot: withFocusProjection ? presentationSnapshot : null, pending: { kind: "target_card" }, currentAction: { version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose a target card", legalActions: ["choose_target_card"], ...(withFocusProjection ? { targetCardSelection: { targetId: "p2", eligibleKeys: projectedKeys } } : {}) },
+    pendingTargetCard: { kind: "target_card", sourceId: "p1", actorId: "p1", targetId: "p2", cardKind },
   });
 }
 
@@ -457,6 +474,60 @@ test("pending target-card picker keeps opaque selection local across Confirm and
   await act(async () => { button(renderer, { children: "Discard selected" }).props.onClick(); });
   assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "Confirm preserves the existing action and payload exactly once");
   await act(async () => { renderer.unmount(); });
+});
+
+for (const cardKind of ["Steal", "Dismantle"]) {
+test(`${cardKind} pending card choice uses proven Hero Focus and the Local Dock action`, async () => {
+    const room = pendingTargetCardRoom("target-card-focus", { cardKind, withFocusProjection: true });
+    const cardLabel = cardKind === "Dismantle" ? "Burning Bridges" : cardKind;
+    const actionCalls = [];
+    let renderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async (...args) => { actionCalls.push(args); return true; }, onLeave: () => {} }))); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    const focus = renderer.root.findByProps({ "data-hero-focus-mode": "SELECTABLE DETAIL" });
+    assert.equal(focus.props["data-hero-focus-player-id"], "p2", "only the proven external target owns the expanded detail");
+    const details = renderer.root.findAll((node) => node.props?.["data-selectable-detail"] === "true");
+    assert.equal(details.length, 1);
+    assert.equal(details[0].props["aria-label"], `${cardLabel} selection`);
+    assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog").length, 0, "the separate target-card modal is replaced only with proven focus");
+    assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["data-target-card-zone"], "hand-position");
+    assert.equal(button(renderer, { "aria-label": "Judgement: Lightning" }).props["data-target-card-zone"], "judgement");
+    assert.equal(button(renderer, { "aria-label": "Equipment: Nio Shield" }).props["data-target-card-zone"], "equipment");
+    assert.equal(button(renderer, { children: "Confirm" }).props.disabled, true, "Local Dock confirmation waits for one eligible selection");
+
+    const stageBefore = renderer.root.findByProps({ className: "interaction-stage" }).props["data-presentation-revision"];
+    await act(async () => { button(renderer, { "aria-label": "Hidden hand card 1" }).props.onClick(); });
+    assert.equal(actionCalls.length, 0, "hidden-position selection remains local");
+    assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], true);
+    assert.equal(button(renderer, { children: "Confirm" }).props.disabled, false);
+    assert.equal(renderer.root.findByProps({ className: "interaction-stage" }).props["data-presentation-revision"], stageBefore, "private choice does not mutate public presentation");
+
+    await act(async () => { button(renderer, { children: "Cancel" }).props.onClick(); });
+    assert.equal(actionCalls.length, 0, "Dock Cancel remains local");
+    assert.equal(button(renderer, { "aria-label": "Hidden hand card 1" }).props["aria-pressed"], false);
+    await act(async () => { button(renderer, { "aria-label": "Equipment: Nio Shield" }).props.onClick(); });
+    await act(async () => { button(renderer, { children: "Confirm" }).props.onClick(); });
+    assert.deepEqual(actionCalls, [["choose_target_card", { targetCardZone: "equipment", targetCardId: "target-armor" }]], "Dock Confirm keeps the existing public-card payload exactly once");
+    assert.equal(text(renderer, "target-armor").length, 0, "physical object IDs are not rendered as player-facing text");
+    await act(async () => { renderer.unmount(); });
+});
+}
+
+test("pending target-card Hero Focus falls back when selectable authority or external focus is unproven", async () => {
+  const rooms = [
+    pendingTargetCardRoom(),
+    pendingTargetCardRoom("target-card-unfocused", { withFocusProjection: true, focusTarget: false }),
+    pendingTargetCardRoom("target-card-invalid-key", { withFocusProjection: true, eligibleKeys: ["hand:99"] }),
+  ];
+  for (const room of rooms) {
+    let renderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(GameRoomErrorBoundary, { room, onRecover: () => {} }, React.createElement(GameRoom, { room, busy: false, error: "", onAction: async () => true, onLeave: () => {} }))); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(renderer.root.findAll((node) => node.props?.role === "dialog" && node.props?.className?.includes("target-card-picker")).length, 1, "the established picker remains when inline proof is missing or invalid");
+    assert.equal(renderer.root.findAll((node) => node.props?.["data-hero-focus-mode"] === "SELECTABLE DETAIL").length, 0);
+    await act(async () => { renderer.unmount(); });
+  }
 });
 
 test("target-card trigger picker adds local Cancel while preserving Skip and opaque keys", async () => {

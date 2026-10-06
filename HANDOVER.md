@@ -7,9 +7,9 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-At the latest pre-commit check, remote head `487fbd9` had Actions run `37398791627` completed as failure in `npm test`. The failure was reproduced as stale UI assertions for player-facing Hero Focus roles and duplicated decision metadata. This combined task includes the narrow presentation/assertion repair alongside the actor-scoped card projection.
+At the pre-commit check, remote head `7236cf9d` had Actions run `37400533926` completed as failure in `npm run test:browser`; build and lint passed, and `npm test` was skipped. The failing assertions required internal `INTERACTION STAGE` / `HERO FOCUS` chrome contrary to §12.7.2. This delivery combines those player-facing assertion/presentation repairs with the active Steal/Dismantle migration.
 
-The projection and repair passed local `npm test` (build, fast 204/204, API 249/249), the three Judgement Stage browser viewports (3/3), targeted ESLint, and `git diff --check`. No Actions result for this combined push is claimed here.
+Local validation passed: build; focused unit tests 6/6; focused browser regressions 11/11; full browser suite 535/535; targeted ESLint. The new push-triggered Actions result is not yet available; no CI pass is claimed.
 
 ## Design checkpoint
 

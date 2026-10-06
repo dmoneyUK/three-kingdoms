@@ -43,3 +43,21 @@ test("normalizes the canonical current action without trusting unknown legal act
   assert.equal(room?.currentAction?.triggerEvent, "attack_targeted");
   assert.deepEqual(room?.currentAction?.triggerOptions, [{ effectId: "yin_yang_swords_attack_targeted", label: "Yin-Yang Swords", allowDecline: false, timeoutChoiceId: "draw", selection: { type: "choice", choices: [{ id: "discard", label: "Discard 1 hand card" }, { id: "draw", label: "Allow attacker to draw 1 card" }], eligibleHandKeys: ["hand:0"] } }, { effectId: "gan_ning_qixi", label: "Ambushment", selection: { type: "cards", min: 1, max: 1, eligibleCardIds: ["borrowed-sword"], targetIds: ["target"] } }]);
 });
+
+test("preserves only a well-formed actor-owned target-card eligibility projection", () => {
+  const normalizeAction = (currentAction) => normalizeRoomData({
+    code: "TARGET-CARD-AUTHORITY", status: "playing", players: [], myHand: [], timeline: [], currentAction,
+  })?.currentAction;
+  const valid = {
+    version: 3, kind: "target_card", actorId: "p1", deadline: 0, reason: "Choose a card",
+    legalActions: ["choose_target_card"],
+    targetCardSelection: { targetId: "p2", eligibleKeys: ["hand:0", "public-card"] },
+  };
+
+  assert.deepEqual(normalizeAction(valid)?.targetCardSelection, valid.targetCardSelection);
+  assert.equal(normalizeAction({ ...valid, actorId: null })?.targetCardSelection, undefined);
+  assert.equal(normalizeAction({ ...valid, kind: "response" })?.targetCardSelection, undefined);
+  assert.equal(normalizeAction({ ...valid, legalActions: [] })?.targetCardSelection, undefined);
+  assert.equal(normalizeAction({ ...valid, targetCardSelection: { targetId: "p2", eligibleKeys: ["hand:0", null] } })?.targetCardSelection, undefined);
+  assert.equal(normalizeAction({ ...valid, targetCardSelection: { targetId: "", eligibleKeys: ["hand:0"] } })?.targetCardSelection, undefined);
+});

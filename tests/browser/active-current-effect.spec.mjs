@@ -270,7 +270,7 @@ test("two-player Borrowed Sword keeps the viewer target in the Dock without dupl
   const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
   await expect(stage).toHaveAttribute("data-current-effect", "Attack");
   await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 1's Borrowed Sword forces Player 2 to Attack Player 1.");
-  await expect(stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"] .hero-focus-heading strong')).toHaveText("SOURCE");
+  await expect(stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"] .hero-focus-heading strong')).toHaveText("Source");
   await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
   await expect(page.locator('.local-player-dock[data-player-anchor="p1"]')).toBeVisible();
   await expect(stage.locator('[data-stage-meta-role="decision"]')).toHaveCount(0);
@@ -355,7 +355,9 @@ test("Duel Current Effect fails closed without effect or current-participant pro
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
   await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
-  await expect(stage).toContainText("INTERACTION STAGE");
+  await expect(stage.locator(":scope > header strong")).toHaveText(/Duel.*Exchange/);
+  await expect(stage).not.toContainText("INTERACTION STAGE");
+  await expect(stage).not.toContainText("HERO FOCUS");
 
   await loadFixture(page, { width: 480, count: 6, state: "duel", duelObserver: true, duelParticipantMissing: true });
   stage = page.locator('[data-stage="DUEL_EXCHANGE"]');
@@ -363,7 +365,9 @@ test("Duel Current Effect fails closed without effect or current-participant pro
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
   await expect(stage.locator(".current-effect-arrow")).toHaveCount(0);
   await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
-  await expect(stage).toContainText("INTERACTION STAGE");
+  await expect(stage.locator(":scope > header strong")).toHaveText(/Duel.*Exchange/);
+  await expect(stage).not.toContainText("INTERACTION STAGE");
+  await expect(stage).not.toContainText("HERO FOCUS");
 });
 
 test("Inspect preserves ACTIVE Current Effect without linking it to the inspected opponent", async ({ page }) => {
@@ -506,8 +510,9 @@ test("missing public source/effect fails closed and local REST/Preview do not in
   await expect(stage).not.toHaveAttribute("data-current-effect");
   await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
   await expect(stage.locator("[data-stage-event-summary]")).toHaveCount(0);
-  await expect(stage).toContainText("INTERACTION STAGE");
-  await expect(stage).toContainText("HERO FOCUS");
+  await expect(stage.locator(":scope > header strong")).toHaveText("Attack Response");
+  await expect(stage).not.toContainText("INTERACTION STAGE");
+  await expect(stage).not.toContainText("HERO FOCUS");
 
   await loadFixture(page, { width: 480, source: "none" });
   stage = page.locator('[aria-label="Interaction Stage"]');

@@ -629,9 +629,26 @@ Only a proven regression or new Reviewer-approved design requirement does.
   passed (build, fast 204/204, API 249/249); the Judgement responsive browser
   cases passed 3/3 and targeted ESLint plus `git diff --check` passed. No
   Actions result for this push is claimed.
-- The next bounded step is the separate Steal/Dismantle Hero Focus migration;
-  current picker fallback remains required when projection or semantic focus
-  proof is missing.
+
+### UX2.4-SELECTABLE-DETAIL-PENDING-TARGET-CARD-HERO-FOCUS-01 — Steal/Dismantle Pending
+
+- Steal/Dismantle Pending now reuses the external Hero Focus SELECTABLE DETAIL
+  when the actor-scoped `CurrentAction.targetCardSelection` and semantic target
+  focus agree. Concealed Hand choices remain anonymous and public Equipment /
+  Judgement keep their public identities; Local Dock Confirm/Cancel and the
+  existing `choose_target_card` payload remain unchanged. Missing or invalid
+  authority retains the picker fallback, and action revision / availability
+  changes reconcile local selection.
+- The `CurrentAction` safety normalizer now retains only well-formed,
+  actor-owned target-card eligibility proof. Production Stage headers and
+  focus roles use player-facing copy rather than internal component labels;
+  the two stale fail-closed browser assertions were updated without weakening
+  missing-effect, summary, participant, or connector checks.
+- Local build, focused unit 6/6, targeted browser 11/11, full browser 535/535,
+  targeted ESLint, and `git diff --check` passed. The previous remote-head
+  Actions run `37400533926` on `7236cf9d` failed in `npm run test:browser`;
+  its browser failures were reproduced locally and repaired in this combined
+  feature change. No result for the new push is claimed.
 
 ## Known deferred semantic gaps
 

@@ -14,6 +14,115 @@ async function loadFrostSwordSelection(page, { width, height = 844, handCount = 
   return page.locator('[aria-label="Interaction Stage"]');
 }
 
+async function loadPendingTargetCard(page, { width, height = 844, count = 4, handCount = 4, targetCardCase = "valid", cardKind = "Dismantle" }) {
+  await page.setViewportSize({ width, height });
+  const params = new URLSearchParams({ state: "pending-target-card", count: String(count), targetHandCount: String(handCount), targetCardCase, targetCardKind: cardKind, effect: cardKind });
+  await page.goto(`/tests/browser/fixture.html?${params}`);
+  return page.locator('[aria-label="Interaction Stage"]');
+}
+
+for (const viewport of [
+  { width: 390, height: 844, count: 4 },
+  { width: 480, height: 900, count: 6 },
+  { width: 1440, height: 900, count: 4 },
+]) {
+  test(`Steal/Dismantle Pending uses the proven external Hero Focus at ${viewport.width}px`, async ({ page }) => {
+    const stage = await loadPendingTargetCard(page, viewport);
+    const focus = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"][data-hero-focus-player-id="p2"]');
+    const detail = focus.getByRole("group", { name: "Burning Bridges selection" });
+    const positions = detail.locator('[data-target-card-zone="hand-position"]');
+    const equipment = detail.locator('[data-target-card-zone="equipment"]');
+    const judgement = detail.locator('[data-target-card-zone="judgement"]');
+    const dock = page.locator('[data-console-surface="local-operation"]');
+
+    await expect(stage).toHaveAttribute("data-current-effect", "Dismantle");
+    await expect(focus).toBeVisible();
+    await expect(detail.locator("header span")).toHaveText("Burning Bridges");
+    await expect(detail.locator("header small")).toHaveText("Choose 1 card · Hand ×4");
+    await expect(positions).toHaveCount(4);
+    for (let index = 0; index < 4; index += 1) {
+      await expect(positions.nth(index)).toHaveAccessibleName(`Hidden hand card ${index + 1}`);
+      await expect(positions.nth(index)).not.toContainText(/Attack|Peach|Dodge|Negation/);
+    }
+    await expect(equipment).toHaveAccessibleName("Equipment: Nio Shield");
+    await expect(judgement).toHaveAccessibleName("Judgement: Lightning");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(dock.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    const targetProjection = await page.evaluate(() => window.__browserRoom.players.find((player) => player.id === "p2"));
+    expect(targetProjection.handCount).toBe(4);
+    expect(targetProjection.handCards ?? []).toEqual([]);
+    expect(await detail.locator("button").allTextContents()).not.toContain("browser-target-equipment");
+
+    const [stageBox, dockBox, focusBox, handBox] = await Promise.all([
+      stage.boundingBox(), page.locator(".local-player-dock").boundingBox(), focus.boundingBox(), positions.first().boundingBox(),
+    ]);
+    expect(stageBox && dockBox && focusBox && handBox).toBeTruthy();
+    expect(stageBox.y + stageBox.height).toBeLessThanOrEqual(dockBox.y + 1);
+    expect(focusBox.left ?? focusBox.x).toBeGreaterThanOrEqual(0);
+    expect(focusBox.x + focusBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(handBox.width).toBeGreaterThanOrEqual(44);
+    expect(handBox.height).toBeGreaterThanOrEqual(44);
+  });
+}
+
+test("Pending SELECTABLE DETAIL keeps selection local and submits the existing anonymous Hand index", async ({ page }) => {
+  const stage = await loadPendingTargetCard(page, { width: 390 });
+  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Burning Bridges selection" });
+  const hiddenPosition = detail.getByRole("button", { name: "Hidden hand card 2" });
+  const dock = page.locator('[data-console-surface="local-operation"]');
+  const confirm = dock.getByRole("button", { name: "Confirm" });
+
+  await hiddenPosition.click();
+  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+  await expect(confirm).toBeEnabled();
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+  await dock.getByRole("button", { name: "Cancel" }).click();
+  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
+  await expect(confirm).toBeDisabled();
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+  await hiddenPosition.click();
+  await confirm.click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions)).toEqual([
+    { action: "choose_target_card", extra: { targetCardZone: "hand", targetCardIndex: 1 } },
+  ]);
+});
+
+test("Pending SELECTABLE DETAIL preserves public-card IDs in the existing payload", async ({ page }) => {
+  const stage = await loadPendingTargetCard(page, { width: 480, count: 6, cardKind: "Steal" });
+  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Steal selection" });
+  const publicCard = detail.getByRole("button", { name: "Judgement: Lightning" });
+  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+
+  await publicCard.click();
+  await expect(publicCard).toHaveAttribute("aria-pressed", "true");
+  await confirm.click();
+  await expect.poll(() => page.evaluate(() => window.__browserActions)).toEqual([
+    { action: "choose_target_card", extra: { targetCardZone: "judgement", targetCardId: "browser-target-judgement" } },
+  ]);
+});
+
+for (const targetCardCase of ["missing-projection", "out-of-range", "unfocused"]) {
+  test(`Pending target-card picker remains when Hero Focus proof is unavailable (${targetCardCase})`, async ({ page }) => {
+    await loadPendingTargetCard(page, { width: 390, targetCardCase });
+    await expect(page.getByRole("dialog", { name: "Choose one current card from Player 2" })).toBeVisible();
+    await expect(page.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]')).toHaveCount(0);
+  });
+}
+
+test("Pending Hero Focus selection resets when CurrentAction revision changes", async ({ page }) => {
+  const stage = await loadPendingTargetCard(page, { width: 390 });
+  const detail = stage.locator('[data-hero-focus-mode="SELECTABLE DETAIL"]').getByRole("group", { name: "Burning Bridges selection" });
+  const hiddenPosition = detail.getByRole("button", { name: "Hidden hand card 1" });
+  const confirm = page.locator('[data-console-surface="local-operation"]').getByRole("button", { name: "Confirm" });
+
+  await hiddenPosition.click();
+  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.__setBrowserActionRevision("browser-target-card-new-action"));
+  await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
+  await expect(confirm).toBeDisabled();
+});
+
 for (const viewport of [
   { width: 390, height: 844 },
   { width: 480, height: 900 },

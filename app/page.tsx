@@ -498,16 +498,17 @@ function currentActionViewKey(action: CurrentAction | null) {
 }
 
 type TargetCardSelection = Extract<NonNullable<TriggerOptionView["selection"]>, { type: "target_cards" }>;
+type HeroFocusTargetCardSelection = Pick<TargetCardSelection, "targetId" | "min" | "max" | "eligibleKeys">;
 type TargetCardSelectableDetail = {
-  option: TriggerOptionView;
-  selection: TargetCardSelection;
+  label: string;
+  selection: HeroFocusTargetCardSelection;
   target: Player;
   selectedKeys: string[];
   disabled: boolean;
   onToggle: (key: string) => void;
 };
 
-function supportsHeroFocusSelectableDetail(selection: TargetCardSelection, target: Player) {
+function supportsHeroFocusSelectableDetail(selection: HeroFocusTargetCardSelection, target: Player) {
   if (!Number.isInteger(target.handCount) || target.handCount < 0 || selection.min < 1 || selection.max < selection.min) return false;
   if (new Set(selection.eligibleKeys).size !== selection.eligibleKeys.length || selection.eligibleKeys.length < selection.min) return false;
   const publicIds = new Set([...target.equipmentCards, ...target.judgementCards].map((card) => card.id));
@@ -798,12 +799,14 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && !hasLocalFocus
     && display.isViewerDecisionActor
     && !currentEffect;
-  const hideStageArchitecturalChrome = isOpenNegationResponse
-    || connectedCurrentEffectFocusIsVisible
-    || judgementParticipantInDock
-    || Boolean(display.visible && !hasLocalFocus && heroFocus.visible
-      && (heroFocus.roleLabel === "CURRENT TARGET" || heroFocus.roleLabel === "CURRENT PARTICIPANT")
-      && heroFocus.primary?.id !== viewerId);
+  const hideStageArchitecturalChrome = display.visible || hasLocalFocus;
+  const playerFacingHeroFocusRole = heroFocus.roleLabel === "SOURCE"
+    ? "Source"
+    : heroFocus.roleLabel === "CURRENT TARGET" || heroFocus.roleLabel === "CURRENT PARTICIPANT"
+      ? "Target"
+      : heroFocus.roleLabel === "DYING PLAYER"
+        ? "DYING PLAYER"
+        : null;
   if (!display.visible && !hasLocalFocus) return null;
   return <section className="interaction-stage" aria-label={isOpenNegationResponse ? "Negation Response" : "Interaction Stage"} data-interaction-id={display.visible ? stage.interactionId ?? undefined : undefined} data-checkpoint-id={display.visible ? stage.checkpointId ?? undefined : undefined} data-presentation-revision={display.visible ? stage.presentationRevision ?? undefined : undefined} data-stage={display.visible ? stage.stage ?? undefined : undefined} data-stable-kind={display.visible ? stage.stableKind : undefined} data-continuity={display.visible ? stage.continuity.relation : undefined} data-parent-frame-id={display.visible ? stage.parentFrameId ?? undefined : undefined} data-current-effect={currentEffect ?? undefined} data-presentation-transition={display.visible ? transitionKind : "NONE"} data-local-ui-mode={hasLocalInspect ? "INSPECT" : hasLocalPreview ? "PREVIEW" : undefined} data-local-inspect-player-id={inspectPlayer?.id} data-local-preview-player-id={!hasLocalInspect ? localPreviewPlayer?.id : undefined}>
     <header>{!hideStageArchitecturalChrome
@@ -817,7 +820,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         <div className={`interaction-stage-current-effect-flow${currentEffect ? currentEffectConnectsToFocus ? " is-connected" : " is-unlinked" : " is-empty"}`}>
           {currentEffect && <section className="interaction-stage-current-effect" role="group" aria-label="Current Effect" data-current-effect-label={currentEffect}><small>{isOpenNegationResponse ? "EFFECT" : "CURRENT EFFECT"}</small><strong>{currentEffect}</strong></section>}
           {currentEffectConnectsToFocus && <span className={`current-effect-arrow${topRowMode ? " top-row-arrow" : " side-column-arrow"}`} aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
-          <HeroFocus view={heroFocus} showSource={!showMediumSource && heroFocus.source.id !== viewerId} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome && stage.stage !== "DYING" ? "Target" : null} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
+          <HeroFocus view={heroFocus} showSource={!showMediumSource && heroFocus.source.id !== viewerId} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome ? playerFacingHeroFocusRole : null} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
         </div>
         {groupTargetScope && <section className="group-target-scope" aria-label="Original target scope" data-group-target-scope="original" data-participant-density={groupTargetScope.density}>
           <header>ORIGINAL TARGET SCOPE</header>
@@ -1462,6 +1465,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const pendingTargetCardAvailabilityKey = pickerTarget
     ? [pickerTarget.id, pickerTarget.handCount, ...pickerTarget.equipmentCards.map((card) => card.id), ...pickerTarget.judgementCards.map((card) => card.id)].join("|")
     : "";
+  const pendingTargetCardProjection = room.currentAction?.targetCardSelection ?? null;
+  const pendingTargetCardSelectableSelection: HeroFocusTargetCardSelection | null = pendingTargetCardProjection
+    ? { targetId: pendingTargetCardProjection.targetId, min: 1, max: 1, eligibleKeys: pendingTargetCardProjection.eligibleKeys }
+    : null;
+  const pendingTargetCardProjectionKey = pendingTargetCardProjection
+    ? [room.actionRevision ?? "", pendingTargetCardProjection.targetId, ...pendingTargetCardProjection.eligibleKeys].join("\u001f")
+    : "";
   const targetCardPickerSelectionKey = targetCardPickerSelection
     ? [room.actionRevision ?? "", targetCardPickerOption?.effectId ?? "", targetCardPickerSelection.targetId, targetCardPickerSelection.min, targetCardPickerSelection.max, ...targetCardPickerSelection.eligibleKeys].join("\u001f")
     : "";
@@ -1671,6 +1681,35 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     equipmentCards: inspectionPlayer.equipmentCards,
     judgementCards: inspectionPlayer.judgementCards,
   } : null;
+  const pendingTargetCardSelectableTarget = pickerTarget
+    && pendingTargetCardSelectableSelection?.targetId === pickerTarget.id
+    && pickerTarget.alive
+    ? pickerTarget
+    : null;
+  const pendingTargetCardInHeroFocus = Boolean(
+    canChooseTargetCard
+    && room.pendingTargetCard?.actorId === room.meId
+    && (room.pendingTargetCard.cardKind === "Steal" || room.pendingTargetCard.cardKind === "Dismantle")
+    && room.currentAction?.kind === "target_card"
+    && room.currentAction.actorId === room.meId
+    && canUseAction(room.currentAction, "choose_target_card")
+    && pendingTargetCardSelectableSelection
+    && pendingTargetCardSelectableTarget
+    && supportsHeroFocusSelectableDetail(pendingTargetCardSelectableSelection, pendingTargetCardSelectableTarget)
+    && !targetPreviewPresentation
+    && !opponentInspectionPresentation
+    && hasProvenExternalHeroFocusTarget(clientPresentation, room.meId, pendingTargetCardSelectableSelection.targetId, room.players),
+  );
+  const pendingTargetCardSelectedKey = targetCardZone === "hand" && targetCardIndex !== null
+    ? `hand:${targetCardIndex}`
+    : targetCardId;
+  const pendingTargetCardSelectedKeys = pendingTargetCardSelectedKey ? [pendingTargetCardSelectedKey] : [];
+  const pendingTargetCardHeroFocusSelectionComplete = Boolean(
+    pendingTargetCardInHeroFocus
+    && pendingTargetCardSelectableSelection
+    && pendingTargetCardSelectedKeys.length === 1
+    && pendingTargetCardSelectableSelection.eligibleKeys.includes(pendingTargetCardSelectedKey),
+  );
   const submitWithLocalTargetPreview = async (submit: () => Promise<boolean>) => {
     const targetId = [...localTargetSelection.selectedTargetIds].reverse().find((id) => id !== room.meId);
     if (!targetId) {
@@ -1721,8 +1760,9 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     (targetCardZone === "hand" ? targetCardIndex !== null && targetCardIndex >= 0 && targetCardIndex < pickerTarget.handCount :
       targetCardId && (targetCardZone === "equipment" ? pickerTarget.equipmentCards.some((card) => card.id === targetCardId) : pickerTarget.judgementCards.some((card) => card.id === targetCardId))),
   );
-  const confirmPendingTargetCard = async () => {
-    if (!pendingTargetCardSelectionComplete || busy || !room.pendingTargetCard) return;
+  const confirmPendingTargetCard = async (projectedEligibleKeys?: readonly string[]) => {
+    const selectedKey = targetCardZone === "hand" && targetCardIndex !== null ? `hand:${targetCardIndex}` : targetCardId;
+    if (!pendingTargetCardSelectionComplete || projectedEligibleKeys && !projectedEligibleKeys.includes(selectedKey) || busy || !room.pendingTargetCard) return;
     const payload = { targetCardZone, ...(targetCardZone === "hand" ? { targetCardIndex } : { targetCardId }) };
     const submissionKey = `${room.actionRevision ?? ""}|${room.pendingTargetCard.targetId}|${JSON.stringify(payload)}`;
     if (targetCardSubmissionRef.current === submissionKey) return;
@@ -1942,6 +1982,13 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     }
   }, [canChooseTargetCard, pendingTargetCardAvailabilityKey, pickerTarget, targetCardZone, targetCardIndex, targetCardId]);
   useEffect(() => {
+    if (!canChooseTargetCard || !pendingTargetCardProjection) return;
+    const selectedKey = targetCardZone === "hand" && targetCardIndex !== null ? `hand:${targetCardIndex}` : targetCardId;
+    if (!selectedKey || pendingTargetCardProjection.eligibleKeys.includes(selectedKey)) return;
+    const timer = setTimeout(clearPendingTargetCardSelection, 0);
+    return () => clearTimeout(timer);
+  }, [canChooseTargetCard, pendingTargetCardProjectionKey, pendingTargetCardProjection, targetCardZone, targetCardIndex, targetCardId]);
+  useEffect(() => {
     if (!targetCardPickerSelectionKey) return;
     const timer = setTimeout(() => {
       setTriggerSelectedKeys((keys) => keys.filter((key) => targetCardPickerEligibleKeys.includes(key)));
@@ -2061,6 +2108,34 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   const targetCardPickerSelectionComplete = Boolean(targetCardPickerSelection
     && targetCardPickerSelectedKeys.length >= targetCardPickerSelection.min
     && targetCardPickerSelectedKeys.length <= targetCardPickerSelection.max);
+  const pendingTargetCardSelectableDetail: TargetCardSelectableDetail | null = pendingTargetCardInHeroFocus && pendingTargetCardSelectableSelection && pendingTargetCardSelectableTarget && room.pendingTargetCard
+    ? {
+      label: cardDefinition(room.pendingTargetCard.cardKind).name,
+      selection: pendingTargetCardSelectableSelection,
+      target: pendingTargetCardSelectableTarget,
+      selectedKeys: pendingTargetCardSelectedKeys,
+      disabled: busy,
+      onToggle: (key) => {
+        if (!pendingTargetCardSelectableSelection.eligibleKeys.includes(key)) return;
+        if (pendingTargetCardSelectedKeys.includes(key)) {
+          setTargetCardZone(""); setTargetCardIndex(null); setTargetCardId("");
+          return;
+        }
+        const handPosition = /^hand:(0|[1-9]\d*)$/.exec(key);
+        if (handPosition) {
+          setTargetCardZone("hand"); setTargetCardIndex(Number(handPosition[1])); setTargetCardId("");
+          return;
+        }
+        if (pendingTargetCardSelectableTarget.equipmentCards.some((card) => card.id === key)) {
+          setTargetCardZone("equipment"); setTargetCardId(key); setTargetCardIndex(null);
+          return;
+        }
+        if (pendingTargetCardSelectableTarget.judgementCards.some((card) => card.id === key)) {
+          setTargetCardZone("judgement"); setTargetCardId(key); setTargetCardIndex(null);
+        }
+      },
+    }
+    : null;
   const targetCardPickerInHeroFocus = Boolean(
     triggerResponse
     && responseDecisionReady
@@ -2075,7 +2150,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
   );
   const targetCardPickerSelectableDetail: TargetCardSelectableDetail | null = targetCardPickerInHeroFocus && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget
     ? {
-      option: targetCardPickerOption,
+      label: targetCardPickerOption.label,
       selection: targetCardPickerSelection,
       target: targetCardPickerTarget,
       selectedKeys: targetCardPickerSelectedKeys,
@@ -2103,6 +2178,8 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       ? { active: true, hasInput: activeSkillSelectedCardIds.length > 0 || activeSkillSelectedTargetIds.length > 0, count: activeSkillSelectedCardIds.length + activeSkillSelectedTargetIds.length, min: activeSkillSelection.min, max: activeSkillSelection.max, summary: `${activeSkillSelectedCardIds.length} card${activeSkillSelectedCardIds.length === 1 ? "" : "s"} selected` }
       : triggerSelection
         ? { active: true, hasInput: triggerSelectedCardIds.length > 0 || triggerSelectionKeys.length > 0 || Boolean(triggerChoice), count: triggerSelectedCardIds.length || triggerSelectionKeys.length, min: triggerSelectionUsesCards ? triggerSelection.min : triggerChoice ? triggerSelection.cardCountByChoice?.[triggerChoice] ?? 0 : 0, max: triggerSelectionUsesCards ? triggerSelection.max : triggerChoice ? triggerSelection.cardCountByChoice?.[triggerChoice] ?? 0 : 0, summary: `${triggerSelectedCardIds.length || triggerSelectionKeys.length} selected` }
+    : pendingTargetCardInHeroFocus
+      ? { active: true, hasInput: pendingTargetCardHeroFocusSelectionComplete, count: pendingTargetCardHeroFocusSelectionComplete ? 1 : 0, min: 1, max: 1, summary: pendingTargetCardHeroFocusSelectionComplete ? "1 card selected" : "Select 1 card" }
     : targetCardPickerOption && targetCardPickerSelection
       ? { active: true, hasInput: targetCardPickerSelectedKeys.length > 0, count: targetCardPickerSelectedKeys.length, min: targetCardPickerSelection.min, max: targetCardPickerSelection.max, summary: `${targetCardPickerSelectedKeys.length} card key${targetCardPickerSelectedKeys.length === 1 ? "" : "s"} selected` }
       : selectedResponseProvider?.selection?.type === "cards"
@@ -2112,6 +2189,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
             : undefined;
   const consolePrimaryCandidates = [
     ...(borrowedSwordTargetSelectionActive && canUseAction(room.currentAction, "choose_borrowed_sword_target") ? [{ id: "borrowed-sword", label: "Confirm", enabled: localTargetSelection.canConfirm, priority: 80 }] : []),
+    ...(pendingTargetCardInHeroFocus && canUseAction(room.currentAction, "choose_target_card") ? [{ id: "pending-target-card", label: "Confirm", enabled: pendingTargetCardHeroFocusSelectionComplete && !busy, priority: 75 }] : []),
     ...(activeSkillSelection || activeSkillTargetSelection ? [{ id: "active-skill", label: "Confirm", enabled: canUseAction(room.currentAction, "trigger") && Boolean(activeSkillComplete && activeSkillSubmission && (!activeSkillTargetSelection || localTargetSelection.canConfirm)), priority: 70 }] : []),
     ...(targetCardPickerInHeroFocus && canUseAction(room.currentAction, "trigger") ? [{ id: "target-card-picker", label: "Confirm", enabled: targetCardPickerSelectionComplete && !responseControlsDisabled, priority: 70 }] : []),
     ...(triggerResponse && canUseAction(room.currentAction, "trigger") && selectedTriggerOption?.selection?.type === "cards" ? [{ id: "trigger-cards", label: "Confirm", enabled: triggerSubmissionComplete, priority: 70 }] : []),
@@ -2156,7 +2234,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
     instruction: consoleInstruction,
     viewerIsDecisionActor: consoleIsDecisionActor || consoleKind === "turn" && room.isMyTurn && currentActionOwnedByViewer,
     authoritativeDecision: consoleAuthoritativeDecision,
-    busy: busy || activeSkillSelectionBusy,
+    busy: busy || activeSkillSelectionBusy && !pendingTargetCardInHeroFocus,
     selection: consoleSelection,
     primaryCandidates: consolePrimaryCandidates,
     localCancel: { visible: localTargetSelection.canCancel && !triggerHasProviderCancelSurface && !normalHasProviderCancelSurface || Boolean(canChooseTargetCard || targetCardPickerOption && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId)), enabled: localTargetSelection.canCancel || canChooseTargetCard || Boolean(targetCardPickerOption) },
@@ -2172,7 +2250,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         if (!player) return null;
         const hero = heroDefinition(player.hero);
         return { name: player.name, heroId: hero?.id ?? player.hero, heroName: hero?.name ?? (player.hero ? heroName(player.hero) : null), hp: player.hp, maxHp: player.maxHp };
-      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} /></div>
+      }} previewPlayer={targetPreviewPresentation} previewSubmission={submittedTargetPreview} inspectPlayer={opponentInspectionPresentation} selectableDetail={pendingTargetCardSelectableDetail ?? targetCardPickerSelectableDetail} judgementInFlight={judgementInFlight} onCloseInspect={() => setExpandedOpponentId(null)} onHeroInfo={setInfoHero} onInfoCard={setInfoCard} /></div>
       <aside className={`game-messages ${messagesCollapsed ? "collapsed" : ""}`} aria-label="Game Messages"><header><button type="button" onClick={() => setMessagesCollapsed((collapsed) => !collapsed)} aria-label={messagesCollapsed ? "Expand game messages" : "Collapse game messages"} aria-expanded={!messagesCollapsed}>{messagesCollapsed ? "▣" : "—"}</button></header>{!messagesCollapsed && <div aria-live="polite">{gameMessages.length ? gameMessages.map((entry, index) => <p className={index === gameMessages.length - 1 ? "latest" : ""} key={entry.id}><span>{entry.message}</span></p>) : <p className="empty">No gameplay messages yet.</p>}</div>}</aside>
       <button type="button" className="game-exit" onClick={onLeave}>Exit</button>
       {turnNotice && <div className="turn-notice" role="status"><span>TURN BEGINS</span><b>{turnNotice}</b></div>}
@@ -2184,7 +2262,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
       {tablePresentationVisible && <TableResolutionSequence events={sequenceEvents} activeEvent={displayedEvent} players={room.players} myTableIndex={myTableIndex} concluding={resolutionClosing} />}
       {room.pendingHarvest && !presentationBusy && <div className="game-event-stage harvest-choice-stage" role="dialog" aria-label="Bumper Harvest card choice"><div><span>BUMPER HARVEST</span><b>{room.pendingHarvest.complete ? "All choices complete" : harvestSubmitting ? "Your choice is submitted" : canChooseHarvest ? "Your turn — choose one card" : `${actor?.name ?? "The next player"} is choosing`}</b><small>{room.pendingHarvest.complete ? "The final shaded card remains visible before Bumper Harvest closes." : harvestSubmitting ? "Your card is shaded immediately while the next choice is prepared." : canChooseHarvest ? "Tap any available card to change your selection, then confirm. Selection changes are instant." : "Watch the current player's card rise, then become shaded when confirmed."}</small><div className="harvest-card-row">{room.pendingHarvest.revealed.map((choice) => { const takenBy = room.pendingHarvest?.choices.find((entry) => entry.cardId === choice.id); const submittedByMe = harvestSubmitting?.cardId === choice.id; const available = room.pendingHarvest?.availableIds.includes(choice.id); const awaitingConfirmation = !submittedByMe && activeHarvestSelection === choice.id; return <button type="button" className={`harvest-card-choice ${takenBy || submittedByMe ? "taken" : ""} ${awaitingConfirmation ? "pending-choice" : ""}`} disabled={!canChooseHarvest || Boolean(harvestSubmitting) || busy || !available} aria-pressed={awaitingConfirmation} aria-label={takenBy ? `${cardDefinition(choice.kind).name}, taken by ${takenBy.playerName}` : submittedByMe ? `${cardDefinition(choice.kind).name}, choice submitted by ${harvestSubmitting?.playerName ?? "ME"}` : `${cardDefinition(choice.kind).name}, ${awaitingConfirmation ? `selected by ${actor?.name ?? "current player"}, awaiting confirmation` : "available"}`} key={choice.id} onClick={() => { const nextCardId = activeHarvestSelection === choice.id ? "" : choice.id; setHarvestSelected(nextCardId); void publishHarvestPreview(nextCardId); }}><CardFace card={choice} />{takenBy && <strong className="harvest-taken-label">Taken by {takenBy.playerName}</strong>}{submittedByMe && !takenBy && <strong className="harvest-taken-label">Chosen by {harvestSubmitting?.playerName ?? "ME"}</strong>}{awaitingConfirmation && <strong className="harvest-pending-label">Selected by {actor?.name ?? "player"}</strong>}</button>; })}</div>{canChooseHarvest && (harvestSubmitting ? <div className="harvest-confirm-row"><small>Choice submitted · moving to the next player</small></div> : <div className="harvest-confirm-row"><small>{harvestSelectedCard ? `${cardDefinition(harvestSelectedCard.kind).name} selected` : "Select a card before confirming"}</small><button type="button" className="primary" disabled={busy || !harvestSelectedCard} onClick={async () => { if (!harvestSelectedCard || !me) return; const submission = { cardId: harvestSelectedCard.id, playerId: me.id, playerName: me.name }; queuedHarvestPreview.current = null; setHarvestSubmitting(submission); setHarvestSelected(""); const accepted = await onAction("choose_harvest", { cardId: submission.cardId }); if (!accepted) setHarvestSubmitting(null); }}>Confirm choice</button></div>)}</div></div>}
       <div className="play-center" aria-label="Card piles"><div className="draw-stack" data-draw-anchor="true" aria-label={`Draw pile, ${room.deckCount} cards`}><b>{room.deckCount}</b><span>DECK</span></div><div className="discard-stack" data-discard-anchor="true" data-discard-kind={visibleDiscardTop?.kind} aria-label={visibleDiscardTop ? `Discard pile, ${cardDefinition(visibleDiscardTop.kind).name}` : "Discard pile, empty"}>{visibleDiscardTop ? <CardFace card={visibleDiscardTop} /> : <b className="discard-empty">—</b>}<span>DISCARD</span></div></div>
-      {canChooseTargetCard && pickerTarget && <div className="hidden-card-picker table-hidden-card-picker target-card-picker" style={{ "--angle": `${targetAngle}deg` } as React.CSSProperties} role="dialog" aria-modal="true" aria-label={`Choose one current card from ${pickerTarget.name}`}><span>{pickerTarget.name}&apos;s cards</span>{pickerTarget.handCount > 0 && <section><small>Hand</small><div>{Array.from({ length: pickerTarget.handCount }, (_, index) => <button type="button" aria-label={`Hidden hand card ${index + 1}`} className={targetCardZone === "hand" && targetCardIndex === index ? "selected" : ""} aria-pressed={targetCardZone === "hand" && targetCardIndex === index} key={index} onClick={() => { setTargetCardZone("hand"); setTargetCardIndex(index); setTargetCardId(""); }}>?</button>)}</div></section>}{pickerTarget.equipmentCards.length > 0 && <section><small>Equipment</small><div>{pickerTarget.equipmentCards.map((item) => <button type="button" className={targetCardZone === "equipment" && targetCardId === item.id ? "selected named" : "named"} aria-pressed={targetCardZone === "equipment" && targetCardId === item.id} key={item.id} onClick={() => { setTargetCardZone("equipment"); setTargetCardId(item.id); setTargetCardIndex(null); }}>{cardDefinition(item.kind).name}</button>)}</div></section>}{pickerTarget.judgementCards.length > 0 && <section><small>Judgement</small><div>{pickerTarget.judgementCards.map((item) => <button type="button" className={targetCardZone === "judgement" && targetCardId === item.id ? "selected named" : "named"} aria-pressed={targetCardZone === "judgement" && targetCardId === item.id} key={item.id} onClick={() => { setTargetCardZone("judgement"); setTargetCardId(item.id); setTargetCardIndex(null); }}>{cardDefinition(item.kind).name}</button>)}</div></section>}<div className="target-picker-actions">{consoleDecision.localCancel.visible && <button className="end" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={clearPendingTargetCardSelection}>Cancel</button>}<button className="primary" disabled={busy || !pendingTargetCardSelectionComplete} onClick={() => void confirmPendingTargetCard()}>{busy ? "Resolving…" : room.pendingTargetCard?.cardKind === "Steal" ? "Obtain selected" : "Discard selected"}</button></div>{error && <p className="error" role="alert">{error}</p>}</div>}
+      {canChooseTargetCard && pickerTarget && !pendingTargetCardInHeroFocus && <div className="hidden-card-picker table-hidden-card-picker target-card-picker" style={{ "--angle": `${targetAngle}deg` } as React.CSSProperties} role="dialog" aria-modal="true" aria-label={`Choose one current card from ${pickerTarget.name}`}><span>{pickerTarget.name}&apos;s cards</span>{pickerTarget.handCount > 0 && <section><small>Hand</small><div>{Array.from({ length: pickerTarget.handCount }, (_, index) => <button type="button" aria-label={`Hidden hand card ${index + 1}`} className={targetCardZone === "hand" && targetCardIndex === index ? "selected" : ""} aria-pressed={targetCardZone === "hand" && targetCardIndex === index} key={index} onClick={() => { setTargetCardZone("hand"); setTargetCardIndex(index); setTargetCardId(""); }}>?</button>)}</div></section>}{pickerTarget.equipmentCards.length > 0 && <section><small>Equipment</small><div>{pickerTarget.equipmentCards.map((item) => <button type="button" className={targetCardZone === "equipment" && targetCardId === item.id ? "selected named" : "named"} aria-pressed={targetCardZone === "equipment" && targetCardId === item.id} key={item.id} onClick={() => { setTargetCardZone("equipment"); setTargetCardId(item.id); setTargetCardIndex(null); }}>{cardDefinition(item.kind).name}</button>)}</div></section>}{pickerTarget.judgementCards.length > 0 && <section><small>Judgement</small><div>{pickerTarget.judgementCards.map((item) => <button type="button" className={targetCardZone === "judgement" && targetCardId === item.id ? "selected named" : "named"} aria-pressed={targetCardZone === "judgement" && targetCardId === item.id} key={item.id} onClick={() => { setTargetCardZone("judgement"); setTargetCardId(item.id); setTargetCardIndex(null); }}>{cardDefinition(item.kind).name}</button>)}</div></section>}<div className="target-picker-actions">{consoleDecision.localCancel.visible && <button className="end" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={clearPendingTargetCardSelection}>Cancel</button>}<button className="primary" disabled={busy || !pendingTargetCardSelectionComplete} onClick={() => void confirmPendingTargetCard()}>{busy ? "Resolving…" : room.pendingTargetCard?.cardKind === "Steal" ? "Obtain selected" : "Discard selected"}</button></div>{error && <p className="error" role="alert">{error}</p>}</div>}
       {triggerResponse && responseDecisionReady && targetCardPickerOption && targetCardPickerSelection && targetCardPickerTarget && !targetCardPickerInHeroFocus && <TargetCardPicker option={targetCardPickerOption} selection={targetCardPickerSelection} target={targetCardPickerTarget} selectedKeys={triggerSelectedKeys} disabled={responseControlsDisabled} canDecline={Boolean(consoleDecision.authoritativeDecline)} showCancel={consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption.effectId)} error={error} onToggle={(key) => setTriggerSelectedKeys((keys) => { const validKeys = keys.filter((selectedKey) => targetCardPickerSelection.eligibleKeys.includes(selectedKey)); return validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < targetCardPickerSelection.max ? [...validKeys, key] : validKeys; })} onUse={submitTargetCardPicker} onCancel={cancelTargetCardPicker} onDecline={() => onAction("decline_trigger")} />}
       {triggerResponse && responseDecisionReady && choiceTriggerOption?.selection?.type === "choice" && <MandatoryChoiceDialog option={choiceTriggerOption} selection={choiceTriggerOption.selection} hand={room.myHand} selectedChoice={triggerChoice} selectedKeys={triggerSelectionKeys} disabled={responseControlsDisabled} error={error} onChoice={(choice) => { setTriggerChoice(choice); setTriggerSelectedKeys([]); }} onToggle={(key) => { const validKeys = triggerSelectedKeys.filter((selectedKey) => choiceTriggerOption.selection?.type === "choice" && choiceTriggerOption.selection.eligibleHandKeys.includes(selectedKey)); const required = choiceTriggerOption.selection?.type === "choice" ? choiceTriggerOption.selection.cardCountByChoice?.[triggerChoice] ?? (triggerChoice === "discard" ? 1 : 0) : 0; setTriggerSelectedKeys(validKeys.includes(key) ? validKeys.filter((selectedKey) => selectedKey !== key) : validKeys.length < required ? [...validKeys, key] : validKeys); }} onConfirm={(choice, cardKeys) => onAction("trigger", { providerId: choiceTriggerOption.effectId, choice, ...(cardKeys.length ? { cardKeys } : {}) })} />}
       {room.status === "finished" && <div className="victory-banner"><span>MATCH COMPLETE</span><b>{room.log.at(-1)?.replace("! The match is over.", "")}</b><small>All roles are now revealed at the table.</small></div>}
@@ -2219,6 +2297,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
         </div>
         <div data-action-slots="true">
           <div data-action-slot="cancel">
+            {pendingTargetCardInHeroFocus && consoleDecision.localCancel.visible && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={clearPendingTargetCardSelection}>Cancel</button>}
             {borrowedSwordTargetSelectionActive && consoleDecision.localCancel.visible && <button className="end local-target-cancel" disabled={busy || presentationBusy || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
             {targetCardPickerInHeroFocus && consoleDecision.localCancel.visible && (!activeSkillOption || activeSkillOption.effectId !== targetCardPickerOption?.effectId) && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelTargetCardPicker}>Cancel</button>}
             {triggerResponse && triggerTargetMode && consoleDecision.localCancel.visible && localTargetSelection.canCancel && !triggerHasProviderCancelSurface && <button className="end local-target-cancel" disabled={responseControlsDisabled || !consoleDecision.localCancel.enabled} onClick={cancelLocalTargetSelection}>Cancel</button>}
@@ -2228,6 +2307,7 @@ export function GameRoom({ room, presentationView, busy, error, onAction, onLeav
           <div data-action-slot="primary">
             {rescueDecisionReady && !canRespond && consolePrimaryId === "rescue" && <button className="primary" disabled={busy || card?.kind !== "Peach" || !consoleDecision.primary?.enabled} onClick={() => { if (card?.kind === "Peach") void onAction("give_peach", { cardId: card.id }); setSelected(""); }}>{busy ? "Playing…" : "Peach"}</button>}
             {borrowedSwordTargetSelectionActive && consolePrimaryId === "borrowed-sword" && <button className="primary" disabled={busy || presentationBusy || !localTargetSelection.canConfirm || !consoleDecision.primary?.enabled} onClick={() => void confirmBorrowedSwordTarget()}>{busy ? "Confirming…" : "Confirm"}</button>}
+            {pendingTargetCardInHeroFocus && consolePrimaryId === "pending-target-card" && <button className="primary" disabled={busy || !pendingTargetCardHeroFocusSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => pendingTargetCardSelectableSelection && void confirmPendingTargetCard(pendingTargetCardSelectableSelection.eligibleKeys)}>{busy ? "Confirming…" : "Confirm"}</button>}
             {targetCardPickerInHeroFocus && consolePrimaryId === "target-card-picker" && <button className="primary" disabled={responseControlsDisabled || !targetCardPickerSelectionComplete || !consoleDecision.primary?.enabled} onClick={() => void submitTargetCardPicker(targetCardPickerSelectedKeys)}>{busy ? "Confirming…" : "Confirm"}</button>}
             {triggerResponse && selectedTriggerOption?.selection?.type === "cards" && consolePrimaryId === "trigger-cards" && <button className="primary" disabled={responseControlsDisabled || !triggerSubmissionComplete || !consoleDecision.primary?.enabled} onClick={() => submitWithLocalTargetPreview(() => onAction("trigger", { providerId: selectedTriggerOption.effectId, ...(triggerSelectedCardIds.length === 1 ? { cardId: triggerSelectedCardIds[0] } : { cardIds: triggerSelectedCardIds }), ...(triggerTargetSelection ? { targetId: targetIds[0] } : {}) }))}>Confirm</button>}
             {triggerResponse && selectedTriggerOption?.selection?.type === "target" && triggerTargetSelection && consolePrimaryId === "trigger-target" && <button className="primary" disabled={responseControlsDisabled || !localTargetSelection.canConfirm || !consoleDecision.primary?.enabled} onClick={() => submitWithLocalTargetPreview(() => onAction("trigger", { providerId: selectedTriggerOption.effectId, targetIds }))}>Confirm</button>}
@@ -2342,7 +2422,7 @@ function TargetCardPicker({ option, selection, target, selectedKeys, disabled, c
   </section></div>;
 }
 
-function TargetCardSelectableDetailView({ option, selection, target, selectedKeys, disabled, onToggle }: TargetCardSelectableDetail) {
+function TargetCardSelectableDetailView({ label, selection, target, selectedKeys, disabled, onToggle }: TargetCardSelectableDetail) {
   const validSelectedKeys = selectedKeys.filter((key) => selection.eligibleKeys.includes(key));
   const randomHandZone = selection.eligibleKeys.includes("hand");
   const handPositionKeys = selection.eligibleKeys
@@ -2358,7 +2438,7 @@ function TargetCardSelectableDetailView({ option, selection, target, selectedKey
     ...handPositionKeys.map((key) => ({ key, label: `Hidden hand card ${Number(key.slice(5)) + 1}`, hidden: true, randomHandZone: false, zone: "hand-position" as const, card: null })),
     ...publicCards.map(({ card, zone }) => ({ key: card.id, label: `${zone === "equipment" ? "Equipment" : "Judgement"}: ${cardDefinition(card.kind).name}`, hidden: false, randomHandZone: false, zone, card })),
   ];
-  const effectLabel = option.label.replace(/^Use\s+/i, "");
+  const effectLabel = label.replace(/^Use\s+/i, "");
   const amount = selection.min === selection.max ? `${selection.min}` : `${selection.min}–${selection.max}`;
   const subtitle = randomHandZone && selection.min === 1 && selection.max === 1
     ? "Choose where to obtain 1 card"
