@@ -647,8 +647,9 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const isOpenNegationResponse = display.visible && stage.stage === "NEGATION";
   const mediumSource = projectMediumSourceForViewer(stage, heroFocus, viewerId, resolvePlayerDisplay);
   const groupTargetScope = projectGroupTargetScopeForViewer(stage, heroFocus, mediumSource, viewerId, resolvePlayerDisplay);
-  const currentGroupParticipantProgress = stage.groupParticipantProgress.find((participant) => participant.playerId === stage.currentParticipant.id) ?? null;
-  const focusGroupParticipantProgress = currentGroupParticipantProgress?.playerId === heroFocus.primary?.id ? currentGroupParticipantProgress : null;
+  const currentParticipantProgress = [...stage.groupParticipantProgress, ...(stage.orderedTargetProgress ?? [])]
+    .find((participant) => participant.playerId === stage.currentParticipant.id) ?? null;
+  const focusGroupParticipantProgress = currentParticipantProgress?.playerId === heroFocus.primary?.id ? currentParticipantProgress : null;
   const localFocusPlayerId = inspectPlayer?.id ?? localPreviewPlayer?.id;
   const showMediumSource = Boolean(mediumSource && mediumSource.player.id !== localFocusPlayerId && !hasLocalInspect);
   const publicEffectLabel = stage.effect?.trim() || null;
@@ -834,14 +835,14 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
           {currentEffectConnectsToFocus && <span className={`current-effect-arrow${topRowMode ? " top-row-arrow" : " side-column-arrow"}`} aria-hidden="true">{topRowMode ? "→" : "↓"}</span>}
           <HeroFocus view={heroFocus} showSource={!showMediumSource && heroFocus.source.id !== viewerId} previewPlayer={localPreviewPlayer} inspectPlayer={inspectPlayer} selectableDetail={focusSelectableDetail} hideArchitecturalLabel={hideStageArchitecturalChrome} roleLabelOverride={hideStageArchitecturalChrome ? playerFacingHeroFocusRole : null} groupParticipantProgress={focusGroupParticipantProgress} judgementInFlight={judgementInFlight} onCloseInspect={onCloseInspect} onHeroInfo={onHeroInfo} onInfoCard={onInfoCard} />
         </div>
-        {groupTargetScope && <section className="group-target-scope" aria-label={groupTargetScope.hasProgress ? "AOE Participant Progress" : "Original target scope"} data-group-target-scope="original" data-participant-density={groupTargetScope.density} data-group-progress={groupTargetScope.hasProgress ? "proven" : undefined}>
-          <header>{groupTargetScope.hasProgress ? "AOE PARTICIPANTS" : "ORIGINAL TARGET SCOPE"}</header>
+        {groupTargetScope && <section className="group-target-scope" aria-label={groupTargetScope.resolutionSemantics === "GROUP" ? "AOE Participant Progress" : groupTargetScope.resolutionSemantics === "ORDERED" ? "Ordered Target Progress" : "Original target scope"} data-group-target-scope={groupTargetScope.resolutionSemantics === "ORDERED" ? undefined : "original"} data-target-progress-scope={groupTargetScope.resolutionSemantics === "ORDERED" ? "ordered" : undefined} data-participant-density={groupTargetScope.density} data-group-progress={groupTargetScope.resolutionSemantics === "GROUP" ? "proven" : undefined} data-target-progress={groupTargetScope.resolutionSemantics === "ORDERED" ? "proven" : undefined}>
+          <header>{groupTargetScope.resolutionSemantics === "GROUP" ? "AOE PARTICIPANTS" : groupTargetScope.resolutionSemantics === "ORDERED" ? "TARGET PROGRESS" : "ORIGINAL TARGET SCOPE"}</header>
           <div className="group-target-cards">
             {groupTargetScope.players.map((player) => {
               const hero = heroDefinition(player.heroId);
-              return <div className={`group-target-card${player.isViewer ? " group-target-card-viewer" : ""}`} key={player.id} data-group-target-id={player.id} data-group-participant-order={player.order ?? undefined} data-participant-status={player.status ?? undefined}>
+              return <div className={`group-target-card${player.isViewer ? " group-target-card-viewer" : ""}`} key={player.id} data-group-target-id={groupTargetScope.resolutionSemantics === "ORDERED" ? undefined : player.id} data-target-id={groupTargetScope.resolutionSemantics === "ORDERED" ? player.id : undefined} data-group-participant-order={groupTargetScope.resolutionSemantics === "GROUP" ? player.order ?? undefined : undefined} data-target-order={groupTargetScope.resolutionSemantics === "ORDERED" ? player.order ?? undefined : undefined} data-participant-status={player.status ?? undefined}>
                 {!player.isViewer && <span className="group-target-portrait">{hero ? <HeroPortrait hero={hero} /> : "?"}</span>}
-                <div className="group-target-identity"><b>{player.isViewer ? "You" : player.name}</b>{!player.isViewer && groupTargetScope.density === "medium" && player.heroName && <span>{player.heroName}</span>}{!player.isViewer && player.hp !== null && <small>HP {player.hp}{player.maxHp !== null ? `/${player.maxHp}` : ""}</small>}{player.status && <span className={`group-target-status status-${player.status.toLowerCase().replaceAll("_", "-")}`} aria-label={`Status: ${groupParticipantStatusLabel(player.status)}`}>{groupParticipantStatusLabel(player.status)}</span>}</div>
+                <div className="group-target-identity">{groupTargetScope.resolutionSemantics === "ORDERED" && player.order !== null && <small className="ordered-target-number">Target {player.order}</small>}<b>{player.isViewer ? "You" : player.name}</b>{!player.isViewer && groupTargetScope.density === "medium" && player.heroName && <span>{player.heroName}</span>}{!player.isViewer && player.hp !== null && <small>HP {player.hp}{player.maxHp !== null ? `/${player.maxHp}` : ""}</small>}{player.status && <span className={`group-target-status status-${player.status.toLowerCase().replaceAll("_", "-")}`} aria-label={`Status: ${groupParticipantStatusLabel(player.status)}`}>{groupParticipantStatusLabel(player.status)}</span>}</div>
               </div>;
             })}
           </div>

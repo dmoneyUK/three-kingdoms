@@ -223,6 +223,7 @@ test("adapter carries explicit ORDERED Halberd progress without deriving it from
     ...aoe,
     interaction: scene({
       ...aoe.interaction,
+      stage: "ATTACK_RESPONSE",
       effect: "Attack",
     }),
     groupParticipantProgress: {
@@ -238,7 +239,21 @@ test("adapter carries explicit ORDERED Halberd progress without deriving it from
     { playerId: "C", order: 1 }, { playerId: "B", order: 2 }, { playerId: "E", order: 3 }, { playerId: "D", order: 4 },
   ]);
   assert.deepEqual(view.groupParticipantProgress, [], "ordered target state does not leak into the existing AOE Stage consumer");
-  assert.deepEqual(buildInteractionStageView(view, resolveDisplayName).groupParticipantProgress, []);
+  const stage = buildInteractionStageView(view, resolveDisplayName);
+  assert.deepEqual(stage.groupParticipantProgress, []);
+  assert.deepEqual(stage.orderedTargetProgress.map(({ playerId, order, status }) => ({ playerId, order, status })), [
+    { playerId: "C", order: 1, status: "RESOLVED" },
+    { playerId: "B", order: 2, status: "CURRENT" },
+    { playerId: "E", order: 3, status: "PENDING" },
+    { playerId: "D", order: 4, status: "PENDING" },
+  ]);
+  const focus = projectHeroFocusForViewer(stage, buildHeroFocusView(stage), "D");
+  const source = projectMediumSourceForViewer(stage, focus, "D");
+  const orderedScope = projectGroupTargetScopeForViewer(stage, focus, source, "D", resolveDisplayName);
+  assert.equal(orderedScope?.resolutionSemantics, "ORDERED");
+  assert.deepEqual(orderedScope?.players.map(({ id, order }) => ({ id, order })), [
+    { id: "C", order: 1 }, { id: "B", order: 2 }, { id: "E", order: 3 }, { id: "D", order: 4 },
+  ]);
 });
 
 test("adapter drops AOE progress when its frame, identity, scope, order, or status is incoherent", () => {

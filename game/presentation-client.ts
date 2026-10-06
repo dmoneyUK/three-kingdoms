@@ -68,6 +68,7 @@ export type InteractionStageView = {
   decisionActor: PresentationDisplayIdentity;
   activeResolver: PresentationDisplayIdentity;
   groupParticipantProgress: readonly PresentationSnapshotGroupParticipantProgress[];
+  orderedTargetProgress: readonly PresentationSnapshotGroupParticipantProgress[];
   rootOrigin?: {
     frameId: string;
     stage: PresentationInteractionScene["stage"];
@@ -459,6 +460,10 @@ export function buildInteractionStageView(
     decisionActor,
     activeResolver,
     groupParticipantProgress: view.groupParticipantProgress.map((participant) => ({ ...participant })),
+    orderedTargetProgress: view.groupResolution?.cardKind === "SkyPiercingHalberdAttack"
+      && view.groupResolution.resolutionSemantics === "ORDERED"
+      ? view.groupResolution.participants.map((participant) => ({ ...participant }))
+      : [],
     ...(view.rootOrigin ? {
       rootOrigin: {
         frameId: view.rootOrigin.frameId,

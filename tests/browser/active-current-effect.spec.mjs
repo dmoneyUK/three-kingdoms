@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null, groupProgress = null, targetShiftCase = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null, groupProgress = null, orderedProgress = null, targetShiftCase = null }) {
   await page.setViewportSize({ width, height });
   const effectQuery = effect ? `&effect=${encodeURIComponent(effect)}` : "";
   const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : "";
@@ -10,8 +10,9 @@ async function loadFixture(page, { count = 4, width, height = 900, state = "acti
   const judgementParticipantQuery = judgementParticipant ? `&judgementParticipant=${encodeURIComponent(judgementParticipant)}` : "";
   const groupParticipantQuery = groupParticipant ? `&groupParticipant=${encodeURIComponent(groupParticipant)}` : "";
   const groupProgressQuery = groupProgress ? `&groupProgress=${encodeURIComponent(groupProgress)}` : "";
+  const orderedProgressQuery = orderedProgress ? `&orderedProgress=${encodeURIComponent(orderedProgress)}` : "";
   const targetShiftCaseQuery = targetShiftCase ? `&targetShift=${encodeURIComponent(targetShiftCase)}` : "";
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}${groupProgressQuery}${targetShiftCaseQuery}`);
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}${groupProgressQuery}${orderedProgressQuery}${targetShiftCaseQuery}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -97,6 +98,63 @@ test("AOE progress fails closed when the snapshot root identity or scope does no
   await expect(scope).not.toHaveAttribute("data-group-progress", "proven");
   await expect(scope.locator(".group-target-card[data-participant-status]")).toHaveCount(0);
   await expect(stage.locator(".hero-focus-group-status")).toHaveCount(0);
+});
+
+test("Halberd progress shows the server-ordered targets with target numbering, not AOE labels", async ({ page }) => {
+  await loadFixture(page, { count: 4, width: 390, height: 844, state: "group-observer", orderedProgress: "valid" });
+  const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
+  const scope = stage.locator('[data-target-progress-scope="ordered"][data-target-progress="proven"]');
+  const targets = scope.locator(".group-target-card");
+
+  await expect(scope).toHaveAttribute("aria-label", "Ordered Target Progress");
+  await expect(scope.locator(":scope > header")).toHaveText("TARGET PROGRESS");
+  await expect(targets).toHaveCount(3);
+  expect(await targets.evaluateAll((nodes) => nodes.map((node) => [node.dataset.targetId, node.dataset.targetOrder, node.dataset.participantStatus]))).toEqual([
+    ["p2", "1", "RESOLVED"],
+    ["p1", "2", "CURRENT"],
+    ["p3", "3", "PENDING"],
+  ]);
+  await expect(targets.nth(0)).toContainText("Target 1");
+  await expect(targets.nth(1)).toContainText("Target 2");
+  await expect(targets.nth(2)).toContainText("Target 3");
+  await expect(stage).not.toContainText("AOE PARTICIPANTS");
+  await expect(stage.locator('[data-hero-focus-player-id="p1"] .hero-focus-group-status')).toHaveText("Current");
+  await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
+  await expect(stage.locator('[data-hero-focus-player-id="p3"]')).toHaveCount(0);
+  await expect(stage.locator("button")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});
+
+test("Halberd ordered progress marks the active target paused during a child Damage frame", async ({ page }) => {
+  await loadFixture(page, { count: 10, width: 390, height: 844, state: "group-observer", orderedProgress: "paused" });
+  const stage = page.locator('[aria-label="Interaction Stage"][data-stage="DAMAGE"]');
+  const scope = stage.locator('[data-target-progress-scope="ordered"][data-target-progress="proven"]');
+  const targets = scope.locator(".group-target-card");
+
+  await expect(scope).toBeVisible();
+  await expect(scope.locator(":scope > header")).toHaveText("TARGET PROGRESS");
+  expect(await targets.evaluateAll((nodes) => nodes.map((node) => [node.dataset.targetId, node.dataset.targetOrder, node.dataset.participantStatus]))).toEqual([
+    ["p2", "1", "RESOLVED"],
+    ["p1", "2", "PAUSED"],
+    ["p3", "3", "PENDING"],
+  ]);
+  await expect(stage.locator('[data-hero-focus-player-id="p1"] .hero-focus-group-status')).toHaveText("Paused");
+  await expect(stage).toHaveAttribute("data-continuity", "CHILD_FRAME");
+  await expect(page.locator('.local-player-dock[data-player-anchor="p3"]')).toBeVisible();
+  await expect(stage.locator("button")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+});
+
+test("Halberd ordered progress fails closed when typed scope proof is absent or mismatched", async ({ page }) => {
+  for (const orderedProgress of ["missing", "mismatch"]) {
+    await loadFixture(page, { count: 4, width: 390, height: 844, state: "group-observer", orderedProgress });
+    const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
+    await expect(stage.locator('[data-target-progress-scope="ordered"]')).toHaveCount(0);
+    await expect(stage.locator('[data-target-progress="proven"]')).toHaveCount(0);
+    await expect(stage.locator('[data-group-progress="proven"]')).toHaveCount(0);
+    await expect(stage.locator(".hero-focus-group-status")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+  }
 });
 
 for (const viewport of [

@@ -741,7 +741,21 @@ Only a proven regression or new Reviewer-approved design requirement does.
   88/88; engine-backed API tests 27/27; Halberd/equipment API tests 20/20;
   targeted ESLint; and `git diff --check`. The prior remote head `1c5f4ef` was
   verified green in Actions run `37418042611`. Pushed as `c63cc6b`; its Actions
-  run `37419043447` was observed **in progress**, so no pass is claimed.
+  run `37419043447` was later **cancelled** when the subsequent documentation
+  push started; no pass is claimed for that feature SHA.
+
+### UX2.6-HALBERD-ORDERED-PARTICIPANT-STAGE-CONSUMER-01 — Halberd target progress
+
+- The Interaction Stage now consumes only the typed Sky Piercing Halberd
+  `ORDERED` progress and shows the authoritative target numbering and
+  active/paused/resolved status. This remains separate from the AOE `GROUP`
+  consumer, labels, and contracts; missing or mismatched ordered proof renders
+  no progress. No gameplay, legality, weapon ordering, or Dock control changed.
+- Focused PresentationClient tests passed 45/45; the targeted Active Current
+  Effect browser slice passed 7/7, including unchanged AOE labels and progress;
+  `npm run build`, targeted ESLint, and `git diff --check` passed. The pre-task
+  remote head `2a99b0f` had Actions run `37419081776` queued at the pre-commit
+  check; no result is claimed for it here.
 
 ## Known deferred semantic gaps
 
@@ -749,8 +763,9 @@ These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
 - Public AOE outcome summaries and unrelated Group semantics remain deferred.
-- Halberd's authoritative ordered progress is projected; its player-facing
-  Interaction Stage consumer remains deferred.
+- The active Negation chain now has authoritative linked card nodes, but the
+  player-facing Reaction Chain consumer does not yet render those nodes; this
+  is the next bounded Stage task.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public
