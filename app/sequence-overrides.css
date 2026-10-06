@@ -2886,3 +2886,100 @@
     font-size: 8px;
   }
 }
+
+/* A short Top Row Attack keeps the proven active target primary while placing
+   any distinct original target scope on a compact neutral line below. */
+@container top-row-interaction-safe-zone (max-height: 330px) and (max-width: 480px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] {
+    padding: 5px 6px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] > header {
+    padding-bottom: 3px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-event-summary {
+    margin-bottom: 3px;
+    font-size: 7px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-body {
+    grid-template-columns: 50px 7px minmax(0, 1fr);
+    gap: 2px 4px;
+    padding-top: 0;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-hero-region {
+    display: contents;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .medium-participant-card {
+    grid-column: 1;
+    grid-row: 1;
+    width: 50px;
+    gap: 2px;
+    padding: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .medium-participant-role {
+    font-size: 6px;
+    letter-spacing: .08em;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .medium-participant-portrait {
+    width: 34px;
+    height: 43px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .medium-participant-arrow {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    margin-top: 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-current-effect-flow {
+    grid-column: 3;
+    grid-row: 1;
+    grid-template-columns: minmax(38px, .38fr) 7px minmax(0, 1fr);
+    gap: 2px;
+    align-items: start;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-current-effect {
+    min-height: 0;
+    gap: 1px;
+    padding: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-current-effect small {
+    display: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-current-effect strong {
+    font-size: 8px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .current-effect-arrow.top-row-arrow {
+    font-size: 11px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .current-effect-arrow.top-row-arrow::before {
+    content: none;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus {
+    grid-template-columns: 48px minmax(0, 1fr);
+    column-gap: 4px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-portrait {
+    width: 48px;
+    height: 60px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-heading strong {
+    font-size: 6px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .hero-focus-identity b {
+    font-size: 9px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] > .interaction-stage-body > .interaction-stage-meta-region {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-context {
+    gap: 2px 4px;
+    padding-top: 2px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="ATTACK_RESPONSE"][data-current-effect] .interaction-stage-context > span {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 3px;
+    font-size: 6px;
+    line-height: 1.1;
+  }
+}

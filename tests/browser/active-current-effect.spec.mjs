@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null }) {
+async function loadFixture(page, { count = 4, width, height = 900, state = "active-attack-observer", effect = null, source = null, duelObserver = false, duelParticipantMissing = false, dyingParticipant = null, judgementParticipant = null, groupParticipant = null, targetShiftCase = null }) {
   await page.setViewportSize({ width, height });
   const effectQuery = effect ? `&effect=${encodeURIComponent(effect)}` : "";
   const sourceQuery = source ? `&source=${encodeURIComponent(source)}` : "";
@@ -9,7 +9,8 @@ async function loadFixture(page, { count = 4, width, height = 900, state = "acti
   const dyingParticipantQuery = dyingParticipant ? `&dyingParticipant=${encodeURIComponent(dyingParticipant)}` : "";
   const judgementParticipantQuery = judgementParticipant ? `&judgementParticipant=${encodeURIComponent(judgementParticipant)}` : "";
   const groupParticipantQuery = groupParticipant ? `&groupParticipant=${encodeURIComponent(groupParticipant)}` : "";
-  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}`);
+  const targetShiftCaseQuery = targetShiftCase ? `&targetShift=${encodeURIComponent(targetShiftCase)}` : "";
+  await page.goto(`/tests/browser/fixture.html?state=${state}&count=${count}${effectQuery}${sourceQuery}${duelObserverQuery}${missingDuelParticipantQuery}${dyingParticipantQuery}${judgementParticipantQuery}${groupParticipantQuery}${targetShiftCaseQuery}`);
   await expect(page.locator(".game-shell")).toBeVisible();
 }
 
@@ -71,6 +72,69 @@ for (const viewport of [
     expect(summaryBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
   });
 }
+
+for (const viewport of [
+  { count: 4, width: 390, height: 640, topology: "top-row" },
+  { count: 6, width: 480, height: 900, topology: "side-column" },
+  { count: 4, width: 1440, height: 900, topology: "top-row" },
+]) {
+  test(`redirected Attack follows its proven active target and preserves original scope at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await loadFixture(page, { ...viewport, state: "target-shift-attack" });
+    const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
+    const source = stage.locator('.medium-participant-card[data-medium-participant-player-id="p1"]');
+    const effect = stage.locator('[aria-label="Current Effect"]');
+    const target = stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p4"]');
+    const originalScope = stage.locator(".interaction-stage-context");
+
+    await expect(stage).toHaveAttribute("data-current-effect", "Attack");
+    await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 1 used Attack on Player 4.");
+    await expect(source).toContainText("Player 1");
+    await expect(effect.locator("strong")).toHaveText("Attack");
+    await expect(target).toContainText("Player 4");
+    await expect(target.locator(".hero-focus-heading strong")).toHaveText("Target");
+    await expect(stage.locator('[data-hero-focus-player-id="p2"]')).toHaveCount(0);
+    await expect(originalScope).toContainText("ORIGINAL SCOPE");
+    await expect(originalScope).toContainText("Original targets: Player 2");
+    await expect(stage.locator('[data-reaction-chain="proven"]')).toHaveCount(0);
+    await expect(stage).not.toContainText("Deflection");
+    await expect(page.locator(`.local-player-dock[data-player-anchor="${viewport.count === 6 ? "p5" : "p3"}"]`)).toBeVisible();
+    await expect(stage.locator(`[data-hero-focus-player-id="${viewport.count === 6 ? "p5" : "p3"}"]`)).toHaveCount(0);
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+
+    const [sourceBox, effectBox, targetBox, stageBox, dockBox] = await Promise.all([
+      source.boundingBox(), effect.boundingBox(), target.boundingBox(), stage.boundingBox(), page.locator(".local-player-dock").boundingBox(),
+    ]);
+    if (viewport.width === 390 && viewport.height <= 700) await page.screenshot({ path: testInfo.outputPath("redirected-attack-390x640.png"), animations: "disabled" });
+    expect(sourceBox && effectBox && targetBox && stageBox && dockBox).toBeTruthy();
+    if (viewport.topology === "side-column") {
+      expect(sourceBox.y + sourceBox.height).toBeLessThanOrEqual(effectBox.y + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+    } else if (viewport.width <= 650 && viewport.height <= 700) {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);
+    } else if (viewport.width <= 650) {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.y + effectBox.height).toBeLessThanOrEqual(targetBox.y + 2);
+    } else {
+      expect(sourceBox.x + sourceBox.width).toBeLessThanOrEqual(effectBox.x + 2);
+      expect(effectBox.x + effectBox.width).toBeLessThanOrEqual(targetBox.x + 2);
+    }
+    expect(Math.max(0, Math.min(stageBox.y + stageBox.height, dockBox.y + dockBox.height) - Math.max(stageBox.y, dockBox.y))).toBe(0);
+  });
+}
+
+test("redirected Attack remains unlinked when active-target proof is missing or conflicts with the current participant", async ({ page }) => {
+  for (const targetShiftCase of ["missing-active", "mismatched-current"]) {
+    await loadFixture(page, { count: 4, width: 390, height: 844, state: "target-shift-attack", targetShiftCase });
+    const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
+    await expect(stage).not.toHaveAttribute("data-current-effect");
+    await expect(stage.locator('[aria-label="Current Effect"]')).toHaveCount(0);
+    await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveCount(0);
+    await expect(stage.locator(".current-effect-arrow, .medium-participant-arrow")).toHaveCount(0);
+    await expect(stage.locator('[data-reaction-chain="proven"]')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+  }
+});
 
 for (const viewport of [
   { count: 4, width: 390, height: 640, topology: "top-row" },

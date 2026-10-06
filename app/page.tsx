@@ -653,7 +653,10 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const duelParticipantIsActive = Boolean(stage.currentParticipant.id
     && stage.activeTargets.some((target) => target.id === stage.currentParticipant.id));
   const hasSingleTargetCurrentEffect = (stage.stage === "ATTACK_RESPONSE" || stage.stage === "NEGATION")
-    && stage.activeTargets.length === 1;
+    && stage.activeTargets.length === 1
+    && (stage.stage !== "ATTACK_RESPONSE"
+      || !stage.currentParticipant.id
+      || stage.currentParticipant.id === stage.activeTargets[0]?.id);
   const hasProvenDuelCurrentEffect = stage.stage === "DUEL_EXCHANGE"
     && publicEffectLabel?.toLowerCase() === "duel"
     && duelParticipantIsActive;

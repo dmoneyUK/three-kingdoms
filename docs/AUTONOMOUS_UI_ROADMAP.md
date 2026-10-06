@@ -581,6 +581,18 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Group contract repairs passed 2/2. Targeted ESLint and `git diff --check`
   passed. No full local suite/build/lint was run.
 
+### UX2.3-ACTIVE-TARGET-SHIFT-CURRENT-EFFECT-01 — Redirected Attack focus
+
+- The Current Effect follows a proven redirected Attack target while preserving
+  the original target as neutral scope. An inconsistent typed current
+  participant stays unlinked; no redirect actor or Reaction Chain event is
+  inferred. Compact Top Row, Side Column, and wide layouts keep the viewer Hero
+  in the Dock and the Stage clear of the Dock.
+- Focused `active-current-effect.spec.mjs` coverage passed 44/44, including
+  valid 390/480/1440px layouts and missing/mismatched target proof. Targeted
+  ESLint and `git diff --check` passed. No full local suite/build/lint was run;
+  push-triggered CI status is tracked in HANDOVER.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative
