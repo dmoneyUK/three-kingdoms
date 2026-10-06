@@ -725,15 +725,32 @@ Only a proven regression or new Reviewer-approved design requirement does.
   continuation. No React rendering or gameplay behavior changed.
 - Local validation passed: build; focused fast tests 117/117; engine-backed API
   tests 27/27; targeted ESLint; and `git diff --check`. The local feature change
-  has not yet been pushed, so no Actions run exists for it at handoff.
+  was pushed as `1c5f4ef`; its Actions run `37418042611` completed **Success**
+  (build-and-test and deploy).
+
+### UX2.6-HALBERD-ORDERED-PARTICIPANT-PROJECTION-01 — Explicit ordered target progress
+
+- The existing Sky Piercing Halberd response sequence now persists explicit
+  `ORDERED` participant semantics and complete target status in the route's
+  authoritative order. PresentationV2, Snapshot, and client view preserve that
+  order and active/paused/resolved states through nested Damage/Dying recovery;
+  malformed or mismatched proof fails closed. AOE remains explicitly `GROUP`,
+  and Halberd is kept out of the existing AOE Stage consumer. No gameplay order,
+  legality, weapon behavior, or player-facing rendering changed.
+- Local validation passed: build; focused PresentationV2/Snapshot/client tests
+  88/88; engine-backed API tests 27/27; Halberd/equipment API tests 20/20;
+  targeted ESLint; and `git diff --check`. The prior remote head `1c5f4ef` was
+  verified green in Actions run `37418042611`; this task's pushed CI result is
+  pending observation.
 
 ## Known deferred semantic gaps
 
 These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
-- Public AOE outcome summaries, Halberd progress, and unrelated Group
-  semantics remain deferred.
+- Public AOE outcome summaries and unrelated Group semantics remain deferred.
+- Halberd's authoritative ordered progress is projected; its player-facing
+  Interaction Stage consumer remains deferred.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public

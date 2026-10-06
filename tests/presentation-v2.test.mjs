@@ -130,6 +130,7 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
         version: 1,
         interactionId: "group-interaction",
         groupFrameId: "group-frame",
+        resolutionSemantics: "GROUP",
         participants: [
           { playerId: "B", status: "PAUSED" },
           { playerId: "C", status: "PENDING" },
@@ -155,6 +156,7 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   const childEnvelope = { version: 1, interactionId: "group-interaction", frames: [groupFrame, damageFrame], activeFrameId: "damage-frame", checkpoint: { checkpointId: "checkpoint-damage", frameId: "damage-frame", stage: "DAMAGE" }, presentationRevision: 4 };
   const child = projectPresentationV2({ pending: { kind: "trigger", actorId: "C", causal: { interactionId: "group-interaction", frameId: "damage-frame" }, continuation: { kind: "damage_suffered_event", sourceId: "A", targetId: "B", causal: { interactionId: "group-interaction", frameId: "damage-frame" }, resumeGroup: groupPending } }, currentAction: action({ actorId: "C", kind: "trigger" }), actionRevision: "action-child", timeline: [], causalEnvelope: childEnvelope });
   assert.equal(child.groupResolution?.semantics, "PROVEN");
+  assert.equal(child.groupResolution?.resolutionSemantics, "GROUP");
   assert.equal(child.groupResolution?.interactionId, "group-interaction");
   assert.equal(child.groupResolution?.groupFrameId, "group-frame");
   assert.equal(child.groupResolution?.activeFrameId, "damage-frame");
@@ -210,6 +212,7 @@ test("C3 Group projection uses the authoritative envelope for stable parent and 
   };
   const resumed = projectPresentationV2({ pending: resumedPending, currentAction: action({ actorId: "C" }), actionRevision: "action-next", timeline: [], causalEnvelope: resumedEnvelope });
   assert.equal(resumed.groupResolution?.interactionId, child.groupResolution?.interactionId);
+  assert.equal(resumed.groupResolution?.resolutionSemantics, "GROUP");
   assert.equal(resumed.groupResolution?.groupFrameId, child.groupResolution?.groupFrameId);
   assert.equal(resumed.groupResolution?.activeFrameId, "group-frame");
   assert.equal(resumed.groupResolution?.stage, "GROUP_RESOLUTION");
@@ -233,6 +236,7 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
     version: 1,
     interactionId: causal.interactionId,
     groupFrameId: causal.frameId,
+    resolutionSemantics: "GROUP",
     participants: [
       { playerId: "B", status: "CURRENT" },
       { playerId: "C", status: "PENDING" },
@@ -258,12 +262,49 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
     { playerId: "C", order: 2, status: "PENDING" },
     { playerId: "D", order: 3, status: "PENDING" },
   ]);
+  assert.equal(project(pending).groupResolution?.resolutionSemantics, "GROUP");
   assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, groupFrameId: "other-frame" } } }).groupResolution?.participantProgress, null);
   assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, participants: [...progress.participants].reverse() } } }).groupResolution?.participantProgress, null);
   assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, participants: progress.participants.slice(0, 2) } } }).groupResolution?.participantProgress, null);
   assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, participants: [{ playerId: "B", status: "CURRENT" }, { playerId: "C", status: "BOGUS" }, progress.participants[2]] } } }).groupResolution?.participantProgress, null);
+  assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: { ...progress, resolutionSemantics: "INVALID" } } }).groupResolution?.participantProgress, null);
   assert.equal(project({ ...pending, continuation: { ...pending.continuation, participantProgress: undefined } }).groupResolution?.participantProgress, null);
   assert.equal(project(pending, { ...causalEnvelope, interactionId: "different-interaction" }).groupResolution?.participantProgress, null);
+
+  const halberdPending = {
+    ...pending,
+    continuation: {
+      ...pending.continuation,
+      cardKind: "SkyPiercingHalberdAttack",
+      participantProgress: { ...progress, resolutionSemantics: "ORDERED" },
+    },
+  };
+  const halberdFrame = {
+    ...frame,
+    origin: { ...frame.origin, originEffect: "SkyPiercingHalberdAttack" },
+    current: { ...frame.current, currentEffect: "SkyPiercingHalberdAttack" },
+  };
+  const ordered = projectPresentationV2({
+    pending: halberdPending,
+    currentAction: point.currentAction,
+    actionRevision: "halberd-ordered",
+    timeline: [],
+    causalEnvelope: { ...causalEnvelope, frames: [halberdFrame] },
+  });
+  assert.equal(ordered.groupResolution?.resolutionSemantics, "ORDERED");
+  assert.deepEqual(ordered.groupResolution?.participantProgress, [
+    { playerId: "B", order: 1, status: "CURRENT" },
+    { playerId: "C", order: 2, status: "PENDING" },
+    { playerId: "D", order: 3, status: "PENDING" },
+  ]);
+  const guessed = projectPresentationV2({
+    pending: { ...halberdPending, continuation: { ...halberdPending.continuation, participantProgress: { ...progress, resolutionSemantics: undefined } } },
+    currentAction: point.currentAction,
+    actionRevision: "halberd-unproven-order",
+    timeline: [],
+    causalEnvelope: { ...causalEnvelope, frames: [halberdFrame] },
+  });
+  assert.equal(guessed.groupResolution?.participantProgress, null, "Halberd target order is not inferred when Engine-owned semantics are absent");
 });
 
 test("C5 does not infer Group authority from arbitrary nested data or frame stage", () => {

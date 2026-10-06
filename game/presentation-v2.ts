@@ -1,6 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
-import type { GroupParticipantProgressStatus, NegationHistoryRecord } from "./pending";
+import type { GroupParticipantProgressStatus, GroupResolutionSemantics, NegationHistoryRecord } from "./pending";
 
 export type PresentationV2Event = {
   id: string;
@@ -130,6 +130,7 @@ export type PresentationV2 = {
   reactionChain: PresentationReactionChain | null;
   groupResolution: {
     semantics: "PROVEN" | "UNPROVEN";
+    resolutionSemantics: GroupResolutionSemantics | null;
     interactionId: string | null;
     groupFrameId: string | null;
     activeFrameId: string | null;
@@ -541,11 +542,15 @@ function dyingBarrierFor(envelope: CausalEnvelope | null, pending: unknown): Pre
 function groupPresentation(
   scene: PresentationInteractionScene | null,
   groupValues: GroupProjectionValues | null,
-  participantProgress: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }> | null,
+  participantProgress: {
+    resolutionSemantics: GroupResolutionSemantics;
+    participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }>;
+  } | null,
 ) {
   if (!scene || !groupValues) return null;
   return {
     semantics: scene.semantics,
+    resolutionSemantics: participantProgress?.resolutionSemantics ?? null,
     interactionId: scene.interactionId,
     groupFrameId: scene.rootFrameId,
     activeFrameId: scene.activeFrameId,
@@ -564,7 +569,7 @@ function groupPresentation(
     activeTargetIds: scene.activeTargetIds,
     participantIds: scene.participantIds,
     activeParticipantId: groupValues.activeParticipantId,
-    participantProgress,
+    participantProgress: participantProgress?.participants ?? null,
   };
 }
 
@@ -573,16 +578,21 @@ function groupParticipantProgress(
   group: RecordLike | null,
   values: GroupProjectionValues | null,
   scene: PresentationInteractionScene | null,
-): Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }> | null {
+): {
+  resolutionSemantics: GroupResolutionSemantics;
+  participants: Array<{ playerId: string; order: number; status: GroupParticipantProgressStatus }>;
+} | null {
   if (!envelope || !group || !values || scene?.semantics !== "PROVEN"
-    || !["BarbarianInvasion", "RainingArrows"].includes(values.cardKind)) return null;
+    || !["BarbarianInvasion", "RainingArrows", "SkyPiercingHalberdAttack"].includes(values.cardKind)) return null;
   const progress = record(group.participantProgress);
   const causal = record(group.causal);
   const root = values.groupFrame;
   const active = values.activeFrame;
   const storedParticipants = progress?.participants;
   const targetIds = root?.origin.originalTargetIds;
-  if (!progress || progress.version !== 1 || !causal || !root || !active || !Array.isArray(storedParticipants) || !targetIds?.length
+  const resolutionSemantics = progress?.resolutionSemantics;
+  if (!progress || progress.version !== 1 || (resolutionSemantics !== "GROUP" && resolutionSemantics !== "ORDERED")
+    || !causal || !root || !active || !Array.isArray(storedParticipants) || !targetIds?.length
     || root.parentFrameId !== null || !["GROUP_RESOLUTION", "NEGATION"].includes(root.stage)
     || root.origin.originEffect !== values.cardKind
     || causal.interactionId !== envelope.interactionId || causal.frameId !== root.frameId
@@ -615,7 +625,7 @@ function groupParticipantProgress(
     }
     if (ancestor?.frameId !== root.frameId || activeParticipants[0].status !== "PAUSED") return null;
   }
-  return participants;
+  return { resolutionSemantics, participants };
 }
 
 function reactionChainFor(

@@ -736,6 +736,7 @@ test("FIX9 persists the Group root and keeps nested Negation in the same Frame",
   assert.equal(root.activeFrameId, frame.frameId);
   assert.equal(frame.stage, "NEGATION");
   assert.equal(initial.presentationV2.groupResolution?.semantics, "PROVEN");
+  assert.equal(initial.presentationV2.groupResolution?.resolutionSemantics, "GROUP");
   assert.equal(initial.presentationV2.groupResolution?.interactionId, root.interactionId);
   assert.equal(initial.presentationV2.groupResolution?.groupFrameId, root.activeFrameId);
   assert.equal(initial.presentationV2.groupResolution?.activeFrameId, root.activeFrameId);
@@ -751,6 +752,7 @@ test("FIX9 persists the Group root and keeps nested Negation in the same Frame",
     { playerId: bob.id, order: 2, status: "PENDING" },
     { playerId: carol.id, order: 3, status: "PENDING" },
   ]);
+  assert.equal(initial.presentationSnapshot.groupParticipantProgress.resolutionSemantics, "GROUP");
   const pending = authoritativePending(game.code);
   const groupPending = pending.continuation.effect.pending;
   assert.equal(groupPending.causal.interactionId, root.interactionId);

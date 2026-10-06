@@ -75,6 +75,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
     localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "frost-sword-selectable" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
     groupParticipantProgress: groupProgressCase ? {
       cardKind: "RainingArrows",
+      resolutionSemantics: "GROUP",
       interactionId: groupProgressCase === "mismatch" ? "other-interaction" : interactionId,
       groupFrameId: groupProgressCase === "mismatch" ? "other-root" : rootFrameId,
       activeFrameId,

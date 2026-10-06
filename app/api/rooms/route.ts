@@ -18,7 +18,7 @@ import { determineDefeatContinuation } from "../../../game/match/continuation";
 import { determineMatchOutcome } from "../../../game/match/outcome";
 import { drawJudgementCard, judgementResolutionFor, resolveJudgement, type JudgementPurpose, type JudgementResolution } from "../../../game/decisions/judgement";
 import { deckReorderCount, rebuildDeckForReorder } from "../../../game/decisions/deck-reorder";
-import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupResponsePending, type HarvestPending, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
+import { asTriggerPending, serializePending, type AttackContinuation, type AttackDeclaration, type AttackDodgedTriggerContinuation, type AttackOrigin, type AttackTargetedTriggerContinuation, type BorrowedSwordAttackContinuation, type BorrowedSwordPending, type CardDistributionPending, type DamageAboutToApplyTriggerContinuation, type DamageSufferedTriggerContinuation, type DeckReorderPending, type DeferredStratagem, type DuelContinuation, type DyingPending, type DyingResumeEffect, type DrawPhaseTriggerContinuation, type EquipmentLostRecord, type EquipmentLostResume, type GroupContinuation, type GroupParticipantProgress, type GroupResolutionSemantics, type GroupResponsePending, type HarvestPending, type HpRecoveredTriggerContinuation, type JudgementContinuation, type JudgementEffectiveTriggerContinuation, type NegationContinuation, type Pending, type RecoveryRecord, type RecoveryResume, type ResponsePending, type StratagemUsedTriggerContinuation, type TargetCardPending, type TriggerPending, type TurnEndTriggerContinuation, type TurnStartTriggerContinuation } from "../../../game/pending";
 import { getActiveHeroSkillOptions, resolveActiveHeroSkill, type KingSkillState } from "../../../game/capabilities/heroes/kings";
 import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
@@ -1722,12 +1722,19 @@ function groupResponse(pending: ResponsePending | null | undefined): { response:
   return { response: pending as GroupResponsePending, continuation: pending.continuation };
 }
 
-function groupParticipantProgressFor(cardKind: GroupContinuation["cardKind"], causal: CausalContext | undefined, orderedParticipantIds: readonly string[]): GroupParticipantProgress | undefined {
-  if ((cardKind !== "BarbarianInvasion" && cardKind !== "RainingArrows") || !causal || !orderedParticipantIds.length) return undefined;
+function groupParticipantProgressFor(
+  cardKind: GroupContinuation["cardKind"],
+  resolutionSemantics: GroupResolutionSemantics,
+  causal: CausalContext | undefined,
+  orderedParticipantIds: readonly string[],
+): GroupParticipantProgress | undefined {
+  if ((cardKind !== "BarbarianInvasion" && cardKind !== "RainingArrows" && cardKind !== "SkyPiercingHalberdAttack")
+    || !causal || !orderedParticipantIds.length) return undefined;
   return {
     version: 1,
     interactionId: causal.interactionId,
     groupFrameId: causal.frameId,
+    resolutionSemantics,
     participants: orderedParticipantIds.map((playerId, index) => ({ playerId, status: index === 0 ? "CURRENT" : "PENDING" })),
   };
 }
@@ -1805,6 +1812,7 @@ function resumeGroupParticipantAfterDying(continuation: GroupContinuation, nextA
 
 function groupResponseDecision(
   cardKind: GroupContinuation["cardKind"],
+  resolutionSemantics: GroupResolutionSemantics,
   sourceId: string,
   actorId: string,
   orderedTargetIds: string[],
@@ -1824,7 +1832,7 @@ function groupResponseDecision(
     current: { currentSourceId: sourceId, currentEffect: cardKind, currentTargetIds: [actorId], resolvingPlayerId: actorId },
   });
   const causal = root.context;
-  const participantProgress = groupParticipantProgressFor(cardKind, causal, orderedTargetIds);
+  const participantProgress = groupParticipantProgressFor(cardKind, resolutionSemantics, causal, orderedTargetIds);
   return { value: { kind: "response", actorId, causal, requirement: { kind: requiredKind === "Attack" ? "attack" : "dodge", sourceId, actorId, context: requiredKind === "Attack" ? "barbarian_invasion" : undefined }, reason, deadline, ...(resolutionId ? { resolutionId } : {}), continuation: { kind: "group", cardKind, sourceId, remainingIds, requiredKind, resumePhase, heldCards, damageCards, causal, ...(physicalSuit ? { physicalSuit } : {}), sequenceStartCardId: damageCards[0]?.id ?? heldCards[0]?.id ?? "", ...(resolutionId ? { resolutionId } : {}), ...(participantProgress ? { participantProgress } : {}) } }, createdEnvelope: root.envelope };
 }
 
@@ -5931,7 +5939,7 @@ export async function POST(request: Request) {
         const requiredKind = card.kind === "BarbarianInvasion" ? "Attack" : "Dodge"; const cardName = card.kind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
         const presentation = addCardEventWithId(log, me.name, card, "All other players"); log = addLog(presentation.log, `${me.name} plays ${cardName}.`);
         const orderedTargetIds = targets.map((player) => player.id);
-        const groupCreation = groupResponseDecision(card.kind, me.id, targets[0].id, orderedTargetIds, orderedTargetIds.slice(1), requiredKind, liveRoom.phase, `Respond to ${cardName}: select ${requiredKind} or take 1 damage`, nextResponseDeadline(targets[0]), [card], latestResolutionId(log), [card]);
+        const groupCreation = groupResponseDecision(card.kind, "GROUP", me.id, targets[0].id, orderedTargetIds, orderedTargetIds.slice(1), requiredKind, liveRoom.phase, `Respond to ${cardName}: select ${requiredKind} or take 1 damage`, nextResponseDeadline(targets[0]), [card], latestResolutionId(log), [card]);
         const pending = withPresentationBarrier(groupCreation.value, log, presentation.eventId);
         await beginStratagemUse(liveRoom, me, players, card, card, "all other players", targets[0].id, { kind: "group", pending }, hand, deck, discard, log, groupCreation.createdEnvelope);
       } else if (card.kind === "Lightning" && !playableAttack) {
@@ -6018,7 +6026,7 @@ export async function POST(request: Request) {
         const attackPresentation = addCardEventWithId(log, me.name, card, targets.map((entry) => entry.name).join(", "), "play", true, playedAsAttack ? { playedAs: "attack" } : undefined); log = attackPresentation.log;
         if (halberdAttack && targets.length > 1) {
           const orderedTargetIds = targets.map((entry) => entry.id);
-          const groupCreation = groupResponseDecision("SkyPiercingHalberdAttack", me.id, target.id, orderedTargetIds, orderedTargetIds.slice(1), "Dodge", phaseAfterAttack(me), `Respond to Sky Piercing Halberd Attack: select Dodge or take 1 damage`, nextResponseDeadline(target), [card], undefined, [card], card.suit);
+          const groupCreation = groupResponseDecision("SkyPiercingHalberdAttack", "ORDERED", me.id, target.id, orderedTargetIds, orderedTargetIds.slice(1), "Dodge", phaseAfterAttack(me), `Respond to Sky Piercing Halberd Attack: select Dodge or take 1 damage`, nextResponseDeadline(target), [card], undefined, [card], card.suit);
           const pending = withPresentationBarrier(groupCreation.value, log, attackPresentation.eventId);
           log = addLog(log, `${me.name} uses their last hand card as Attack with Sky Piercing Halberd, targeting ${targets.map((entry) => entry.name).join(", ")}. ${target.name} resolves first.`);
           await beginGroupTarget(liveRoom, pending, pending.continuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me)], groupCreation.createdEnvelope);

@@ -512,13 +512,27 @@ test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dod
   assert.deepEqual(launched.data.room.causalEnvelope.frames[0].origin.originalTargetIds, [alicePlayer.id, bobPlayer.id, carolPlayer.id]);
   assert.deepEqual(launched.data.room.causalEnvelope.frames[0].current.currentTargetIds, [alicePlayer.id]);
   assert.deepEqual(launched.data.room.presentationV2.groupResolution.targetIds, [alicePlayer.id, bobPlayer.id, carolPlayer.id]);
+  assert.equal(launched.data.room.presentationV2.groupResolution.resolutionSemantics, "ORDERED");
   assert.equal(launched.data.room.presentationV2.groupResolution.currentParticipantId, alicePlayer.id);
+  assert.deepEqual(launched.data.room.presentationV2.groupResolution.participantProgress, [
+    { playerId: alicePlayer.id, order: 1, status: "CURRENT" },
+    { playerId: bobPlayer.id, order: 2, status: "PENDING" },
+    { playerId: carolPlayer.id, order: 3, status: "PENDING" },
+  ]);
+  assert.equal(launched.data.room.presentationSnapshot.groupParticipantProgress.resolutionSemantics, "ORDERED");
   assert.deepEqual(discardIds(game.code), [], "the final-hand Attack remains held until every Halberd target has resolved");
   const aliceDodge = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "dodge-alice" });
   assert.equal(aliceDodge.status, 200); assert.equal(aliceDodge.data.room.currentAction.actorId, carolPlayer.id, "the target without Dodge takes damage immediately and the next eligible seat becomes active");
   assert.deepEqual(aliceDodge.data.room.causalEnvelope.frames[0].origin.originalTargetIds, [alicePlayer.id, bobPlayer.id, carolPlayer.id]);
   assert.deepEqual(aliceDodge.data.room.causalEnvelope.frames[0].current.currentTargetIds, [carolPlayer.id]);
   assert.equal(aliceDodge.data.room.presentationV2.groupResolution.currentParticipantId, carolPlayer.id);
+  assert.deepEqual(aliceDodge.data.room.presentationSnapshot.groupParticipantProgress.participants, [
+    { playerId: alicePlayer.id, order: 1, status: "RESOLVED" },
+    { playerId: bobPlayer.id, order: 2, status: "RESOLVED" },
+    { playerId: carolPlayer.id, order: 3, status: "CURRENT" },
+  ]);
+  const observerProgress = (await state(game.code, alice.token)).data.presentationSnapshot.groupParticipantProgress;
+  assert.deepEqual(observerProgress, aliceDodge.data.room.presentationSnapshot.groupParticipantProgress, "ordered public progress is viewer-equal");
   const bobDamage = { status: 200, data: { room: (await state(game.code, bob.token)).data } };
   assert.equal(bobDamage.status, 200); assert.equal(bobDamage.data.room.currentAction.actorId, carolPlayer.id); assert.equal(bobDamage.data.room.players.find((player) => player.id === bobPlayer.id).hp, 3);
   const carolDodge = await requestAndSettle("respond", { code: game.code, token: carol.token, cardId: "dodge-carol" });
@@ -531,6 +545,60 @@ test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dod
   assert.equal(rejected.status, 400, "the Halberd cannot expand an Attack unless it was the final hand card");
 
 
+});
+
+test("Sky Piercing Halberd keeps ORDERED progress through child Dying and resumes the next target", { timeout: 30_000 }, async () => {
+  const game = await createHumanGame();
+  const [sourceMember, firstMember, secondMember, thirdMember] = game.members;
+  const [source, first, second, third] = game.room.players;
+  const attack = card("Attack", "halberd-ordered-dying-attack");
+  const firstPeach = card("Peach", "halberd-ordered-dying-first-peach");
+  const secondPeach = card("Peach", "halberd-ordered-dying-second-peach");
+  const thirdPeach = card("Peach", "halberd-ordered-dying-third-peach");
+  setHand(source.id, [attack], 4, 4);
+  setHand(first.id, [firstPeach], 1, 4);
+  setHand(second.id, [secondPeach], 4, 4);
+  setHand(third.id, [thirdPeach], 4, 4);
+  setEquipment(source.id, { weapon: card("SkyPiercingHalberd", "halberd-ordered-dying-weapon") });
+  setTurn(game.code, source.seat, "play");
+
+  const launched = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: attack.id, targetIds: [first.id, second.id, third.id] });
+  assert.equal(launched.status, 200, JSON.stringify(launched.data));
+  assert.equal(launched.data.room.presentationV2.groupResolution.resolutionSemantics, "ORDERED");
+  assert.deepEqual(launched.data.room.presentationV2.groupResolution.targetIds, [first.id, second.id, third.id]);
+
+  const failedResponse = await requestAndSettle("decline_response", { code: game.code, token: firstMember.token });
+  assert.equal(failedResponse.status, 200, JSON.stringify(failedResponse.data));
+  assert.equal(failedResponse.data.room.phase, "dying");
+  const dyingView = (await state(game.code, sourceMember.token)).data;
+  assert.equal(dyingView.currentAction.kind, "dying");
+  assert.deepEqual(dyingView.presentationV2.groupResolution.participantProgress, [
+    { playerId: first.id, order: 1, status: "PAUSED" },
+    { playerId: second.id, order: 2, status: "PENDING" },
+    { playerId: third.id, order: 3, status: "PENDING" },
+  ]);
+  assert.equal(dyingView.presentationV2.groupResolution.resolutionSemantics, "ORDERED");
+  assert.equal(dyingView.presentationSnapshot.groupParticipantProgress.resolutionSemantics, "ORDERED");
+
+  const dyingPending = JSON.parse(query(`SELECT pending_json FROM rooms WHERE code=${quote(game.code)}`));
+  const dyingActorId = dyingPending.actorId;
+  const dyingActorIndex = game.room.players.findIndex((player) => player.id === dyingActorId);
+  const dyingActorMember = game.members[dyingActorIndex];
+  const peachByPlayer = new Map([[first.id, firstPeach.id], [second.id, secondPeach.id], [third.id, thirdPeach.id]]);
+  const peachId = peachByPlayer.get(dyingActorId);
+  assert.ok(dyingActorMember && peachId, `expected a Peach-capable rescuer, got ${dyingActorId}`);
+  const rescued = await requestAndSettle("give_peach", { code: game.code, token: dyingActorMember.token, cardId: peachId, preserveResponse: true });
+  assert.equal(rescued.status, 200, JSON.stringify(rescued.data));
+  assert.equal(rescued.data.room.currentAction.kind, "response");
+  assert.equal(rescued.data.room.currentAction.actorId, second.id);
+  assert.deepEqual(rescued.data.room.presentationSnapshot.groupParticipantProgress.participants, [
+    { playerId: first.id, order: 1, status: "RESOLVED" },
+    { playerId: second.id, order: 2, status: "CURRENT" },
+    { playerId: third.id, order: 3, status: "PENDING" },
+  ]);
+  assert.equal(rescued.data.room.presentationSnapshot.groupParticipantProgress.resolutionSemantics, "ORDERED");
+  const observer = (await state(game.code, thirdMember.token)).data;
+  assert.deepEqual(observer.presentationSnapshot.groupParticipantProgress, rescued.data.room.presentationSnapshot.groupParticipantProgress);
 });
 
 test("Frost Sword offers its owner the choice to prevent Attack damage and discard up to two target cards", async () => {

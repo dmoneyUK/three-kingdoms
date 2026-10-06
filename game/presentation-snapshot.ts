@@ -1,5 +1,5 @@
 import type { CurrentAction } from "./protocol";
-import type { GroupParticipantProgressStatus } from "./pending";
+import type { GroupParticipantProgressStatus, GroupResolutionSemantics } from "./pending";
 import type {
   PresentationInteractionScene,
   PresentationReactionChain,
@@ -39,7 +39,8 @@ export type PresentationSnapshotGroupParticipantProgress = {
 };
 
 export type PresentationSnapshotGroupProgress = {
-  cardKind: "BarbarianInvasion" | "RainingArrows";
+  cardKind: "BarbarianInvasion" | "RainingArrows" | "SkyPiercingHalberdAttack";
+  resolutionSemantics: GroupResolutionSemantics;
   interactionId: string;
   groupFrameId: string;
   activeFrameId: string;
@@ -129,8 +130,10 @@ function groupParticipantProgressFor(
   const group = presentationV2.groupResolution;
   const targetIds = scene.targetIds;
   const progress = group?.participantProgress;
+  const resolutionSemantics = group?.resolutionSemantics;
   if (!group || group.semantics !== "PROVEN"
-    || (group.cardKind !== "BarbarianInvasion" && group.cardKind !== "RainingArrows")
+    || (group.cardKind !== "BarbarianInvasion" && group.cardKind !== "RainingArrows" && group.cardKind !== "SkyPiercingHalberdAttack")
+    || (resolutionSemantics !== "GROUP" && resolutionSemantics !== "ORDERED")
     || !group.interactionId || !group.groupFrameId || !group.activeFrameId || !group.checkpointId || !group.currentParticipantId
     || !targetIds.length || !progress?.length
     || group.interactionId !== identity.interactionId
@@ -162,6 +165,7 @@ function groupParticipantProgressFor(
   }
   return {
     cardKind: group.cardKind,
+    resolutionSemantics: group.resolutionSemantics,
     interactionId: group.interactionId,
     groupFrameId: group.groupFrameId,
     activeFrameId: group.activeFrameId,

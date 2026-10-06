@@ -65,6 +65,7 @@ function groupResolution(groupSceneValue, overrides = {}) {
     presentationRevision: groupSceneValue.presentationRevision,
     stage: groupSceneValue.stage,
     cardKind: "RainingArrows",
+    resolutionSemantics: "GROUP",
     effect: "Raining Arrows",
     sourceId: "A",
     targetIds: groupSceneValue.targetIds,
@@ -129,6 +130,7 @@ test("snapshot forwards only identity- and ordered-scope-coherent Standard AOE p
     });
     assert.deepEqual(projected.groupParticipantProgress, {
       cardKind: "RainingArrows",
+      resolutionSemantics: "GROUP",
       interactionId: interaction.interactionId,
       groupFrameId: interaction.rootFrameId,
       activeFrameId: interaction.activeFrameId,
@@ -145,6 +147,26 @@ test("snapshot forwards only identity- and ordered-scope-coherent Standard AOE p
   }
 });
 
+test("snapshot preserves explicit ORDERED Halberd semantics and target order", () => {
+  const interaction = groupScene();
+  const orderedGroup = groupResolution(interaction, {
+    cardKind: "SkyPiercingHalberdAttack",
+    effect: "Attack",
+    resolutionSemantics: "ORDERED",
+  });
+  const snapshot = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: orderedGroup },
+    currentAction: { kind: "response", actorId: "B" },
+    actionRevision: "halberd-ordered",
+    viewerId: "B",
+  });
+  assert.equal(snapshot.groupParticipantProgress?.resolutionSemantics, "ORDERED");
+  assert.deepEqual(snapshot.groupParticipantProgress?.targetIds, ["B", "C", "D"]);
+  assert.deepEqual(snapshot.groupParticipantProgress?.participants.map(({ playerId, order }) => ({ playerId, order })), [
+    { playerId: "B", order: 1 }, { playerId: "C", order: 2 }, { playerId: "D", order: 3 },
+  ]);
+});
+
 test("snapshot drops AOE progress on root identity, order, participant, or status mismatch", () => {
   const interaction = groupScene();
   const base = groupResolution(interaction);
@@ -152,6 +174,7 @@ test("snapshot drops AOE progress on root identity, order, participant, or statu
     { ...base, interactionId: "other-interaction" },
     { ...base, groupFrameId: "other-frame" },
     { ...base, targetIds: ["C", "B", "D"] },
+    { ...base, resolutionSemantics: "INVALID" },
     { ...base, participantProgress: [...base.participantProgress].reverse() },
     { ...base, participantProgress: [{ ...base.participantProgress[0], status: "INVALID" }, ...base.participantProgress.slice(1)] },
     { ...base, currentParticipantId: "C" },

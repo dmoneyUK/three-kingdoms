@@ -77,6 +77,7 @@ function groupProgressSnapshot({ child = false } = {}) {
     interaction: sceneValue,
     groupParticipantProgress: {
       cardKind: "RainingArrows",
+      resolutionSemantics: "GROUP",
       interactionId: sceneValue.interactionId,
       groupFrameId: sceneValue.rootFrameId,
       activeFrameId: sceneValue.activeFrameId,
@@ -148,6 +149,7 @@ test("adapter maps coherent public CHOICE and source-owned roles without legal c
     decisionActorId: "B",
     activeResolverId: "A",
     participantIds: ["A", "B"],
+    groupResolution: null,
     groupParticipantProgress: [],
     reactionChain: null,
     continuity: { relation: "ROOT_FRAME", parentFrameId: null },
@@ -193,6 +195,7 @@ test("adapter carries validated ordered Standard AOE progress through root and c
   for (const child of [false, true]) {
     const view = buildPresentationClientView(groupProgressSnapshot({ child }), "D");
     assert.equal(view.hasInteraction, true);
+    assert.equal(view.groupResolution.resolutionSemantics, "GROUP");
     assert.deepEqual(view.groupParticipantProgress.map(({ playerId, order, status }) => ({ playerId, order, status })), [
       { playerId: "C", order: 1, status: "RESOLVED" },
       { playerId: "B", order: 2, status: child ? "PAUSED" : "CURRENT" },
@@ -214,11 +217,36 @@ test("adapter carries validated ordered Standard AOE progress through root and c
   }
 });
 
+test("adapter carries explicit ORDERED Halberd progress without deriving it from seats", () => {
+  const aoe = groupProgressSnapshot();
+  const halberd = {
+    ...aoe,
+    interaction: scene({
+      ...aoe.interaction,
+      effect: "Attack",
+    }),
+    groupParticipantProgress: {
+      ...aoe.groupParticipantProgress,
+      cardKind: "SkyPiercingHalberdAttack",
+      resolutionSemantics: "ORDERED",
+      targetIds: ["C", "B", "E", "D"],
+    },
+  };
+  const view = buildPresentationClientView(halberd, "D");
+  assert.equal(view.groupResolution.resolutionSemantics, "ORDERED");
+  assert.deepEqual(view.groupResolution.participants.map(({ playerId, order }) => ({ playerId, order })), [
+    { playerId: "C", order: 1 }, { playerId: "B", order: 2 }, { playerId: "E", order: 3 }, { playerId: "D", order: 4 },
+  ]);
+  assert.deepEqual(view.groupParticipantProgress, [], "ordered target state does not leak into the existing AOE Stage consumer");
+  assert.deepEqual(buildInteractionStageView(view, resolveDisplayName).groupParticipantProgress, []);
+});
+
 test("adapter drops AOE progress when its frame, identity, scope, order, or status is incoherent", () => {
   const valid = groupProgressSnapshot();
   const progress = valid.groupParticipantProgress;
   const malformed = [
-    { ...progress, cardKind: "SkyPiercingHalberdAttack" },
+    { ...progress, cardKind: "UnknownGroup" },
+    { ...progress, resolutionSemantics: "INVALID" },
     { ...progress, interactionId: "other-interaction" },
     { ...progress, groupFrameId: "other-root" },
     { ...progress, activeFrameId: "other-active" },
