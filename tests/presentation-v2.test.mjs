@@ -307,6 +307,21 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
     { playerId: "C", order: 2, status: "PENDING" },
     { playerId: "D", order: 3, status: "RESOLVED", outcome: "NEGATED" },
   ]);
+  const rainingDefeated = {
+    ...pending,
+    continuation: {
+      ...pending.continuation,
+      participantProgress: {
+        ...progress,
+        participants: [progress.participants[0], progress.participants[1], { playerId: "D", status: "RESOLVED", outcome: "DEFEATED" }],
+      },
+    },
+  };
+  assert.deepEqual(project(rainingDefeated).groupResolution?.participantProgress, [
+    { playerId: "B", order: 1, status: "CURRENT" },
+    { playerId: "C", order: 2, status: "PENDING" },
+    { playerId: "D", order: 3, status: "RESOLVED", outcome: "DEFEATED" },
+  ]);
   const barbarianFrame = {
     ...frame,
     origin: { ...frame.origin, originEffect: "BarbarianInvasion" },
@@ -341,6 +356,21 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
     { playerId: "C", order: 2, status: "PENDING" },
     { playerId: "D", order: 3, status: "RESOLVED", outcome: "NEGATED" },
   ]);
+  const barbarianDefeated = {
+    ...barbarian,
+    continuation: {
+      ...barbarian.continuation,
+      participantProgress: {
+        ...barbarianProgress,
+        participants: [progress.participants[0], progress.participants[1], { playerId: "D", status: "RESOLVED", outcome: "DEFEATED" }],
+      },
+    },
+  };
+  assert.deepEqual(project(barbarianDefeated, barbarianEnvelope).groupResolution?.participantProgress, [
+    { playerId: "B", order: 1, status: "CURRENT" },
+    { playerId: "C", order: 2, status: "PENDING" },
+    { playerId: "D", order: 3, status: "RESOLVED", outcome: "DEFEATED" },
+  ]);
   const barbarianAvoided = {
     ...barbarian,
     continuation: {
@@ -360,6 +390,8 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
     { playerId: "C", status: "PENDING", outcome: "DAMAGED" },
     { playerId: "B", status: "CURRENT", outcome: "NEGATED" },
     { playerId: "C", status: "PENDING", outcome: "NEGATED" },
+    { playerId: "B", status: "CURRENT", outcome: "DEFEATED" },
+    { playerId: "C", status: "PENDING", outcome: "DEFEATED" },
   ]) {
     const participants = [progress.participants[0], progress.participants[1], progress.participants[2]];
     participants[invalidParticipant.playerId === "B" ? 0 : 1] = invalidParticipant;

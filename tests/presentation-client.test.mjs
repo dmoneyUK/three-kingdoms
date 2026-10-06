@@ -268,6 +268,13 @@ test("adapter carries only proven resolved Group damage outcomes", () => {
     const focus = projectHeroFocusForViewer(stage, buildHeroFocusView(stage), "D");
     const source = projectMediumSourceForViewer(stage, focus, "D");
     assert.equal(projectGroupTargetScopeForViewer(stage, focus, source, "D")?.players[0].outcome, "NEGATED");
+
+    const defeated = buildPresentationClientView(groupProgressSnapshot({ cardKind, outcome: "DEFEATED" }), "D");
+    assert.equal(defeated.groupParticipantProgress[0].outcome, "DEFEATED");
+    const defeatedStage = buildInteractionStageView(defeated, resolveDisplayName);
+    const defeatedFocus = projectHeroFocusForViewer(defeatedStage, buildHeroFocusView(defeatedStage), "D");
+    const defeatedSource = projectMediumSourceForViewer(defeatedStage, defeatedFocus, "D");
+    assert.equal(projectGroupTargetScopeForViewer(defeatedStage, defeatedFocus, defeatedSource, "D")?.players[0].outcome, "DEFEATED");
   }
 
   const activeOutcome = buildPresentationClientView(snapshot({

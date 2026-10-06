@@ -234,6 +234,17 @@ test("snapshot preserves only a resolved Raining Arrows Damaged outcome", () => 
   });
   assert.equal(negated.groupParticipantProgress?.participants[0].outcome, "NEGATED");
 
+  const defeated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "DEFEATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "resolved-defeated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(defeated.groupParticipantProgress?.participants[0].outcome, "DEFEATED");
+
   const unresolvedNegated = composePresentationSnapshot({
     presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
       { playerId: "B", order: 1, status: "PAUSED", outcome: "NEGATED" },
@@ -288,6 +299,17 @@ test("snapshot preserves resolved Barbarian Invasion damage but rejects avoidanc
     viewerId: "C",
   });
   assert.equal(negated.groupParticipantProgress?.participants[0].outcome, "NEGATED");
+
+  const defeated = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "DEFEATED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "barbarian-defeated-outcome",
+    viewerId: "C",
+  });
+  assert.equal(defeated.groupParticipantProgress?.participants[0].outcome, "DEFEATED");
 });
 
 test("snapshot fails closed for malformed or absent public causal proof", () => {

@@ -27,7 +27,7 @@ export type JudgementNegationCausalResume =
 export type AttackContinuation = { kind: "attack"; sourceId: string; targetId: string; resumePhase?: string; resumePlayerId?: string; sequenceStartCardId?: string; origin?: AttackOrigin; physicalCardId?: string; physicalSuit?: string; damageCards?: Card[]; ignoresArmor?: boolean; requiredDodgeCount?: number; resolutionId?: string } & CausalFields;
 export type InfluencingAttackContinuation = { kind: "influencing_attack"; sourceId: string; targetId: string; resumePhase: string; sequenceStartCardId: string; origin: "triggered" } & CausalFields;
 export type GroupParticipantProgressStatus = "PENDING" | "CURRENT" | "PAUSED" | "RESOLVED" | "NO_LONGER_APPLICABLE";
-export type GroupParticipantProgressOutcome = "AVOIDED" | "DAMAGED" | "NEGATED";
+export type GroupParticipantProgressOutcome = "AVOIDED" | "DAMAGED" | "NEGATED" | "DEFEATED";
 export type GroupResolutionSemantics = "GROUP" | "ORDERED";
 export type GroupParticipantProgress = {
   version: 1;
@@ -62,6 +62,7 @@ export function isGroupParticipantProgressOutcomeAllowed(
   if (outcome === "AVOIDED") return cardKind === "RainingArrows";
   if (outcome === "DAMAGED") return cardKind === "RainingArrows" || cardKind === "BarbarianInvasion";
   if (outcome === "NEGATED") return cardKind === "RainingArrows" || cardKind === "BarbarianInvasion";
+  if (outcome === "DEFEATED") return cardKind === "RainingArrows" || cardKind === "BarbarianInvasion";
   return false;
 }
 export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string } & CausalFields;

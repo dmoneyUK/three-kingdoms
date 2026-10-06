@@ -1821,14 +1821,16 @@ function withPendingGroupDamageOutcome(response: GroupResponsePending | undefine
   return { ...group.response, continuation: { ...continuation, pendingDamageParticipantId: participantId } };
 }
 
-function pendingGroupDamageOutcomeFor(continuation: GroupContinuation, participantId: string): GroupParticipantProgressOutcome | undefined {
+function pendingGroupDamageOutcomeFor(continuation: GroupContinuation, participantId: string, players: PlayerRow[]): GroupParticipantProgressOutcome | undefined {
   const progress = continuation.participantProgress;
+  const participant = players.find((player) => player.id === participantId);
+  if (!participant) return undefined;
   return continuation.pendingDamageParticipantId === participantId
     && supportsGroupDamageOutcome(continuation)
     && continuation.causal?.interactionId === progress?.interactionId
     && continuation.causal?.frameId === progress?.groupFrameId
     && progress.participants.some((participant) => participant.playerId === participantId && participant.status === "PAUSED")
-    ? "DAMAGED"
+    ? participant.alive ? "DAMAGED" : "DEFEATED"
     : undefined;
 }
 
@@ -1865,7 +1867,7 @@ function resumeGroupParticipantAfterDying(continuation: GroupContinuation, nextA
   const progress = continuation.participantProgress;
   if (!progress) return continuation;
   const aliveIds = new Set(players.filter((player) => player.alive).map((player) => player.id));
-  const damageOutcome = pendingGroupDamageOutcomeFor(continuation, continuation.pendingDamageParticipantId ?? "");
+  const damageOutcome = pendingGroupDamageOutcomeFor(continuation, continuation.pendingDamageParticipantId ?? "", players);
   const damageOutcomeResolved = Boolean(damageOutcome && progress.participants.some((participant) => participant.playerId === continuation.pendingDamageParticipantId && participant.status === "PAUSED"));
   return {
     ...continuation,
@@ -3494,7 +3496,7 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
 }
 
 async function finishGroupStep(room: RoomRow, response: ResponsePending, continuation: GroupContinuation, players: PlayerRow[], discard: Card[], log: string[], writes: D1PreparedStatement[] = [], outcome?: GroupParticipantProgressOutcome) {
-  const participantOutcome = outcome ?? pendingGroupDamageOutcomeFor(continuation, response.actorId);
+  const participantOutcome = outcome ?? pendingGroupDamageOutcomeFor(continuation, response.actorId, players);
   const completedContinuation = finishGroupParticipant(continuation, response.actorId, players, participantOutcome);
   const next = nextGroupResponse(response, completedContinuation, players);
   if (next) {

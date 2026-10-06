@@ -721,6 +721,49 @@ test("FIX15 Barbarian Invasion uses the same Group Damage child boundary", { tim
   ], "Damaged appears only once the matching participant resumes as resolved");
 });
 
+test("UX2.7 Group Defeated outcome requires positive damage and an authoritative Dying failure", { timeout: 30_000 }, async () => {
+  for (const kind of ["RainingArrows", "BarbarianInvasion"]) {
+    const game = await createHumanGame();
+    const [sourceMember, targetMember, bobMember] = game.members;
+    const [source, target, bob, carol] = game.room.players;
+    const suffix = `ux27-defeated-${kind.toLowerCase()}`;
+    sql(`UPDATE players SET hero='cao-cao' WHERE id=${quote(source.id)}`);
+    sql(`UPDATE players SET hero='xiahou-dun' WHERE id=${quote(target.id)}`);
+    sql(`UPDATE players SET hero=NULL WHERE id IN (${[bob.id, carol.id].map(quote).join(",")})`);
+    const peach = card("Peach", `${suffix}-peach`);
+    setHand(source.id, [card(kind, `${suffix}-source`), peach], 4, 4);
+    setHand(target.id, [], 1, 3);
+    setHand(bob.id, [card(kind === "RainingArrows" ? "Dodge" : "Attack", `${suffix}-bob`)], 4, 4);
+    setHand(carol.id, [card(kind === "RainingArrows" ? "Dodge" : "Attack", `${suffix}-carol`)], 4, 4);
+    setTurn(game.code, source.seat);
+    setDeck(game.code, [{ ...card("Dodge", `${suffix}-judge`), suit: "♠", rank: "7" }]);
+    const started = await requestAndSettle("play_card", { code: game.code, token: sourceMember.token, cardId: `${kind.toLowerCase()}-${suffix}-source`, preserveResponse: true });
+    assert.equal(started.status, 200, `${kind}: ${JSON.stringify(started.data)}`);
+    await passNegationWindows(game.code, game.members);
+    const opened = { ...game, sourceMember, targetMember, bobMember, source, target, bob, carol };
+
+    const declinedResponse = await requestAndSettle("decline_response", { code: opened.code, token: opened.targetMember.token, preserveResponse: true });
+    assert.equal(declinedResponse.status, 200, `${kind}: ${JSON.stringify(declinedResponse.data)}`);
+    const pendingDamage = await assertProjectionMatchesEngine(opened.code, opened.targetMember.token);
+    assert.deepEqual(pendingDamage.presentationV2.groupResolution?.participantProgress?.[0], {
+      playerId: opened.target.id, order: 1, status: "PAUSED",
+    }, `${kind}: lethal damage remains outcome-free while Dying has not settled`);
+
+    const defeated = await requestAndSettle("skip_rescue", { code: opened.code, token: opened.sourceMember.token, preserveResponse: true });
+    assert.equal(defeated.status, 200, `${kind}: ${JSON.stringify(defeated.data)}`);
+    const resumed = await assertProjectionMatchesEngine(opened.code, opened.bobMember.token);
+    assert.equal(resumed.players.find(({ id }) => id === opened.target.id)?.alive, false, `${kind}: the target is authoritatively defeated`);
+    assert.deepEqual(resumed.presentationV2.groupResolution?.participantProgress?.[0], {
+      playerId: opened.target.id, order: 1, status: "RESOLVED", outcome: "DEFEATED",
+    }, `${kind}: Defeated is published only after the Dying failure resumes Group`);
+    assert.equal(resumed.presentationSnapshot.groupParticipantProgress?.participants[0].outcome, "DEFEATED");
+
+    const otherViewer = await assertProjectionMatchesEngine(opened.code, opened.sourceMember.token);
+    assert.deepEqual(publicSnapshot(otherViewer.presentationSnapshot), publicSnapshot(resumed.presentationSnapshot), `${kind}: the public outcome is viewer-equal`);
+    assert.deepEqual(otherViewer.presentationV2.groupResolution, resumed.presentationV2.groupResolution);
+  }
+});
+
 test("FIX14 malformed Group-to-Damage storage never reconstructs a child authority", { timeout: 30_000 }, async () => {
   const setup = await openGanglieGroup({ kind: "RainingArrows", suffix: "fix14-malformed", judge: { ...card("Dodge", "fix14-malformed-judge"), suit: "♠", rank: "7" } });
   const before = await state(setup.code, setup.targetMember.token);

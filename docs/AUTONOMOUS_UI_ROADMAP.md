@@ -715,6 +715,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   run #758 (`37433985701`); the push-triggered result for this task is not yet
   observed.
 
+### UX2.7-AOE-DEFEATED-OUTCOME-01 — Proven AOE defeat
+
+- Raining Arrows and Barbarian Invasion now publish `DEFEATED` only when the
+  exact positively damaged Group participant resumes after an authoritative
+  Dying failure. Pending Dying remains outcome-free, Peach rescue remains
+  `DAMAGED`, and the typed causal/player proof is preserved through
+  PresentationV2, Snapshot, Client, and the shared Stage label without
+  exposing private continuation fields.
+- Local validation passed: build; focused PresentationV2/Snapshot/client/render
+  tests 111/111; engine-backed API tests 30/30; targeted ESLint; and
+  `git diff --check`. The exact current remote head `db8970d` passed Actions
+  run #760 (`37454554676`); this feature push-triggered result is not yet
+  observed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
