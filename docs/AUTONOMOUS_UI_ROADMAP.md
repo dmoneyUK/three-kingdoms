@@ -995,6 +995,26 @@ Only a proven regression or new Reviewer-approved design requirement does.
   `target_cards` choice to the Local Dock only when CurrentAction keys prove
   that exact supported zone; preserve the current modal fallback otherwise.
 
+### UX2.26-LOCAL-EQUIPMENT-SELECTABLE-DETAIL-01 — Self-targeted public Equipment
+
+- A self-targeted authoritative `target_cards` choice now uses the Local Dock
+  Equipment band when every unique eligible key matches a currently projected
+  public Equipment card and the viewer is alive. Mixed-zone or unprojected keys
+  do not enable Equipment controls and keep the retained picker; an unprojected
+  key has no selectable object. The existing provider, `cardKeys` payload,
+  revision reset, Cancel/Skip authority, and server legality are preserved.
+- The focused target-card browser spec passed 34/34, covering 390px, 480px,
+  1440px, exact one-time payload, ineligible equipment, Cancel, actionRevision
+  reset, and mixed/unprojected fallback. Targeted ESLint and `git diff --check`
+  passed. Pre-commit remote head `b1fb2bb` Actions run `37499022849` completed
+  success for both `build-and-test` and `deploy`. Reviewer acceptance remains
+  unclaimed.
+- At the close boundary, remote Design blob
+  `530c8ec9b7ef5790b6a8bc27b694ac7b00499a6a` was unchanged. The §12.5
+  Ma Chao Cavalry Skills-band entry already exists and has focused browser
+  coverage; UX2.27 is the sole next task: the representative §12.9 responsive
+  integration gate.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

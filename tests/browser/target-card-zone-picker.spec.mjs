@@ -14,6 +14,12 @@ async function loadFrostSwordSelection(page, { width, height = 844, handCount = 
   return page.locator('[aria-label="Interaction Stage"]');
 }
 
+async function loadLocalEquipmentTargetCard(page, { width, height = 844, targetCardCase = "valid" }) {
+  await page.setViewportSize({ width, height });
+  await page.goto(`/tests/browser/fixture.html?state=local-equipment-target-card&count=4&targetCardCase=${targetCardCase}`);
+  return page.locator(".local-player-dock");
+}
+
 async function loadPendingTargetCard(page, { width, height = 844, count = 4, handCount = 4, targetCardCase = "valid", cardKind = "Dismantle" }) {
   await page.setViewportSize({ width, height });
   const params = new URLSearchParams({ state: "pending-target-card", count: String(count), targetHandCount: String(handCount), targetCardCase, targetCardKind: cardKind, effect: cardKind });
@@ -379,6 +385,84 @@ test("Frost Sword opaque position choices reset on action revision", async ({ pa
   await expect(hiddenPosition).toHaveAttribute("aria-pressed", "false");
   await expect(confirm).toBeDisabled();
 });
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 480, height: 900 },
+  { width: 1440, height: 900 },
+]) {
+  test(`self-targeted public Equipment selection stays in the Local Dock at ${viewport.width}px`, async ({ page }) => {
+    const dock = await loadLocalEquipmentTargetCard(page, viewport);
+    const equipment = dock.locator(".local-equipment-panel");
+    const eligible = equipment.getByRole("button", { name: "Select Nio Shield" });
+    const ineligible = equipment.getByRole("button", { name: "Select Zhuge Crossbow" });
+    const actionRow = dock.locator(".turn-controls");
+    const confirm = actionRow.getByRole("button", { name: "Confirm" });
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(equipment.getByRole("button", { name: /^Select / })).toHaveCount(2);
+    await expect(eligible).toBeEnabled();
+    await expect(ineligible).toBeDisabled();
+    await expect(confirm).toBeDisabled();
+    const cancel = actionRow.getByRole("button", { name: "Cancel" });
+    const skip = actionRow.getByRole("button", { name: "Skip" });
+    await expect(cancel).toBeVisible();
+    await expect(skip).toBeVisible();
+    expect(await page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([]);
+
+    await eligible.click();
+    await expect(eligible).toHaveAttribute("aria-pressed", "true");
+    await expect(confirm).toBeEnabled();
+    await cancel.click();
+    await expect(eligible).toHaveAttribute("aria-pressed", "false");
+    await expect(confirm).toBeDisabled();
+    expect(await page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([]);
+    await eligible.click();
+    await expect(eligible).toHaveAttribute("aria-pressed", "true");
+    await expect(confirm).toBeEnabled();
+
+    const [dockBox, equipmentBox, actionRowBox, eligibleBox] = await Promise.all([
+      dock.boundingBox(), equipment.boundingBox(), actionRow.boundingBox(), eligible.boundingBox(),
+    ]);
+    expect(dockBox && equipmentBox && actionRowBox && eligibleBox).toBeTruthy();
+    expect(eligibleBox.x).toBeGreaterThanOrEqual(equipmentBox.x - 1);
+    expect(eligibleBox.x + eligibleBox.width).toBeLessThanOrEqual(equipmentBox.x + equipmentBox.width + 1);
+    expect(actionRowBox.y).toBeGreaterThan(eligibleBox.y);
+    expect(actionRowBox.y + actionRowBox.height).toBeLessThanOrEqual(dockBox.y + dockBox.height + 1);
+
+    await confirm.click();
+    await expect.poll(() => page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([
+      { action: "trigger", extra: { providerId: "yue_jin_dauntless", cardKeys: ["browser-local-equipment-eligible"] } },
+    ]);
+  });
+}
+
+test("Local Dock Equipment selection clears when its CurrentAction revision changes", async ({ page }) => {
+  const dock = await loadLocalEquipmentTargetCard(page, { width: 390 });
+  const eligible = dock.getByRole("button", { name: "Select Nio Shield" });
+  const confirm = dock.locator(".turn-controls").getByRole("button", { name: "Confirm" });
+
+  await eligible.click();
+  await expect(eligible).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => window.__setBrowserActionRevision("browser-equipment-target-new-action"));
+  await expect(eligible).toHaveAttribute("aria-pressed", "false");
+  await expect(confirm).toBeDisabled();
+});
+
+for (const targetCardCase of ["mixed", "unprojected"]) {
+  test(`self-targeted Equipment keeps the modal fallback when CurrentAction keys are ${targetCardCase}`, async ({ page }) => {
+    const dock = await loadLocalEquipmentTargetCard(page, { width: 390, targetCardCase });
+    await expect(page.getByRole("dialog", { name: "Dauntless target card selection" })).toBeVisible();
+    await expect(dock.locator(".local-equipment-panel").getByRole("button", { name: /^Select / })).toHaveCount(0);
+    if (targetCardCase === "unprojected") {
+      await expect(page.getByRole("dialog").getByRole("button", { name: "Use Dauntless" })).toBeDisabled();
+      await expect(page.getByRole("dialog").locator("[aria-label='Eligible cards'] button")).toHaveCount(0);
+    } else {
+      await expect(page.getByRole("dialog").getByRole("button", { name: "Hand ×2 · Random card" })).toBeVisible();
+    }
+    expect(await page.evaluate(() => window.__browserActions.filter((entry) => entry.action === "trigger"))).toEqual([]);
+  });
+}
 
 for (const targetCardCase of ["unfocused", "out-of-range"]) {
   test(`Frost Sword keeps the retained picker when opaque Hand proof is unsupported (${targetCardCase})`, async ({ page }) => {

@@ -84,7 +84,7 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
     stable: { kind: stableKindOverride ?? "CHOICE", interactionId, checkpointId, presentationRevision: 1, decisionActorId },
     interaction: scene,
     decision: { actorId: decisionActorId, stage },
-    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "frost-sword-selectable" || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state.startsWith("oath-negation") || state.startsWith("bumper-harvest") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "group-negation-local" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
+    localControl: { source: "CurrentAction", actionRevision: `browser-${state}-action`, kind: state === "dying" ? "dying" : state === "confirm-cancel" ? "borrowed_sword" : state === "pending-target-card" ? "target_card" : state === "picker" || state === "picker-hand-zone" || state === "frost-sword-selectable" || state.startsWith("local-equipment-target-card") || state === "confirm-cancel-skip" || state === "long-guidance" || state === "sun-shangxiang-daredevil" || state === "judgement" || state === "judgement-local" ? "trigger" : state === "duel" || state === "duel-response" || state === "dodge" || state === "dodge-mismatch" || state === "active-attack-observer" || state === "negation" || state === "confirm-skip" || state.startsWith("active-negation-") || state.startsWith("oath-negation") || state.startsWith("bumper-harvest") || state === "provider-extra" || state === "group-observer" || state === "group-unfocused" || state === "group-negation-local" || state === "preview-ack" ? "response" : "turn", actorId: localControlActorId, entitled: viewerId === localControlActorId },
     groupParticipantProgress: progressCase && orderedProgressCase !== "missing" ? {
       cardKind: orderedProgressCase ? "SkyPiercingHalberdAttack" : "RainingArrows",
       resolutionSemantics: orderedProgressCase ? "ORDERED" : "GROUP",
@@ -272,6 +272,23 @@ function currentActionFor(state, actorId, handCardId, { targetHandCount = 4, tar
       reason: "Choose where to obtain a card",
       legalActions: ["trigger", "decline_trigger"],
       triggerOptions: [{ effectId: "browser_retaliation_zone", label: "Retaliation", selection: { type: "target_cards", targetId: "p1", min: 1, max: 1, eligibleKeys: ["hand", "browser-public-equipment", "browser-public-judgement"] } }],
+      declineAction: "decline_trigger",
+    };
+  }
+  if (state.startsWith("local-equipment-target-card")) {
+    const eligibleKeys = targetCardCase === "mixed"
+      ? ["browser-local-equipment-eligible", "hand"]
+      : targetCardCase === "unprojected"
+        ? ["browser-unprojected-equipment"]
+        : ["browser-local-equipment-eligible"];
+    return {
+      version: 3,
+      kind: "trigger",
+      actorId,
+      deadline: 0,
+      reason: "Choose one currently equipped card",
+      legalActions: ["trigger", "decline_trigger"],
+      triggerOptions: [{ effectId: "yue_jin_dauntless", label: "Dauntless", selection: { type: "target_cards", targetId: "p1", min: 1, max: 1, eligibleKeys } }],
       declineAction: "decline_trigger",
     };
   }
@@ -503,7 +520,9 @@ function browserRoom({ state, count, handSize, targetHandCount, targetCardCase, 
       : hasLocalJudgementFixture && id === meId
       ? [card("browser-local-lightning", "Lightning", "♥", "Q"), card("browser-local-overindulgence", "Overindulgence", "♠", "7")].slice(0, localJudgementCount)
       : state === "rest" && id === "p3" ? [card("browser-lightning", "Lightning", "♥", "Q")] : [],
-    equipmentCards: state === "pending-target-card" && id === "p2"
+    equipmentCards: state.startsWith("local-equipment-target-card") && id === "p1"
+      ? [card("browser-local-equipment-eligible", "NioShield", "♣", "2"), card("browser-local-equipment-ineligible", "ZhugeCrossbow", "♦", "A")]
+      : state === "pending-target-card" && id === "p2"
       ? [card("browser-target-equipment", "NioShield", "♣", "2")]
       : (state === "picker-hand-zone" || frostSwordSelectionFixture) && id === "p1"
       ? [card("browser-public-equipment", "NioShield", "♣", "2")]
