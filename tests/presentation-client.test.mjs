@@ -909,15 +909,46 @@ test("Interaction Stage never infers ordinal progress from target order or scope
   assert.doesNotMatch(narrowed.targetSummary, /\b(?:of|completed|remaining)\b/i);
 });
 
-test("Interaction Stage display hierarchy preserves compact child-frame context", () => {
-  const view = buildPresentationClientView(snapshot({
-    interaction: scene({ stage: "DAMAGE", parentFrameId: "group-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" }, decisionActorId: "B", activeResolverId: "A", participantRoles: { ...scene().participantRoles, decisionActorId: "B", activeResolverId: "A" } }),
-    stable: { ...snapshot().stable, decisionActorId: "B" },
-    decision: { actorId: "B", stage: "DAMAGE" },
-  }), "A");
-  const model = buildInteractionStageDisplayModel(buildInteractionStageView(view, resolveDisplayName));
-  assert.equal(model.nestedContext, "Nested effect · parent frame group-frame");
-  assert.equal(model.showResolver, true, "child frame can clarify a distinct nested resolver");
+test("Interaction Stage names only a proven, readable parent effect and never displays frame IDs", () => {
+  const makeNestedModel = ({ rootFrameId = "group-frame", parentFrameId = rootFrameId, rootOrigin } = {}) => {
+    const view = buildPresentationClientView(snapshot({
+      interaction: scene({
+        rootFrameId,
+        activeFrameId: "damage-frame",
+        parentFrameId,
+        rootOrigin,
+        stage: "DAMAGE",
+        continuity: { relation: "CHILD_FRAME", parentFrameId },
+        decisionActorId: "B",
+        activeResolverId: "A",
+        participantRoles: { ...scene().participantRoles, decisionActorId: "B", activeResolverId: "A" },
+      }),
+      stable: { ...snapshot().stable, decisionActorId: "B" },
+      decision: { actorId: "B", stage: "DAMAGE" },
+    }), "A");
+    return buildInteractionStageDisplayModel(buildInteractionStageView(view, resolveDisplayName));
+  };
+
+  const unlabelled = makeNestedModel();
+  assert.equal(unlabelled.nestedContext, null, "a proven frame ID alone is not player-facing copy");
+  assert.equal(unlabelled.showResolver, true, "child frame can still clarify a distinct nested resolver");
+
+  const namedParent = makeNestedModel({
+    rootOrigin: { frameId: "group-frame", stage: "GROUP_RESOLUTION", sourceId: "A", effect: "RainingArrows", targetIds: ["B", "C"] },
+  });
+  assert.equal(namedParent.nestedContext, "During Raining Arrows");
+
+  const unknownParentEffect = makeNestedModel({
+    rootOrigin: { frameId: "group-frame", stage: "GROUP_RESOLUTION", sourceId: "A", effect: "engine-effect-17", targetIds: ["B"] },
+  });
+  assert.equal(unknownParentEffect.nestedContext, null, "unknown effect identifiers fail closed");
+
+  const nonImmediateParent = makeNestedModel({
+    rootFrameId: "root-frame",
+    parentFrameId: "middle-frame",
+    rootOrigin: { frameId: "root-frame", stage: "GROUP_RESOLUTION", sourceId: "A", effect: "RainingArrows", targetIds: ["B"] },
+  });
+  assert.equal(nonImmediateParent.nestedContext, null, "root origin is not presented as an immediate parent without an exact frame match");
 });
 
 test("Interaction Stage display model demotes only redundant original targets", () => {
@@ -1091,7 +1122,7 @@ test("Hero Focus selects only accepted current-participant or sole-active-target
     decision: { actorId: "B", stage: "DAMAGE" },
   }), "A"));
   assert.equal(child.primary?.id, "B");
-  assert.equal(child.nestedContext, "Nested effect · parent frame group-frame");
+  assert.equal(child.nestedContext, null, "Hero Focus does not expose an unlabelled parent frame ID");
 
   const dying = focusFrom(buildPresentationClientView(snapshot({
     interaction: scene({ stage: "DYING", currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantRoles: { ...scene().participantRoles, currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B" } }),

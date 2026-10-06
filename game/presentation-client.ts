@@ -1,4 +1,5 @@
 import type { GroupParticipantProgressStatus } from "./pending";
+import { CARD_DEFINITIONS } from "./cards";
 import type { PresentationSnapshot, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress } from "./presentation-snapshot";
 import type {
   InteractionSceneContinuity,
@@ -589,7 +590,15 @@ export function isProvenBorrowedSwordForcedAttack(stage: InteractionStageView): 
 export function buildNestedEffectContext(stage: InteractionStageView): string | null {
   if (stage.continuity.relation !== "CHILD_FRAME") return null;
   if (stage.stage === "ATTACK_RESPONSE" && stage.effect === "borrowed_sword_attack") return null;
-  return `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`;
+  const parentFrameId = stage.parentFrameId;
+  const rootOrigin = stage.rootOrigin;
+  if (!parentFrameId || stage.continuity.parentFrameId !== parentFrameId || rootOrigin?.frameId !== parentFrameId) return null;
+
+  const normalizedEffect = rootOrigin.effect.trim().toLowerCase();
+  const parentEffect = Object.values(CARD_DEFINITIONS).find((definition) =>
+    definition.kind.toLowerCase() === normalizedEffect || definition.name.toLowerCase() === normalizedEffect,
+  );
+  return parentEffect ? `During ${parentEffect.name}` : null;
 }
 
 /**

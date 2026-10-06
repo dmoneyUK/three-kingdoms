@@ -209,7 +209,20 @@ test("shared decision presentation keeps turn ownership, action ownership, priva
   };
   const childStageHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(childSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
   assert.match(childStageHtml, /data-continuity="CHILD_FRAME"/);
-  assert.match(childStageHtml, /parent frame parent-frame/);
+  assert.match(childStageHtml, /data-parent-frame-id="parent-frame"/, "frame IDs remain available as diagnostics");
+  assert.doesNotMatch(childStageHtml, /parent frame parent-frame/, "unlabelled frame IDs are not visible copy");
+  const namedParentSnapshot = {
+    ...childSnapshot,
+    interaction: {
+      ...childSnapshot.interaction,
+      rootFrameId: "parent-frame",
+      activeFrameId: "child-frame",
+      rootOrigin: { frameId: "parent-frame", stage: "GROUP_RESOLUTION", sourceId: "p2", effect: "RainingArrows", targetIds: ["p1"] },
+    },
+  };
+  const namedParentHtml = renderToStaticMarkup(React.createElement(InteractionStage, { view: buildPresentationClientView(namedParentSnapshot, "p1"), resolvePlayerName: (playerId) => presentationPlayers.find((player) => player.id === playerId)?.name ?? null }));
+  assert.match(namedParentHtml, /class="hero-focus-context">During Raining Arrows<\/small>/);
+  assert.doesNotMatch(namedParentHtml, /parent frame parent-frame/);
   const restHtml = renderToStaticMarkup(React.createElement(GameRoom, { room: { ...uxRoom, presentationSnapshot: null }, busy: false, error: "", onAction: async () => true, onLeave: () => {} }));
   assert.equal((restHtml.match(/class="interaction-stage"/g) ?? []).length, 0, "REST renders no Interaction Stage");
   assert.equal((restHtml.match(/data-player-anchor="/g) ?? []).length, 2, "REST hides semantic focus without collapsing topology");
@@ -314,7 +327,8 @@ test("Interaction Stage presents the accepted public participant without becomin
 
   const childHtml = renderStage(createSnapshot({ stage: "DAMAGE", parentFrameId: "group-frame", continuity: { relation: "CHILD_FRAME", parentFrameId: "group-frame" }, decisionActorId: "B", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, {}, "B"));
   assert.match(childHtml, /data-hero-focus-player-id="B"/);
-  assert.match(childHtml, /class="hero-focus-context">Nested effect · parent frame group-frame<\/small>/);
+  assert.match(childHtml, /data-parent-frame-id="group-frame"/);
+  assert.doesNotMatch(childHtml, /hero-focus-context|parent frame group-frame/);
 
   const dyingHtml = renderStage(createSnapshot({ stage: "DYING", currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "B", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, {}, "B"));
   assert.match(dyingHtml, /data-hero-focus-player-id="B"[^>]*data-hero-focus-role="DYING PLAYER"/);
