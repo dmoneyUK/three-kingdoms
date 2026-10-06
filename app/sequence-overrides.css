@@ -1807,6 +1807,50 @@
 @media (min-width: 600px) {
   .group-target-scope[data-participant-density="compact"] .group-target-card { flex-basis: 150px; }
 }
+
+/* Group/AOE participant progress stays a compact, single strip on narrow
+   portrait screens even when a short target set would otherwise use the
+   comfortable two-column cards. The authoritative status remains in the
+   existing data attributes; this rule only changes visual density. */
+@container top-row-interaction-safe-zone (max-width: 480px) {
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"] .group-target-scope[data-group-progress="proven"] .group-target-cards {
+    display: flex;
+    width: 100%;
+    gap: 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 3px;
+    touch-action: pan-x;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"] .group-target-scope[data-group-progress="proven"] .group-target-card {
+    flex: 0 0 min(136px, 42vw);
+    padding: 3px;
+  }
+  .play-table[data-seat-topology="top-row"] .interaction-stage[data-stage="GROUP_RESOLUTION"] .group-target-scope[data-group-progress="proven"] .group-target-portrait {
+    width: 28px;
+    height: 35px;
+  }
+}
+
+@media (max-width: 480px) {
+  .play-table[data-seat-topology="side-column"] .interaction-stage[data-stage="GROUP_RESOLUTION"] .group-target-scope[data-group-progress="proven"] .group-target-cards {
+    display: flex;
+    width: 100%;
+    gap: 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 3px;
+    touch-action: pan-x;
+  }
+  .play-table[data-seat-topology="side-column"] .interaction-stage[data-stage="GROUP_RESOLUTION"] .group-target-scope[data-group-progress="proven"] .group-target-card {
+    flex: 0 0 min(136px, 42vw);
+    padding: 3px;
+  }
+  .play-table[data-seat-topology="side-column"] .interaction-stage[data-stage="GROUP_RESOLUTION"] .group-target-scope[data-group-progress="proven"] .group-target-portrait {
+    width: 28px;
+    height: 35px;
+  }
+}
 .play-table[data-seat-topology="side-column"] .hero-focus {
   display: grid;
   grid-template-areas: "portrait heading" "portrait identity" "portrait source" "portrait context";

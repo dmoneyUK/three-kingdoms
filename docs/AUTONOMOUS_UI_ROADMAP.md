@@ -729,6 +729,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   run #760 (`37454554676`); this feature push-triggered result is not yet
   observed.
 
+### UX2.8-AOE-MOBILE-TARGET-STRIP-DENSITY-01 — Compact mobile AOE markers
+
+- Proven Group/AOE Target Strips now use one-row horizontal compact markers at
+  narrow 390px Top Row and 480px Side Column widths, including short target
+  sets that previously retained large two-column cards. The change is visual
+  density only: authoritative participant status, viewer privacy, fixed seat
+  DOM, and the protected Hero Focus contract remain unchanged.
+- Local validation passed: build; focused compact-strip browser tests 5/5; the
+  focused active-current-effect plus protected `ui19.spec.mjs` Group/AOE
+  geometry slice 57/57; targeted ESLint; and `git diff --check`. The previous
+  feature SHA `41c7231` passed Actions run `37455806263`; this feature
+  push-triggered result is not yet observed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

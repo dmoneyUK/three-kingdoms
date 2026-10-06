@@ -44,6 +44,42 @@ test("AOE progress renders the explicit participant order without duplicating th
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 });
 
+for (const viewport of [
+  { width: 390, height: 844, count: 4, topology: "top-row" },
+  { width: 480, height: 900, count: 6, topology: "side-column" },
+]) {
+  test(`proven Group Target Strip uses compact markers at ${viewport.width}px ${viewport.topology}`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "group-observer", groupProgress: "valid" });
+    const stage = page.locator('[aria-label="Interaction Stage"][data-stage="GROUP_RESOLUTION"]');
+    const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
+    const cards = scope.locator(".group-target-card");
+    await expect(scope).toHaveAttribute("data-participant-density", viewport.count === 4 ? "medium" : "compact");
+    await expect(cards.first()).toBeVisible();
+    const geometry = await scope.evaluate((element) => {
+      const cardsElement = element.querySelector(".group-target-cards");
+      const firstCard = element.querySelector(".group-target-card");
+      const portrait = element.querySelector(".group-target-portrait");
+      const scopeRect = element.getBoundingClientRect();
+      const cardRect = firstCard?.getBoundingClientRect();
+      const portraitRect = portrait?.getBoundingClientRect();
+      return {
+        scrollWidth: cardsElement?.scrollWidth ?? 0,
+        clientWidth: cardsElement?.clientWidth ?? 0,
+        scopeRight: scopeRect.right,
+        cardWidth: cardRect?.width ?? 0,
+        portraitWidth: portraitRect?.width ?? 0,
+      };
+    });
+    expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
+    expect(geometry.scopeRight).toBeLessThanOrEqual(viewport.width);
+    expect(geometry.cardWidth).toBeLessThanOrEqual(140);
+    expect(geometry.portraitWidth).toBeLessThanOrEqual(30);
+    await expect(scope.locator('.group-target-card[data-participant-status="CURRENT"]').first()).toContainText("Current");
+    await expect(page.locator(".local-player-dock")).toBeVisible();
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+  });
+}
+
 test("AOE participant progress stays visible and compact for a 10-player child-frame continuation", async ({ page }) => {
   await loadFixture(page, { count: 10, width: 390, height: 844, state: "group-observer", groupProgress: "paused" });
   const stage = page.locator('[aria-label="Interaction Stage"][data-stage="DAMAGE"]');
