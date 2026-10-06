@@ -310,6 +310,24 @@ test("Interaction Stage presents the accepted public participant without becomin
   assert.match(ordinaryHtml, /class="hero-focus-portrait"[^>]*data-hero-id="zhao-yun"/);
   assert.doesNotMatch(ordinaryHtml, /button|data-hand|data-card|legalActions|providers/i, "Hero Focus renders no controls or private card data");
 
+  const negationSnapshot = (targetIds) => ({
+    ...createSnapshot({
+      stage: "NEGATION", effect: "Dismantle", targetIds, activeTargetIds: targetIds, currentParticipantId: "B",
+      decisionActorId: "B", activeResolverId: "A", participantRoles: {
+        sourceId: "A", originalTargetIds: targetIds, activeTargetIds: targetIds, currentParticipantId: "B",
+        decisionActorId: "B", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B"],
+      },
+    }),
+    reactionChain: { semantics: "PROVEN", interactionId: "focus-interaction", frameId: "focus-frame", nodes: [] },
+  });
+  const reactionRoot = (html) => html.match(/<li data-reaction-node="root">([\s\S]*?)<\/li>/)?.[1] ?? "";
+  const unaddressedNegationRoot = reactionRoot(renderStage(negationSnapshot([])));
+  assert.match(unaddressedNegationRoot, /Dismantle/);
+  assert.match(unaddressedNegationRoot, /Ma Chao/);
+  assert.doesNotMatch(unaddressedNegationRoot, /No proven target|→/, "an unproven target is omitted without placeholder copy");
+  const namedNegationRoot = reactionRoot(renderStage(negationSnapshot(["B"])));
+  assert.match(namedNegationRoot, /Ma Chao → Zhao Yun/, "proven target names remain visible");
+
   const sourceOwnedHtml = renderStage(createSnapshot({ currentParticipantId: "B", decisionActorId: "A", activeResolverId: "B", participantRoles: { sourceId: "A", originalTargetIds: ["B"], activeTargetIds: ["B"], currentParticipantId: "B", decisionActorId: "A", activeResolverId: "B", parentParticipantId: null, participantIds: ["A", "B"] } }, { decisionActorId: "A" }, "A"), "A");
   assert.match(sourceOwnedHtml, /data-hero-focus-player-id="B"/);
   assert.match(sourceOwnedHtml, /data-hero-focus-source-id="A"/);

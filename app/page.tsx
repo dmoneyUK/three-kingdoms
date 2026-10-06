@@ -843,7 +843,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
         {reactionChain.visible && reactionChain.root && reactionChain.active && <section className="reaction-chain" aria-label="Reaction Chain" data-reaction-chain="proven" data-reaction-interaction-id={reactionChain.interactionId ?? undefined}>
           <header><span>REACTION CHAIN</span></header>
           <ol>
-            <li data-reaction-node="root"><small>{isOpenNegationResponse ? "ORIGINAL EFFECT" : "ROOT EFFECT"}</small><b>{reactionChain.root.effect}</b><span>{reactionChain.root.source.name} → {reactionChain.root.targets.length ? reactionChain.root.targets.map((target) => target.name).join(", ") : "No proven target"}</span></li>
+            <li data-reaction-node="root"><small>{isOpenNegationResponse ? "ORIGINAL EFFECT" : "ROOT EFFECT"}</small><b>{reactionChain.root.effect}</b><span>{reactionChain.root.source.name}{reactionChain.root.targets.length ? ` → ${reactionChain.root.targets.map((target) => target.name).join(", ")}` : ""}</span></li>
             {reactionChain.negationNodes.map((node, index) => <li data-reaction-node="negation" key={`${node.actor.id ?? "unknown"}-${index}`} aria-label={`${node.actor.name} played ${node.cardKind}`}><small>NEGATION {index + 1}</small><b>{node.cardKind}</b><span>{node.actor.name} played this card.</span></li>)}
             <li data-reaction-node="active" data-reaction-relation={reactionChain.active.relation} data-negation-window-state={isOpenNegationResponse ? "open" : undefined}>
               <small>{isOpenNegationResponse ? "NEGATION WINDOW" : "ACTIVE RESPONSE"}</small>
