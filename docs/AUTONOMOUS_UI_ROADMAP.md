@@ -1056,6 +1056,24 @@ Only a proven regression or new Reviewer-approved design requirement does.
   were successful and `npm test` was still running. Reviewer acceptance is not
   claimed.
 
+### UX2.30-UX2-FINAL-INTEGRATION-RECHECK-01 — §12.9 representative gate
+
+- Re-ran the representative matrix from 16 focused browser specs: 209/209
+  passed across REST/Inspect/Preview, response/ACTIVE families, Group/AOE,
+  Steal/Dismantle, Borrowed Sword, skills/self-target, guidance, large Hand,
+  viewer switching, and 2/4/6/10-player topologies. Oath/Bumper Harvest pile
+  bounding-box non-overlap assertions passed at 390×640, 390×844, 480×900,
+  and 1440×900. Inspected fresh 390×844 and 1440×900 double-Negation captures;
+  Draw/Discard remain visible in the edge lane and clear of the causal spine.
+- This closes the Agent's §12.9 representative validation gate only; Reviewer
+  acceptance is not claimed. The UX2.29 audit found no confirmed external
+  selectable-card flow incorrectly forced to the modal, but did not directly
+  exercise Fanjian's source-owned anonymous-Hand path in a browser. UX2.31 is
+  the sole next task: add focused Fanjian Selectable Detail browser proof.
+- Exact pre-commit remote SHA `beca49a5c3f978a81830829529c7ceb1f8b9088f`
+  Actions run `37507856521` was `in_progress`; lint/build succeeded and browser
+  validation was running. Reviewer acceptance remains unclaimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
