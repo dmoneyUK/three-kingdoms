@@ -1789,6 +1789,7 @@
 .group-target-identity small { color: #aaa694; font: 8px/1.2 Arial; }
 .group-target-identity .ordered-target-number { color: #d9c28b; font: 700 7px/1.1 Arial; letter-spacing: .05em; }
 .group-target-status { width: fit-content; max-width: 100%; padding: 2px 4px; border: 1px solid #75897988; color: #d3d4c8 !important; font: 700 7px/1.15 Arial !important; overflow-wrap: anywhere; }
+.group-target-status[data-group-outcome-marker] { min-width: 18px; text-align: center; white-space: nowrap; }
 .group-target-card[data-participant-status="CURRENT"] .group-target-status,
 .hero-focus[data-group-participant-status="CURRENT"] .hero-focus-group-status { border-color: #f0c35e; background: #60471e; color: #fff0bd !important; }
 .group-target-card[data-participant-status="PAUSED"] .group-target-status,

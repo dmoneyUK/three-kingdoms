@@ -755,6 +755,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   Actions run `37456608951` **in_progress**; no result for this feature push is
   claimed.
 
+### UX2.10-AOE-MOBILE-OUTCOME-MARKERS-01 — Compact accessible AOE outcomes
+
+- Proven `Avoided`, `Damaged`, `Negated`, and `Defeated` Group outcomes
+  now use compact visual markers in the Target Strip (`✓`, `−♥`, `⊘`,
+  and `✕`) while retaining descriptive accessible names and authoritative
+  outcome data attributes. No damage amount, outcome, legality, or privacy
+  fact is inferred by the client.
+- Local validation passed: build; the four-outcome browser marker slice 4/4;
+  `room-safety-render` 19/19; the focused active-current-effect plus protected
+  `ui19.spec.mjs` Group/AOE slice 64/64; targeted ESLint; and
+  `git diff --check`. The pre-commit remote SHA `d4be592` had push-triggered
+  Actions run `37457008657` **in_progress**; no result for this feature push is
+  claimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

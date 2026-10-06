@@ -127,6 +127,28 @@ test("AOE progress gives no-longer-applicable targets a distinct status", async 
   await expect(noLonger.locator(".group-target-status")).toHaveAttribute("aria-label", "Status: Not applicable");
 });
 
+for (const outcome of [
+  ["avoided", "AVOIDED", "✓", "Avoided"],
+  ["damaged", "DAMAGED", "−♥", "Damaged"],
+  ["negated", "NEGATED", "⊘", "Negated"],
+  ["defeated", "DEFEATED", "✕", "Defeated"],
+]) {
+  test(`AOE ${outcome[1]} stays a compact accessible marker at 390px`, async ({ page }) => {
+    await loadFixture(page, { count: 5, width: 390, height: 844, state: "group-observer", groupProgress: outcome[0] });
+    const card = page.locator('[data-group-target-scope="original"][data-group-progress="proven"] .group-target-card').first();
+    const marker = card.locator(".group-target-status");
+    await expect(card).toHaveAttribute("data-participant-status", "RESOLVED");
+    await expect(card).toHaveAttribute("data-participant-outcome", outcome[1]);
+    await expect(marker).toHaveAttribute("data-group-outcome-marker", outcome[1]);
+    await expect(marker).toHaveAttribute("aria-label", `Status: Resolved; Outcome: ${outcome[3]}`);
+    await expect(marker).toHaveText(outcome[2]);
+    await expect(marker.locator('[aria-hidden="true"]')).toHaveText(outcome[2]);
+    await expect(card).not.toContainText(outcome[3]);
+    await expect(page.locator(".local-player-dock")).toBeVisible();
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+  });
+}
+
 test("AOE progress fails closed when the snapshot root identity or scope does not match", async ({ page }) => {
   await loadFixture(page, { count: 4, width: 390, state: "group-observer", groupProgress: "mismatch" });
   const stage = page.locator('[aria-label="Interaction Stage"][data-stage="GROUP_RESOLUTION"]');

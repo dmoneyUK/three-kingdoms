@@ -98,6 +98,10 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
         playerId,
         order: index + 1,
         status: playerId === currentParticipantId ? childFrame ? "PAUSED" : "CURRENT" : progressCase === "no-longer" && index === targetIds.length - 1 ? "NO_LONGER_APPLICABLE" : index < targetIds.indexOf(currentParticipantId) ? "RESOLVED" : "PENDING",
+        ...((index === 0 && progressCase === "avoided") ? { outcome: "AVOIDED" } : {}),
+        ...((index === 0 && progressCase === "damaged") ? { outcome: "DAMAGED" } : {}),
+        ...((index === 0 && progressCase === "negated") ? { outcome: "NEGATED" } : {}),
+        ...((index === 0 && progressCase === "defeated") ? { outcome: "DEFEATED" } : {}),
       })),
     } : null,
     reactionChain: negationNodeCount > 0 ? {

@@ -349,7 +349,7 @@ test("Interaction Stage presents the accepted public participant without becomin
   }, "C");
   assert.match(groupHtml, /data-hero-focus-player-id="C"[^>]*data-hero-focus-role="Target"/);
   assert.match(groupHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="AVOIDED"/);
-  assert.match(groupHtml, /aria-label="Status: Resolved; Outcome: Avoided">Avoided<\/span>/);
+  assert.match(groupHtml, /data-group-outcome-marker="AVOIDED"[^>]*aria-label="Status: Resolved; Outcome: Avoided"><span aria-hidden="true">✓<\/span><\/span>/);
   assert.doesNotMatch(groupHtml, /physicalCardId|legalActions|providers/i, "public outcome contains no response-card identity or local control data");
 
   const damagedHtml = renderStage({
@@ -363,7 +363,7 @@ test("Interaction Stage presents the accepted public participant without becomin
     },
   }, "C");
   assert.match(damagedHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="DAMAGED"/);
-  assert.match(damagedHtml, /aria-label="Status: Resolved; Outcome: Damaged">Damaged<\/span>/);
+  assert.match(damagedHtml, /data-group-outcome-marker="DAMAGED"[^>]*aria-label="Status: Resolved; Outcome: Damaged"><span aria-hidden="true">−♥<\/span><\/span>/);
 
   const negatedHtml = renderStage({
     ...groupSnapshot,
@@ -376,7 +376,7 @@ test("Interaction Stage presents the accepted public participant without becomin
     },
   }, "C");
   assert.match(negatedHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="NEGATED"/);
-  assert.match(negatedHtml, /aria-label="Status: Resolved; Outcome: Negated">Negated<\/span>/);
+  assert.match(negatedHtml, /data-group-outcome-marker="NEGATED"[^>]*aria-label="Status: Resolved; Outcome: Negated"><span aria-hidden="true">⊘<\/span><\/span>/);
 
   const defeatedHtml = renderStage({
     ...groupSnapshot,
@@ -389,7 +389,7 @@ test("Interaction Stage presents the accepted public participant without becomin
     },
   }, "C");
   assert.match(defeatedHtml, /data-participant-status="RESOLVED"[^>]*data-participant-outcome="DEFEATED"/);
-  assert.match(defeatedHtml, /aria-label="Status: Resolved; Outcome: Defeated">Defeated<\/span>/);
+  assert.match(defeatedHtml, /data-group-outcome-marker="DEFEATED"[^>]*aria-label="Status: Resolved; Outcome: Defeated"><span aria-hidden="true">✕<\/span><\/span>/);
 
   const ambiguousHtml = renderStage(createSnapshot({ targetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", participantIds: ["A", "B", "C"], participantRoles: { sourceId: "A", originalTargetIds: ["B", "C"], activeTargetIds: ["B", "C"], currentParticipantId: null, decisionActorId: "A", activeResolverId: "A", parentParticipantId: null, participantIds: ["A", "B", "C"] } }, { decisionActorId: "A" }, "A"));
   assert.doesNotMatch(ambiguousHtml, /data-hero-focus="true"/, "ambiguous multi-target state has no guessed Hero Focus");
