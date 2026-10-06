@@ -603,8 +603,9 @@ Only a proven regression or new Reviewer-approved design requirement does.
 - Browser coverage passed 19/19 for the target-card selector, 20/20 for the
   short-portrait Stage matrix, and 526/526 for the full local browser job.
   Targeted ESLint and `git diff --check` passed. The previous remote-head
-  Actions run `37393574566` failed in its browser job; the local combined
-  repair/feature change has not yet produced a new Actions result.
+  Actions run `37393574566` failed in its browser job; after the combined
+  repair/feature push at `0e2cc79`, Actions run `37398701721` was observed
+  in progress. No remote CI pass is claimed.
 - The CI repair corrects the 650x700 Group Stage Safe Zone overflow by
   compacting its read-only source card, and updates UI-19 expectations to the
   current fail-closed semantic and player-facing-label contracts. `ui19.spec.mjs`

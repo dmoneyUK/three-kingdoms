@@ -7,9 +7,9 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-`UX2.3-ACTIVE-TARGET-SHIFT-CURRENT-EFFECT-01` (`81ac72d`) is pushed. Its latest Actions run, `37393574566`, completed with the browser job failed; no CI pass is claimed.
+`UX2.3-ACTIVE-TARGET-SHIFT-CURRENT-EFFECT-01` (`81ac72d`) is pushed. Its Actions run `37393574566` failed in the browser job; that failure has been addressed in the next commit, with the short-screen Group Stage compacted and UI-19 assertions aligned to current fail-closed presentation.
 
-`UX2.4-SELECTABLE-DETAIL-OPAQUE-HAND-POSITIONS-01` is implemented locally together with the browser-CI repair. The full local browser job passed 526/526; Frost/selector coverage passed 19/19; the short-portrait matrix passed 20/20; targeted ESLint and `git diff --check` passed. The repair and feature are awaiting their combined push and new Actions result.
+`UX2.4-SELECTABLE-DETAIL-OPAQUE-HAND-POSITIONS-01` (`0e2cc79`) is pushed with that repair. Its Actions run `37398701721` is in progress; no CI pass is claimed. The full local browser job passed 526/526; Frost/selector coverage passed 19/19; the short-portrait matrix passed 20/20; targeted ESLint and `git diff --check` passed.
 
 ## Design checkpoint
 
