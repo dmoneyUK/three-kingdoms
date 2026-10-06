@@ -782,6 +782,18 @@ Only a proven regression or new Reviewer-approved design requirement does.
   SHA `d5bb7d5` had push-triggered Actions run `37457268458`
   **in_progress**; no result for this feature push is claimed.
 
+### UX2.12-AOE-MOBILE-COUNTER-NEGATION-01 — Counter-Negation branch continuity
+
+- Added measured Group/AOE counter-Negation coverage for two proven public
+  Negation nodes. At 390px, 480px, and 1440px the older node remains subdued,
+  the newest node is the sole gold branch head, the waiting node stays neutral,
+  and the root/Target Strip/Dock/privacy boundaries remain unchanged.
+- Local validation passed: build; focused counter/public Negation browser
+  coverage 8/8; the focused active-current-effect plus protected `ui19.spec.mjs`
+  Group/AOE slice 67/67; targeted ESLint; and `git diff --check`. The
+  pre-commit remote SHA `fb45d84` had push-triggered Actions run
+  `37457458894` **pending**; no result for this feature push is claimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

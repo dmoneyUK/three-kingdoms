@@ -749,6 +749,39 @@ for (const viewport of [
   });
 }
 
+for (const viewport of [
+  { width: 390, height: 844, count: 4 },
+  { width: 480, height: 900, count: 6 },
+  { width: 1440, height: 900, count: 4 },
+]) {
+  test(`Group counter-Negation keeps only the newest public head active at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "group-negation", negationHistory: "double" });
+    const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+    const chain = stage.locator('[data-reaction-chain="proven"]');
+    const negations = chain.locator('[data-reaction-node="negation"]');
+    await expect(chain.locator('[data-reaction-node="root"]')).toHaveCount(0);
+    await expect(negations).toHaveCount(2);
+    await expect(negations.nth(0)).toHaveAttribute("aria-label", "Player 1 played Negation");
+    await expect(negations.nth(1)).toHaveAttribute("aria-label", "Player 2 played Negation");
+    await expect(negations.nth(0)).toContainText("Player 1 played this card.");
+    await expect(negations.nth(1)).toContainText("Player 2 played this card.");
+    const branchStyles = await chain.evaluate((element) => [...element.querySelectorAll('[data-reaction-node="negation"], [data-reaction-node="active"]')].map((node) => getComputedStyle(node).borderTopColor));
+    expect(branchStyles).toEqual(["rgb(101, 125, 114)", "rgb(240, 195, 94)", "rgb(101, 125, 114)"]);
+    await expect(chain.locator('[data-reaction-node="active"]')).toContainText("Waiting for response...");
+    const geometry = await chain.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const nodes = [...element.querySelectorAll("li")].map((node) => node.getBoundingClientRect());
+      return { width: rect.width, height: rect.height, nodeRows: new Set(nodes.map((node) => Math.round(node.top))).size };
+    });
+    expect(geometry.width).toBeGreaterThan(0);
+    expect(geometry.height).toBeLessThanOrEqual(viewport.width <= 480 ? 90 : 140);
+    expect(geometry.nodeRows).toBe(1);
+    await expect(stage.locator('[data-group-target-scope="original"][data-group-progress="proven"] .group-target-card')).toHaveCount(3);
+    await expect(page.locator(".local-player-dock")).toBeVisible();
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+  });
+}
+
 test("Reaction Chain shows one proven Negation node and omits absent or malformed history", async ({ page }) => {
   await loadFixture(page, { count: 4, width: 480, height: 900, state: "active-negation-observer", negationHistory: "single" });
   let chain = page.locator('[data-reaction-chain="proven"]');
