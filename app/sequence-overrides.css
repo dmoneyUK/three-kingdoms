@@ -2673,6 +2673,19 @@
   }
 }
 
+/* In narrow 10-player layouts without a response timer, centre Exit above the
+   Stage instead of covering the top-right physical seat. */
+@media (max-width: 610px) {
+  .game-shell .play-table[data-seat-topology="side-column"]:not(:has(> .visible-countdown-response)):has(> .player-board[data-player-count="10"]) > .game-exit {
+    inset-inline-start: 50%;
+    inset-inline-end: auto;
+    transform: translateX(-50%);
+  }
+  .game-shell .play-table[data-seat-topology="side-column"]:not(:has(> .visible-countdown-response)):has(> .player-board[data-player-count="10"]) > .interaction-safe-zone {
+    inset-block-start: 50px;
+  }
+}
+
 /* UX2.3: reserve a clear slot for the global Exit control beside the timer. */
 .game-shell .play-table:has(> .visible-countdown-response) > .game-exit {
   inset-inline-end: 160px;

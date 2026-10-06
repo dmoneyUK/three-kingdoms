@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const VIEWPORTS = [320, 390, 480, 650];
+const VIEWPORTS = [320, 390, 480, 610, 620, 650];
 const PLAYER_COUNTS = [6, 10];
 
 async function loadFixture(page, { width, count }) {
@@ -30,6 +30,7 @@ async function readLayout(page) {
       pageWidth: document.documentElement.scrollWidth,
       safeZone: bounds(safeZone),
       dock: bounds(dock),
+      exit: bounds(table.querySelector(":scope > .game-exit")),
       stage: [stage, ...stage.querySelectorAll("*")].filter(visible).map(bounds),
       seats: [...board.querySelectorAll(":scope > [data-player-anchor]")].map((seat) => {
         const target = seat.querySelector(".opponent-hero-target");
@@ -80,7 +81,7 @@ for (const width of VIEWPORTS) {
       await loadFixture(page, { width, count });
       const result = await readLayout(page);
       const minimumWidth = width >= 480 ? 74 : 56;
-      const minimumHeight = width === 650 && count === 10 ? 100 : 108;
+      const minimumHeight = count === 10 && width >= 600 ? 100 : 108;
       expect(result.seats).toHaveLength(count - 1);
       expect(result.pageWidth, "seat sizing does not create horizontal page overflow").toBeLessThanOrEqual(width);
 
@@ -113,6 +114,15 @@ for (const width of VIEWPORTS) {
         for (const indicator of seat.equipment) {
           expect(indicator.x, `${seat.id} public equipment remains within the seat`).toBeGreaterThanOrEqual(seat.seat.x - 1);
           expect(indicator.right, `${seat.id} public equipment remains within the seat`).toBeLessThanOrEqual(seat.seat.right + 1);
+        }
+      }
+
+      if (count === 10) {
+        for (const seat of result.seats) {
+          expect(overlaps(result.exit, seat.seat), `${seat.id} is not covered by Exit`).toBe(false);
+        }
+        for (const stageElement of result.stage) {
+          expect(overlaps(result.exit, stageElement), "Exit does not obscure Interaction Stage content").toBe(false);
         }
       }
 
