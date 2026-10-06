@@ -7,7 +7,7 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-The previous remote head `527e7fe` failed Actions run `37411200534` at `npm test`. Reproduction identified `ReferenceError: withGroupParticipantStatus is not defined` in the AOE failure-damage continuation. The missing persisted participant-status transition is repaired alongside `UX2.6-AOE-PARTICIPANT-PROGRESS-STAGE-CONSUMER-01`; local `npm test` passed build, fast 213/213, and API 250/250. The combined change is ready for push; its Actions result is not yet available.
+The previous remote head `527e7fe` failed Actions run `37411200534` at `npm test` because the AOE failure-damage path called an undefined participant-status helper. The repair and `UX2.6-AOE-PARTICIPANT-PROGRESS-STAGE-CONSUMER-01` were pushed together as `f98ba4c`; local `npm test` passed build, fast 213/213, and API 250/250. Actions run `37414138268` for `f98ba4c` is `in_progress`; no CI pass is claimed.
 
 ## Design checkpoint
 

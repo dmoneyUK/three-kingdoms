@@ -700,9 +700,9 @@ Only a proven regression or new Reviewer-approved design requirement does.
   remote-head Actions run `37411200534` failed at `npm test` because the AOE
   failure-damage path called an undefined participant-status helper. That
   server transition is now implemented, and the exact local `npm test` command
-  passed build, fast 213/213, and API 250/250. `git diff --check` passed before
-  the final handoff update; this combined change is not yet pushed, so no new
-  Actions result is claimed.
+  passed build, fast 213/213, and API 250/250. The combined repair and UI task
+  were pushed as `f98ba4c`; Actions run `37414138268` is `in_progress`, so no
+  CI pass is claimed.
 
 ## Known deferred semantic gaps
 
