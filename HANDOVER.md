@@ -7,14 +7,14 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-At the pre-commit check, remote head `7236cf9d` had Actions run `37400533926` completed as failure in `npm run test:browser`; build and lint passed, and `npm test` was skipped. The failing assertions required internal `INTERACTION STAGE` / `HERO FOCUS` chrome contrary to §12.7.2. This delivery combines those player-facing assertion/presentation repairs with the active Steal/Dismantle migration.
+`UX2.4-SELECTABLE-DETAIL-PENDING-TARGET-CARD-HERO-FOCUS-01` was pushed as `aabb312`. Its predecessor run `37400533926` on `7236cf9d` failed in `npm run test:browser` on two stale expectations for internal `INTERACTION STAGE` / `HERO FOCUS` chrome; the combined feature change repaired those labels/assertions. The new Actions run `37404317662` for `aabb312` was `in_progress` at the latest check; no CI pass is claimed.
 
-Local validation passed: build; focused unit tests 6/6; focused browser regressions 11/11; full browser suite 535/535; targeted ESLint. The new push-triggered Actions result is not yet available; no CI pass is claimed.
+Local validation passed: build; focused unit tests 6/6; focused browser regressions 11/11; full browser suite 535/535; targeted ESLint; `git diff --check`.
 
 ## Design checkpoint
 
-Reviewed remote design blob `5157af29079cf03f86476b71bc58607a215d6b53`, including §§0.30, 0.65, 3B target redirection, 3C SELECTABLE DETAIL, §§10–11, and 12.3–12.9. SELECTABLE DETAIL may use only server-projected eligible objects; concealed positions remain anonymous and the existing picker remains the fallback when proof is incomplete.
+Reviewed remote design blob `5157af29079cf03f86476b71bc58607a215d6b53`, including §3C and §§12.3–12.9. Player-facing UI should not expose `HERO FOCUS`; Preview/Inspect remain independent local states and must preserve their existing selection and authoritative Stage continuity.
 
-## Current task — UX2.4-SELECTABLE-DETAIL-PENDING-TARGET-CARD-HERO-FOCUS-01
+## Next bounded task — UX2.7-PLAYER-FACING-PREVIEW-INSPECT-LABELS-01
 
-Migrate only the existing Steal/Dismantle `target_card` Pending from its separate modal into the proven external Hero Focus, consuming the actor-scoped `currentAction.targetCardSelection` projection. Keep Hand positions anonymous, show only projected public object IDs, preserve Local Dock confirmation and the existing `choose_target_card` zone/index-or-ID payload, and retain the current picker when the projection/focus proof is absent or invalid. Reconcile local choice on action revision/availability changes and do not extend this migration to trigger-based Retaliation or other selectable-detail flows.
+Remove the internal `HERO FOCUS` heading from the existing local Preview and opponent Inspect presentations while retaining their useful `PREVIEW TARGET` / `INSPECT` labels and all public details. Do not change target selection, actions, privacy, or Stage identity; add browser assertions for 390/480/1440px and Preview → Inspect → Preview continuity.
