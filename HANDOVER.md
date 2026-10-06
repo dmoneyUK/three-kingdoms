@@ -7,14 +7,14 @@ Product/UI behavior is defined by `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; exec
 
 ## Latest result and CI
 
-`CI-REPAIR-ROOM-SAFETY-STAGE-LABEL-ASSERTION-01` was pushed as `5e476d9`. Actions run `37405661888` for that SHA is `in_progress`; no CI pass is claimed. It repairs the sole failure in `37404719333` by replacing the obsolete `INTERACTION STAGE` text assertion with an accessible-name check and an assertion against visible architectural chrome.
+`CI-REPAIR-ROOM-SAFETY-STAGE-LABEL-ASSERTION-01` was pushed as `5e476d9`. Actions run `37405661888` completed successfully; it repairs the sole failure in `37404719333` by replacing the obsolete `INTERACTION STAGE` text assertion with an accessible-name check and an assertion against visible architectural chrome.
 
-The Steal/Dismantle delivery passed local build, focused unit tests 6/6, focused browser regressions 11/11, full browser suite 535/535, targeted ESLint, and `git diff --check`. Preview/Inspect copy passed local build, focused browser tests 14/14, targeted ESLint, and `git diff --check`. The CI-repair regression file passed locally: 19/19 tests.
+`UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01` now keeps the full server-selected ordered Group/AOE target scope separate from the single current participant. `remainingIds` remains continuation-only; checkpoint updates require matching causal-frame proof. Local build passed; focused API tests passed 48/48; targeted ESLint and `git diff --check` passed. The feature change has not yet been pushed, so it has no Actions result recorded.
 
 ## Design checkpoint
 
-Reviewed remote design blob `5157af29079cf03f86476b71bc58607a215d6b53`, including §12.7.2 and §§0.35–0.36, 3B, 3C, 12.6, and 12.8–12.9. Architectural headings are not player-facing copy; Group/AOE progress must use explicit server-projected participant data.
+Reviewed remote design blob `5157af29079cf03f86476b71bc58607a215d6b53`, including §§0.35–0.36, 0.51–0.52, 12.3–12.9. Group/AOE participant status and Reaction Chain history must be explicitly server-projected; never infer progress or causality from continuation tails, timeline order, HP, turn owner, or seat position.
 
-## Current task — UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01
+## Next task — UX2.6-AOE-EXPLICIT-PARTICIPANT-PROGRESS-01
 
-Have the authoritative Group/AOE start paths pass the complete ordered affected-player list into the causal root, and project the currently resolving participant separately as the single current target. Keep `remainingIds` as continuation input only; do not infer progress/order from it, add UI status labels, alter gameplay legality, or change viewer privacy. Add engine-backed coverage for initial Group, the next target, and nested Negation/Damage states.
+Add persisted, server-owned per-participant status for the Standard AOE family (Barbarian Invasion and Raining Arrows), then expose it in `PresentationV2.groupResolution` only when it matches the complete ordered root scope and causal frame. Track status at engine-owned transitions; do not derive it from `remainingIds`, target order, timeline, HP, turn owner, seats, or animation. This is a projection-only step: do not add player-facing progress UI, outcome summaries, Halberd changes, Reaction Chain history, or gameplay/legal-action changes. Cover initial response, participant advancement, nested Damage/Dying, and authoritative no-longer-applicable cases; malformed or incomplete status must fail closed.

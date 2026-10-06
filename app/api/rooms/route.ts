@@ -1722,10 +1722,45 @@ function groupResponse(pending: ResponsePending | null | undefined): { response:
   return { response: pending as GroupResponsePending, continuation: pending.continuation };
 }
 
-function groupResponseDecision(cardKind: GroupContinuation["cardKind"], sourceId: string, actorId: string, remainingIds: string[], requiredKind: GroupContinuation["requiredKind"], resumePhase: string, reason: string, deadline: number, heldCards: Card[] = [], resolutionId?: string, damageCards: Card[] = heldCards.slice(0, 1), physicalSuit?: Card["suit"]): CausalCreation<GroupResponsePending> {
-  const root = createCausalRoot({ stage: "GROUP_RESOLUTION", origin: { originSourceId: sourceId, originEffect: cardKind, originalTargetIds: remainingIds }, current: { currentSourceId: sourceId, currentEffect: cardKind, currentTargetIds: remainingIds, resolvingPlayerId: actorId } });
+function groupResponseDecision(
+  cardKind: GroupContinuation["cardKind"],
+  sourceId: string,
+  actorId: string,
+  orderedTargetIds: string[],
+  remainingIds: string[],
+  requiredKind: GroupContinuation["requiredKind"],
+  resumePhase: string,
+  reason: string,
+  deadline: number,
+  heldCards: Card[] = [],
+  resolutionId?: string,
+  damageCards: Card[] = heldCards.slice(0, 1),
+  physicalSuit?: Card["suit"],
+): CausalCreation<GroupResponsePending> {
+  const root = createCausalRoot({
+    stage: "GROUP_RESOLUTION",
+    origin: { originSourceId: sourceId, originEffect: cardKind, originalTargetIds: orderedTargetIds },
+    current: { currentSourceId: sourceId, currentEffect: cardKind, currentTargetIds: [actorId], resolvingPlayerId: actorId },
+  });
   const causal = root.context;
   return { value: { kind: "response", actorId, causal, requirement: { kind: requiredKind === "Attack" ? "attack" : "dodge", sourceId, actorId, context: requiredKind === "Attack" ? "barbarian_invasion" : undefined }, reason, deadline, ...(resolutionId ? { resolutionId } : {}), continuation: { kind: "group", cardKind, sourceId, remainingIds, requiredKind, resumePhase, heldCards, damageCards, causal, ...(physicalSuit ? { physicalSuit } : {}), sequenceStartCardId: damageCards[0]?.id ?? heldCards[0]?.id ?? "", ...(resolutionId ? { resolutionId } : {}) } }, createdEnvelope: root.envelope };
+}
+
+function groupResolutionEnvelopeForParticipant(envelope: CausalEnvelope | null, response: ResponsePending, continuation: GroupContinuation, actorId: string) {
+  const causal = response.causal ?? continuation.causal;
+  if (!envelope || !causal || envelope.interactionId !== causal.interactionId || envelope.activeFrameId !== causal.frameId) return envelope;
+  const frame = envelope.frames.find((candidate) => candidate.frameId === causal.frameId);
+  if (!frame || frame.stage !== "GROUP_RESOLUTION") return envelope;
+  const alreadyCurrent = frame.current.currentSourceId === continuation.sourceId
+    && frame.current.currentEffect === continuation.cardKind
+    && frame.current.currentTargetIds.length === 1
+    && frame.current.currentTargetIds[0] === actorId
+    && frame.current.resolvingPlayerId === actorId;
+  if (alreadyCurrent) return envelope;
+  return advanceCausalSemanticCheckpoint(envelope, causal.frameId, {
+    stage: "GROUP_RESOLUTION",
+    current: { currentSourceId: continuation.sourceId, currentEffect: continuation.cardKind, currentTargetIds: [actorId], resolvingPlayerId: actorId },
+  });
 }
 
 function duelResponseDecision(sourceId: string, targetId: string, opponentId: string, resumePhase: string, reason: string, deadline: number, damageCards?: Card[], wushuangPlayerId?: string, resumePlayerId?: string): CausalCreation<ResponsePending> {
@@ -2598,7 +2633,7 @@ async function applyGroupResponseOutcome(room: RoomRow, response: ResponsePendin
       const causalEnvelope = causalEnvelopeAtStage(room, response.causal, "GROUP_RESOLUTION", {
         currentSourceId: continuation.sourceId,
         currentEffect: continuation.cardKind,
-        currentTargetIds: continuation.remainingIds,
+        currentTargetIds: [actor.id],
         resolvingPlayerId: actor.id,
       });
       await causalRoomStateWrite(room.id, { phase: "response", pending: retry.pending, deck: judged.deck, discard: judged.discard, log: retry.log, causalEnvelope }).run();
@@ -3185,22 +3220,25 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
     await finishGroupStep(room, response, continuation, players, discard, log, writes);
     return;
   }
+  const parentEnvelope = createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json);
   if (continuation.cardKind === "SkyPiercingHalberdAttack") {
+    const groupEnvelope = groupResolutionEnvelopeForParticipant(parentEnvelope, response, continuation, actor.id);
+    const groupRoom = groupEnvelope ? { ...room, causal_envelope_json: JSON.stringify(groupEnvelope) } : room;
     const attack = continuation.heldCards?.length === 1 ? continuation.heldCards[0] : continuation.heldCards?.find(isAttackCard);
     const targeted = attackTargetedOptions(source, actor, [], players);
     if (targeted.length) {
       const declaration = attackDeclaration(source, actor, "halberd", continuation.heldCards ?? [], continuation.resumePhase, attack, continuation.causal).value;
       const presentation = addLogWithId(log, `${source.name}'s Attack-targeted abilities open for ${actor.name}.`);
-      await beginAttackTargeted(room, declaration, source, actor, discard, presentation.log, presentation.eventId, writes, [], response);
+      await beginAttackTargeted(groupRoom, declaration, source, actor, discard, presentation.log, presentation.eventId, writes, [], response);
       return;
     }
     const prevention = addPassiveAttackPreventionNotice(log, source, actor, attack);
     if (prevention) {
       log = prevention.log;
-      await finishGroupStep(room, response, continuation, players, discard, log, writes);
+      await finishGroupStep(groupRoom, response, continuation, players, discard, log, writes);
       return;
     }
-    writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: response, discard, log, causalEnvelope: createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json) }));
+    writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: response, discard, log, causalEnvelope: groupEnvelope }));
     if (writes.length) await db().batch(writes);
     await advanceGroup(room.id);
     return;
@@ -3209,13 +3247,13 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
   // turn owner, preserving the established ordered AOE response sequence.
   const responders = playersInNegationOrder(players, room.turn_seat ?? players.find((player) => player.id === continuation.sourceId)?.seat ?? actor.seat);
   if (!responders.length) {
-    writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: response, discard, log, causalEnvelope: createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json) }));
+    const groupEnvelope = groupResolutionEnvelopeForParticipant(parentEnvelope, response, continuation, actor.id);
+    writes.push(causalRoomStateWrite(room.id, { phase: "response", pending: response, discard, log, causalEnvelope: groupEnvelope }));
     if (writes.length) await db().batch(writes);
     await advanceGroup(room.id);
     return;
   }
   const cardName = groupCardName(continuation.cardKind);
-  const parentEnvelope = createdEnvelope ?? parseCausalEnvelope(room.causal_envelope_json);
   const negationBase: NegationContinuation = {
     kind: "negation",
     sourceId: continuation.sourceId,
@@ -3243,7 +3281,7 @@ async function beginGroupTarget(room: RoomRow, response: ResponsePending, contin
     })
     : null;
   const negationCausal = continuation.causal;
-  const negationEnvelope = sameFrameNegation ?? parentEnvelope;
+  const negationEnvelope = sameFrameNegation ?? groupResolutionEnvelopeForParticipant(parentEnvelope, response, continuation, actor.id);
   const negationContinuation: NegationContinuation = { ...negationBase, remainingIds: first.remainingIds, causal: negationCausal };
   if (!first.actor) {
     const settledLog = addLog(log, `No Negation responses remain for ${negationContinuation.responseTarget ?? negationContinuation.cardName}; resolving the effect.`);
@@ -5795,7 +5833,8 @@ export async function POST(request: Request) {
         hand = hand.filter((item) => item.id !== card.id);
         const requiredKind = card.kind === "BarbarianInvasion" ? "Attack" : "Dodge"; const cardName = card.kind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
         const presentation = addCardEventWithId(log, me.name, card, "All other players"); log = addLog(presentation.log, `${me.name} plays ${cardName}.`);
-        const groupCreation = groupResponseDecision(card.kind, me.id, targets[0].id, targets.slice(1).map((player) => player.id), requiredKind, liveRoom.phase, `Respond to ${cardName}: select ${requiredKind} or take 1 damage`, nextResponseDeadline(targets[0]), [card], latestResolutionId(log), [card]);
+        const orderedTargetIds = targets.map((player) => player.id);
+        const groupCreation = groupResponseDecision(card.kind, me.id, targets[0].id, orderedTargetIds, orderedTargetIds.slice(1), requiredKind, liveRoom.phase, `Respond to ${cardName}: select ${requiredKind} or take 1 damage`, nextResponseDeadline(targets[0]), [card], latestResolutionId(log), [card]);
         const pending = withPresentationBarrier(groupCreation.value, log, presentation.eventId);
         await beginStratagemUse(liveRoom, me, players, card, card, "all other players", targets[0].id, { kind: "group", pending }, hand, deck, discard, log, groupCreation.createdEnvelope);
       } else if (card.kind === "Lightning" && !playableAttack) {
@@ -5881,7 +5920,8 @@ export async function POST(request: Request) {
         if (!(halberdAttack && targets.length > 1)) discard.push(card);
         const attackPresentation = addCardEventWithId(log, me.name, card, targets.map((entry) => entry.name).join(", "), "play", true, playedAsAttack ? { playedAs: "attack" } : undefined); log = attackPresentation.log;
         if (halberdAttack && targets.length > 1) {
-          const groupCreation = groupResponseDecision("SkyPiercingHalberdAttack", me.id, target.id, targets.slice(1).map((entry) => entry.id), "Dodge", phaseAfterAttack(me), `Respond to Sky Piercing Halberd Attack: select Dodge or take 1 damage`, nextResponseDeadline(target), [card], undefined, [card], card.suit);
+          const orderedTargetIds = targets.map((entry) => entry.id);
+          const groupCreation = groupResponseDecision("SkyPiercingHalberdAttack", me.id, target.id, orderedTargetIds, orderedTargetIds.slice(1), "Dodge", phaseAfterAttack(me), `Respond to Sky Piercing Halberd Attack: select Dodge or take 1 damage`, nextResponseDeadline(target), [card], undefined, [card], card.suit);
           const pending = withPresentationBarrier(groupCreation.value, log, attackPresentation.eventId);
           log = addLog(log, `${me.name} uses their last hand card as Attack with Sky Piercing Halberd, targeting ${targets.map((entry) => entry.name).join(", ")}. ${target.name} resolves first.`);
           await beginGroupTarget(liveRoom, pending, pending.continuation, players, discard, log, [db.prepare("UPDATE players SET hand_json = ? WHERE id = ?").bind(JSON.stringify(hand), me.id), turnHistoryAttackWrite(liveRoom, me)], groupCreation.createdEnvelope);

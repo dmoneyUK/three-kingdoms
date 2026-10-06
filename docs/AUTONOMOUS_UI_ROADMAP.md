@@ -660,6 +660,17 @@ Only a proven regression or new Reviewer-approved design requirement does.
   run `37404317662` for `aabb312` was in progress at the pre-commit check; no
   result for this copy-only change is claimed.
 
+### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
+
+- Group/AOE causal roots now retain the complete server-selected target order,
+  separately from the one current participant. `remainingIds` remains
+  continuation input only; matching causal frames advance the current
+  participant through Negation, retry, Damage/Dying, and Halberd paths without
+  deriving progress from the continuation tail.
+- Local build passed; the focused engine-backed API set passed 48/48; targeted
+  ESLint and `git diff --check` passed. The feature push-triggered Actions result
+  will be recorded in `HANDOVER.md` when observed.
+
 ## Known deferred semantic gaps
 
 These are **not completed** and must remain fail-closed until authoritative

@@ -509,9 +509,16 @@ test("Sky Piercing Halberd expands a last-hand Attack to up to three ordered Dod
   setHand(hostPlayer.id, [card("Attack", "last")], 4, 4); setHand(alicePlayer.id, [card("Dodge", "alice")], 4, 4); setHand(bobPlayer.id, [], 4, 4); setHand(carolPlayer.id, [card("Dodge", "carol")], 4, 4); setTurn(game.code, hostPlayer.seat);
   const launched = await requestAndSettle("play_card", { code: game.code, token: host.token, cardId: "attack-last", targetIds: [alicePlayer.id, bobPlayer.id, carolPlayer.id] });
   assert.equal(launched.status, 200); assert.equal(launched.data.room.pendingGroup.cardKind, "SkyPiercingHalberdAttack"); assert.equal(launched.data.room.currentAction.actorId, alicePlayer.id); assert.equal(launched.data.room.currentAction.deadline, 0, "the human Halberd response waits for the visible-decision timer");
+  assert.deepEqual(launched.data.room.causalEnvelope.frames[0].origin.originalTargetIds, [alicePlayer.id, bobPlayer.id, carolPlayer.id]);
+  assert.deepEqual(launched.data.room.causalEnvelope.frames[0].current.currentTargetIds, [alicePlayer.id]);
+  assert.deepEqual(launched.data.room.presentationV2.groupResolution.targetIds, [alicePlayer.id, bobPlayer.id, carolPlayer.id]);
+  assert.equal(launched.data.room.presentationV2.groupResolution.currentParticipantId, alicePlayer.id);
   assert.deepEqual(discardIds(game.code), [], "the final-hand Attack remains held until every Halberd target has resolved");
   const aliceDodge = await requestAndSettle("respond", { code: game.code, token: alice.token, cardId: "dodge-alice" });
   assert.equal(aliceDodge.status, 200); assert.equal(aliceDodge.data.room.currentAction.actorId, carolPlayer.id, "the target without Dodge takes damage immediately and the next eligible seat becomes active");
+  assert.deepEqual(aliceDodge.data.room.causalEnvelope.frames[0].origin.originalTargetIds, [alicePlayer.id, bobPlayer.id, carolPlayer.id]);
+  assert.deepEqual(aliceDodge.data.room.causalEnvelope.frames[0].current.currentTargetIds, [carolPlayer.id]);
+  assert.equal(aliceDodge.data.room.presentationV2.groupResolution.currentParticipantId, carolPlayer.id);
   const bobDamage = { status: 200, data: { room: (await state(game.code, bob.token)).data } };
   assert.equal(bobDamage.status, 200); assert.equal(bobDamage.data.room.currentAction.actorId, carolPlayer.id); assert.equal(bobDamage.data.room.players.find((player) => player.id === bobPlayer.id).hp, 3);
   const carolDodge = await requestAndSettle("respond", { code: game.code, token: carol.token, cardId: "dodge-carol" });

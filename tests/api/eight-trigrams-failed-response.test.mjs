@@ -121,6 +121,8 @@ test("failed Eight Trigrams reopens the same Group/AOE Dodge actor before advanc
   assert.equal(failed.data.room.players.find((player) => player.id === target.id).hp, 4);
   assert.equal(failed.data.room.causalEnvelope?.interactionId, interactionId);
   assert.equal(failed.data.room.causalEnvelope?.checkpoint.stage, "GROUP_RESOLUTION");
+  assert.deepEqual(failed.data.room.causalEnvelope?.frames[0].origin.originalTargetIds, [target.id, bob.id, carol.id]);
+  assert.deepEqual(failed.data.room.causalEnvelope?.frames[0].current.currentTargetIds, [target.id]);
   const afterFailurePending = storedPending(game.code);
   assert.equal(afterFailurePending.continuation.kind, "group");
   assert.equal(afterFailurePending.continuation.sourceId, source.id);
