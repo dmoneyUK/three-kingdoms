@@ -742,6 +742,19 @@ Only a proven regression or new Reviewer-approved design requirement does.
   feature SHA `41c7231` passed Actions run `37455806263`; this feature
   push-triggered result is not yet observed.
 
+### UX2.9-AOE-MOBILE-NEGATION-BRANCH-01 — Compact public Group Negation branch
+
+- Proven Group/AOE Negation now keeps the authoritative Group Target Strip in
+  place and presents only the public Negation branch plus neutral waiting copy;
+  the duplicated Reaction Chain root is omitted because the Stage's root Action
+  card remains the causal context. Private responder identity, provider data,
+  and Local Player Dock controls remain separate and unchanged.
+- Local validation passed: build; focused active-current-effect plus protected
+  `ui19.spec.mjs` Group/AOE browser coverage 60/60; targeted ESLint; and
+  `git diff --check`. The pre-commit remote SHA `3843ef7` had push-triggered
+  Actions run `37456608951` **in_progress**; no result for this feature push is
+  claimed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,

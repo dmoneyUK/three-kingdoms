@@ -684,6 +684,36 @@ test("Reaction Chain renders linked public Negation nodes in order without expos
   expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
 });
 
+for (const viewport of [
+  { width: 390, height: 844, count: 4 },
+  { width: 480, height: 900, count: 6 },
+  { width: 1440, height: 900, count: 4 },
+]) {
+  test(`Group Negation uses a compact public branch at ${viewport.width}px`, async ({ page }) => {
+    await loadFixture(page, { ...viewport, state: "group-negation", negationHistory: "single" });
+    const stage = page.locator('.interaction-stage[data-stage="NEGATION"]');
+    const scope = stage.locator('[data-group-target-scope="original"][data-group-progress="proven"]');
+    const chain = stage.locator('[data-reaction-chain="proven"]');
+    await expect(stage).toHaveAttribute("data-group-negation", "true");
+    await expect(scope.locator(".group-target-card")).toHaveCount(3);
+    await expect(chain).toHaveAttribute("aria-label", "AOE Negation Response");
+    await expect(chain.locator('[data-reaction-node="root"]')).toHaveCount(0);
+    await expect(chain.locator('[data-reaction-node="negation"]')).toHaveCount(1);
+    await expect(chain.locator('[data-reaction-node="active"]')).toContainText("Waiting for response...");
+    await expect(stage).not.toContainText("Player 3 played this card.");
+    const geometry = await chain.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const nodes = [...element.querySelectorAll("li")].map((node) => node.getBoundingClientRect());
+      return { width: rect.width, height: rect.height, nodeRows: new Set(nodes.map((node) => Math.round(node.top))).size };
+    });
+    expect(geometry.width).toBeGreaterThan(0);
+    expect(geometry.height).toBeLessThanOrEqual(viewport.width <= 480 ? 90 : 140);
+    expect(geometry.nodeRows).toBe(1);
+    await expect(page.locator(".local-player-dock")).toBeVisible();
+    expect(await page.evaluate(() => window.__browserActions)).toEqual([]);
+  });
+}
+
 test("Reaction Chain shows one proven Negation node and omits absent or malformed history", async ({ page }) => {
   await loadFixture(page, { count: 4, width: 480, height: 900, state: "active-negation-observer", negationHistory: "single" });
   let chain = page.locator('[data-reaction-chain="proven"]');

@@ -1859,6 +1859,28 @@
   column-gap: 10px;
   row-gap: 4px;
 }
+
+.interaction-stage[data-group-negation="true"] .reaction-chain-group {
+  margin-top: 4px;
+  padding: 4px;
+}
+.interaction-stage[data-group-negation="true"] .reaction-chain-group > header { display: none; }
+.interaction-stage[data-group-negation="true"] .reaction-chain-group ol {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.interaction-stage[data-group-negation="true"] .reaction-chain-group li {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px 4px;
+}
+.interaction-stage[data-group-negation="true"] .reaction-chain-group li[data-reaction-node="negation"] {
+  border-color: #657d72;
+}
+.interaction-stage[data-group-negation="true"] .reaction-chain-group li[data-reaction-node="active"] {
+  border-color: #c99d55;
+}
 .play-table[data-seat-topology="side-column"] .hero-focus-body { display: contents; }
 .play-table[data-seat-topology="side-column"] .hero-focus-portrait { grid-area: portrait; width: 90px; height: 113px; align-self: start; }
 .play-table[data-seat-topology="side-column"] .hero-focus-heading { grid-area: heading; flex-wrap: wrap; }
