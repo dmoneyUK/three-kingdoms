@@ -3,7 +3,7 @@
 Repository: `dmoneyUK/three-kingdoms`  
 Working branch: `ux-v2`
 
-This file defines **how** autonomous UI/Layout work is executed. Product/UI behavior belongs in `docs/UX_V2_INTERACTION_STAGE_DESIGN.md`; the active task belongs in `HANDOVER.md`.
+This file defines **how** autonomous UI/Layout work is executed. During UX2 refinement, current product/UI behavior belongs in `docs/UX2-refine.md`; the active task belongs in `HANDOVER.md`.
 
 ## 1. Activation and authority
 
@@ -13,12 +13,12 @@ Use these roles:
 
 - direct user instruction — current scope, pause/resume, explicit decisions;
 - `AGENTS.md` — repository-wide execution and architecture rules;
-- UX V2 design — product/UI design authority;
+- `docs/UX2-refine.md` — current UX2 refinement design authority;
 - `HANDOVER.md` — current bounded task and current execution status;
 - this workflow — execution cadence;
 - roadmap/history — historical evidence only.
 
-The design document is not a task queue. A newly added design requirement does not silently replace a task already in progress. If the current task remains compatible, finish it; if it directly conflicts, stop source edits and replan from the latest design and direct user instructions. Ask the user only when the conflict leaves a material product decision unresolved.
+The current refinement design document is not a task queue. A newly added design requirement does not silently replace a task already in progress. If the current task remains compatible, finish it; if it directly conflicts, stop source edits and replan from the latest `docs/UX2-refine.md` and direct user instructions. Ask the user only when the conflict leaves a material product decision unresolved.
 
 The Reviewer may contribute findings through the design document but does not gate authorized autonomous UI implementation. Do not wait for separate Reviewer approval or claim human acceptance unless it was explicitly reported.
 
@@ -31,7 +31,7 @@ Before source or test edits:
 3. Read `AGENTS.md`.
 4. Read the complete current `HANDOVER.md`.
 5. Read this workflow.
-6. Review the current remote UX V2 design:
+6. Review the current remote UX2 refinement design at `docs/UX2-refine.md`:
    - compare it with the design revision recorded in HANDOVER;
    - inspect every intervening design change;
    - read the sections cited by the active task.
@@ -105,7 +105,7 @@ In particular:
 - opponent seat DOM remains fixed;
 - visual work must not invent gameplay semantics.
 
-The UX V2 design document owns detailed product behavior and measurements. Do not duplicate a second design specification here.
+`docs/UX2-refine.md` owns current UX2 refinement behavior and measurements. Do not duplicate a second design specification here.
 
 ## 8. Next-task planning gate
 
@@ -114,7 +114,7 @@ Only plan a next task when the current task has closed or is explicitly blocked.
 At the planning boundary:
 
 1. Safely synchronize `ux-v2`.
-2. Review the latest remote UX V2 design and compare it with the revision recorded in HANDOVER.
+2. Review the latest remote `docs/UX2-refine.md` and compare it with the revision recorded in HANDOVER.
 3. Inspect relevant current code/tests.
 4. Consult roadmap/history only for evidence, not authorization.
 5. Choose one candidate only if all are true:
