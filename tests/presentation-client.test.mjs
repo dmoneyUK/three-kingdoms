@@ -53,14 +53,15 @@ function snapshot(overrides = {}) {
   };
 }
 
-function groupProgressSnapshot({ child = false, outcome = null } = {}) {
+function groupProgressSnapshot({ child = false, outcome = null, cardKind = "RainingArrows" } = {}) {
   const targetIds = ["C", "B", "E", "D"];
+  const effect = cardKind === "BarbarianInvasion" ? "Barbarian Invasion" : "Raining Arrows";
   const sceneValue = scene({
     rootFrameId: "group-frame",
     activeFrameId: child ? "damage-frame" : "group-frame",
     parentFrameId: child ? "group-frame" : null,
     stage: child ? "DAMAGE" : "GROUP_RESOLUTION",
-    effect: "Raining Arrows",
+    effect,
     targetIds,
     currentParticipantId: "B",
     activeTargetIds: ["B"],
@@ -76,7 +77,7 @@ function groupProgressSnapshot({ child = false, outcome = null } = {}) {
   return snapshot({
     interaction: sceneValue,
     groupParticipantProgress: {
-      cardKind: "RainingArrows",
+      cardKind,
       resolutionSemantics: "GROUP",
       interactionId: sceneValue.interactionId,
       groupFrameId: sceneValue.rootFrameId,
@@ -247,7 +248,7 @@ test("adapter carries only a proven Raining Arrows Avoided outcome to the public
   assert.deepEqual(malformed.groupParticipantProgress, [], "an active participant cannot already have a completed outcome");
 });
 
-test("adapter carries only a proven resolved Raining Arrows Damaged outcome", () => {
+test("adapter carries only proven resolved Group damage outcomes", () => {
   const view = buildPresentationClientView(groupProgressSnapshot({ outcome: "DAMAGED" }), "D");
   assert.equal(view.groupParticipantProgress[0].outcome, "DAMAGED");
   const stage = buildInteractionStageView(view, resolveDisplayName);
@@ -255,10 +256,10 @@ test("adapter carries only a proven resolved Raining Arrows Damaged outcome", ()
   const source = projectMediumSourceForViewer(stage, focus, "D");
   assert.equal(projectGroupTargetScopeForViewer(stage, focus, source, "D")?.players[0].outcome, "DAMAGED");
 
-  const wrongCard = buildPresentationClientView(snapshot({
-    groupParticipantProgress: { ...view.groupResolution, cardKind: "BarbarianInvasion" },
-  }), "D");
-  assert.deepEqual(wrongCard.groupParticipantProgress, [], "damage outcomes are limited to the proven Raining Arrows Group");
+  const barbarian = buildPresentationClientView(groupProgressSnapshot({ cardKind: "BarbarianInvasion", outcome: "DAMAGED" }), "D");
+  assert.equal(barbarian.groupParticipantProgress[0].outcome, "DAMAGED");
+  const barbarianAvoided = buildPresentationClientView(groupProgressSnapshot({ cardKind: "BarbarianInvasion", outcome: "AVOIDED" }), "D");
+  assert.deepEqual(barbarianAvoided.groupParticipantProgress, [], "Barbarian Invasion cannot claim an Avoided outcome");
 
   const activeOutcome = buildPresentationClientView(snapshot({
     groupParticipantProgress: {

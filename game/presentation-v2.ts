@@ -1,6 +1,6 @@
 import type { CurrentAction } from "./protocol";
 import type { CausalEnvelope, CausalFrame } from "./presentation-causality";
-import type { GroupParticipantProgressOutcome, GroupParticipantProgressStatus, GroupResolutionSemantics, NegationHistoryRecord } from "./pending";
+import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics, type NegationHistoryRecord } from "./pending";
 
 export type PresentationV2Event = {
   id: string;
@@ -608,7 +608,8 @@ function groupParticipantProgress(
     const status = stored?.status;
     if (playerId !== targetIds[index] || typeof status !== "string" || !validStatuses.has(status as GroupParticipantProgressStatus)) return null;
     const outcome = stored?.outcome;
-    if (outcome !== undefined && ((outcome !== "AVOIDED" && outcome !== "DAMAGED") || values.cardKind !== "RainingArrows" || resolutionSemantics !== "GROUP" || status !== "RESOLVED")) return null;
+    if (outcome !== undefined && ((outcome !== "AVOIDED" && outcome !== "DAMAGED")
+      || !isGroupParticipantProgressOutcomeAllowed(values.cardKind, resolutionSemantics, status as GroupParticipantProgressStatus, outcome))) return null;
     participants.push({ playerId, order: index + 1, status: status as GroupParticipantProgressStatus, ...(outcome === "AVOIDED" || outcome === "DAMAGED" ? { outcome } : {}) });
   }
 

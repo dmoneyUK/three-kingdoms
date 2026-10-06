@@ -292,6 +292,36 @@ test("AOE participant progress fails closed on scope, identity, ordering, or sta
     { playerId: "C", order: 2, status: "PENDING" },
     { playerId: "D", order: 3, status: "RESOLVED", outcome: "DAMAGED" },
   ]);
+  const barbarianFrame = {
+    ...frame,
+    origin: { ...frame.origin, originEffect: "BarbarianInvasion" },
+    current: { ...frame.current, currentEffect: "BarbarianInvasion" },
+  };
+  const barbarianEnvelope = { ...causalEnvelope, frames: [barbarianFrame] };
+  const barbarianProgress = {
+    ...progress,
+    participants: [progress.participants[0], progress.participants[1], { playerId: "D", status: "RESOLVED", outcome: "DAMAGED" }],
+  };
+  const barbarian = {
+    ...pending,
+    continuation: { ...pending.continuation, cardKind: "BarbarianInvasion", requiredKind: "Attack", participantProgress: barbarianProgress },
+  };
+  assert.deepEqual(project(barbarian, barbarianEnvelope).groupResolution?.participantProgress, [
+    { playerId: "B", order: 1, status: "CURRENT" },
+    { playerId: "C", order: 2, status: "PENDING" },
+    { playerId: "D", order: 3, status: "RESOLVED", outcome: "DAMAGED" },
+  ]);
+  const barbarianAvoided = {
+    ...barbarian,
+    continuation: {
+      ...barbarian.continuation,
+      participantProgress: {
+        ...barbarianProgress,
+        participants: [progress.participants[0], progress.participants[1], { playerId: "D", status: "RESOLVED", outcome: "AVOIDED" }],
+      },
+    },
+  };
+  assert.equal(project(barbarianAvoided, barbarianEnvelope).groupResolution?.participantProgress, null, "Barbarian Invasion cannot claim an Avoided outcome");
   assert.equal(project(pending).groupResolution?.resolutionSemantics, "GROUP");
   for (const invalidParticipant of [
     { playerId: "B", status: "CURRENT", outcome: "AVOIDED" },

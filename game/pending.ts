@@ -52,6 +52,17 @@ export type GroupContinuation = {
   /** Server-only marker consumed when the matching paused participant resolves. */
   pendingDamageParticipantId?: string;
 } & CausalFields;
+export function isGroupParticipantProgressOutcomeAllowed(
+  cardKind: GroupContinuation["cardKind"],
+  resolutionSemantics: GroupResolutionSemantics,
+  status: GroupParticipantProgressStatus,
+  outcome: GroupParticipantProgressOutcome,
+): boolean {
+  if (resolutionSemantics !== "GROUP" || status !== "RESOLVED") return false;
+  if (outcome === "AVOIDED") return cardKind === "RainingArrows";
+  if (outcome === "DAMAGED") return cardKind === "RainingArrows" || cardKind === "BarbarianInvasion";
+  return false;
+}
 export type DuelContinuation = { kind: "duel"; sourceId: string; targetId: string; opponentId: string; resumePhase: string; resumePlayerId?: string; damageCards?: Card[]; requiredAttackCount?: number; wushuangPlayerId?: string } & CausalFields;
 export type NegationHistoryRecord = {
   nodeId: string;

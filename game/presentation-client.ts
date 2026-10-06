@@ -1,4 +1,4 @@
-import type { GroupParticipantProgressStatus } from "./pending";
+import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressStatus } from "./pending";
 import { CARD_DEFINITIONS } from "./cards";
 import type { PresentationSnapshot, PresentationSnapshotGroupParticipantProgress, PresentationSnapshotGroupProgress } from "./presentation-snapshot";
 import type {
@@ -257,7 +257,7 @@ function groupProgressForSnapshot(
   for (let index = 0; index < scene.targetIds.length; index++) {
     const participant = progress.participants[index];
     if (!participant || participant.playerId !== scene.targetIds[index] || participant.order !== index + 1 || !validStatuses.has(participant.status)) return null;
-    if (participant.outcome !== undefined && ((participant.outcome !== "AVOIDED" && participant.outcome !== "DAMAGED") || progress.cardKind !== "RainingArrows" || resolutionSemantics !== "GROUP" || participant.status !== "RESOLVED")) return null;
+    if (participant.outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed(progress.cardKind, resolutionSemantics, participant.status, participant.outcome)) return null;
     participants.push({ playerId: participant.playerId, order: participant.order, status: participant.status, ...(participant.outcome === "AVOIDED" || participant.outcome === "DAMAGED" ? { outcome: participant.outcome } : {}) });
   }
 

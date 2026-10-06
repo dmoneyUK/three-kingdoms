@@ -688,6 +688,20 @@ Only a proven regression or new Reviewer-approved design requirement does.
   run #756 (`37430172672`); this task's push-triggered result is not yet
   observed.
 
+### UX2.7-AOE-BARBARIAN-INVASION-DAMAGE-OUTCOME-01 — Proven AOE damage
+
+- Barbarian Invasion now shares the proven positive-damage continuation path:
+  `Damaged` appears only after the exact Group participant resumes as resolved.
+  A satisfied Attack has no damage outcome; pending Damage stays outcome-free;
+  the private continuation marker is not projected. `AVOIDED` remains limited
+  to Raining Arrows, and damage outcomes require `GROUP` semantics and a resolved
+  participant at every projection boundary.
+- Local validation passed: build; focused PresentationV2/Snapshot/client/render
+  tests 111/111; engine-backed API tests 27/27; targeted ESLint; and
+  `git diff --check`. The exact pre-change remote head `f976f3c` passed Actions
+  run #757 (`37432494493`); this task's push-triggered result is not yet
+  observed.
+
 ### UX2.6-AOE-ORDERED-SCOPE-AND-CURRENT-PARTICIPANT-01 — Group/AOE scope proof
 
 - Group/AOE causal roots now retain the complete server-selected target order,
@@ -805,7 +819,8 @@ These remain incomplete; where authoritative projection does not exist,
 behavior must continue to fail closed:
 
 - Additional public AOE outcomes beyond the proven Raining Arrows `Avoided` and
-  `Damaged` results, and unrelated Group semantics, remain deferred.
+  Raining Arrows / Barbarian Invasion `Damaged` results, and unrelated Group
+  semantics, remain deferred.
 - Cross-frame and post-settlement Reaction Chain history beyond the active
   Negation continuation's proven linked nodes.
 - Settlement/transition history that would require new authoritative public

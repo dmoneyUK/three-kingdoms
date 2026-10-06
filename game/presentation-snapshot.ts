@@ -1,5 +1,5 @@
 import type { CurrentAction } from "./protocol";
-import type { GroupParticipantProgressOutcome, GroupParticipantProgressStatus, GroupResolutionSemantics } from "./pending";
+import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgressOutcome, type GroupParticipantProgressStatus, type GroupResolutionSemantics } from "./pending";
 import type {
   PresentationInteractionScene,
   PresentationReactionChain,
@@ -154,7 +154,7 @@ function groupParticipantProgressFor(
   for (let index = 0; index < targetIds.length; index++) {
     const participant = progress[index];
     if (!participant || participant.playerId !== targetIds[index] || participant.order !== index + 1 || !validStatuses.has(participant.status)) return null;
-    if (participant.outcome !== undefined && ((participant.outcome !== "AVOIDED" && participant.outcome !== "DAMAGED") || group.cardKind !== "RainingArrows" || resolutionSemantics !== "GROUP" || participant.status !== "RESOLVED")) return null;
+    if (participant.outcome !== undefined && !isGroupParticipantProgressOutcomeAllowed(group.cardKind, resolutionSemantics, participant.status, participant.outcome)) return null;
     copied.push({ playerId: participant.playerId, order: participant.order, status: participant.status, ...(participant.outcome === "AVOIDED" || participant.outcome === "DAMAGED" ? { outcome: participant.outcome } : {}) });
   }
 

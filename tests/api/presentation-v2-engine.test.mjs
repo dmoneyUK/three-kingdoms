@@ -680,11 +680,23 @@ test("FIX15 Barbarian Invasion uses the same Group Damage child boundary", { tim
   assert.equal(first.currentAction.requirement, "attack", JSON.stringify(first));
   const answered = await requestAndSettle("respond", { code: game.code, token: targetMember.token, cardId: targetAttack.id, preserveResponse: true });
   assert.equal(answered.status, 200, JSON.stringify(answered.data));
+  assert.deepEqual(answered.data.room.presentationV2.groupResolution?.participantProgress, [
+    { playerId: target.id, order: 1, status: "RESOLVED" },
+    { playerId: damageTarget.id, order: 2, status: "CURRENT" },
+    { playerId: finalTarget.id, order: 3, status: "PENDING" },
+  ], "a satisfied Attack resolves without a damage outcome");
   await passNegationWindows(game.code, game.members);
 
   const damage = await requestAndSettle("decline_response", { code: game.code, token: damageMember.token, preserveResponse: true });
   assert.equal(damage.status, 200, JSON.stringify(damage.data));
   assert.equal(damage.data.room.currentAction.kind, "trigger", JSON.stringify(damage.data.room));
+  assert.deepEqual(damage.data.room.presentationV2.groupResolution?.participantProgress.find(({ playerId }) => playerId === damageTarget.id), {
+    playerId: damageTarget.id, order: 2, status: "PAUSED",
+  }, "effective damage remains outcome-free during the open Damage continuation");
+  const damagePending = authoritativePending(game.code);
+  assert.equal(damagePending.continuation.resumeGroup.continuation.pendingDamageParticipantId, damageTarget.id);
+  assert.equal(JSON.stringify(damage.data.room.presentationV2).includes("pendingDamageParticipantId"), false);
+  assert.equal(damage.data.room.actionRevision.includes("pendingDamageParticipantId"), false);
   assert.equal(damage.data.room.causalEnvelope.frames.length, 2);
   const child = damage.data.room.causalEnvelope.frames.find((frame) => frame.parentFrameId);
   assert.ok(child);
@@ -701,6 +713,11 @@ test("FIX15 Barbarian Invasion uses the same Group Damage child boundary", { tim
   assert.equal(resumed.data.room.currentAction.kind, "response", JSON.stringify(resumed.data.room));
   assert.equal(resumed.data.room.currentAction.actorId, finalTarget.id);
   assert.equal(resumed.data.room.causalEnvelope.activeFrameId, child.parentFrameId);
+  assert.deepEqual(resumed.data.room.presentationV2.groupResolution?.participantProgress, [
+    { playerId: target.id, order: 1, status: "RESOLVED" },
+    { playerId: damageTarget.id, order: 2, status: "RESOLVED", outcome: "DAMAGED" },
+    { playerId: finalTarget.id, order: 3, status: "CURRENT" },
+  ], "Damaged appears only once the matching participant resumes as resolved");
 });
 
 test("FIX14 malformed Group-to-Damage storage never reconstructs a child authority", { timeout: 30_000 }, async () => {

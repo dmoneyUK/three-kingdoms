@@ -1803,12 +1803,18 @@ function satisfiedGroupParticipantOutcome(continuation: GroupContinuation): Grou
   return continuation.cardKind === "RainingArrows" && continuation.requiredKind === "Dodge" ? "AVOIDED" : undefined;
 }
 
+function supportsGroupDamageOutcome(continuation: GroupContinuation): boolean {
+  return continuation.participantProgress?.resolutionSemantics === "GROUP"
+    && ((continuation.cardKind === "RainingArrows" && continuation.requiredKind === "Dodge")
+      || (continuation.cardKind === "BarbarianInvasion" && continuation.requiredKind === "Attack"));
+}
+
 function withPendingGroupDamageOutcome(response: GroupResponsePending | undefined, participantId: string): GroupResponsePending | undefined {
   const group = groupResponse(response);
   const continuation = group?.continuation;
   const progress = continuation?.participantProgress;
   const participant = progress?.participants.find(({ playerId }) => playerId === participantId);
-  if (!group || continuation.cardKind !== "RainingArrows" || continuation.requiredKind !== "Dodge"
+  if (!group || !supportsGroupDamageOutcome(continuation)
     || progress?.resolutionSemantics !== "GROUP" || participant?.status !== "PAUSED"
     || !continuation.causal || continuation.causal.interactionId !== progress.interactionId
     || continuation.causal.frameId !== progress.groupFrameId) return response;
@@ -1818,9 +1824,9 @@ function withPendingGroupDamageOutcome(response: GroupResponsePending | undefine
 function pendingGroupDamageOutcomeFor(continuation: GroupContinuation, participantId: string): GroupParticipantProgressOutcome | undefined {
   const progress = continuation.participantProgress;
   return continuation.pendingDamageParticipantId === participantId
-    && continuation.cardKind === "RainingArrows"
-    && continuation.requiredKind === "Dodge"
-    && progress?.resolutionSemantics === "GROUP"
+    && supportsGroupDamageOutcome(continuation)
+    && continuation.causal?.interactionId === progress?.interactionId
+    && continuation.causal?.frameId === progress?.groupFrameId
     && progress.participants.some((participant) => participant.playerId === participantId && participant.status === "PAUSED")
     ? "DAMAGED"
     : undefined;

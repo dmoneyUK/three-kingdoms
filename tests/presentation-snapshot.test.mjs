@@ -36,13 +36,14 @@ function scene(overrides = {}) {
   };
 }
 
-function groupScene({ child = false, currentParticipantId = "B" } = {}) {
+function groupScene({ child = false, currentParticipantId = "B", effect = "Raining Arrows" } = {}) {
   const targetIds = ["B", "C", "D"];
   return scene({
     rootFrameId: "group-frame",
     activeFrameId: child ? "damage-frame" : "group-frame",
     parentFrameId: child ? "group-frame" : null,
     stage: child ? "DAMAGE" : "GROUP_RESOLUTION",
+    effect,
     targetIds,
     currentParticipantId,
     activeTargetIds: [currentParticipantId],
@@ -221,6 +222,39 @@ test("snapshot preserves only a resolved Raining Arrows Damaged outcome", () => 
     viewerId: "C",
   });
   assert.equal(malformed.groupParticipantProgress, null, "unresolved damage is not a public outcome");
+});
+
+test("snapshot preserves resolved Barbarian Invasion damage but rejects avoidance", () => {
+  const interaction = groupScene({ currentParticipantId: "C", effect: "Barbarian Invasion" });
+  const base = groupResolution(interaction, {
+    cardKind: "BarbarianInvasion",
+    effect: "Barbarian Invasion",
+    currentParticipantId: "C",
+    participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "DAMAGED" },
+      { playerId: "C", order: 2, status: "CURRENT" },
+      { playerId: "D", order: 3, status: "PENDING" },
+    ],
+  });
+  const projected = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: base },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "barbarian-damage-outcome",
+    viewerId: "C",
+  });
+  assert.equal(projected.groupParticipantProgress?.cardKind, "BarbarianInvasion");
+  assert.equal(projected.groupParticipantProgress?.participants[0].outcome, "DAMAGED");
+
+  const malformed = composePresentationSnapshot({
+    presentationV2: { ...presentation(interaction), groupResolution: { ...base, participantProgress: [
+      { playerId: "B", order: 1, status: "RESOLVED", outcome: "AVOIDED" },
+      ...base.participantProgress.slice(1),
+    ] } },
+    currentAction: { kind: "response", actorId: "C" },
+    actionRevision: "barbarian-avoidance-outcome",
+    viewerId: "C",
+  });
+  assert.equal(malformed.groupParticipantProgress, null, "Barbarian Invasion cannot claim an Avoided outcome");
 });
 
 test("snapshot fails closed for malformed or absent public causal proof", () => {
