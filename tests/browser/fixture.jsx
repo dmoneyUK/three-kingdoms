@@ -36,13 +36,13 @@ function semanticSnapshot({ state, playerIds, stage, sourceId, targetIds, origin
   const hasRootProgress = Boolean(progressCase || bumperHarvestProgressCase);
   const activeFrameId = state.startsWith("oath-negation") || state === "active-negation-open" ? rootFrameId : childFrame || !hasRootProgress ? `browser-${state}-active` : rootFrameId;
   const checkpointId = `browser-${state}-checkpoint`;
-  const negationNodeCount = negationHistoryCase === "single" || negationHistoryCase === "single-unknown-actor" ? 1 : negationHistoryCase ? 2 : 0;
+  const negationNodeCount = negationHistoryCase === "single" || negationHistoryCase === "single-unknown-actor" ? 1 : negationHistoryCase === "long" ? 5 : negationHistoryCase ? 2 : 0;
   const negationNodes = Array.from({ length: negationNodeCount }, (_, index) => ({
     nodeId: `browser-${state}-negation-${index + 1}`,
     interactionId,
     frameId: activeFrameId,
     causedByNodeId: index === 0 ? null : negationHistoryCase === "invalid-link" ? "missing-predecessor" : `browser-${state}-negation-${index}`,
-    actorId: index === 0 ? negationHistoryCase === "single-unknown-actor" ? "missing-player" : "p1" : "p2",
+    actorId: negationHistoryCase === "single-unknown-actor" && index === 0 ? "missing-player" : index % 2 === 0 ? "p1" : "p2",
     kind: "CARD_PLAY",
     object: { type: "card", cardKind: "Negation" },
   }));
