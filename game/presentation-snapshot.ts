@@ -4,6 +4,7 @@ import { isGroupParticipantProgressOutcomeAllowed, type GroupParticipantProgress
 import type {
   PresentationBumperHarvestProgress,
   PresentationInteractionScene,
+  PresentationNegationSettlement,
   PresentationOathRecipientScope,
   PresentationReactionChain,
   PresentationReactionChainNode,
@@ -68,8 +69,8 @@ export type PresentationSnapshot = {
   reactionChain: PresentationReactionChain | null;
   decision: PresentationSnapshotDecision | null;
   localControl: PresentationSnapshotLocalControl;
-  /** Reserved until a durable public settlement occurrence is accepted. */
-  settlement: null;
+  /** Explicit public Negation disposition; legacy final-result hints never populate it. */
+  settlement: PresentationNegationSettlement | null;
   /** Reserved until durable public transition occurrences are accepted. */
   transitionEvents: readonly [];
 };
@@ -89,6 +90,14 @@ const REST_BOUNDARY: PresentationStableBoundary = {
   decisionActorId: null,
 };
 
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function nonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
+}
+
 function isProvenScene(scene: PresentationInteractionScene | null): scene is PresentationInteractionScene {
   return Boolean(
     scene?.semantics === "PROVEN"
@@ -100,6 +109,28 @@ function isProvenScene(scene: PresentationInteractionScene | null): scene is Pre
       && scene.presentationRevision >= 0
       && scene.stage,
   );
+}
+
+function provenNegationSettlement(value: PresentationNegationSettlement | null | undefined): PresentationNegationSettlement | null {
+  if (!value || value.semantics !== "PROVEN"
+    || value.outcome !== "ROOT_CANCELLED" && value.outcome !== "ROOT_RESTORED"
+    || !nonEmptyString(value.eventId) || !nonEmptyString(value.interactionId) || !nonEmptyString(value.rootFrameId)
+    || !nonEmptyString(value.checkpointId) || !nonNegativeInteger(value.presentationRevision)
+    || !nonEmptyString(value.resolutionId) || !CARD_KINDS.includes(value.rootCardKind)
+    || !nonEmptyString(value.sourceId) || !nonEmptyString(value.targetId)) return null;
+  return {
+    semantics: "PROVEN",
+    outcome: value.outcome,
+    eventId: value.eventId,
+    interactionId: value.interactionId,
+    rootFrameId: value.rootFrameId,
+    checkpointId: value.checkpointId,
+    presentationRevision: value.presentationRevision,
+    resolutionId: value.resolutionId,
+    rootCardKind: value.rootCardKind,
+    sourceId: value.sourceId,
+    targetId: value.targetId,
+  };
 }
 
 function identityFor(scene: PresentationInteractionScene): PresentationSnapshotIdentity {
@@ -370,7 +401,7 @@ export function composePresentationSnapshot(input: PresentationSnapshotInput): P
       actorId: input.currentAction?.actorId ?? null,
       entitled: Boolean(input.viewerId && input.currentAction?.actorId === input.viewerId),
     },
-    settlement: null,
+    settlement: provenNegationSettlement(input.presentationV2.negationSettlement),
     transitionEvents: [],
   };
 }

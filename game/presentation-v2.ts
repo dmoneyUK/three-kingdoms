@@ -16,6 +16,24 @@ export type PresentationV2Event = {
   finalResult?: boolean;
   presentation?: boolean;
   judgement?: boolean;
+  negationSettlement?: unknown;
+};
+
+export type PresentationNegationSettlementProof = {
+  semantics: "PROVEN";
+  outcome: "ROOT_CANCELLED" | "ROOT_RESTORED";
+  interactionId: string;
+  rootFrameId: string;
+  checkpointId: string;
+  presentationRevision: number;
+  resolutionId: string;
+  rootCardKind: CardKind;
+  sourceId: string;
+  targetId: string;
+};
+
+export type PresentationNegationSettlement = PresentationNegationSettlementProof & {
+  eventId: string;
 };
 
 export type PresentationV2Input = {
@@ -166,6 +184,7 @@ export type PresentationV2 = {
   interactionScene: PresentationInteractionScene | null;
   dyingBarrier: PresentationDyingBarrier | null;
   reactionChain: PresentationReactionChain | null;
+  negationSettlement: PresentationNegationSettlement | null;
   oathRecipientScope: PresentationOathRecipientScope | null;
   bumperHarvestProgress: PresentationBumperHarvestProgress | null;
   groupResolution: {
@@ -960,6 +979,52 @@ function reactionChainFor(
   return { semantics: "PROVEN", interactionId: scene.interactionId, frameId: scene.activeFrameId, rootCard, nodes };
 }
 
+function negationSettlementFor(
+  timeline: readonly PresentationV2Event[],
+  envelope: CausalEnvelope | null,
+  pending: unknown | null,
+): PresentationNegationSettlement | null {
+  const pendingItem = record(pending);
+  const pendingContinuation = record(pendingItem?.continuation);
+  if (pendingItem?.kind === "response" && pendingContinuation?.kind === "negation") return null;
+  const event = [...timeline].reverse().find((candidate) => candidate.negationSettlement !== undefined);
+  if (!event || event.type !== "message" || event.presentation === false || event.importance !== "essential"
+    || !event.id || !event.resolutionId || !envelope) return null;
+
+  const value = record(event.negationSettlement);
+  if (!value || value.semantics !== "PROVEN"
+    || value.outcome !== "ROOT_CANCELLED" && value.outcome !== "ROOT_RESTORED"
+    || typeof value.interactionId !== "string" || !value.interactionId
+    || typeof value.rootFrameId !== "string" || !value.rootFrameId
+    || typeof value.checkpointId !== "string" || !value.checkpointId
+    || !Number.isInteger(value.presentationRevision) || (value.presentationRevision as number) < 0
+    || typeof value.resolutionId !== "string" || value.resolutionId !== event.resolutionId
+    || typeof value.sourceId !== "string" || !value.sourceId
+    || typeof value.targetId !== "string" || !value.targetId
+    || typeof value.rootCardKind !== "string" || !CARD_KINDS.includes(value.rootCardKind as CardKind)
+    || value.interactionId !== envelope.interactionId
+    || (value.presentationRevision as number) > envelope.presentationRevision) return null;
+
+  const root = envelope.frames.find((frame) => frame.frameId === value.rootFrameId);
+  if (!root || (root.parentFrameId !== undefined && root.parentFrameId !== null)
+    || root.origin.originSourceId !== value.sourceId
+    || root.origin.originalTargetIds.length !== 1 || root.origin.originalTargetIds[0] !== value.targetId) return null;
+
+  return {
+    semantics: "PROVEN",
+    outcome: value.outcome,
+    interactionId: value.interactionId,
+    rootFrameId: value.rootFrameId,
+    checkpointId: value.checkpointId,
+    presentationRevision: value.presentationRevision as number,
+    resolutionId: value.resolutionId,
+    rootCardKind: value.rootCardKind as CardKind,
+    sourceId: value.sourceId,
+    targetId: value.targetId,
+    eventId: event.id,
+  };
+}
+
 function singleTargetNegationRootCardKind(effect: Record<string, unknown>, sourceId: string, targetId: string): CardKind | null {
   const effectTargetMatches = (value: unknown) => value === targetId;
   switch (effect.kind) {
@@ -1082,6 +1147,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
   const projectedGroupParticipantProgress = groupParticipantProgress(envelope, group, groupValues, interactionScene);
   const dyingBarrier = dyingBarrierFor(envelope, input.pending);
   const reactionChain = reactionChainFor(envelope, input.pending, interactionScene, projectedBumperHarvestProgress);
+  const negationSettlement = negationSettlementFor(input.timeline, envelope, input.pending);
   // The typed interactionScene below is the causal authority. These legacy
   // context objects intentionally retain Pending-first kind/target shapes for
   // existing consumers; they are descriptive compatibility data and must not
@@ -1109,6 +1175,7 @@ export function projectPresentationV2(input: PresentationV2Input): PresentationV
     interactionScene,
     dyingBarrier,
     reactionChain,
+    negationSettlement,
     oathRecipientScope,
     bumperHarvestProgress: projectedBumperHarvestProgress,
     groupResolution: groupCardKind ? groupPresentation(interactionScene, groupValues, projectedGroupParticipantProgress) : null,

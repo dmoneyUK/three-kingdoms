@@ -5,12 +5,12 @@ Mode: `AUTONOMOUS UI RUN`
 
 ## Latest result and CI
 
-UX2.REFINE tasks 1–6 are implemented. Task 6 extends the public Negation branch through counter-Negation, compacts older nodes, and keeps only the newest response active. Focused browser checks: 19 passed across 390×844, 480×900, and 1440×900, covering stable Source/root/Target geometry, compact history, Stage/Dock/Guidance containment, overflow, and fail-closed actor proof. Targeted ESLint and `git diff --check` passed. Before this task commit, Actions run `37547916778` for exact current remote base `53a1429223e8ee4a1fba3d095749a8f770e06a25` was `in_progress`; no failure observed. Proceeding without waiting per direct user instruction.
+UX2.REFINE tasks 1–7 are implemented. Task 7 adds a typed, viewer-equal single-target Negation disposition to the public snapshot for root cancellation/restoration, bound to the proven interaction/root/resolution; legacy text/final-result flags and malformed identity fail closed. Validation: snapshot + PresentationV2 tests 48/48; `presentation-v2-engine.test.mjs` 33/33 including both settlement outcomes; `npm run build`; targeted ESLint and `git diff --check` passed. Before Task 7 commit, Actions run `37548238667` for exact base SHA `4cdabe38d34230e1bffd36b11b9f513bafb74a44` was `in_progress`, with no failure observed; proceeding without waiting per direct user instruction.
 
 ## Design checkpoint
 
-Re-fetched and re-read current `docs/UX2-refine.md`; blob `b4a26be8dc293bfb1f2996821e68a6de75338fcc`. Task 6 remains compatible with §§2.11 and 2.19; latest additions in §§3–4 are recorded for future planning.
+Re-fetched and re-read current `docs/UX2-refine.md`; blob `b4a26be8dc293bfb1f2996821e68a6de75338fcc`. Task 7 addresses §2.12 authority only; Stage rendering/settlement transition remains open.
 
 ## Next task
 
-`UX2.REFINE-NEGATION-SETTLEMENT-AUTHORITY-01` — implement one explicit, viewer-equal public proof for single-target Negation settlement that distinguishes root cancellation from root restoration. Bind it to authoritative interaction/root/resolution identity; do not infer outcome from logs, timeline order, HP, or client state. Preserve privacy and fail closed when proof is absent. Prove both outcomes and stale/mismatched identity handling with focused projection/browser tests; this task must not change gameplay rules.
+`UX2.REFINE-NEGATION-SETTLEMENT-STAGE-01` — consume the typed settlement proof in the public Stage: for `ROOT_CANCELLED`, collapse the branch and show only a brief compact `⊘` on the root before exiting the interaction; for `ROOT_RESTORED`, collapse the branch and restore the root as the active head while the authoritative root action continues. Keep Source/root/Target geometry stable and fail closed without the typed proof. Prove both states at 390×844, 480×900, and wide with Stage/Dock/Guidance containment, ≤2 CSS px anchor movement, and no overflow; use the existing presentation lifecycle rather than guessed timing or inferred outcomes.

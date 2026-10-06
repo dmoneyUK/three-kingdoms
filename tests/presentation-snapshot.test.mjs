@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { composePresentationSnapshot } from "../game/presentation-snapshot.ts";
+import { projectPresentationV2 } from "../game/presentation-v2.ts";
 
 function scene(overrides = {}) {
   return {
@@ -118,6 +119,60 @@ test("snapshot composes proven identity and public scene while keeping CurrentAc
   assert.equal(waiting.localControl.entitled, false);
   assert.equal(acting.settlement, null);
   assert.deepEqual(acting.transitionEvents, []);
+});
+
+test("single-target Negation settlement requires a typed, root-bound public occurrence", () => {
+  const envelope = {
+    version: 1,
+    interactionId: "interaction-negation",
+    frames: [{
+      frameId: "root-negation-frame", parentFrameId: null, stage: "NEGATION",
+      origin: { originSourceId: "A", originEffect: "Dismantle", originalTargetIds: ["B"] },
+      current: { currentSourceId: "A", currentEffect: "Dismantle", currentTargetIds: ["B"], resolvingPlayerId: "B" },
+    }],
+    activeFrameId: "root-negation-frame",
+    checkpoint: { checkpointId: "settlement-checkpoint", frameId: "root-negation-frame", stage: "NEGATION" },
+    presentationRevision: 5,
+  };
+  const proof = {
+    semantics: "PROVEN", outcome: "ROOT_CANCELLED", interactionId: "interaction-negation",
+    rootFrameId: "root-negation-frame", checkpointId: "settlement-checkpoint", presentationRevision: 5,
+    resolutionId: "resolution-negation", rootCardKind: "Dismantle", sourceId: "A", targetId: "B",
+  };
+  const event = {
+    id: "negation-settlement-event", type: "message", message: "root disposition",
+    resolutionId: "resolution-negation", importance: "essential", negationSettlement: proof,
+  };
+  const projected = projectPresentationV2({ pending: null, currentAction: null, actionRevision: "settled", timeline: [event], causalEnvelope: envelope });
+  assert.deepEqual(projected.negationSettlement, { ...proof, eventId: event.id });
+  const local = composePresentationSnapshot({ presentationV2: projected, currentAction: null, actionRevision: "settled", viewerId: "A" });
+  const observer = composePresentationSnapshot({ presentationV2: projected, currentAction: null, actionRevision: "other", viewerId: "C" });
+  assert.deepEqual(local.settlement, { ...proof, eventId: event.id });
+  assert.deepEqual(observer.settlement, local.settlement, "public settlement is viewer-equal");
+  assert.equal(JSON.stringify(local.settlement).includes("physical"), false, "settlement exposes no physical card identity");
+
+  for (const mismatch of [
+    { event: { ...event, resolutionId: "different-resolution" } },
+    { envelope: { ...envelope, interactionId: "different-interaction" } },
+    { proof: { ...proof, rootFrameId: "different-root" } },
+    { proof: { ...proof, sourceId: "different-source" } },
+    { proof: { ...proof, targetId: "different-target" } },
+  ]) {
+    const invalidEvent = { ...event, ...(mismatch.event ?? {}), negationSettlement: mismatch.proof ?? proof };
+    const invalidEnvelope = mismatch.envelope ?? envelope;
+    assert.equal(projectPresentationV2({ pending: null, currentAction: null, actionRevision: "settled", timeline: [invalidEvent], causalEnvelope: invalidEnvelope }).negationSettlement, null);
+  }
+
+  const legacyFinalResult = projectPresentationV2({
+    pending: null, currentAction: null, actionRevision: "settled",
+    timeline: [{ ...event, negationSettlement: undefined, finalResult: true }], causalEnvelope: envelope,
+  });
+  assert.equal(legacyFinalResult.negationSettlement, null, "legacy result flags and text cannot manufacture Negation outcome");
+  const openNegation = projectPresentationV2({
+    pending: { kind: "response", continuation: { kind: "negation" } }, currentAction: null, actionRevision: "open",
+    timeline: [event], causalEnvelope: envelope,
+  });
+  assert.equal(openNegation.negationSettlement, null, "an open Negation decision cannot expose a stale settlement");
 });
 
 test("snapshot forwards only identity- and ordered-scope-coherent Standard AOE progress", () => {

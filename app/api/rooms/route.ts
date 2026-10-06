@@ -24,7 +24,7 @@ import { canTargetCharacter } from "../../../game/capabilities/targeting";
 import { isWithinRange } from "../../../game/capabilities/range";
 import { resolveDamageModifiers, type DamageCause } from "../../../game/capabilities/damage-modifiers";
 import { attackWasUsed, recordAttackForTurn, turnHistoryFor } from "../../../game/turn-history";
-import { projectPresentationV2 } from "../../../game/presentation-v2";
+import { projectPresentationV2, type PresentationNegationSettlementProof } from "../../../game/presentation-v2";
 import { composePresentationSnapshot } from "../../../game/presentation-snapshot";
 import { oathRecipientIds } from "../../../game/oath";
 import { parseCausalEnvelope, type CausalEnvelope } from "../../../game/presentation-causality";
@@ -35,7 +35,7 @@ export const runtime = "edge";
 
 type TargetCardZone = "hand" | "equipment" | "judgement";
 type PresentationImportance = "essential" | "informational";
-type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean };
+type PresentationMeta = { resolutionId?: string; importance?: PresentationImportance; finalResult?: boolean; playedAs?: "attack" | "dodge" | "peach"; effectNotice?: boolean; judgement?: boolean; initialDeal?: boolean; negationSettlement?: PresentationNegationSettlementProof };
 type RoomRow = { id: string; code: string; host_player_id: string; status: string; max_players: number; created_at: number; last_activity_at: number | null; turn_seat: number | null; phase: string | null; deck_json: string | null; discard_json: string | null; log_json: string | null; pending_json: string | null; skill_state_json: string | null; causal_envelope_json: string | null };
 type Hero = HeroDefinition;
 type PlayerRow = { id: string; room_id: string; name: string; token_hash: string; seat: number; role: string | null; ready: number; hero: string | null; hp: number | null; max_hp: number | null; hero_options_json: string | null; hand_json: string | null; judgement_json: string | null; equipment_json: string | null; alive: number; connected_at: number };
@@ -610,7 +610,7 @@ function freshDecision<T extends { readyAfterEventId?: string }>(pending: T, log
 }
 
 function presentationMeta(log: string[], meta: PresentationMeta | undefined, defaultImportance: PresentationImportance) {
-  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}) };
+  return { resolutionId: meta?.resolutionId ?? latestResolutionId(log), importance: meta?.importance ?? defaultImportance, ...(meta?.finalResult ? { finalResult: true } : {}), ...(meta?.playedAs ? { playedAs: meta.playedAs } : {}), ...(meta?.effectNotice ? { effectNotice: true } : {}), ...(meta?.judgement ? { judgement: true } : {}), ...(meta?.initialDeal ? { initialDeal: true } : {}), ...(meta?.negationSettlement ? { negationSettlement: meta.negationSettlement } : {}) };
 }
 function addTriggeredEffectNotice(log: string[], actor: string, label: string) {
   return addLogWithId(log, `${actor} resolves an optional reaction with ${label.replace(/^Use\s+/, "")}.`, undefined, { effectNotice: true });
@@ -632,6 +632,99 @@ function addCardGroupEvent(log: string[], player: string, cards: Card[], action:
 function addCardGroupEventWithId(log: string[], player: string, cards: Card[], action: "discard" | "reveal" | "play", presentation = true, target = player, message?: string, meta?: PresentationMeta) {
   const eventId = crypto.randomUUID();
   return { log: cards.length ? [...log.slice(-199), `@cards:${JSON.stringify({ id: eventId, player, target, cards, action, presentation, ...presentationMeta(log, { ...meta, resolutionId: meta?.resolutionId ?? crypto.randomUUID() }, "essential"), ...(message ? { message } : {}) })}`] : log, eventId };
+}
+
+function singleTargetNegationRootKind(pending: NegationContinuation): Card["kind"] | null {
+  const effect = pending.effect;
+  const sourceId = pending.sourceId;
+  const targetId = pending.effectTargetId;
+  switch (effect.kind) {
+    case "draw_two": return sourceId === targetId ? "DrawTwo" : null;
+    case "dismantle": return effect.targetId === targetId ? "Dismantle" : null;
+    case "steal": return effect.targetId === targetId ? "Steal" : null;
+    case "duel": {
+      const duel = effect.pending.continuation;
+      return effect.pending.kind === "response" && duel.kind === "duel" && duel.sourceId === sourceId && duel.targetId === targetId ? "Duel" : null;
+    }
+    case "overindulgence": return effect.targetId === targetId ? "Overindulgence" : null;
+    case "lightning": return effect.targetId === targetId ? "Lightning" : null;
+    case "rations_depleted": return effect.targetId === targetId ? "RationsDepleted" : null;
+    case "borrowed_sword": return effect.targetId === targetId ? "BorrowedSword" : null;
+    default: return null;
+  }
+}
+
+function negationSettlementProof(
+  pending: NegationContinuation,
+  envelope: CausalEnvelope | null,
+  outcome: PresentationNegationSettlementProof["outcome"],
+): PresentationNegationSettlementProof | undefined {
+  const causal = pending.causal;
+  const history = pending.negationHistory;
+  const rootCardKind = singleTargetNegationRootKind(pending);
+  if (!causal || !envelope || !history?.length || !pending.resolutionId || !pending.rootCardKind || pending.rootCardKind !== rootCardKind
+    || pending.negated !== (outcome === "ROOT_CANCELLED")
+    || causal.interactionId !== envelope.interactionId || causal.frameId !== envelope.activeFrameId
+    || envelope.checkpoint.frameId !== causal.frameId || envelope.checkpoint.stage !== "NEGATION") return undefined;
+  const root = envelope.frames.find((frame) => frame.frameId === causal.frameId);
+  if (!root || root.stage !== "NEGATION" || root.parentFrameId !== undefined && root.parentFrameId !== null
+    || root.origin.originSourceId !== pending.sourceId || root.origin.originEffect !== pending.cardName
+    || root.origin.originalTargetIds.length !== 1 || root.origin.originalTargetIds[0] !== pending.effectTargetId
+    || root.current.currentSourceId !== pending.sourceId || root.current.currentEffect !== pending.cardName
+    || root.current.currentTargetIds.length !== 1 || root.current.currentTargetIds[0] !== pending.effectTargetId) return undefined;
+
+  const nodeIds = new Set<string>();
+  const physicalCardIds = new Set<string>();
+  let previousNodeId: string | null = null;
+  for (const rawNode of history as unknown[]) {
+    if (!rawNode || typeof rawNode !== "object" || Array.isArray(rawNode)) return undefined;
+    const node = rawNode as { nodeId?: unknown; interactionId?: unknown; frameId?: unknown; causedByNodeId?: unknown; actorId?: unknown; physicalCardId?: unknown; kind?: unknown };
+    if (typeof node.nodeId !== "string" || !node.nodeId || node.interactionId !== causal.interactionId || node.frameId !== causal.frameId
+      || node.causedByNodeId !== previousNodeId || !node.actorId || !node.physicalCardId || node.kind !== "NEGATION_CARD"
+      || typeof node.actorId !== "string" || typeof node.physicalCardId !== "string"
+      || nodeIds.has(node.nodeId) || physicalCardIds.has(node.physicalCardId)) return undefined;
+    nodeIds.add(node.nodeId);
+    physicalCardIds.add(node.physicalCardId);
+    previousNodeId = node.nodeId;
+  }
+
+  return {
+    semantics: "PROVEN",
+    outcome,
+    interactionId: causal.interactionId,
+    rootFrameId: root.frameId,
+    checkpointId: envelope.checkpoint.checkpointId,
+    presentationRevision: envelope.presentationRevision,
+    resolutionId: pending.resolutionId,
+    rootCardKind: pending.rootCardKind,
+    sourceId: pending.sourceId,
+    targetId: pending.effectTargetId,
+  };
+}
+
+function ensureNegationResolutionEvent(log: string[], pending: NegationContinuation, envelope: CausalEnvelope | null) {
+  const message = `No Negation responses remain for ${pending.responseTarget ?? pending.cardName}; resolving the effect.`;
+  const proof = negationSettlementProof(pending, envelope, "ROOT_RESTORED");
+  let matchingIndex = -1;
+  for (let index = log.length - 1; index >= 0; index--) {
+    if (!log[index]?.startsWith("@event:")) continue;
+    try {
+      const event = JSON.parse(log[index].slice(7)) as { message?: unknown; resolutionId?: unknown; negationSettlement?: unknown };
+      if (event.message === message && (!pending.resolutionId || event.resolutionId === pending.resolutionId)) {
+        matchingIndex = index;
+        if (proof && !event.negationSettlement) {
+          const updated = { ...event, resolutionId: proof.resolutionId, importance: "essential", negationSettlement: proof };
+          const next = [...log];
+          next[index] = `@event:${JSON.stringify(updated)}`;
+          return next;
+        }
+        if (event.negationSettlement && proof && JSON.stringify(event.negationSettlement) === JSON.stringify(proof)) return log;
+        break;
+      }
+    } catch { /* Ignore malformed legacy events. */ }
+  }
+  if (matchingIndex >= 0) return log;
+  return addLog(log, message, undefined, proof ? { resolutionId: proof.resolutionId, importance: "essential", negationSettlement: proof } : undefined);
 }
 function addDiscardEvent(log: string[], player: string, cards: Card[]) { return addCardGroupEvent(log, player, cards, "discard"); }
 function drawCards(deck: Card[], discard: Card[], count: number, log: string[]) {
@@ -2392,13 +2485,15 @@ async function resolveDeferredStratagem(roomId: string, pending: NegationContinu
   const rows = await db().prepare("SELECT * FROM players WHERE room_id = ? ORDER BY seat").bind(roomId).all<PlayerRow>();
   const players = rows.results ?? []; const source = players.find((player) => player.id === pending.sourceId);
   let deck = parse<Card[]>(room.deck_json, []); let discard = parse<Card[]>(room.discard_json, []); let log = parse<string[]>(room.log_json, []);
-  if (!pending.negated && !log.some((entry) => entry.includes("No Negation responses remain"))) {
-    log = addLog(log, `No Negation responses remain for ${pending.responseTarget ?? pending.cardName}; resolving the effect.`);
-  }
+  if (!pending.negated) log = ensureNegationResolutionEvent(log, pending, resumedEnvelope);
   const heldCards = pending.heldCards ?? [];
   if (pending.negated) {
     const target = players.find((player) => player.id === pending.effectTargetId);
-    if (pending.effect.kind !== "judgement") log = addLog(log, `${pending.cardName}'s effect on ${target?.name ?? "its target"} is cancelled by Negation.`);
+    if (pending.effect.kind !== "judgement") {
+      const settlement = negationSettlementProof(pending, resumedEnvelope, "ROOT_CANCELLED");
+      log = addLog(log, `${pending.cardName}'s effect on ${target?.name ?? "its target"} is cancelled by Negation.`, undefined,
+        settlement ? { resolutionId: settlement.resolutionId, importance: "essential", negationSettlement: settlement } : undefined);
+    }
     if (pending.effect.kind === "harvest_target") {
       let harvest = { ...pending.effect.pending, heldCards: pending.heldCards ?? pending.effect.pending.heldCards } satisfies HarvestPending;
       harvest = updateHarvestParticipant(harvest, pending.effectTargetId, "RESOLVED", "NEGATED");
@@ -2584,7 +2679,7 @@ async function advanceNegation(roomId: string) {
       continue;
     }
 
-    const log = addLog(parse<string[]>(room.log_json, []), `No Negation responses remain for ${pending.continuation.responseTarget ?? pending.continuation.cardName}; resolving the effect.`);
+    const log = ensureNegationResolutionEvent(parse<string[]>(room.log_json, []), pending.continuation, parseCausalEnvelope(room.causal_envelope_json));
     const resolved: ResponsePending = { ...pending.response, continuation: { ...pending.continuation, remainingIds: [] } };
     const claimed = await db().prepare("UPDATE rooms SET phase = 'resolving', pending_json = ?, log_json = ? WHERE id = ? AND phase = 'response' AND pending_json = ?")
       .bind(serializePending(resolved), JSON.stringify(log), roomId, room.pending_json).run();
@@ -5539,12 +5634,12 @@ export async function POST(request: Request) {
         const moved = await advanceNegationDecision(liveRoom, negation, next);
         if (moved) await advanceNegation(room.id);
       } else {
-        const log = addLog(parse<string[]>(liveRoom.log_json, []), `No Negation responses remain for ${continuation.responseTarget ?? continuation.cardName}; resolving the effect.`);
+        const log = ensureNegationResolutionEvent(parse<string[]>(liveRoom.log_json, []), continuation, parseCausalEnvelope(liveRoom.causal_envelope_json));
         await causalRoomStateWrite(room.id, { phase: "resolving", pending: response, log, causalEnvelope: parseCausalEnvelope(liveRoom.causal_envelope_json) }, liveRoom.pending_json).run();
         await resolveDeferredStratagem(room.id, continuation);
       }
     } else {
-      const log = addLog(parse<string[]>(liveRoom.log_json, []), `No Negation responses remain for ${continuation.responseTarget ?? continuation.cardName}; resolving the effect.`);
+      const log = ensureNegationResolutionEvent(parse<string[]>(liveRoom.log_json, []), continuation, parseCausalEnvelope(liveRoom.causal_envelope_json));
       await db.prepare("UPDATE rooms SET phase = 'resolving', log_json = ? WHERE id = ?").bind(JSON.stringify(log), room.id).run();
       await resolveDeferredStratagem(room.id, continuation);
     }
