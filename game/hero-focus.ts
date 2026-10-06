@@ -1,4 +1,4 @@
-import type { InteractionStageView, PresentationDisplayIdentity } from "./presentation-client";
+import { buildNestedEffectContext, type InteractionStageView, type PresentationDisplayIdentity } from "./presentation-client";
 import type { PresentationSnapshotGroupParticipantProgress } from "./presentation-snapshot";
 
 export type HeroFocusPlayerDisplay = {
@@ -139,6 +139,7 @@ export function buildHeroFocusView(
   resolvePlayerDisplay: HeroFocusPlayerDisplayResolver = () => null,
 ): HeroFocusView {
   if (!stage.visible) return HIDDEN_FOCUS;
+  const nestedContext = buildNestedEffectContext(stage);
 
   const currentParticipant = stage.currentParticipant.id ? stage.currentParticipant : null;
   const soleActiveTarget = stage.stage !== "DYING"
@@ -152,9 +153,7 @@ export function buildHeroFocusView(
       primary: null,
       roleLabel: null,
       source: stage.source,
-      nestedContext: stage.continuity.relation === "CHILD_FRAME"
-        ? `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`
-        : null,
+      nestedContext,
     };
   }
 
@@ -163,9 +162,7 @@ export function buildHeroFocusView(
     primary: decoratePlayer(selected, resolvePlayerDisplay),
     roleLabel: stage.stage === "DYING" ? "DYING PLAYER" : currentParticipant ? "CURRENT PARTICIPANT" : "CURRENT TARGET",
     source: stage.source,
-    nestedContext: stage.continuity.relation === "CHILD_FRAME"
-      ? `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`
-      : null,
+    nestedContext,
   };
 }
 

@@ -12,7 +12,7 @@ import { latestPublicMessages } from "../game/messages.js";
 import { canTargetCharacter } from "../game/capabilities/targeting";
 import type { PresentationSnapshot } from "../game/presentation-snapshot";
 import type { PresentationV2 } from "../game/presentation-v2";
-import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
+import { buildDyingHandoffView, buildInteractionStageDisplayModel, buildInteractionStageView, buildPresentationClientView, buildPresentationDecisionStatus, buildReactionChainView, isProvenBorrowedSwordForcedAttack, projectInteractionSeatRoles, type InteractionSeatSemanticRoles, type PresentationClientView } from "../game/presentation-client";
 import { buildPresentationTransition, type PresentationTransitionKind } from "../game/presentation-transition";
 import { buildHeroFocusView, projectHeroFocusForViewer, projectMediumSourceForViewer, projectGroupTargetScopeForViewer, type HeroFocusPlayerDisplay, type HeroFocusView, type MediumParticipantView } from "../game/hero-focus";
 import { buildLocalTargetSelectionView } from "../game/local-target-selection";
@@ -618,6 +618,7 @@ function MediumParticipantCard({ view }: { view: MediumParticipantView }) {
 
 export function InteractionStage({ view, viewerId, transitionKind = "NONE", topRowMode = false, resolvePlayerName, resolvePlayerDisplay, previewPlayer = null, previewSubmission = null, inspectPlayer = null, selectableDetail = null, judgementInFlight, onCloseInspect, onHeroInfo, onInfoCard }: { view: PresentationClientView; viewerId: string | null; transitionKind?: PresentationTransitionKind; topRowMode?: boolean; resolvePlayerName: (playerId: string) => string | null | undefined; resolvePlayerDisplay?: (playerId: string) => HeroFocusPlayerDisplay | null | undefined; previewPlayer?: LocalTargetPreviewPresentation | null; previewSubmission?: LocalTargetPreviewSubmission | null; inspectPlayer?: LocalOpponentInspectionPresentation | null; selectableDetail?: TargetCardSelectableDetail | null; judgementInFlight?: ReadonlySet<string>; onCloseInspect?: () => void; onHeroInfo?: (hero: Hero) => void; onInfoCard?: (card: Card) => void }) {
   const stage = buildInteractionStageView(view, resolvePlayerName);
+  const borrowedSwordForcedAttack = isProvenBorrowedSwordForcedAttack(stage);
   const dyingHandoff = buildDyingHandoffView(stage);
   const reactionChain = buildReactionChainView(stage);
   const publicHeroFocus = buildHeroFocusView(stage, resolvePlayerDisplay);
@@ -657,25 +658,6 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
   const displayEffectLabel = stage.stage === "GROUP_RESOLUTION"
     ? groupCurrentEffectLabel
     : stage.effect === "borrowed_sword_attack" ? "Attack" : publicEffectLabel;
-  const borrowedSwordForcedAttack = Boolean(display.visible
-    && stage.stage === "ATTACK_RESPONSE"
-    && stage.effect === "borrowed_sword_attack"
-    && stage.continuity.relation === "CHILD_FRAME"
-    && stage.rootOrigin
-    && stage.rootOrigin.frameId === stage.parentFrameId
-    && stage.rootOrigin.effect.trim().toLowerCase() === "borrowed sword"
-    && stage.rootOrigin.source.id
-    && stage.rootOrigin.source.known
-    && stage.rootOrigin.source.id !== stage.source.id
-    && stage.rootOrigin.targets.length === 1
-    && stage.rootOrigin.targets[0]?.id === stage.source.id
-    && stage.source.id
-    && stage.source.known
-    && stage.activeTargets.length === 1
-    && stage.activeTargets[0]?.id
-    && stage.activeTargets[0].id !== stage.source.id
-    && stage.activeTargets[0].known
-    && stage.currentParticipant.id === stage.activeTargets[0].id);
   const duelParticipantIsActive = Boolean(stage.currentParticipant.id
     && stage.activeTargets.some((target) => target.id === stage.currentParticipant.id));
   const hasSingleTargetCurrentEffect = (stage.stage === "ATTACK_RESPONSE" || stage.stage === "NEGATION")
@@ -792,7 +774,7 @@ export function InteractionStage({ view, viewerId, transitionKind = "NONE", topR
     && display.activeResolver.id
     && dyingHandoff.activeResolver.id === display.activeResolver.id);
   const showNestedContextSummary = Boolean(display.nestedContext)
-    && !(dyingHandoff.visible && heroFocus.primary && heroFocus.nestedContext === display.nestedContext);
+    && !(heroFocus.visible && heroFocus.primary && heroFocus.nestedContext === display.nestedContext);
   const showFocusSummary = showRoleSummary
     && (!display.currentParticipantPresentedInHeroFocus || hasLocalFocus)
     && display.focusTarget.id !== viewerId

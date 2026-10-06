@@ -564,6 +564,34 @@ function displayNames(identities: readonly PresentationDisplayIdentity[], emptyL
   return identities.length ? identities.map((identity) => identity.name).join(", ") : emptyLabel;
 }
 
+export function isProvenBorrowedSwordForcedAttack(stage: InteractionStageView): boolean {
+  return Boolean(stage.visible
+    && stage.stage === "ATTACK_RESPONSE"
+    && stage.effect === "borrowed_sword_attack"
+    && stage.continuity.relation === "CHILD_FRAME"
+    && stage.rootOrigin
+    && stage.rootOrigin.frameId === stage.parentFrameId
+    && stage.rootOrigin.effect.trim().toLowerCase() === "borrowed sword"
+    && stage.rootOrigin.source.id
+    && stage.rootOrigin.source.known
+    && stage.rootOrigin.source.id !== stage.source.id
+    && stage.rootOrigin.targets.length === 1
+    && stage.rootOrigin.targets[0]?.id === stage.source.id
+    && stage.source.id
+    && stage.source.known
+    && stage.activeTargets.length === 1
+    && stage.activeTargets[0]?.id
+    && stage.activeTargets[0].id !== stage.source.id
+    && stage.activeTargets[0].known
+    && stage.currentParticipant.id === stage.activeTargets[0].id);
+}
+
+export function buildNestedEffectContext(stage: InteractionStageView): string | null {
+  if (stage.continuity.relation !== "CHILD_FRAME") return null;
+  if (stage.stage === "ATTACK_RESPONSE" && stage.effect === "borrowed_sword_attack") return null;
+  return `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`;
+}
+
 /**
  * Establish the player-facing hierarchy without changing the underlying
  * semantic fields retained by InteractionStageView.
@@ -596,9 +624,7 @@ export function buildInteractionStageDisplayModel(stage: InteractionStageView, p
     ? `Active scope: ${displayNames(stage.activeTargets, "No active target")}`
     : null;
   const showOriginalTargets = !sameIds(stage.originalTargets, stage.activeTargets);
-  const nestedContext = stage.continuity.relation === "CHILD_FRAME"
-    ? `Nested effect${stage.parentFrameId ? ` · parent frame ${stage.parentFrameId}` : ""}`
-    : null;
+  const nestedContext = buildNestedEffectContext(stage);
   return {
     visible: stage.visible,
     focusLabel: stage.stage === "DYING"

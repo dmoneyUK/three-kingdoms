@@ -370,6 +370,8 @@ for (const viewport of [
     await expect(stage).toHaveAttribute("data-current-effect", "Attack");
     await expect(stage.locator(":scope > header strong")).toHaveText("Attack Response");
     await expect(summary).toHaveText("Player 1's Borrowed Sword forces Player 2 to Attack Player 3.");
+    await expect(stage).not.toContainText(/parent frame|nested effect/i);
+    await expect(stage.locator(".hero-focus-context")).toHaveCount(0);
     await expect(source).toContainText("Player 2");
     await expect(effect.locator("strong")).toHaveText("Attack");
     await expect(target).toContainText("Player 3");
@@ -414,6 +416,8 @@ test("two-player Borrowed Sword keeps the viewer target in the Dock without dupl
   const stage = page.locator('[aria-label="Interaction Stage"][data-stage="ATTACK_RESPONSE"]');
   await expect(stage).toHaveAttribute("data-current-effect", "Attack");
   await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 1's Borrowed Sword forces Player 2 to Attack Player 1.");
+  await expect(stage).not.toContainText(/parent frame|nested effect/i);
+  await expect(stage.locator(".hero-focus-context")).toHaveCount(0);
   await expect(stage.locator('[data-hero-focus="true"][data-hero-focus-player-id="p2"] .hero-focus-heading strong')).toHaveText("Source");
   await expect(stage.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
   await expect(page.locator('.local-player-dock[data-player-anchor="p1"]')).toBeVisible();
@@ -427,6 +431,8 @@ for (const state of ["borrowed-sword-active-no-root", "borrowed-sword-active-mis
     await expect(stage).toHaveAttribute("data-current-effect", "Attack");
     await expect(stage.locator('[data-stage-event-summary="proven"]')).toHaveText("Player 2 used Attack on Player 3.");
     await expect(stage).not.toContainText("Borrowed Sword");
+    await expect(stage).not.toContainText(/parent frame|nested effect/i);
+    await expect(stage.locator(".hero-focus-context")).toHaveCount(0);
     await expect(page.locator('[data-hero-focus-player-id="p1"]')).toHaveCount(0);
   });
 }
